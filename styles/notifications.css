@@ -13,9 +13,6 @@
     padding: 10px 8px 10px 17px; /* 整体向右边距增加2px，由6px变为8px */
 }
 /* 经典 UI 的亮色标题栏保持透明；新版标题栏由 UI System 的主题材质接管。 */
-html:not([data-ui-mode="next"]) body.light-theme .notifications-header {
-    background: transparent !important;
-}
 
 .notification-header-actions {
     display: grid;
@@ -446,18 +443,18 @@ body.light-theme .app-tray-drawer-item:hover {
  * Keep this in the legacy layer beside the original !important capsule
  * geometry so the Next layer cannot lose the cascade to those declarations. */
 @container notifications-sidebar (max-width: 280px) {
-    html[data-ui-mode="next"] #vchatAppTray #appTrayPinnedApps > .capsule-button {
+    html #vchatAppTray #appTrayPinnedApps > .capsule-button {
         min-width: 0;
         padding: 0 !important;
         gap: 0 !important;
     }
 
-    html[data-ui-mode="next"] #vchatAppTray #appTrayPinnedApps .notes-button-label {
+    html #vchatAppTray #appTrayPinnedApps .notes-button-label {
         display: none !important;
     }
 
-    html[data-ui-mode="next"] #vchatAppTray #appTrayPinnedApps svg,
-    html[data-ui-mode="next"] #vchatAppTray > .app-tray-more-btn svg {
+    html #vchatAppTray #appTrayPinnedApps svg,
+    html #vchatAppTray > .app-tray-more-btn svg {
         display: block;
         width: 18px;
         min-width: 18px;

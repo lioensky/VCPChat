@@ -21,6 +21,8 @@
             this.views = new Map();
             this.activeViewId = 'home';
             this.mounted = false;
+            this.revision = 0;
+            this.listeners = new Set();
         }
 
         mount(scope) {
@@ -47,6 +49,36 @@
                 activeViewId: this.activeViewId,
                 tabs: [...this.views.values()].map(view => ({ kind: view.kind, id: view.app.id })),
             };
+        }
+
+        getSnapshot() {
+            return Object.freeze({ revision: this.revision, ...this.snapshot() });
+        }
+
+        publish() {
+            this.revision += 1;
+            const snapshot = this.getSnapshot();
+            this.listeners.forEach(listener => {
+                try { listener(snapshot, snapshot); } catch (error) { console.error('[NextUI] AppTab subscriber failed:', error); }
+            });
+            return snapshot;
+        }
+
+        subscribe(listener, options = {}) {
+            this.listeners.add(listener);
+            if (options.immediate !== false) listener(this.getSnapshot(), this.getSnapshot());
+            return () => this.listeners.delete(listener);
+        }
+
+        whenSettled(options = {}) {
+            const wait = globalThis.VCPSettlement?.waitForSettlement;
+            if (!wait) return Promise.reject(new Error('VCPSettlement is unavailable.'));
+            return wait({
+                ...options,
+                label: 'AppTab host',
+                getSnapshot: () => this.getSnapshot(),
+                subscribe: (listener, subscribeOptions) => this.subscribe(listener, subscribeOptions),
+            });
         }
 
         persist(force = false) {
@@ -106,6 +138,7 @@
 
         register(viewId, view) {
             this.views.set(viewId, view);
+            this.publish();
         }
 
         updateVisibility() {
@@ -145,6 +178,7 @@
             this.activeViewId = viewId;
             this.updateVisibility();
             if (options.persist !== false) this.persist();
+            this.publish();
         }
 
         unregister(viewId) {
@@ -161,6 +195,7 @@
                 this.setView(left?.dataset.viewId || 'home');
             }
             this.persist();
+            this.publish();
             return view;
         }
 
@@ -169,6 +204,8 @@
             this.mounted = false;
             this.views.clear();
             this.activeViewId = 'home';
+            this.publish();
+            this.listeners.clear();
         }
     }
 

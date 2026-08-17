@@ -1,0 +1,42 @@
+{
+  "modules/chatManager.js": {
+    "sha256": "14a29bff0e77411e8c08476a33b153710180ce5472c81ebabfcd6640c19f3a4c",
+    "reason": "upstream chat core plus separately reviewed M9 ownership fixes"
+  },
+  "modules/messageRenderer.js": {
+    "sha256": "a5d1ce33a7d58f9b2c80949d62842c171e0ea2530c07bd28672030d73277cef8",
+    "reason": "upstream message semantics; Next may not restyle or fork it"
+  },
+  "modules/renderer/streamManager.js": {
+    "sha256": "97f941b96c9c24106370bc167c1b5413b232c992b7f3fa07120bd88a5046a377",
+    "reason": "shared stream core plus separately reviewed M9 terminal ownership fixes"
+  },
+  "modules/topicListManager.js": {
+    "sha256": "3b1fca2763cc07e8de96c10db6043cdb8b6b16c10895b37c042da397c5d72144",
+    "reason": "shared topic authority with canonical presentation projection only"
+  },
+  "modules/itemListManager.js": {
+    "sha256": "3585e135aad8b62c04768075fd0a0720851d82acea34b522763d2f28d12792fd",
+    "reason": "shared Agent/group catalog authority with revision-bounded settlement"
+  },
+  "Groupmodules/grouprenderer.js": {
+    "sha256": "b1dd13f25567e31cbb5d4536c7fd95cbaa5b353b24283563fccb38a7705c2625",
+    "reason": "upstream group business surface with retired toolbar binding removed"
+  },
+  "modules/settingsManager.js": {
+    "sha256": "3cfe7e5ca2fa60e1cbbb7eeb663da19c19866a87c6cc2e2dd44bbbd36fb93ac8",
+    "reason": "upstream Agent settings with save settlement after UI projection"
+  },
+  "modules/filterManager.js": {
+    "sha256": "6feeff39defaf031455a25f0ad22284a40f366701ab18e5e1209a72762eee66a",
+    "reason": "shared filter authority; canonical menu calls its public API"
+  },
+  "modules/notificationRenderer.js": {
+    "sha256": "7958fc44d5742c45abac1092dd5054dded827c478344999bf6addcbabb4be707",
+    "reason": "upstream notification rendering semantics"
+  },
+  "VCPDistributedServer/frontend-plugin-loader.js": {
+    "sha256": "4a5a86bcbec48a526d213d796f0cb1f8f4e424b191c39b55c5628b26cd1f5856",
+    "reason": "upstream plugin loader contract; dynamic wallpaper internals remain out of scope"
+  }
+}

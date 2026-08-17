@@ -41,9 +41,6 @@ export async function handleSaveGlobalSettings(e, deps) {
     const speechRecognizerBrowserPath = document.getElementById('speechRecognizerBrowserPath')?.value.trim() || '';
     const speechRecognizerPagePath = document.getElementById('speechRecognizerPagePath')?.value.trim() || '';
 
-    const selectedUiMode = document.querySelector('input[name="appearanceUiMode"]:checked')?.value
-        || (document.getElementById('enableNextUi')?.checked ? 'next' : 'classic');
-
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
         userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
@@ -67,7 +64,6 @@ export async function handleSaveGlobalSettings(e, deps) {
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
         enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
-        uiMode: selectedUiMode,
         showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
         showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
         homeVisualTagline: document.getElementById('homeVisualTagline')?.value.trim().slice(0, 120)
@@ -269,16 +265,9 @@ export async function handleSaveGlobalSettings(e, deps) {
 
         Object.assign(refs.globalSettings.get(), newSettings);
         try {
-            // The settings write above succeeded, so this is the only point
-            // at which the renderer's boot cache may be synchronized.
-            if (window.uiModeManager?.applyAsync) {
-                await window.uiModeManager.applyAsync(newSettings.uiMode, { cache: true });
-            } else {
-                window.uiModeManager?.apply(newSettings.uiMode, { cache: true });
-            }
             newSettings.appearanceProfile = window.VCPAppearance?.commit(
                 newSettings.appearanceProfile,
-                { uiMode: newSettings.uiMode, source: 'settings-save' }
+                { uiMode: 'next', source: 'settings-save' }
             ) || newSettings.appearanceProfile;
             window.dispatchEvent(new CustomEvent('global-settings-updated', {
                 detail: { settings: refs.globalSettings.get(), source: 'settings-save' }

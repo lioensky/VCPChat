@@ -12,7 +12,7 @@
     padding-right: 0;
 }
 
-html[data-ui-mode="next"] .sidebar.avatar-only {
+html .sidebar.avatar-only {
     --compact-sidebar-avatar-size: var(--vcp-ui-sidebar-avatar-size);
     width: 60px !important;
     min-width: 60px !important;

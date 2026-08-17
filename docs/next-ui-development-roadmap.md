@@ -1,405 +1,272 @@
-# Next UI 完整开发路线
+# Next UI 开发路线
 
-## 文档定位
+> 状态：当前权威施工路线<br>
+> 基线日期：2026-08-17<br>
+> 当前事实与完成度：[`next-ui-current-state.md`](./next-ui-current-state.md)
 
-本文是 VCPChat Next UI 后续演进的总路线。它规定阶段顺序、模块边界、合并门槛和长期收敛方向，不替代具体子系统文档：Web Awesome 的加载、定制和离线闭包由 [`next-ui-webawesome-roadmap.md`](./next-ui-webawesome-roadmap.md) 负责，动态资源所有权和竞态规则由 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md) 负责，上游 PR 的减法边界由 [`design-system-upstream-pr-convergence.md`](./design-system-upstream-pr-convergence.md) 负责。
+## 1. 路线目标
 
-当前实现已交付 M0、M2、M3、M5 和 M7 的主要代码；M1、M6、M8 仍处于验证或收敛阶段。Classic 默认，Next 可选；Classic / Next 功能对等整改由 [`upstream-function-parity.md`](./upstream-function-parity.md) 持续回归。动态 Next 表面已接入 `LifecycleScope`，模式切换已串行化，并具备可取消任务、权威状态订阅、只读生命周期诊断、性能预算、受限原生 session 和真实 Electron 恢复/压力门禁。前端插件运行时保持上游实现，不属于本路线的改造范围。
+后续工作的重点不是继续搭建抽象，而是把已经形成的唯一主窗口 presentation 收敛成一个边界清楚、可证明稳定、适合上游长期维护的增量。
 
-## 产品与架构目标
+路线遵循四条原则：
 
-Next UI 的目标不是维护第二套聊天业务，也不是把上游代码迁入新框架。目标是建立一个独立、可卸载、可诊断的 presentation，在不改变聊天数据、插件数据和用户配置协议的前提下，共享上游业务能力。
+1. **真实消费者先于抽象**：没有生产消费者的 runtime、Registry kind 或公共 API 不提前进入主 PR。
+2. **所有权先于清理**：副作用必须由创建它的 Surface 释放，子 Surface 不得执行全局清理。
+3. **生产 Promise 先于测试 facade**：测试等待真实业务终态；只有跨进程、确实无法直接等待时才增加受限 diagnostics seam。
+4. **减法先于新功能**：PR 收敛期不增加业务子页面迁移、插件生命周期改造或新的视觉系统。
 
-```text
-上游领域数据与业务服务
-├── 聊天、会话、助手、群组、通知、设置、插件
-├── 受限 IPC 与原生 WebContentsView session
-└── 共享 commands / query / subscriptions
-             ├── Classic presentation（兼容基线）
-             └── NextShellController
-                 ├── AppTabHost
-                 ├── OverlayCoordinator
-                 ├── EmbeddedAppController
-                 ├── LaunchpadController
-                 ├── CreationController
-                 ├── AccountMenuController
-                 └── VCPUI → Web Awesome / native fallback
-```
+## 2. 已完成基线
 
-长期判断标准不是代码是否“像 VS Code 或 DSH”，而是以下关系是否成立：
+以下内容不再作为“待建设路线”重复施工：
 
-1. 业务状态只有一个权威来源，Classic 与 Next 不复制业务数据。
-2. 动态副作用都有生命周期所有者，注册贡献能够撤销。
-3. renderer、主进程和原生 View 的异步操作有身份、取消和最终状态对账。
-4. Classic 不因 Next 的存在改变 DOM 身份、事件语义和启动行为。
-5. 每次演进都能独立回滚，不要求一次性重写整个主窗口。
+- 主窗口已收敛为一个规范 presentation。
+- Next Shell 已拆为 8 个窄控制器，`topTabManager` 仅保留兼容转发。
+- 动态 Surface 已具备 `LifecycleScope`、可撤销注册、迟到结果隔离和只读诊断。
+- Ask Nova、Overlay、WebContentsView session、renderer reload/crash 已有确定性回归。
+- 主聊天操作序列、故障注入和资源压力门禁已经可用。
+- Web Awesome 使用固定、可重复的离线 closure，并通过 VCPUI adapter 隔离。
+- 前端插件 Loader 保持上游合同，不由 Next 生命周期接管。
 
-## 明确不采用的路线
+这些能力仍需持续回归，但不再用新的框架或 facade “重新完成一次”。
 
-- 不引入 Cordis、React、Vue 或新的全应用框架重写 VCPChat。
-- 不把所有静态 DOM、CSS 和页面级 singleton 强行迁入 `LifecycleScope`。
-- 不把 Classic 隐藏起来再通过 `.click()` 作为 Next 的业务层。
-- 不让业务模块直接依赖 `<wa-*>`、Shadow DOM 私有结构或 Web Awesome Token。
-- 不在本路线中改变前端插件加载、卸载或热重载协议。
-- 不同时进行模块拆分、视觉重设计、Vendor 更新和业务协议修改。
-- 不以测试阈值放宽代替泄漏根因修复。
+## 3. 阶段总览
 
-## 阶段总览
-
-| 阶段 | 目标 | 进入条件 | 退出证据 |
+| 阶段 | 状态 | 目标 | 退出条件 |
 |---|---|---|---|
-| M0 | 生命周期稳定基线 | 已完成 | 20 轮 Electron 压测资源恒定 |
-| M1 | 发布前稳定化（验证中） | M0 | 竞态矩阵、长时 soak 和稳定性门禁通过 |
-| M2 | 拆分 Next Shell 协调器（已完成） | M1 | `topTabManager` 退化为兼容 facade |
-| M3 | 可取消异步与 IPC 任务（已完成） | M2 的 Overlay/Embedded 边界稳定 | 请求可取消，迟到结果无提交权 |
-| M4 | 统一 Next 贡献协议（部分完成） | M3 | Next App/Menu/Command/Setting 注册均可撤销；不改变插件协议 |
-| M5 | 状态权威与显式订阅（已完成） | M2–M4 | 无新增隐藏 DOM 代理和全局扫描 |
-| M6 | VCPUI 与 Surface 收敛（进行中） | M5 | Next 自有表面统一 create/fallback 生命周期 |
-| M7 | 诊断、故障注入与持续门禁（已完成） | 与 M2–M6 同步 | 可定位 owner、任务和原生 session |
-| M8 | 性能、安全和恢复能力（验证中） | M3、M7 | 崩溃、休眠、断网与长时运行可恢复 |
-| M9 | Classic 去留决策（待定） | M1–M8 验收完成 | 有稳定性和维护成本证据决定继续并行或覆盖 Classic |
+| P0 事实基线与文档收敛 | 已完成 | 让代码、测试、文档对当前拓扑使用同一套描述 | 权威关系明确；旧文档不再声明冲突架构 |
+| P1 所有权缺陷修复 | 待开始 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
+| P2 无消费者架构减法 | 待开始 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
+| P3 VCPUI 与 Registry 收口 | 待开始 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
+| P4 PR 证据与交付 | 待开始 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
+| P5 合入后稳定周期 | 未开始 | 观察真实环境，不扩张架构 | 一个稳定发布周期无资源和恢复阻塞 |
+| P6 按业务逐页演进 | 条件式远期 | 只在真实需求出现时迁移一个子页面 | 页面独立 PR，consumer/runtime/test 同时进入 |
 
-M2–M7 可以按小 PR 交错推进，但不能跳过各自进入条件。M9 是产品决策，不由代码完成度自动触发。
+P0–P4 是当前上游 PR 的实际路线。P5–P6 不阻塞当前施工，也不得提前把实现放入本 PR。
 
-## M0：生命周期稳定基线（已完成）
-
-### 已交付
-
-- `LifecycleScope` 与资源诊断。
-- Ask Nova、Appearance Studio、设置增强、应用标签、创建弹窗和应用托盘的 owner。
-- 可撤销 Next App Registry。
-- Classic/Next 串行切换和 stale generation fence。
-- 原生 overlay lease、延迟 hide 最终对账和嵌入 session 压力测试。
-- Classic 隔离、Web Awesome 离线闭包和打包门禁。
-
-### 维护要求
-
-M0 不是一次性重构。后续任何动态 Next 表面必须遵守生命周期文档；新增全局 listener、Observer、timer、IPC subscription 或注册项时，评审必须能够指出其 owner 和 teardown 测试。
-
-## M1：发布前稳定化
-
-### 目标
-
-冻结结构性扩张，用真实使用验证当前基线。此阶段只接受 P0/P1 稳定性修复、测试缺口和文档修正，不加入新的大型视觉或业务功能。
+## 4. P0：事实基线与文档收敛
 
 ### 工作项
 
-- 完成 Classic 与 Next 的人工竞态矩阵：快速模式往返、Ask Nova 逆序打开、内嵌应用 + Overlay、设置反复打开、插件管理器冷启动、创建助手期间切换模式。
-- 进行至少一次 30–60 分钟真实使用 soak；记录 renderer 数、原生 View 数、内存趋势、错误日志和界面响应。
-- 将启动环境错误与 UI 错误分开记录：模型服务、音频二进制、VCP-CDS 或第三方插件失败不能掩盖 UI 是否可恢复。
-- 为人工发现的每个竞态先建立确定性复现，再修实现；不只增加延时或重试。
-- 固定当前 PR 文件边界，重新同步上游时先通过 subtraction guard，再解决共享文件冲突。
+1. 用 `next-ui-current-state.md` 记录当前拓扑、生产消费者、测试证据和 PR 阻塞项。
+2. 本文只保存后续顺序，不继续维护 M0–M13 与 R0–R6 两套并行状态机。
+3. 将 Classic retirement、旧双模式 parity 和历次 PR convergence 文档标为历史记录。
+4. 修正 `ui-system.md`、生命周期文档和工程规范中的运行时 Classic/Next 切换表述。
+5. 文档中的测试数字必须注明对应 commit/日期，不能当作永远成立的实时结果。
 
-### 退出门槛
+### 退出条件
 
-- 自动门禁全部通过，人工竞态矩阵无阻塞问题。
-- 长时间运行没有持续增长的 listener、renderer、WebContentsView 或动态 Scope。
-- 已知非阻塞问题进入文档并标明 owner，不以“暂未复现”关闭。
+- 任何开发者只读当前状态文档和本路线，就能区分已完成、部分完成、未开始和非目标。
+- 全仓库不存在两份都自称“当前权威”、却描述不同主窗口拓扑的文档。
+- `uiMode` 的兼容读取与业务子页面 Classic policy 被明确区分。
 
-## M2：拆分 Next Shell 协调器
+## 5. P1：所有权缺陷修复
 
-### 目标
+### 5.1 Feedback owner
 
-`topTabManager.js` 当前同时管理标签、原生 View、Overlay、启动台、创建流程、搜索和账户菜单。拆分目标是缩小故障域和测试夹具，不改变 DOM、IPC、用户设置或 `window.topTabManager` 调用方。
-
-### 目标模块
-
-```text
-modules/ui-system/next-shell/
-├── next-shell-controller.js
-├── overlay-coordinator.js
-├── embedded-app-controller.js
-├── app-tab-host.js
-├── launchpad-controller.js
-├── creation-controller.js
-├── account-menu-controller.js
-└── assistant-search-controller.js
-```
-
-### 拆分顺序
-
-1. `OverlayCoordinator`：唯一持有 overlay owners、原生 View 隐藏/恢复和最终对账。
-2. `EmbeddedAppController`：唯一调用 embedded app IPC，管理 session 创建、激活、关闭、恢复和拖出。
-3. `AppTabHost`：只管理标签 DOM、active view、会话持久化和键盘语义。
-4. `LaunchpadController`：应用目录渲染、应用托盘和内部应用入口。
-5. `CreationController`：助手/群组创建 Modal、模型查询和提交状态。
-6. `AccountMenuController` 与 `AssistantSearchController`：Next Shell 局部交互。
-7. `NextShellController` 组合上述模块；旧 `topTabManager` 只转发兼容 API。
-
-### 接口原则
-
-- 构造时显式注入 DOM host、commands、IPC 和 owner，不从模块内部猜测脚本加载顺序。
-- 每个 controller 有幂等 `mount()/dispose()`，只能拥有自己的资源。
-- controller 间通过窄方法或订阅通信，不读取对方私有 Map/DOM。
-- 旧 facade 在全部调用方迁移前保留，禁止一次性重命名全仓库。
-
-### 验收
-
-- 每次提取前后 Electron 行为和 Scope 基线一致。
-- Overlay、Embedded、Tab 各有独立故障注入测试。
-- 删除任一 controller 不影响 Classic 启动。
-- `topTabManager` 最终不再直接创建 Modal、Observer、原生 session 或应用按钮。
-
-## M3：可取消异步与 IPC 任务协议
-
-### 目标
-
-generation 能阻止迟到结果写 UI，但不能停止已经进入主进程的工作。建立统一任务协议，让 renderer 销毁 owner 时同时取消底层请求，并由主进程验证调用者和任务身份。
-
-### 建议接口
-
-```text
-renderer start { requestId, operation, payload }
-main validate sender + operation
-main own task by sender/requestId
-renderer cancel { requestId }
-main abort task and settle once
-renderer accept result only when owner/generation is current
-```
-
-renderer 侧使用一个小型 `TaskHandle`：`requestId`、`promise`、`cancel()`；`LifecycleScope` 持有 `cancel()`。主进程使用 sender WebContents 作为第一层 owner，renderer destroyed 时批量取消其任务。
-
-### 迁移顺序
-
-1. Ask Nova/DeepWiki。
-2. 模型列表和主题清单查询。
-3. 创建助手/群组后的刷新与导航。
-4. 内嵌应用 create/close/detach。
-5. 其他 Next 自有长请求。
-
-### 兼容与安全
-
-- 保留现有 preload 方法作为 facade，内部转到任务协议。
-- renderer 不得传任意 channel、URL 或文件路径；主进程使用枚举和现有 allowlist。
-- cancel 必须幂等；完成、取消和超时只能产生一个终态。
-- 断网、主进程拒绝和 renderer 销毁都有确定性测试。
-
-## M4：统一 Next 贡献协议
-
-### 目标
-
-借鉴 VS Code/DSH 的“注册即副作用”，但不引入完整插件容器。将 Next 内部应用、菜单、命令和设置入口统一为返回 disposer 的窄 Registry。
-
-### 推荐模型
+为 VCPUI feedback 建立最小 owner handle，不要求重写整个反馈系统：
 
 ```js
-const owner = nextSurfaceScope;
-owner.own(registerApp(...));
-owner.own(registerCommand(...));
-owner.own(registerMenuItem(...));
-owner.own(registerSettingsEntry(...));
+const feedback = VCPUI.feedback.owner(scope);
+feedback.toast(...);
+feedback.setLoading(true, ...);
+await feedback.dispose();
 ```
 
-`VCPFrontendPlugins` 保持上游接口和行为，不接入上述 Registry。插件 contribution、卸载和热重载若有需求，必须作为独立方案验证，不能由 Next Shell 生命周期隐式接管。
+实现必须满足：
 
-### 工作项
+- owner dispose 只关闭自己创建的 Toast/Dialog/Loading。
+- 全局应用退出仍可使用专门的 root-level `cancelAll()`。
+- Loading 使用 owner token 或 handle，不依赖“加一/减一”猜测调用是否成对。
+- 展示页 timer 由其 Scope 持有，关闭后不得修改全局反馈层。
+- setup 中途失败时，已创建反馈和 timer 原子回滚。
 
-- 定义最小 `Disposable`：函数或 `{ dispose() }`，要求幂等。
-- `MainChatCommands` 建立可枚举命令目录；Next presentation 调用命令，不点击 Classic DOM。
-- Menu/App/Settings contribution 包含稳定 ID、owner、展示元数据和 action，不携带任意 HTML。
-- Registry 注销时关闭仍打开的对应 UI，并删除恢复状态中的失效 contribution。
-- Next contribution 的 disposer 必须幂等，并由创建它的 Next Scope 统一持有。
+### 5.2 回归测试
 
-### 暂不开放
+新增确定性场景：
 
-- 运行时安装任意远程前端代码。
-- 无隔离的第三方 HTML/React 组件贡献。
-- 前端插件 HMR；它不属于 Next UI 稳定化范围。
+1. 主 Surface 打开 Dialog/Toast/Loading。
+2. 组件展示页创建自己的反馈并关闭。
+3. 主 Surface 的反馈仍存在，展示页反馈全部消失。
+4. timer 在展示页关闭后推进，不产生 DOM、计数或未处理异常。
 
-## M5：状态权威与显式订阅
+### 退出条件
 
-### 目标
+- 子 Surface 不再调用全局 `cancelAll()`。
+- feedback owner 的注册、使用、销毁、重复销毁和失败释放都有测试。
+- 生命周期压力基线不增加永久 Scope、listener、timer 或 DOM。
 
-减少 `window.*`、DOM 查询和 MutationObserver 作为状态来源。业务状态由现有上游 manager/IPC 权威拥有，Next 通过 query、command 和 subscribe 读取，不复制第二份业务 Store。
+## 6. P2：无消费者架构减法
 
-### 优先状态域
+### 6.1 删除休眠的子页面 Next runtime
 
-- UI mode 与 transition state。
-- Appearance profile、预览、保存和回滚。
-- Embedded session 与 active action。
-- 通知过滤、未读和侧栏状态。
-- 助手/群组目录与当前选择。
-- 主题模式和 Next 自有界面状态。
+在当前业务子页面 allowlist 为空的前提下删除：
 
-### 规则
+- runtime bootstrap 与 page rebuild helper。
+- 只为它们存在的 runtime CSS、preload role/API 和 mode subscription。
+- 没有生产 sender 的 `ui-mode-updated` 接口。
+- 仅验证休眠 runtime 的测试和当前式文档。
 
-- DOM 只表达 presentation，不作为可持久业务状态的权威来源。
-- 新订阅必须返回 unsubscribe，并由 Scope 持有。
-- 需要跨 surface 保持的交互状态才建立小型 Store；聊天、会话和连接等业务对象继续由上游 owner 管理。
-- `global-settings-updated` 等兼容事件可保留 facade，但只能代理一个权威状态源。
-- MutationObserver 只处理确实由上游动态生成且暂无显式事件的 host，并登记淘汰条件。
+保留中央 surface policy 对“所有业务子页面继续使用上游页面”的边界检查。未来迁移第一个页面时，从最小 runtime 重新引入，并让页面本身成为同一 PR 的生产消费者。
 
-### 验收
+### 6.2 收缩 settlement/state 公共面
 
-- Next 不通过隐藏 Classic 控件 `.click()` 执行业务。
-- 同一设置不会同时由 localStorage、DOM、全局变量和 IPC 各自决定。
-- 快速保存、失败回滚和模式往返只发布一次有效状态变化。
+逐个接口填写消费者表：
 
-## M6：VCPUI 与 Surface 收敛
+| 接口 | 当前决定 |
+|---|---|
+| `AppTabHost.whenSettled()` | 保留；Electron 操作序列真实使用 |
+| Settings settlement 全局 facade | 优先删除；测试等待真实保存 Promise/结果事件 |
+| Creation settlement | 优先返回本次创建 operation promise，不公开全局 idle |
+| Identity/item list revision channel | 若无 presentation 消费者，移动到受限 diagnostics 或删除 |
+| `uiModeManager` state channel | 确认外部消费者；无兼容对象则删除 |
 
-### 目标
+禁止新增全局 `whenIdle()`。后台 watcher、动画、插件和网络服务不能被混成一个无法定义的“全应用空闲”。
 
-让 VCPUI 保持可替换 UI 内核，而不是演变成第二套业务框架。新建 Next 表面默认使用 `VCPUI.create()`；只有暂时无法抽出业务接口的上游表单才使用局部 `enhance()`。
+### 6.3 测试迁移规则
 
-### 工作项
+- 可以直接取得 operation promise 时，测试等待 promise。
+- 只能观察跨进程终态时，使用带 operation ID、timeout、abort 和单终态保证的受限接口。
+- 测试 hook 必须只读，不能成为第二业务 Store。
+- 删除 API 前先证明生产 `rg` 消费者为零，并保留行为测试。
 
-- 为 Modal、Menu、Settings、List、Tabs 建立统一 mount/destroy/focus 契约。
-- Surface 启动时一次性选择 Web Awesome 或 native fallback，不在同次 mount 中半途升级。
-- 控件更新、销毁和迟到异步均验证 controller/owner 仍 active。
-- 将仍存在的 document-wide UI 激活观察器改成显式 surface 事件或局部 host observer。
-- Web Awesome 继续使用固定版本和可重复的 101 文件离线闭包；组件集合变化必须由 manifest 和生成器驱动。
-- 无障碍门禁覆盖焦点恢复、Escape 栈、键盘导航、reduced-motion、invalid/disabled 状态和屏幕阅读语义。
+### 退出条件
 
-### 禁止事项
+- 页面 runtime gate 仍报告 0 active rebuilt，但产品文件树不再携带不可达实现。
+- preload 暴露的每项新增 API 都存在 main/renderer 两端和生产调用者。
+- 共享 manager 不再仅为测试维护冻结 snapshot 或 listener。
+- Electron smoke、主聊天序列与 Classic 子页面宿主行为保持通过。
 
-- 不为视觉统一覆盖上游 Markdown、工具卡、日记、媒体等业务组件语义。
-- 不在业务模块中直接创建 WA 标签或读取 WA 私有结构。
-- 不通过全局 CSS 修补单个组件生命周期问题。
+## 7. P3：VCPUI 与 Contribution Registry 收口
 
-## M7：诊断、故障注入与持续门禁（已完成）
+### 7.1 组件成熟度
 
-### 目标
+生成 VCPUI consumer report，将使用分为：
 
-把当前测试脚本中的生命周期诊断变成日常开发能力，让问题能够定位到 owner、资源类型、异步任务和原生 session。
+- 真实业务 Surface
+- 组件展示页
+- 测试
+- 文档
 
-### Lifecycle Inspector
+只有第一类存在、且通过 Electron 验证的组件可以标记 `stable`。展示页不能单独把组件升级为稳定 API。
 
-开发模式提供只读诊断面板或控制台 API：
+处理顺序：
 
-- Scope 所有权树、创建时间、状态和 dispose reason。
-- 每个 Scope 的 listener、Observer、timer、subscription、task 和 contribution。
-- 当前 overlay owners、active embedded action 和主进程 session。
-- 最近的 mode transition、耗时、失败和 stale request。
-- 已 disposing 超时的 owner 与仍未 settle 的任务。
+1. 校正 manifest 状态，不先删除仍被内部组合组件依赖的 primitive。
+2. 决定组件展示页是开发工具还是产品应用。
+3. 若为开发工具，从普通用户 Launchpad 移除，并通过开发开关或测试入口加载。
+4. 删除只服务 Web Awesome 对比演示、没有产品价值的公开入口与样式。
 
-生产构建不暴露可修改内部状态的接口，诊断数据不得包含 API Key、聊天正文或文件内容。
+### 7.2 Registry kinds
 
-### 测试分层
+- 保留有真实业务消费者的 `commands`。
+- `apps` 只在存在正式内部应用 contribution 时保留。
+- `menus` 必须有生产 producer 才进入稳定合同。
+- 删除零 producer/consumer 的 `settings` kind。
 
-- 每次提交：单元、静态边界、5 轮快速生命周期循环。
-- PR：完整 UI、Classic 回归、打包和 20 轮 Electron 压力测试。
-- 定期或发布前：30–60 分钟 soak、renderer crash/reload、网络抖动、系统休眠恢复和 GPU 环境验证。
-- 所有历史竞态使用延迟/逆序/failure injection 确定性复现，不使用只依赖时间概率的测试。
+每种 Registry 都必须满足：register → use → dispose → absent；注册者销毁时仍打开的 UI 也必须关闭。
 
-### 不变量
+### 退出条件
 
-- Classic 中动态 Next Scope 为零。
-- 预热后 Scope 与受管资源在 checkpoint 完全相等。
-- renderer/page/process/WebContentsView 不随循环次数增长。
-- detached icon、option、Modal host 和 Overlay owner 不高于预热基线。
-- 失败 disposer 可观测，但不阻断其他清理和模式收敛。
+- manifest 的每个 `stable` 项都有可定位的业务消费者和验证记录。
+- Registry 不包含推测性 kind。
+- 组件展示工具不会拥有或清理生产 Surface 的全局状态。
+- VCPUI 仍是 UI adapter，不演化为聊天业务框架。
 
-### 已交付证据
+## 8. P4：PR 证据与交付
 
-- `window.VCPLifecycleInspector` 汇总 Scope 树、资源年龄、超时 disposing owner、TaskHandle、贡献注册、状态订阅、Overlay、原生 session、最近模式事务和性能样本。
-- 主进程诊断 IPC 只允许主 renderer 调用，只返回 action、任务身份和时长，不返回 API Key、聊天正文、路径或文件内容。
-- Agent Prompt 模式按钮从每次 render 创建 15 个 listener 收敛为持久 host 上的 5 个委托 listener；恢复上游插件 Loader 后，20 轮压力测试 listener 固定为 405。
-- 正常门禁不调用 Chromium 实验性的 `DOM.getDetachedDomNodes`，因为该命令会改变被测对象的原生包装器寿命；它仅保留为显式 debug 模式。常规门禁检查活动 Surface、heap、listener、Scope、资源、page、renderer process 和 WebContentsView。
-- 完整 Electron 压力测试通过 3 次预热加 20 次测量，并包含 renderer reload、renderer crash、Overlay、Ask Nova、设置、Agent 设置、应用拖出和 Classic/Next 往返。
+### 8.1 每次提交最小检查
 
-## M8：性能、安全和恢复能力（验证中）
+按实际改动选择最小有效集合：
 
-### 性能
+- JS 语法与相关单元测试。
+- `npm run guard:next-delta`。
+- `npm run guard:classic-retirement`。
+- `npm run guard:design-subtraction`。
+- `git diff --check upstream/main...HEAD`。
 
-- 记录 Next mount、模式切换、设置打开、应用创建和原生 View 激活耗时。
-- 避免 document subtree Observer、重复 DOM 全量查询和无变化 Select 重建。
-- 为内嵌 session 设定明确数量和闲置策略，不能用无限创建掩盖恢复问题。
-- Web Awesome 保持按需加载；启动页未使用的组件不进入首屏执行路径。
+生成的 Web Awesome vendor 文件采用限定目录的 Git whitespace 属性；不得为了让检查变绿而改写第三方正则、提高泄漏阈值或跳过整个仓库检查。
 
-### 安全
+### 8.2 PR 前完整矩阵
 
-- 所有新增 IPC 验证 sender、operation 枚举和参数边界。
-- Renderer 不获得任意 Node、文件系统或 BrowserWindow 控制能力。
-- Next contribution 使用数据和受限 action，不接受未净化 HTML、URL 或任意 channel。
-- Ask Nova、Markdown 和外链继续执行安全渲染与 URL allowlist。
+```text
+npm run check:ui-system
+npm run test:electron-ui-apps
+npm run test:electron-main-chat-sequences
+npm run test:electron-lifecycle-stress
+npm run pack:check
+git diff --check upstream/main...HEAD
+```
 
-### 恢复
+另外执行：
 
-- renderer reload/crash 后由主进程 session 权威恢复标签，不重复创建 WebContentsView。
-- 模式切换、窗口关闭和 app detach 在任一步失败后都能重新对账。
-- 恢复策略必须有界，避免 crash/reload loop。
-- 断网和服务未配置时保留主聊天可用，不让可选能力阻塞 Shell。
+- 30–60 分钟人工 soak，记录 renderer、WebContentsView、listener、Scope、heap 趋势和错误日志。
+- 明暗主题、最小窗口、通知栏、创建、设置、Ask Nova、内嵌页面和异常恢复人工检查。
+- 从干净 archive/clone 验证离线资源和打包，不使用工作区偶然存在的文件。
+- 对最新 `upstream/main` 重新归因共享文件冲突；上游问题不借本 PR 扩大修复范围。
 
-### 已交付证据
+### 8.3 提交组织
 
-- `VCPPerformance` 使用 100 条有界环形历史记录 `next.mount`、`ui-mode.transition`、`settings.open`、`embedded.create` 和 `embedded.activate`；元数据只接受少量标量，不记录用户正文或凭据。
-- 默认诊断预算分别为 500ms、1500ms、500ms、10000ms 和 500ms；超预算进入 Inspector，不在真实机器上用脆弱的绝对耗时直接阻塞功能。
-- embedded IPC 继续验证主 renderer sender；action 必须来自中央 allowlist，请求 ID/operation 受长度与字符集约束，拖出坐标必须是绝对值不超过 1,000,000 的有限数。
-- 同一窗口最多保留 6 个内嵌 `WebContentsView`；重复 action 复用既有 session，超过上限返回确定性错误，不创建第七个进程。
-- renderer reload/crash 从主进程 session 权威恢复且不重复创建 View；60 秒内最多自动恢复 3 次，之后停止循环并提示用户。
-- 系统 suspend 隐藏原生 View，resume 按最后的 active action 重新校准 bounds/visible；断网后的 Ask Nova 请求可在网络恢复后重新成功，不污染后续 target。
+建议形成四组可独立回滚的提交：
 
-## M9：Classic 去留决策
+1. `docs(ui): establish current next architecture baseline`
+2. `fix(ui): scope feedback effects to surface owners`
+3. `refactor(ui): remove dormant runtime and test-only facades`
+4. `refactor(ui): narrow vcpui and contribution contracts`
 
-### 已完成的功能对等基线
+测试与对应实现放在同一主题提交；不要把用户的 `styles/themes.css` 修改、动态壁纸、业务子页面迁移或新的视觉功能混入。
 
-Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`upstream-function-parity.md`](./upstream-function-parity.md)。下列能力不再是待开发项目，而是后续每个阶段都必须保持的回归基线：
+### 退出条件
 
-- 左键、右键、长按和悬停语义。
-- 快捷入口的位置和可发现性，而不仅是功能在某个菜单中存在。
-- 通知、主题、聊天显示模式和应用托盘。
-- 助手/群组创建、搜索、选择、设置和模型状态。
-- 输入区、消息结构化内容、附件、工具、日记和流式状态。
-- 窄侧栏、左右面板、窗口控制、键盘和无障碍行为。
-- 无配置、首次配置、断网、失败和恢复路径。
+- 当前状态文档中的所有 PR 阻塞项关闭。
+- 完整矩阵和人工 soak 通过，失败 trace 可重放。
+- 工作树干净，或只剩明确排除的用户修改。
+- PR 描述能解释每个新增运行时接口的两端、owner、取消和清理方式。
 
-新增功能若只存在于 Next，必须明确属于 Next 的增量能力；上游 Classic 原有能力则不得在拆分或协议演进中退化。自动门禁与真实 Electron 人工检查继续共同执行，不能因为“已完成功能对等”而删除回归矩阵。
+## 9. P5：合入后稳定周期
 
-### 决策门槛
+合入后至少经历一个稳定发布周期，再进行命名清理或子页面迁移。此阶段只接受：
 
-在以下条件全部满足前，Classic 保持默认：
+- 可由 trace、crash log 或资源斜率复现的缺陷。
+- 跨平台 CI 发现的真实差异。
+- 上游同步造成的最小兼容修复。
 
-- 已完成的功能对等清单持续无 P0/P1 回归。
-- 至少一个完整发布周期没有资源增长或主窗口卡死类回归。
-- 上游作者和实际用户完成真实工作流验证。
-- Classic/Next 双维护成本已经高于迁移成本，并有明确回退方案。
+不以“架构看起来更统一”为理由继续移动模块。`nextUi*`、兼容 facade 和历史 CSS 的删除分别提交，且每次删除前证明调用者为零。
 
-满足门槛后只有两种明确选择：
+## 10. P6：条件式业务页面演进
 
-1. 继续并行：Classic 是长期产品选项，两套 presentation 都进入正式测试矩阵。
-2. Next 覆盖 Classic：先把共享业务接口稳定，再分阶段删除 Classic presentation；不保留隐藏 Classic DOM 作为永久后端。
+业务子页面迁移不是当前主 PR 的延续任务。只有出现明确产品需求时，选择一个页面执行：
 
-不能长期处于“Next 默认但依赖隐藏 Classic、Classic 又无人维护”的中间状态。
+1. 记录其现有业务 DOM、IPC、独立/内嵌窗口行为和错误恢复。
+2. 先建立窄 command/query/subscribe 合同，不复制业务状态。
+3. runtime、页面消费者、allowlist、teardown 和 Electron 测试在同一 PR 引入。
+4. Classic 业务实现继续作为领域基线；迁移只改变 presentation。
+5. 验证成功前不为第二个页面抽象通用框架。
 
-## 建议 PR 序列
+这一路线为未来统一设计语言留出空间，但不重新建立主窗口 Classic/Next 双布局，也不承诺一次性迁移所有页面。
 
-每个 PR 只改变一个可验证关系，并从最新上游分支开始同步：
+## 11. 新功能 Definition of Done
 
-1. 当前生命周期基线与文档。
-2. 提取 `OverlayCoordinator`，不改变视觉。
-3. 提取 `EmbeddedAppController` 与 session 对账。
-4. 提取 `AppTabHost`，保留 `topTabManager` facade。
-5. 提取 Launchpad/Creation/Account/Search controller。
-6. Ask Nova 可取消任务协议。
-7. Embedded app 可取消任务协议与主进程任务 owner。
-8. Command/Menu/App/Settings contribution disposer。
-9. 状态权威与全局 Observer 减法。
-10. Lifecycle Inspector 与 CI 分层。
-11. 性能、安全和恢复专项。
-12. 功能对等回归复核；Classic 决策单独提案，不再安排一轮功能补做。
+任何新的 UI 功能合入前必须回答：
 
-模块拆分 PR 不夹带视觉调整；协议 PR 不夹带 Web Awesome 升级；功能对等回归修复不借机重写上游业务组件。每个 PR 必须可以独立 revert，并在 PR 描述中列出用户可见变化、生命周期 owner、失败策略和验证命令。
+1. 谁是业务状态的唯一 owner？
+2. 谁拥有 Surface，何时 mount/dispose？
+3. listener、Observer、timer、IPC、Object URL 和 contribution 归谁？
+4. 请求如何取消，迟到结果如何失去提交权？
+5. setup 中途失败如何回滚？
+6. 原生 WebContentsView 与 DOM Overlay 如何对账？
+7. Web Awesome 不可用时 fallback 是否完整？
+8. 接口两端和真实生产消费者分别在哪里？
+9. 是否存在 register/use/dispose/absent 和故障注入测试？
+10. 能否独立回滚，且不改变插件或用户数据协议？
 
-## 新功能 Definition of Done
+无法回答其中任一项时，该功能仍是原型，不进入上游 PR。
 
-任何新的 Next 功能在合并前必须回答：
+## 12. 明确不做
 
-1. 业务状态的权威 owner 是谁？
-2. UI surface 的 Scope 是谁，何时 dispose？
-3. listener、Observer、timer、IPC subscription、Object URL 和注册贡献归谁？
-4. 异步请求如何取消，迟到结果如何失去提交权？
-5. Overlay 与原生 WebContentsView 如何对账？
-6. Classic 是否完全不挂载该 surface，或者共享 DOM 如何恢复原身份？
-7. Web Awesome 失败时 native fallback 是否完整？
-8. setup 中途失败如何回滚已取得的资源？
-9. 是否有 register → use → dispose → absent、快速往返和失败注入测试？
-10. 是否改变用户数据或 IPC；若改变，迁移与回滚是什么？插件协议禁止在本路线中改变。
-
-无法回答其中任一项时，功能仍处于原型阶段，不进入上游 PR。
-
-## 当前推荐的下一步
-
-1. 冻结构，只接收真实测试发现的稳定性修复；继续运行发布前 30–60 分钟 soak 与 GPU 环境测试。
-2. 将快速单元/边界门禁用于每次提交，将 20 轮 Electron 压测、打包与 Classic 回归用于 PR。
-3. 保持 Classic 默认和 Next 可选至少一个完整发布周期，收集真实用户的崩溃、恢复和维护成本证据。
-4. M9 由上游作者与产品验证共同决定；无论继续双布局还是由 Next 覆盖 Classic，都不得恢复隐藏 DOM click 代理或第二份业务状态。
+- 不改造动态壁纸或其他插件的生命周期。
+- 不建立全应用第二 Store、全局 idle 或通用工作流引擎。
+- 不提前恢复子页面 Next runtime。
+- 不让业务模块直接依赖 `<wa-*>` 或 Web Awesome 私有 Shadow DOM。
+- 不重绘上游消息、工具、日记、代码块和媒体组件的视觉语义。
+- 不把测试便利性包装成稳定产品 API。
+- 不把“策略禁用”当作删除无消费者实现的替代方案。

@@ -10,13 +10,14 @@ test('UI mode, appearance and theme expose explicit authoritative subscriptions'
         url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'
     });
     const { window } = dom;
-    window.topTabManager = { prepareForMode: async () => {}, syncMode: async () => {} };
     window.eval(source('modules/ui-system/state-channel.js'));
+    window.chatAPI = {};
+    window.eval(source('modules/services/windowStateService.js'));
     window.eval(source('modules/uiModeManager.js'));
     const modes = [];
     const unsubscribeMode = window.uiModeManager.subscribe(state => modes.push(state.mode));
     window.uiModeManager.apply('next');
-    assert.deepEqual(modes, ['classic', 'next']);
+    assert.deepEqual(modes, ['next']);
     unsubscribeMode();
 
     window.eval(source('modules/ui-system/appearance-engine.js'));
@@ -34,7 +35,7 @@ test('UI mode, appearance and theme expose explicit authoritative subscriptions'
     unsubscribeTheme();
     assert.deepEqual(
         Array.from(window.VCPStateChannels.diagnostics(), item => String(item.name)).sort(),
-        ['appearance', 'theme', 'ui-mode']
+        ['appearance', 'main-window', 'theme', 'ui-mode']
     );
     dom.window.close();
 });
@@ -77,12 +78,15 @@ test('assistant catalog publishes loading and authoritative completion without D
     });
     const { window } = dom;
     window.eval(source('modules/ui-system/state-channel.js'));
+    window.eval(source('modules/ui-system/settlement.js'));
     window.eval(source('modules/itemListManager.js'));
     const current = { value: null };
+    let resolveAgents;
+    const agents = new Promise(resolve => { resolveAgents = resolve; });
     window.itemListManager.init({
         elements: { itemListUl: window.document.getElementById('agentList') },
         electronAPI: {
-            getAgents: async () => [{ id: 'nova', name: 'Nova' }],
+            getAgents: async () => agents,
             getAgentGroups: async () => [],
             loadSettings: async () => ({ combinedItemOrder: [], vcpServerUrl: '' }),
             getUnreadTopicCounts: async () => ({ success: true, counts: {} }),
@@ -93,7 +97,13 @@ test('assistant catalog publishes loading and authoritative completion without D
     });
     const statuses = [];
     const unsubscribe = window.itemListManager.subscribe(state => statuses.push([state.status, state.items.length]));
-    await window.itemListManager.loadItems();
+    const loading = window.itemListManager.loadItems();
+    const boundary = window.itemListManager.getCatalogSnapshot().revision;
+    const settled = window.itemListManager.whenSettled({ afterRevision: boundary });
+    resolveAgents([{ id: 'nova', name: 'Nova' }]);
+    await loading;
+    const settledSnapshot = await settled;
+    assert.equal(settledSnapshot.value.status, 'ready');
     assert.deepEqual(statuses, [['idle', 0], ['loading', 0], ['ready', 1]]);
     assert.equal(window.itemListManager.getCatalogState().items[0].id, 'nova');
     unsubscribe();

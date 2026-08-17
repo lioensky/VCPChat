@@ -1,23 +1,23 @@
 @layer vcp-ui.tokens, vcp-ui.base, vcp-ui.components, vcp-ui.utilities, vcp-ui.showcase;
 
-/*
- * vcp-ui-runtime — the self-contained design-system bundle for standalone /
- * embedded application pages. Business pages include this single stylesheet
- * (plus modules/ui-system/vcp-ui-runtime-bootstrap.js) to opt into the shared
- * token, font, component and adapter layer under html[data-ui-mode="next"].
- *
- * Classic mode pages never load this file; the runtime is only referenced by
- * pages that have adopted the next-UI presentation.
- */
 @import url('./fonts.css');
 @import url('./tokens.css');
 @import url('./components.css');
 @import url('./webawesome-adapter.css');
 
+/*
+ * vcp-ui-runtime — the self-contained design-system bundle for standalone /
+ * embedded application pages. Business pages include this single stylesheet
+ * (plus modules/ui-system/vcp-ui-runtime-bootstrap.js) to opt into the shared
+ * token, font, component and adapter layer for adopted application pages.
+ *
+ * Upstream application pages that have not adopted the runtime do not load it.
+ */
+
 /* Shared next-mode page body: business nodes moved into an AppPageShell sit in
    a full-height flex column. Pages override padding/layout as needed. */
 @layer vcp-ui.components {
-    html[data-ui-mode="next"] .vcp-ui-scope .vcp-ui-page-body {
+    html .vcp-ui-scope .vcp-ui-page-body {
         min-width: 0;
         min-height: 100%;
         height: 100%;
@@ -30,7 +30,7 @@
        layered over the shared wallpaper, matching the main chat. Page CSS that
        only sets `background-color` composes with these image layers; a page that
        uses the opaque `background:` shorthand would hide the wallpaper. */
-    html[data-ui-mode="next"] body.vcp-ui-scope {
+    html body.vcp-ui-scope {
         background-color: var(--vcp-ui-bg-primary);
         background-image:
             linear-gradient(var(--next-chat-surface), var(--next-chat-surface)),

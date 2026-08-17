@@ -1717,10 +1717,23 @@ function modalFactory(options = {}) {
     const wa = options.native === true ? null : waControl('dialog', {});
     if (wa) {
         const previousFocus = document.activeElement;
-        const state = { title: 'Dialog', size: 'md', content: '', actions: [], closeOnBackdrop: true, ...options };
+        const state = {
+            title: 'Dialog', size: 'md', content: '', actions: [],
+            closeOnBackdrop: true, dismissible: true, ...options
+        };
         let controller;
-        const close = result => {
+        let finalized = false;
+        let programmaticClose = false;
+        const finalize = result => {
+            if (finalized) return false;
+            finalized = true;
             state.onClose?.(result);
+            return true;
+        };
+        const close = result => {
+            if (finalized) return;
+            programmaticClose = true;
+            finalize(result);
             wa.open = false;
         };
         controller = makeController(wa, state, current => {
@@ -1747,7 +1760,17 @@ function modalFactory(options = {}) {
             queueMicrotask(ensureOpen);
         });
         controller.close = close;
+        controller._listen(wa, 'wa-hide', event => {
+            if (!state.dismissible && !programmaticClose) {
+                event.preventDefault();
+                return;
+            }
+            finalize(null);
+        });
         controller._listen(wa, 'wa-after-hide', () => {
+            // Defensive fallback for runtimes that omit the cancellable hide
+            // event. All user and programmatic close paths share one finalizer.
+            finalize(null);
             controller.destroy();
             if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
         });
@@ -1761,9 +1784,15 @@ function modalFactory(options = {}) {
     dialog.setAttribute('aria-modal', 'true');
     overlay.append(dialog);
     const previousFocus = document.activeElement;
-    const state = { title: 'Dialog', size: 'md', content: '', actions: [], closeOnBackdrop: true, ...options };
+    const state = {
+        title: 'Dialog', size: 'md', content: '', actions: [],
+        closeOnBackdrop: true, dismissible: true, ...options
+    };
     let controller;
+    let finalized = false;
     const close = result => {
+        if (finalized) return;
+        finalized = true;
         state.onClose?.(result);
         controller.destroy();
         if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
@@ -1786,6 +1815,8 @@ function modalFactory(options = {}) {
             })()
             : iconButtonFactory({ icon: 'close', label: '关闭对话框', size: 'sm' });
         const closeFromButton = () => close(null);
+        closeButton.element.disabled = !current.dismissible;
+        closeButton.element.setAttribute('aria-disabled', String(!current.dismissible));
         closeButton.element.addEventListener('click', closeFromButton, { once: true });
         records.push(() => {
             closeButton.element?.removeEventListener('click', closeFromButton);
@@ -1801,10 +1832,10 @@ function modalFactory(options = {}) {
     });
     controller.close = close;
     controller._listen(overlay, 'mousedown', event => {
-        if (event.target === overlay && state.closeOnBackdrop) close(null);
+        if (event.target === overlay && state.closeOnBackdrop && state.dismissible) close(null);
     });
     controller._listen(document, 'keydown', event => {
-        if (event.key !== 'Escape' || !overlay.isConnected) return;
+        if (event.key !== 'Escape' || !overlay.isConnected || !state.dismissible) return;
         const openOverlays = [...document.querySelectorAll('.vcp-ui-modal-overlay')]
             .filter(candidate => candidate.isConnected);
         if (openOverlays.at(-1) !== overlay) return;

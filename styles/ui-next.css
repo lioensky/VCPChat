@@ -13,12 +13,12 @@
     font-display: swap;
 }
 
-html[data-ui-mode="next"] {
+html {
     --ui-mode: next;
     --next-topbar-height: 44px;
 }
 
-html[data-ui-mode="next"] body {
+html body {
     --next-shell-bg: var(--next-theme-shell-bg, color-mix(in srgb, var(--secondary-bg, #f3f4f6) 32%, transparent));
     --next-surface: var(--next-theme-surface, color-mix(in srgb, var(--secondary-bg, #ffffff) 24%, transparent));
     --next-chat-surface: var(--next-theme-chat-surface, color-mix(in srgb, var(--next-surface) 72%, transparent));
@@ -42,11 +42,11 @@ html[data-ui-mode="next"] body {
     background-image: none !important;
 }
 
-html[data-ui-mode="next"] body.light-theme {
+html body.light-theme {
     --next-wallpaper: var(--chat-wallpaper-light, var(--chat-wallpaper-dark, none));
 }
 
-html[data-ui-mode="next"] body.dark-theme {
+html body.dark-theme {
     --next-shell-bg: var(--next-theme-shell-bg-dark, color-mix(in srgb, var(--secondary-bg, #17191d) 38%, transparent));
     --next-surface: var(--next-theme-surface-dark, color-mix(in srgb, var(--secondary-bg, #22252b) 32%, transparent));
     --next-chat-surface: var(--next-theme-chat-surface-dark, color-mix(in srgb, var(--next-surface) 72%, transparent));
@@ -70,12 +70,7 @@ html[data-ui-mode="next"] body.dark-theme {
     display: contents;
 }
 
-html[data-ui-mode="next"] .title-bar,
-html[data-ui-mode="next"] #title-bar-seam-fixer {
-    display: none;
-}
-
-html[data-ui-mode="next"] .next-ui-navigation-material {
+html .next-ui-navigation-material {
     position: fixed;
     inset: 0;
     z-index: 0;
@@ -87,7 +82,7 @@ html[data-ui-mode="next"] .next-ui-navigation-material {
     -webkit-backdrop-filter: var(--next-backdrop-filter);
 }
 
-html[data-ui-mode="next"] body.next-ui-internal-app-open:has(
+html body.next-ui-internal-app-open:has(
     #nextUiInternalAppHost[data-active-app-id="vchat-app-notes"],
     #nextUiInternalAppHost[data-active-app-id="vchat-app-translator"],
     #nextUiInternalAppHost[data-active-app-id="vchat-app-memo"]
@@ -95,7 +90,7 @@ html[data-ui-mode="next"] body.next-ui-internal-app-open:has(
     --next-sidebar-width: 260px;
 }
 
-html[data-ui-mode="next"] .next-ui-topbar {
+html .next-ui-topbar {
     position: fixed;
     inset: 0 0 auto 0;
     z-index: 1100;
@@ -127,7 +122,7 @@ html[data-ui-mode="next"] .next-ui-topbar {
     -webkit-app-region: no-drag;
 }
 
-html[data-ui-mode="next"] .next-ui-chat-presentation-switcher {
+html .next-ui-chat-presentation-switcher {
     top: calc(100% + 6px);
     right: 0;
     left: auto;
@@ -135,7 +130,7 @@ html[data-ui-mode="next"] .next-ui-chat-presentation-switcher {
     transform-origin: right top;
 }
 
-html[data-ui-mode="next"] .next-ui-chat-presentation-switcher.is-open {
+html .next-ui-chat-presentation-switcher.is-open {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
@@ -159,7 +154,7 @@ html[data-ui-mode="next"] .next-ui-chat-presentation-switcher.is-open {
 .next-ui-tab,
 .next-ui-add-tab,
 .next-ui-icon-button,
-html[data-ui-mode="next"] .next-ui-window-button {
+html .next-ui-window-button {
     -webkit-app-region: no-drag;
     border: 0;
     color: inherit;
@@ -186,7 +181,7 @@ html[data-ui-mode="next"] .next-ui-window-button {
     transition: color 120ms ease, background-color 120ms ease, font-weight 120ms ease;
 }
 
-html[data-ui-mode="next"] #nextUiHomeTab {
+html #nextUiHomeTab {
     min-width: 80px;
     max-width: 96px;
     padding: 0 10px 0 3px;
@@ -195,7 +190,7 @@ html[data-ui-mode="next"] #nextUiHomeTab {
     background: transparent;
 }
 
-html[data-ui-mode="next"] #nextUiHomeTab > span:last-child {
+html #nextUiHomeTab > span:last-child {
     height: 100%;
     display: flex;
     align-items: center;
@@ -310,15 +305,15 @@ html[data-ui-mode="next"] #nextUiHomeTab > span:last-child {
     stroke-width: 2;
 }
 
-html[data-ui-mode="next"] .next-ui-tab-svg,
-html[data-ui-mode="next"] .next-ui-tab-svg svg {
+html .next-ui-tab-svg,
+html .next-ui-tab-svg svg {
     width: 19px;
     height: 19px;
     display: block;
     flex: 0 0 19px;
 }
 
-html[data-ui-mode="next"] .next-ui-tab.is-dragging {
+html .next-ui-tab.is-dragging {
     position: relative;
     z-index: 2;
     opacity: 0.72;
@@ -326,24 +321,24 @@ html[data-ui-mode="next"] .next-ui-tab.is-dragging {
     cursor: grabbing;
 }
 
-html[data-ui-mode="next"] .next-ui-tab.is-detaching {
+html .next-ui-tab.is-detaching {
     opacity: 0.55;
     pointer-events: none;
 }
 
-html[data-ui-mode="next"] body.next-ui-tab-dragging,
-html[data-ui-mode="next"] body.next-ui-tab-dragging * {
+html body.next-ui-tab-dragging,
+html body.next-ui-tab-dragging * {
     cursor: grabbing;
     user-select: none;
 }
 
-html[data-ui-mode="next"] .next-ui-embedded-app-view {
+html .next-ui-embedded-app-view {
     position: relative;
     overflow: hidden;
     background: var(--next-surface);
 }
 
-html[data-ui-mode="next"] .next-ui-embedded-app-status {
+html .next-ui-embedded-app-status {
     position: absolute;
     inset: 0;
     display: flex;
@@ -354,15 +349,15 @@ html[data-ui-mode="next"] .next-ui-embedded-app-status {
     font-size: 14px;
 }
 
-html[data-ui-mode="next"] .next-ui-embedded-app-status .vcp-ui-icon {
+html .next-ui-embedded-app-status .vcp-ui-icon {
     animation: next-ui-embedded-spin 0.9s linear infinite;
 }
 
-html[data-ui-mode="next"] .next-ui-embedded-app-status.is-error {
+html .next-ui-embedded-app-status.is-error {
     color: var(--error-color, var(--next-text));
 }
 
-html[data-ui-mode="next"] .next-ui-embedded-app-status.is-error .vcp-ui-icon {
+html .next-ui-embedded-app-status.is-error .vcp-ui-icon {
     animation: none;
 }
 
@@ -371,7 +366,7 @@ html[data-ui-mode="next"] .next-ui-embedded-app-status.is-error .vcp-ui-icon {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    html[data-ui-mode="next"] .next-ui-embedded-app-status .vcp-ui-icon {
+    html .next-ui-embedded-app-status .vcp-ui-icon {
         animation: none;
     }
 }
@@ -390,7 +385,7 @@ html[data-ui-mode="next"] .next-ui-embedded-app-status.is-error .vcp-ui-icon {
 /* The compact 28px "+" sizing and its muted/hover colors live in
    vcp-ui.components (shell.css) so the base-layer button color reset cannot
    override them. Only the base flex sizing stays here. */
-html[data-ui-mode="next"] .next-ui-window-button {
+html .next-ui-window-button {
     width: 46px;
     height: var(--next-topbar-height);
     padding: 0;
@@ -401,39 +396,39 @@ html[data-ui-mode="next"] .next-ui-window-button {
     transition: background-color 150ms ease, color 150ms ease;
 }
 
-html[data-ui-mode="next"] .next-ui-topbar-actions {
+html .next-ui-topbar-actions {
     margin-left: auto;
     gap: 0;
     flex: 0 0 auto;
     align-self: stretch;
 }
 
-html[data-ui-mode="next"] .next-ui-topbar-actions > .next-ui-presentation-switcher,
-html[data-ui-mode="next"] .next-ui-topbar-actions > #nextUiThemeStoreBtn {
+html .next-ui-topbar-actions > .next-ui-presentation-switcher,
+html .next-ui-topbar-actions > #nextUiThemeStoreBtn {
     margin-right: 6px;
 }
 
-html[data-ui-mode="next"] .next-ui-window-button:hover {
+html .next-ui-window-button:hover {
     color: var(--next-text);
     background: color-mix(in srgb, var(--next-text) 15%, transparent);
 }
 
-html[data-ui-mode="next"] .next-ui-window-button:active {
+html .next-ui-window-button:active {
     color: var(--next-text);
     background: color-mix(in srgb, var(--next-text) 21%, transparent);
 }
 
-html[data-ui-mode="next"] .next-ui-close-button:hover {
+html .next-ui-close-button:hover {
     color: #ffffff;
     background: #e81123;
 }
 
-html[data-ui-mode="next"] .next-ui-close-button:active {
+html .next-ui-close-button:active {
     color: #ffffff;
     background: #c50e1f;
 }
 
-html[data-ui-mode="next"] .container {
+html .container {
     height: calc(100vh - var(--next-topbar-height));
     margin: var(--next-topbar-height) 0 0;
     width: 100%;
@@ -446,7 +441,7 @@ html[data-ui-mode="next"] .container {
     -webkit-backdrop-filter: none;
 }
 
-html[data-ui-mode="next"] .next-ui-main-panel {
+html .next-ui-main-panel {
     position: relative;
     display: flex;
     flex: 1 1 auto;
@@ -474,7 +469,7 @@ html[data-ui-mode="next"] .next-ui-main-panel {
 /* Frontend plugins keep their upstream Classic DOM and behavior. The Next
    shell only provides the geometry needed for the shared wallpaper video to
    remain visible behind the main panel. */
-html[data-ui-mode="next"] #vchat-dynamic-wallpaper-video {
+html #vchat-dynamic-wallpaper-video {
     top: var(--next-topbar-height, 44px);
     right: 0;
     bottom: 0;
@@ -484,7 +479,7 @@ html[data-ui-mode="next"] #vchat-dynamic-wallpaper-video {
     border-radius: var(--vcp-ui-shell-radius) 0 0 0;
 }
 
-html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible .next-ui-main-panel {
+html body.vchat-dynamic-wallpaper-visible .next-ui-main-panel {
     background-color: transparent;
     background-image: linear-gradient(
         color-mix(in srgb, var(--next-surface) 34%, transparent),
@@ -492,24 +487,24 @@ html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible .next-ui-main-pan
     );
 }
 
-html[data-ui-mode="next"] .sidebar {
+html .sidebar {
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 
-html[data-ui-mode="next"] .sidebar:not(.avatar-only) {
+html .sidebar:not(.avatar-only) {
     padding-left: 0;
 }
 
-html[data-ui-mode="next"] .sidebar.avatar-only {
+html .sidebar.avatar-only {
     width: 60px !important;
     min-width: 60px !important;
     max-width: 60px !important;
 }
 
-html[data-ui-mode="next"] #resizerLeft,
-html[data-ui-mode="next"] #resizerRight {
+html #resizerLeft,
+html #resizerRight {
     width: 4px;
     margin: 0 -2px;
     background: transparent;
@@ -518,7 +513,7 @@ html[data-ui-mode="next"] #resizerRight {
     z-index: 5;
 }
 
-html[data-ui-mode="next"] .main-content {
+html .main-content {
     position: relative;
     z-index: 1;
     min-width: 0;
@@ -528,7 +523,7 @@ html[data-ui-mode="next"] .main-content {
     -webkit-backdrop-filter: none;
 }
 
-html[data-ui-mode="next"] .chat-header {
+html .chat-header {
     padding: 7px 20px;
     border-bottom: 1px solid var(--next-border);
     background: var(--next-header-bg);
@@ -536,18 +531,18 @@ html[data-ui-mode="next"] .chat-header {
     -webkit-backdrop-filter: none;
 }
 
-html[data-ui-mode="next"] body.chat-presentation-panel .chat-header,
-html[data-ui-mode="next"] body.chat-presentation-immersive .chat-header {
+html body.chat-presentation-panel .chat-header,
+html body.chat-presentation-immersive .chat-header {
     background: var(--chat-presentation-surface);
     backdrop-filter: var(--chat-presentation-surface-filter);
     -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
 }
 
-html[data-ui-mode="next"] .chat-actions .header-button {
+html .chat-actions .header-button {
     line-height: 0;
 }
 
-html[data-ui-mode="next"] body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active {
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active {
     color: var(--next-text);
     border-color: transparent;
     background: transparent;
@@ -556,12 +551,12 @@ html[data-ui-mode="next"] body #toggleSidebarModeBtn.next-ui-sidebar-mode-button
     -webkit-backdrop-filter: none;
 }
 
-html[data-ui-mode="next"] body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover,
-html[data-ui-mode="next"] body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible {
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover,
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible {
     background: color-mix(in srgb, var(--next-text) 8%, transparent);
 }
 
-html[data-ui-mode="next"] .next-ui-brand-tab-group {
+html .next-ui-brand-tab-group {
     height: 30px;
     display: flex;
     align-items: stretch;
@@ -571,15 +566,15 @@ html[data-ui-mode="next"] .next-ui-brand-tab-group {
     -webkit-app-region: no-drag;
 }
 
-html[data-ui-mode="next"] .next-ui-brand-tab-group:has(#nextUiHomeTab.active) {
+html .next-ui-brand-tab-group:has(#nextUiHomeTab.active) {
     background: var(--next-surface);
 }
 
-html[data-ui-mode="next"] .next-ui-brand-tab-group #nextUiHomeTab:hover {
+html .next-ui-brand-tab-group #nextUiHomeTab:hover {
     background: color-mix(in srgb, var(--next-text) 7%, transparent);
 }
 
-html[data-ui-mode="next"] #toggleSidebarModeBtn.next-ui-sidebar-mode-button {
+html #toggleSidebarModeBtn.next-ui-sidebar-mode-button {
     position: relative;
     width: 30px;
     height: 30px;
@@ -591,8 +586,8 @@ html[data-ui-mode="next"] #toggleSidebarModeBtn.next-ui-sidebar-mode-button {
     box-shadow: none;
 }
 
-html[data-ui-mode="next"] .next-ui-sidebar-brand,
-html[data-ui-mode="next"] .next-ui-sidebar-control-icon {
+html .next-ui-sidebar-brand,
+html .next-ui-sidebar-control-icon {
     position: absolute;
     inset: 50% auto auto 50%;
     transform: translate(-50%, -50%);
@@ -601,7 +596,7 @@ html[data-ui-mode="next"] .next-ui-sidebar-control-icon {
         transform 180ms ease;
 }
 
-html[data-ui-mode="next"] .next-ui-sidebar-brand {
+html .next-ui-sidebar-brand {
     width: 30px;
     height: 30px;
     padding: 0;
@@ -612,7 +607,7 @@ html[data-ui-mode="next"] .next-ui-sidebar-brand {
     opacity: 1;
 }
 
-html[data-ui-mode="next"] .next-ui-sidebar-brand img {
+html .next-ui-sidebar-brand img {
     width: 22px;
     height: 22px;
     margin: 4px;
@@ -620,7 +615,7 @@ html[data-ui-mode="next"] .next-ui-sidebar-brand img {
     object-fit: contain;
 }
 
-html[data-ui-mode="next"] .next-ui-sidebar-mode-button > .next-ui-sidebar-control-icon {
+html .next-ui-sidebar-mode-button > .next-ui-sidebar-control-icon {
     width: 18px;
     height: 18px;
     display: block;
@@ -630,32 +625,32 @@ html[data-ui-mode="next"] .next-ui-sidebar-mode-button > .next-ui-sidebar-contro
     transform: translate(-50%, -50%) scale(0.76);
 }
 
-html[data-ui-mode="next"] .next-ui-sidebar-mode-button:hover .next-ui-sidebar-brand,
-html[data-ui-mode="next"] .next-ui-sidebar-mode-button:focus-visible .next-ui-sidebar-brand {
+html .next-ui-sidebar-mode-button:hover .next-ui-sidebar-brand,
+html .next-ui-sidebar-mode-button:focus-visible .next-ui-sidebar-brand {
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.76);
 }
 
-html[data-ui-mode="next"] .next-ui-sidebar-mode-button:hover > .next-ui-sidebar-control-icon,
-html[data-ui-mode="next"] .next-ui-sidebar-mode-button:focus-visible > .next-ui-sidebar-control-icon {
+html .next-ui-sidebar-mode-button:hover > .next-ui-sidebar-control-icon,
+html .next-ui-sidebar-mode-button:focus-visible > .next-ui-sidebar-control-icon {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
 }
 
-html[data-ui-mode="next"] .assistant-control-icon-classic {
+html .assistant-control-icon-classic {
     display: none;
 }
 
-html[data-ui-mode="next"] .assistant-control-icon-next {
+html .assistant-control-icon-next {
     display: block;
 }
 
-html[data-ui-mode="next"] .chat-actions .header-button > svg {
+html .chat-actions .header-button > svg {
     align-self: center;
     flex: 0 0 auto;
 }
 
-html[data-ui-mode="next"] .chat-messages-container {
+html .chat-messages-container {
     position: relative;
 }
 
@@ -663,7 +658,7 @@ html[data-ui-mode="next"] .chat-messages-container {
    assistant bubble column (24px message gutter + 36px avatar + 8px gap - 5px
    wrapper offset), leaving matching blank space on the right. Panel/immersive
    modes keep their deliberate full-width flat composer. */
-html[data-ui-mode="next"] body:not(.chat-presentation-panel):not(.chat-presentation-immersive) .chat-input-area {
+html body:not(.chat-presentation-panel):not(.chat-presentation-immersive) .chat-input-area {
     padding-left: 52px;
     padding-right: 52px;
 }
@@ -676,14 +671,14 @@ html[data-vcp-home-visual="hidden"] #nextUiEmptyState {
     display: none !important;
 }
 
-html[data-ui-mode="next"] .main-content {
+html .main-content {
     --next-empty-flow-primary: var(--button-bg);
     --next-empty-flow-secondary: hsl(from var(--button-bg) calc(h + 150) s l);
     --next-empty-flow-glow-strong: color-mix(in srgb, var(--button-bg) 78%, transparent);
     --next-empty-flow-glow-soft: color-mix(in srgb, var(--next-empty-flow-secondary) 42%, transparent);
 }
 
-html[data-ui-mode="next"] .main-content.next-ui-empty-state-active[data-chat-empty="true"] .next-ui-empty-state {
+html .main-content.next-ui-empty-state-active[data-chat-empty="true"] .next-ui-empty-state {
     position: absolute;
     inset: 0;
     z-index: 2;
@@ -693,11 +688,11 @@ html[data-ui-mode="next"] .main-content.next-ui-empty-state-active[data-chat-emp
     pointer-events: none;
 }
 
-html[data-ui-mode="next"] .main-content.next-ui-empty-state-active[data-chat-empty="true"] #chatMessages .welcome-bubble {
+html .main-content.next-ui-empty-state-active[data-chat-empty="true"] #chatMessages .welcome-bubble {
     display: none;
 }
 
-html[data-ui-mode="next"] .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-empty-reason="no-selection"] #currentChatAgentName {
+html .main-content.next-ui-empty-state-active[data-chat-empty="true"][data-chat-empty-reason="no-selection"] #currentChatAgentName {
     opacity: 0;
 }
 
@@ -780,21 +775,21 @@ html[data-vcp-home-tagline="hidden"] .next-ui-empty-tagline {
     display: none;
 }
 
-html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-base {
+html body.light-theme .next-ui-empty-brand-base {
     fill: color-mix(in srgb, #ffffff 78%, var(--primary-bg));
     stroke: color-mix(in srgb, #94a3b8 50%, var(--next-border));
     filter: drop-shadow(0 2px 8px rgba(71, 85, 105, 0.1));
 }
 
-html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-flow {
+html body.light-theme .next-ui-empty-brand-flow {
     stroke-width: 3px;
 }
 
-html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-cyan {
+html body.light-theme .next-ui-empty-brand-cyan {
     filter: drop-shadow(0 0 6px var(--next-empty-flow-glow-strong));
 }
 
-html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-pink {
+html body.light-theme .next-ui-empty-brand-pink {
     filter: drop-shadow(0 0 6px var(--next-empty-flow-glow-soft));
 }
 
@@ -808,15 +803,15 @@ html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-pink {
     50% { transform: translateY(-4px); }
 }
 
-html[data-ui-mode="next"] .chat-actions {
+html .chat-actions {
     gap: 2px;
 }
 
-html[data-ui-mode="next"] .chat-actions #themeToggleBtn {
+html .chat-actions #themeToggleBtn {
     display: none;
 }
 
-html[data-ui-mode="next"] .chat-actions .header-button {
+html .chat-actions .header-button {
     min-width: 30px;
     height: 30px;
     margin-left: 0;
@@ -828,14 +823,14 @@ html[data-ui-mode="next"] .chat-actions .header-button {
     box-shadow: none;
 }
 
-html[data-ui-mode="next"] .chat-actions .header-button:hover {
+html .chat-actions .header-button:hover {
     border: 0;
     color: var(--next-text);
     background: var(--next-hover);
     box-shadow: none;
 }
 
-html[data-ui-mode="next"] .notifications-sidebar {
+html .notifications-sidebar {
     position: relative;
     z-index: 1;
     background: transparent;
@@ -843,22 +838,22 @@ html[data-ui-mode="next"] .notifications-sidebar {
     -webkit-backdrop-filter: none;
 }
 
-html[data-ui-mode="next"] .notifications-sidebar.active {
+html .notifications-sidebar.active {
     border-left: 1px solid var(--next-panel-edge);
     box-shadow: -4px 0 12px var(--next-panel-shadow);
     box-sizing: border-box;
 }
 
-html[data-ui-mode="next"] body.next-ui-launchpad-open .container {
+html body.next-ui-launchpad-open .container {
     display: none;
 }
 
-html[data-ui-mode="next"] body.next-ui-internal-app-open > .container,
-html[data-ui-mode="next"] body.next-ui-internal-app-open .next-ui-launchpad {
+html body.next-ui-internal-app-open > .container,
+html body.next-ui-internal-app-open .next-ui-launchpad {
     display: none;
 }
 
-html[data-ui-mode="next"] .next-ui-launchpad {
+html .next-ui-launchpad {
     --next-empty-flow-primary: var(--button-bg);
     --next-empty-flow-secondary: hsl(from var(--button-bg) calc(h + 150) s l);
     --next-empty-flow-glow-strong: color-mix(in srgb, var(--button-bg) 78%, transparent);
@@ -889,7 +884,7 @@ body.light-theme .next-ui-launchpad {
         var(--next-wallpaper);
 }
 
-html[data-ui-mode="next"] body.next-ui-launchpad-open .next-ui-launchpad {
+html body.next-ui-launchpad-open .next-ui-launchpad {
     display: block;
 }
 
@@ -1234,8 +1229,8 @@ body.light-theme .next-ui-nova-panel::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    html[data-ui-mode="next"] .next-ui-sidebar-brand,
-    html[data-ui-mode="next"] .next-ui-sidebar-control-icon {
+    html .next-ui-sidebar-brand,
+    html .next-ui-sidebar-control-icon {
         transition: none;
     }
 
@@ -1256,7 +1251,7 @@ body.light-theme .next-ui-nova-panel::before {
             drop-shadow(0 0 6px var(--next-empty-flow-glow-soft));
     }
 
-    html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-base {
+    html body.light-theme .next-ui-empty-brand-base {
         filter:
             drop-shadow(0 0 4px var(--next-empty-flow-glow-strong))
             drop-shadow(0 0 4px var(--next-empty-flow-glow-soft));

@@ -20,13 +20,7 @@ function toFileUrl(appRoot, relativePath, query = {}) {
     return url.toString();
 }
 
-async function resolveDescriptor(appAction, appRoot, readSettings) {
-    let settings = {};
-    try {
-        settings = await readSettings();
-    } catch (error) {
-        console.warn('[EmbeddedApps] Failed to read authoritative settings:', error.message);
-    }
+async function resolveDescriptor(appAction, appRoot) {
     // Embedded business pages stay on their upstream Classic presentation in
     // this PR. The parent may use the Next shell, but it must not implicitly
     // opt child documents into an unshipped presentation.
@@ -67,28 +61,11 @@ function normalizeDetachPoint(point) {
     return { x: Math.round(x), y: Math.round(y) };
 }
 
-function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSettings, subscribeSettings, powerMonitor = null }) {
-    if (typeof readSettings !== 'function') {
-        throw new TypeError('Embedded application sessions require an authoritative readSettings function.');
-    }
+function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, powerMonitor = null }) {
     const sessions = new Map();
     const closingSessions = new Map();
     const appRoot = app.getAppPath();
     let activeAction = null;
-    let lastUiMode = null;
-
-    const unsubscribeSettings = typeof subscribeSettings === 'function'
-        ? subscribeSettings(settings => {
-            const uiMode = settings?.uiMode === 'next' ? 'next' : 'classic';
-            if (uiMode === lastUiMode) return;
-            lastUiMode = uiMode;
-            sessions.forEach(session => {
-                if (!session.view.webContents.isDestroyed()) {
-                    session.view.webContents.send('ui-mode-updated', uiMode);
-                }
-            });
-        })
-        : null;
 
     function assertMainRenderer(event) {
         if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
@@ -157,7 +134,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
             return { success: false, embeddable: true, error: `最多同时打开 ${MAX_EMBEDDED_SESSIONS} 个内嵌应用。` };
         }
 
-        const descriptor = await resolveDescriptor(appAction, appRoot, readSettings);
+        const descriptor = await resolveDescriptor(appAction, appRoot);
         if (signal?.aborted) return cancelledResult();
         if (!descriptor) return { success: false, embeddable: false, error: '没有可用的内嵌应用描述。' };
 
@@ -330,7 +307,6 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
     powerMonitor?.on?.('resume', handleSystemResume);
 
     mainWindow.on('closed', () => {
-        unsubscribeSettings?.();
         powerMonitor?.off?.('suspend', handleSystemSuspend);
         powerMonitor?.off?.('resume', handleSystemResume);
         void closeAll();

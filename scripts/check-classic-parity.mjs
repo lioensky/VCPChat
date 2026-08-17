@@ -9,12 +9,12 @@ const mainHtml = fs.readFileSync(path.join(root, 'main.html'), 'utf8');
 const dom = new JSDOM(mainHtml);
 const document = dom.window.document;
 
-assert.ok(document.querySelector('.title-bar'), 'Classic title bar must remain in the shared DOM');
-assert.ok(document.getElementById('themeToggleBtn'), 'Classic theme toggle must remain available');
-assert.ok(document.getElementById('toggleNotificationsBtn'), 'Classic notification toggle must remain available');
-assert.ok(document.getElementById('openForumBtn'), 'Classic Forum shortcut must remain available');
-assert.ok(document.getElementById('doNotDisturbBtn'), 'Classic notification filter shortcut must remain available');
-assert.ok(document.getElementById('clearNotificationsBtn'), 'Classic notification clear shortcut must remain available');
+assert.equal(document.querySelector('.title-bar'), null, 'retired Classic title bar must not remain hidden in the DOM');
+assert.equal(document.getElementById('themeToggleBtn'), null, 'retired Classic theme toggle must not remain hidden');
+assert.ok(document.getElementById('toggleNotificationsBtn'), 'shared upstream notification toggle must remain available');
+assert.equal(document.getElementById('openForumBtn'), null, 'retired Forum proxy must not remain hidden');
+assert.equal(document.getElementById('doNotDisturbBtn'), null, 'retired filter proxy must not remain hidden');
+assert.equal(document.getElementById('clearNotificationsBtn'), null, 'retired clear proxy must not remain hidden');
 const rendererSource = fs.readFileSync(path.join(root, 'renderer.js'), 'utf8');
 assert.equal(rendererSource.includes('material-symbols-outlined vcp-ui-icon" aria-hidden="true">stop'), false,
     'Classic interrupt button must not inject a Material Symbols text token');
@@ -27,7 +27,7 @@ assert.equal(rendererSource.includes('material-symbols-outlined vcp-ui-icon" ari
 });
 
 const settingsTemplate = document.getElementById('globalSettingsModalTemplate');
-assert.ok(settingsTemplate, 'Classic global settings template must remain in main.html');
+assert.ok(settingsTemplate, 'shared upstream global settings template must remain in main.html');
 const classicSettingsTemplates = [
     settingsTemplate,
     document.getElementById('agentSettingsModalTemplate'),
@@ -42,11 +42,8 @@ classicSettingsTemplates.forEach(template => {
         'Classic shared settings templates must not expose Material Symbols text tokens',
     );
 });
-settingsTemplate.content.querySelectorAll('.appearance-layout-option').forEach(option => {
-    const check = option.querySelector('.appearance-layout-check');
-    assert.equal(check?.tagName, 'svg', 'Classic layout selection must use a mode-independent SVG checkmark');
-    assert.equal(check?.classList.contains('vcp-ui-icon'), false, 'Classic layout selection must not expose a Material Symbols text token');
-});
+assert.equal(settingsTemplate.content.querySelectorAll('.appearance-layout-option').length, 0,
+    'retired main-layout controls must not remain in settings');
 const navItems = [...settingsTemplate.content.querySelectorAll('.settings-nav-item')];
 assert.equal(navItems.length, 8, 'Classic global settings must retain all eight upstream categories');
 navItems.forEach(item => assert.ok(item.dataset.section, 'Classic settings category must retain its section target'));
@@ -61,7 +58,8 @@ for (const file of [
     css.walkRules(rule => {
         if (rule.parent?.type === 'atrule' && /keyframes$/i.test(rule.parent.name)) return;
         rule.selectors.forEach(selector => {
-            const explicitHost = selector.startsWith('html[data-ui-mode="next"]')
+            const explicitHost = selector.startsWith('html')
+                || selector.startsWith(':is(html')
                 || selector.includes('html.vcp-appearance-studio-host')
                 || selector.includes('html.vcp-global-settings-host');
             const nextOwned = /(?:\.next-ui-|#nextUi)/.test(selector)
@@ -130,5 +128,30 @@ assert.match(
     /#appTrayDrawerGrid\s+\.notes-button-label\s*\{[\s\S]*?display:\s*block;/,
     'Next all-apps drawer must retain visible application labels'
 );
+assert.match(
+    nextNotificationsCss,
+    /#appTrayDrawerGrid\s+\.app-tray-drawer-item\s*\{[\s\S]*?min-height:\s*var\(--vcp-ui-control-md\)/,
+    'Next all-apps drawer must retain the compact upstream application hit target'
+);
+assert.match(
+    nextNotificationsCss,
+    /#appTrayDrawerGrid\s+\.notes-button-label\s*\{[\s\S]*?font-size:\s*var\(--vcp-ui-font-body\)/,
+    'Next all-apps drawer labels must retain the upstream readable scale'
+);
+assert.match(
+    nextNotificationsCss,
+    /#vchatAppTray\s+\[data-tooltip\]::before[\s\S]*?content:\s*attr\(data-tooltip\)/,
+    'Next icon-only app tray must expose a styled text hint'
+);
+assert.match(
+    nextNotificationsCss,
+    /\[data-tooltip\]:is\(:hover,\s*:focus-visible\):not\(\.active\)::before/,
+    'Next app tray hint must support both pointer and keyboard focus'
+);
+assert.match(
+    nextNotificationsCss,
+    /notifications-sidebar:has\(#appTrayDrawer:is\(\.active,\s*\.is-closing\)\)[\s\S]*?overflow:\s*visible/,
+    'Next all-apps drawer must stay unclipped throughout its exit transition'
+);
 
-console.log('Classic parity static gate passed (shared controls, settings navigation, icon independence, CSS isolation).');
+console.log('Upstream shared-surface contract passed (controls, settings, icons and CSS isolation).');

@@ -2,13 +2,12 @@
 //
 // The sidebar settings forms (agent/group) and the global settings modal keep
 // their original business DOM, form ids, defaults and IPC; this module only
-// layers the VCPUI presentation on top when the mode resolves to next.
+// layers the VCPUI presentation on top of the canonical main-window shell.
 //
 // Global settings (R5.1): in Next, the modal is rebuilt into a
 // SettingsShell-style layout — left rail with a VCPUI-enhanced search field and
 // a VCPUI List category navigation, the original form as the content area, and
-// the existing footer as the fixed save bar. Classic keeps the upstream modal
-// DOM and controls untouched.
+// the existing footer as the fixed save bar.
 
 const controllers = new Set();
 const controllerReleases = new Map();
@@ -32,28 +31,25 @@ let destroyPromise = null;
 
 function ensurePresentationScope() {
     if (destroyed) return null;
-    if (!presentationScope && document.documentElement.dataset.uiMode === 'next') {
+    if (!presentationScope) {
         presentationScope = bridgeScope?.child('next:settings-presentation') || null;
     }
     return presentationScope;
 }
 
 function isNextUi() {
-    return document.documentElement.dataset.uiMode === 'next'
-        && settingsHost?.dataset.settingsPresentation !== 'classic';
+    return settingsHost?.dataset.settingsPresentation !== 'classic';
 }
 
 function isGlobalSettingsNextUi() {
-    return document.documentElement.dataset.uiMode === 'next'
-        && Boolean(document.getElementById('globalSettingsModal'));
+    return Boolean(document.getElementById('globalSettingsModal'));
 }
 
 function syncGlobalSettingsHost() {
     const modal = document.getElementById('globalSettingsModal');
-    const isNext = document.documentElement.dataset.uiMode === 'next';
-    const active = isNext && Boolean(modal?.classList.contains('active'));
+    const active = Boolean(modal?.classList.contains('active'));
     document.documentElement.classList.toggle('vcp-global-settings-host', active);
-    modal?.classList.toggle('vcp-global-settings-next', isNext);
+    modal?.classList.add('vcp-global-settings-next');
     return modal;
 }
 
@@ -325,7 +321,7 @@ function cleanupDisconnectedControllers() {
 function refresh() {
     refreshQueued = false;
     if (destroyed) return;
-    if (document.documentElement.dataset.uiMode === 'next') ensurePresentationScope();
+    ensurePresentationScope();
     cleanupDisconnectedControllers();
     const globalSettingsModal = syncGlobalSettingsHost();
     if (isNextUi()) {
@@ -390,15 +386,6 @@ function teardown() {
     document.documentElement.classList.remove('vcp-global-settings-host');
 }
 
-function syncMode() {
-    teardown();
-    scheduleRefresh();
-}
-
-const unsubscribeMode = window.uiModeManager?.subscribe?.(() => syncMode(), { immediate: false }) || null;
-if (unsubscribeMode && bridgeScope) bridgeScope.own(unsubscribeMode, 'settings-mode-state', 'subscription');
-else if (!unsubscribeMode && bridgeScope) bridgeScope.listen(window, 'ui-mode-changed', syncMode, undefined, 'settings-mode-change');
-else if (!unsubscribeMode) window.addEventListener('ui-mode-changed', syncMode);
 const handleModalVisibility = event => {
     if (event.detail?.modalId === 'globalSettingsModal') scheduleRefresh();
 };
@@ -412,7 +399,7 @@ if (bridgeScope) {
     document.addEventListener('modal-ready', handleModalVisibility);
     document.addEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
 }
-syncMode();
+scheduleRefresh();
 
 window.VCPUISettingsBridge = Object.freeze({
     refresh: scheduleRefresh,
@@ -420,8 +407,6 @@ window.VCPUISettingsBridge = Object.freeze({
         if (destroyPromise) return destroyPromise;
         destroyed = true;
         if (!bridgeScope) {
-            if (unsubscribeMode) unsubscribeMode();
-            else window.removeEventListener('ui-mode-changed', syncMode);
             document.removeEventListener('modal-visibility-changed', handleModalVisibility);
             document.removeEventListener('modal-ready', handleModalVisibility);
             document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);

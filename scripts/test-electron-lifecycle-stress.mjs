@@ -743,20 +743,31 @@ async function cycleRendererCrash(page, browser, app, label) {
 }
 
 async function cycleUiMode(page, browser, label) {
-    await rememberRendererNode(page, 'next-internal-host', '#nextUiInternalAppHost');
+    const before = await page.evaluate(() => {
+        window.__vcpCanonicalHost = document.getElementById('nextUiInternalAppHost');
+        return {
+            scopes: window.VCPLifecycle?.diagnostics?.snapshot?.().length || 0,
+            tabs: document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab').length,
+        };
+    });
     await page.evaluate(() => window.uiModeManager.applyAsync('classic', { cache: false }));
-    await page.waitForFunction(() => (
-        document.documentElement.dataset.uiMode === 'classic'
-        && window.topTabManager?.isMounted?.() === false
-    ), { timeout: timeoutMs });
-    await assertClassicSurface(page, browser, `${label}: Classic`);
-
-    await page.evaluate(() => window.uiModeManager.applyAsync('next', { cache: false }));
     await page.waitForFunction(() => (
         document.documentElement.dataset.uiMode === 'next'
         && window.topTabManager?.isMounted?.() === true
     ), { timeout: timeoutMs });
-    await assertMainSurface(page, browser, `${label}: Next`);
+    await page.evaluate(() => window.uiModeManager.applyAsync('next', { cache: false }));
+    const after = await page.evaluate(() => {
+        const result = {
+            sameHost: window.__vcpCanonicalHost === document.getElementById('nextUiInternalAppHost'),
+            scopes: window.VCPLifecycle?.diagnostics?.snapshot?.().length || 0,
+            tabs: document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab').length,
+        };
+        delete window.__vcpCanonicalHost;
+        return result;
+    });
+    assert.equal(after.sameHost, true, `${label}: legacy mode request replaced the canonical host`);
+    assert.deepEqual({ scopes: after.scopes, tabs: after.tabs }, before, `${label}: legacy mode request changed owned resources`);
+    await assertMainSurface(page, browser, `${label}: canonical mode compatibility`);
 }
 
 const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-lifecycle-stress-'));
@@ -857,16 +868,12 @@ try {
     await collectDetachedDiagnostic(cdp, 'diagnostic no-op A', page);
     await collectDetachedDiagnostic(cdp, 'diagnostic no-op B', page);
     if (debugDetached) {
-        await page.evaluate(() => window.uiModeManager.applyAsync('classic', { cache: false }));
-        await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'classic', { timeout: timeoutMs });
-        await collectDetachedDiagnostic(cdp, 'Classic Agent baseline', page);
+        await collectDetachedDiagnostic(cdp, 'Canonical Agent baseline', page);
         for (let diagnosticCycle = 0; diagnosticCycle < 3; diagnosticCycle += 1) {
-            await cycleAgentSettings(page, `Classic Agent diagnostic ${diagnosticCycle + 1}`, { expectEnhanced: false });
-            await collectDetachedDiagnostic(cdp, `Classic Agent cycle ${diagnosticCycle + 1}`, page);
+            await cycleAgentSettings(page, `Canonical Agent diagnostic ${diagnosticCycle + 1}`);
+            await collectDetachedDiagnostic(cdp, `Canonical Agent cycle ${diagnosticCycle + 1}`, page);
         }
-        await page.evaluate(() => window.uiModeManager.applyAsync('next', { cache: false }));
-        await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });
-        await assertMainSurface(page, browser, 'Classic Agent diagnostic cleanup');
+        await assertMainSurface(page, browser, 'Canonical Agent diagnostic cleanup');
     }
     for (let cycle = 0; cycle < warmupCycles; cycle += 1) await runCycle(cycle, 'warmup');
     const baseline = await collectRendererSnapshot(page, cdp, browserCdp, browser, 'baseline');

@@ -6,7 +6,7 @@ const { JSDOM } = require('jsdom');
 
 const root = path.resolve(__dirname, '..');
 
-test('离开 Next 时清除话题多选状态与 Next 专属 DOM', async () => {
+test('legacy mode events cannot tear down canonical topic management state', async () => {
     const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body>
         <section id="tabContentTopics" class="is-managing">
             <div class="topics-header-container" data-next-ui-tools-bound="true"></div>
@@ -49,10 +49,10 @@ test('离开 Next 时清除话题多选状态与 Next 专属 DOM', async () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     const container = window.document.getElementById('tabContentTopics');
-    assert.equal(container.classList.contains('is-managing'), false);
-    assert.equal(window.document.querySelectorAll('.next-ui-topic-select-icon').length, 0);
-    assert.equal(window.document.querySelectorAll('.unlocked-indicator').length, 0);
-    assert.equal(window.document.querySelectorAll('.topic-item.selected').length, 0);
-    assert.equal(window.document.getElementById('nextUiManageTopicsBtn').getAttribute('aria-pressed'), 'false');
+    assert.equal(container.classList.contains('is-managing'), true);
+    assert.equal(window.document.querySelectorAll('.next-ui-topic-select-icon').length, 2);
+    assert.equal(window.document.querySelectorAll('.unlocked-indicator').length, 1);
+    assert.equal(window.document.querySelectorAll('.topic-item.selected').length, 2);
+    assert.equal(window.document.getElementById('nextUiManageTopicsBtn').getAttribute('aria-pressed'), 'true');
     dom.window.close();
 });

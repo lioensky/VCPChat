@@ -18,7 +18,6 @@ window.topicListManager = (() => {
     let availableTopics = [];
     let currentItemConfig = null;
     let managedItemKey = '';
-    let modeChangeListenerBound = false;
 
     const TOPIC_INITIAL_RENDER_COUNT = 40;
     const TOPIC_PROGRESSIVE_BATCH_SIZE = 30;
@@ -48,7 +47,6 @@ window.topicListManager = (() => {
         // 设置鼠标快捷键
         setupMouseShortcuts();
         setupNextUiTopicTools();
-        setupUiModeLifecycle();
 
         console.log('[TopicListManager] Initialized successfully.');
     }
@@ -359,16 +357,14 @@ window.topicListManager = (() => {
         messageCountSpan.classList.add('message-count');
         messageCountSpan.textContent = '...';
 
-        if (document.documentElement.dataset.uiMode === 'next') {
-            const selectionIcon = document.createElement('span');
-            selectionIcon.classList.add('next-ui-topic-select-icon', 'vcp-ui-icon');
-            selectionIcon.setAttribute('aria-hidden', 'true');
-            selectionIcon.textContent = selectedTopicIds.has(topic.id) ? 'check_box' : 'check_box_outline_blank';
-            li.appendChild(selectionIcon);
-        }
+        const selectionIcon = document.createElement('span');
+        selectionIcon.classList.add('next-ui-topic-select-icon', 'vcp-ui-icon');
+        selectionIcon.setAttribute('aria-hidden', 'true');
+        selectionIcon.textContent = selectedTopicIds.has(topic.id) ? 'check_box' : 'check_box_outline_blank';
+        li.appendChild(selectionIcon);
         li.appendChild(avatarImg);
 
-        if (topic.locked === false && document.documentElement.dataset.uiMode === 'next') {
+        if (topic.locked === false) {
             const unlockedIndicator = document.createElement('span');
             unlockedIndicator.classList.add('unlocked-indicator');
             unlockedIndicator.textContent = 'unlocked';
@@ -732,34 +728,6 @@ window.topicListManager = (() => {
         syncManageUi();
     }
 
-    function teardownNextManageMode() {
-        isManageMode = false;
-        selectedTopicIds.clear();
-
-        const container = document.getElementById('tabContentTopics');
-        container?.classList.remove('is-managing');
-        document.getElementById('nextUiManageTopicsBtn')?.classList.remove('active');
-        document.getElementById('nextUiManageTopicsBtn')?.setAttribute('aria-pressed', 'false');
-        container?.querySelector('.next-ui-topic-manage-panel')?.setAttribute('aria-hidden', 'true');
-
-        document.querySelectorAll('#topicList .topic-item').forEach(item => {
-            item.classList.remove('selected');
-            item.removeAttribute('aria-selected');
-            item.querySelector('.next-ui-topic-select-icon')?.remove();
-            item.querySelector('.unlocked-indicator')?.remove();
-        });
-    }
-
-    function setupUiModeLifecycle() {
-        if (modeChangeListenerBound) return;
-        modeChangeListenerBound = true;
-        window.addEventListener('ui-mode-changed', event => {
-            if (event.detail?.mode !== 'classic') return;
-            teardownNextManageMode();
-            loadTopicList();
-        });
-    }
-
     function setManageMode(active) {
         isManageMode = active;
         if (!active) selectedTopicIds.clear();
@@ -871,7 +839,10 @@ window.topicListManager = (() => {
         }
 
         if (activeTopicDeleted) {
-            mainRendererFunctions.handleTopicDeletion(remainingTopics);
+            mainRendererFunctions.handleTopicDeletion(remainingTopics, {
+                id: currentSelectedItem.id,
+                type: currentSelectedItem.type
+            });
         }
 
         setManageMode(false);
@@ -1141,7 +1112,10 @@ window.topicListManager = (() => {
 
                 if (result && result.success) {
                     if (currentTopicIdRef.get() === topic.id) {
-                        mainRendererFunctions.handleTopicDeletion(result.remainingTopics);
+                        mainRendererFunctions.handleTopicDeletion(result.remainingTopics, {
+                            id: itemFullConfig.id,
+                            type: itemType
+                        });
                     }
                     loadTopicList();
                 } else {

@@ -11,6 +11,10 @@ function registerMinimalIpc() {
         () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
     );
     ipcMain.handle('docx:recent-list', () => []);
+    ipcMain.handle('scriptorium:document-library', () => ({
+        success: true,
+        documents: [],
+    }));
     ipcMain.handle('load-agents-list', () => []);
     ipcMain.handle('load-user-avatar', () => null);
     ipcMain.handle('load-agent-avatar', () => null);

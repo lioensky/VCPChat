@@ -1,8 +1,10 @@
 # Next UI 与 Web Awesome 低侵入建设路线
 
+> 状态：历史建设方案。当前 Web Awesome 已固定为 VCPUI 背后的离线可替换内核；真实完成度和后续减法分别见 [`next-ui-current-state.md`](./next-ui-current-state.md) 与 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
+
 ## 目标
 
-VCPChat 的新版界面是一套与经典界面并行的 presentation。建设新版界面的首要约束不是尽可能替换旧控件，而是在持续跟进上游时保护经典 DOM、事件、IPC 和聊天数据流。
+本文记录建设期采用的并行 presentation 策略。该迁移阶段已经结束，当前主窗口只有一套规范 presentation；保护上游业务 DOM、事件、IPC 和聊天数据流的边界继续有效。
 
 Web Awesome 只作为新版界面的基础交互与无障碍内核。业务代码通过 `VCPUI` 使用它，不直接创建 `<wa-*>`、读取 `--wa-*` 或依赖第三方事件。Classic 不因 Next UI 的存在而加载、挂载或增强 Web Awesome 控件。
 

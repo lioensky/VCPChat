@@ -122,11 +122,8 @@ window.filterManager = (() => {
         const settings = getGlobalSettings();
         const previousValue = settings.filterEnabled === true;
         const isActive = typeof forceEnabled === 'boolean' ? forceEnabled : !previousValue;
-        const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
-
         settings.filterEnabled = isActive;
         setGlobalSettings(settings);
-        doNotDisturbBtn?.classList.toggle('active', isActive);
         localStorage.setItem('filterEnabled', isActive.toString());
 
         try {
@@ -139,7 +136,6 @@ window.filterManager = (() => {
         } catch (error) {
             settings.filterEnabled = previousValue;
             setGlobalSettings(settings);
-            doNotDisturbBtn?.classList.toggle('active', previousValue);
             localStorage.setItem('filterEnabled', previousValue.toString());
             _uiHelper.showToastNotification(`设置过滤模式失败: ${error.message}`, 'error');
             publishFilterState('toggle-rollback');
@@ -645,22 +641,6 @@ window.filterManager = (() => {
         normalizeToolAutoApprovalRules(getGlobalSettings());
         publishFilterState('initialized');
 
-        const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
-
-        if (doNotDisturbBtn) {
-            // 左键点击：切换过滤总开关
-            doNotDisturbBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                await toggleFilterMode();
-            });
-
-            // 右键点击：打开过滤规则设置页面
-            doNotDisturbBtn.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                openFilterRulesModal();
-            });
-        }
-
         // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
         document.addEventListener('modal-ready', (e) => {
             const { modalId } = e.detail;
@@ -744,7 +724,7 @@ window.filterManager = (() => {
             }
         });
 
-        // 移除了 globalFilterCheckbox 的事件监听器，因为现在通过左键点击 doNotDisturbBtn 来切换总开关
+        // The canonical notification menu owns the filter toggle entry.
     }
 
     // --- Public API ---

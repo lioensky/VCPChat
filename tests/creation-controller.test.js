@@ -4,6 +4,7 @@ const { JSDOM } = require('jsdom');
 const { CreationController, normalizeModelOptions } = require('../modules/ui-system/next-shell/creation-controller.js');
 const { LifecycleScope, diagnostics } = require('../modules/ui-system/lifecycle-scope.js');
 const { SurfaceController } = require('../modules/ui-system/surface-controller.js');
+const settlement = require('../modules/ui-system/settlement.js');
 
 test('model options normalize supported payloads and remove duplicates', () => {
     assert.deepEqual(normalizeModelOptions({ models: [
@@ -25,8 +26,13 @@ test('creation controller refuses unavailable commands and disposes idempotently
         commands: () => ({}),
         showUnavailable: () => { unavailable += 1; },
     });
+    dom.window.VCPSettlement = settlement;
     controller.mount();
-    await controller.open();
+    const opening = controller.open();
+    const operationId = controller.getSnapshot().operationId;
+    await opening;
+    const settled = await controller.whenSettled({ operationId });
+    assert.equal(settled.status, 'failed');
     assert.equal(unavailable, 1);
     controller.dispose();
     controller.dispose();

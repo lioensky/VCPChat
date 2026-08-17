@@ -1,7 +1,6 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
-    uiMode: 'classic',
     showHomeVisualBrand: true,
     showHomeVisualTagline: true,
     homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
@@ -104,9 +103,6 @@ let globalSettingsForm = null;
 let userAvatarInput = null;
 let userAvatarPreview = null;
 
-const createNewAgentBtn = document.getElementById('createNewAgentBtn'); // Text will change
-const createNewGroupBtn = document.getElementById('createNewGroupBtn'); // New button
-
 const itemSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); // Will be itemSettingsContainerTitle
 const selectedItemNameForSettingsSpan = document.getElementById('selectedAgentNameForSettings'); // Will show Agent or Group name
 
@@ -132,15 +128,11 @@ const deleteItemBtn = document.getElementById('deleteAgentBtn'); // Will be dele
 
 const currentItemActionBtn = document.getElementById('currentAgentSettingsBtn'); // Text will change (e.g. "New Topic" / "New Group Topic")
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
-const openForumBtn = document.getElementById('openForumBtn');
-const themeToggleBtn = document.getElementById('themeToggleBtn');
 const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn');
 
 const notificationsSidebar = document.getElementById('notificationsSidebar');
 const vcpLogConnectionStatusDiv = document.getElementById('vcpLogConnectionStatus');
 const notificationsListUl = document.getElementById('notificationsList');
-const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
-const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
 
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab-button');
 const sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
@@ -282,12 +274,6 @@ const rightNotificationsSidebar = document.getElementById('notificationsSidebar'
 const resizerLeft = document.getElementById('resizerLeft');
 const resizerRight = document.getElementById('resizerRight');
 
-const minimizeBtn = document.getElementById('minimize-btn');
-const maximizeBtn = document.getElementById('maximize-btn');
-const restoreBtn = document.getElementById('restore-btn');
-const closeBtn = document.getElementById('close-btn');
-const settingsBtn = document.getElementById('settings-btn'); // DevTools button
-const minimizeToTrayBtn = document.getElementById('minimize-to-tray-btn');
 const agentSearchInput = document.getElementById('agentSearchInput');
 
 // Cropped file state is now managed within modules/ui-helpers.js
@@ -842,9 +828,9 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         Object.assign(currentSelectedItem, newConfig);
                     }
                 },
-                handleTopicDeletion: (remainingTopics) => {
+                handleTopicDeletion: (remainingTopics, deletionContext) => {
                     if (window.chatManager) {
-                        return window.chatManager.handleTopicDeletion(remainingTopics);
+                        return window.chatManager.handleTopicDeletion(remainingTopics, deletionContext);
                     } else {
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
@@ -988,6 +974,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         setupChatPresentationQuickSwitcher();
         await loadAndApplyGlobalSettings();
         await window.itemListManager.loadItems(); // Load both agents and groups
+        await window.chatManager.restoreLastOpenState(globalSettings);
 
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
@@ -1001,12 +988,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
                     resizerLeft: document.getElementById('resizerLeft'),
                     resizerRight: document.getElementById('resizerRight'),
-                    minimizeBtn: document.getElementById('minimize-btn'),
-                    maximizeBtn: document.getElementById('maximize-btn'),
-                    restoreBtn: document.getElementById('restore-btn'),
-                    closeBtn: document.getElementById('close-btn'),
-                    settingsBtn: document.getElementById('settings-btn'),
-                    themeToggleBtn: document.getElementById('themeToggleBtn'),
                     digitalClockElement: document.getElementById('digitalClock'),
                     dateDisplayElement: document.getElementById('dateDisplay'),
                     notificationTitleElement: document.getElementById('notificationTitle'),
@@ -1033,9 +1014,9 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
         setupEventListeners({
             chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
-            globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-            currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
-            notificationsSidebar, agentSearchInput, minimizeToTrayBtn, leftSidebar,
+            globalSettingsForm, userAvatarInput,
+            currentItemActionBtn, toggleNotificationsBtn,
+            notificationsSidebar, agentSearchInput, leftSidebar,
             openTranslatorBtn: document.getElementById('openTranslatorBtn'),
             openNotesBtn: document.getElementById('openNotesBtn'),
             openMusicBtn: document.getElementById('openMusicBtn'),
@@ -1044,7 +1025,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
             voiceChatBtn: document.getElementById('voiceChatBtn'),
             enableContextSanitizerCheckbox: document.getElementById('enableContextSanitizer'),
             contextSanitizerDepthContainer: document.getElementById('contextSanitizerDepthContainer'),
-            seamFixer: document.getElementById('title-bar-seam-fixer'),
             addNetworkPathBtn: document.getElementById('addNetworkPathBtn'),
             refs: {
                 currentSelectedItem: { get: () => currentSelectedItem },
@@ -1188,8 +1168,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
         chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
     }
 
-    console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
-    
     // --- Agent Settings Reload Listener ---
     if (chatAPI?.onReloadAgentSettings) {
         chatAPI.onReloadAgentSettings(async ({ agentId }) => {
@@ -1594,18 +1572,11 @@ function setupTtsListeners() {
 async function loadAndApplyGlobalSettings() {
     const settings = await chatAPI.loadSettings();
     if (settings && !settings.error) {
-        globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
+        globalSettings = { ...globalSettings, ...settings };
         window.globalSettings = globalSettings;
-        // Settings read through Main is authoritative; update the optional
-        // boot cache only after it has been successfully loaded.
-        if (window.uiModeManager?.applyAsync) {
-            await window.uiModeManager.applyAsync(globalSettings.uiMode, { cache: true });
-        } else {
-            window.uiModeManager?.apply(globalSettings.uiMode, { cache: true });
-        }
         globalSettings.appearanceProfile = window.VCPAppearance?.commit(
             globalSettings.appearanceProfile,
-            { uiMode: globalSettings.uiMode, source: 'settings-load' }
+            { uiMode: 'next', source: 'settings-load' }
         ) || globalSettings.appearanceProfile;
         window.dispatchEvent(new CustomEvent('global-settings-updated', {
             detail: { settings: globalSettings, source: 'settings-load' }
@@ -1650,8 +1621,6 @@ async function loadAndApplyGlobalSettings() {
         // Load filter mode setting
         let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
         globalSettings.filterEnabled = filterEnabled;
-        doNotDisturbBtn.classList.toggle('active', !!filterEnabled);
-
         // 🟢 核心逻辑：监听模态框就绪事件，届时再同步模态框内部 UI
         document.addEventListener('modal-ready', (e) => {
             const { modalId } = e.detail;
@@ -2232,13 +2201,10 @@ async function syncGlobalSettingsToUI() {
 
     safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
-    safeCheck('enableNextUi', globalSettings.uiMode === 'next');
-    safeCheck('appearanceUiModeClassic', globalSettings.uiMode !== 'next');
-    safeCheck('appearanceUiModeNext', globalSettings.uiMode === 'next');
     safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
     safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
     safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
-    const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, globalSettings.uiMode);
+    const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, 'next');
     safeSet('appearanceDensity', appearance?.density || 'comfortable');
     safeSet('appearanceRadius', appearance?.radius || 'small');
     safeSet('appearanceTypography', appearance?.typography || 'system');

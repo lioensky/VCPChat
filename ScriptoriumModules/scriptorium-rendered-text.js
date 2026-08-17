@@ -257,6 +257,135 @@
         };
     }
 
+    function sourceTextFields(sourceValue) {
+        const source = normalizedText(sourceValue);
+        const fields = [];
+        const push = (value, kind, start) => {
+            const text = normalizedText(value).trim();
+            if (!text || text.length < 2) return;
+            if (/^[\w\s.#:[\](){},;+*/'"`=-]+$/.test(text)) return;
+            fields.push({ text, kind, start });
+        };
+
+        // 保持与原始岛源码完全相同的字符偏移；删除 style 会让后续
+        // script 字段的定位整体前移，必须使用等长空格屏蔽。
+        const withoutStyle = source.replace(
+            /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi,
+            (match) => ' '.repeat(match.length)
+        );
+        const scriptRanges = [];
+        withoutStyle.replace(
+            /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi,
+            (match, body, offset) => {
+                scriptRanges.push({
+                    start: offset,
+                    end: offset + match.length,
+                    body,
+                    bodyStart: offset + match.indexOf(body),
+                });
+                return match;
+            }
+        );
+
+        const staticSource = withoutStyle.replace(
+            /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
+            (match) => ' '.repeat(match.length)
+        );
+        staticSource.replace(
+            />([^<>]+)</g,
+            (match, text, offset) => {
+                push(text, 'html', offset + 1);
+                return match;
+            }
+        );
+
+        scriptRanges.forEach(({ body, bodyStart }) => {
+            const stringPattern = /(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+            let match;
+            while ((match = stringPattern.exec(body))) {
+                const value = match[2]
+                    .replace(/\\(['"`\\])/g, '$1')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                if (!value || value.length < 2) continue;
+                if (/^[.#\[\]()[\]{}:_-]+$/.test(value)) continue;
+                if (!/[\u3400-\u9fff]|[A-Za-z]{2,}/.test(value)) continue;
+                const valueStart = bodyStart + match.index + match[0].indexOf(match[2]);
+                push(value, 'script', valueStart);
+            }
+        });
+
+        return fields.sort((left, right) => left.start - right.start);
+    }
+
+    function sequenceSourceRange(sourceValue, snapshot, options = {}) {
+        const source = normalizedText(sourceValue);
+        const text = normalizedText(snapshot?.text).trim();
+        if (!source || !text) return null;
+
+        const fields = sourceTextFields(source);
+        if (!fields.length) return null;
+
+        const visualOrdinal = Number.isFinite(snapshot?.ordinal)
+            ? snapshot.ordinal
+            : null;
+        const visualCount = Number(options.textNodeCount);
+        if (visualOrdinal === null || !Number.isFinite(visualCount)
+            || visualCount < 1) return null;
+
+        const exact = fields
+            .map((field, index) => ({ ...field, index }))
+            .filter((field) =>
+                field.text === text
+                || field.text.includes(text)
+                || text.includes(field.text)
+            );
+        if (!exact.length) return null;
+
+        const expectedIndex = visualOrdinal / Math.max(1, visualCount - 1)
+            * Math.max(0, fields.length - 1);
+        const previousText = normalizedText(snapshot.previousText).trim();
+        const nextText = normalizedText(snapshot.nextText).trim();
+
+        const ranked = exact.map((field) => {
+            let score = 0;
+            const distance = Math.abs(field.index - expectedIndex);
+            score += Math.max(0, 42 - Math.round(distance * 8));
+            if (field.text === text) score += 24;
+            if (previousText && fields[field.index - 1]?.text.includes(previousText)) {
+                score += 20;
+            }
+            if (nextText && fields[field.index + 1]?.text.includes(nextText)) {
+                score += 20;
+            }
+            return { field, score };
+        }).sort((left, right) =>
+            right.score - left.score || left.field.start - right.field.start
+        );
+
+        const winner = ranked[0];
+        const runnerUp = ranked[1];
+        const margin = winner.score - (runnerUp?.score || 0);
+        if (!winner || winner.score < 30 || (runnerUp && margin < 10)) {
+            return null;
+        }
+
+        const start = winner.field.start;
+        const end = start + winner.field.text.length;
+        const exactStart = source.indexOf(text, start);
+        if (exactStart < 0 || exactStart >= end) return null;
+
+        return {
+            start: exactStart,
+            end: exactStart + text.length,
+            confidence: Math.min(0.95, .55 + winner.score / 200 + margin / 120),
+            reason: 'island-text-sequence',
+            candidates: exact.length,
+            score: winner.score,
+            margin,
+        };
+    }
+
     function editableHostFor(node, scope, options = {}) {
         const host = node?.parentElement;
         if (!host || !scope?.contains(host) || host === scope) return null;
@@ -334,14 +463,24 @@
 
         function sourcePatch(source, record, nextText, patchOptions = {}) {
             if (!record?.snapshot) return null;
-            const range = resolveSourceRange(source, record.snapshot, {
-                ...patchOptions,
-                textNodeCount: patchOptions.textNodeCount
-                    ?? textNodes(record.root, {
-                        ...patchOptions,
-                        requireLayout: false,
-                    }).length,
-            });
+            const textNodeCount = patchOptions.textNodeCount
+                ?? textNodes(record.root, {
+                    ...patchOptions,
+                    requireLayout: false,
+                }).length;
+            const sequencePatch = () => sequenceSourceRange(
+                source,
+                record.snapshot,
+                { ...patchOptions, textNodeCount }
+            );
+            const standardPatch = () => resolveSourceRange(
+                source,
+                record.snapshot,
+                { ...patchOptions, textNodeCount }
+            );
+            const range = patchOptions.preferSequence
+                ? (sequencePatch() || standardPatch())
+                : (standardPatch() || sequencePatch());
             if (!range) return null;
             const replacement = normalizedText(nextText);
             return {
@@ -383,6 +522,8 @@
     function createRenderedTextController(context = {}) {
         const historyPort = context.historyPort;
         const notificationPort = context.notificationPort || {};
+        const getVisibilityPort = context.getVisibilityPort
+            || (() => context.visibilityPort);
         const controller = createController();
         let registration = null;
 
@@ -439,6 +580,11 @@
             const replacement = record.projectEditedText
                 ? record.projectEditedText(nextText)
                 : nextText;
+            const isRuntimeGenerated = Boolean(
+                record.node?.parentElement?.closest?.(
+                    '[data-vdoc-runtime-generated="true"]'
+                )
+            );
             const patch = controller.sourcePatch(
                 scoped.source,
                 sourceRecord,
@@ -447,6 +593,8 @@
                     textNodeCount: textNodes(scoped.island, {
                         requireLayout: false,
                     }).length,
+                    preferSequence: record.preferSequence
+                        || isRuntimeGenerated,
                 }
             );
             if (!patch) {
@@ -512,11 +660,18 @@
                     // 将 CRLF、缩进或标签外围换行规范化，此时改用核心可见文本
                     // 匹配，并在提交时只投影用户编辑后的核心文字，保留源码排版。
                     let sourceSnapshot = record.snapshot;
-                    let range = controller.resolveSourceRange(
+                    let sequenceRange = sequenceSourceRange(
                         scoped.source,
                         sourceSnapshot,
                         { textNodeCount }
                     );
+                    let standardRange = controller.resolveSourceRange(
+                        scoped.source,
+                        sourceSnapshot,
+                        { textNodeCount }
+                    );
+                    let range = sequenceRange || standardRange;
+                    record.preferSequence = Boolean(sequenceRange);
                     if (!range) {
                         const coreText = nodeText.trim();
                         if (!coreText) return;
@@ -530,11 +685,18 @@
                                 record.snapshot.nextText
                             ).trim(),
                         };
-                        range = controller.resolveSourceRange(
+                        sequenceRange = sequenceSourceRange(
                             scoped.source,
                             sourceSnapshot,
                             { textNodeCount }
                         );
+                        standardRange = controller.resolveSourceRange(
+                            scoped.source,
+                            sourceSnapshot,
+                            { textNodeCount }
+                        );
+                        range = sequenceRange || standardRange;
+                        record.preferSequence = Boolean(sequenceRange);
                         if (range) {
                             record.projectEditedText = (value) =>
                                 normalizedText(value).trim();
@@ -606,12 +768,21 @@
                 return host && root.contains(host) ? host : null;
             }
 
+            function finishRuntimePause(session) {
+                if (!session?.island || !session.pausedByEditor) return;
+                getVisibilityPort()?.resume?.(session.island);
+                session.pausedByEditor = false;
+            }
+
             function commitHost(host) {
                 const session = sessions.get(host);
                 sessions.delete(host);
                 if (!session) return true;
                 const nextText = normalizedText(host.textContent);
-                if (nextText === session.previousText) return true;
+                if (nextText === session.previousText) {
+                    finishRuntimePause(session);
+                    return true;
+                }
                 if (applyFlowInput(
                     adapter,
                     host,
@@ -622,8 +793,11 @@
                         ...session.record.snapshot,
                         text: nextText,
                     };
+                    finishRuntimePause(session);
                     return true;
                 }
+
+                finishRuntimePause(session);
 
                 // 映射在编辑期间因外部源码变化而失效时，不留下“看似改好但
                 // 无法保存”的运行态假象；恢复进入编辑前的可持久文本。
@@ -663,9 +837,17 @@
                 if (!host) return;
                 const record = hostRecords.get(host);
                 if (!record) return;
+                const island = host.closest?.('[data-vdoc-island]');
+                const visibility = getVisibilityPort();
+                const wasPaused = Boolean(
+                    island && visibility?.isPaused?.(island)
+                );
+                if (island && !wasPaused) visibility?.pause?.(island);
                 sessions.set(host, {
                     record,
                     previousText: normalizedText(host.textContent),
+                    island,
+                    pausedByEditor: Boolean(island && !wasPaused),
                 });
             }, { signal: abortController.signal });
 
@@ -736,6 +918,8 @@
         fingerprint,
         diffText,
         resolveSourceRange,
+        sequenceSourceRange,
+        sourceTextFields,
         elementPath,
         elementAtPath,
         textNodeAtPath,

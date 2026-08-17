@@ -1,4 +1,3 @@
-import UiModeController from './ui-mode-controller.js';
 import './webawesome-adapter.js';
 
 let generation = 0;
@@ -22,11 +21,9 @@ async function activateKernel() {
     try {
         await window.VCPWebAwesome?.loadComponents?.();
         if (currentGeneration !== generation
-            || document.documentElement.dataset.uiMode !== 'next'
             || (activationScope && !activationScope.active)) return;
         const mountedRelease = window.VCPWebAwesome?.mountScope?.(document.body) || null;
         if (currentGeneration !== generation
-            || document.documentElement.dataset.uiMode !== 'next'
             || (activationScope && !activationScope.active)) {
             mountedRelease?.();
             return;
@@ -48,7 +45,7 @@ async function activateKernel() {
     }
 }
 
-function enterNextMode() {
+function mountCanonicalRuntime() {
     if (!nextScope && moduleScope) nextScope = moduleScope.child('next:main-ui-runtime');
     if (nextScope) {
         nextScope.listen(document, 'click', handleSettingsTabClick, undefined, 'settings-tab-click');
@@ -69,14 +66,14 @@ function handleSurfaceVisibility() {
     queueMicrotask(activateKernel);
 }
 
-function leaveNextMode() {
+function destroyCanonicalRuntime() {
     generation += 1;
     activating = false;
     if (nextScope) {
         const scope = nextScope;
         nextScope = null;
-        void scope.dispose('leave-next').catch(error => {
-            console.error('[VCPUI Main Runtime] Failed to dispose Next runtime:', error);
+        void scope.dispose('canonical-runtime-destroy').catch(error => {
+            console.error('[VCPUI Main Runtime] Failed to dispose canonical runtime:', error);
         });
     } else {
         document.removeEventListener('click', handleSettingsTabClick);
@@ -86,8 +83,5 @@ function leaveNextMode() {
     releaseScope = null;
 }
 
-const surfaceController = UiModeController.createSurfaceController({
-    onEnter: enterNextMode,
-    onLeave: leaveNextMode,
-});
-moduleScope?.own(() => surfaceController.destroy(), 'mode-surface-controller', 'subscription');
+mountCanonicalRuntime();
+moduleScope?.own(destroyCanonicalRuntime, 'canonical-main-ui-runtime', 'ui-registration');

@@ -3484,6 +3484,10 @@ function startStreamingMessage(message, messageItem = null) {
     return streamManager.startStreamingMessage(message, messageItem);
 }
 
+function discardStreamingMessage(messageId) {
+    return streamManager.discardStreamingMessage(messageId);
+}
+
 
 function appendStreamChunk(messageId, chunkData, context) {
     streamManager.appendStreamChunk(messageId, chunkData, context);
@@ -4028,6 +4032,7 @@ window.messageRenderer = {
     renderHistoryLegacy, // Expose the legacy rendering for compatibility
     renderMessageBatch, // Expose batch rendering utility
     startStreamingMessage,
+    discardStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
     renderFullMessage,

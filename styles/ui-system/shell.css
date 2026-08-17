@@ -6,19 +6,19 @@
  * 不复制主窗口结构选择器。
  */
 @layer vcp-ui.components {
-    html[data-ui-mode="next"] .next-ui-topbar.vcp-ui-scope .next-ui-relocated-action {
+    html .next-ui-topbar.vcp-ui-scope .next-ui-relocated-action {
         display: none;
     }
 
     /* Material 图标对齐迁移前 SVG 图标尺寸 */
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-add-tab .vcp-ui-icon,
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-icon-button .vcp-ui-icon {
+    html .vcp-ui-scope .next-ui-add-tab .vcp-ui-icon,
+    html .vcp-ui-scope .next-ui-icon-button .vcp-ui-icon {
         --vcp-ui-icon-size: 19px;
     }
 
     /* The compact launchpad trigger uses a smaller glyph than the full tab
        height; the button shell matches the adjacent 30px tabs. */
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-add-tab .vcp-ui-icon {
+    html .vcp-ui-scope .next-ui-add-tab .vcp-ui-icon {
         --vcp-ui-icon-size: 15px;
     }
 
@@ -28,7 +28,7 @@
        cascade-layer priority, silently pinning all topbar buttons to the
        topbar text color. Resting text is muted/faded; hover brightens; the
        selected tab turns solid and slightly heavier (opencode's faint->base). */
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-add-tab {
+    html .vcp-ui-scope .next-ui-add-tab {
         width: 30px;
         height: 30px;
         border-radius: 8px;
@@ -36,87 +36,87 @@
         opacity: 0.85;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-add-tab:hover {
+    html .vcp-ui-scope .next-ui-add-tab:hover {
         color: var(--next-text);
         opacity: 1;
         background: color-mix(in srgb, var(--next-text) 8%, transparent);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab {
+    html .vcp-ui-scope .next-ui-tab {
         color: var(--next-muted);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab:not(#nextUiHomeTab):hover {
+    html .vcp-ui-scope .next-ui-tab:not(#nextUiHomeTab):hover {
         color: var(--next-text);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab:not(#nextUiHomeTab).active {
+    html .vcp-ui-scope .next-ui-tab:not(#nextUiHomeTab).active {
         color: var(--next-text);
         font-weight: 600;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab-close {
+    html .vcp-ui-scope .next-ui-tab-close {
         color: var(--next-muted);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab-close:hover {
+    html .vcp-ui-scope .next-ui-tab-close:hover {
         color: var(--next-text);
         background: color-mix(in srgb, var(--next-text) 10%, transparent);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-icon-button {
+    html .vcp-ui-scope .next-ui-icon-button {
         color: var(--next-muted);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-icon-button:hover,
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-icon-button.active,
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-icon-button.is-active {
+    html .vcp-ui-scope .next-ui-icon-button:hover,
+    html .vcp-ui-scope .next-ui-icon-button.active,
+    html .vcp-ui-scope .next-ui-icon-button.is-active {
         color: var(--next-text);
         background: color-mix(in srgb, var(--next-text) 8%, transparent);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-window-button {
+    html .vcp-ui-scope .next-ui-window-button {
         color: var(--next-muted);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-window-button:hover {
+    html .vcp-ui-scope .next-ui-window-button:hover {
         color: var(--next-text);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-window-button .vcp-ui-icon {
+    html .vcp-ui-scope .next-ui-window-button .vcp-ui-icon {
         --vcp-ui-icon-size: 15px;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-close-button .vcp-ui-icon {
+    html .vcp-ui-scope .next-ui-close-button .vcp-ui-icon {
         --vcp-ui-icon-size: 18px;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab-close .vcp-ui-icon {
+    html .vcp-ui-scope .next-ui-tab-close .vcp-ui-icon {
         --vcp-ui-icon-size: 13px;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-tab-symbol {
+    html .vcp-ui-scope .next-ui-tab-symbol {
         --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-launchpad-inner {
+    html .vcp-ui-scope .next-ui-launchpad-inner {
         width: min(1080px, calc(100% - var(--vcp-ui-space-8)));
         padding: var(--vcp-ui-space-7) 0 var(--vcp-ui-space-8);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-launchpad h1 {
+    html .vcp-ui-scope .next-ui-launchpad h1 {
         margin: 0 0 var(--vcp-ui-space-6);
         font-size: var(--vcp-ui-font-display);
         font-weight: 700;
         line-height: var(--vcp-ui-line-compact);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-grid {
+    html .vcp-ui-scope .next-ui-app-grid {
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
         gap: var(--vcp-ui-space-6) var(--vcp-ui-space-5);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-item {
+    html .vcp-ui-scope .next-ui-app-item {
         gap: var(--vcp-ui-space-2);
         padding: var(--vcp-ui-space-2);
         border-radius: var(--vcp-ui-radius-card);
@@ -126,12 +126,12 @@
         transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-item:hover {
+    html .vcp-ui-scope .next-ui-app-item:hover {
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-fill-0);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon {
+    html .vcp-ui-scope .next-ui-app-icon {
         width: var(--vcp-ui-app-icon-size);
         height: var(--vcp-ui-app-icon-size);
         border: 1px solid color-mix(in srgb, var(--vcp-ui-border) 52%, transparent);
@@ -142,21 +142,21 @@
         transition: transform var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-item:hover .next-ui-app-icon {
+    html .vcp-ui-scope .next-ui-app-item:hover .next-ui-app-icon {
         transform: translateY(-2px);
         box-shadow: var(--vcp-ui-shadow-md);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="green"] { background: var(--vcp-ui-success); }
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="pink"],
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="red"] { background: var(--vcp-ui-danger); }
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="amber"],
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="orange"] { background: var(--vcp-ui-warning); }
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="cyan"],
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="purple"] { background: var(--vcp-ui-info); }
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-icon[data-tone="charcoal"] { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-2); }
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="green"] { background: var(--vcp-ui-success); }
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="pink"],
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="red"] { background: var(--vcp-ui-danger); }
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="amber"],
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="orange"] { background: var(--vcp-ui-warning); }
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="cyan"],
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="purple"] { background: var(--vcp-ui-info); }
+    html .vcp-ui-scope .next-ui-app-icon[data-tone="charcoal"] { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-2); }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-app-item:focus-visible {
+    html .vcp-ui-scope .next-ui-app-item:focus-visible {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;
     }

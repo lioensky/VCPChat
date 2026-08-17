@@ -35,12 +35,12 @@ assert.match(
 );
 assert.doesNotMatch(
     sidebarStyles,
-    /html\[data-ui-mode="next"\][^{]*\.agent-name::after[^}]*display:\s*none/s,
+    /html[^{]*\.agent-name::after[^}]*display:\s*none/s,
     'Next UI must not hide the assistant emotion text shown on hover'
 );
 assert.doesNotMatch(
     sidebarStyles,
-    /html\[data-ui-mode="next"\][^{]*\.agent-emotion-card[^}]*display:\s*none/s,
+    /html[^{]*\.agent-emotion-card[^}]*display:\s*none/s,
     'Next UI must not disable the assistant emotion animation card'
 );
 
@@ -502,7 +502,7 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('dynamicGroupPrompt').classList.contains('vcp-ui-native-textarea'));
 
 // Global settings modal is enhanced independently of the sidebar presentation
-// gate: controls, save bar and injected search only in next mode.
+// gate: controls, save bar and injected search use the canonical presentation.
 const modalContainer = document.createElement('div');
 modalContainer.id = 'modal-container';
 const globalModal = document.createElement('div');
@@ -520,7 +520,6 @@ globalModal.innerHTML = `
     </div>`;
 modalContainer.append(globalModal);
 scope.append(modalContainer);
-await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/settings-bridge.js`).href}?global-settings-contract-test=1`);
 window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'), 'global input enhanced');
@@ -536,19 +535,16 @@ assert.equal(globalFooter.dataset.state, 'saving', 'global save bar tracks savin
 document.documentElement.dataset.uiMode = 'classic';
 window.dispatchEvent(new CustomEvent('ui-mode-changed', { detail: { mode: 'classic', previousMode: 'next' } }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(!document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'),
-    'Classic global settings must restore the upstream input');
-assert.ok(!globalModal.classList.contains('vcp-global-settings-next'),
-    'Classic global settings must not keep the Next modal marker');
-assert.equal(globalModal.querySelector('.vcp-ui-settings-search'), null,
-    'Classic global settings must remove the injected SettingsShell search');
-assert.equal(document.documentElement.classList.contains('vcp-global-settings-host'), false,
-    'Classic must not retain the Next global-settings host state');
+assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'),
+    'legacy mode events must not tear down canonical settings controls');
+assert.ok(globalModal.classList.contains('vcp-global-settings-next'),
+    'legacy mode events must not remove the canonical modal marker');
+assert.ok(globalModal.querySelector('.vcp-ui-settings-search'),
+    'legacy mode events must not remove the SettingsShell search');
 await window.VCPUISettingsBridge.destroy();
 modalContainer.remove();
 
 assert.ok(!document.getElementById('bridgeInput').classList.contains('vcp-ui-native-input'));
-await window.VCPUISettingsBridge.destroy();
 settingsHost.remove();
 document.documentElement.dataset.uiMode = 'next';
 
@@ -609,6 +605,8 @@ const notificationSystemCss = fs.readFileSync(new URL('../styles/ui-system/notif
 const mainHtml = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
 const trayManagerSource = fs.readFileSync(new URL('../modules/trayManager.js', import.meta.url), 'utf8');
 const mainChatCommandsSource = fs.readFileSync(new URL('../modules/mainChatCommands.js', import.meta.url), 'utf8');
+const windowStateServiceSource = fs.readFileSync(new URL('../modules/services/windowStateService.js', import.meta.url), 'utf8');
+const nextShellControllerSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/next-shell-controller.js', import.meta.url), 'utf8');
 const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners.js', import.meta.url), 'utf8');
 const rendererSource = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
 const topTabManagerSource = fs.readFileSync(new URL('../modules/topTabManager.js', import.meta.url), 'utf8');
@@ -626,10 +624,12 @@ assert.match(mainHtml, /id="nextUiMinimizeToTrayBtn"[^>]*aria-label="最小化�
     'Next must expose a distinct minimize-to-tray control');
 assert.match(mainChatCommandsSource, /function minimizeToTray\(\)[\s\S]*minimizeToTray\?\.\(\)/,
     'minimize-to-tray must route through the existing preload API');
-assert.match(mainChatCommandsSource, /onWindowMaximized[\s\S]*maximized = true[\s\S]*syncMaximizeControl/,
-    'Next window controls must subscribe to the real maximized state');
-assert.match(mainChatCommandsSource, /maximized \? 'filter_none' : 'crop_square'/,
-    'Next maximize control must expose a restore icon when maximized');
+assert.doesNotMatch(mainChatCommandsSource, /nextUiMaximizeBtn|onWindowMaximized|syncMaximizeControl/,
+    'business commands must not own Next window-control presentation');
+assert.match(windowStateServiceSource, /publish\(maximized\)[\s\S]*register\('onWindowMaximized', true\)/,
+    'the shared window service must publish real maximize state');
+assert.match(nextShellControllerSource, /subscribeWindowState[\s\S]*syncWindowControl/,
+    'Next shell must project the shared window state into its control');
 assert.match(mainHtml, /id="nextUiDynamicTabs"[^>]*role="tablist"/,
     'the dynamic application strip must expose tablist semantics');
 assert.match(appTabHostSource, /createElement\('div'\)[\s\S]*setAttribute\('role', 'tab'\)[\s\S]*createElement\('button'\)[\s\S]*next-ui-tab-close/,
@@ -641,12 +641,12 @@ assert.match(saveSettingsHandler, /'flowlockContinueDelay' in settingsToSave/,
     'partial settings patches may validate flowlock delay only when supplied');
 assert.doesNotMatch(saveSettingsHandler, /enableDistributedServerLogs\s*=/,
     'partial settings patches must not synthesize unrelated distributed-log settings');
-assert.doesNotMatch(appearanceStyles, /html\[data-vcp-/,
-    'appearance selectors must never affect Classic without an explicit next-mode gate');
-assert.match(appearanceStyles, /html\[data-ui-mode="next"\] body\s*\{[^}]*font-family:[^}]*font-size:/s,
-    'Next typography must be scoped to the Next presentation');
+assert.doesNotMatch(appearanceStyles, /data-ui-mode/,
+    'canonical appearance must not retain a dead mode gate');
+assert.match(appearanceStyles, /html body\s*\{[^}]*font-family:[^}]*font-size:/s,
+    'canonical typography must be scoped through the document root');
 assert.doesNotMatch(appearanceStyles, /(?:^|\n)\s*body\s*\{[^}]*font-(?:family|size):/s,
-    'Classic body typography must remain owned by the upstream stylesheet');
+    'appearance must not leak an unscoped body typography rule');
 assert.match(messageRendererStyles, /\.maid-diary-bubble\s*\{[^}]*background:[^;]+!important;[^}]*border-radius:[^;]+!important;/s,
     'upstream diary component declarations must retain their cascade authority');
 assert.match(messageRendererStyles, /\.vcp-tool-result-bubble\s*\{[^}]*background:[^;]+!important;[^}]*border-radius:[^;]+!important;/s,
@@ -680,10 +680,10 @@ assert.match(eventListenersSource, /nextUiNotificationMemo\.addEventListener\('c
 assert.match(eventListenersSource, /nextUiNotificationFilterToggle\.addEventListener\('contextmenu'[\s\S]*openNotificationFilterSettings/,
     'filter menu secondary action must open filter settings');
 assert.doesNotMatch(nextUiCss,
-    /html\[data-ui-mode="next"\][^{]*#vchatAppTray[^{]*\{[^}]*display:\s*none/s,
+    /html[^{]*#vchatAppTray[^{]*\{[^}]*display:\s*none/s,
     'Next UI must preserve the upstream app tray instead of hiding it');
 assert.match(notificationSystemCss,
-    /html\[data-ui-mode="next"\] \.vcp-ui-scope #vchatAppTray\s*\{[^}]*display:\s*flex/s,
+    /html \.vcp-ui-scope #vchatAppTray\s*\{[^}]*display:\s*flex/s,
     'Next UI must expose the app tray in the notification sidebar');
 assert.match(mainHtml, /id="appTrayPinnedApps"[\s\S]*id="appTrayMoreBtn"[\s\S]*id="appTrayDrawer"/,
     'the app tray must retain pinned apps and the complete app drawer');
@@ -711,23 +711,21 @@ commandDom.window.chatAPI = {
     onWindowMaximized: callback => { emitMaximized = callback; },
     onWindowUnmaximized: callback => { emitUnmaximized = callback; },
 };
+commandDom.window.eval(fs.readFileSync(new URL('../modules/ui-system/state-channel.js', import.meta.url), 'utf8'));
+commandDom.window.eval(windowStateServiceSource);
 commandDom.window.itemListManager = {
     loadItems: async () => { throw new Error('list refresh failed'); }
 };
 commandDom.window.uiHelperFunctions = { showToastNotification() {} };
 commandDom.window.eval(mainChatCommandsSource);
-const commandMaximizeButton = commandDom.window.document.getElementById('nextUiMaximizeBtn');
 commandDom.window.MainChatCommands.toggleMaximize();
 assert.equal(commandWindowCalls.maximize, 1);
 emitMaximized();
-assert.equal(commandMaximizeButton.getAttribute('aria-pressed'), 'true');
-assert.equal(commandMaximizeButton.getAttribute('aria-label'), '还原窗口');
-assert.equal(commandMaximizeButton.querySelector('.vcp-ui-icon').textContent, 'filter_none');
+assert.equal(commandDom.window.MainChatCommands.getWindowState().maximized, true);
 commandDom.window.MainChatCommands.toggleMaximize();
 assert.equal(commandWindowCalls.unmaximize, 1);
 emitUnmaximized();
-assert.equal(commandMaximizeButton.getAttribute('aria-pressed'), 'false');
-assert.equal(commandMaximizeButton.getAttribute('aria-label'), '最大化窗口');
+assert.equal(commandDom.window.MainChatCommands.getWindowState().maximized, false);
 const partialCreation = await commandDom.window.MainChatCommands.createAgent({ name: 'Nova', model: 'model-next' });
 assert.equal(JSON.stringify(creationCalls[0]), JSON.stringify(['Nova', { model: 'model-next' }]),
     'renderer creation must pass only the model override to the main process');
@@ -737,15 +735,15 @@ assert.match(mainHtml,
     /id="nextUiMainPanel"[^>]*>[\s\S]*<main class="main-content">[\s\S]*id="resizerRight"[\s\S]*id="notificationsSidebar"[\s\S]*<\/section>/s,
     'main chat, notification resizer, and notification sidebar must share one clipping host');
 assert.match(nextUiCss,
-    /html\[data-ui-mode="next"\] \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*var\(--next-wallpaper\);/s,
+    /html \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*var\(--next-wallpaper\);/s,
     'the shared host must own both the panel radius and the theme wallpaper clip');
 assert.match(nextUiCss,
-    /html\[data-ui-mode="next"\] \.main-content\s*\{[^}]*background:\s*transparent;/s,
+    /html \.main-content\s*\{[^}]*background:\s*transparent;/s,
     'the chat layer must not repaint the theme wallpaper outside the shared clip');
 assert.doesNotMatch(nextUiCss, /next-ui-panel-elevation|mask-image:\s*radial-gradient|clip-path:\s*polygon/,
     'the panel corner must not be reconstructed by fixed overlays, masks, or polygon approximations');
 assert.doesNotMatch(nextUiCss,
-    /html\[data-ui-mode="next"\] :is\(\.main-content, \.chat-header\)[^{]*\{[^}]*(?:border-radius|clip-path):/s,
+    /html :is\(\.main-content, \.chat-header\)[^{]*\{[^}]*(?:border-radius|clip-path):/s,
     'child chat layers must not draw a second copy of the shell corner');
 assert.match(uiComponentsCss,
     /\.vcp-ui-window-control-button\s*\{[^}]*-webkit-app-region:\s*no-drag/s,
@@ -855,11 +853,18 @@ behaviorTipTrigger.destroy();
 const behaviorFocusTarget = document.createElement('button');
 scope.append(behaviorFocusTarget);
 behaviorFocusTarget.focus();
-const behaviorModal = VCPUI.create('Modal', { title: 'Modal', content: document.createTextNode('Body') });
+let behaviorModalCloseCount = 0;
+const behaviorModal = VCPUI.create('Modal', {
+    title: 'Modal',
+    content: document.createTextNode('Body'),
+    onClose: () => { behaviorModalCloseCount += 1; },
+});
 scope.append(behaviorModal.element);
 assert.equal(behaviorModal.element.querySelector('.vcp-ui-modal').getAttribute('role'), 'dialog');
 behaviorModal.element.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 assert.ok(!behaviorModal.element.isConnected, 'Escape must close the modal');
+behaviorModal.close(null);
+assert.equal(behaviorModalCloseCount, 1, 'native modal close finalization must be idempotent');
 behaviorFocusTarget.remove();
 
 const switchControl = cases.find(controller => controller.element.classList.contains('vcp-ui-switch'));
@@ -1094,13 +1099,53 @@ waTabs.element.addEventListener('change', () => { waTabChanges += 1; });
 waTabs.element.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'a' }, bubbles: true }));
 assert.equal(waTabChanges, 1, 'wa-tab-show must be translated to change');
 
-const waModal = VCPUI.create('Modal', { title: 'Modal', content: document.createTextNode('Body') });
+let waModalCloseCount = 0;
+const waModal = VCPUI.create('Modal', {
+    title: 'Modal',
+    content: document.createTextNode('Body'),
+    onClose: () => { waModalCloseCount += 1; },
+});
 assert.equal(waModal.element.tagName.toLowerCase(), 'wa-dialog');
 waHost.append(waModal.element);
 await new Promise(resolve => setTimeout(resolve, 40));
 assert.equal(waModal.element.open, true, 'wa-dialog must open once connected');
 waModal.close(null);
 assert.equal(waModal.element.open, false);
+waModal.element.dispatchEvent(new CustomEvent('wa-hide', { bubbles: true, cancelable: true }));
+waModal.element.dispatchEvent(new CustomEvent('wa-after-hide', { bubbles: true }));
+assert.equal(waModalCloseCount, 1, 'programmatic and Web Awesome hide events must share one close finalizer');
+
+let dismissedWaModalCount = 0;
+const dismissedWaModal = VCPUI.create('Modal', {
+    title: 'Dismissed modal',
+    content: document.createTextNode('Body'),
+    onClose: () => { dismissedWaModalCount += 1; },
+});
+waHost.append(dismissedWaModal.element);
+const userHide = new CustomEvent('wa-hide', { bubbles: true, cancelable: true });
+dismissedWaModal.element.dispatchEvent(userHide);
+dismissedWaModal.element.dispatchEvent(new CustomEvent('wa-after-hide', { bubbles: true }));
+assert.equal(userHide.defaultPrevented, false);
+assert.equal(dismissedWaModalCount, 1, 'Web Awesome user dismissal must invoke the Modal onClose contract');
+
+let lockedWaModalCount = 0;
+const lockedWaModal = VCPUI.create('Modal', {
+    title: 'Locked modal',
+    content: document.createTextNode('Body'),
+    dismissible: false,
+    onClose: () => { lockedWaModalCount += 1; },
+});
+waHost.append(lockedWaModal.element);
+const blockedHide = new CustomEvent('wa-hide', { bubbles: true, cancelable: true });
+lockedWaModal.element.dispatchEvent(blockedHide);
+assert.equal(blockedHide.defaultPrevented, true, 'non-dismissible WA modal must block native dismiss requests');
+assert.equal(lockedWaModalCount, 0);
+lockedWaModal.close(null);
+assert.equal(lockedWaModalCount, 1, 'programmatic completion may close a non-dismissible modal');
+const programmaticHide = new CustomEvent('wa-hide', { bubbles: true, cancelable: true });
+lockedWaModal.element.dispatchEvent(programmaticHide);
+assert.equal(programmaticHide.defaultPrevented, false, 'programmatic close must bypass the user-dismiss lock');
+lockedWaModal.element.dispatchEvent(new CustomEvent('wa-after-hide', { bubbles: true }));
 
 const waTipTrigger = VCPUI.create('Button', { label: 'tip' });
 const waTooltip = VCPUI.create('Tooltip', { trigger: waTipTrigger, content: '提示', placement: 'top' });
@@ -1108,7 +1153,7 @@ assert.equal(waTooltip.element.tagName.toLowerCase(), 'wa-tooltip');
 assert.ok(waTipTrigger.element.id, 'tooltip trigger must get an id');
 assert.equal(waTooltip.element.getAttribute('for'), waTipTrigger.element.id);
 
-[waButton, waIconButton, waInput, waTextarea, waSelect, waCheckbox, waSwitch, waCard, waTabs, waModal, waTooltip, waTipTrigger].forEach(controller => controller.destroy());
+[waButton, waIconButton, waInput, waTextarea, waSelect, waCheckbox, waSwitch, waCard, waTabs, waModal, dismissedWaModal, lockedWaModal, waTooltip, waTipTrigger].forEach(controller => controller.destroy());
 assert.equal(waHost.querySelectorAll('[class^="vcp-ui-"]').length, 0, 'WA-backed controls must be removed on destroy');
 waHost.remove();
 

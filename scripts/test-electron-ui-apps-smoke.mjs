@@ -217,8 +217,15 @@ const LONG_TEXT_SCRIPT = () => {
 
 async function waitForChildPage(browser, key, deadline, label) {
     while (Date.now() < deadline) {
-        const found = (await browser.pages()).find(candidate => candidate.url().includes(key) && !candidate.isClosed());
-        if (found) return found;
+        // Do not enumerate browser.pages() while WebContentsView targets are
+        // being created/destroyed: Puppeteer eagerly initializes every target
+        // and can race Network.enable against a target that is already
+        // closing. Select the matching target first, then attach only to it.
+        const target = browser.targets().find(candidate => candidate.url().includes(key));
+        if (target) {
+            const found = await target.page();
+            if (found && !found.isClosed()) return found;
+        }
         await sleep(150);
     }
     throw new Error(`${label} page (${key}) did not appear`);
@@ -226,7 +233,7 @@ async function waitForChildPage(browser, key, deadline, label) {
 
 async function ensureChildPageClosed(browser, key, deadline, label) {
     while (Date.now() < deadline) {
-        const leftover = (await browser.pages()).find(candidate => candidate.url().includes(key) && !candidate.isClosed());
+        const leftover = browser.targets().find(candidate => candidate.url().includes(key));
         if (!leftover) return;
         await sleep(120);
     }
@@ -394,10 +401,21 @@ const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-ui-apps-electro
 const nextSettings = {
     uiMode: 'next',
     enableDistributedServer: false,
-    vcpServerUrl: 'http://127.0.0.1:1',
-    vcpApiKey: 'smoke-test-key',
+    // First-run coverage: the canonical shell, settings and embedded IPC must
+    // be usable before the user configures a VCP server.
+    vcpServerUrl: '',
+    vcpApiKey: '',
 };
-const classicSettings = { ...nextSettings, uiMode: 'classic' };
+// Translator's unchanged upstream Classic page uses a blocking alert when its
+// server fields are empty. Keep the main-window first-run phase blank, then
+// use inert non-empty values for child-host coverage so the upstream alert
+// cannot freeze CDP before Puppeteer has attached to that WebContentsView.
+const embeddedNextSettings = {
+    ...nextSettings,
+    vcpServerUrl: 'http://127.0.0.1:1/v1/chat/completions',
+    vcpApiKey: 'electron-smoke-placeholder',
+};
+const classicSettings = { ...embeddedNextSettings, uiMode: 'classic' };
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify(nextSettings), 'utf8');
 const smokeAgentDir = path.join(appData, 'Agents', 'SmokeAgent');
 await fs.mkdir(smokeAgentDir, { recursive: true });
@@ -596,15 +614,93 @@ try {
         const trayDisplay = tray ? getComputedStyle(tray).display : 'missing';
         moreButton?.click();
         await new Promise(resolve => setTimeout(resolve, 360));
+        const firstDrawerItem = document.querySelector('#appTrayDrawerGrid > .app-tray-drawer-item');
+        const firstDrawerLabel = firstDrawerItem?.querySelector('.notes-button-label');
+        const firstDrawerIcon = firstDrawerItem?.querySelector('svg');
+        const settingsButton = document.getElementById('appTraySettingsBtn');
+        const firstDrawerRect = firstDrawerItem?.getBoundingClientRect();
+        const firstDrawerIconRect = firstDrawerIcon?.getBoundingClientRect();
+        const settingsRect = settingsButton?.getBoundingClientRect();
+        const drawerRect = drawer?.getBoundingClientRect();
+        const drawerGeometry = {
+            drawerWidth: drawerRect?.width || 0,
+            drawerBounds: drawerRect ? { left: drawerRect.left, right: drawerRect.right } : null,
+            viewportWidth: window.innerWidth,
+            itemHeight: firstDrawerRect?.height || 0,
+            labelFontSize: Number.parseFloat(getComputedStyle(firstDrawerLabel).fontSize) || 0,
+            iconWidth: firstDrawerIconRect?.width || 0,
+            iconHeight: firstDrawerIconRect?.height || 0,
+            settingsWidth: settingsRect?.width || 0,
+            settingsHeight: settingsRect?.height || 0,
+            clippedLabels: [...document.querySelectorAll('#appTrayDrawerGrid .notes-button-label')]
+                .filter(label => label.scrollWidth > label.clientWidth + 1)
+                .map(label => label.textContent?.trim()),
+            insideViewport: Boolean(drawerRect)
+                && drawerRect.left >= 0
+                && drawerRect.right <= window.innerWidth,
+            occludedItems: [...document.querySelectorAll('#appTrayDrawerGrid > .app-tray-drawer-item')]
+                .filter(item => {
+                    const rect = item.getBoundingClientRect();
+                    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                    return !hit || (hit !== item && !item.contains(hit));
+                })
+                .map(item => item.textContent?.trim()),
+            overflowingItems: [...document.querySelectorAll('#appTrayDrawerGrid > .app-tray-drawer-item')]
+                .filter(item => {
+                    const itemRect = item.getBoundingClientRect();
+                    return [...item.children].some(child => {
+                        const childRect = child.getBoundingClientRect();
+                        return childRect.left < itemRect.left - 1 || childRect.right > itemRect.right + 1;
+                    });
+                })
+                .map(item => item.textContent?.trim()),
+        };
         const opened = drawer?.classList.contains('active') === true
+            && getComputedStyle(drawer).visibility === 'visible'
+            && drawer.getAttribute('aria-hidden') === 'false'
+            && moreButton.getAttribute('aria-expanded') === 'true';
+        moreButton?.click();
+        const closing = drawer?.classList.contains('is-closing') === true
+            && drawer?.classList.contains('active') === false
+            && getComputedStyle(drawer).visibility === 'visible'
+            && getComputedStyle(drawer.closest('.notifications-sidebar')).overflow === 'visible';
+        const closed = drawer?.getAttribute('aria-hidden') === 'true'
+            && moreButton?.getAttribute('aria-expanded') === 'false';
+        await new Promise(resolve => setTimeout(resolve, 360));
+        const exitSettled = drawer?.classList.contains('is-closing') === false
+            && getComputedStyle(drawer).visibility === 'hidden';
+        moreButton?.click();
+        await new Promise(resolve => setTimeout(resolve, 40));
+        moreButton?.click();
+        await new Promise(resolve => setTimeout(resolve, 40));
+        moreButton?.click();
+        await new Promise(resolve => setTimeout(resolve, 360));
+        const rapidReopenStable = drawer?.classList.contains('active') === true
+            && drawer?.classList.contains('is-closing') === false
+            && drawer?.getAttribute('aria-hidden') === 'false'
+            && moreButton?.getAttribute('aria-expanded') === 'true'
             && getComputedStyle(drawer).visibility === 'visible';
         moreButton?.click();
-        return { trayDisplay, pinnedCount, drawerItemCount, opened };
+        await new Promise(resolve => setTimeout(resolve, 360));
+        return { trayDisplay, pinnedCount, drawerItemCount, opened, closing, closed, exitSettled, rapidReopenStable, drawerGeometry };
     });
     assert.equal(appTrayState.trayDisplay, 'flex', `Next app tray is not visible: ${JSON.stringify(appTrayState)}`);
     assert.ok(appTrayState.pinnedCount > 0, `Next app tray has no pinned shortcuts: ${JSON.stringify(appTrayState)}`);
     assert.ok(appTrayState.drawerItemCount > 0, `Next app tray drawer has no applications: ${JSON.stringify(appTrayState)}`);
     assert.equal(appTrayState.opened, true, `Next app tray drawer did not open: ${JSON.stringify(appTrayState)}`);
+    assert.equal(appTrayState.closing, true, `Next app tray drawer is clipped during its exit transition: ${JSON.stringify(appTrayState)}`);
+    assert.equal(appTrayState.closed, true, `Next app tray drawer state did not close: ${JSON.stringify(appTrayState)}`);
+    assert.equal(appTrayState.exitSettled, true, `Next app tray drawer did not settle after its exit transition: ${JSON.stringify(appTrayState)}`);
+    assert.equal(appTrayState.rapidReopenStable, true, `Next app tray drawer loses ownership when reopened during exit: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.drawerGeometry.drawerWidth >= 280 && appTrayState.drawerGeometry.drawerWidth <= 300, `Next app drawer does not follow the compact upstream rail width: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.drawerGeometry.itemHeight >= 31 && appTrayState.drawerGeometry.itemHeight <= 34, `Next app drawer hit target diverges from the upstream compact size: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.drawerGeometry.labelFontSize >= 14, `Next app drawer label is smaller than upstream: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.drawerGeometry.iconWidth >= 17 && appTrayState.drawerGeometry.iconWidth <= 19 && appTrayState.drawerGeometry.iconHeight >= 17 && appTrayState.drawerGeometry.iconHeight <= 19, `Next app drawer icon diverges from upstream: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.drawerGeometry.settingsWidth >= 27 && appTrayState.drawerGeometry.settingsWidth <= 29 && appTrayState.drawerGeometry.settingsHeight >= 27 && appTrayState.drawerGeometry.settingsHeight <= 29, `Next app drawer settings target diverges from upstream: ${JSON.stringify(appTrayState)}`);
+    assert.deepEqual(appTrayState.drawerGeometry.clippedLabels, [], `Next app drawer clips application labels: ${JSON.stringify(appTrayState)}`);
+    assert.equal(appTrayState.drawerGeometry.insideViewport, true, `Next app drawer leaves the viewport: ${JSON.stringify(appTrayState)}`);
+    assert.deepEqual(appTrayState.drawerGeometry.occludedItems, [], `Next app drawer is clipped or covered by its rail: ${JSON.stringify(appTrayState)}`);
+    assert.deepEqual(appTrayState.drawerGeometry.overflowingItems, [], `Next app drawer content overflows its item: ${JSON.stringify(appTrayState)}`);
     const parityControls = await page.evaluate(async () => {
         const originalCommands = window.MainChatCommands;
         const calls = [];
@@ -652,6 +748,8 @@ try {
         const memo = document.getElementById('nextUiNotificationMemo');
         const filter = document.getElementById('nextUiNotificationFilterToggle');
         const clear = document.getElementById('nextUiNotificationClear');
+        menu.hidden = true;
+        menuButton.setAttribute('aria-expanded', 'false');
         const openMenu = async () => {
             if (menu.hidden) menuButton.click();
             await tick();
@@ -758,12 +856,21 @@ try {
         const buttons = [...document.querySelectorAll('#appTrayPinnedApps > .capsule-button')];
         const state = {
             labelsHidden: buttons.every(button => getComputedStyle(button.querySelector('.notes-button-label')).display === 'none'),
+            accessibleNames: buttons.map(button => button.getAttribute('aria-label')),
+            tooltipLabels: buttons.map(button => button.dataset.tooltip),
             iconsVisible: buttons.every(button => {
                 const icon = button.querySelector('svg');
                 const rect = icon?.getBoundingClientRect();
                 return rect?.width >= 17 && rect?.height >= 17;
             }),
-            buttonOverflow: buttons.some(button => button.scrollWidth > button.clientWidth + 1),
+            buttonOverflow: buttons.some(button => {
+                const buttonRect = button.getBoundingClientRect();
+                return [...button.children].some(child => {
+                    if (getComputedStyle(child).display === 'none') return false;
+                    const childRect = child.getBoundingClientRect();
+                    return childRect.left < buttonRect.left - 1 || childRect.right > buttonRect.right + 1;
+                });
+            }),
             geometry: buttons.map(button => ({
                 clientWidth: button.clientWidth,
                 scrollWidth: button.scrollWidth,
@@ -776,8 +883,23 @@ try {
         return state;
     });
     assert.equal(narrowDock.labelsHidden, true, `narrow notification dock labels are visible: ${JSON.stringify(narrowDock)}`);
+    assert.ok(narrowDock.accessibleNames.every(Boolean), `narrow notification dock buttons have no accessible names: ${JSON.stringify(narrowDock)}`);
+    assert.deepEqual(narrowDock.tooltipLabels, narrowDock.accessibleNames, `narrow notification dock hints do not match their accessible names: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.iconsVisible, true, `narrow notification dock icons are clipped: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.buttonOverflow, false, `narrow notification dock buttons overflow: ${JSON.stringify(narrowDock)}`);
+    await page.$eval('#appTrayPinnedApps > .capsule-button', button => button.focus());
+    await new Promise(resolve => setTimeout(resolve, 220));
+    const dockTooltip = await page.$eval('#appTrayPinnedApps > .capsule-button', button => ({
+        label: button.getAttribute('aria-label'),
+        focused: button.matches(':focus-visible'),
+        content: getComputedStyle(button, '::before').content,
+        opacity: getComputedStyle(button, '::before').opacity,
+        visibility: getComputedStyle(button, '::before').visibility,
+    }));
+    assert.equal(dockTooltip.focused, true, `app tray keyboard hint trigger is not focused: ${JSON.stringify(dockTooltip)}`);
+    assert.equal(dockTooltip.content, `"${dockTooltip.label}"`, `app tray hint has the wrong content: ${JSON.stringify(dockTooltip)}`);
+    assert.ok(Number(dockTooltip.opacity) > 0.5, `app tray hint is not visibly transitioning in: ${JSON.stringify(dockTooltip)}`);
+    assert.equal(dockTooltip.visibility, 'visible', `app tray hint remains hidden: ${JSON.stringify(dockTooltip)}`);
     await page.waitForFunction(() => Boolean(window.askNovaController), { timeout: timeoutMs });
     const askNovaEntryState = await page.evaluate(() => ({
         buttons: document.querySelectorAll('button[data-ask-nova-target]').length,
@@ -859,6 +981,96 @@ try {
     await capture(page, 'main-showcase.png');
     summary.push({ surface: 'UI 组件库', mode: 'next', pass: true, lucide: 0, note: 'lazy-registers WA + 拉取 vendored bundle' });
 
+    // Production WA Modal dismissal must release the creation surface, while
+    // the durable create commit point blocks Escape/header/backdrop dismissal.
+    // Activate the main-window kernel through its real settings lifecycle;
+    // the component showcase deliberately owns an isolated comparison loader
+    // and therefore does not make VCPUI switch kernels by side effect.
+    await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
+    await page.waitForFunction(
+        () => window.VCPWebAwesome?.getRuntimeState?.().state === 'ready',
+        { timeout: timeoutMs }
+    );
+    await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
+    const createEntryState = await page.evaluate(async () => {
+        window.__nextDeltaOriginalCommands = window.MainChatCommands;
+        window.MainChatCommands = {
+            ...window.MainChatCommands,
+            createAgent: () => new Promise(resolve => { window.__nextDeltaResolveCreate = resolve; }),
+        };
+        const button = document.getElementById('nextUiCreateItemBtn');
+        button?.click();
+        await new Promise(resolve => setTimeout(resolve, 250));
+        return {
+            buttonPresent: Boolean(button),
+            controllerMounted: window.VCPNextShellController?.isMounted?.() === true,
+            hostPresent: Boolean(document.querySelector('.next-ui-create-dialog-host')),
+            dialogTag: document.querySelector('.next-ui-create-dialog-host')?.firstElementChild?.localName || '',
+            diagnostics: window.VCPNextShellController?.getDiagnostics?.() || null,
+        };
+    });
+    assert.equal(createEntryState.hostPresent, true,
+        `creation entry did not mount a host: ${JSON.stringify(createEntryState)}`);
+    assert.equal(createEntryState.dialogTag, 'wa-dialog',
+        `creation entry did not select the Web Awesome dialog kernel: ${JSON.stringify(createEntryState)}`);
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
+
+    await page.evaluate(() => document.getElementById('nextUiCreateItemBtn')?.click());
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    const lockedCreateDismissal = await page.evaluate(async () => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        const form = host?.querySelector('.next-ui-create-dialog-form');
+        const name = form?.querySelector('wa-input, input');
+        if (name) {
+            name.value = 'Delta Contract Agent';
+            name.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
+        form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const dialog = host?.querySelector('wa-dialog');
+        const hide = new CustomEvent('wa-hide', { bubbles: true, cancelable: true });
+        dialog?.dispatchEvent(hide);
+        return {
+            blocked: hide.defaultPrevented,
+            connected: Boolean(host?.isConnected),
+        };
+    });
+    assert.deepEqual(lockedCreateDismissal, { blocked: true, connected: true },
+        `durable creation did not lock WA dismissal: ${JSON.stringify(lockedCreateDismissal)}`);
+    await page.evaluate(() => window.__nextDeltaResolveCreate?.({ success: false, error: 'controlled creation failure' }));
+    await page.waitForFunction(() => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        return host?.textContent?.includes('controlled creation failure');
+    }, { timeout: timeoutMs });
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
+    await page.evaluate(() => {
+        window.MainChatCommands = {
+            ...window.MainChatCommands,
+            createAgent: async () => ({ success: true, navigationSuccess: true }),
+        };
+        document.getElementById('nextUiCreateItemBtn')?.click();
+    });
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    await page.evaluate(() => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        const input = host?.querySelector('wa-input, input');
+        if (input) {
+            input.value = 'Successful Delta Agent';
+            input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
+        host?.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
+    await page.evaluate(() => {
+        window.MainChatCommands = window.__nextDeltaOriginalCommands;
+        delete window.__nextDeltaOriginalCommands;
+        delete window.__nextDeltaResolveCreate;
+    });
+    summary.push({ surface: '创建助手 Modal', mode: 'next', pass: true, lucide: 0, note: 'WA Escape 释放资源，提交中禁止用户关闭，成功提交可完成关闭' });
+
     // 3. Global settings modal is enhanced in next mode + keyboard flow.
     await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
@@ -918,7 +1130,7 @@ try {
         enhanced: window.VCPUISettingsBridge?.enhancedCount || 0,
         promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
     }));
-    for (let cycle = 0; cycle < 12; cycle += 1) {
+    for (let cycle = 0; cycle < 20; cycle += 1) {
         await page.evaluate(() => {
             window.uiManager.switchToTab('agents');
             window.uiManager.switchToTab('settings');
@@ -933,10 +1145,12 @@ try {
     assert.equal((await browser.pages()).length, settingsProcessBaseline, 'agent settings visits leaked renderer/WebContents processes');
     assert.equal(settingsDomAfter.enhanced, settingsDomBaseline.enhanced, `agent settings adapters accumulated: ${JSON.stringify({ settingsDomBaseline, settingsDomAfter })}`);
     assert.ok(settingsDomAfter.promptNodes <= settingsDomBaseline.promptNodes + 4, `agent prompt DOM accumulated: ${JSON.stringify({ settingsDomBaseline, settingsDomAfter })}`);
-    summary.push({ surface: 'Agent 设置生命周期', mode: 'next', pass: true, lucide: 0, note: '12 次往返不增加 WebContents、VCPUI adapter 或提示词 DOM' });
+    summary.push({ surface: 'Agent 设置生命周期', mode: 'next', pass: true, lucide: 0, note: '20 次往返不增加 WebContents、VCPUI adapter 或提示词 DOM' });
 
     // 4. Active child presentations plus upstream-Classic host integration.
+    await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify(embeddedNextSettings), 'utf8');
     for (const app of EMBEDDED_APPS) {
+        console.log(`[electron-ui-apps] opening ${app.name}`);
         const label = `next:${app.name}`;
         await page.evaluate((appDefinition) => window.topTabManager.openEmbeddedApp(appDefinition), {
             id: app.id, action: app.action, name: app.name,
@@ -967,6 +1181,7 @@ try {
             );
             assert.equal(page.isClosed(), false, 'embedded Escape cascaded into the main window');
             for (let cycle = 0; cycle < 4; cycle += 1) {
+                console.log(`[electron-ui-apps] reopening ${app.name} cycle ${cycle + 1}`);
                 await page.evaluate((appDefinition) => window.topTabManager.openEmbeddedApp(appDefinition), {
                     id: app.id, action: app.action, name: app.name,
                 });
@@ -1015,7 +1230,7 @@ try {
     await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify(nextSettings), 'utf8');
     await writeProjectUiMode('next');
 
-    // 6. Main renderer: switch to classic tears the next-UI surfaces down.
+    // 6. Main renderer: a legacy Classic request stays on the canonical layout.
     await page.evaluate(() => window.uiModeManager.apply('classic', { cache: true }));
     await page.waitForFunction(() => {
         const input = document.getElementById('globalSettingsForm')?.querySelector('input[id]');
@@ -1024,7 +1239,7 @@ try {
     const classicMainStyle = await page.evaluate(() => ({
         fontSize: getComputedStyle(document.body).fontSize,
         materialOpticsPresent: Boolean(document.getElementById('vcpMaterialOptics')),
-        classicTitlebarVisible: getComputedStyle(document.querySelector('.title-bar')).display !== 'none',
+        classicTitlebarPresent: Boolean(document.querySelector('.title-bar')),
         nextTopbarHidden: getComputedStyle(document.getElementById('nextUiTopbar')).display === 'none',
         nextSettingsShellPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell')),
         webAwesomeElementCount: document.querySelectorAll('wa-button, wa-input, wa-textarea, wa-select, wa-switch, wa-checkbox').length,
@@ -1051,20 +1266,20 @@ try {
             .map(node => node.textContent.trim())
             .filter(Boolean),
     }));
-    assert.equal(classicMainStyle.fontSize, '15px', `Classic body typography was changed by Next Appearance: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.materialOpticsPresent, false, `Classic retained Next material runtime DOM: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.classicTitlebarVisible, true, `Classic title bar is not visible: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.nextTopbarHidden, true, `Next top bar leaked into Classic: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.nextSettingsShellPresent, false, `Next SettingsShell leaked into Classic: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.webAwesomeElementCount, 0, `Web Awesome controls leaked into Classic main DOM: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.fontSize, '16px', `legacy mode request changed canonical typography: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.materialOpticsPresent, true, `legacy mode request tore down canonical material state: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.classicTitlebarPresent, false, `retired title bar remains in the DOM: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.nextTopbarHidden, false, `canonical top bar disappeared: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.nextSettingsShellPresent, true, `canonical SettingsShell disappeared: ${JSON.stringify(classicMainStyle)}`);
+    assert.ok(classicMainStyle.webAwesomeElementCount > 0, `canonical controls disappeared: ${JSON.stringify(classicMainStyle)}`);
     classicMainStyle.composerButtons.forEach(button => {
-        assert.equal(button.hasSvg, true, `Classic composer button lost its SVG icon: ${JSON.stringify(button)}`);
-        assert.deepEqual(button.leakedText, [], `Classic composer button exposed icon text: ${JSON.stringify(button)}`);
-        assert.notEqual(button.width, 'auto', `Classic composer button has unstable width: ${JSON.stringify(button)}`);
-        assert.notEqual(button.height, 'auto', `Classic composer button has unstable height: ${JSON.stringify(button)}`);
+        assert.equal(button.hasSvg, true, `shared composer button lost its SVG icon: ${JSON.stringify(button)}`);
+        assert.deepEqual(button.leakedText, [], `shared composer button exposed icon text: ${JSON.stringify(button)}`);
+        assert.notEqual(button.width, 'auto', `shared composer button has unstable width: ${JSON.stringify(button)}`);
+        assert.notEqual(button.height, 'auto', `shared composer button has unstable height: ${JSON.stringify(button)}`);
     });
     classicMainStyle.classicNotificationControls.forEach(control => {
-        assert.equal(control.present, true, `Classic notification shortcut is missing: ${JSON.stringify(control)}`);
+        assert.equal(control.present, false, `retired notification proxy remains hidden in the DOM: ${JSON.stringify(control)}`);
     });
     assert.equal(classicMainStyle.wallpaperControlPresent, true, `Classic video wallpaper control is missing: ${JSON.stringify(classicMainStyle)}`);
     assert.equal(classicMainStyle.wallpaperControlHasSvg, true, `Classic video wallpaper control lost its SVG icon: ${JSON.stringify(classicMainStyle)}`);
@@ -1074,25 +1289,22 @@ try {
     await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout: timeoutMs });
     const classicSettingsNavigation = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
-        const navItems = [...modal.querySelectorAll('.settings-nav-item')];
-        const target = navItems.find(item => item.dataset.section === 'server-connection');
+        const navItems = [...modal.querySelectorAll('.vcp-ui-list-item')];
+        const target = navItems[1];
         target?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         return {
             navCount: navItems.length,
-            activeNav: modal.querySelector('.settings-nav-item.active')?.dataset.section || '',
             activeSection: modal.querySelector('.settings-section.active')?.id || '',
             nextShell: Boolean(modal.querySelector('.vcp-ui-settings-shell')),
         };
     });
     assert.equal(classicSettingsNavigation.navCount, 8, `Classic settings category count changed: ${JSON.stringify(classicSettingsNavigation)}`);
-    assert.equal(classicSettingsNavigation.activeNav, 'server-connection', `Classic settings navigation click failed: ${JSON.stringify(classicSettingsNavigation)}`);
     assert.equal(classicSettingsNavigation.activeSection, 'section-server-connection', `Classic settings content did not follow navigation: ${JSON.stringify(classicSettingsNavigation)}`);
-    assert.equal(classicSettingsNavigation.nextShell, false, `Next SettingsShell mounted during Classic settings navigation: ${JSON.stringify(classicSettingsNavigation)}`);
+    assert.equal(classicSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(classicSettingsNavigation)}`);
     const classicAppearanceSettings = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
-        const appearanceNav = [...modal.querySelectorAll('.settings-nav-item')]
-            .find(item => item.dataset.section === 'appearance-settings');
+        const appearanceNav = [...modal.querySelectorAll('.vcp-ui-list-item')][2];
         appearanceNav?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         const workbench = modal.querySelector('.appearance-workbench-card');
@@ -1111,14 +1323,14 @@ try {
     assert.equal(classicAppearanceSettings.activeSection, 'section-appearance-settings', `Classic appearance section did not open: ${JSON.stringify(classicAppearanceSettings)}`);
     assert.equal(classicAppearanceSettings.workbenchDisplay, 'grid', `Classic appearance workbench fell back to unstyled flow: ${JSON.stringify(classicAppearanceSettings)}`);
     assert.notEqual(classicAppearanceSettings.workbenchColumns, 'none', `Classic appearance workbench columns are missing: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.layoutBorder, 'solid', `Classic layout selector retained native fieldset styling: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.notEqual(classicAppearanceSettings.layoutRadius, '0px', `Classic layout options retained native radio rows: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.equal(classicAppearanceSettings.layoutBorder, '', `retired layout selector remains visible: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.equal(classicAppearanceSettings.layoutRadius, '', `retired layout option remains visible: ${JSON.stringify(classicAppearanceSettings)}`);
     assert.equal(classicAppearanceSettings.homeVisualDisplay, 'flex', `Classic home visual controls are not aligned: ${JSON.stringify(classicAppearanceSettings)}`);
     await capture(page, 'main-settings-classic.png');
     await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
-    summary.push({ surface: '主窗口与全局设置', mode: 'classic', pass: true, lucide: 0, note: '上游标题栏、输入按钮、通知、壁纸与设置导航保持可用' });
+    summary.push({ surface: '主窗口与全局设置', mode: 'canonical', pass: true, lucide: 0, note: '旧 Classic 配置无法拆卸唯一布局，共享输入、通知、壁纸与设置保持可用' });
 
-    console.log('Electron UI apps smoke passed (boot WA gate, showcase, global settings, upstream-Classic child host integration, classic regression).');
+    console.log('Electron UI apps smoke passed (canonical main layout plus upstream-Classic child host integration).');
 } catch (error) {
     console.error(`Electron UI apps smoke failed:\n${error?.stack || error}`);
     for (const [label, errors] of [...pageErrors, ...consoleErrors]) {

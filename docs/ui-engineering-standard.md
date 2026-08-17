@@ -1,8 +1,10 @@
-# VCPChat 新版 UI 工程规范
+# VCPChat UI 工程规范
+
+> 当前拓扑与组件真实成熟度以 [`next-ui-current-state.md`](./next-ui-current-state.md) 为准。本规范定义新代码要求，不代表清单中所有组件已经达到 `stable`。
 
 ## 最终目标
 
-VCPChat 最终应形成一套只服务于新版 UI、以稳定 VCPUI API 组织、视觉一致且可持续演进的桌面端 UI 平台：所有新版业务界面都从统一 Token、字体图标、密度、组件、反馈与内部应用运行时中组合，不再复制控件样式或自行发明交互。基础控件允许由受控的 Web Awesome adapter 提供行为与无障碍内核，但业务模块不能直接依赖第三方标签或 token。经典 UI、主题 IPC、聊天领域逻辑和外部 Electron 应用保持清晰边界，设计系统不反向侵入这些区域；任何新增或迁移界面只有在静态门禁、组件契约测试、明暗/壁纸/透明主题、默认与最小窗口、键盘与焦点、reduced-motion、生命周期清理和真实 Electron 截图审查全部通过后，才视为完成。
+VCPChat 应形成一套以稳定 VCPUI API 组织、视觉一致且可持续演进的桌面端 UI 平台：新增 UI 从统一 Token、字体图标、密度、组件和反馈中组合，不复制控件样式或自行发明交互。基础控件允许由受控的 Web Awesome adapter 提供行为与无障碍内核，但业务模块不能直接依赖第三方标签或 token。上游聊天领域逻辑、业务子页面、主题 IPC 和外部 Electron 应用保持清晰边界；任何新增或迁移界面只有在静态门禁、组件契约测试、视觉矩阵、键盘与焦点、reduced-motion、生命周期清理和真实 Electron 审查全部通过后，才视为完成。
 
 ## 参考原则
 
@@ -29,17 +31,17 @@ VCPChat 保留自身约束：卡片圆角不超过 8px，不使用 `!important`�
 
 业务代码只能向下依赖，Foundation 和 Primitive 不得引用聊天、Agent、主题商店等业务概念。
 
-### 旧界面渐进迁移
+### 上游业务 DOM 的渐进增强
 
 现有设置页、侧栏和聊天区拥有大量稳定的 DOM ID、事件引用和 IPC 流程，不采用整页重写。迁移固定分为三步：
 
-该流程仅用于无法立即建立稳定业务接口的兼容表面。新的 Next surface 默认采用独立 presentation，并通过 command/store/IPC 共享业务；不得把 Enhance 当作全局扫描和改造 Classic DOM 的常规手段。详细边界见 `docs/next-ui-webawesome-roadmap.md`。
+该流程仅用于无法立即建立稳定业务接口的兼容表面。新的 Surface 默认采用独立 presentation，并通过 command/query/subscribe/IPC 共享业务；不得把 Enhance 当作全局扫描和改造上游 DOM 的常规手段。
 
 1. Token 化：先消除裸色值、液态玻璃和重复尺寸，但不改变业务 DOM。
-2. Enhance：通过 `VCPUI.enhance(name, existingElement)` 把原节点接入组件状态与生命周期，保留原事件和表单提交。`Select` 在 next mode 使用 Web Awesome Proxy：原生节点仍是表单与业务真源，可见控件由 `wa-select` 提供；classic mode 不创建 Proxy。
+2. Enhance：通过 `VCPUI.enhance(name, existingElement)` 把原节点接入组件状态与生命周期，保留原事件和表单提交。`Select` 可使用 Web Awesome Proxy：原生节点仍是表单与业务真源，可见控件由 `wa-select` 提供。
 3. Create：只有新页面或已完成业务解耦的区域才使用 `VCPUI.create(name)` 生成完整 DOM。
 
-增强控制器销毁时不得删除业务节点；切换经典 UI 时必须撤销组件类和 ARIA 增量。一个控件完成 Enhance 迁移并通过真实 Electron 验证后，才可将对应候选组件升级为 stable。
+增强控制器销毁时不得删除业务节点，并必须撤销自己添加的类、ARIA 和 Proxy。一个控件完成真实业务接入并通过 Electron 验证后，才可将对应候选组件升级为 stable。
 
 设置表单统一通过 `settings-bridge.js` 接入增强器。业务保存函数只负责数据与 IPC，并通过 `vcp-settings-save-result` 回报成功或失败；SettingsActionBar 负责脏状态、保存中状态、超时恢复和 ARIA，禁止业务模块再次自行实现一套保存状态机。
 
@@ -55,8 +57,8 @@ VCPChat 保留自身约束：卡片圆角不超过 8px，不使用 `!important`�
 
 ## 工程规则
 
-- 新版 UI 样式必须同时受 `html[data-ui-mode="next"] .vcp-ui-scope` 约束。
-- Web Awesome runtime 和 adapter 只能在 `data-ui-mode="next"` 下按需加载；classic 模式不得仅靠 CSS 隐藏一个仍在运行的新版组件树。
+- VCPUI 样式必须受明确的 `.vcp-ui-scope` 或具体 Surface root 约束；历史 `data-ui-mode="next"` 只能作为兼容选择器，不能成为运行时所有权。
+- Web Awesome runtime 和 adapter 只能由真实 VCPUI Surface 按需加载；业务子页面不得仅靠 CSS 隐藏一个仍在运行的组件树。
 - 颜色、字号、圆角、阴影、控件高度、间距和 Z-index 只能来自 Token。
 - 页面不嵌套卡片；卡片只用于可重复对象、弹窗或确实需要边界的工具。
 - 布局密度只能通过 `data-density="comfortable|compact"` 切换。

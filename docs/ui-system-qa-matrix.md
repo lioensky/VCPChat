@@ -1,5 +1,7 @@
 # 新版 UI Electron QA 矩阵
 
+> 状态：历史逐页验证台账，其中 Classic/Next 往返项目不再代表当前主窗口拓扑。最新完成度和 PR 阻塞项见 [`next-ui-current-state.md`](./next-ui-current-state.md)；提交前测试矩阵见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
+>
 > 2026-08-14：业务子页面采用空 allowlist。笔记与翻译也已恢复上游 Classic 文件，首个 PR 不再携带任何业务子页面 Next 重建。参见 `docs/ui-active-surface-policy.md`。
 
 本表只记录当前分支已经在真实 Electron 渲染器中执行过的检查。生成截图是本地诊断产物，不作为仓库内长期基线。

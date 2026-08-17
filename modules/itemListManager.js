@@ -9,6 +9,7 @@ window.itemListManager = (() => {
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     let uiHelper;
     let activeLoadItemsToken = 0;
+    let activeLoadItemsPromise = null;
 
     const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
@@ -1009,6 +1010,40 @@ window.itemListManager = (() => {
         refreshUnreadCounts();
     }
 
+    function trackedLoadItems() {
+        const expectedToken = activeLoadItemsToken + 1;
+        const promise = loadItems();
+        activeLoadItemsPromise = promise;
+        promise.catch(error => {
+            if (expectedToken === activeLoadItemsToken) publishCatalog('error', error?.message || String(error), 'load-threw');
+        }).finally(() => {
+            if (activeLoadItemsPromise !== promise) return;
+            activeLoadItemsPromise = null;
+        }).catch(() => {});
+        return promise;
+    }
+
+    function getCatalogSnapshot() {
+        return catalogChannel?.getSnapshot() || Object.freeze({
+            name: 'assistant-catalog',
+            value: { status: activeLoadItemsPromise ? 'loading' : 'ready', items: loadedItemsCache, error: null },
+            revision: activeLoadItemsToken,
+            source: 'fallback',
+        });
+    }
+
+    function whenSettled(options = {}) {
+        const wait = window.VCPSettlement?.waitForSettlement;
+        if (!wait) return Promise.reject(new Error('VCPSettlement is unavailable.'));
+        return wait({
+            ...options,
+            label: 'Identity catalog',
+            getSnapshot: getCatalogSnapshot,
+            subscribe: (listener, subscribeOptions) => catalogChannel?.subscribe(listener, subscribeOptions) || (() => false),
+            predicate: snapshot => snapshot.value?.status !== 'loading',
+        });
+    }
+
     /**
      * 仅刷新未读计数，而不重新加载整个列表
      */
@@ -1283,11 +1318,13 @@ window.itemListManager = (() => {
     // --- Public API ---
     return {
         init,
-        loadItems,
+        loadItems: trackedLoadItems,
         highlightActiveItem,
         resetMouseEventStates,
         findItemById, // Expose the new function
         getCatalogState: () => catalogChannel?.get() || publishCatalog('ready', null, 'query'),
+        getCatalogSnapshot,
+        whenSettled,
         subscribe: (listener, options) => catalogChannel?.subscribe(listener, options) || (() => false),
         updateLoadedItemConfig,
         updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用

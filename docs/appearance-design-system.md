@@ -1,14 +1,14 @@
 # VChat Appearance Design System
 
-> Status: Phase 1 and the Phase 4 appearance drawer are implemented; the first shell-layout selector is available.
+> Status: current appearance schema reference. Main-window layout selection has retired; current architecture and remaining compatibility work are tracked in [`next-ui-current-state.md`](./next-ui-current-state.md).
 
 ## Goal
 
-VChat appearance is no longer defined by one `classic/next` switch. The UI mode remains a compatibility boundary while visual choices become independent, persistent settings.
+VChat appearance is defined by independent, persistent visual choices. Historical `uiMode` values remain readable for settings compatibility but no longer select two main-window presentations.
 
 ```text
 uiMode
-  is presented as the Classic/Next home layout choice and still controls runtime compatibility
+  is a legacy compatibility field; it is not a live appearance control
 
 appearanceProfile
   controls density, radius, typography, font scale, content width and surface material
@@ -17,9 +17,7 @@ chatPresentationMode
   controls bubble, panel or immersive message presentation
 ```
 
-The three settings are intentionally separate. Changing message presentation must not silently change the shell, and changing radius must not mount or tear down Next runtime. Appearance Studio owns the user-facing home-layout choice; `uiMode` remains its compatibility storage field.
-
-New installations and settings files without `uiMode` start in `classic`. A user enters Next only after explicitly selecting and saving it; an existing saved `next` preference remains unchanged.
+The active settings are intentionally separate. Changing message presentation must not silently change the shell, and changing radius must not mount or tear down a second runtime. Appearance Studio owns visual preview/commit/rollback; it does not own main-window layout selection.
 
 ## Current Schema
 
@@ -47,11 +45,11 @@ data-vcp-content-width
 data-vcp-surface
 ```
 
-`modules/ui-system/appearance-engine.js` validates values, applies attributes, updates VCPUI density scopes and emits `vcp-appearance-changed`. `styles/appearance.css` maps those attributes to semantic tokens only under `html[data-ui-mode="next"]`; Classic remains owned by the upstream stylesheets.
+`modules/ui-system/appearance-engine.js` validates values, applies attributes, updates VCPUI density scopes and emits `vcp-appearance-changed`. `styles/appearance.css` maps those attributes to semantic tokens in the canonical main presentation. Remaining `data-ui-mode="next"` selectors are compatibility selectors, not evidence of a second main-window runtime.
 
 ## Compatibility Presets
 
-When an older settings file has no `appearanceProfile`, the engine derives a complete profile from `uiMode`:
+When an older settings file has no `appearanceProfile`, the engine may derive a complete migration profile from the historical `uiMode` value:
 
 | Compatibility mode | Density | Radius | Typography | Width | Surface |
 | --- | --- | --- | --- | --- | --- |
@@ -72,9 +70,9 @@ These are migration defaults, not permanent coupled modes. Once saved, every fie
 ## Boundaries
 
 - No main chat state, Agent Runtime or ToolBox behavior is changed.
-- `classic/next` is presented as two home layouts, but it is not removed internally. It still owns Next runtime loading, Web Awesome availability, child-app allowlists and legacy teardown.
-- The Appearance layer does not make classic pages VCPUI components.
-- Appearance Studio and Global Settings are the two intentional cross-mode VCPUI hosts. Global Settings always uses the Next SettingsShell, independent of the selected home layout, while agent/group settings still follow the home-layout runtime. Their CSS/token exceptions are explicitly allowlisted; the UI-system guard rejects other cross-mode selectors.
+- Appearance does not control main-window runtime ownership or business child-page policy.
+- The Appearance layer does not make upstream child pages VCPUI components.
+- Appearance Studio and Global Settings are canonical main-window Surfaces. Agent/group settings retain their existing business DOM and may be locally enhanced without becoming a second presentation.
 
 ## Delivery Roadmap
 
@@ -134,5 +132,5 @@ npm run test:appearance-engine
 npm run check:ui-system
 ```
 
-Visual acceptance must cover classic and next modes, light and dark themes, narrow and wide windows, wallpaper enabled/disabled, and embedded child pages using their upstream Classic presentation.
-Global Settings acceptance must additionally verify category switching, search, close/reopen and layout changes while the dialog is open in both home layouts.
+Visual acceptance must cover light and dark themes, narrow and wide windows, wallpaper enabled/disabled, and embedded child pages using their upstream presentation.
+Global Settings acceptance must additionally verify category switching, search, close/reopen, preview, commit and rollback in the canonical main layout.

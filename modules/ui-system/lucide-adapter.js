@@ -780,10 +780,7 @@
     }
 
     function isNextUiIcon(element) {
-        return (document.documentElement.dataset.uiMode === 'next'
-                || document.documentElement.classList.contains('vcp-appearance-studio-host')
-                || document.documentElement.classList.contains('vcp-global-settings-host'))
-            && element instanceof Element
+        return element instanceof Element
             && element.classList.contains('vcp-ui-icon')
             && element.closest('.vcp-ui-scope');
     }
@@ -852,8 +849,5 @@
     document.addEventListener('DOMContentLoaded', () => {
         refresh(document);
         observer.observe(document.body, { childList: true, subtree: true });
-    });
-    window.addEventListener('ui-mode-changed', event => {
-        if (event.detail?.mode === 'next') requestAnimationFrame(() => refresh(document));
     });
 })();

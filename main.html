@@ -20,6 +20,9 @@
     <script src="modules/ui-system/task-handle.js"></script>
     <script src="modules/ui-system/contribution-registry.js"></script>
     <script src="modules/ui-system/state-channel.js"></script>
+    <script src="modules/ui-system/settlement.js"></script>
+    <script src="modules/ui-system/settings-settlement.js"></script>
+    <script src="modules/services/windowStateService.js"></script>
     <script src="modules/ui-system/surface-controller.js"></script>
     <script src="modules/ui-system/lifecycle-inspector.js"></script>
     <script src="modules/uiModeManager.js"></script>
@@ -39,60 +42,6 @@
 </head>
 
 <body>
-    <div class="seam-fixer" id="title-bar-seam-fixer"></div>
-    <div class="title-bar">
-        <div class="title-bar-text"><img src="assets/icon.png" alt="Logo" class="title-bar-logo"> VCPChat</div>
-        <div class="title-bar-controls">
-            <div class="title-bar-view-switcher">
-                <button id="themes-btn" class="title-bar-button" title="主题商店"
-                    aria-haspopup="true" aria-controls="chat-presentation-quick-switcher"
-                    onclick="(window.chatAPI || window.electronAPI)?.openThemesWindow?.()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"
-                        style="width: 12px; height: 12px;">
-                        <path
-                            d="M15.825.12a.5.5 0 0 1 .132.584c-1.53 3.43-4.743 8.17-7.095 10.64a6.067 6.067 0 0 1-2.373 1.534c-.018.227-.06.538-.16.868-.201.659-.667 1.479-1.708 1.74a8.118 8.118 0 0 1-3.078.132 3.659 3.659 0 0 1-.562-.135 1.382 1.382 0 0 1-.466-.247.714.714 0 0 1-.204-.288.622.622 0 0 1 .004-.443c.095-.245.316-.38.461-.452.394-.197.625-.453.867-.826.095-.144.184-.297.287-.472l.117-.198c.151-.255.326-.5.527-.734.206-.236.438-.46.693-.659.26-.2.548-.37.848-.487.306-.12.624-.19.958-.21a3.36 3.36 0 0 1 .82.025c.28.04.554.12.81.24.26.12.5.28.7.49.2.21.36.46.48.74.12.28.2.6.22.94.02.34-.02.69-.1.99-.08.3-.2.59-.35.86-.15.27-.35.52-.58.75-.23.23-.5.43-.78.58-.28.15-.59.26-.92.32-.33.06-.67.06-1.01-.02a4.007 4.007 0 0 1-1.12-.328.5.5 0 0 1-.28-.88c.24-.17.54-.38.87-.58.33-.19.68-.42 1.05-.68.37-.26.76-.55 1.18-.86.42-.3.87-.62 1.34-.94.47-.32.96-.64 1.48-.96.52-.32 1.05-.63 1.6-.92.55-.29 1.1-.56 1.65-.8.55-.24 1.1-.47 1.6-.68.5-.2.95-.38 1.36-.51a.5.5 0 0 1 .585.132z" />
-                    </svg>
-                </button>
-                <div id="chat-presentation-quick-switcher" class="chat-presentation-quick-switcher"
-                    role="radiogroup" aria-label="聊天显示模式">
-                    <button type="button" class="chat-presentation-quick-option"
-                        data-presentation-mode="bubble" role="radio" aria-checked="false">气泡</button>
-                    <button type="button" class="chat-presentation-quick-option"
-                        data-presentation-mode="panel" role="radio" aria-checked="false">统一</button>
-                    <button type="button" class="chat-presentation-quick-option"
-                        data-presentation-mode="immersive" role="radio" aria-checked="false">刊物</button>
-                </div>
-            </div>
-            <button id="minimize-to-tray-btn" class="title-bar-button" title="最小化到托盘">
-                <svg viewBox="0 0 10 10">
-                    <polygon points="5,8 0,2 10,2"></polygon>
-                </svg>
-            </button>
-            <button id="minimize-btn" class="title-bar-button" title="最小化">
-                <svg x="0px" y="0px" viewBox="0 0 10.2 1">
-                    <rect x="0" y="0" width="10.2" height="1"></rect>
-                </svg>
-            </button>
-            <button id="maximize-btn" class="title-bar-button" title="最大化">
-                <svg viewBox="0 0 10 10">
-                    <path d="M0,0v10h10V0H0z M9,9H1V1h8V9z"></path>
-                </svg>
-            </button>
-            <button id="restore-btn" class="title-bar-button" title="还原" style="display: none;">
-                <svg viewBox="0 0 10.2 10.1">
-                    <path d="M2.1,0v2H0v8.1h8.2v-2h2V0H2.1z M7.2,9.2H1.1V3h6.1V9.2z M9.2,7.1h-1V2H3.1V1h6.1V7.1z">
-                    </path>
-                </svg>
-            </button>
-            <button id="close-btn" class="title-bar-button close-button" title="关闭">
-                <svg viewBox="0 0 10 10">
-                    <polygon
-                        points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5">
-                    </polygon>
-                </svg>
-            </button>
-        </div>
-    </div>
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
         <nav class="next-ui-tab-strip" aria-label="页面标签">
@@ -324,35 +273,7 @@
                     -->
                     </ul>
                 </div>
-                <div class="sidebar-actions">
-                    <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                            aria-hidden="true">
-                            <path d="M2 21a8 8 0 0 1 13.292-6"></path>
-                            <circle cx="10" cy="8" r="5"></circle>
-                            <path d="M19 16v6"></path>
-                            <path d="M22 19h-6"></path>
-                        </svg>
-                        <span class="sidebar-button-label">
-                            <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                            <span class="sidebar-button-keyword">Agent</span>
-                        </span>
-                    </button>
-                    <button id="createNewGroupBtn" class="sidebar-button create-group-btn small-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                            aria-hidden="true">
-                            <path d="M18 21a8 8 0 0 0-16 0"></path>
-                            <circle cx="10" cy="8" r="5"></circle>
-                            <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path>
-                        </svg>
-                        <span class="sidebar-button-label">
-                            <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                            <span class="sidebar-button-keyword">Group</span>
-                        </span>
-                    </button>
-                </div>
+
             </div>
             <div class="sidebar-tab-content" id="tabContentTopics" role="tabpanel" aria-hidden="true">
                 <!-- 话题内容区 -->
@@ -832,28 +753,7 @@
                             </path>
                         </svg>
                     </button>
-                    <button id="themeToggleBtn" class="header-button" title="深色/浅色模式">
-                        <svg id="sun-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <circle cx="12" cy="12" r="4"></circle>
-                            <path d="M12 2v2"></path>
-                            <path d="M12 20v2"></path>
-                            <path d="m4.93 4.93 1.41 1.41"></path>
-                            <path d="m17.66 17.66 1.41 1.41"></path>
-                            <path d="M2 12h2"></path>
-                            <path d="M20 12h2"></path>
-                            <path d="m6.34 17.66-1.41 1.41"></path>
-                            <path d="m19.07 4.93-1.41 1.41"></path>
-                        </svg>
-                        <svg id="moon-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path
-                                d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401">
-                            </path>
-                        </svg>
-                    </button>
+
                     <button id="currentAgentSettingsBtn" class="header-button" title="当前Agent设置" style="display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44"
                             aria-hidden="true">
@@ -975,34 +875,7 @@
                     <div id="digitalClock" class="digital-clock"></div>
                     <div id="dateDisplay" class="date-display"></div>
                 </div>
-                <div class="notification-header-actions">
-                    <button id="openForumBtn" class="header-button" title="左键VCP论坛/右键VCPMemo中心">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-                            <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"></path>
-                        </svg>
-                    </button>
-                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（左键开关过滤/右键通知设置）">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" class="lucide lucide-funnel-plus-icon lucide-funnel-plus"
-                            aria-hidden="true">
-                            <path d="M13.354 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l1.218-1.348"></path>
-                            <path d="M16 6h6"></path>
-                            <path d="M19 3v6"></path>
-                        </svg>
-                    </button>
-                    <button id="clearNotificationsBtn" class="header-button" title="清空通知">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" class="lucide lucide-trash-icon lucide-trash" aria-hidden="true">
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                            <path d="M3 6h18"></path>
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                    </button>
-                </div>
+
                 <div class="next-ui-notification-actions">
                     <button id="nextUiNotificationMenuBtn" class="next-ui-notification-menu-trigger" type="button"
                         title="通知选项" aria-label="通知选项" aria-haspopup="menu"
@@ -1057,14 +930,16 @@
             <div id="vchatAppTray" class="notes-section">
                 <!-- App tray UI -->
                 <div id="appTrayPinnedApps" class="app-tray-pinned-apps"></div>
-                <button id="appTrayMoreBtn" class="app-tray-more-btn" title="更多应用">
+                <button id="appTrayMoreBtn" class="app-tray-more-btn" type="button"
+                    aria-label="更多应用" aria-controls="appTrayDrawer" aria-expanded="false" aria-haspopup="true"
+                    data-tooltip="更多应用">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="1"></circle>
                         <circle cx="19" cy="12" r="1"></circle>
                         <circle cx="5" cy="12" r="1"></circle>
                     </svg>
                 </button>
-                <div id="appTrayDrawer" class="app-tray-drawer">
+                <div id="appTrayDrawer" class="app-tray-drawer" role="region" aria-label="全部应用" aria-hidden="true">
                     <div class="app-tray-drawer-header">
                         <span class="app-tray-drawer-title">全部应用</span>
                         <div class="app-tray-drawer-actions">
@@ -1331,32 +1206,6 @@
                                         <span>打开工作台</span>
                                     </button>
                                 </div>
-                                <fieldset class="appearance-layout-selector" aria-labelledby="appearanceLayoutSelectorTitle">
-                                    <legend id="appearanceLayoutSelectorTitle">主页布局</legend>
-                                    <div class="appearance-layout-options">
-                                        <label class="appearance-layout-option" for="appearanceUiModeClassic">
-                                            <input type="radio" id="appearanceUiModeClassic" name="appearanceUiMode" value="classic">
-                                            <span class="appearance-layout-preview classic" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-                                            <span class="appearance-layout-copy"><strong>经典布局</strong><small>原版标题栏与三栏结构</small></span>
-                                            <svg class="appearance-layout-check" viewBox="0 0 24 24" fill="none"
-                                                stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                                                stroke-linejoin="round" aria-hidden="true">
-                                                <path d="m5 12 4 4L19 6"></path>
-                                            </svg>
-                                        </label>
-                                        <label class="appearance-layout-option" for="appearanceUiModeNext">
-                                            <input type="radio" id="appearanceUiModeNext" name="appearanceUiMode" value="next">
-                                            <span class="appearance-layout-preview next" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-                                            <span class="appearance-layout-copy"><strong>Next 布局</strong><small>标签顶栏与圆角内容区</small></span>
-                                            <svg class="appearance-layout-check" viewBox="0 0 24 24" fill="none"
-                                                stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                                                stroke-linejoin="round" aria-hidden="true">
-                                                <path d="m5 12 4 4L19 6"></path>
-                                            </svg>
-                                        </label>
-                                    </div>
-                                    <p class="appearance-layout-helper">切换主页外壳，不会改变主题、壁纸或聊天内容。</p>
-                                </fieldset>
                                 <div class="appearance-home-visual-setting">
                                     <span class="appearance-home-visual-copy">
                                         <strong>主页视觉文字</strong>
@@ -1384,8 +1233,6 @@
                                             value="语义级打穿 AI、UI/UX、APP 与人类想象力的边界">
                                     </label>
                                 </div>
-                                <!-- Compatibility field retained for integrations that still read the legacy checkbox. -->
-                                <input type="checkbox" id="enableNextUi" name="enableNextUi" hidden>
                                 <div class="settings-subsection settings-subsection-new appearance-settings-section">
                                     <div class="settings-subsection-heading">
                                         <div class="settings-subsection-title">外观系统</div>

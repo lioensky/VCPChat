@@ -1,49 +1,22 @@
 (() => {
     const api = () => window.chatAPI || window.electronAPI;
-    let maximized = false;
-
-    function syncMaximizeControl() {
-        const button = document.getElementById('nextUiMaximizeBtn');
-        const icon = button?.querySelector('.vcp-ui-icon');
-        const label = maximized ? '还原窗口' : '最大化窗口';
-        if (icon) {
-            if (window.VCPIcons?.set) window.VCPIcons.set(icon, maximized ? 'filter_none' : 'crop_square');
-            else icon.textContent = maximized ? 'filter_none' : 'crop_square';
-        }
-        button?.setAttribute('title', label);
-        button?.setAttribute('aria-label', label);
-        button?.setAttribute('aria-pressed', String(maximized));
-    }
-
-    api()?.onWindowMaximized?.(() => {
-        maximized = true;
-        syncMaximizeControl();
-    });
-    api()?.onWindowUnmaximized?.(() => {
-        maximized = false;
-        syncMaximizeControl();
-    });
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', syncMaximizeControl, { once: true });
-    } else {
-        syncMaximizeControl();
-    }
-
+    const windowCommand = (name, fallback) => window.VCPWindowState?.[name]
+        ? window.VCPWindowState[name]()
+        : fallback?.();
     function minimize() {
-        api()?.minimizeWindow?.();
+        return windowCommand('minimize', () => api()?.minimizeWindow?.());
     }
 
     function minimizeToTray() {
-        api()?.minimizeToTray?.();
+        return windowCommand('minimizeToTray', () => api()?.minimizeToTray?.());
     }
 
     function toggleMaximize() {
-        if (maximized) api()?.unmaximizeWindow?.();
-        else api()?.maximizeWindow?.();
+        return window.VCPWindowState?.toggleMaximize?.();
     }
 
     function close() {
-        api()?.closeWindow?.();
+        return windowCommand('close', () => api()?.closeWindow?.());
     }
 
     function openSettings() {
@@ -58,7 +31,8 @@
     }
 
     function toggleTheme() {
-        const nextTheme = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
+        const currentTheme = window.uiManager?.getThemeState?.()?.effective || 'light';
+        const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
         if (!window.VCPAppearanceStudio?.setThemeMode?.(nextTheme, { source: 'main-chat-command' })) {
             api()?.setTheme?.(nextTheme);
         }
@@ -109,15 +83,8 @@
     }
 
     function clearNotifications() {
-        const notificationsList = document.getElementById('notificationsList');
-        if (!notificationsList) return { success: false, removed: 0 };
-        let removed = 0;
-        notificationsList.querySelectorAll('.notification-item').forEach(item => {
-            if (item.dataset.protectedNotification === 'tool-approval') return;
-            item.remove();
-            removed += 1;
-        });
-        return { success: true, removed };
+        return window.notificationRenderer?.clearPersistentNotifications?.()
+            || { success: false, removed: 0 };
     }
 
     function isAborted(signal) {
@@ -203,6 +170,8 @@
     ]));
     window.MainChatCommands = Object.freeze({
         ...facade,
+        getWindowState: () => window.VCPWindowState?.getState?.() || Object.freeze({ ready: false, maximized: false }),
+        subscribeWindowState: (listener, options) => window.VCPWindowState?.subscribe?.(listener, options) || (() => false),
         execute: (id, ...args) => commandRegistry?.execute(id, ...args),
         list: () => commandRegistry?.list() || [],
         register: (definition, options) => commandRegistry?.register(definition, options),

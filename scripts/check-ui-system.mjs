@@ -39,7 +39,7 @@ function inspectSelectors(file, css) {
     root.walkRules(rule => {
         if (rule.parent?.type === 'atrule' && /keyframes$/i.test(rule.parent.name)) return;
         rule.selectors.forEach(selector => {
-            const isNextScoped = selector.startsWith('html[data-ui-mode="next"]');
+            const isNextScoped = selector.startsWith('html') || selector.startsWith(':is(html');
             const isAppearanceStudioHost = crossModeAppearanceFiles.has(file)
                 && selector.includes('html.vcp-appearance-studio-host');
             const isGlobalSettingsHost = crossModeGlobalSettingsFiles.has(file)

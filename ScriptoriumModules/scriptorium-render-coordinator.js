@@ -87,6 +87,17 @@
             const adapter = currentAdapter();
             const target = options.target || context.editHost;
             if (!target) throw new Error('Edit surface host is unavailable.');
+
+            // 渲染态输入会话拥有当前 contenteditable DOM 的所有权。
+            // IME 组合期间禁止销毁该 DOM；只保留最后一次渲染请求，待
+            // 编辑器完成“渲染态缓冲 -> 源码”对齐后再执行。
+            if (context.editorPort?.inputPending?.()) {
+                context.editorPort.deferRender?.(() =>
+                    renderEdit(options)
+                );
+                return state.editSurface;
+            }
+
             if (!options.force && cacheMatches('edit')) {
                 activateRuntime('edit');
                 return state.editSurface;

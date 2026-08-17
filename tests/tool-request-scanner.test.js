@@ -223,3 +223,43 @@ test('反引号包裹的协议示例不会被当作真实工具请求', async ()
     assert.equal(calls, 0);
     assert.equal(replaced, source);
 });
+
+test('工具请求与前后普通正文直接相邻时，替换结果自动补充边界换行', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_REQUEST_END_MARKER,
+        replaceToolRequestBlocks
+    } = await loadScanner();
+
+    const source =
+        `前置正文${TOOL_REQUEST_START_MARKER}` +
+        `tool_name:「始」Demo「末」,command:「始」Run「末」` +
+        `${TOOL_REQUEST_END_MARKER}后置正文`;
+
+    const replaced = replaceToolRequestBlocks(source, () => '<TOOL />');
+
+    assert.equal(replaced, '前置正文\n<TOOL />\n后置正文');
+});
+
+test('工具请求开始标记后紧接字段声明时仍能识别并补充边界换行', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_REQUEST_END_MARKER,
+        replaceToolRequestBlocks
+    } = await loadScanner();
+
+    const source =
+        `前置${TOOL_REQUEST_START_MARKER}` +
+        `tool_name:「始」Demo「末」,command:「始」Run「末」` +
+        `${TOOL_REQUEST_END_MARKER}后置`;
+
+    let calls = 0;
+    const replaced = replaceToolRequestBlocks(source, (fullMatch, content) => {
+        calls += 1;
+        assert.match(content, /tool_name:「始」Demo「末」/);
+        return '<TOOL />';
+    });
+
+    assert.equal(calls, 1);
+    assert.equal(replaced, '前置\n<TOOL />\n后置');
+});

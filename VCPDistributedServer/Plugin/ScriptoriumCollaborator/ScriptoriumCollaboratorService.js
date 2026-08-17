@@ -209,6 +209,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     query: '检索词',
     sourceKind: '源码类型',
     slideIndex: '幻灯片页码',
+    line: '插入行号',
     startLine: '起始行',
     endLine: '结束行',
     totalLines: '总行数',
@@ -218,6 +219,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     deckCss: '演示共享 CSS',
     context: '上下文源码',
     target: '目标源码',
+    insert: '插入源码',
     replace: '替换源码',
     replacement: '替换源码',
     heading: '章节标题',
@@ -275,6 +277,7 @@ const MARKDOWN_CODE_FIELDS = new Set([
     'deckCss',
     'context',
     'target',
+    'insert',
     'replace',
     'replacement',
 ]);
@@ -314,7 +317,14 @@ function codeLanguage(key, parent = {}) {
     const sourceKind = String(parent.sourceKind || '').toLowerCase();
     if (['deck-css', 'document-css'].includes(sourceKind)) return 'css';
     if (sourceKind === 'markdown-hybrid') return 'markdown';
-    if (['source', 'context', 'target', 'replace', 'replacement'].includes(key)) {
+    if ([
+        'source',
+        'context',
+        'target',
+        'insert',
+        'replace',
+        'replacement',
+    ].includes(key)) {
         return sourceKind === 'html' || /<\/?[a-z][\s\S]*>/i.test(String(parent[key] || ''))
             ? 'html'
             : 'text';
@@ -769,12 +779,20 @@ async function deleteSvgAssetPack(args, executionContext = {}) {
 }
 
 async function submitSourcePr(args, executionContext = {}) {
+    const hasInsert = Object.prototype.hasOwnProperty.call(args, 'insert');
     const replacements = args.replacements === undefined
-        ? [{
-            target: args.target,
-            replace: args.replace ?? args.replacement ?? '',
-            startLine: args.startLine,
-        }]
+        ? [
+            hasInsert
+                ? {
+                    insert: args.insert,
+                    line: args.line,
+                }
+                : {
+                    target: args.target,
+                    replace: args.replace ?? args.replacement ?? '',
+                    startLine: args.startLine,
+                },
+        ]
         : parseArray(args.replacements, 'replacements');
     const maid = authorFromMaid(args, executionContext);
     return call(args, 'submitSourcePr', {

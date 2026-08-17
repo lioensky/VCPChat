@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
 const Module = require('node:module');
 const {
     MAX_DETACH_COORDINATE,
@@ -20,6 +21,14 @@ test('detach coordinates are finite, rounded and bounded', () => {
     assert.equal(normalizeDetachPoint({ x: Infinity, y: 0 }), null);
     assert.equal(normalizeDetachPoint({ x: MAX_DETACH_COORDINATE + 1, y: 0 }), null);
     assert.equal(normalizeDetachPoint(null), null);
+});
+
+test('embedded sessions keep child presentation policy independent from main settings', () => {
+    const source = fs.readFileSync(require.resolve('../modules/services/embeddedAppSessionManager.js'), 'utf8');
+    assert.doesNotMatch(source, /settings-updated|ui-mode-updated/,
+        'canonical main settings must not change the presentation of existing child sessions');
+    assert.match(source, /const uiMode = 'classic'/,
+        'unmigrated embedded business pages must keep their explicit Classic policy');
 });
 
 test('embedded session manager enforces a bounded native view pool', async () => {
@@ -66,7 +75,6 @@ test('embedded session manager enforces a bounded native view pool', async () =>
             mainWindow,
             powerMonitor,
             launchStandalone: async () => ({ success: true }),
-            readSettings: async () => ({ uiMode: 'classic' }),
         });
         const actions = [
             'open-notes-window', 'open-note-mini-window', 'open-translator-window',
