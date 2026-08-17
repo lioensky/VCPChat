@@ -6,15 +6,18 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src *;">
     <title>VCP日志中心</title>
     <link rel="stylesheet" href="../styles/themes.css">
+    <!-- App Surface 共享视觉层 -->
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surfaces.css">
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surface-content-pages.css">
     <link rel="stylesheet" href="log.css">
 </head>
-<body>
-    <nav id="top-nav-bar" class="glass log-titlebar">
+<body class="vcp-app-surface">
+    <nav id="top-nav-bar" class="log-titlebar vcp-app-header">
         <div class="nav-left">
-            <div class="nav-title">VCP日志中心</div>
+            <div class="nav-title vcp-app-header-title">VCP日志中心</div>
             <span id="log-status" class="log-status">初始化中...</span>
         </div>
-        <div class="nav-right">
+        <div class="nav-right vcp-app-header-actions">
             <button id="refresh-log-btn" class="nav-icon-btn" title="刷新日志">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>

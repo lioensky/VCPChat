@@ -8,6 +8,9 @@
     <title>VCP 论坛</title>
     <!-- Assuming themes.css provides the base wallpaper variables if available -->
     <link rel="stylesheet" href="../styles/themes.css">
+    <!-- App Surface 共享视觉层 -->
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surfaces.css">
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surface-content-pages.css">
     <link rel="stylesheet" href="forum.css">
     <!-- KaTeX for LaTeX rendering -->
     <link rel="stylesheet" href="../vendor/katex.min.css">
@@ -16,19 +19,19 @@
     <script src="../vendor/marked.min.js"></script>
     <script src="../modules/emoticonManager.js"></script>
 </head>
-<body>
+<body class="vcp-app-surface">
     <!-- Emoticon Panel (hidden by default) -->
     <div id="emoticon-panel" class="emoticon-panel"></div>
 
     <!-- Immersive Top Navigation Bar -->
-    <nav id="top-nav-bar" class="glass">
+    <nav id="top-nav-bar" class="vcp-app-header">
         <div class="nav-left">
-            <div class="nav-title">VCP Forum</div>
-            <select id="board-filter" class="glass search-glass" style="width: auto; cursor: pointer;">
+            <div class="nav-title vcp-app-header-title">VCP Forum</div>
+            <select id="board-filter" class="search-glass" style="width: auto; cursor: pointer;">
                 <option value="all">✨ 全部板块</option>
             </select>
         </div>
-        <div class="nav-right">
+        <div class="nav-right vcp-app-header-actions">
             <input type="search" id="search-posts" class="search-glass" placeholder="🔍 搜索灵感...">
             <button id="refresh-posts" class="nav-icon-btn" title="刷新瀑布流">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
@@ -41,14 +44,14 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             </button>
             <!-- Window Controls (Integrated nicely) -->
-            <div style="width: 1px; height: 20px; background: var(--glass-border); margin: 0 10px;"></div>
+            <div class="nav-divider"></div>
             <button id="minimize-forum-btn" class="nav-icon-btn" title="最小化">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             <button id="maximize-forum-btn" class="nav-icon-btn" title="最大化">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
             </button>
-            <button id="close-forum-btn" class="nav-icon-btn" title="关闭" style="color: var(--danger-color); opacity: 1;">
+            <button id="close-forum-btn" class="nav-icon-btn" title="关闭" style="color: var(--vcp-app-danger);">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
         </div>
@@ -62,8 +65,8 @@
                 <input type="text" id="username" class="glass-input" placeholder="用户名 / 凭据">
                 <input type="password" id="password" class="glass-input" placeholder="密码">
                 <div style="text-align: left; margin-bottom: 20px; padding-left: 5px;">
-                    <input type="checkbox" id="remember-me" style="accent-color: var(--accent-color);">
-                    <label for="remember-me" style="color: var(--text-secondary); font-size: 0.9rem;">记住我，下次自动进入</label>
+                <input type="checkbox" id="remember-me" style="accent-color: var(--vcp-app-accent);">
+                <label for="remember-me" style="color: var(--vcp-app-text-secondary); font-size: 0.9rem;">记住我，下次自动进入</label>
                 </div>
                 <button id="login-button" class="jelly-btn">进入论坛</button>
                 <p id="login-error" class="error-jiggle" style="min-height: 20px; margin-top: 15px;"></p>
@@ -127,8 +130,8 @@
             <input type="text" id="settings-reply-name" class="glass-input" placeholder="留空则使用登录用户名">
 
             <div style="text-align: left; margin-bottom: 20px; padding-left: 5px;">
-                <input type="checkbox" id="settings-remember-me" style="accent-color: var(--accent-color);">
-                <label for="settings-remember-me" style="color: var(--text-secondary); font-size: 0.9rem;">记住登录信息，下次自动进入</label>
+                <input type="checkbox" id="settings-remember-me" style="accent-color: var(--vcp-app-accent);">
+                <label for="settings-remember-me" style="color: var(--vcp-app-text-secondary); font-size: 0.9rem;">记住登录信息，下次自动进入</label>
             </div>
             
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -144,8 +147,8 @@
             <h3 id="confirm-title" style="margin-top: 0; margin-bottom: 20px;">确认操作</h3>
             <p id="confirm-message" style="margin-bottom: 30px; line-height: 1.6;"></p>
             <div style="display: flex; gap: 15px; justify-content: center;">
-                <button id="confirm-cancel-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--glass-bg);">取消</button>
-                <button id="confirm-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--danger-color);">确定</button>
+                <button id="confirm-cancel-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--vcp-app-fill-2); border-color: var(--vcp-app-border); color: var(--vcp-app-text);">取消</button>
+                <button id="confirm-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--vcp-app-danger); border-color: var(--vcp-app-danger);">确定</button>
             </div>
         </div>
     </div>

@@ -1,410 +1,231 @@
-/* styles/forum.css */
-
-/* Inherit colors from themes.css for consistency */
-/* Note: CSS variables are inherited from themes.css which is loaded first */
-/* We define local aliases that reference the theme variables */
-
-/* Dark theme (default) */
-body:not(.light-theme) {
-    --glass-bg: var(--panel-bg, rgba(13, 42, 56, 0.8));
-    --glass-border: var(--border-color, rgba(255, 255, 255, 0.1));
-    --glass-shine: var(--accent-bg, rgba(255, 255, 255, 0.2));
-    --text-primary: var(--primary-text, #E0E6E9);
-    --text-secondary: var(--secondary-text, #d8e6ec);
-    --accent-color: var(--button-bg, #DAA520);
-}
-
-body.light-theme {
-    /* Light theme inherits from themes.css automatically */
-    --glass-bg: var(--panel-bg, rgba(255, 255, 255, 0.85));
-    --glass-border: var(--border-color, rgba(0, 0, 0, 0.1));
-    --glass-shine: var(--accent-bg, rgba(0, 0, 0, 0.1));
-    --text-primary: var(--primary-text, #34495E);
-    --text-secondary: var(--secondary-text, #6C7A89);
-    --accent-color: var(--button-bg, #4A90E2);
-}
-
-/*
- * --text-on-accent 与 --danger-color 直接继承 themes.css。
- * 不在这里将变量定义为 var(--自身)，避免 CSS 自定义属性循环失效。
- */
+/* Forummodules/forum.css — App Surface 视觉刷新
+   所有颜色/圆角/控件尺寸来自 styles/app-surfaces 的 --vcp-app-* token；
+   glass/glass-input/jelly-btn/nav-icon-btn/modal-glass-content 的扁平化
+   映射在 styles/app-surfaces/app-surface-content-pages.css（vcp.page 层）。 */
 
 * {
     box-sizing: border-box;
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 body {
     margin: 0;
     font-family: 'Segoe UI', system-ui, sans-serif;
-    color: var(--text-primary);
+    color: var(--vcp-app-text);
     overflow: hidden;
-    /* Assume background image is set by parent theme or loaded elsewhere. 
-       If not, it will just be dark/light base. */
-    background-attachment: fixed;
-    background-size: cover;
-    background-position: center;
+    background-image: none;
+    background-color: var(--vcp-app-bg);
 }
 
-/* --- Frosted Glass Utility Classes --- */
-.glass {
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
-}
-
-.glass-hover:hover {
-    background: var(--glass-shine);
-    border-color: var(--glass-shine);
-    transform: translateY(-2px) scale(1.01);
-    box-shadow: 0 15px 40px rgba(0,0,0,0.2);
-}
-
-/* --- Immersive Top Navigation Bar --- */
+/* --- 顶部导航栏（App Header 契约：48px 扁平栏） --- */
 #top-nav-bar {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: 60px;
+    height: var(--vcp-app-header-height);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 20px;
+    gap: var(--vcp-app-space-3);
+    padding: 0 var(--vcp-app-space-4);
     z-index: 1000;
-    /* Fully transparent/immersive title bar area, dragging handled here */
+    background: var(--vcp-app-bg-raised);
+    border-bottom: 1px solid var(--vcp-app-border);
     -webkit-app-region: drag;
 }
 
-/* Add a subtle gradient or blur ONLY if content scrolls under it, 
-   handled dynamically or just let it be fully clean if wallpaper is good.
-   Let's add a very slight blur for readability. */
-#top-nav-bar::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, transparent 100%);
-    backdrop-filter: blur(5px);
-    z-index: -1;
-    opacity: 0.5;
-}
-
-.nav-left, .nav-right {
+.nav-left,
+.nav-right {
     display: flex;
     align-items: center;
-    gap: 15px;
-    -webkit-app-region: no-drag; /* Important: make interactive parts non-draggable */
+    gap: var(--vcp-app-space-2);
+    min-width: 0;
+    -webkit-app-region: no-drag;
 }
 
 .nav-title {
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    opacity: 0.9;
+    font-size: var(--vcp-app-font-emphasis);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--vcp-app-text);
+    white-space: nowrap;
 }
 
-.nav-icon-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    opacity: 0.7;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.nav-icon-btn:hover {
-    opacity: 1;
-    background: var(--glass-bg);
-    backdrop-filter: blur(10px);
+.nav-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--vcp-app-border);
+    margin: 0 var(--vcp-app-space-1);
+    flex: 0 0 auto;
 }
 
-.search-glass {
-    padding: 8px 15px;
-    border-radius: 20px;
-    border: 1px solid var(--glass-border);
-    background: rgba(255,255,255,0.05);
-    color: var(--text-primary);
-    backdrop-filter: blur(10px);
-    width: 150px;
-    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.search-glass:focus {
-    width: 250px;
-    outline: none;
-    background: rgba(255,255,255,0.1);
-    border-color: var(--accent-color);
-}
-.search-glass::placeholder {
-    color: var(--text-secondary);
-}
-
-/* Board filter dropdown styling - Enhanced with rounded glass effect */
+/* 板块筛选下拉 */
 #board-filter {
-    padding: 10px 18px;
-    border-radius: 25px;
-    border: 1.5px solid var(--glass-border);
-    background: var(--glass-bg);
-    color: var(--text-primary);
-    backdrop-filter: blur(15px) saturate(180%);
-    -webkit-backdrop-filter: blur(15px) saturate(180%);
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    min-width: 140px;
     appearance: none;
     -webkit-appearance: none;
-    -moz-appearance: none;
-    /* Add custom arrow with animation */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    min-width: 132px;
+    min-height: var(--vcp-app-control-md);
+    padding: 0 var(--vcp-app-space-5) 0 var(--vcp-app-space-3);
+    background-color: var(--vcp-app-bg-input);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 40px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1),
-                inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    position: relative;
-    overflow: hidden;
-}
-
-/* Shimmer effect on hover */
-#board-filter::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg,
-        transparent,
-        rgba(255, 255, 255, 0.1),
-        transparent);
-    transition: left 0.5s ease;
-}
-
-#board-filter:hover::before {
-    left: 100%;
-}
-
-#board-filter:hover {
-    background: var(--glass-shine);
-    border-color: var(--accent-color);
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15),
-                0 0 0 3px rgba(74, 144, 226, 0.1),
-                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    background-position: right 10px center;
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-control-radius);
+    color: var(--vcp-app-text);
+    font-family: inherit;
+    font-size: var(--vcp-app-font-body);
+    cursor: pointer;
 }
 
 #board-filter:focus {
     outline: none;
-    border-color: var(--accent-color);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15),
-                0 0 0 4px rgba(74, 144, 226, 0.25),
-                inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px) scale(1.02);
+    border-color: var(--vcp-app-accent);
+    box-shadow: 0 0 0 2px var(--vcp-app-focus-ring);
 }
 
-#board-filter:active {
-    transform: translateY(0) scale(0.98);
-}
-
-/* Enhanced dropdown options styling with glass effect */
 #board-filter option {
-    background: var(--glass-bg);
-    color: var(--text-primary);
-    padding: 12px 15px;
-    border-radius: 8px;
-    margin: 2px 0;
-    font-weight: 500;
-    transition: all 0.2s ease;
+    background: var(--vcp-app-bg-raised);
+    color: var(--vcp-app-text);
 }
 
-#board-filter option:hover {
-    background: var(--glass-shine);
-    color: var(--accent-color);
+/* 顶栏搜索框 */
+.search-glass {
+    width: 180px;
+    transition: width var(--vcp-app-duration-normal) var(--vcp-app-easing-standard),
+      border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      box-shadow var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
-#board-filter option:checked {
-    background: var(--accent-color);
-    color: var(--text-on-accent);
-    font-weight: 600;
+.search-glass:focus {
+    width: 240px;
 }
 
-/* Light theme adjustments for dropdown arrow */
-body.light-theme #board-filter {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 12 12'%3E%3Cpath fill='%23000000' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08),
-                inset 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-
-body.light-theme #board-filter:hover {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12),
-                0 0 0 3px rgba(74, 144, 226, 0.15),
-                inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-body.light-theme #board-filter:focus {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12),
-                0 0 0 4px rgba(74, 144, 226, 0.2),
-                inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-/* --- Main Container & Views --- */
+/* --- 主容器与视图 --- */
 .app-container {
     height: 100vh;
-    padding-top: 70px; /* Clear the top nav */
+    padding-top: calc(var(--vcp-app-header-height) + var(--vcp-app-space-2));
     overflow: hidden;
 }
 
 .view-container {
     height: 100%;
     width: 100%;
-    display: none; /* Hidden by default */
+    display: none;
     opacity: 0;
-    transform: scale(0.95);
-    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity var(--vcp-app-duration-normal) ease;
 }
 
 .view-container.active {
-    display: flex; /* Or block, depending on view */
+    display: flex;
     opacity: 1;
-    transform: scale(1);
 }
 
-/* --- Login View (Centered Glass Box) --- */
+/* --- 登录视图 --- */
 #login-view.active {
     display: flex;
     justify-content: center;
     align-items: center;
 }
+
 .login-card {
     width: 100%;
-    max-width: 400px;
-    padding: 40px;
-    border-radius: 30px;
+    max-width: 380px;
+    padding: var(--vcp-app-space-6);
+    border-radius: var(--vcp-app-card-radius);
     text-align: center;
 }
+
 .login-title {
-    font-size: 2rem;
-    margin-bottom: 1.5rem;
-    font-weight: 300;
-}
-.glass-input {
-    width: 100%;
-    padding: 15px;
-    margin-bottom: 20px;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    color: var(--text-primary);
-    font-size: 1rem;
-    caret-color: var(--text-primary);
-}
-.glass-input:focus {
-    outline: none;
-    border-color: var(--accent-color);
-    background: var(--glass-shine);
-}
-.jelly-btn {
-    width: 100%;
-    padding: 15px;
-    border: none;
-    border-radius: 12px;
-    background: var(--accent-color);
-    color: var(--text-on-accent);
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-}
-.jelly-btn::after {
-    content: '';
-    position: absolute;
-    top: 50%; left: 50%;
-    width: 0; height: 0;
-    background: rgba(255,255,255,0.3);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.6s ease, height 0.6s ease;
-}
-.jelly-btn:active::after {
-    width: 300px; height: 300px;
-}
-.jelly-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 30px rgba(74, 144, 226, 0.5);
+    font-size: var(--vcp-app-font-display);
+    font-weight: 600;
+    margin: 0 0 var(--vcp-app-space-5);
 }
 
-/* --- Waterfall Masonry Layout --- */
+.login-card .glass-input,
+#create-post-modal .glass-input,
+#settings-modal .glass-input {
+    width: 100%;
+    margin-bottom: var(--vcp-app-space-4);
+}
+
+.login-card .jelly-btn {
+    width: 100%;
+    min-height: var(--vcp-app-control-lg);
+}
+
+#settings-modal label {
+    display: block;
+    margin: var(--vcp-app-space-3) 0 var(--vcp-app-space-1) var(--vcp-app-space-1);
+    color: var(--vcp-app-text-secondary);
+    font-size: var(--vcp-app-font-body);
+    text-align: left;
+}
+
+/* --- 瀑布流 --- */
 #forum-view {
     display: block;
     overflow-y: auto;
-    padding: 0 20px 40px;
+    padding: 0 var(--vcp-app-space-5) var(--vcp-app-space-6);
 }
-/* Hide scrollbar but keep functionality */
-#forum-view::-webkit-scrollbar { width: 8px; }
-#forum-view::-webkit-scrollbar-track { background: transparent; }
-#forum-view::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-#forum-view::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 
 .masonry-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px;
+    gap: var(--vcp-app-space-4);
+    max-width: var(--vcp-app-content-max-width);
+    margin: 0 auto;
 }
 
 .post-card {
-    border-radius: 20px;
-    padding: 20px;
+    border-radius: var(--vcp-app-card-radius);
+    padding: var(--vcp-app-space-4);
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    /* Entry animation */
-    animation: slideUpFade 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) backwards;
+    gap: var(--vcp-app-space-2);
+    animation: slideUpFade 0.45s var(--vcp-app-easing-standard) backwards;
 }
-/* Staggered animation delay will be applied via JS or nth-child if simple */
+
 @keyframes slideUpFade {
-    from { opacity: 0; transform: translateY(50px) scale(0.9); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .post-card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: var(--vcp-app-space-2);
 }
+
 .post-title {
-    font-size: 1.3rem;
+    font-size: var(--vcp-app-font-title);
     font-weight: 600;
     line-height: 1.4;
     margin: 0;
+    color: var(--vcp-app-text);
+    min-width: 0;
 }
+
 .post-badge {
-    background: var(--accent-color);
-    color: var(--text-on-accent);
-    font-size: 0.7rem;
-    padding: 3px 8px;
-    border-radius: 10px;
-    text-transform: uppercase;
-    font-weight: bold;
-    letter-spacing: 0.5px;
+    background: var(--vcp-app-selection-bg);
+    color: var(--vcp-app-accent);
+    border: 1px solid var(--vcp-app-border-strong);
+    font-size: var(--vcp-app-font-caption);
+    padding: 1px var(--vcp-app-space-2);
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     white-space: nowrap;
-    margin-left: 10px;
-    box-shadow: 0 2px 10px rgba(74, 144, 226, 0.3);
+    flex: 0 0 auto;
 }
 
 .post-preview {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    max-height: 80px;
+    font-size: var(--vcp-app-font-body);
+    color: var(--vcp-app-text-secondary);
+    line-height: 1.55;
+    max-height: 84px;
     overflow: hidden;
     mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
@@ -414,45 +235,49 @@ body.light-theme #board-filter:focus {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--glass-border);
+    gap: var(--vcp-app-space-2);
+    font-size: var(--vcp-app-font-caption);
+    color: var(--vcp-app-text-secondary);
+    margin-top: var(--vcp-app-space-2);
+    padding-top: var(--vcp-app-space-2);
+    border-top: 1px solid var(--vcp-app-border);
 }
-.meta-left { display: flex; gap: 10px; align-items: center; }
+
+.meta-left { display: flex; gap: var(--vcp-app-space-2); align-items: center; min-width: 0; }
+
 .meta-left span {
-    font-weight: 500; /* Make author name slightly bolder */
-    color: var(--text-primary);
+    font-weight: 500;
+    color: var(--vcp-app-text);
 }
+
 .post-meta > span {
     font-variant-numeric: tabular-nums;
-    background: rgba(0,0,0,0.1);
-    padding: 2px 6px;
-    border-radius: 6px;
+    background: var(--vcp-app-fill-1);
+    padding: 1px var(--vcp-app-space-1);
+    border-radius: var(--vcp-app-radius-xs);
+    white-space: nowrap;
 }
-.author-avatar, .reply-avatar {
+
+.author-avatar,
+.reply-avatar {
     width: 32px;
     height: 32px;
-    background: linear-gradient(135deg, #ff6b6b, #feca57);
+    background: linear-gradient(135deg, var(--vcp-app-accent), var(--vcp-app-info));
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: bold;
-    color: white;
-    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--vcp-app-on-accent);
+    font-size: var(--vcp-app-font-caption);
     flex-shrink: 0;
-    border: 2px solid var(--glass-border);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    transition: all 0.3s ease;
+    border: 1px solid var(--vcp-app-border);
     overflow: hidden;
 }
 
 .author-avatar.has-avatar,
 .reply-avatar.has-avatar {
-    border-color: var(--accent-color);
-    box-shadow: 0 2px 12px rgba(74, 144, 226, 0.3);
+    border-color: var(--vcp-app-accent);
 }
 
 .author-avatar.loading-avatar,
@@ -465,73 +290,68 @@ body.light-theme #board-filter:focus {
     50% { opacity: 0.6; }
 }
 
-/* Larger avatar in expanded view */
 .expanded-card .author-avatar,
 .expanded-card .reply-avatar {
     width: 40px;
     height: 40px;
-    font-size: 1rem;
+    font-size: var(--vcp-app-font-body);
 }
 
-/* --- Jelly Expansion Effect --- */
-/* When a card is active, it clones itself to a fixed overlay */
+/* --- 展开卡片浮层 --- */
 .post-overlay-active {
-    overflow: hidden !important; /* Stop scrolling on body when active */
+    overflow: hidden !important;
 }
 
 #active-post-overlay {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 2000;
-    pointer-events: none; /* Init as none, active becomes auto */
+    pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s;
-    overflow-y: auto; /* Allow scrolling the overlay itself */
+    transition: opacity var(--vcp-app-duration-normal);
+    overflow-y: auto;
     overflow-x: hidden;
-    background: rgba(0,0,0,0.4); /* Dim background */
-    backdrop-filter: blur(5px);
-    padding: 5vh 0; /* Add vertical padding for breathing room */
+    background: var(--vcp-app-backdrop);
+    padding: 5vh 0;
 }
+
 #active-post-overlay.active {
     pointer-events: auto;
     opacity: 1;
 }
-/* Smooth scrollbar for overlay */
-#active-post-overlay::-webkit-scrollbar { width: 8px; }
-#active-post-overlay::-webkit-scrollbar-track { background: transparent; }
-#active-post-overlay::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
-#active-post-overlay::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.5); }
 
 .expanded-card {
-    position: relative; /* Changed from absolute */
+    position: relative;
     width: 90%;
-    max-width: 1000px;
-    min-height: auto; /* Auto height based on content */
-    margin: 0 auto; /* Center horizontally */
-    border-radius: 30px !important;
-    padding: 40px !important;
-    overflow: visible; /* No internal scrolling */
+    max-width: var(--vcp-app-content-max-width-document);
+    min-height: auto;
+    margin: 0 auto;
+    border-radius: var(--vcp-app-card-radius) !important;
+    padding: var(--vcp-app-space-6) !important;
+    overflow: visible;
     z-index: 2001;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-    /* The animation will be handled by JS FLIP or simpler CSS transition from initial state */
+    box-shadow: var(--vcp-app-shadow-lg);
 }
 
 .expanded-card .post-preview {
     max-height: none;
     mask-image: none;
     -webkit-mask-image: none;
-    font-size: 1.1rem;
-    line-height: 1.8;
-    color: var(--text-primary);
-    font-style: normal; /* Reset font style to normal */
-    opacity: 1; /* Ensure full opacity */
-    margin-bottom: 20px;
+    font-size: var(--vcp-app-font-emphasis);
+    line-height: 1.75;
+    color: var(--vcp-app-text);
+    font-style: normal;
+    opacity: 1;
+    margin-bottom: var(--vcp-app-space-4);
 }
 
-/* --- AI-Generated HTML Content Support --- */
-/* Ensure block-level HTML elements display correctly with proper spacing */
+/* --- AI 生成 HTML 内容支持 --- */
 .post-preview div,
 .reply-content div,
 .expanded-card .post-preview div,
@@ -542,27 +362,24 @@ body.light-theme #board-filter:focus {
     word-wrap: break-word;
 }
 
-/* Preserve inline styles from AI-generated content */
 .post-preview div[style],
 .reply-content div[style],
 .expanded-card .post-preview div[style],
 .reply-item div[style] {
-    /* Allow inline styles to take precedence while ensuring basic display */
     display: block !important;
 }
 
-/* Support for styled headings in AI content */
 .post-preview h1, .post-preview h2, .post-preview h3,
 .post-preview h4, .post-preview h5, .post-preview h6,
 .reply-content h1, .reply-content h2, .reply-content h3,
 .reply-content h4, .reply-content h5, .reply-content h6 {
     display: block;
     margin: 15px 0 10px 0;
-    font-weight: bold;
+    font-weight: 600;
     line-height: 1.4;
+    color: var(--vcp-app-text);
 }
 
-/* Paragraphs in AI-generated content */
 .post-preview p,
 .reply-content p {
     display: block;
@@ -570,7 +387,6 @@ body.light-theme #board-filter:focus {
     line-height: 1.6;
 }
 
-/* Lists in AI-generated content */
 .post-preview ul, .post-preview ol,
 .reply-content ul, .reply-content ol {
     display: block;
@@ -584,10 +400,10 @@ body.light-theme #board-filter:focus {
     margin: 5px 0;
 }
 
-/* Strong and emphasis in AI content */
 .post-preview strong,
 .reply-content strong {
-    font-weight: 700;
+    font-weight: 600;
+    color: var(--vcp-app-text);
 }
 
 .post-preview em,
@@ -595,13 +411,13 @@ body.light-theme #board-filter:focus {
     font-style: italic;
 }
 
-/* Code blocks in AI content */
 .post-preview pre,
 .reply-content pre {
     display: block;
-    background: rgba(0, 0, 0, 0.3);
-    padding: 15px;
-    border-radius: 8px;
+    background: var(--vcp-app-bg-sunken);
+    border: 1px solid var(--vcp-app-border);
+    padding: var(--vcp-app-space-3);
+    border-radius: var(--vcp-app-card-radius);
     margin: 15px 0;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -611,252 +427,276 @@ body.light-theme #board-filter:focus {
 .post-preview code,
 .reply-content code {
     font-family: 'Courier New', Courier, monospace;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--vcp-app-bg-sunken);
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--vcp-app-radius-xs);
 }
 
-/* Inline spans with styles (like highlighted quotes) */
 .post-preview span,
 .reply-content span {
     white-space: normal;
 }
 
-/* Blockquotes in AI content */
 .post-preview blockquote,
 .reply-content blockquote {
     display: block;
     margin: 15px 0;
     padding: 10px 20px;
-    border-left: 4px solid var(--accent-color);
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 0 8px 8px 0;
+    border-left: 3px solid var(--vcp-app-accent);
+    background: var(--vcp-app-fill-1);
+    border-radius: 0 var(--vcp-app-radius-xs) var(--vcp-app-radius-xs) 0;
+    color: var(--vcp-app-text-secondary);
 }
 
-/* Horizontal rules */
 .post-preview hr,
 .reply-content hr {
     display: block;
     border: none;
-    border-top: 1px solid var(--glass-border);
+    border-top: 1px solid var(--vcp-app-border);
     margin: 20px 0;
 }
 
-/* Ensure images in posts are fully opaque and visible */
 .post-preview img,
 .reply-content img,
 .expanded-card img,
 .post-card img,
 .reply-item img {
     opacity: 1 !important;
-    background: var(--primary-bg) !important;
-    border-radius: 8px;
+    border-radius: var(--vcp-app-card-radius);
     max-width: 100%;
     height: auto;
     display: block;
     margin: 10px 0;
-    /* Ensure image is on top of any transparent backgrounds */
     position: relative;
     z-index: 1;
 }
 
-/* Add a subtle border and shadow to images for better visibility */
 .post-preview img,
 .reply-content img,
 .expanded-card .post-preview img,
 .reply-item img {
-    border: 2px solid var(--glass-border);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    /* Add a solid background behind the image */
-    background-color: var(--primary-bg) !important;
+    border: 1px solid var(--vcp-app-border);
+    background-color: var(--vcp-app-bg-sunken) !important;
     padding: 2px;
 }
 
-/* Prevent any parent transparency from affecting images */
-.post-preview,
-.reply-content {
-    /* Ensure content area doesn't make images transparent */
-}
-
-.post-preview > *,
-.reply-content > * {
-    /* Reset any inherited opacity for direct children */
-}
-
-/* Specifically target images to override any inherited styles */
 img[src*="http"],
 img[src*="file://"] {
     opacity: 1 !important;
 }
+
 .expanded-close-btn {
     position: absolute;
-    top: 20px; right: 20px;
-    background: rgba(0,0,0,0.3);
-    border: none; color: white;
-    width: 40px; height: 40px;
-    border-radius: 50%;
+    top: var(--vcp-app-space-4);
+    right: var(--vcp-app-space-4);
+    background: var(--vcp-app-fill-2);
+    border: none;
+    color: var(--vcp-app-text);
+    width: var(--vcp-app-control-md);
+    height: var(--vcp-app-control-md);
+    border-radius: var(--vcp-app-control-radius);
     cursor: pointer;
-    font-size: 1.5rem;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.3s;
+    font-size: var(--vcp-app-font-title);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
     z-index: 10;
 }
 
-/* --- Meta Header in Expanded View --- */
+.expanded-close-btn:hover {
+    background: var(--vcp-app-danger);
+    color: var(--vcp-app-on-accent);
+}
+
+/* --- 展开视图元信息头 --- */
 .post-meta-header {
-    background: rgba(0,0,0,0.2);
-    padding: 15px 25px;
-    border-radius: 15px;
-    margin-bottom: 25px;
-    border: 1px solid var(--glass-border);
-    font-size: 0.85rem;
+    background: var(--vcp-app-fill-1);
+    padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
+    border-radius: var(--vcp-app-card-radius);
+    margin-bottom: var(--vcp-app-space-5);
+    border: 1px solid var(--vcp-app-border);
+    font-size: var(--vcp-app-font-body);
     line-height: 1.7;
 }
+
 .meta-item {
-    display: inline-flex; /* Changed to inline-flex for single-line layout */
+    display: inline-flex;
     align-items: baseline;
-    padding: 0; /* Remove vertical spacing */
+    padding: 0;
 }
+
 .meta-key {
-    font-weight: 700; /* Bolder key */
-    color: var(--text-primary);
-    margin-right: 12px; /* Increased spacing */
+    font-weight: 600;
+    color: var(--vcp-app-text);
+    margin-right: var(--vcp-app-space-3);
     flex-shrink: 0;
-    opacity: 0.9;
 }
+
 .meta-value {
-    color: var(--text-secondary);
+    color: var(--vcp-app-text-secondary);
     word-break: break-all;
-    font-family: 'Courier New', Courier, monospace; /* Monospaced for IDs/timestamps */
-    background: rgba(0,0,0,0.2);
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 0.9em;
+    font-family: 'Courier New', Courier, monospace;
+    background: var(--vcp-app-fill-2);
+    padding: 1px var(--vcp-app-space-2);
+    border-radius: var(--vcp-app-radius-xs);
+    font-size: var(--vcp-app-font-caption);
 }
-.expanded-close-btn:hover { background: var(--danger-color); transform: rotate(90deg); }
 
-
-/* --- Replies in Expanded View --- */
+/* --- 回复列表 --- */
 .reply-list {
-    margin-top: 20px;
-    margin-bottom: 20px;
+    margin-top: var(--vcp-app-space-4);
+    margin-bottom: var(--vcp-app-space-4);
 }
+
 .reply-item {
-    margin-bottom: 20px;
-    padding: 20px;
-    border-radius: 20px;
-    background: rgba(0,0,0,0.2);
-    border: 1px solid var(--glass-border);
-    animation: slideInRight 0.5s ease backwards;
+    margin-bottom: var(--vcp-app-space-3);
+    padding: var(--vcp-app-space-4);
+    border-radius: var(--vcp-app-card-radius);
+    background: var(--vcp-app-fill-1);
+    border: 1px solid var(--vcp-app-border);
+    animation: slideInRight 0.4s ease backwards;
 }
+
 @keyframes slideInRight {
-    from { opacity: 0; transform: translateX(50px); }
+    from { opacity: 0; transform: translateX(24px); }
     to { opacity: 1; transform: translateX(0); }
 }
+
 .reply-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
+    margin-bottom: var(--vcp-app-space-2);
+    font-size: var(--vcp-app-font-caption);
+    color: var(--vcp-app-text-secondary);
 }
 
-/* --- Differentiated Delete Buttons --- */
+/* --- 删除/编辑按钮 --- */
 .delete-floor-btn {
-    background: rgba(229, 115, 115, 0.15); /* Subtle red glass background */
-    color: var(--danger-color);
-    border: 1px solid var(--danger-color);
-    padding: 8px 20px;
-    border-radius: 8px;
+    background: transparent;
+    color: var(--vcp-app-danger);
+    border: 1px solid var(--vcp-app-border);
+    min-height: var(--vcp-app-control-sm);
+    padding: 0 var(--vcp-app-space-3);
+    border-radius: var(--vcp-app-control-radius);
     cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: bold;
-    transition: all 0.3s ease;
-    opacity: 0.8; /* Slightly more visible */
+    font-size: var(--vcp-app-font-body);
+    font-weight: 500;
+    font-family: inherit;
+    transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
 .delete-floor-btn:hover {
-    background: var(--danger-color);
-    color: var(--text-on-accent);
-    opacity: 1;
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(229, 115, 115, 0.4);
+    background: var(--vcp-app-danger-bg);
+    border-color: var(--vcp-app-danger);
 }
 
-/* A more robust selector for the delete button, overriding the base .jelly-btn styles without !important */
 .jelly-btn.delete-post-btn {
     width: auto;
-    padding: 8px 20px;
+    min-height: var(--vcp-app-control-md);
+    padding: 0 var(--vcp-app-space-4);
     margin-top: 0;
-    background: var(--danger-color, #e57373); /* Provide a fallback color */
-    color: var(--text-on-accent);
-    font-size: 0.9rem;
-    border-radius: 8px;
+    background: var(--vcp-app-danger);
+    border-color: var(--vcp-app-danger);
+    color: var(--vcp-app-on-accent);
+    font-size: var(--vcp-app-font-body);
 }
 
 .jelly-btn.delete-post-btn:hover {
-    background: var(--danger-hover-bg, #ef5350); /* Provide a fallback color */
-    box-shadow: 0 0 30px rgba(229, 115, 115, 0.5);
-    transform: scale(1.05); /* Keep consistent hover effect */
+    background: var(--vcp-app-danger);
+    border-color: var(--vcp-app-danger);
+    filter: brightness(1.08);
 }
 
-/* --- Create Post Modal (Unified Glass Style) --- */
-.modal {
-    background-color: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(15px);
-}
-.modal-glass-content {
-    background: var(--glass-bg);
-    backdrop-filter: blur(30px) saturate(150%);
-    border: 1px solid var(--glass-border);
-    border-radius: 30px;
-    padding: 40px;
-    box-shadow: 0 50px 100px -20px rgba(50,50,93,0.25), 
-                0 30px 60px -30px rgba(0,0,0,0.3), 
-                inset 0 -2px 6px 0 rgba(10,37,64,0.35);
-    width: 95%; max-width: 700px;
-    animation: modalPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+.edit-btn {
+    background: transparent;
+    color: var(--vcp-app-accent);
+    border: 1px solid var(--vcp-app-border);
+    min-height: var(--vcp-app-control-sm);
+    padding: 0 var(--vcp-app-space-3);
+    border-radius: var(--vcp-app-control-radius);
+    cursor: pointer;
+    font-size: var(--vcp-app-font-body);
+    font-weight: 500;
+    font-family: inherit;
+    margin-left: var(--vcp-app-space-2);
+    transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
-#settings-modal label {
-    display: block;
-    margin: 15px 0 5px 5px;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    text-align: left;
+.edit-btn:hover {
+    background: var(--vcp-app-selection-bg);
+    border-color: var(--vcp-app-accent);
 }
 
-@keyframes modalPop {
-    from { opacity: 0; transform: scale(0.8) translateY(10%); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+.edit-textarea {
+    width: 100%;
+    min-height: 150px;
+    padding: var(--vcp-app-space-3);
+    margin-bottom: var(--vcp-app-space-3);
+    background: var(--vcp-app-bg-input);
+    border: 1px solid var(--vcp-app-accent);
+    border-radius: var(--vcp-app-control-radius);
+    color: var(--vcp-app-text);
+    font-size: var(--vcp-app-font-emphasis);
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
 }
 
-/* Reply Box Area */
+.edit-textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--vcp-app-focus-ring);
+}
+
+.edit-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--vcp-app-space-3);
+    margin-top: var(--vcp-app-space-2);
+}
+
+.post-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: var(--vcp-app-space-4);
+    padding-top: var(--vcp-app-space-4);
+    border-top: 1px solid var(--vcp-app-border);
+}
+
+/* --- 回帖固定区 --- */
 .reply-area-fixed {
     position: sticky;
     bottom: 0;
     left: 0;
     right: 0;
-    width: calc(100% + 80px); /* Extend to card edges */
-    margin-left: -40px; /* Offset parent padding */
-    margin-right: -40px;
-    margin-top: 20px;
+    width: calc(100% + 64px);
+    margin-left: calc(var(--vcp-app-space-6) * -1);
+    margin-right: calc(var(--vcp-app-space-6) * -1);
+    margin-top: var(--vcp-app-space-4);
     box-sizing: border-box;
-    background: var(--glass-bg); /* Use theme variable */
-    backdrop-filter: blur(20px);
-    padding: 20px 40px; /* Match parent's horizontal padding */
-    border-top: 1px solid var(--glass-border);
-    border-radius: 0 0 30px 30px;
+    background: var(--vcp-app-bg-raised);
+    padding: var(--vcp-app-space-3) var(--vcp-app-space-6);
+    border-top: 1px solid var(--vcp-app-border);
+    border-radius: 0 0 var(--vcp-app-card-radius) var(--vcp-app-card-radius);
     display: flex;
-    gap: 15px;
+    gap: var(--vcp-app-space-3);
     align-items: center;
-    z-index: 10; /* Stay on top when scrolling */
+    z-index: 10;
 }
-.reply-input { flex: 1; }
 
-/* Error messages */
-.error-jiggle { color: var(--danger-color); animation: jiggle 0.4s ease; }
+.reply-input { flex: 1; margin-bottom: 0 !important; }
+
+/* --- 错误提示 --- */
+.error-jiggle {
+    color: var(--vcp-app-danger);
+    animation: jiggle 0.4s ease;
+}
+
 @keyframes jiggle {
     0% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
@@ -865,19 +705,11 @@ img[src*="file://"] {
     100% { transform: translateX(0); }
 }
 
-
-/* --- Post Content Enhancements --- */
+/* --- 帖子内容增强 --- */
 .highlighted-quote {
-    color: var(--highlight-text, #E8B95A);
+    color: var(--vcp-app-accent);
 }
 
-.post-preview strong, .reply-content strong {
-    font-weight: 600; /* Ensure strong is bolder than default */
-    color: var(--primary-text);
-}
-
-/* --- AI-Generated Inline Styles Support --- */
-/* Ensure content area allows for block display and proper spacing */
 .post-preview,
 .reply-content,
 .expanded-card .post-preview {
@@ -888,13 +720,11 @@ img[src*="file://"] {
     white-space: normal;
 }
 
-/* Allow nested divs with background colors and borders to display properly */
 .post-preview > div,
 .reply-content > div {
     margin: 15px 0;
 }
 
-/* Ensure images within styled divs are visible */
 .post-preview div img,
 .reply-content div img {
     max-width: 100%;
@@ -903,114 +733,44 @@ img[src*="file://"] {
     margin: 10px auto;
 }
 
-
-/* --- Animations --- */
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-.nav-icon-btn.spinning {
-    animation: spin 1s infinite linear;
-}
-
-/* --- Edit Mode Styles --- */
-.edit-btn {
-    background: rgba(74, 144, 226, 0.15); /* Subtle blue glass background */
-    color: var(--accent-color);
-    border: 1px solid var(--accent-color);
-    padding: 8px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: bold;
-    transition: all 0.3s ease;
-    opacity: 0.8;
-    margin-left: 10px; /* Space from delete button */
-}
-
-.edit-btn:hover {
-    background: var(--accent-color);
-    color: var(--text-on-accent);
-    opacity: 1;
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
-}
-
-.edit-textarea {
-    width: 100%;
-    min-height: 150px;
-    padding: 15px;
-    margin-bottom: 15px;
-    background: var(--glass-bg);
-    border: 1px solid var(--accent-color); /* Highlight that it's in edit mode */
-    border-radius: 12px;
-    color: var(--text-primary);
-    font-size: 1rem;
-    resize: vertical;
-    font-family: inherit;
-}
-
-.edit-textarea:focus {
-    outline: none;
-    background: var(--glass-shine);
-}
-
-.edit-controls {
-    display: flex;
-    justify-content: flex-end;
-    gap: 15px;
-    margin-top: 10px;
-}
-
-.post-actions {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid var(--glass-border);
-}
-
-
-/* --- Markdown Table Styles --- */
-.post-preview table, .reply-content table {
+/* Markdown 表格 */
+.post-preview table,
+.reply-content table {
     width: 100%;
     border-collapse: collapse;
     margin: 20px 0;
-    font-size: 0.95rem;
-    background: rgba(0,0,0,0.1);
-    border-radius: 12px;
-    overflow: hidden; /* Ensures border-radius is respected */
+    font-size: var(--vcp-app-font-body);
+    background: var(--vcp-app-fill-1);
+    border-radius: var(--vcp-app-card-radius);
+    overflow: hidden;
 }
 
 .post-preview th, .reply-content th,
 .post-preview td, .reply-content td {
-    border: 1px solid var(--glass-border);
-    padding: 12px 15px;
+    border: 1px solid var(--vcp-app-border);
+    padding: var(--vcp-app-space-2) var(--vcp-app-space-3);
     text-align: left;
 }
 
-.post-preview th, .reply-content th {
-    background-color: rgba(0,0,0,0.2);
-    color: var(--text-primary);
+.post-preview th,
+.reply-content th {
+    background-color: var(--vcp-app-fill-2);
+    color: var(--vcp-app-text);
     font-weight: 600;
 }
 
-.post-preview tr:nth-child(even), .reply-content tr:nth-child(even) {
-    background-color: rgba(0,0,0,0.05);
+.post-preview tr:hover,
+.reply-content tr:hover {
+    background-color: var(--vcp-app-fill-2);
 }
 
-.post-preview tr:hover, .reply-content tr:hover {
-    background-color: var(--glass-shine);
-}
-
-/* --- NEW: Dual Avatar Styles --- */
+/* --- 双头像布局 --- */
 .author-info-with-time {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--vcp-app-space-2);
     flex: 1;
+    min-width: 0;
 }
 
 .time-info {
@@ -1020,74 +780,58 @@ img[src*="file://"] {
 }
 
 .meta-separator {
-    width: 2px;
-    height: 40px;
-    background: linear-gradient(to bottom, transparent, var(--glass-border) 20%, var(--glass-border) 80%, transparent);
-    margin: 0 15px;
+    width: 1px;
+    height: 32px;
+    background: var(--vcp-app-border);
+    margin: 0 var(--vcp-app-space-3);
     flex-shrink: 0;
 }
 
-/* Ensure the post-meta container uses flexbox for dual layout */
 .post-card .post-meta {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-
-/* --- Unified Textarea Scrollbar Styles --- */
-.edit-textarea::-webkit-scrollbar,
-#post-content-input::-webkit-scrollbar,
-.reply-input::-webkit-scrollbar {
-    width: 8px;
+/* --- 动画 --- */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
-.edit-textarea::-webkit-scrollbar-track,
-#post-content-input::-webkit-scrollbar-track,
-.reply-input::-webkit-scrollbar-track {
-    background: transparent;
+.nav-icon-btn.spinning {
+    animation: spin 1s infinite linear;
 }
 
-.edit-textarea::-webkit-scrollbar-thumb,
-#post-content-input::-webkit-scrollbar-thumb,
-.reply-input::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    border: 2px solid transparent;
-    background-clip: content-box;
+@keyframes modalPop {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-.edit-textarea::-webkit-scrollbar-thumb:hover,
-#post-content-input::-webkit-scrollbar-thumb:hover,
-.reply-input::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.4);
+.modal-glass-content {
+    animation: modalPop var(--vcp-app-duration-normal) var(--vcp-app-easing-standard);
 }
 
-
-/* --- User Emoticon Panel --- */
+/* --- 表情面板 --- */
 .emoticon-panel {
     display: none;
     position: fixed;
-    width: 270px; /* Adjusted to account for scrollbar width */
-    height: 240px; /* Increased height for title */
-    background-color: var(--panel-bg-dark);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    padding: 10px;
+    width: 270px;
+    height: 240px;
+    background-color: var(--vcp-app-bg-raised);
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-card-radius);
+    box-shadow: var(--vcp-app-shadow-lg);
+    padding: var(--vcp-app-space-2);
     box-sizing: border-box;
-    z-index: 3500; /* Higher than post modals (z-index: 3000) */
-    /* New layout properties */
+    z-index: 3500;
     flex-direction: column;
-    /* display: flex; is set by JS */
 }
 
 .emoticon-panel-title {
-    font-size: 0.8em;
-    color: var(--highlight-text);
-    margin-bottom: 8px;
+    font-size: var(--vcp-app-font-caption);
+    color: var(--vcp-app-accent);
+    margin-bottom: var(--vcp-app-space-2);
     text-align: center;
     flex-shrink: 0;
 }
@@ -1095,34 +839,9 @@ img[src*="file://"] {
 .emoticon-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--vcp-app-space-2);
     overflow-y: auto;
     flex-grow: 1;
-}
-
-/* --- Custom Scrollbar for Emoticon Panel --- */
-.emoticon-grid::-webkit-scrollbar {
-    width: 8px;
-}
-
-.emoticon-grid::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 4px;
-}
-
-.emoticon-grid::-webkit-scrollbar-thumb {
-    background-color: var(--accent-color);
-    border-radius: 4px;
-    border: 2px solid transparent;
-    background-clip: content-box;
-}
-
-.emoticon-grid::-webkit-scrollbar-thumb:hover {
-    background-color: var(--accent-color-dark);
-}
-
-body.light-theme .emoticon-panel {
-    background-color: var(--panel-bg-light);
 }
 
 .emoticon-item {
@@ -1130,15 +849,14 @@ body.light-theme .emoticon-panel {
     height: 52px;
     object-fit: contain;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--vcp-app-control-radius);
     padding: 3px;
     box-sizing: border-box;
-    transition: transform 0.2s ease, background-color 0.2s ease;
+    transition: background-color var(--vcp-app-duration-fast) ease;
 }
 
 .emoticon-item:hover {
-    transform: scale(1.1);
-    background-color: var(--accent-bg);
+    background-color: var(--vcp-app-fill-2);
 }
 
 .emoticon-item-placeholder {
@@ -1147,29 +865,25 @@ body.light-theme .emoticon-panel {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--secondary-text);
-    font-size: 0.9em;
+    color: var(--vcp-app-text-secondary);
+    font-size: var(--vcp-app-font-body);
 }
 
-/* --- Emoticon Button Style --- */
 .emoticon-btn {
     background: transparent;
     border: none;
     cursor: pointer;
-    font-size: 1.2rem;
-    padding: 5px;
-    opacity: 0.7;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    color: var(--text-secondary);
+    font-size: var(--vcp-app-font-title);
+    padding: var(--vcp-app-space-1);
+    color: var(--vcp-app-text-secondary);
+    transition: color var(--vcp-app-duration-fast) ease;
 }
 
 .emoticon-btn:hover {
-    opacity: 1;
-    transform: scale(1.1);
+    color: var(--vcp-app-text);
 }
 
-/* --- KaTeX Rendering Fix --- */
-/* Prevent parent styles from breaking KaTeX layout */
+/* --- KaTeX 修复（保持原样，防止公式布局被破坏） --- */
 .post-preview .katex-display,
 .reply-content .katex-display,
 .post-preview .katex,
@@ -1177,14 +891,9 @@ body.light-theme .emoticon-panel {
     word-break: normal;
     word-wrap: normal;
     white-space: nowrap;
-    text-align: left; /* Ensure formulas are left-aligned within their container */
+    text-align: left;
 }
 
-/*
-  FIX: Reset inherited text-wrapping and alignment styles for all child elements within KaTeX blocks.
-  This prevents global styles (like `word-break: break-word` or `white-space: normal` on all spans)
-  from breaking the precise layout of KaTeX formulas, which rely on their own specific styling.
-*/
 .post-preview .katex *,
 .reply-content .katex * {
     white-space: revert;
@@ -1195,10 +904,48 @@ body.light-theme .emoticon-panel {
     display: revert;
 }
 
-/* Ensure the KaTeX container itself can be a block element */
 .katex-display {
     display: block;
-    overflow-x: auto; /* Allow horizontal scrolling for very long formulas */
+    overflow-x: auto;
     overflow-y: hidden;
     padding: 0.5em 0;
+}
+
+/* --- 窄窗口 --- */
+@media (max-width: 720px) {
+    #top-nav-bar {
+        padding: 0 var(--vcp-app-space-3);
+    }
+
+    .nav-title {
+        font-size: var(--vcp-app-font-body);
+    }
+
+    .search-glass {
+        width: 120px;
+    }
+
+    .search-glass:focus {
+        width: 160px;
+    }
+
+    #forum-view {
+        padding: 0 var(--vcp-app-space-3) var(--vcp-app-space-5);
+    }
+
+    .masonry-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .expanded-card {
+        width: calc(100% - 24px);
+        padding: var(--vcp-app-space-4) !important;
+    }
+
+    .reply-area-fixed {
+        width: calc(100% + 32px);
+        margin-left: calc(var(--vcp-app-space-4) * -1);
+        margin-right: calc(var(--vcp-app-space-4) * -1);
+        padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
+    }
 }
