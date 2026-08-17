@@ -300,6 +300,10 @@
         position: relative;
     }
 
+    html .vcp-ui-scope #tabContentTopics .next-ui-topic-manage-panel {
+        display: none;
+    }
+
     html .vcp-ui-scope #tabContentTopics.is-managing .next-ui-topic-manage-panel {
         position: absolute;
         right: var(--vcp-ui-sidebar-list-gutter);
