@@ -356,16 +356,21 @@ try {
 
     const click = async selector => page.evaluate(value => document.querySelector(value)?.click(), selector);
     const waitForRecoveredMainPage = async () => {
-        const recoveryDeadline = Date.now() + 12_000;
+        const recoveryDeadline = Date.now() + timeout;
         while (Date.now() < recoveryDeadline) {
             for (const candidate of await browser.pages()) {
                 if (candidate.isClosed() || !candidate.url().includes('main.html')) continue;
                 try {
-                    const ready = await candidate.evaluate(() => document.documentElement.dataset.vcpRendererReady === 'true');
-                    if (ready) {
-                        trackPage(candidate);
-                        return candidate;
-                    }
+                    // A crashed target can remain in browser.pages() briefly and
+                    // leave a probe pending long enough to consume the whole
+                    // recovery window. Bound each probe so the replacement page
+                    // still gets a chance to report its real renderer terminal state.
+                    await candidate.waitForFunction(
+                        () => document.documentElement.dataset.vcpRendererReady === 'true',
+                        { timeout: 1_000 }
+                    );
+                    trackPage(candidate);
+                    return candidate;
                 } catch {
                     // The old execution context can disappear while recovery is loading.
                 }
