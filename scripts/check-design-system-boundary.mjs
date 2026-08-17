@@ -151,6 +151,8 @@ const allowedSourceDifferences = new Set([
     'scripts/check-webawesome-pack.mjs',
     'scripts/check-ui-applications.mjs',
     'scripts/check-ui-system.mjs',
+    'scripts/check-vcpui-consumers.mjs',
+    'scripts/vcpui-production-consumers.json',
     'scripts/test-ui-system.mjs',
     'scripts/test-appearance-engine.mjs',
     'scripts/test-appearance-studio.mjs',
