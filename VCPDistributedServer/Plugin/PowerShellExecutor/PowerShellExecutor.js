@@ -703,11 +703,25 @@ function createNewPtySession() {
 
     if (os.platform() === 'win32') {
         // 优先使用 PowerShell Core (pwsh.exe)，如果不存在则回退到 Windows PowerShell (powershell.exe)
+        // 检测顺序：Program Files 标准路径 → where.exe PATH 查找 → 回退 powershell.exe
         const pwshPath = path.join(process.env.PROGRAMFILES, 'PowerShell', '7', 'pwsh.exe');
         if (fs.existsSync(pwshPath)) {
             shell = pwshPath;
         } else {
-            shell = 'powershell.exe';
+            // 二级回退：winget/MSIX 安装的 PS7 位于 WindowsApps（AppExecution Alias），
+            // fs.existsSync 对此类特殊文件不可靠，直接信任 where.exe 结果。
+            try {
+                const { execSync } = require('child_process');
+                const whereResult = execSync('where.exe pwsh', { windowsHide: true, encoding: 'utf8', timeout: 5000 }).trim();
+                const firstLine = whereResult.split(/\r?\n/)[0].trim();
+                if (firstLine) {
+                    shell = firstLine;
+                } else {
+                    shell = 'powershell.exe';
+                }
+            } catch (e) {
+                shell = 'powershell.exe';
+            }
         }
         args = ['-NoLogo'];
     }
