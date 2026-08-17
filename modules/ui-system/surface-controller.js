@@ -48,6 +48,10 @@
             if (this.ownerScope?.own) {
                 this.ownerRelease = this.ownerScope.own(() => this.dispose('owner-disposed'), `surface:${this.label}`, 'controller');
             }
+            if (this.kernel === 'web-awesome') {
+                const releaseKernelScope = this.window.VCPWebAwesome?.mountScope?.(host);
+                if (releaseKernelScope) this.own(releaseKernelScope, 'webawesome-surface-scope', 'ui-registration');
+            }
             const context = Object.freeze({
                 kernel: this.kernel,
                 ui: this.getUi(),

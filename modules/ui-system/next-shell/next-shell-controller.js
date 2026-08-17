@@ -15,10 +15,76 @@
     let restoringTabs = false;
     let pendingTabRestore = null;
     let teardownPromise = null;
-    let modeRequestGeneration = 0;
-    let previewSuspended = false;
     let overlayCoordinator = null;
+    let releaseWindowState = null;
+    let tabOperationId = 0;
+    let tabOperationRevision = 0;
+    const pendingTabOperations = new Map();
+    const tabOperationListeners = new Set();
     const suppressedTabClicks = new Set();
+
+    function getTabSettlementSnapshot() {
+        return Object.freeze({
+            revision: tabOperationRevision,
+            operationId: tabOperationId,
+            generation: mountGeneration,
+            pending: Object.freeze([...pendingTabOperations.entries()].map(([id, label]) => Object.freeze({ id, label }))),
+            restoring: restoringTabs,
+            tearingDown: Boolean(teardownPromise),
+            hostRevision: appTabHost?.revision || 0,
+        });
+    }
+
+    function publishTabSettlement() {
+        tabOperationRevision += 1;
+        const snapshot = getTabSettlementSnapshot();
+        tabOperationListeners.forEach(listener => {
+            try { listener(snapshot, snapshot); } catch (error) { console.error('[NextUI] AppTab settlement subscriber failed:', error); }
+        });
+        return snapshot;
+    }
+
+    function beginTabOperation(label) {
+        const id = ++tabOperationId;
+        pendingTabOperations.set(id, label);
+        publishTabSettlement();
+        let active = true;
+        return () => {
+            if (!active) return;
+            active = false;
+            pendingTabOperations.delete(id);
+            publishTabSettlement();
+        };
+    }
+
+    function trackTabPromise(label, promise) {
+        const finish = beginTabOperation(label);
+        return Promise.resolve(promise).finally(finish);
+    }
+
+    function subscribeTabSettlement(listener, options = {}) {
+        tabOperationListeners.add(listener);
+        if (options.immediate !== false) listener(getTabSettlementSnapshot(), getTabSettlementSnapshot());
+        return () => tabOperationListeners.delete(listener);
+    }
+
+    function whenTabsSettled(options = {}) {
+        const wait = window.VCPSettlement?.waitForSettlement;
+        if (!wait) return Promise.reject(new Error('VCPSettlement is unavailable.'));
+        const operationId = Number.isFinite(options.operationId) ? Number(options.operationId) : tabOperationId;
+        const generation = Number.isFinite(options.generation) ? Number(options.generation) : mountGeneration;
+        return wait({
+            ...options,
+            label: 'AppTab controller',
+            getSnapshot: getTabSettlementSnapshot,
+            subscribe: subscribeTabSettlement,
+            predicate: snapshot => snapshot.operationId >= operationId
+                && snapshot.generation >= generation
+                && snapshot.pending.length === 0
+                && !snapshot.restoring
+                && !snapshot.tearingDown,
+        });
+    }
 
     function listen(target, type, handler, options = {}) {
         if (!target || (!mountScope && !mountAbortController)) return;
@@ -46,6 +112,20 @@
         document.querySelectorAll('.next-ui-topbar.vcp-ui-scope, .next-ui-launchpad.vcp-ui-scope, #nextUiInternalAppHost.vcp-ui-scope').forEach(scope => {
             scope.dataset.density = density;
         });
+    }
+
+    function syncWindowControl(state) {
+        const button = document.getElementById('nextUiMaximizeBtn');
+        if (!button || !state?.ready) return;
+        const icon = button.querySelector('.vcp-ui-icon');
+        const label = state.maximized ? '还原窗口' : '最大化窗口';
+        if (icon) {
+            if (window.VCPIcons?.set) window.VCPIcons.set(icon, state.maximized ? 'filter_none' : 'crop_square');
+            else icon.textContent = state.maximized ? 'filter_none' : 'crop_square';
+        }
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.setAttribute('aria-pressed', String(state.maximized));
     }
 
     function observeSidebarWidth() {
@@ -81,10 +161,12 @@
 
     function syncEmbeddedActivation() {
         const activeView = appTabHost.views.get(appTabHost.activeViewId);
-        const action = mounted && !previewSuspended && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
+        const action = mounted && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
             ? activeView.action
             : null;
-        embeddedAppController?.activate(action)?.then(result => {
+        const activation = embeddedAppController?.activate(action);
+        if (!activation) return;
+        trackTabPromise(`activate:${action || 'home'}`, activation).then(result => {
             if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
     }
@@ -138,7 +220,8 @@
         const context = Object.freeze({
             close: () => closeView(viewId),
             activate: () => setView(viewId),
-            feedback: window.VCPUI?.feedback
+            feedback: window.VCPUI?.feedback,
+            scope: viewScope
         });
         let disposer = null;
         try {
@@ -221,7 +304,7 @@
         });
     }
 
-    async function openEmbeddedApp(app) {
+    async function openEmbeddedAppInternal(app) {
         if (!mounted) return;
         const generation = mountGeneration;
         if (!embeddedAppController?.supported) {
@@ -281,6 +364,10 @@
         }
     }
 
+    function openEmbeddedApp(app) {
+        return trackTabPromise(`open:${app?.action || app?.id || 'unknown'}`, openEmbeddedAppInternal(app));
+    }
+
     async function detachView(viewId, point) {
         const view = appTabHost.views.get(viewId);
         if (!view || view.kind !== 'embedded') return;
@@ -309,7 +396,7 @@
                 // final record that retains the removed view subtree.
                 view.resizeObserver?.disconnect();
                 if (!options.skipEmbeddedClose) {
-                    embeddedAppController?.close(view.action)?.catch(error => {
+                    trackTabPromise(`close:${view.action}`, embeddedAppController?.close(view.action) || Promise.resolve()).catch(error => {
                         console.warn(`[NextUI] Failed to close embedded app ${view.action}:`, error);
                     });
                 }
@@ -324,14 +411,14 @@
             console.error(`[NextUiApps] Failed to unmount ${view.app?.id || view.action}:`, error);
         }
         if (view.scope) {
-            void view.scope.dispose(`view-closed:${viewId}`).catch(error => {
+            trackTabPromise(`dispose:${viewId}`, view.scope.dispose(`view-closed:${viewId}`)).catch(error => {
                 console.error(`[NextUiApps] Failed to dispose ${viewId}:`, error);
             });
         }
         appTabHost.unregister(viewId);
     }
 
-    async function restoreTabSession() {
+    async function restoreTabSessionInternal() {
         if (!mounted || restoringTabs) return;
         const generation = mountGeneration;
         restoringTabs = true;
@@ -345,7 +432,11 @@
             }
             if (!mounted || generation !== mountGeneration) return;
 
-            const restoreState = pendingTabRestore || { activeViewId: 'home', tabs: [] };
+            // Reconciliation can be retriggered by a late catalog event after
+            // the persisted restore has already completed. Use the live tab
+            // snapshot as the fallback; resetting to a synthetic Home state
+            // would hide the just-restored native application.
+            const restoreState = pendingTabRestore || appTabHost.snapshot();
             const descriptors = [...restoreState.tabs];
             for (const session of authoritative.sessions || []) {
                 const app = apps.find(candidate => candidate.action === session.action && candidate.embed);
@@ -392,6 +483,10 @@
         }
     }
 
+    function restoreTabSession() {
+        return trackTabPromise('restore-session', restoreTabSessionInternal());
+    }
+
     async function closeAllInternalApps(options = {}) {
         const preservedSession = options.preserveSession ? appTabHost.snapshot() : null;
         const embeddedActions = [...appTabHost.views.values()]
@@ -432,7 +527,26 @@
             const view = [...appTabHost.views.values()].find(candidate => candidate.kind === 'embedded' && candidate.action === payload?.action);
             if (!view) return;
             if (payload?.state === 'closed') {
-                closeView(`app:${view.app.id}`, { skipEmbeddedClose: true });
+                const generation = mountGeneration;
+                const viewId = `app:${view.app.id}`;
+                // A close notification can cross a renderer reload after Main
+                // has already created/reused a newer session for the same
+                // action. Reconcile with Main before removing the replacement
+                // renderer's tab; the event itself has no session generation.
+                Promise.resolve(embeddedAppController.list()).then(state => {
+                    if (!mounted || generation !== mountGeneration || appTabHost.views.get(viewId) !== view) return;
+                    const stillOpen = state?.sessions?.some(session => session.action === view.action);
+                    if (stillOpen) {
+                        syncEmbeddedActivation();
+                        return;
+                    }
+                    closeView(viewId, { skipEmbeddedClose: true });
+                }).catch(error => {
+                    console.warn(`[NextUI] Failed to reconcile closed embedded app ${view.action}:`, error);
+                    if (mounted && generation === mountGeneration && appTabHost.views.get(viewId) === view) {
+                        closeView(viewId, { skipEmbeddedClose: true });
+                    }
+                });
                 return;
             }
             if (payload?.state !== 'error') return;
@@ -442,8 +556,8 @@
     }
 
     function mount() {
-        if (mounted || document.documentElement.dataset.uiMode !== 'next') return;
-        if (teardownPromise) return;
+        if (mounted) return;
+        if (teardownPromise) return teardownPromise.then(() => mount());
         const finishMountTiming = window.VCPPerformance?.begin?.('next.mount');
         const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
         const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
@@ -464,6 +578,8 @@
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
         mountScope = LifecycleScope ? new LifecycleScope('next:tab-host') : null;
         mountAbortController = mountScope ? null : new AbortController();
+        releaseWindowState = window.MainChatCommands?.subscribeWindowState?.(syncWindowControl) || null;
+        if (mountScope && releaseWindowState) mountScope.own(releaseWindowState, 'next:window-state', 'subscription');
         appTabHost = new AppTabHost({
             document,
             storage: sessionStorage,
@@ -490,8 +606,6 @@
             toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),
             syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),
             setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),
-            getMenuRegistry: () => window.VCPContributions?.menus,
-            executeCommand: id => window.VCPContributions?.commands.execute(id),
             subscribeTheme: (listener, options) => window.uiManager?.subscribeTheme?.(listener, options),
         });
         accountMenuController.mount(mountScope);
@@ -522,7 +636,10 @@
             getDensity,
             acquireOverlay: owner => creationOverlayCoordinator.acquire(owner),
             releaseOverlay: owner => creationOverlayCoordinator.release(owner),
-            showUnavailable: () => window.uiHelperFunctions?.showToastNotification?.('创建功能尚未准备好，请稍后重试。', 'error'),
+            showUnavailable: message => window.uiHelperFunctions?.showToastNotification?.(
+                message || '创建功能尚未准备好，请稍后重试。',
+                'error'
+            ),
         });
         creationController.mount(mountScope);
         syncDensity();
@@ -557,9 +674,10 @@
     function unmount() {
         if (!mounted) return teardownPromise || Promise.resolve();
         mounted = false;
-        previewSuspended = false;
         mountGeneration += 1;
         if (!mountScope) mountAbortController?.abort();
+        if (!mountScope) releaseWindowState?.();
+        releaseWindowState = null;
         mountAbortController = null;
         sidebarResizeObserver?.disconnect();
         sidebarResizeObserver = null;
@@ -593,26 +711,10 @@
             if (teardownPromise === wrapped) teardownPromise = null;
         });
         teardownPromise = wrapped;
+        publishTabSettlement();
+        wrapped.finally(publishTabSettlement).catch(() => {});
         document.body.classList.remove('next-ui-tab-dragging');
         return wrapped;
-    }
-
-    async function suspendForPreview() {
-        if (!mounted || previewSuspended) return;
-        previewSuspended = true;
-        const host = document.getElementById('nextUiInternalAppHost');
-        if (host) host.hidden = true;
-        try {
-            await embeddedAppController?.hide();
-        } catch (error) {
-            console.warn('[NextUI] Failed to suspend embedded app preview:', error);
-        }
-    }
-
-    function resumeFromPreview() {
-        if (!previewSuspended) return;
-        previewSuspended = false;
-        updateVisibility();
     }
 
     async function acquireOverlay(owner = Symbol('next-ui-overlay')) {
@@ -624,45 +726,10 @@
         overlayCoordinator?.release(owner);
     }
 
-    async function prepareForMode(mode, options = {}) {
-        if (mode !== 'next' && options.preview === true) {
-            await suspendForPreview();
-            return;
-        }
-        if (mode !== 'next') {
-            await unmount();
-            return;
-        }
-        if (teardownPromise) await teardownPromise;
-    }
-
-    async function syncMode(mode, options = {}) {
-        const normalizedMode = mode === 'next' ? 'next' : 'classic';
-        const generation = ++modeRequestGeneration;
-        if (normalizedMode !== 'next') {
-            if (options.preview === true) {
-                await suspendForPreview();
-                return;
-            }
-            await unmount();
-            return;
-        }
-        if (teardownPromise) await teardownPromise;
-        if (generation !== modeRequestGeneration) return;
-        if (document.documentElement.dataset.uiMode === 'next') {
-            if (previewSuspended) resumeFromPreview();
-            else mount();
-        }
-    }
-
     function init() {
         if (initialized) return;
         initialized = true;
-        window.addEventListener('ui-mode-changed', event => {
-            if (event.detail?.coordinated === true) return;
-            void syncMode(event.detail?.mode, { preview: event.detail?.preview === true });
-        });
-        void syncMode(document.documentElement.dataset.uiMode);
+        mount();
     }
 
     // Internal applications may need to enter the shared VCPChat Agent/Group
@@ -673,10 +740,8 @@
     // VCPChat configuration modal.
     window.VCPNextShellController = Object.freeze({
         init,
-        mount: () => syncMode('next'),
-        unmount: () => syncMode('classic'),
-        prepareForMode,
-        syncMode,
+        mount,
+        unmount,
         isMounted: () => mounted,
         openAccountMenu: () => accountMenuController?.open(),
         openLaunchpad,
@@ -694,6 +759,9 @@
             openViews: Object.freeze([...(appTabHost?.views?.keys?.() || [])]),
             overlay: overlayCoordinator?.snapshot?.() || null,
             embedded: embeddedAppController?.getState?.() || null,
-        })
+            appTabs: getTabSettlementSnapshot(),
+        }),
+        getAppTabSnapshot: getTabSettlementSnapshot,
+        whenAppTabsSettled: whenTabsSettled,
     });
 })();

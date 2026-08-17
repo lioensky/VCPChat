@@ -1354,6 +1354,7 @@ function tabsFactory(options = {}) {
             if (current.value) wa.active = String(current.value);
         });
         controller._listen(wa, 'wa-tab-show', event => {
+            if (event.target !== wa) return;
             if (event.detail?.name !== undefined) state.value = event.detail.name;
             emit(wa, 'change');
         });
@@ -1716,17 +1717,35 @@ function modalFactory(options = {}) {
     // IPC work or native WebContentsView visibility leases.
     const wa = options.native === true ? null : waControl('dialog', {});
     if (wa) {
+        wa.className = 'vcp-ui-wa-dialog';
         const previousFocus = document.activeElement;
-        const state = { title: 'Dialog', size: 'md', content: '', actions: [], closeOnBackdrop: true, ...options };
+        const state = {
+            title: 'Dialog', size: 'md', content: '', actions: [],
+            closeOnBackdrop: true, dismissible: true, ...options
+        };
         let controller;
-        const close = result => {
+        let finalized = false;
+        let programmaticClose = false;
+        const finalize = result => {
+            if (finalized) return false;
+            finalized = true;
             state.onClose?.(result);
+            return true;
+        };
+        const close = result => {
+            if (finalized) return;
+            programmaticClose = true;
+            finalize(result);
             wa.open = false;
         };
         controller = makeController(wa, state, current => {
             wa.setAttribute('label', current.title);
-            if (current.closeOnBackdrop) wa.setAttribute('light-dismiss', '');
-            else wa.removeAttribute('light-dismiss');
+            wa.dataset.size = normalize(current.size, ['sm', 'md', 'lg'], 'md', 'size');
+            // WA's target-only light-dismiss check can confuse dialog surface
+            // whitespace with the backdrop after a top-layer Select opens.
+            // VCPUI owns the stricter geometry-based dismissal contract below.
+            wa.lightDismiss = false;
+            wa.removeAttribute('light-dismiss');
             wa.replaceChildren();
             const body = document.createElement('div');
             body.className = 'vcp-ui-modal-body';
@@ -1734,12 +1753,21 @@ function modalFactory(options = {}) {
             wa.append(body);
             const footer = document.createElement('div');
             footer.setAttribute('slot', 'footer');
+            footer.className = 'vcp-ui-modal-actions';
             (current.actions || []).forEach(action => footer.append(action.element || action));
             wa.append(footer);
             let frames = 0;
             const ensureOpen = () => {
                 if (wa.isConnected) {
-                    wa.open = true;
+                    // Establish the declared initial focus before showModal's
+                    // native autofocus algorithm and WA's follow-up frame run.
+                    // All three paths then retain the same focus owner.
+                    const initialFocus = wa.querySelector('[autofocus]');
+                    Promise.resolve(initialFocus?.updateComplete).then(() => {
+                        if (!wa.isConnected) return;
+                        initialFocus?.focus();
+                        wa.open = true;
+                    });
                     return;
                 }
                 if (frames++ < 60) nextFrame(ensureOpen);
@@ -1747,7 +1775,37 @@ function modalFactory(options = {}) {
             queueMicrotask(ensureOpen);
         });
         controller.close = close;
-        controller._listen(wa, 'wa-after-hide', () => {
+        controller._listen(wa, 'pointerdown', event => {
+            if (!state.closeOnBackdrop || !state.dismissible) return;
+            // A Select listbox is rendered outside the dialog box by wa-popup.
+            // Its pointerdown precedes the option's mouseup selection. Treat
+            // the entire interaction as owned by the open Select, even when
+            // top-layer retargeting removes wa-select from composedPath().
+            if ([...wa.querySelectorAll('wa-select')].some(select => select.open)) return;
+            const path = event.composedPath?.() || [];
+            if (path.some(node => node?.localName === 'wa-select' || node?.localName === 'wa-option')) return;
+            const dialog = wa.shadowRoot?.querySelector('[part~="dialog"]');
+            const rect = dialog?.getBoundingClientRect();
+            if (!rect) return;
+            const outside = event.clientX < rect.left || event.clientX > rect.right
+                || event.clientY < rect.top || event.clientY > rect.bottom;
+            if (outside) close(null);
+        });
+        controller._listen(wa, 'wa-hide', event => {
+            // WA lifecycle events bubble. A nested Select closing its listbox
+            // must not be mistaken for the owning Dialog closing.
+            if (event.target !== wa) return;
+            if (!state.dismissible && !programmaticClose) {
+                event.preventDefault();
+                return;
+            }
+            finalize(null);
+        });
+        controller._listen(wa, 'wa-after-hide', event => {
+            if (event.target !== wa) return;
+            // Defensive fallback for runtimes that omit the cancellable hide
+            // event. All user and programmatic close paths share one finalizer.
+            finalize(null);
             controller.destroy();
             if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
         });
@@ -1761,9 +1819,15 @@ function modalFactory(options = {}) {
     dialog.setAttribute('aria-modal', 'true');
     overlay.append(dialog);
     const previousFocus = document.activeElement;
-    const state = { title: 'Dialog', size: 'md', content: '', actions: [], closeOnBackdrop: true, ...options };
+    const state = {
+        title: 'Dialog', size: 'md', content: '', actions: [],
+        closeOnBackdrop: true, dismissible: true, ...options
+    };
     let controller;
+    let finalized = false;
     const close = result => {
+        if (finalized) return;
+        finalized = true;
         state.onClose?.(result);
         controller.destroy();
         if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
@@ -1786,6 +1850,8 @@ function modalFactory(options = {}) {
             })()
             : iconButtonFactory({ icon: 'close', label: '关闭对话框', size: 'sm' });
         const closeFromButton = () => close(null);
+        closeButton.element.disabled = !current.dismissible;
+        closeButton.element.setAttribute('aria-disabled', String(!current.dismissible));
         closeButton.element.addEventListener('click', closeFromButton, { once: true });
         records.push(() => {
             closeButton.element?.removeEventListener('click', closeFromButton);
@@ -1801,10 +1867,10 @@ function modalFactory(options = {}) {
     });
     controller.close = close;
     controller._listen(overlay, 'mousedown', event => {
-        if (event.target === overlay && state.closeOnBackdrop) close(null);
+        if (event.target === overlay && state.closeOnBackdrop && state.dismissible) close(null);
     });
     controller._listen(document, 'keydown', event => {
-        if (event.key !== 'Escape' || !overlay.isConnected) return;
+        if (event.key !== 'Escape' || !overlay.isConnected || !state.dismissible) return;
         const openOverlays = [...document.querySelectorAll('.vcp-ui-modal-overlay')]
             .filter(candidate => candidate.isConnected);
         if (openOverlays.at(-1) !== overlay) return;
@@ -2019,10 +2085,23 @@ ENHANCERS.set('settingssection', settingsSectionEnhancer);
 ENHANCERS.set('settingsactionbar', settingsActionBarEnhancer);
 
 let feedbackHost;
-let loadingCount = 0;
 let activeDialog = null;
 const dialogQueue = [];
 const toastTimers = new Map();
+const loadingTokens = new Map();
+const feedbackOwners = new Set();
+const rootFeedbackOwner = createFeedbackOwnerRecord('root');
+let loadingSequence = 0;
+
+function createFeedbackOwnerRecord(label) {
+    return {
+        label: String(label || 'feedback-owner'),
+        active: true,
+        dialogs: new Set(),
+        toasts: new Set(),
+        loading: [],
+    };
+}
 
 function ensureFeedbackHost() {
     if (feedbackHost?.isConnected) return feedbackHost;
@@ -2033,38 +2112,142 @@ function ensureFeedbackHost() {
     return feedbackHost;
 }
 
-function runDialog(factory) {
+function runDialog(factory, owner = rootFeedbackOwner) {
+    if (!owner.active) return Promise.resolve(null);
     return new Promise(resolve => {
-        dialogQueue.push({ factory, resolve });
+        const item = { factory, owner, settled: false, resolve };
+        owner.dialogs.add(item);
+        dialogQueue.push(item);
         processDialogQueue();
     });
+}
+
+function settleDialog(item, result) {
+    if (!item || item.settled) return;
+    item.settled = true;
+    item.owner.dialogs.delete(item);
+    item.resolve(result);
 }
 
 function processDialogQueue() {
     if (activeDialog || !dialogQueue.length) return;
     const item = dialogQueue.shift();
+    if (!item.owner.active) {
+        settleDialog(item, null);
+        processDialogQueue();
+        return;
+    }
     const dialog = item.factory(result => {
-        activeDialog = null;
-        item.resolve(result);
+        if (activeDialog?.item === item) activeDialog = null;
+        settleDialog(item, result);
         processDialogQueue();
     });
-    activeDialog = dialog;
+    activeDialog = { controller: dialog, item };
     ensureFeedbackHost().querySelector('.vcp-ui-dialog-host').append(dialog.element);
 }
 
-const feedback = Object.freeze({
-    toast(message, options = {}) {
-        const controller = toastFactory({ ...options, message });
-        ensureFeedbackHost().querySelector('.vcp-ui-toast-stack').append(controller.element);
-        const duration = options.duration ?? 4200;
-        if (duration > 0) {
-            const timer = setTimeout(() => {
-                toastTimers.delete(controller);
-                controller.destroy();
-            }, duration);
-            toastTimers.set(controller, timer);
+function removeToast(owner, controller) {
+    owner.toasts.delete(controller);
+    const timer = toastTimers.get(controller);
+    if (timer !== undefined) clearTimeout(timer);
+    toastTimers.delete(controller);
+}
+
+function createOwnedToast(owner, message, options = {}) {
+    if (!owner.active) return null;
+    const controller = toastFactory({ ...options, message });
+    const originalDestroy = controller.destroy.bind(controller);
+    controller.destroy = () => {
+        removeToast(owner, controller);
+        return originalDestroy();
+    };
+    owner.toasts.add(controller);
+    ensureFeedbackHost().querySelector('.vcp-ui-toast-stack').append(controller.element);
+    const duration = options.duration ?? 4200;
+    if (duration > 0) {
+        const timer = setTimeout(() => controller.destroy(), duration);
+        toastTimers.set(controller, timer);
+    }
+    return controller;
+}
+
+function updateLoadingLayer() {
+    const host = loadingTokens.size ? ensureFeedbackHost() : feedbackHost;
+    const layer = host?.querySelector('.vcp-ui-loading-layer');
+    if (!layer) return loadingTokens.size;
+    layer.hidden = loadingTokens.size === 0;
+    if (loadingTokens.size) {
+        const latest = [...loadingTokens.values()].reduce((current, candidate) => (
+            !current || candidate.sequence > current.sequence ? candidate : current
+        ), null);
+        layer.querySelector('.vcp-ui-loading-label').textContent = latest?.label || '正在处理';
+    }
+    return loadingTokens.size;
+}
+
+function setOwnedLoading(owner, visible, label = '正在处理') {
+    if (visible) {
+        if (!owner.active) return loadingTokens.size;
+        const token = Symbol(owner.label);
+        owner.loading.push(token);
+        loadingTokens.set(token, { owner, label: String(label || '正在处理'), sequence: ++loadingSequence });
+    } else {
+        const token = owner.loading.pop();
+        if (token) loadingTokens.delete(token);
+    }
+    return updateLoadingLayer();
+}
+
+async function disposeFeedbackOwner(owner) {
+    if (!owner.active) return;
+    owner.active = false;
+    feedbackOwners.delete(owner);
+    const queued = dialogQueue.filter(item => item.owner === owner);
+    queued.forEach(item => {
+        const index = dialogQueue.indexOf(item);
+        if (index >= 0) dialogQueue.splice(index, 1);
+        settleDialog(item, null);
+    });
+    if (activeDialog?.item.owner === owner) activeDialog.controller.close(null);
+    [...owner.toasts].forEach(controller => controller.destroy());
+    owner.loading.splice(0).forEach(token => loadingTokens.delete(token));
+    updateLoadingLayer();
+    processDialogQueue();
+}
+
+function createFeedbackHandle(scope) {
+    const label = scope?.label ? `feedback:${scope.label}` : 'feedback-owner';
+    const owner = createFeedbackOwnerRecord(label);
+    feedbackOwners.add(owner);
+    let disposePromise = null;
+    const handle = Object.freeze({
+        toast: (message, options = {}) => createOwnedToast(owner, message, options),
+        confirm: (options = {}) => runDialog(onClose => confirmFactory({ title: '请确认', ...options, onClose }), owner),
+        prompt: (options = {}) => runDialog(onClose => inputDialogFactory({ title: '请输入', ...options, onClose }), owner),
+        setLoading: (visible, label = '正在处理') => setOwnedLoading(owner, visible, label),
+        dispose() {
+            if (!disposePromise) disposePromise = disposeFeedbackOwner(owner);
+            return disposePromise;
+        },
+        get disposed() { return !owner.active; }
+    });
+    if (scope?.own) {
+        try {
+            scope.own(() => handle.dispose(), label, 'feedback-owner');
+        } catch (error) {
+            void handle.dispose();
+            throw error;
         }
-        return controller;
+    }
+    return handle;
+}
+
+const feedback = Object.freeze({
+    owner(scope) {
+        return createFeedbackHandle(scope);
+    },
+    toast(message, options = {}) {
+        return createOwnedToast(rootFeedbackOwner, message, options);
     },
     confirm(options = {}) {
         return runDialog(onClose => confirmFactory({ title: '请确认', ...options, onClose }));
@@ -2073,23 +2256,17 @@ const feedback = Object.freeze({
         return runDialog(onClose => inputDialogFactory({ title: '请输入', ...options, onClose }));
     },
     setLoading(visible, label = '正在处理') {
-        loadingCount = Math.max(0, loadingCount + (visible ? 1 : -1));
-        const layer = ensureFeedbackHost().querySelector('.vcp-ui-loading-layer');
-        layer.hidden = loadingCount === 0;
-        layer.querySelector('.vcp-ui-loading-label').textContent = label;
-        return loadingCount;
+        return setOwnedLoading(rootFeedbackOwner, visible, label);
     },
     cancelAll() {
         const queued = dialogQueue.splice(0);
-        queued.forEach(item => item.resolve(null));
-        toastTimers.forEach((timer, controller) => {
-            clearTimeout(timer);
-            controller.destroy();
+        queued.forEach(item => settleDialog(item, null));
+        [...feedbackOwners, rootFeedbackOwner].forEach(owner => {
+            [...owner.toasts].forEach(controller => controller.destroy());
+            owner.loading.splice(0).forEach(token => loadingTokens.delete(token));
         });
-        toastTimers.clear();
-        activeDialog?.close(null);
+        activeDialog?.controller.close(null);
         activeDialog = null;
-        loadingCount = 0;
         feedbackHost?.remove();
         feedbackHost = null;
     }

@@ -437,43 +437,48 @@ const settingsManager = (() => {
         const saveButton = agentSettingsForm.querySelector('button[type="submit"]');
 
         if (result.success) {
-            reportSettingsSaveResult(agentSettingsForm, true);
             if (saveButton) uiHelper.showSaveFeedback(saveButton, true, '已保存!', '保存 Agent 设置');
-            await window.itemListManager.loadItems();
+            try {
+                await window.itemListManager.loadItems();
 
-            const currentSelectedItem = refs.currentSelectedItemRef.get();
-            if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
-                const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
+                const currentSelectedItem = refs.currentSelectedItemRef.get();
+                if (currentSelectedItem.id === agentId && currentSelectedItem.type === 'agent') {
+                    const updatedAgentConfig = await electronAPI.getAgentConfig(agentId);
                 
-                // ⚠️ 检查是否返回错误对象
-                if (updatedAgentConfig && updatedAgentConfig.error) {
-                    console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
-                    uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
-                    // 仍然更新名称，但不更新其他可能缺失的属性
-                    currentSelectedItem.name = newConfig.name;
-                    selectedItemNameForSettingsSpan.textContent = newConfig.name;
-                    if (mainRendererFunctions.updateChatHeader) {
-                        mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
-                    }
-                } else if (updatedAgentConfig) {
-                    currentSelectedItem.name = newConfig.name;
-                    if (currentSelectedItem.config) {
-                        currentSelectedItem.config = updatedAgentConfig;
-                    } else {
-                        Object.assign(currentSelectedItem, updatedAgentConfig);
-                    }
+                    // ⚠️ 检查是否返回错误对象
+                    if (updatedAgentConfig && updatedAgentConfig.error) {
+                        console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
+                        uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
+                        // 仍然更新名称，但不更新其他可能缺失的属性
+                        currentSelectedItem.name = newConfig.name;
+                        selectedItemNameForSettingsSpan.textContent = newConfig.name;
+                        if (mainRendererFunctions.updateChatHeader) {
+                            mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                        }
+                    } else if (updatedAgentConfig) {
+                        currentSelectedItem.name = newConfig.name;
+                        if (currentSelectedItem.config) {
+                            currentSelectedItem.config = updatedAgentConfig;
+                        } else {
+                            Object.assign(currentSelectedItem, updatedAgentConfig);
+                        }
 
-                    // Update other UI parts via callbacks or direct calls if modules are passed in
-                    if (mainRendererFunctions.updateChatHeader) {
-                        mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                        // Update other UI parts via callbacks or direct calls if modules are passed in
+                        if (mainRendererFunctions.updateChatHeader) {
+                            mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
+                        }
+                        if (window.messageRenderer) {
+                            window.messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
+                            window.messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
+                        }
+                        selectedItemNameForSettingsSpan.textContent = newConfig.name;
                     }
-                    if (window.messageRenderer) {
-                        window.messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
-                        window.messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
-                    }
-                    selectedItemNameForSettingsSpan.textContent = newConfig.name;
                 }
+            } catch (projectionError) {
+                console.error('[SettingsManager] Agent settings saved, but UI projection failed:', projectionError);
+                uiHelper.showToastNotification(`Agent设置已保存，但界面刷新失败: ${projectionError.message || projectionError}`, 'warning');
             }
+            reportSettingsSaveResult(agentSettingsForm, true);
         } else {
             reportSettingsSaveResult(agentSettingsForm, false, result.error || 'save-failed');
             if (saveButton) uiHelper.showSaveFeedback(saveButton, false, '保存失败', '保存 Agent 设置');

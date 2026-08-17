@@ -1,6 +1,8 @@
-# Classic / Next 功能对等清单
+# Classic / Next 功能对等历史清单
 
-本清单用于上游 PR 前的人工与 Electron 验收。功能被移动到其他位置时，必须记录入口和完整交互，不能只以 DOM 存在或测试通过作为验收依据。
+> 状态：历史双 presentation 验证记录。主窗口现已收敛为单一 presentation；当前事实与回归范围见 [`next-ui-current-state.md`](./next-ui-current-state.md)。
+
+本清单保留当时上游 PR 前的人工与 Electron 验收证据，不再定义当前产品拓扑。
 
 | 功能 | Classic | Next | 交互与状态 | 验证 |
 | --- | --- | --- | --- | --- |

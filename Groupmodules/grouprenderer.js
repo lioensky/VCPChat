@@ -25,7 +25,6 @@ window.GroupRenderer = (() => {
     let groupPromptTextarea, invitePromptTextarea;
     let groupUseUnifiedModel, groupUnifiedModelContainer, groupUnifiedModelInput, openGroupModelSelectBtn;
     let deleteGroupBtn;
-    let createNewGroupBtn; // This button is in main.html, renderer.js might attach its listener
 
     // State for group settings
     let availableAgentsForGroup = []; // To populate member selection
@@ -86,7 +85,6 @@ window.GroupRenderer = (() => {
         ensureGroupSettingsDOM(); // Ensure DOM for group settings is ready
         console.log('[GroupRenderer] Initialized with dependencies.');
         console.log('[GroupRenderer INIT] inviteAgentButtonsContainerRef received:', inviteAgentButtonsContainerRef ? 'Exists' : 'MISSING');
-        setupGroupSpecificEventListeners();
     }
 
     function ensureGroupSettingsDOM() {
@@ -331,49 +329,6 @@ window.GroupRenderer = (() => {
         }));
     }
 
-
-    function setupGroupSpecificEventListeners() {
-        // Event listener for "Create New Group" button (assuming it's in main.html)
-        createNewGroupBtn = document.getElementById('createNewGroupBtn');
-        if (createNewGroupBtn) {
-            createNewGroupBtn.addEventListener('click', handleCreateNewGroup);
-        } else {
-            console.warn('[GroupRenderer] createNewGroupBtn not found.');
-        }
-
-        // Listeners for group settings form (will be attached when form is displayed)
-        // This is handled in displayGroupSettingsPage
-    }
-
-    async function handleCreateNewGroup() {
-        uiHelper.openModal('createGroupModal');
-        const form = document.getElementById('createGroupForm');
-        const nameInput = document.getElementById('newGroupNameInput');
-        nameInput.value = `新群组_${Date.now()}`; // Pre-fill with a default name
-
-        // Remove previous event listener to avoid multiple submissions
-        const newForm = form.cloneNode(true);
-        form.parentNode.replaceChild(newForm, form);
-
-        newForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const groupName = document.getElementById('newGroupNameInput').value.trim(); // Get value from the new form's input
-            if (groupName) {
-                uiHelper.closeModal('createGroupModal');
-                try {
-                    const result = await window.MainChatCommands?.createGroup?.({ name: groupName });
-                    if (result?.success && result.agentGroup) {
-                        return;
-                    } else {
-                        uiHelper.showToastNotification(`创建群组失败: ${result?.error || '创建功能不可用'}`, 'error');
-                    }
-                } catch (error) {
-                    console.error('创建群组时出错:', error);
-                    uiHelper.showToastNotification(`创建群组时发生错误: ${error.message}`, 'error');
-                }
-            }
-        });
-    }
 
     // Called by renderer.js when a group item is selected
     async function handleSelectGroup(groupId, groupName, groupAvatarUrl, groupConfig) {
@@ -1474,7 +1429,6 @@ window.GroupRenderer = (() => {
         loadTopicsForGroup, // Called when topics tab is selected for a group
         handleSendGroupMessage, // Called by renderer's send button if current chat is group
         loadGroupChatHistory,
-        handleCreateNewGroup, // If button is managed here
         handleGroupTopicSelection,
         handleRenameGroupTopic,
         handleDeleteGroupTopic,

@@ -5,8 +5,6 @@
         init: (...args) => controller()?.init(...args),
         mount: (...args) => controller()?.mount(...args),
         unmount: (...args) => controller()?.unmount(...args),
-        prepareForMode: (...args) => controller()?.prepareForMode(...args),
-        syncMode: (...args) => controller()?.syncMode(...args),
         isMounted: () => controller()?.isMounted?.() === true,
         openAccountMenu: (...args) => controller()?.openAccountMenu(...args),
         openLaunchpad: (...args) => controller()?.openLaunchpad(...args),
@@ -17,5 +15,7 @@
         setView: (...args) => controller()?.setView(...args),
         acquireOverlay: (...args) => controller()?.acquireOverlay(...args),
         releaseOverlay: (...args) => controller()?.releaseOverlay(...args),
+        getSnapshot: () => controller()?.getAppTabSnapshot?.() || null,
+        whenSettled: (...args) => controller()?.whenAppTabsSettled?.(...args) || Promise.resolve(null),
     });
 })();

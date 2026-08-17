@@ -1,17 +1,17 @@
 # Next UI 生命周期与可撤销注册架构
 
-> 本文负责生命周期实现细节；后续阶段顺序、模块拆分、可取消 IPC、贡献协议和 Classic 收敛门槛见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
+> 本文负责生命周期实现细节；当前完成度见 [`next-ui-current-state.md`](./next-ui-current-state.md)，后续施工顺序见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
 
 ## 目标
 
-Next UI 会反复打开和关闭模态窗、菜单、应用标签、原生 `WebContentsView` 与设置增强层，也允许在 Classic/Next 间运行时切换。这里的主要风险不是单个组件实现，而是副作用跨越了其界面寿命：界面已经消失，listener、timer、IPC、Observer、异步请求或注册项仍然存活。
+VCPChat 主窗口会反复打开和关闭模态窗、菜单、应用标签、原生 `WebContentsView` 与设置增强层。这里的主要风险不是单个组件实现，而是副作用跨越了其界面寿命：界面已经消失，listener、timer、IPC、Observer、异步请求或注册项仍然存活。
 
 本架构建立两个不变量：
 
 1. 每个动态副作用必须属于一个可诊断的生命周期所有者。
 2. 每个动态 Next UI 注册必须能够由同一个所有者撤销。
 
-Classic 保持上游原生命周期和业务 DOM。生命周期层只收敛 Next 与新增 UI 的动态资源，不接管 Classic 事件系统或前端插件运行时。
+上游共享聊天业务 DOM 保持原生命周期。生命周期层只收敛本分支新增动态 UI 的资源，不接管上游事件系统、业务子页面或前端插件运行时。
 
 ## 参考模型
 
@@ -69,23 +69,15 @@ renderer page
 
 前端插件 Loader、注册协议、脚本/样式加载顺序和实例销毁语义保持上游实现，本轮生命周期收敛不接管它们。若未来需要插件卸载或热重载，应作为独立插件运行时变更设计、迁移和验证，不能借 Next Shell 重构间接改变现有插件。
 
-## Classic/Next 切换事务
+## 规范主窗口与兼容模式读取
 
-`uiModeManager.applyAsync()` 是运行时切换的唯一异步入口：
+主窗口现在只有一个规范 presentation，由 `main.html` 静态声明 `data-ui-mode="next"`。旧配置中的
+`classic` / `next` 值只在 settings schema 中兼容归一化；不存在运行时 mode manager、状态通道、拆卸换壳或第二套 listener。
+Appearance Studio、全局设置和启动加载不再把 `uiMode` 当作可预览、可提交的运行时状态。
 
-```text
-request generation
-  → serialized queue
-  → prepare（隐藏原生 View、等待旧 Next teardown）
-  → stale generation fence
-  → commit html[data-ui-mode]
-  → sync target surface
-  → settled / failed state
-```
-
-同一协调事务发出的 `ui-mode-changed` 带 `coordinated` 标记，Tab Host 不再同时从事件监听和显式调用执行两次 `syncMode()`。新的请求可以让排队中的旧请求在 commit 前失效，但不会与旧 teardown 交叉执行。
-
-同步 `apply()` 只保留给启动缓存、测试和无异步宿主的兼容路径；设置保存与 Appearance Studio 使用 `applyAsync()`。
+内嵌业务页面拥有独立产品策略。当前 allowlist 中的页面显式以 `uiMode=classic` 打开，主窗口设置
+不会向现有 WebContentsView 广播 presentation 变化。若以后迁移某个业务页面，必须在页面策略中
+单独启用并完成其 mount/unmount 门禁，不能重新引入“主窗口模式自动传染所有子页面”的第二权威。
 
 ## 开发规则
 
@@ -95,7 +87,8 @@ request generation
 - 不依赖 DOM 被删除来间接回收 IPC、timer 或原生 View。
 - 所有 async completion 必须有 generation、identity 或 Scope guard。
 - 异步 acquire 返回后必须再次确认 owner 仍为 `active`；若 owner 已进入 `disposing`，立即归还刚取得的 lease/handle，不能只检查最终 `disposed` 状态。
-- Registry 新增项必须有 register → dispose → absent 测试。
+- Registry 只保留具有生产闭环的 `commands/apps`；新增 kind 必须与首个 producer/consumer 同时进入，并具备 register → use → dispose → absent 测试。
+- 内部应用注销时，Launchpad 必须刷新，已打开的 tab 与 Surface 必须同步关闭。
 - `destroy()`/`dispose()` 必须幂等。
 - Classic 代码不因 Next 生命周期化而改写；共享增强器必须能恢复原 DOM 身份和状态。
 
@@ -113,7 +106,25 @@ Electron 压力测试在真实 renderer 中反复执行 Ask Nova、设置、Agen
 
 `Memory.getDOMCounters().nodes` 仍作为趋势诊断输出，但不单独判定泄漏：Electron 当前 Chromium 的 Blink 原生 node wrapper 会在 JavaScript 已不可达后延迟回收，而实验性的 `DOM.getDetachedDomNodes` 本身还会延长其寿命。需要定位时显式开启 detached debug；正常门禁使用活动 DOM 不变量、JS heap、listener 和所有权资源共同判定，不能用单一原生计数制造假阳性。
 
-2026-08-16 完整压力验收为 3 次预热加 20 次测量；所有 checkpoint 保持 8 个活动 Scope、88 项受管资源、405 个 listener、2 个 page 和 5 个 Electron process。JS heap 从 9.3 MiB 到 9.6 MiB 后趋稳；reload、crash、Overlay 和 View session 均完成恢复与对账。插件 Loader 恢复上游实现后不再计入 Next Scope 基线。
+2026-08-17 P3 最终压力验收为 3 次预热加 20 次测量；所有 checkpoint 保持 8 个活动 Scope、162 项受管资源、407 个 listener、2 个 page、5 个 Electron process 和 2 个 renderer process。活动 DOM root、VCP icon、option 的 detached 计数均为 0；JS heap 在 8.9-9.1 MiB 间稳定。reload、crash、Overlay 和 View session 均完成恢复与对账。插件 Loader 保持上游实现，不计入 Next Scope 基线。
+
+## Next Delta Contract
+
+`npm run guard:next-delta` 只约束本分支相对上游新增的责任，不把上游既有问题冒充为 Next 缺陷：
+
+- 规范 Shell、设置、通知、创建入口和共享业务 host 只能存在一个 owner。
+- 已退役的 Classic 主窗口 ID、隐藏控件 `.click()` 代理和运行时 `uiMode` 写入不得回归。
+- Web Awesome Modal 必须满足一次性 finalize；原生关闭、Escape、light-dismiss 与程序关闭共享同一合同，持久创建提交期间禁止用户关闭。
+- 子页面 presentation 权威与主窗口设置隔离。
+- 聊天、消息、列表、设置、通知、插件加载等关键共享文件以带理由的 SHA-256 baseline 冻结；任何变化都必须显式更新清单并重新归因。
+
+该门禁采用 VS Code 与 DeepSeek Harness 一类工程实践：显式 owner、能力边界、确定性状态合同、
+有界资源、可重放失败。发现问题时遵循 `discover → minimize → fix → preserve trace`；不能通过
+扩大 timeout、提高泄漏阈值或隐藏错误来获得绿色结果。
+
+最终硬化新增了两类真实 Electron 证据：Web Awesome 创建模态的用户关闭、提交锁、失败恢复和
+成功完成；以及空 VCP 配置下的主窗口首启。上游 Translator 的空配置阻塞式 `alert` 被明确隔离为
+上游子页行为，门禁在完成主窗口首启验证后才给子页写入惰性占位配置，不修改其产品代码。
 
 ## 生命周期检查器与性能诊断
 

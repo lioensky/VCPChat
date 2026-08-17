@@ -1,6 +1,6 @@
 # 新版 UI 业务页面启用策略
 
-> 状态：首个上游 PR 不启用业务子页面 Next presentation
+> 状态：当前产品边界；首个上游 PR 不启用业务子页面 Next presentation。实现减法与未来重新引入条件见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
 > 更新日期：2026-08-14
 
 新版主界面不再自动要求所有子应用使用新版 presentation。业务页面必须逐页达到可用门槛后才能进入启用清单。
@@ -15,7 +15,7 @@
 
 笔记、翻译、便签、日志、插件、任务、记忆、论坛、RAG 观察器、Human ToolBox 和 VchatManager 均不属于首个上游设计 PR。它们保留 `origin/main` 的经典页面，不在业务文件中保存禁用的 Next 重建、runtime bootstrap 或实验样式。
 
-数据库、IPC、业务协议和经典页面均不改变。统一策略仍由 `modules/ui-system/ui-surface-policy.js` 保护，但 allowlist 不是保存实验实现的理由；页面只有在独立后续 PR 达到启用门槛时才加入 Next runtime。
+数据库、IPC、业务协议和上游页面均不改变。中央边界检查继续保证业务子页面不被意外重建，但空 allowlist 不是保存实验 runtime 的理由；页面只有在独立后续 PR 达到启用门槛时，才与其最小 runtime、消费者和测试一起引入。
 
 协同 Canvas 不属于“归档重建”：其 next-UI 重建已撤销，业务文件保持 `upstream-review/main` 的上游经典实现，因此不加载新版 runtime。
 

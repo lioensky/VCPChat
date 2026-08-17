@@ -1,6 +1,8 @@
 # 设计系统上游 PR 架构收敛
 
-> 状态：Classic/Next 功能对等整改已完成；本节门禁作为后续重构与上游 PR 的持续回归基线
+> 状态：历史 PR 审查与整改日志，不代表当前实现或 PR 就绪度。当前判断见 [`next-ui-current-state.md`](./next-ui-current-state.md)，后续路线见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
+>
+> 历史状态：Classic/Next 功能对等整改已完成；本节门禁曾作为后续重构与上游 PR 的回归基线。
 > 上游基线：`origin/main`
 > 减法源快照：`a1f76dffea8105999e465da45d8e52558cd80c47`
 > 原则：只修复本设计分支新增或显著放大的问题，不借设计 PR 重构上游 Classic。

@@ -7,21 +7,17 @@
  * 附件等工具按钮使用新版样式；发送按钮保留迁移前的圆形强调按钮。
  */
 @layer vcp-ui.components {
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#messageInput, .chat-message-input):focus,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#messageInput, .chat-message-input):focus-visible {
+    html .vcp-ui-scope :is(#messageInput, .chat-message-input):focus, html .vcp-ui-scope :is(#messageInput, .chat-message-input):focus-visible {
         outline: none;
         outline-offset: 0;
         box-shadow: none;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope .chat-input-actions {
+    html .vcp-ui-scope .chat-input-actions {
         gap: var(--vcp-ui-space-1);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button),
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button),
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button),
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button) {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button), html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button) {
         width: var(--vcp-ui-control-md);
         height: var(--vcp-ui-control-md);
         margin: 0;
@@ -38,17 +34,14 @@
         transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), border-color var(--vcp-ui-transition-fast), transform var(--vcp-ui-transition-fast);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) .vcp-ui-icon,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button) .vcp-ui-icon,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button) .vcp-ui-icon,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button) .vcp-ui-icon {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) .vcp-ui-icon, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button) .vcp-ui-icon, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button) .vcp-ui-icon, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button) .vcp-ui-icon {
         font-size: var(--vcp-ui-icon-md);
     }
 
     /* The shared composer uses inline SVGs so Classic does not depend on the
        Next icon runtime. Keep their rendered size aligned with Classic; the
        width/height attributes in main.html are only intrinsic fallbacks. */
-    html[data-ui-mode="next"] .vcp-ui-scope :is(
+    html .vcp-ui-scope :is(
         #attachFileBtn,
         #quickNewTopicBtn,
         #emoticonTriggerBtn,
@@ -63,7 +56,7 @@
         flex: 0 0 auto;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg {
         width: var(--vcp-ui-send-icon-size);
         height: var(--vcp-ui-send-icon-size);
         fill: none;
@@ -71,14 +64,12 @@
         flex: 0 0 auto;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):hover:not(:disabled),
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):hover:not(:disabled),
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):hover:not(:disabled) {
+    html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):hover:not(:disabled), html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):hover:not(:disabled), html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):hover:not(:disabled) {
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-fill-1);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) {
         width: var(--vcp-ui-send-button-size);
         height: var(--vcp-ui-send-button-size);
         margin-left: auto;
@@ -89,25 +80,22 @@
         box-shadow: var(--vcp-ui-send-button-shadow);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):hover:not(:disabled) {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):hover:not(:disabled) {
         background: var(--vcp-ui-accent-hover);
         transform: translateY(-1px);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode {
         color: var(--vcp-ui-on-accent);
         background: color-mix(in srgb, var(--vcp-ui-accent) 84%, var(--vcp-ui-bg-0));
         background-image: none;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode:hover:not(:disabled) {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button).interrupt-mode:hover:not(:disabled) {
         background: color-mix(in srgb, var(--vcp-ui-accent) 76%, var(--vcp-ui-bg-0));
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):disabled,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):disabled,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):disabled,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):disabled {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):disabled, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):disabled, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):disabled, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):disabled {
         border-color: transparent;
         color: var(--vcp-ui-text-disabled);
         background: var(--vcp-ui-disabled-bg);
@@ -116,7 +104,7 @@
         transform: none;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):disabled {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):disabled {
         color: var(--vcp-ui-on-accent);
         background: var(--vcp-ui-accent);
         box-shadow: none;
@@ -124,10 +112,7 @@
         opacity: 0.55;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):focus-visible,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):focus-visible,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):focus-visible,
-    html[data-ui-mode="next"] .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):focus-visible {
+    html .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button):focus-visible, html .vcp-ui-scope :is(#attachFileBtn, .chat-attach-button):focus-visible, html .vcp-ui-scope :is(#quickNewTopicBtn, .chat-quick-new-button):focus-visible, html .vcp-ui-scope :is(#emoticonTriggerBtn, .chat-emoticon-button):focus-visible {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;
     }

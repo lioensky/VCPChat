@@ -98,8 +98,15 @@ app.whenReady().then(async () => {
         const tick = String.fromCharCode(96);
         const htmlHeading =
             '<h1 style="text-align:center">于影升起的太陽</h1>';
+        const markdownHeading = '# 1. 网络图片与普通 Markdown';
         const fixture = [
             htmlHeading,
+            '',
+            markdownHeading,
+            '',
+            '![网络图片](https://example.invalid/network-image.png)',
+            '',
+            '网络图片后的普通 Markdown。',
             '',
             '> 这是一份用于验证 Markdown-first、原生 HTML、LaTeX、Mermaid、网络媒体、Anime.js、CSS 3D、动态表格与局部文字特效能否在同一份源码中稳定共存的测试文档。',
             '',
@@ -162,6 +169,88 @@ app.whenReady().then(async () => {
             editor?.blur();
             await waitFrames();
         }
+
+        const markdownHeadingShell = [...root.querySelectorAll(
+            '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"]'
+        )].find((candidate) =>
+            candidate.querySelector('h1')?.textContent
+                === '1. 网络图片与普通 Markdown'
+        );
+        const markdownHeadingNode = markdownHeadingShell?.querySelector('h1');
+        if (markdownHeadingNode) {
+            const rect = markdownHeadingNode.getBoundingClientRect();
+            markdownHeadingNode.dispatchEvent(new MouseEvent('click', {
+                button: 0,
+                bubbles: true,
+                composed: true,
+                cancelable: true,
+                clientX: rect.right - 2,
+                clientY: rect.top + rect.height / 2
+            }));
+            await waitFrames();
+        }
+        const markdownHeadingEditor = markdownHeadingShell?.querySelector(
+            '[data-vdoc-flow-source-editor="true"]'
+        );
+        const markdownHeadingText = markdownHeadingEditor
+            ? [...markdownHeadingEditor.childNodes].find((node) =>
+                node.nodeType === Node.TEXT_NODE
+                && node.nodeValue?.includes('网络图片与普通 Markdown')
+            )
+            : null;
+        if (markdownHeadingText) {
+            const selection = root.getSelection
+                ? root.getSelection()
+                : window.getSelection();
+            const range = document.createRange();
+            range.setStart(markdownHeadingText, markdownHeadingText.length);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            markdownHeadingEditor.focus();
+        }
+        const markdownHeadingEnter = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        });
+        markdownHeadingEditor?.dispatchEvent(markdownHeadingEnter);
+        await waitFrames();
+        const sourceAfterMarkdownHeadingEnter =
+            window.ScriptoriumAgent.common.getSource({
+                sourceKind: 'markdown-hybrid',
+                startLine: 1,
+                endLine: 30
+            }).source;
+        const markdownBoundaryEditor = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"][data-vdoc-flow-domain="markdown"]'
+        );
+        const markdownBoundarySelection = root.getSelection
+            ? root.getSelection()
+            : window.getSelection();
+        const markdownBoundaryShell =
+            markdownBoundaryEditor?.closest('[data-vdoc-edit-key]');
+        const markdownHeadingEnterResult = {
+            activated: Boolean(markdownHeadingEditor),
+            handled: markdownHeadingEnter.defaultPrevented,
+            insertedBlankLine: sourceAfterMarkdownHeadingEnter.includes(
+                markdownHeading + '\\n↵\\n'
+            ),
+            movedToNewRegion:
+                markdownBoundaryShell !== markdownHeadingShell,
+            focusedNewRegion:
+                root.activeElement === markdownBoundaryEditor,
+            caretInNewRegion: Boolean(
+                markdownBoundaryEditor
+                && markdownBoundarySelection?.anchorNode
+                && markdownBoundaryEditor.contains(
+                    markdownBoundarySelection.anchorNode
+                )
+            )
+        };
+        markdownBoundaryEditor?.blur();
+        await waitFrames();
 
         const headingShell = [...root.querySelectorAll(
             '[data-vdoc-edit-key][data-vdoc-edit-type="html"]'
@@ -253,6 +342,7 @@ app.whenReady().then(async () => {
         return {
             count: shells.length,
             results,
+            markdownHeadingEnter: markdownHeadingEnterResult,
             htmlHeadingEnter: {
                 activated: Boolean(headingEditor),
                 handled: enter.defaultPrevented,
@@ -290,6 +380,12 @@ app.whenReady().then(async () => {
     const passed = !result.executionError
         && result.count === 2
         && result.results.every((entry) => entry.activated)
+        && result.markdownHeadingEnter?.activated === true
+        && result.markdownHeadingEnter?.handled === true
+        && result.markdownHeadingEnter?.insertedBlankLine === true
+        && result.markdownHeadingEnter?.movedToNewRegion === true
+        && result.markdownHeadingEnter?.focusedNewRegion === true
+        && result.markdownHeadingEnter?.caretInNewRegion === true
         && result.htmlHeadingEnter?.activated === true
         && result.htmlHeadingEnter?.handled === true
         && result.htmlHeadingEnter?.insertedAfterElement === true

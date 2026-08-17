@@ -35,6 +35,17 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 
 const handledToolApprovalRequestIds = new Set();
 
+function clearPersistentNotifications({ container = document.getElementById('notificationsList') } = {}) {
+    if (!container) return { success: false, removed: 0 };
+    let removed = 0;
+    container.querySelectorAll('.notification-item').forEach(item => {
+        if (item.dataset.protectedNotification === 'tool-approval') return;
+        item.remove();
+        removed += 1;
+    });
+    return { success: true, removed };
+}
+
 function sendToolApprovalResponse(requestId, approved, reason = '') {
     if (!requestId || !notificationRendererApi || typeof notificationRendererApi.sendVCPLogMessage !== 'function') {
         return false;
@@ -575,7 +586,8 @@ function initializeFocusCleanup() {
 window.notificationRenderer = {
     updateVCPLogStatus,
     renderVCPLogNotification,
-    initializeFocusCleanup
+    initializeFocusCleanup,
+    clearPersistentNotifications
 };
 
 // Make globalSettings accessible for do not disturb mode check

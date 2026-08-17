@@ -25,7 +25,6 @@ const SHARED_KEYS = [
     'openTextInNewWindow',
     'sendOpenExternalLink',
     'onThemeUpdated',
-    'onUiModeUpdated',
     'getCurrentTheme',
     'setTheme',
     'setThemeMode',

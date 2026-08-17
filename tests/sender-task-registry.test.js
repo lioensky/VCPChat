@@ -70,3 +70,35 @@ test('invalid task descriptors and reused numeric sender identities are rejected
     assert.throws(() => registry.begin(sender(3), 'other', 'embedded:create'), /sender identity changed/);
     registry.finish(owner, 'valid');
 });
+
+test('navigation aborts only document-owned work and releases its listener', () => {
+    const registry = new SenderTaskRegistry();
+    const owner = sender(4);
+    const documentTask = registry.begin(owner, 'stream', 'chat:stream', { cancelOnNavigation: true });
+    const windowTask = registry.begin(owner, 'window-task', 'embedded:create');
+    assert.equal(owner.listenerCount('did-start-loading'), 1);
+    assert.equal(owner.listenerCount('render-process-gone'), 1);
+
+    owner.emit('did-start-loading');
+    assert.equal(documentTask.controller.signal.aborted, true);
+    assert.equal(documentTask.controller.signal.reason, 'sender-navigation');
+    assert.equal(windowTask.controller.signal.aborted, false);
+
+    registry.finish(owner, 'stream');
+    registry.finish(owner, 'window-task');
+    assert.equal(owner.listenerCount('did-start-loading'), 0);
+    assert.equal(owner.listenerCount('render-process-gone'), 0);
+    assert.equal(owner.listenerCount('destroyed'), 0);
+    assert.deepEqual(registry.snapshot(), []);
+});
+
+test('renderer crashes abort document-owned work before recovery navigation', () => {
+    const registry = new SenderTaskRegistry();
+    const owner = sender(5);
+    const task = registry.begin(owner, 'stream', 'chat:stream', { cancelOnNavigation: true });
+    owner.emit('render-process-gone', {}, { reason: 'crashed' });
+    assert.equal(task.controller.signal.aborted, true);
+    assert.equal(task.controller.signal.reason, 'sender-render-process-gone');
+    registry.finish(owner, 'stream');
+    assert.equal(owner.listenerCount('render-process-gone'), 0);
+});

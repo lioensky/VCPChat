@@ -4,14 +4,13 @@ import { execFileSync } from 'node:child_process';
 import postcss from 'postcss';
 
 const root = process.cwd();
-// Pin the source snapshot used for the original Agent-runtime subtraction.
-// A moving development branch makes every later Codex change look like a
-// design-system boundary violation. Compare retained Classic surfaces with
-// the latest main baseline first: next-ui may intentionally lag behind main,
-// and a main -> next-ui sync must not be reported as a design-system change.
-// Fall back to next-ui for shallow or branch-only CI checkouts.
-const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'a1f76dffea8105999e465da45d8e52558cd80c47';
-const upstreamRef = resolveUpstreamRef();
+// Pin the reviewed, workflow-free product snapshot. The former subtraction
+// anchor predates several months of upstream product work, while a leftover
+// local `upstream/main` ref may be older still. Both make accepted product
+// changes look like design-system violations. Environment overrides remain
+// available when a PR intentionally audits against a newly reviewed snapshot.
+const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'b5931a69d0815a1dfd60c079093ed5518a73dc77';
+const upstreamRef = process.env.VCP_UPSTREAM_REF || sourceRef;
 const failures = [];
 
 const forbiddenPaths = [
@@ -34,6 +33,7 @@ const forbiddenPaths = [
 ];
 
 const allowedSourceDifferences = new Set([
+    '.github/workflows/canonical_ui.yml',
     '.gitattributes',
     '.gitignore',
     'README.md',
@@ -41,6 +41,9 @@ const allowedSourceDifferences = new Set([
     'docs/next-ui-webawesome-roadmap.md',
     'docs/next-ui-lifecycle-architecture.md',
     'docs/next-ui-development-roadmap.md',
+    'docs/next-ui-current-state.md',
+    'docs/classic-retirement-architecture.md',
+    'docs/classic-retirement-inventory.md',
     'docs/main-chat-operation-sequence-testing.md',
     'docs/design-system-upstream-pr-convergence.md',
     'docs/ui-active-surface-policy.md',
@@ -61,6 +64,7 @@ const allowedSourceDifferences = new Set([
     'modules/global-settings-manager.js',
     'modules/itemListManager.js',
     'modules/ipc/deepWikiHandlers.js',
+    'modules/ipc/chatHandlers.js',
     'modules/ipc/desktopHandlers.js',
     'modules/ipc/agentHandlers.js',
     'modules/ipc/settingsHandlers.js',
@@ -68,6 +72,7 @@ const allowedSourceDifferences = new Set([
     'modules/ipc/windowHandlers.js',
     'modules/mainChatCommands.js',
     'modules/messageRenderer.js',
+    'modules/notificationRenderer.js',
     'modules/renderer/messageContextMenu.js',
     'modules/renderer/streamManager.js',
     'modules/searchManager.js',
@@ -76,6 +81,7 @@ const allowedSourceDifferences = new Set([
     'modules/services/embeddedAppSessionManager.js',
     'modules/services/historyWatcherLeaseManager.js',
     'modules/services/senderTaskRegistry.js',
+    'modules/services/windowStateService.js',
     'modules/shared/embeddedAppAllowlist.js',
     'modules/topTabManager.js',
     'modules/topicListManager.js',
@@ -87,10 +93,14 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/vcp-main-ui-runtime.js',
     'modules/ui-system/lifecycle-scope.js',
     'modules/ui-system/lifecycle-inspector.js',
+    'modules/ui-system/settings-settlement.js',
     'modules/ui-system/performance-recorder.js',
     'modules/ui-system/task-handle.js',
     'modules/ui-system/contribution-registry.js',
+    'modules/ui-system/component-manifest.js',
+    'modules/ui-system/component-showcase.js',
     'modules/ui-system/state-channel.js',
+    'modules/ui-system/settlement.js',
     'modules/ui-system/surface-controller.js',
     'modules/ui-system/next-shell/overlay-coordinator.js',
     'modules/ui-system/next-shell/embedded-app-controller.js',
@@ -105,10 +115,11 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/appearance-studio.js',
     'modules/ui-system/ask-nova-modal.js',
     'modules/ui-system/lucide-adapter.js',
-    'modules/ui-system/ui-mode-controller.js',
     'modules/ui-system/ui-surface-policy.js',
     'modules/ui-system/vcp-ui.js',
     'modules/ui-system/settings-bridge.js',
+    'modules/ui-system/ui-mode-controller.js',
+    'modules/ui-system/vcp-page-rebuild.js',
     'modules/ui-system/vcp-ui-runtime-bootstrap.js',
     'modules/ui-system/webawesome-adapter.js',
     'modules/ui-system/webawesome-comparison.js',
@@ -132,10 +143,17 @@ const allowedSourceDifferences = new Set([
     'rust_chat_data_service/src/watcher.rs',
     'scripts/check-design-system-boundary.mjs',
     'scripts/check-classic-parity.mjs',
+    'scripts/check-classic-retirement-boundary.mjs',
+    'scripts/check-next-delta-contract.mjs',
+    'scripts/next-delta-shared-baseline.json',
+    'scripts/promote-canonical-ui-css.mjs',
+    'scripts/remove-retired-classic-main-dom.mjs',
     'scripts/build-webawesome-runtime.mjs',
     'scripts/check-webawesome-pack.mjs',
     'scripts/check-ui-applications.mjs',
     'scripts/check-ui-system.mjs',
+    'scripts/check-vcpui-consumers.mjs',
+    'scripts/vcpui-production-consumers.json',
     'scripts/test-ui-system.mjs',
     'scripts/test-appearance-engine.mjs',
     'scripts/test-appearance-studio.mjs',
@@ -162,23 +180,33 @@ const allowedSourceDifferences = new Set([
     'tests/contribution-registry.test.js',
     'tests/state-channel.test.js',
     'tests/state-authority.test.js',
+    'tests/window-state-service.test.js',
     'tests/surface-controller.test.js',
     'tests/app-tab-host.test.js',
     'tests/assistant-search-controller.test.js',
     'tests/account-menu-controller.test.js',
     'tests/launchpad-controller.test.js',
     'tests/creation-controller.test.js',
+    'tests/global-settings-save.test.mjs',
     'tests/embedded-app-controller.test.js',
     'tests/overlay-coordinator.test.js',
     'tests/next-ui-registries.test.mjs',
     'tests/topic-list-mode-lifecycle.test.js',
     'tests/chat-manager-selection-race.test.js',
     'tests/history-watcher-lease-manager.test.js',
+    'tests/message-edit-watcher-failure.test.js',
     'tests/stream-manager-terminal-cleanup.test.js',
     'tests/main-chat-sequence-model.test.js',
+    'tests/settlement.test.js',
+    'tests/settings-settlement.test.js',
     'tests/support/main-chat-sequence.js',
     'style.css',
     'styles/notifications.css',
+    'styles/animations.css',
+    'styles/layout.css',
+    'styles/compact-sidebar.css',
+    'styles/components.css',
+    'styles/settings.css',
     'styles/themes.css',
     'styles/appearance.css',
     'styles/setting/settings-global-modal.css',
@@ -192,6 +220,8 @@ const allowedSourceDifferences = new Set([
     'styles/ui-system/business-modals.css',
     'styles/ui-system/chat-input.css',
     'styles/ui-system/fonts.css',
+    'styles/ui-system/group-settings.css',
+    'styles/ui-system/runtime.css',
     'styles/ui-system/index.css',
     'styles/ui-system/messages.css',
     'styles/ui-system/notifications.css',
@@ -220,22 +250,6 @@ const upstreamClassicPatterns = [
 
 function git(args) {
     return execFileSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).trim();
-}
-
-function resolveUpstreamRef() {
-    const candidates = process.env.VCP_UPSTREAM_REF
-        ? [process.env.VCP_UPSTREAM_REF]
-        : ['upstream/next-ui', 'origin/next-ui', 'upstream/main', 'origin/main'];
-    for (const candidate of candidates) {
-        try {
-            git(['rev-parse', '--verify', candidate]);
-            return candidate;
-        } catch {
-            // Try the next checkout topology. A final missing ref is handled
-            // by the existing parity-audit warnings below.
-        }
-    }
-    return candidates[0];
 }
 
 const trackedFiles = git(['ls-files']).split('\n').filter(Boolean);
@@ -326,7 +340,8 @@ for (const file of cssFiles) {
     }
 }
 
-const activeThemeSource = fs.readFileSync(path.join(root, 'styles/themes.css'), 'utf8');
+// Inspect the committed theme, not an unrelated user-owned working-tree edit.
+const activeThemeSource = git(['show', 'HEAD:styles/themes.css']);
 if (!activeThemeSource.includes(':focus-visible:not(#messageInput):not(.chat-message-input)')) {
     failures.push('styles/themes.css: design theme must preserve the main composer focus contract');
 }

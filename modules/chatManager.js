@@ -31,6 +31,7 @@ window.chatManager = (() => {
     let emptyStateObserver = null;
     const outgoingPersistenceQueues = new Map();
     const pendingSendContexts = new Set();
+    let lastOpenSaveQueue = Promise.resolve();
 
     function insertAfterMessage(history, ownerMessageId, message) {
         const next = Array.isArray(history) ? [...history] : [];
@@ -380,11 +381,16 @@ window.chatManager = (() => {
                 lastOpenItemType: currentSelectedItem.type,
                 lastOpenTopicId: currentTopicId,
             };
-            // No need to await, let it save in the background
-            electronAPI.saveSettings(settingsToSave).catch(err => {
+            const operation = lastOpenSaveQueue
+                .catch(() => {})
+                .then(() => electronAPI.saveSettings(settingsToSave));
+            lastOpenSaveQueue = operation;
+            return operation.catch(err => {
                 console.error('[ChatManager] Failed to save last open state:', err);
+                return { success: false, error: err?.message || String(err) };
             });
         }
+        return Promise.resolve({ success: false, skipped: true });
     }
 
     function suspendAssistantListenerForTopicLoad(topicId) {
@@ -495,7 +501,7 @@ window.chatManager = (() => {
         return true;
     }
 
-    async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
+    async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig, options = {}) {
         const selectionToken = ++itemSelectionGeneration;
         ++topicSelectionGeneration;
         ++activeHistoryLoadToken;
@@ -523,6 +529,7 @@ window.chatManager = (() => {
             && currentTopicIdRef.get()
         ) {
             finishSelection();
+            await _saveLastOpenState();
             return;
         }
 
@@ -602,10 +609,15 @@ window.chatManager = (() => {
                 const lockedTopicId = itemType === 'agent'
                     ? window.flowlockManager?.getLockedTopicId?.(itemId)
                     : null;
+                const preferredTopicId = typeof options.preferredTopicId === 'string'
+                    ? options.preferredTopicId
+                    : null;
                 const rememberedTopicId = localStorage.getItem(`lastActiveTopic_${itemId}_${itemType}`);
 
                 if (lockedTopicId && topics.some(t => t.id === lockedTopicId)) {
                     topicToLoadId = lockedTopicId;
+                } else if (preferredTopicId && topics.some(t => t.id === preferredTopicId)) {
+                    topicToLoadId = preferredTopicId;
                 } else if (rememberedTopicId && topics.some(t => t.id === rememberedTopicId)) {
                     topicToLoadId = rememberedTopicId;
                 }
@@ -666,8 +678,38 @@ window.chatManager = (() => {
         attachFileBtn.disabled = false;
         // messageInput.focus();
         if (topicListManager) topicListManager.loadTopicList();
-        _saveLastOpenState(); // Save state after selecting an item and its default topic
+        await _saveLastOpenState(); // Commit before startup/reload can observe the selection.
         finishSelection();
+    }
+
+    /**
+     * Restores the last durable chat selection through the same transaction as
+     * an explicit user selection. A concurrent click increments the shared
+     * selection generation and therefore always supersedes this restoration.
+     */
+    async function restoreLastOpenState(settings = {}) {
+        const itemId = typeof settings.lastOpenItemId === 'string'
+            ? settings.lastOpenItemId
+            : null;
+        const itemType = settings.lastOpenItemType === 'agent' || settings.lastOpenItemType === 'group'
+            ? settings.lastOpenItemType
+            : null;
+        if (!itemId || !itemType || !itemListManager?.findItemById) return false;
+
+        const item = itemListManager.findItemById(itemId, itemType);
+        if (!item) return false;
+
+        await selectItem(
+            item.id,
+            item.type,
+            item.name,
+            item.avatarUrl,
+            item.config || item,
+            { preferredTopicId: settings.lastOpenTopicId }
+        );
+
+        const selectedItem = currentSelectedItemRef.get();
+        return selectedItem?.id === item.id && selectedItem?.type === item.type;
     }
  
     async function selectTopic(topicId) {
@@ -687,6 +729,7 @@ window.chatManager = (() => {
 
         let currentTopicId = currentTopicIdRef.get();
         if (currentTopicId === topicId) {
+            await _saveLastOpenState();
             return;
         }
 
@@ -738,7 +781,7 @@ window.chatManager = (() => {
                 watcherLeaseToken
             );
             if (!isTopicSelectionCurrent()) return;
-            _saveLastOpenState();
+            await _saveLastOpenState();
         } catch (error) {
             if (!isTopicSelectionCurrent()) return;
             console.error('[ChatManager] Failed to select topic:', error);
@@ -2152,6 +2195,7 @@ window.chatManager = (() => {
     return {
         init,
         selectItem,
+        restoreLastOpenState,
         selectTopic,
         handleTopicDeletion,
         loadChatHistory,

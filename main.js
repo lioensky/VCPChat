@@ -1302,11 +1302,6 @@ if (!gotTheLock) {
             mainWindow,
             powerMonitor,
             launchStandalone: desktopHandlers.launchVchatApp,
-            readSettings: () => appSettingsManager.readSettings(),
-            subscribeSettings: listener => {
-                appSettingsManager.on('settings-updated', listener);
-                return () => appSettingsManager.off('settings-updated', listener);
-            },
         });
         [
             'embedded-vchat-app:create',
@@ -1374,6 +1369,7 @@ if (!gotTheLock) {
                 embeddedSessions: embedded.sessions,
                 activeEmbeddedAction: embedded.activeAction,
                 tasks: embeddedAppTasks.snapshot(),
+                chatTasks: chatHandlers.getVcpStreamTaskSnapshot(),
             };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {

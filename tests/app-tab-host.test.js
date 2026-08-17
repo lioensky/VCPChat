@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 const { AppTabHost } = require('../modules/ui-system/next-shell/app-tab-host.js');
+global.VCPSettlement = require('../modules/ui-system/settlement.js');
 
 function fixture() {
     const dom = new JSDOM(`<!doctype html><body>
@@ -52,4 +53,14 @@ test('close control requests closure without mutating the registry', () => {
     assert.deepEqual(closes, ['app:translator']);
     assert.equal(host.views.has('app:translator'), true, 'business owner decides when cleanup has completed');
     host.dispose();
+});
+
+test('tab host settlement observes a requested mutation revision without timers', async () => {
+    const { host } = fixture();
+    const boundary = host.getSnapshot().revision + 1;
+    const pending = host.whenSettled({ afterRevision: boundary });
+    host.setView('launchpad');
+    const snapshot = await pending;
+    assert.equal(snapshot.revision, boundary);
+    assert.equal(snapshot.activeViewId, 'launchpad');
 });

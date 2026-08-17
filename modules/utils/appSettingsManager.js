@@ -150,7 +150,7 @@ class SettingsManager extends EventEmitter {
             toolAutoApprovalRules: [],
             enableAgentBubbleTheme: false,
             enableSmoothStreaming: false,
-            uiMode: 'classic',
+            uiMode: 'next',
             showHomeVisualBrand: true,
             showHomeVisualTagline: true,
             homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',

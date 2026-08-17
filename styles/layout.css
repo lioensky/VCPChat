@@ -570,17 +570,6 @@ body.light-theme .notifications-sidebar {
     background: transparent; /* 自身必须是透明的 */
 }
 
-/* 专门为标题栏下方的接缝进行定位 */
-#title-bar-seam-fixer {
-    /* 
-       标题栏高度是 30px，接缝就在 30px 的位置。
-       我们的羽化条高度是 16px。
-       所以 top 值设为 30px - (16px / 2) = 22px，
-       这样羽化条的中心就精准地对齐了接缝。
-    */
-    top: 26px; 
-}
-
 /* --- Sidebar Hide/Show Logic --- */
 .sidebar:not(.active) {
     width: 0 !important;
@@ -671,5 +660,4 @@ body.light-theme .emoticon-panel {
     color: var(--secondary-text);
     font-size: 0.9em;
 }
-
 

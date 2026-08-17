@@ -18,12 +18,12 @@ export function setupEventListeners(deps) {
     const {
         // DOM Elements from a future dom-elements.js or passed directly
         chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
-        globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-        currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
-        notificationsSidebar, agentSearchInput, minimizeToTrayBtn, addNetworkPathBtn,
+        globalSettingsForm, userAvatarInput,
+        currentItemActionBtn, toggleNotificationsBtn,
+        notificationsSidebar, agentSearchInput, addNetworkPathBtn,
         openTranslatorBtn, openNotesBtn, openMusicBtn, openCanvasBtn, toggleAssistantBtn, toggleSidebarModeBtn,
         leftSidebar, toggleSidebarBtn,
-        enableContextSanitizerCheckbox, contextSanitizerDepthContainer, seamFixer,
+        enableContextSanitizerCheckbox, contextSanitizerDepthContainer,
 
         // State variables (passed via refs)
         refs,
@@ -1011,35 +1011,6 @@ export function setupEventListeners(deps) {
         });
     }
 
-    if (createNewAgentBtn) {
-        createNewAgentBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M2 21a8 8 0 0 1 13.292-6"></path>
-                <circle cx="10" cy="8" r="5"></circle>
-                <path d="M19 16v6"></path>
-                <path d="M22 19h-6"></path>
-            </svg>
-            <span class="sidebar-button-label">
-                <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                <span class="sidebar-button-keyword">Agent</span>
-            </span>
-        `;
-        createNewAgentBtn.style.width = 'auto';
-        createNewAgentBtn.addEventListener('click', async () => {
-            const defaultAgentName = `新Agent_${Date.now()}`;
-            const result = await window.MainChatCommands?.createAgent?.({ name: defaultAgentName });
-            if (result?.success) {
-                return;
-            } else {
-                uiHelperFunctions.showToastNotification(`创建Agent失败: ${result?.error || '创建功能不可用'}`, 'error');
-            }
-        });
-    }
-
-    if (createNewGroupBtn) {
-        createNewGroupBtn.style.display = 'inline-flex';
-    }
-
     currentItemActionBtn.addEventListener('click', async () => {
         const currentSelectedItem = refs.currentSelectedItem.get();
         if (!currentSelectedItem.id) {
@@ -1148,10 +1119,6 @@ export function setupEventListeners(deps) {
         }
     }
 
-    clearNotificationsBtn.addEventListener('click', () => {
-        window.MainChatCommands?.clearNotifications?.();
-    });
-
     const nextUiNotificationMenuBtn = document.getElementById('nextUiNotificationMenuBtn');
     const nextUiNotificationMenu = document.getElementById('nextUiNotificationMenu');
     const nextUiNotificationForum = document.getElementById('nextUiNotificationForum');
@@ -1159,8 +1126,6 @@ export function setupEventListeners(deps) {
     const nextUiNotificationFilterToggle = document.getElementById('nextUiNotificationFilterToggle');
     const nextUiNotificationFilterState = document.getElementById('nextUiNotificationFilterState');
     const nextUiNotificationClear = document.getElementById('nextUiNotificationClear');
-    const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
-
     if (
         nextUiNotificationMenuBtn
         && nextUiNotificationMenu
@@ -1169,12 +1134,9 @@ export function setupEventListeners(deps) {
         && nextUiNotificationFilterToggle
         && nextUiNotificationFilterState
         && nextUiNotificationClear
-        && doNotDisturbBtn
     ) {
         const syncNotificationFilterState = (state = null) => {
-            const isActive = typeof state?.enabled === 'boolean' ? state.enabled : window.filterManager?.isFilterEnabled?.()
-                ?? doNotDisturbBtn.classList.contains('active');
-            doNotDisturbBtn.classList.toggle('active', isActive);
+            const isActive = typeof state?.enabled === 'boolean' ? state.enabled : window.filterManager?.isFilterEnabled?.() === true;
             nextUiNotificationFilterToggle.setAttribute('aria-checked', String(isActive));
             nextUiNotificationFilterState.textContent = isActive ? '开启' : '关闭';
         };
@@ -1290,8 +1252,7 @@ export function setupEventListeners(deps) {
         }
     }
 
-    if (openForumBtn) {
-        openForumBtn.style.display = 'inline-block';
+    {
         const enableMiddleClickCheckbox = document.getElementById('enableMiddleClickQuickAction');
         const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
         const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
@@ -1346,15 +1307,6 @@ export function setupEventListeners(deps) {
             });
         }
 
-        openForumBtn.addEventListener('click', () => {
-            void window.MainChatCommands?.openForum?.();
-        });
-
-        // 右键点击 - 打开 VCPMemo 中心
-        openForumBtn.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            void window.MainChatCommands?.openMemo?.();
-        });
     }
 
     if (openTranslatorBtn) {
@@ -1400,24 +1352,12 @@ export function setupEventListeners(deps) {
     }
 
     if (toggleNotificationsBtn && notificationsSidebar) {
-        const notificationButtonHomeMarker = document.createComment('notification-toggle-home');
-        toggleNotificationsBtn.before(notificationButtonHomeMarker);
-
         const syncNotificationTogglePlacement = (isActive = notificationsSidebar.classList.contains('active')) => {
-            const isNextUi = document.documentElement.dataset.uiMode === 'next';
             const chatHost = document.getElementById('nextUiChatNotificationHost');
             const panelHost = document.getElementById('nextUiPanelNotificationHost');
-
-            if (isNextUi) {
-                const targetHost = isActive ? panelHost : chatHost;
-                if (targetHost && toggleNotificationsBtn.parentElement !== targetHost) {
-                    targetHost.append(toggleNotificationsBtn);
-                }
-            } else if (notificationButtonHomeMarker.parentNode) {
-                notificationButtonHomeMarker.parentNode.insertBefore(
-                    toggleNotificationsBtn,
-                    notificationButtonHomeMarker.nextSibling
-                );
+            const targetHost = isActive ? panelHost : chatHost;
+            if (targetHost && toggleNotificationsBtn.parentElement !== targetHost) {
+                targetHost.append(toggleNotificationsBtn);
             }
 
             toggleNotificationsBtn.classList.toggle('notification-panel-active', isActive);
@@ -1453,7 +1393,6 @@ export function setupEventListeners(deps) {
         });
 
         syncNotificationTogglePlacement();
-        window.addEventListener('ui-mode-changed', () => syncNotificationTogglePlacement());
     }
 
     if (toggleAssistantBtn) {
@@ -1461,9 +1400,6 @@ export function setupEventListeners(deps) {
         let wasLongPress = false;
         let sidebarLongPressTimer = null;
         let wasSidebarLongPress = false;
-        let legacyRightLongPressTimer = null;
-        let wasLegacyRightLongPress = false;
-        const isNextUi = () => document.documentElement.dataset.uiMode === 'next';
 
         const saveSidebarState = () => {
             if (!chatAPI?.saveSettings) return;
@@ -1523,17 +1459,8 @@ export function setupEventListeners(deps) {
             uiHelperFunctions.showToastNotification(`侧栏已${isActive ? '显示' : '隐藏'}`, 'info');
         };
 
-        const syncAssistantControlMode = () => {
-            if (isNextUi()) {
-                toggleAssistantBtn.title = '点击：开关划词助手｜长按：直接呼出';
-                toggleAssistantBtn.setAttribute('aria-label', '划词助手开关与呼出');
-            } else {
-                toggleAssistantBtn.title = '左键：开关划词助手｜长按：直接呼出\n右键：切换头像窄栏｜长按：隐藏/显示左侧栏';
-                toggleAssistantBtn.setAttribute('aria-label', '划词助手与侧栏控制');
-            }
-        };
-        syncAssistantControlMode();
-        window.addEventListener('ui-mode-changed', syncAssistantControlMode);
+        toggleAssistantBtn.title = '点击：开关划词助手｜长按：直接呼出';
+        toggleAssistantBtn.setAttribute('aria-label', '划词助手开关与呼出');
 
         toggleAssistantBtn.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
@@ -1543,16 +1470,6 @@ export function setupEventListeners(deps) {
                     chatAPI.assistantAction('open');
                     wasLongPress = true;
                     longPressTimer = null;
-                }, 600);
-                return;
-            }
-
-            if (e.button === 2 && !isNextUi()) {
-                wasLegacyRightLongPress = false;
-                legacyRightLongPressTimer = setTimeout(() => {
-                    legacyRightLongPressTimer = null;
-                    wasLegacyRightLongPress = true;
-                    toggleSidebarVisibility();
                 }, 600);
             }
         });
@@ -1571,21 +1488,10 @@ export function setupEventListeners(deps) {
             }
         };
 
-        const clearLegacyRightLongPress = () => {
-            if (legacyRightLongPressTimer) {
-                clearTimeout(legacyRightLongPressTimer);
-                legacyRightLongPressTimer = null;
-            }
-        };
-
         toggleAssistantBtn.addEventListener('mouseup', (e) => {
             if (e.button === 0) clearLongPress();
-            if (e.button === 2) clearLegacyRightLongPress();
         });
-        toggleAssistantBtn.addEventListener('mouseleave', () => {
-            clearLongPress();
-            clearLegacyRightLongPress();
-        });
+        toggleAssistantBtn.addEventListener('mouseleave', clearLongPress);
 
         toggleAssistantBtn.addEventListener('click', async () => {
             if (wasLongPress) {
@@ -1608,26 +1514,6 @@ export function setupEventListeners(deps) {
                 uiHelperFunctions.showToastNotification(`设置划词助手状态失败: ${result.error}`, 'error');
                 toggleAssistantBtn.classList.toggle('active', !isActive);
                 globalSettings.assistantEnabled = !isActive;
-            }
-        });
-
-        toggleAssistantBtn.addEventListener('contextmenu', e => {
-            e.preventDefault();
-            clearLegacyRightLongPress();
-            if (isNextUi()) return;
-            if (wasLegacyRightLongPress) {
-                wasLegacyRightLongPress = false;
-                return;
-            }
-
-            const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
-            if (!leftSidebar || !agentsTabIsActive) return;
-            const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
-            if (setAvatarOnlyMode(enableAvatarOnly)) {
-                uiHelperFunctions.showToastNotification(
-                    enableAvatarOnly ? '侧栏已切换为仅头像模式' : '侧栏已恢复完整模式',
-                    'info'
-                );
             }
         });
 
@@ -1701,12 +1587,6 @@ export function setupEventListeners(deps) {
     if (agentSearchInput) {
         agentSearchInput.addEventListener('input', (e) => {
             filterAgentList(e.target.value);
-        });
-    }
-
-    if (minimizeToTrayBtn) {
-        minimizeToTrayBtn.addEventListener('click', () => {
-            chatAPI.minimizeToTray();
         });
     }
 
@@ -1797,25 +1677,4 @@ export function setupEventListeners(deps) {
         });
     }
 
-    if (seamFixer && notificationsSidebar) {
-        let seamFrame = 0;
-        let pendingSidebarWidth = 0;
-
-        const scheduleSeamFixerWidth = (width) => {
-            pendingSidebarWidth = width;
-            if (seamFrame) return;
-
-            seamFrame = requestAnimationFrame(() => {
-                seamFrame = 0;
-                const offset = pendingSidebarWidth > 0 ? 3 : 0;
-                seamFixer.style.right = `${pendingSidebarWidth + offset}px`;
-            });
-        };
-
-        const resizeObserver = new ResizeObserver((entries) => {
-            const entry = entries[entries.length - 1];
-            scheduleSeamFixerWidth(entry?.contentRect?.width || 0);
-        });
-        resizeObserver.observe(notificationsSidebar);
-    }
 }

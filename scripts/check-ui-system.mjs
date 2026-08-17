@@ -39,7 +39,7 @@ function inspectSelectors(file, css) {
     root.walkRules(rule => {
         if (rule.parent?.type === 'atrule' && /keyframes$/i.test(rule.parent.name)) return;
         rule.selectors.forEach(selector => {
-            const isNextScoped = selector.startsWith('html[data-ui-mode="next"]');
+            const isNextScoped = selector.startsWith('html') || selector.startsWith(':is(html');
             const isAppearanceStudioHost = crossModeAppearanceFiles.has(file)
                 && selector.includes('html.vcp-appearance-studio-host');
             const isGlobalSettingsHost = crossModeGlobalSettingsFiles.has(file)
@@ -109,10 +109,6 @@ for (const file of filesIn(moduleDir, '.js')) {
 
 const runtimeFile = path.join(moduleDir, 'vcp-ui.js');
 const runtime = fs.readFileSync(runtimeFile, 'utf8');
-const pageRuntimeBootstrap = fs.readFileSync(path.join(moduleDir, 'vcp-ui-runtime-bootstrap.js'), 'utf8');
-if (/observeControls\s*\(\s*document\.body/.test(pageRuntimeBootstrap)) {
-    report(path.join(moduleDir, 'vcp-ui-runtime-bootstrap.js'), 'must not mount a document-wide control observer');
-}
 const settingsBridgeSource = fs.readFileSync(path.join(moduleDir, 'settings-bridge.js'), 'utf8');
 if (/new\s+(?:window\.)?MutationObserver/.test(settingsBridgeSource)) {
     report(path.join(moduleDir, 'settings-bridge.js'), 'must use explicit settings surface lifecycle events');

@@ -1,12 +1,12 @@
-# VCPChat 新版 UI 原生设计系统
+# VCPChat UI 原生设计系统
 
-> 当前审计（2026-08-01）：UI 组件库已加入 Web Awesome 3.11.0 受控对照页，并在真实 Electron 中验证 Button、Input、Select、Tooltip 与 Dialog。该结果只证明混合设计系统可行，不代表业务页面已经迁移。应用页与全局设置的后续范围、批次和门槛见 [Web Awesome 全量重构计划](./ui-applications-webawesome-migration-plan.md)。
+> 定位：实现参考。当前拓扑、消费者和完成度以 [`next-ui-current-state.md`](./next-ui-current-state.md) 为准，后续施工以 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md) 为准。
 
-> 当前权威架构（2026-08-15）：Next UI 采用与 Classic 并行的低侵入 presentation，Web Awesome 只作为 `VCPUI` 背后的可替换内核。整体阶段顺序与合并门槛见 [Next UI 完整开发路线](./next-ui-development-roadmap.md)，生命周期与竞态规则见 [Next UI 生命周期与可撤销注册架构](./next-ui-lifecycle-architecture.md)，Web Awesome 定制与 vendor 精简见 [Next UI 与 Web Awesome 低侵入建设路线](./next-ui-webawesome-roadmap.md)。
+主窗口当前只有一套规范 presentation，`main.html` 静态声明 `data-ui-mode="next"`，不再存在 `uiModeManager`。`VCPUI` 服务于该主窗口及明确启用的新增 Surface；业务子页面目前全部继续使用上游页面，并不因主窗口采用 VCPUI 而自动加载 Web Awesome。
 
-`VCPUI` 组件库只服务于 `data-ui-mode="next"`，不迁移或覆盖经典 UI。跨模式的字体、圆角、密度、内容宽度和表面材质由上层 Appearance Profile 负责，参见 `docs/appearance-design-system.md`。公共 API 仍使用原生 DOM、CSS Layer 和 ES Module；基础控件允许在 `VCPUI` 内部受控采用 Web Awesome Web Components，但业务页面不得直接依赖 `<wa-*>`。系统不引入 Vue、React 或新的构建步骤。
+公共 API 继续使用原生 DOM、CSS Layer 和 ES Module。基础控件允许在 `VCPUI` 内部受控采用 Web Awesome Web Components，但业务页面不得直接依赖 `<wa-*>`。系统不引入 Vue、React 或新的构建步骤。
 
-Web Awesome runtime 只能在新版 UI 实际需要时加载。经典模式不得加载 adapter/theme、不得改变现有页面布局；模式切回 classic 时必须销毁新版控制器并恢复原业务 DOM。当前组件库 pilot 的顶层注册将在正式迁移的 R5.0 改为 lazy-load。
+Web Awesome runtime 只能在真实 VCPUI Surface 需要时按需加载；Surface 销毁时必须释放其 adapter/controller。“UI 组件库”是普通用户可见的正式内部应用，但仍不能作为组件 `stable` 或业务页面已迁移的唯一证据。
 
 `VCPUI.create('Select')` 用于新代码，直接返回统一 controller；`VCPUI.enhance('Select', nativeSelect)` 用于旧页面，在 next mode 创建可见的 Web Awesome Proxy，并保留隐藏原生 select 作为 `.value/.options`、旧事件和表单提交的兼容真源。动态表单使用 `VCPUI.observeControls(root)` 接入，同一原生节点重复 enhance 必须返回同一 controller。业务代码不得查询或操作 `wa-select`。
 
@@ -73,7 +73,9 @@ controller.destroy(); // 清理组件状态，但不删除原 input
 
 `enhance` 只用于已登记的渐进增强器。新增增强器必须保证 `destroy()` 后恢复原节点的组件类、ARIA 和 `data-*` 状态，不能接管 IPC 或业务数据。
 
-当前清单包含 20 个稳定组件家族，以及 Divider、Tooltip、Skeleton、SegmentedControl、Pagination、ScrollArea、Range、SettingsSection、SettingsActionBar 九个候选组件。候选组件完成至少一次真实业务迁移和 Electron 视觉验证后才能升级为 `stable`。
+当前清单包含 13 个稳定组件家族和 19 个候选组件。`scripts/check-vcpui-consumers.mjs` 校验 Stable 的真实业务与 Electron 证据，并确保 32 个组件全部保留在用户可见组件库；展示页独占组件保持 Candidate。
+
+Contribution Registry 只包含 `commands` 与 `apps`。前者承载主窗口命令，后者承载正式内部应用及 Launchpad/tab 生命周期；它不是 `VCPFrontendPlugins` 的替代协议。
 
 反馈接口：
 
@@ -85,7 +87,7 @@ VCPUI.feedback.setLoading(true, '正在保存');
 VCPUI.feedback.setLoading(false);
 ```
 
-Confirm 和 Prompt 按 FIFO 执行；Loading 使用引用计数；切换 UI 模式或卸载内部应用时调用 `cancelAll()`。
+Confirm 和 Prompt 按 FIFO 执行；Loading 当前使用引用计数。`cancelAll()` 只允许根应用退出或全局故障恢复使用，内部应用必须只释放自己拥有的反馈；owner-scoped feedback 是当前路线 P1 的阻塞工作。
 
 ## 内部应用
 
@@ -125,8 +127,8 @@ window.nextUiApps.register({
 
 | Surface | Status | Evidence required before stable |
 | --- | --- | --- |
-| 顶栏、标签、应用启动器 | migrated | 明暗主题、标签关闭、内部应用复用，以及切换经典 UI 后的 Host/标签/反馈容器清理 |
-| 全局 Toast 与反馈 Host | migrated | 新旧模式隔离、并发清理 |
+| 顶栏、标签、应用启动器 | migrated | 明暗主题、标签关闭、内部应用复用，以及 Host/标签/反馈容器清理 |
+| 全局 Toast 与反馈 Host | migrated | owner 隔离、并发清理与展示页关闭后跨 owner 保留 |
 | 聊天输入、附件与发送/中断 | migrated | 禁用、焦点、附件、发送与中断状态 |
 | 侧栏、话题列表与通知抽屉 | migrated | 选中、滚动、通知打开与窄窗口 |
 | 全局设置弹窗 | partial | 双栏导航、内容滚动、保存栏以及浅色默认/深色 700×500 真实审查已通过；每个分区的保存、错误与键盘关闭仍待完成 |

@@ -527,109 +527,6 @@ body.light-theme .chat-actions .header-button:hover {
     color: #ffffff;
 }
 
-html:not([data-ui-mode="next"]) #sendMessageBtn, html:not([data-ui-mode="next"]) #attachFileBtn, html:not([data-ui-mode="next"]) #quickNewTopicBtn, html:not([data-ui-mode="next"]) #emoticonTriggerBtn {
-    border: none;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
-    padding: 0;
-}
-html:not([data-ui-mode="next"]) #sendMessageBtn svg, html:not([data-ui-mode="next"]) #attachFileBtn svg, html:not([data-ui-mode="next"]) #quickNewTopicBtn svg, html:not([data-ui-mode="next"]) #emoticonTriggerBtn svg {
-    width: 24px;
-    height: 24px;
-    stroke: currentColor;
-    color: currentColor;
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn svg {
-    fill: none;
-}
-
-html:not([data-ui-mode="next"]) #attachFileBtn svg, html:not([data-ui-mode="next"]) #quickNewTopicBtn svg, html:not([data-ui-mode="next"]) #emoticonTriggerBtn svg {
-    width: 16px;
-    height: 16px;
-    fill: none;
-}
-
-html:not([data-ui-mode="next"]) body.light-theme #sendMessageBtn svg {
-    fill: none;
-}
-
-html:not([data-ui-mode="next"]) body.light-theme #attachFileBtn svg, html:not([data-ui-mode="next"]) body.light-theme #quickNewTopicBtn svg, html:not([data-ui-mode="next"]) body.light-theme #emoticonTriggerBtn svg {
-    fill: none; 
-}
-
-html:not([data-ui-mode="next"]) body.light-theme #attachFileBtn svg, html:not([data-ui-mode="next"]) body.light-theme #quickNewTopicBtn svg, html:not([data-ui-mode="next"]) body.light-theme #emoticonTriggerBtn svg {
-    stroke: var(--button-bg);
-    fill: none;
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn:hover {
-    background-color: var(--button-hover-bg);
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn {
-    position: static;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border-radius: 50%;
-    background-color: var(--button-bg);
-    color: var(--text-on-accent);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-    margin-left: auto;
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn.interrupt-mode {
-    background-color: var(--button-bg);
-    background-image: linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn.interrupt-mode svg {
-    width: 16px;
-    height: 16px;
-    stroke: none;
-    color: #ffffff;
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn.interrupt-mode:hover:not(:disabled) {
-    background-image: linear-gradient(rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.24));
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn:hover:not(:disabled) {
-    transform: translateY(-1px);
-}
-
-html:not([data-ui-mode="next"]) #attachFileBtn, html:not([data-ui-mode="next"]) #quickNewTopicBtn, html:not([data-ui-mode="next"]) #emoticonTriggerBtn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background-color: transparent;
-    border: none;
-    margin-left: 0;
-    flex-shrink: 0;
-}
-
-html:not([data-ui-mode="next"]) #quickNewTopicBtn, html:not([data-ui-mode="next"]) #attachFileBtn {
-    margin-right: 4px;
-}
-
-html:not([data-ui-mode="next"]) #attachFileBtn:hover:not(:disabled), html:not([data-ui-mode="next"]) #quickNewTopicBtn:hover:not(:disabled), html:not([data-ui-mode="next"]) #emoticonTriggerBtn:hover:not(:disabled) {
-    background-color: rgba(128, 128, 128, 0.12);
-}
-
-html:not([data-ui-mode="next"]) #sendMessageBtn:disabled,
-html:not([data-ui-mode="next"]) #attachFileBtn:disabled,
-html:not([data-ui-mode="next"]) #quickNewTopicBtn:disabled,
-html:not([data-ui-mode="next"]) #emoticonTriggerBtn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
 /* --- Modals --- */
 .modal {
     display: none; 
@@ -669,17 +566,6 @@ html:not([data-ui-mode="next"]) #emoticonTriggerBtn:disabled {
 
 #avatarCropperModal .modal-content { /* Specific styles for cropper modal if needed */
     color: var(--primary-text);
-}
-
-.next-ui-agent-tools,
-.next-ui-agent-search-trigger,
-.next-ui-agent-search-close,
-.next-ui-topic-tools,
-.next-ui-topic-search-close,
-.next-ui-topic-manage-panel,
-.next-ui-account-dock,
-.next-ui-notification-actions {
-    display: none;
 }
 
 .avatar-cropper-modal-content {

@@ -373,7 +373,7 @@
      * @param {number} [duration=3000] The duration in milliseconds.
      */
     uiHelperFunctions.showToastNotification = function(message, type = 'info', duration = 3000) {
-        if (document.documentElement.dataset.uiMode === 'next' && window.VCPUI?.feedback?.toast) {
+        if (window.VCPUI?.feedback?.toast) {
             const variant = type === 'error' ? 'error' : ['info', 'success', 'warning'].includes(type) ? type : 'info';
             return window.VCPUI.feedback.toast(String(message), { variant, duration });
         }
@@ -792,38 +792,6 @@
                 console.error("[UI Helper] Could not find tabContentSettings to append group settings DOM placeholder.");
             }
         }
-         // Ensure createNewGroupBtn has its text updated
-         const createNewAgentBtn = document.getElementById('createNewAgentBtn');
-         const createNewGroupBtn = document.getElementById('createNewGroupBtn');
-         if (createNewAgentBtn) {
-             createNewAgentBtn.innerHTML = `
-                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                     <path d="M2 21a8 8 0 0 1 13.292-6"></path>
-                     <circle cx="10" cy="8" r="5"></circle>
-                     <path d="M19 16v6"></path>
-                     <path d="M22 19h-6"></path>
-                 </svg>
-                 <span class="sidebar-button-label">
-                     <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                     <span class="sidebar-button-keyword">Agent</span>
-                 </span>
-             `;
-         }
-         if (createNewGroupBtn) {
-             createNewGroupBtn.innerHTML = `
-                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                     <path d="M18 21a8 8 0 0 0-16 0"></path>
-                     <circle cx="10" cy="8" r="5"></circle>
-                     <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path>
-                 </svg>
-                 <span class="sidebar-button-label">
-                     <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                     <span class="sidebar-button-keyword">Group</span>
-                 </span>
-             `;
-             console.log('[UI Helper prepareGroupSettingsDOM] createNewGroupBtn icon content applied');
-             createNewGroupBtn.style.display = 'inline-flex'; // Make it visible
-         }
     };
 
     uiHelperFunctions.addNetworkPathInput = function(path = '') {

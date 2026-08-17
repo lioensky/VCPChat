@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
     SeededRandom,
+    SequenceCoverage,
     createInitialModel,
     createTrace,
     minimizeFailingTrace,
@@ -56,6 +57,38 @@ test('seeded random and generated traces are deterministic and serializable', ()
     const second = createTrace({ seed: 'stable', steps: 20, catalog: catalog() });
     assert.deepEqual(first, second);
     assert.deepEqual(parseTrace(serializeTrace(first)), JSON.parse(JSON.stringify(first)));
+});
+
+test('coverage reports actions, pairs, transitions, faults and terminal outcomes deterministically', async () => {
+    const actions = catalog();
+    actions.find(action => action.id === 'toggle-right').fault = true;
+    const coverage = new SequenceCoverage({
+        requiredEdges: ['action:select-agent', 'pair:select-agent->type-draft', 'fault:toggle-right', 'outcome:completed'],
+    });
+    const trace = {
+        version: 1,
+        prng: 'mulberry32-v1',
+        seed: 1,
+        initialModel: createInitialModel(),
+        actions: [
+            { id: 'select-agent', params: { id: 'agent-1' } },
+            { id: 'type-draft', params: { text: 'hello' } },
+            { id: 'toggle-right', params: {} },
+        ],
+    };
+    const result = await runTrace({ trace, catalog: actions, coverage });
+    assert.deepEqual(result.coverage.actions, { 'select-agent': 1, 'toggle-right': 1, 'type-draft': 1 });
+    assert.equal(result.coverage.actionPairs['select-agent->type-draft'], 1);
+    assert.equal(result.coverage.faults['toggle-right'], 1);
+    assert.deepEqual(result.coverage.outcomes, { completed: 1 });
+    assert.deepEqual(coverage.assertRequiredEdges().missingRequiredEdges, []);
+});
+
+test('coverage merges runs and reports missing declared edges', () => {
+    const aggregate = new SequenceCoverage({ requiredEdges: ['action:a', 'pair:a->b', 'outcome:completed'] });
+    aggregate.merge({ actions: { a: 2 }, actionPairs: { 'a->c': 1 }, outcomes: { completed: 2 } });
+    assert.deepEqual(aggregate.report().missingRequiredEdges, ['pair:a->b']);
+    assert.throws(() => aggregate.assertRequiredEdges(), /pair:a->b/);
 });
 test('trace runner enforces preconditions, updates the model and observes every step', async () => {
     const log = [];

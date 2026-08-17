@@ -288,7 +288,7 @@ try {
     console.log('  [PASS] 7. reopen after reload restores persisted values from settings.json');
 
     // ---- 8. Classic teardown keeps next-mode surfaces clean ----
-    await page.evaluate(() => window.uiModeManager.apply('classic', { cache: true }));
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.uiMode), 'next');
     await page.waitForFunction(() => {
         const modal = document.getElementById('globalSettingsModal');
         return !modal?.querySelector('.vcp-ui-settings-shell') && !modal?.querySelector('.vcp-ui-settings-search');

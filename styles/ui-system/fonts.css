@@ -9,12 +9,12 @@
 }
 
 @layer vcp-ui.base {
-    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope {
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope {
         --vcp-ui-font-family: var(--vcp-appearance-font-family, 'Noto Sans SC Variable', 'Noto Sans SC', system-ui, sans-serif);
         font-family: var(--vcp-ui-font-family);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-icon {
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -33,7 +33,7 @@
         -webkit-font-smoothing: antialiased;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope svg.vcp-ui-icon.lucide {
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope svg.vcp-ui-icon.lucide {
         width: var(--vcp-ui-icon-size, var(--vcp-ui-icon-md));
         height: var(--vcp-ui-icon-size, var(--vcp-ui-icon-md));
         display: block;

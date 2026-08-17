@@ -429,6 +429,31 @@ async function run() {
     assert.ok(submittedMarkdown.includes('- **消息**：人类确认通过。'));
     assert.ok(!submittedMarkdown.includes('```json'));
 
+    const inserted = await collaborator.processToolCall({
+        command: 'SubmitSourcePr',
+        endpoint: 'docx',
+        maid: 'Nova',
+        summary: '在文档末尾续写',
+        insert: '## 新增小节\n\n这里是续写内容。',
+        line: 1004,
+    }, {
+        requestId: 'insert-request',
+    });
+    const insertCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'submitSourcePr'
+        && entry.request.requestId === 'insert-request'
+    );
+    assert.ok(insertCall);
+    assert.deepStrictEqual(
+        insertCall.request.payload.replacements,
+        [{
+            insert: '## 新增小节\n\n这里是续写内容。',
+            line: 1004,
+        }]
+    );
+    assert.strictEqual(inserted.details.receipt.decision, 'approved');
+
     const styleList = await collaborator.processToolCall({
         command: 'ListStylePacks',
         query: '经典',

@@ -5,20 +5,14 @@ const { JSDOM } = require('jsdom');
 
 function source(path) { return fs.readFileSync(path, 'utf8'); }
 
-test('UI mode, appearance and theme expose explicit authoritative subscriptions', async () => {
+test('appearance and theme expose explicit authoritative subscriptions', async () => {
     const dom = new JSDOM('<!doctype html><html><body class="light-theme"></body></html>', {
         url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'
     });
     const { window } = dom;
-    window.topTabManager = { prepareForMode: async () => {}, syncMode: async () => {} };
     window.eval(source('modules/ui-system/state-channel.js'));
-    window.eval(source('modules/uiModeManager.js'));
-    const modes = [];
-    const unsubscribeMode = window.uiModeManager.subscribe(state => modes.push(state.mode));
-    window.uiModeManager.apply('next');
-    assert.deepEqual(modes, ['classic', 'next']);
-    unsubscribeMode();
-
+    window.chatAPI = {};
+    window.eval(source('modules/services/windowStateService.js'));
     window.eval(source('modules/ui-system/appearance-engine.js'));
     const appearances = [];
     const unsubscribeAppearance = window.VCPAppearance.subscribe(state => appearances.push(state.revision));
@@ -34,7 +28,7 @@ test('UI mode, appearance and theme expose explicit authoritative subscriptions'
     unsubscribeTheme();
     assert.deepEqual(
         Array.from(window.VCPStateChannels.diagnostics(), item => String(item.name)).sort(),
-        ['appearance', 'theme', 'ui-mode']
+        ['appearance', 'main-window', 'theme']
     );
     dom.window.close();
 });
@@ -71,18 +65,20 @@ test('notification filter publishes committed and rolled-back state exactly once
     dom.window.close();
 });
 
-test('assistant catalog publishes loading and authoritative completion without DOM scanning', async () => {
+test('assistant catalog rejects stale load completion without a test-only state channel', async () => {
     const dom = new JSDOM('<!doctype html><html><body><ul id="agentList"></ul></body></html>', {
         url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'
     });
     const { window } = dom;
-    window.eval(source('modules/ui-system/state-channel.js'));
     window.eval(source('modules/itemListManager.js'));
     const current = { value: null };
+    let resolveFirst;
+    let request = 0;
+    const firstAgents = new Promise(resolve => { resolveFirst = resolve; });
     window.itemListManager.init({
         elements: { itemListUl: window.document.getElementById('agentList') },
         electronAPI: {
-            getAgents: async () => [{ id: 'nova', name: 'Nova' }],
+            getAgents: async () => ++request === 1 ? firstAgents : [{ id: 'nova', name: 'Nova' }],
             getAgentGroups: async () => [],
             loadSettings: async () => ({ combinedItemOrder: [], vcpServerUrl: '' }),
             getUnreadTopicCounts: async () => ({ success: true, counts: {} }),
@@ -91,11 +87,12 @@ test('assistant catalog publishes loading and authoritative completion without D
         mainRendererFunctions: { selectItem() {} },
         uiHelper: { showToastNotification() {} },
     });
-    const statuses = [];
-    const unsubscribe = window.itemListManager.subscribe(state => statuses.push([state.status, state.items.length]));
-    await window.itemListManager.loadItems();
-    assert.deepEqual(statuses, [['idle', 0], ['loading', 0], ['ready', 1]]);
-    assert.equal(window.itemListManager.getCatalogState().items[0].id, 'nova');
-    unsubscribe();
+    const staleLoad = window.itemListManager.loadItems();
+    const currentLoad = window.itemListManager.loadItems();
+    await currentLoad;
+    resolveFirst([{ id: 'stale', name: 'Stale' }]);
+    await staleLoad;
+    assert.equal(window.document.querySelector('[data-item-id="nova"]')?.dataset.itemId, 'nova');
+    assert.equal(window.document.querySelector('[data-item-id="stale"]'), null);
     dom.window.close();
 });

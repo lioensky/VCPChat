@@ -71,7 +71,6 @@ window.chatAPI = {
     connectVCPLog() {},
     disconnectVCPLog() {},
 };
-window.uiModeManager = { apply() {} };
 window.VCPAppearance = { normalize: profile => profile, commit: profile => profile };
 window.normalizeChatPresentationMode = (mode) => (['bubble', 'panel', 'immersive'].includes(mode) ? mode : 'bubble');
 

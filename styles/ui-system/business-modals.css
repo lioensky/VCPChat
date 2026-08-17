@@ -1,12 +1,12 @@
 @layer vcp-ui.components {
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal {
         z-index: var(--vcp-ui-z-overlay);
         padding: var(--vcp-ui-space-4);
         background: var(--vcp-ui-backdrop);
         backdrop-filter: blur(5px);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content {
         width: min(100%, var(--vcp-ui-modal-width));
         max-height: min(var(--vcp-ui-modal-height), calc(100vh - var(--vcp-ui-space-7)));
         margin: auto;
@@ -21,13 +21,13 @@
         scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#filterRulesModal .modal-content {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#filterRulesModal .modal-content {
         width: min(100%, var(--vcp-ui-modal-wide-width));
     }
 
     /* 全局设置模态框使用上游经典宽度（styles/setting/settings-global-modal.css），
        不受通用 .modal .modal-content 的窄宽（--vcp-ui-modal-width: 520px）限制。 */
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-modal-content {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-modal-content {
         width: 90vw;
         max-width: 900px;
         max-height: 85vh;
@@ -35,11 +35,11 @@
     }
 
     /* 设置导航：新版采用稳定列表外观，选中态使用弱强调背景。 */
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-nav {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-nav {
         flex: 0 0 auto;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-list {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-list {
         margin: 0;
         padding: var(--vcp-ui-space-3) var(--vcp-ui-space-2);
         display: grid;
@@ -47,7 +47,7 @@
         list-style: none;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-item {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-item {
         min-height: var(--vcp-ui-sidebar-row-height);
         padding: 0 var(--vcp-ui-space-3);
         display: flex;
@@ -61,23 +61,23 @@
         transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-item:hover {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-item:hover {
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-fill-0);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-item.active {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-item.active {
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-selection-bg);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-icon {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-nav-icon {
         flex: 0 0 auto;
         color: currentColor;
     }
 
     /* 设置搜索条：输入框、图标与定位提示使用新版表单控件观感。 */
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search {
         width: 100%;
         min-width: 0;
         box-sizing: border-box;
@@ -91,13 +91,13 @@
         background: var(--vcp-ui-control-bg);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search .vcp-ui-icon {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search .vcp-ui-icon {
         flex: 0 0 auto;
         color: var(--vcp-ui-text-2);
         font-size: var(--vcp-ui-icon-md);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search input {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-ui-settings-search input {
         min-width: 0;
         flex: 1 1 auto;
         padding: var(--vcp-ui-space-2) 0;
@@ -109,7 +109,7 @@
     }
 
     /* 保存栏：固定于内容区底部，配合 SettingsActionBar 的脏/保存/错误状态。 */
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer {
         margin: 0;
         padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
         display: flex;
@@ -121,7 +121,7 @@
         flex: 0 0 auto;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer button[type="submit"] {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer button[type="submit"] {
         min-height: var(--vcp-ui-control-md);
         padding: 0 var(--vcp-ui-space-4);
         border: 0;
@@ -133,21 +133,20 @@
         transition: background var(--vcp-ui-transition-fast);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer button[type="submit"]:hover {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer button[type="submit"]:hover {
         background: var(--vcp-ui-accent-hover);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer[data-state="saving"] button[type="submit"],
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer[data-state="error"] button[type="submit"] {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer[data-state="saving"] button[type="submit"], :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-footer[data-state="error"] button[type="submit"] {
         cursor: progress;
         opacity: 0.78;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-modal-content {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-modal-content {
         width: min(100%, var(--vcp-ui-modal-width));
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-stage {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-stage {
         margin: var(--vcp-ui-space-3) auto;
         border-color: var(--vcp-ui-border);
         border-radius: var(--vcp-ui-radius-card);
@@ -155,50 +154,50 @@
         box-shadow: var(--vcp-ui-shadow-sm);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-help {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-help {
         margin: 0 0 var(--vcp-ui-space-4);
         color: var(--vcp-ui-text-2);
         font-size: var(--vcp-ui-font-helper);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-actions {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-actions {
         margin-top: var(--vcp-ui-space-3);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-cancel {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-cancel {
         border-color: var(--vcp-ui-border);
         background: var(--vcp-ui-fill-1);
         color: var(--vcp-ui-text-0);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-confirm {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#avatarCropperModal .avatar-cropper-confirm {
         border-color: var(--vcp-ui-accent);
         background: var(--vcp-ui-accent);
         color: var(--vcp-ui-on-accent);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content::-webkit-scrollbar {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content::-webkit-scrollbar {
         width: var(--vcp-ui-scrollbar-size);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content::-webkit-scrollbar-thumb {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content::-webkit-scrollbar-thumb {
         border-radius: var(--vcp-ui-radius-full);
         background: var(--vcp-ui-scrollbar-thumb);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content h2 {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content h2 {
         margin: 0 0 var(--vcp-ui-space-4);
         color: var(--vcp-ui-text-0);
         font-size: var(--vcp-ui-font-title);
         line-height: var(--vcp-ui-line-compact);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content :is(label, small) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content :is(label, small) {
         color: var(--vcp-ui-text-2);
         font-size: var(--vcp-ui-font-helper);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
         width: 100%;
         min-height: var(--vcp-ui-control-md);
         box-sizing: border-box;
@@ -209,22 +208,20 @@
         font: inherit;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select):focus-visible {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select):focus-visible {
         border-color: var(--vcp-ui-control-focus);
         box-shadow: 0 0 0 var(--vcp-ui-space-1) var(--vcp-ui-focus-ring);
         outline: none;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions {
         display: flex;
         justify-content: flex-end;
         gap: var(--vcp-ui-space-2);
         margin-top: var(--vcp-ui-space-5);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions button,
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .button-primary,
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .button-secondary {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions button, :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .button-primary, :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .button-secondary {
         min-height: var(--vcp-ui-control-md);
         padding-inline: var(--vcp-ui-space-3);
         border: 1px solid var(--vcp-ui-border);
@@ -234,25 +231,23 @@
         font: inherit;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions :is(button[type="submit"], .button-primary) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions :is(button[type="submit"], .button-primary) {
         border-color: var(--vcp-ui-accent);
         background: var(--vcp-ui-accent);
         color: var(--vcp-ui-on-accent);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions button:hover:not(:disabled),
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .button-primary:hover:not(:disabled),
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .button-secondary:hover:not(:disabled) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions button:hover:not(:disabled), :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .button-primary:hover:not(:disabled), :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .button-secondary:hover:not(:disabled) {
         border-color: var(--vcp-ui-border-strong);
         background: var(--vcp-ui-control-hover);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions :is(button[type="submit"], .button-primary):hover:not(:disabled) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .form-actions :is(button[type="submit"], .button-primary):hover:not(:disabled) {
         border-color: var(--vcp-ui-accent-hover);
         background: var(--vcp-ui-accent-hover);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .close-button {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .close-button {
         display: grid;
         width: var(--vcp-ui-control-md);
         height: var(--vcp-ui-control-md);
@@ -263,14 +258,13 @@
         line-height: 1;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .close-button:hover,
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .close-button:focus-visible {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .close-button:hover, :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .close-button:focus-visible {
         background: var(--vcp-ui-danger-bg);
         color: var(--vcp-ui-danger);
         outline: none;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-content {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-content {
         width: min(100%, var(--vcp-ui-modal-wide-width));
         height: min(var(--vcp-ui-modal-height), calc(100vh - var(--vcp-ui-space-7)));
         max-height: min(var(--vcp-ui-modal-height), calc(100vh - var(--vcp-ui-space-7)));
@@ -284,23 +278,22 @@
         font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal {
         box-sizing: border-box;
         padding: var(--vcp-ui-space-3);
         background: var(--vcp-ui-backdrop);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-header,
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal #global-search-pagination {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-header, :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal #global-search-pagination {
         border-color: var(--vcp-ui-border);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-header h3 {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-header h3 {
         color: var(--vcp-ui-text-0);
         font-size: var(--vcp-ui-font-title);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-close-button {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-close-button {
         width: var(--vcp-ui-control-md);
         height: var(--vcp-ui-control-md);
         padding: 0;
@@ -309,14 +302,13 @@
         font-size: var(--vcp-ui-font-title);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-close-button:hover,
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-close-button:focus-visible {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-close-button:hover, :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-modal-close-button:focus-visible {
         background: var(--vcp-ui-danger-bg);
         color: var(--vcp-ui-danger);
         outline: none;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal :is(.search-agent-select, #global-search-input) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal :is(.search-agent-select, #global-search-input) {
         border-color: var(--vcp-ui-control-border);
         border-radius: var(--vcp-ui-radius-sm);
         background-color: var(--vcp-ui-control-bg);
@@ -325,13 +317,13 @@
         font-size: var(--vcp-ui-font-body);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal :is(.search-agent-select, #global-search-input):focus-visible {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal :is(.search-agent-select, #global-search-input):focus-visible {
         border-color: var(--vcp-ui-control-focus);
         box-shadow: 0 0 0 var(--vcp-ui-space-1) var(--vcp-ui-focus-ring);
         outline: none;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item {
         margin-bottom: var(--vcp-ui-space-1);
         padding: var(--vcp-ui-space-3);
         border-color: var(--vcp-ui-border);
@@ -339,68 +331,68 @@
         color: var(--vcp-ui-text-1);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item:hover {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item:hover {
         background: var(--vcp-ui-selection-bg);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-status-message {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-status-message {
         margin: var(--vcp-ui-space-7) auto;
         color: var(--vcp-ui-text-2);
         font-size: var(--vcp-ui-font-helper);
         text-align: center;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-status-message--empty {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-status-message--empty {
         max-width: var(--vcp-ui-modal-width);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-status-message--error {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-status-message--error {
         color: var(--vcp-ui-danger);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item .context {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item .context {
         color: var(--vcp-ui-text-2);
         font-size: var(--vcp-ui-font-caption);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item :is(.content .name, .content strong) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-result-item :is(.content .name, .content strong) {
         color: var(--vcp-ui-text-accent);
         background: var(--vcp-ui-selection-bg);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-code-block {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-code-block {
         border: 1px solid var(--vcp-ui-border);
         border-radius: var(--vcp-ui-radius-sm);
         background: var(--vcp-ui-message-code-bg);
         color: var(--vcp-ui-message-code-text);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal :is(.pagination-button, .search-highlight) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal :is(.pagination-button, .search-highlight) {
         border-color: var(--vcp-ui-border);
         border-radius: var(--vcp-ui-radius-sm);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .pagination-button {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .pagination-button {
         background: var(--vcp-ui-fill-1);
         color: var(--vcp-ui-text-0);
         font: inherit;
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .pagination-button:hover:not(:disabled) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .pagination-button:hover:not(:disabled) {
         background: var(--vcp-ui-control-hover);
     }
 
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-highlight {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#global-search-modal .search-highlight {
         background: var(--vcp-ui-warning-bg);
         color: inherit;
     }
 
     @media (max-width: 768px) {
-        :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal {
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal {
             padding: var(--vcp-ui-space-3);
         }
 
-        :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content {
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content {
             padding: var(--vcp-ui-space-4);
         }
     }

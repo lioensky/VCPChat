@@ -35,11 +35,6 @@ const searchManager = {
         this.currentTopicIdRef = dependencies.refs.currentTopicIdRef;
 
         this.setupGlobalShortcuts();
-        window.addEventListener('ui-mode-changed', () => {
-            if (this.elements.modal && this.elements.modal.style.display !== 'none') {
-                this.closeModal();
-            }
-        });
 
         // 🟢 监听模态框就绪事件
         document.addEventListener('modal-ready', (e) => {

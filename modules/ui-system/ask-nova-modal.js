@@ -178,7 +178,7 @@ export function createAskNovaController(options = {}) {
             else window.topTabManager?.releaseOverlay?.(overlayOwner);
             return activeModal;
         }
-        if (destroyed || documentRef.documentElement.dataset.uiMode !== 'next') {
+        if (destroyed) {
             if (modalScope) await modalScope.dispose('open-cancelled');
             else window.topTabManager?.releaseOverlay?.(overlayOwner);
             return null;
@@ -278,15 +278,10 @@ export function createAskNovaController(options = {}) {
                     console.error('[AskNova] Failed to dispose modal resources:', error);
                 });
             } else {
-                window.removeEventListener('ui-mode-changed', handleModeChange);
                 window.topTabManager?.releaseOverlay?.(overlayOwner);
                 queueMicrotask(() => scopeHost.remove());
             }
             activeModal = null;
-        };
-        const handleModeChange = event => {
-            const mode = event?.detail?.mode || documentRef.documentElement.dataset.uiMode;
-            if (mode !== 'next') modal.close(null);
         };
         try {
             modal = VCPUI.create('Modal', {
@@ -305,14 +300,15 @@ export function createAskNovaController(options = {}) {
         }
         modal.element.classList.add('ask-nova-modal-host');
         if (modal.element.localName === 'wa-dialog') {
-            if (modalScope) modalScope.listen(modal.element, 'wa-after-hide', () => scopeHost.remove(), { once: true }, 'wa-after-hide');
-            else modal.element.addEventListener('wa-after-hide', () => scopeHost.remove(), { once: true });
+            const removeClosedHost = event => {
+                if (event.target === modal.element) scopeHost.remove();
+            };
+            if (modalScope) modalScope.listen(modal.element, 'wa-after-hide', removeClosedHost, {}, 'wa-after-hide');
+            else modal.element.addEventListener('wa-after-hide', removeClosedHost);
         }
         scopeHost.append(modal.element);
         documentRef.body.append(scopeHost);
         modalScope?.own(() => scopeHost.remove(), 'modal-host', 'dom');
-        if (modalScope) modalScope.listen(window, 'ui-mode-changed', handleModeChange, undefined, 'ui-mode-change');
-        else window.addEventListener('ui-mode-changed', handleModeChange);
 
         function currentTarget() {
             return TARGETS[state.targetId];

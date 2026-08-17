@@ -6,21 +6,21 @@
      * chrome; message rows, avatars, metadata, bubbles and structured content
      * must continue to come from chat.css and messageRenderer.css.
      */
-    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container {
+    html .vcp-ui-scope.chat-messages-container {
         scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar {
+    html .vcp-ui-scope.chat-messages-container::-webkit-scrollbar {
         width: var(--vcp-ui-scrollbar-size);
         height: var(--vcp-ui-scrollbar-size);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb {
+    html .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb {
         background: var(--vcp-ui-scrollbar-thumb);
         border-radius: var(--vcp-ui-radius-full);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb:hover {
+    html .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb:hover {
         background: var(--vcp-ui-scrollbar-thumb-hover);
     }
 }

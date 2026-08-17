@@ -22,7 +22,7 @@
         const scopes = globalObject.VCPLifecycle?.diagnostics?.snapshot?.() || [];
         return Object.freeze({
             at: Date.now(),
-            mode: globalObject.uiModeManager?.getCurrentMode?.() || 'classic',
+            mode: globalObject.document?.documentElement?.dataset?.uiMode === 'next' ? 'next' : 'classic',
             scopes: Object.freeze(scopes),
             stalledScopes: Object.freeze(scopes.filter(scope => scope.state === 'disposing' && scope.disposingMs > 5_000)),
             scopeSummary: globalObject.VCPLifecycle?.diagnostics?.summary?.() || null,
@@ -30,6 +30,7 @@
             contributions: globalObject.VCPContributions?.diagnostics?.snapshot?.() || null,
             states: Object.freeze(globalObject.VCPStateChannels?.diagnostics?.() || []),
             shell: globalObject.VCPNextShellController?.getDiagnostics?.() || null,
+            streams: globalObject.streamManager?.getDiagnostics?.() || null,
             performance: Object.freeze(globalObject.VCPPerformance?.snapshot?.() || []),
             transitions: Object.freeze([...transitionHistory]),
         });
@@ -42,6 +43,7 @@
             embeddedSessions: Object.freeze(result?.embeddedSessions || []),
             activeEmbeddedAction: result?.activeEmbeddedAction || null,
             tasks: Object.freeze(result?.tasks || []),
+            chatTasks: Object.freeze(result?.chatTasks || []),
         });
     }
 

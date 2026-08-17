@@ -33,7 +33,9 @@ function createFixture() {
     let nextHistorySaveError = null;
     let nextWatcherStartError = null;
     let nextVcpError = null;
+    let nextSettingsSaveGate = null;
     let historySaveCount = 0;
+    const savedSettings = [];
     const sentRequests = [];
     const topicRequests = new Map();
     const createTopicRequests = new Map();
@@ -125,14 +127,30 @@ function createFixture() {
             }
             return { streamingStarted: true };
         },
-        saveSettings: async () => ({ success: true }),
+        saveSettings: async settings => {
+            const gate = nextSettingsSaveGate;
+            if (gate) {
+                nextSettingsSaveGate = null;
+                gate.started.resolve();
+                await gate.release.promise;
+            }
+            savedSettings.push(JSON.parse(JSON.stringify(settings)));
+            return { success: true };
+        },
     };
     window.chatManager.init({
         electronAPI,
         uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
         modules: {
             messageRenderer,
-            itemListManager: { highlightActiveItem() {}, refreshUnreadCounts() {} },
+            itemListManager: {
+                highlightActiveItem() {},
+                refreshUnreadCounts() {},
+                findItemById(itemId, itemType) {
+                    const item = configs[itemId];
+                    return item && itemType === 'agent' ? { ...item, type: 'agent' } : null;
+                },
+            },
             topicListManager: { loadTopicList() {} },
             groupRenderer: null,
         },
@@ -176,6 +194,12 @@ function createFixture() {
         failNextVcpRequest(message = 'controlled VCP failure') {
             nextVcpError = new Error(message);
         },
+        holdNextSettingsSave() {
+            const gate = { started: deferred(), release: deferred() };
+            nextSettingsSaveGate = gate;
+            return gate;
+        },
+        savedSettings,
         historySaveCount: () => historySaveCount,
         persistedHistory(itemId, requestedTopicId) {
             return JSON.parse(JSON.stringify(histories.get(`${itemId}:${requestedTopicId}`) || []));
@@ -210,6 +234,87 @@ test('a late assistant selection cannot overwrite the newer assistant topic and 
     assert.equal(state.rememberedTopicId, 'topic-b');
     assert.deepEqual(state.history.map(message => message.id), ['b-message']);
     assert.deepEqual(state.visibleMessageIds.filter(id => id?.endsWith('-message')), ['b-message']);
+    fixture.dom.window.close();
+});
+
+test('startup restoration selects the last durable assistant and topic', async () => {
+    const fixture = createFixture();
+    const restoring = fixture.chatManager.restoreLastOpenState({
+        lastOpenItemId: 'agent-b',
+        lastOpenItemType: 'agent',
+        lastOpenTopicId: 'topic-b-2',
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+
+    assert.equal(await restoring, true);
+    const state = fixture.state();
+    assert.equal(state.selected.id, 'agent-b');
+    assert.equal(state.topicId, 'topic-b-2');
+    assert.deepEqual(state.history.map(message => message.id), ['b2-message']);
+    fixture.dom.window.close();
+});
+
+test('an explicit selection supersedes an unfinished startup restoration', async () => {
+    const fixture = createFixture();
+    const restoring = fixture.chatManager.restoreLastOpenState({
+        lastOpenItemId: 'agent-a',
+        lastOpenItemType: 'agent',
+        lastOpenTopicId: 'topic-a',
+    });
+    await new Promise(resolve => setImmediate(resolve));
+
+    const selecting = fixture.chatManager.selectItem(
+        'agent-b',
+        'agent',
+        'Agent B',
+        null,
+        fixture.configs['agent-b']
+    );
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+    await selecting;
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    assert.equal(await restoring, false);
+
+    const state = fixture.state();
+    assert.equal(state.selected.id, 'agent-b');
+    assert.equal(state.topicId, 'topic-b');
+    assert.deepEqual(state.history.map(message => message.id), ['b-message']);
+    fixture.dom.window.close();
+});
+
+test('startup restoration ignores a deleted item', async () => {
+    const fixture = createFixture();
+    assert.equal(await fixture.chatManager.restoreLastOpenState({
+        lastOpenItemId: 'deleted-agent',
+        lastOpenItemType: 'agent',
+        lastOpenTopicId: 'deleted-topic',
+    }), false);
+    assert.equal(fixture.state().selected.id, null);
+    fixture.dom.window.close();
+});
+
+test('last-open persistence is ordered and awaited across rapid topic selections', async () => {
+    const fixture = createFixture();
+    const selected = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+    await selected;
+
+    const firstSave = fixture.holdNextSettingsSave();
+    const first = fixture.chatManager.selectTopic('topic-b-2');
+    await firstSave.started.promise;
+    const second = fixture.chatManager.selectTopic('topic-b');
+    let firstSettled = false;
+    first.then(() => { firstSettled = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(firstSettled, false, 'selection resolved before its durable state was committed');
+
+    firstSave.release.resolve();
+    await Promise.all([first, second]);
+    assert.equal(fixture.savedSettings.at(-1).lastOpenTopicId, 'topic-b');
+    assert.equal(fixture.state().topicId, 'topic-b');
     fixture.dom.window.close();
 });
 

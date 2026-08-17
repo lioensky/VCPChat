@@ -7,6 +7,105 @@ function clone(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function increment(map, key, amount = 1) {
+    map.set(key, (map.get(key) || 0) + amount);
+}
+
+function sortedCounts(map) {
+    return Object.freeze(Object.fromEntries([...map.entries()].sort(([left], [right]) => left.localeCompare(right))));
+}
+
+function defaultStateLabel(model = {}) {
+    const atom = value => String(value ?? 'none').slice(0, 64).replace(/[^a-zA-Z0-9._:-]/g, '_');
+    const identity = model.identity ? `${atom(model.identity.type)}:${atom(model.identity.id)}` : 'none';
+    const topic = atom(model.topicId);
+    const conversation = model.conversation || 'unknown';
+    const left = model.shell?.left || 'unknown';
+    const right = model.shell?.right || 'unknown';
+    const tab = model.shell?.activeTab || 'unknown';
+    const overlay = Array.isArray(model.overlayStack) && model.overlayStack.length ? 'overlay' : 'clear';
+    const embedded = model.embedded ? 'embedded' : 'none';
+    const inFlight = Object.keys(model.inFlight || {}).length ? 'busy' : 'idle';
+    const recovery = `reload=${Number(model.rendererReloads || 0) > 0 ? 'yes' : 'no'},crash=${Number(model.rendererCrashes || 0) > 0 ? 'yes' : 'no'}`;
+    return `identity=${identity}|topic=${topic}|conversation=${conversation}|left=${left}|right=${right}|tab=${tab}|overlay=${overlay}|embedded=${embedded}|work=${inFlight}|${recovery}`;
+}
+
+class SequenceCoverage {
+    constructor(options = {}) {
+        this.stateLabel = options.stateLabel || defaultStateLabel;
+        this.faultActions = new Set(options.faultActions || []);
+        this.requiredEdges = new Set(options.requiredEdges || []);
+        this.actions = new Map();
+        this.actionPairs = new Map();
+        this.transitions = new Map();
+        this.faults = new Map();
+        this.outcomes = new Map();
+        this.previousAction = null;
+    }
+
+    recordStep({ before, model, entry, definition }) {
+        const action = entry.id;
+        increment(this.actions, action);
+        if (this.previousAction) increment(this.actionPairs, `${this.previousAction}->${action}`);
+        this.previousAction = action;
+        const transition = `${this.stateLabel(before)}->${this.stateLabel(model)}`;
+        increment(this.transitions, transition);
+        if (definition?.fault === true || this.faultActions.has(action)) increment(this.faults, action);
+    }
+
+    recordOutcome(outcome) {
+        increment(this.outcomes, String(outcome || 'unknown'));
+        this.previousAction = null;
+    }
+
+    merge(report) {
+        for (const [section, target] of [
+            ['actions', this.actions], ['actionPairs', this.actionPairs], ['transitions', this.transitions],
+            ['faults', this.faults], ['outcomes', this.outcomes],
+        ]) {
+            Object.entries(report?.[section] || {}).forEach(([key, count]) => increment(target, key, Number(count) || 0));
+        }
+        return this;
+    }
+
+    edgeCount(edge) {
+        const separator = edge.indexOf(':');
+        const type = separator < 0 ? '' : edge.slice(0, separator);
+        const key = separator < 0 ? edge : edge.slice(separator + 1);
+        const sources = {
+            action: this.actions,
+            pair: this.actionPairs,
+            transition: this.transitions,
+            fault: this.faults,
+            outcome: this.outcomes,
+        };
+        return sources[type]?.get(key) || 0;
+    }
+
+    report() {
+        const required = Object.freeze([...this.requiredEdges].sort());
+        const missingRequiredEdges = Object.freeze(required.filter(edge => this.edgeCount(edge) < 1));
+        return Object.freeze({
+            actions: sortedCounts(this.actions),
+            actionPairs: sortedCounts(this.actionPairs),
+            transitions: sortedCounts(this.transitions),
+            faults: sortedCounts(this.faults),
+            outcomes: sortedCounts(this.outcomes),
+            requiredEdges: required,
+            missingRequiredEdges,
+            passedRequiredEdges: Object.freeze(required.filter(edge => !missingRequiredEdges.includes(edge))),
+        });
+    }
+
+    assertRequiredEdges() {
+        const report = this.report();
+        if (report.missingRequiredEdges.length) {
+            throw new Error(`Missing required sequence coverage edges: ${report.missingRequiredEdges.join(', ')}`);
+        }
+        return report;
+    }
+}
+
 function normalizeSeed(value) {
     const numeric = Number(value);
     if (Number.isFinite(numeric)) return numeric >>> 0;
@@ -120,11 +219,12 @@ function validateTrace(trace) {
     return trace;
 }
 
-async function runTrace({ trace, catalog, driver = {}, observe, assertInvariant, onStep }) {
+async function runTrace({ trace, catalog, driver = {}, observe, assertInvariant, onStep, coverage }) {
     validateTrace(trace);
     const definitions = validateCatalog(catalog);
     let model = clone(trace.initialModel || createInitialModel());
     const snapshots = [];
+    try {
     for (let index = 0; index < trace.actions.length; index += 1) {
         const entry = trace.actions[index];
         const definition = definitions.get(entry.id);
@@ -136,9 +236,15 @@ async function runTrace({ trace, catalog, driver = {}, observe, assertInvariant,
         const snapshot = observe ? await observe({ driver, model: clone(model), entry, result, index }) : null;
         snapshots.push(snapshot);
         await assertInvariant?.({ driver, before, model: clone(model), snapshot, entry, result, index });
+        coverage?.recordStep({ before, model: clone(model), snapshot, entry, result, index, definition });
         await onStep?.({ before, model: clone(model), snapshot, entry, result, index });
     }
-    return { model, snapshots };
+    coverage?.recordOutcome('completed');
+    return { model, snapshots, coverage: coverage?.report?.() || null };
+    } catch (error) {
+        coverage?.recordOutcome('failed');
+        throw error;
+    }
 }
 
 async function minimizeFailingTrace(trace, stillFails) {
@@ -180,7 +286,9 @@ module.exports = {
     PRNG_VERSION,
     TRACE_VERSION,
     SeededRandom,
+    SequenceCoverage,
     createInitialModel,
+    defaultStateLabel,
     createTrace,
     minimizeFailingTrace,
     parseTrace,
