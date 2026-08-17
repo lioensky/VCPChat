@@ -3209,14 +3209,46 @@
                 if (pending.epoch !== state.compositionEpoch) return false;
                 if (pending.editable?.isConnected
                     && pending.session.editable === pending.editable) {
+                    const session = pending.session;
+                    const editable = pending.editable;
                     const committed = flushSession(
-                        pending.session,
+                        session,
                         'flow-composition-input'
                     );
                     if (committed) {
-                        // 标记本轮已被消费的编辑器。即使 Chromium 随后
-                        // 再派发一枚 input，也只能被忽略，不能再次同步。
-                        state.compositionRetiredEditable = pending.editable;
+                        // flushSession 的 IME 路径会保留 contenteditable 元素，
+                        // 避免 composition 结束后丢失焦点。源码归一化可能删除
+                        // 输入行上的 ↵，因此只同步该元素的内部子树，绝不重建
+                        // Shadow DOM，也不触发 renderEdit。
+                        const raw = sourceForRegion(session.region);
+                        const offsets = editorSelectionOffsets(editable);
+                        const normalized = normalizeParagraphBreaksInChangedLines(
+                            editableSourceText(editable),
+                            offsets?.start ?? 0,
+                            offsets?.end ?? offsets?.start ?? 0,
+                            offsets?.start,
+                            offsets?.end
+                        );
+                        const nextEditable = configureSourceEditor(
+                            visualEditorForRegion(session.shell, session.region, raw),
+                            session.region
+                        );
+                        if (editableSourceText(nextEditable) === raw) {
+                            editable.replaceChildren(...nextEditable.childNodes);
+                            restoreEditorOffsets(
+                                editable,
+                                raw,
+                                normalized.selectionStart,
+                                normalized.selectionEnd
+                            );
+                            refreshLocalMarkers(
+                                session,
+                                normalized.selectionStart,
+                                normalized.selectionEnd
+                            );
+                            installMappings(state.root);
+                        }
+                        state.compositionRetiredEditable = editable;
                     }
                     return committed;
                 }
