@@ -1,0 +1,192 @@
+/*
+ * styles/app-surfaces/app-surface-shell.css
+ * App Surface 共享 Shell：Header / Toolbar / Content / Footer 骨架。
+ *
+ * 结构约定：
+ *   body.vcp-app-surface
+ *   └── .vcp-app-shell
+ *       ├── .vcp-app-header   （标题、辅助信息、主要操作）
+ *       ├── .vcp-app-toolbar  （搜索、筛选、次要操作，可选）
+ *       ├── .vcp-app-content  （唯一滚动区；> .vcp-app-content-inner 限宽）
+ *       └── .vcp-app-footer   （状态栏，可选）
+ */
+@layer vcp.surface {
+    body.vcp-app-surface {
+        margin: 0;
+        background: var(--vcp-app-bg);
+        color: var(--vcp-app-text);
+        font-size: var(--vcp-app-font-body);
+        line-height: var(--vcp-app-line-body);
+    }
+
+    body.vcp-app-surface .vcp-app-shell {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+
+    /* --- App Header --- */
+    body.vcp-app-surface .vcp-app-header {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-app-space-3);
+        height: var(--vcp-app-header-height);
+        flex: none;
+        padding-inline: var(--vcp-app-page-gutter);
+        border-bottom: 1px solid var(--vcp-app-border);
+        background: var(--vcp-app-bg-raised);
+        -webkit-app-region: drag;
+    }
+
+    body.vcp-app-surface .vcp-app-header :is(button, a, input, select, [role="button"]) {
+        -webkit-app-region: no-drag;
+    }
+
+    body.vcp-app-surface .vcp-app-header-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--vcp-app-control-md);
+        height: var(--vcp-app-control-md);
+        flex: none;
+        color: var(--vcp-app-text-secondary);
+    }
+
+    body.vcp-app-surface .vcp-app-header-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+    }
+
+    body.vcp-app-surface .vcp-app-header-title {
+        font-size: var(--vcp-app-font-emphasis);
+        font-weight: 600;
+        line-height: var(--vcp-app-line-compact);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    body.vcp-app-surface .vcp-app-header-meta {
+        font-size: var(--vcp-app-font-caption);
+        color: var(--vcp-app-text-secondary);
+        line-height: var(--vcp-app-line-compact);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    body.vcp-app-surface .vcp-app-header-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-app-space-2);
+        margin-inline-start: auto;
+        flex: none;
+    }
+
+    /* --- App Toolbar --- */
+    body.vcp-app-surface .vcp-app-toolbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--vcp-app-space-2);
+        min-height: var(--vcp-app-toolbar-height);
+        flex: none;
+        padding-block: var(--vcp-app-space-1);
+        padding-inline: var(--vcp-app-page-gutter);
+        border-bottom: 1px solid var(--vcp-app-border);
+    }
+
+    body.vcp-app-surface .vcp-app-toolbar .vcp-app-toolbar-search {
+        flex: 1 1 200px;
+        min-width: 140px;
+        max-width: 360px;
+    }
+
+    body.vcp-app-surface .vcp-app-toolbar .vcp-app-toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-app-space-2);
+        flex: none;
+    }
+
+    body.vcp-app-surface .vcp-app-toolbar .vcp-app-toolbar-group--end {
+        margin-inline-start: auto;
+    }
+
+    /* --- App Content（唯一纵向滚动区） --- */
+    body.vcp-app-surface .vcp-app-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: var(--vcp-app-page-gutter);
+        scrollbar-width: thin;
+    }
+
+    body.vcp-app-surface .vcp-app-content-inner {
+        max-width: var(--vcp-app-content-max-width);
+        margin-inline: auto;
+    }
+
+    body.vcp-app-surface .vcp-app-content-inner[data-layout="document"] {
+        max-width: var(--vcp-app-content-max-width-document);
+    }
+
+    body.vcp-app-surface .vcp-app-content-inner[data-layout="fluid"] {
+        max-width: none;
+    }
+
+    /* --- App Footer / Status --- */
+    body.vcp-app-surface .vcp-app-footer {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-app-space-3);
+        height: var(--vcp-app-footer-height);
+        flex: none;
+        padding-inline: var(--vcp-app-page-gutter);
+        border-top: 1px solid var(--vcp-app-border);
+        font-size: var(--vcp-app-font-caption);
+        color: var(--vcp-app-text-secondary);
+    }
+
+    body.vcp-app-surface .vcp-app-footer .vcp-app-footer-group--end {
+        margin-inline-start: auto;
+    }
+
+    /* --- 滚动区域：6px 细滚动条 --- */
+    body.vcp-app-surface ::-webkit-scrollbar {
+        width: var(--vcp-app-scrollbar-size);
+        height: var(--vcp-app-scrollbar-size);
+    }
+
+    body.vcp-app-surface ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    body.vcp-app-surface ::-webkit-scrollbar-thumb {
+        background: var(--vcp-app-scrollbar-thumb);
+        border-radius: var(--vcp-app-scrollbar-size);
+    }
+
+    body.vcp-app-surface ::-webkit-scrollbar-thumb:hover {
+        background: var(--vcp-app-scrollbar-thumb-hover);
+    }
+
+    /* --- 焦点可见 --- */
+    body.vcp-app-surface :focus-visible {
+        outline: 2px solid var(--vcp-app-focus-ring);
+        outline-offset: 2px;
+    }
+
+    /* 窄窗口：工具栏换行时搜索独占一行 */
+    @media (max-width: 720px) {
+        body.vcp-app-surface .vcp-app-toolbar .vcp-app-toolbar-search {
+            flex-basis: 100%;
+            max-width: none;
+            order: -1;
+        }
+    }
+}

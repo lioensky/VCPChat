@@ -1,0 +1,13 @@
+/*
+ * styles/app-surfaces/app-surfaces.css
+ * App Surface 统一视觉层入口。页面只需 <link> 这一个文件，
+ * 并在 <body> 上加 vcp-app-surface 类即可启用共享基座。
+ *
+ * 层序约定：页面专属样式只能位于 vcp.page；
+ * vcp.overrides 预留给必须例外处理的窄场景，使用时需在提交说明中记录。
+ */
+@layer vcp.tokens, vcp.surface, vcp.components, vcp.page, vcp.overrides;
+
+@import url('./app-surface-tokens.css');
+@import url('./app-surface-shell.css');
+@import url('./app-surface-content.css');
