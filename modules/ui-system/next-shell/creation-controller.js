@@ -78,12 +78,14 @@
             // right. Do not let an unrelated settings visit decide whether it
             // receives the WA or native kernel: wait for the shared component
             // load to reach a terminal state before SurfaceController chooses.
-            // A genuine load failure deliberately falls through to the native
-            // fallback for this document.
+            // A genuine load failure is an application-integrity error in the
+            // packaged desktop app. Do not disguise it as a second UI.
             try {
                 await this.window.VCPWebAwesome?.loadComponents?.();
             } catch (kernelError) {
-                console.warn('[NextUI] Web Awesome creation kernel unavailable; using native fallback:', kernelError);
+                console.error('[NextUI] Web Awesome creation kernel unavailable:', kernelError);
+                this.showUnavailable('创建界面组件加载失败，请按 Ctrl+R 重新加载应用。');
+                return;
             }
             if (!this.mounted || generation !== this.generation) return;
 
@@ -146,10 +148,13 @@
                     this.showUnavailable();
                     return;
                 }
-                host.classList.toggle('is-native-fallback', surface.kernel === 'native');
+                if (surface.kernel !== 'web-awesome') {
+                    await surface.dispose('create-kernel-unavailable');
+                    this.showUnavailable('创建界面组件尚未就绪，请按 Ctrl+R 重新加载应用。');
+                    return;
+                }
             } else {
                 buildControls((name, options) => ui.create(name, options));
-                host.classList.toggle('is-native-fallback', !this.window.VCPWebAwesome?.isDefined?.('dialog'));
             }
             const dialogScope = surface?.scope || this.scope?.child('next:create-item-modal') || null;
             if (!surface) {

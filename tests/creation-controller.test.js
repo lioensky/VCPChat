@@ -172,31 +172,26 @@ test('disposing while the creation kernel loads prevents a late surface mount', 
     dom.window.close();
 });
 
-test('a terminal Web Awesome load failure uses one native fallback surface', async () => {
+test('a terminal Web Awesome load failure exposes an error without mounting a second UI', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
-    dom.window.VCPLifecycle = { LifecycleScope };
-    dom.window.VCPUISurface = { SurfaceController };
     const ui = createUi(dom.window);
-    let mountCalls = 0;
+    const unavailable = [];
     dom.window.VCPWebAwesome = {
         getRuntimeState: () => ({ state: 'failed' }),
         loadComponents: async () => { throw new Error('controlled kernel failure'); },
-        mountScope: () => { mountCalls += 1; return () => {}; },
     };
     const controller = new CreationController({
         window: dom.window,
         document: dom.window.document,
         getUi: () => ui,
-        getApi: () => ({ getCachedModels: async () => [] }),
         commands: () => ({ createAgent() {}, createGroup() {} }),
+        showUnavailable: message => unavailable.push(message),
     });
     controller.mount();
     await controller.open();
-    const fallbackHost = dom.window.document.querySelector('.next-ui-create-dialog-host');
-    assert.ok(fallbackHost);
-    assert.equal(fallbackHost.classList.contains('is-native-fallback'), true);
-    assert.equal(mountCalls, 0, 'native fallback must not claim a WA theme scope');
-    controller.close();
+    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null);
+    assert.equal(ui.controls.length, 0, 'kernel failure must not construct native substitutes');
+    assert.deepEqual(unavailable, ['创建界面组件加载失败，请按 Ctrl+R 重新加载应用。']);
     dom.window.close();
 });
 

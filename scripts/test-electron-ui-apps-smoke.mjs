@@ -1151,8 +1151,8 @@ try {
         delete window.__nextDeltaOriginalCommands;
         delete window.__nextDeltaResolveCreate;
     });
-    // A terminal component-load failure is the only supported native fallback.
-    // It must remain a complete dialog rather than clipping its primary action.
+    // A terminal component-load failure is an application-integrity error.
+    // It must report the failure without mounting a visually divergent UI.
     await page.evaluate(() => {
         window.__nextDeltaOriginalWebAwesome = window.VCPWebAwesome;
         window.VCPWebAwesome = Object.freeze({
@@ -1164,41 +1164,15 @@ try {
         });
         document.getElementById('nextUiCreateItemBtn')?.click();
     });
-    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal')), { timeout: timeoutMs });
-    const nativeFallbackLayout = await page.evaluate(() => {
-        const host = document.querySelector('.next-ui-create-dialog-host.is-native-fallback');
-        const dialog = host?.querySelector('.vcp-ui-modal');
-        const body = dialog?.querySelector('.vcp-ui-modal-body');
-        const footer = dialog?.querySelector(':scope > footer');
-        const buttons = [...(footer?.querySelectorAll('.vcp-ui-button') || [])];
-        const rect = element => element ? element.getBoundingClientRect().toJSON() : null;
-        return {
-            viewport: { width: innerWidth, height: innerHeight },
-            dialog: rect(dialog),
-            body: rect(body),
-            footer: rect(footer),
-            buttons: buttons.map(button => ({ label: button.textContent.trim(), rect: rect(button), display: getComputedStyle(button).display })),
-        };
-    });
-    assert.equal(nativeFallbackLayout.buttons.length, 2, `native creation actions missing: ${JSON.stringify(nativeFallbackLayout)}`);
-    assert.deepEqual(nativeFallbackLayout.buttons.map(button => button.label), ['取消', '创建'],
-        `native creation action order changed: ${JSON.stringify(nativeFallbackLayout)}`);
-    assert.ok(nativeFallbackLayout.footer.bottom <= nativeFallbackLayout.viewport.height,
-        `native creation footer is outside the viewport: ${JSON.stringify(nativeFallbackLayout)}`);
-    nativeFallbackLayout.buttons.forEach(button => {
-        assert.notEqual(button.display, 'none', `native creation action hidden: ${JSON.stringify(nativeFallbackLayout)}`);
-        assert.ok(button.rect.width > 0 && button.rect.height > 0,
-            `native creation action has no visible box: ${JSON.stringify(nativeFallbackLayout)}`);
-        assert.ok(button.rect.right <= nativeFallbackLayout.dialog.right && button.rect.bottom <= nativeFallbackLayout.dialog.bottom,
-            `native creation action overflows the dialog: ${JSON.stringify(nativeFallbackLayout)}`);
-    });
-    await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
+    await page.waitForFunction(() => [...document.querySelectorAll('.vcp-ui-toast')]
+        .some(item => item.textContent.includes('创建界面组件加载失败')), { timeout: timeoutMs });
+    assert.equal(await page.evaluate(() => Boolean(document.querySelector('.next-ui-create-dialog-host'))), false,
+        'failed WA creation mounted a native substitute');
     await page.evaluate(() => {
         window.VCPWebAwesome = window.__nextDeltaOriginalWebAwesome;
         delete window.__nextDeltaOriginalWebAwesome;
     });
-    summary.push({ surface: '创建助手 Modal', mode: 'next', pass: true, lucide: 0, note: 'WA 冷启动/深浅主题与原生降级布局完整，提交和关闭生命周期可控' });
+    summary.push({ surface: '创建助手 Modal', mode: 'next', pass: true, lucide: 0, note: 'WA 单一实现覆盖冷启动/主题/故障提示，提交和关闭生命周期可控' });
 
     // 3. Global settings modal is enhanced in next mode + keyboard flow.
     await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });

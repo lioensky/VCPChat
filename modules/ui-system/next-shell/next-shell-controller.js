@@ -636,7 +636,10 @@
             getDensity,
             acquireOverlay: owner => creationOverlayCoordinator.acquire(owner),
             releaseOverlay: owner => creationOverlayCoordinator.release(owner),
-            showUnavailable: () => window.uiHelperFunctions?.showToastNotification?.('创建功能尚未准备好，请稍后重试。', 'error'),
+            showUnavailable: message => window.uiHelperFunctions?.showToastNotification?.(
+                message || '创建功能尚未准备好，请稍后重试。',
+                'error'
+            ),
         });
         creationController.mount(mountScope);
         syncDensity();

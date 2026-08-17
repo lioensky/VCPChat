@@ -95,6 +95,10 @@ assert.doesNotMatch(creationSource, /getSnapshot|whenSettled|pendingOperations|l
     'creation must not expose test-only settlement state');
 assert.match(creationSource, /await this\.window\.VCPWebAwesome\?\.loadComponents\?\.\(\)/,
     'creation must await its own Web Awesome dependency before choosing a Surface kernel');
+assert.doesNotMatch(creationSource, /is-native-fallback|using native fallback/,
+    'canonical creation must not mount a second native UI when Web Awesome fails');
+assert.match(creationSource, /surface\.kernel !== 'web-awesome'[\s\S]*?surface\.dispose\('create-kernel-unavailable'\)[\s\S]*?showUnavailable/,
+    'canonical creation must reject a non-Web-Awesome Surface explicitly');
 assert.match(creationSource, /modal\.update\(\{ dismissible: false, closeOnBackdrop: false \}\)/,
     'durable Agent/group creation must lock user dismissal at its commit boundary');
 assert.match(creationSource, /modal\.update\(\{ dismissible: true, closeOnBackdrop: true \}\)/,

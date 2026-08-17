@@ -683,38 +683,4 @@
         font-size: var(--vcp-ui-font-helper);
     }
 
-    /* A failed WA import must still leave a complete, usable creation dialog.
-       Keep the action bar in its own grid row so short windows scroll only the
-       form instead of clipping the primary action below the viewport. */
-    html .vcp-ui-scope.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal-overlay {
-        padding: clamp(var(--vcp-ui-space-3), 4vh, var(--vcp-ui-space-6));
-    }
-
-    html .vcp-ui-scope.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal[data-size="sm"] {
-        grid-template-rows: auto minmax(0, 1fr) auto;
-        width: min(520px, calc(100vw - var(--vcp-ui-space-6)));
-        max-height: calc(100vh - var(--vcp-ui-space-6));
-        background: var(--vcp-ui-bg-secondary);
-    }
-
-    html .vcp-ui-scope.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal > header {
-        min-height: 64px;
-        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-5);
-    }
-
-    html .vcp-ui-scope.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal-body {
-        min-height: 0;
-        padding: var(--vcp-ui-space-5);
-        overflow: auto;
-    }
-
-    html .vcp-ui-scope.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal > footer {
-        min-height: 68px;
-        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-5);
-        background: var(--vcp-ui-bg-secondary);
-    }
-
-    html .vcp-ui-scope.next-ui-create-dialog-host.is-native-fallback .vcp-ui-modal > footer .vcp-ui-button {
-        min-width: 84px;
-    }
 }
