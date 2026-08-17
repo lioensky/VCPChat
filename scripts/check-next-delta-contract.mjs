@@ -4,7 +4,22 @@ import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+const exists = file => fs.existsSync(new URL(`../${file}`, import.meta.url));
 const document = new JSDOM(read('main.html')).window.document;
+
+for (const retiredFile of [
+    'modules/uiModeManager.js',
+    'modules/ui-system/settings-settlement.js',
+    'modules/ui-system/ui-mode-controller.js',
+    'modules/ui-system/vcp-page-rebuild.js',
+    'modules/ui-system/vcp-ui-runtime-bootstrap.js',
+    'styles/ui-system/runtime.css',
+]) {
+    assert.equal(exists(retiredFile), false, `${retiredFile} must not return without a production consumer`);
+}
+assert.equal(document.documentElement.dataset.uiMode, 'next', 'main.html must declare the canonical presentation');
+assert.doesNotMatch(read('preloads/shared/catalog.js'), /onUiModeUpdated|ui-mode-updated/,
+    'preload must not expose a presentation subscription without a sender and consumer');
 
 const canonicalIds = [
     'nextUiTopbar', 'nextUiAddTabBtn', 'nextUiCreateItemBtn',
@@ -70,6 +85,8 @@ assert.match(vcpUiSource, /_listen\(wa, 'wa-after-hide',[\s\S]*?finalize\(null\)
     'Web Awesome Modal teardown must defensively finalize before destroying resources');
 
 const creationSource = read('modules/ui-system/next-shell/creation-controller.js');
+assert.doesNotMatch(creationSource, /getSnapshot|whenSettled|pendingOperations|listeners|\brevision\b|\boperationId\b/,
+    'creation must not expose test-only settlement state');
 assert.match(creationSource, /modal\.update\(\{ dismissible: false, closeOnBackdrop: false \}\)/,
     'durable Agent/group creation must lock user dismissal at its commit boundary');
 assert.match(creationSource, /modal\.update\(\{ dismissible: true, closeOnBackdrop: true \}\)/,
@@ -80,6 +97,10 @@ assert.doesNotMatch(commandsSource, /\.click\s*\(/,
     'canonical commands must not proxy through presentation DOM clicks');
 assert.match(commandsSource, /createAgent[\s\S]*?createGroup/,
     'canonical creation entries must remain shared business commands');
+
+const itemListSource = read('modules/itemListManager.js');
+assert.doesNotMatch(itemListSource, /assistant-catalog|getCatalogState|getCatalogSnapshot|whenSettled|catalogChannel/,
+    'item list must not publish a test-only catalog store');
 
 const eventSource = read('modules/event-listeners.js');
 for (const id of [

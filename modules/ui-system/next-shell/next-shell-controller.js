@@ -745,8 +745,6 @@
         openAccountMenu: () => accountMenuController?.open(),
         openLaunchpad,
         openCreateDialog,
-        getCreationSnapshot: () => creationController?.getSnapshot?.() || null,
-        whenCreationSettled: options => creationController?.whenSettled?.(options) || Promise.resolve(null),
         openInternalApp,
         openEmbeddedApp,
         closeView,

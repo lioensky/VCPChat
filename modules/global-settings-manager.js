@@ -96,7 +96,7 @@ export async function handleSaveGlobalSettings(e, deps) {
                 || document.getElementById('appearanceSidebarRadius')?.value
                 || currentSettings.appearanceProfile?.sidebarRadius,
             cardRadius: currentSettings.appearanceProfile?.cardRadius
-        }, selectedUiMode) || currentSettings.appearanceProfile,
+        }, 'next') || currentSettings.appearanceProfile,
         chatFontPreset: document.getElementById('chatFontPreset')?.value || currentSettings.chatFontPreset || 'system',
         chatFontCustom: document.getElementById('chatFontCustom')?.value.trim() || '',
         chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || currentSettings.chatCodeFontPreset || 'consolas',

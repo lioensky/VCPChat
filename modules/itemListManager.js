@@ -9,7 +9,6 @@ window.itemListManager = (() => {
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     let uiHelper;
     let activeLoadItemsToken = 0;
-    let activeLoadItemsPromise = null;
 
     const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
@@ -182,17 +181,6 @@ window.itemListManager = (() => {
 
     // To hold the loaded items in memory for quick access
     let loadedItemsCache = [];
-    const catalogChannel = window.VCPStateChannels?.create('assistant-catalog', Object.freeze({
-        status: 'idle', items: Object.freeze([]), error: null
-    })) || null;
-
-    function publishCatalog(status, error = null, source = 'item-list-manager') {
-        const items = Object.freeze(loadedItemsCache.map(item => Object.freeze({ ...item })));
-        const state = Object.freeze({ status, items, error });
-        catalogChannel?.publish(state, { source });
-        return state;
-    }
-
     function escapeHtml(str) {
         return (str || '')
             .replace(/&/g, '&amp;')
@@ -929,7 +917,6 @@ window.itemListManager = (() => {
 
         const loadToken = ++activeLoadItemsToken;
         const hadPreviousItems = loadedItemsCache.length > 0;
-        publishCatalog('loading', null, 'load-started');
 
         if (!hadPreviousItems) {
             itemListUl.innerHTML = '<li><div class="loading-spinner-small"></div>加载列表中...</li>';
@@ -992,56 +979,19 @@ window.itemListManager = (() => {
         if (items.length > 0) {
             loadedItemsCache = [...items]; // Cache the loaded items only when we have valid fresh data
             renderItems(items);
-            publishCatalog('ready', null, 'load-completed');
         } else if (errors.length > 0) {
             console.warn('[ItemListManager] Failed to fully reload items, preserving previous list where possible:', errors.join(' | '));
             if (!hadPreviousItems) {
                 itemListUl.innerHTML = errors.map(error => `<li>${error}</li>`).join('');
             }
-            publishCatalog('error', errors.join(' | '), 'load-failed');
         } else {
             loadedItemsCache = [];
             renderItems([], '<li>没有找到Agent或群组。请创建一个。</li>');
-            publishCatalog('ready', null, 'load-empty');
         }
 
         fetchOpenHerPersonaStatus({ force: false });
         // Asynchronously fetch and update unread counts to avoid blocking initial render
         refreshUnreadCounts();
-    }
-
-    function trackedLoadItems() {
-        const expectedToken = activeLoadItemsToken + 1;
-        const promise = loadItems();
-        activeLoadItemsPromise = promise;
-        promise.catch(error => {
-            if (expectedToken === activeLoadItemsToken) publishCatalog('error', error?.message || String(error), 'load-threw');
-        }).finally(() => {
-            if (activeLoadItemsPromise !== promise) return;
-            activeLoadItemsPromise = null;
-        }).catch(() => {});
-        return promise;
-    }
-
-    function getCatalogSnapshot() {
-        return catalogChannel?.getSnapshot() || Object.freeze({
-            name: 'assistant-catalog',
-            value: { status: activeLoadItemsPromise ? 'loading' : 'ready', items: loadedItemsCache, error: null },
-            revision: activeLoadItemsToken,
-            source: 'fallback',
-        });
-    }
-
-    function whenSettled(options = {}) {
-        const wait = window.VCPSettlement?.waitForSettlement;
-        if (!wait) return Promise.reject(new Error('VCPSettlement is unavailable.'));
-        return wait({
-            ...options,
-            label: 'Identity catalog',
-            getSnapshot: getCatalogSnapshot,
-            subscribe: (listener, subscribeOptions) => catalogChannel?.subscribe(listener, subscribeOptions) || (() => false),
-            predicate: snapshot => snapshot.value?.status !== 'loading',
-        });
     }
 
     /**
@@ -1310,22 +1260,16 @@ window.itemListManager = (() => {
             ...partialConfig
         };
 
-        publishCatalog('ready', null, 'item-updated');
-
         return true;
     }
 
     // --- Public API ---
     return {
         init,
-        loadItems: trackedLoadItems,
+        loadItems,
         highlightActiveItem,
         resetMouseEventStates,
         findItemById, // Expose the new function
-        getCatalogState: () => catalogChannel?.get() || publishCatalog('ready', null, 'query'),
-        getCatalogSnapshot,
-        whenSettled,
-        subscribe: (listener, options) => catalogChannel?.subscribe(listener, options) || (() => false),
         updateLoadedItemConfig,
         updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用
         refreshUnreadCounts

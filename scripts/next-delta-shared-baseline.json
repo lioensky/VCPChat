@@ -16,8 +16,8 @@
     "reason": "shared topic authority with canonical presentation projection only"
   },
   "modules/itemListManager.js": {
-    "sha256": "3585e135aad8b62c04768075fd0a0720851d82acea34b522763d2f28d12792fd",
-    "reason": "shared Agent/group catalog authority with revision-bounded settlement"
+    "sha256": "dd63dbfdc5672114c978f1234f3388fc5765f0370e37ca6fc32e0a41e04eedef",
+    "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
     "sha256": "b1dd13f25567e31cbb5d4536c7fd95cbaa5b353b24283563fccb38a7705c2625",

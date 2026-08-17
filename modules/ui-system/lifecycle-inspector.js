@@ -22,7 +22,7 @@
         const scopes = globalObject.VCPLifecycle?.diagnostics?.snapshot?.() || [];
         return Object.freeze({
             at: Date.now(),
-            mode: globalObject.uiModeManager?.getCurrentMode?.() || 'classic',
+            mode: globalObject.document?.documentElement?.dataset?.uiMode === 'next' ? 'next' : 'classic',
             scopes: Object.freeze(scopes),
             stalledScopes: Object.freeze(scopes.filter(scope => scope.state === 'disposing' && scope.disposingMs > 5_000)),
             scopeSummary: globalObject.VCPLifecycle?.diagnostics?.summary?.() || null,

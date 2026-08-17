@@ -1287,7 +1287,7 @@ try {
     await writeProjectUiMode('next');
 
     // 6. Main renderer: a legacy Classic request stays on the canonical layout.
-    await page.evaluate(() => window.uiModeManager.apply('classic', { cache: true }));
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.uiMode), 'next');
     await page.waitForFunction(() => {
         const input = document.getElementById('globalSettingsForm')?.querySelector('input[id]');
         return !input || !input.className.includes('vcp-ui-native-input');

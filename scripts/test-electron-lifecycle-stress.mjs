@@ -742,7 +742,7 @@ async function cycleRendererCrash(page, browser, app, label) {
     return recoveredPage;
 }
 
-async function cycleUiMode(page, browser, label) {
+async function assertCanonicalModeCompatibility(page, browser, label) {
     const before = await page.evaluate(() => {
         window.__vcpCanonicalHost = document.getElementById('nextUiInternalAppHost');
         return {
@@ -750,12 +750,8 @@ async function cycleUiMode(page, browser, label) {
             tabs: document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab').length,
         };
     });
-    await page.evaluate(() => window.uiModeManager.applyAsync('classic', { cache: false }));
-    await page.waitForFunction(() => (
-        document.documentElement.dataset.uiMode === 'next'
-        && window.topTabManager?.isMounted?.() === true
-    ), { timeout: timeoutMs });
-    await page.evaluate(() => window.uiModeManager.applyAsync('next', { cache: false }));
+    await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next'
+        && window.topTabManager?.isMounted?.() === true, { timeout: timeoutMs });
     const after = await page.evaluate(() => {
         const result = {
             sameHost: window.__vcpCanonicalHost === document.getElementById('nextUiInternalAppHost'),
@@ -850,7 +846,7 @@ try {
         await collectDetachedDiagnostic(cdp, `${label}: embedded overlay`, page);
         if (cycle % 4 === 0) await cycleDetachedApp(page, browser, noteApp, label);
         await collectDetachedDiagnostic(cdp, `${label}: detached app`, page);
-        await cycleUiMode(page, browser, label);
+        await assertCanonicalModeCompatibility(page, browser, label);
         await collectDetachedDiagnostic(cdp, `${label}: mode round-trip`, page);
         await assertMainSurface(page, browser, label);
     };

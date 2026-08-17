@@ -39,56 +39,6 @@
             this.activeModal = null;
             this.mounted = false;
             this.generation = 0;
-            this.operationId = 0;
-            this.revision = 0;
-            this.status = 'idle';
-            this.pendingOperations = 0;
-            this.listeners = new Set();
-        }
-
-        getSnapshot() {
-            return Object.freeze({
-                revision: this.revision,
-                operationId: this.operationId,
-                generation: this.generation,
-                status: this.status,
-                pendingOperations: this.pendingOperations,
-                modalOpen: Boolean(this.activeModal?.element?.isConnected),
-            });
-        }
-
-        subscribe(listener, options = {}) {
-            this.listeners.add(listener);
-            if (options.immediate !== false) listener(this.getSnapshot(), this.getSnapshot());
-            return () => this.listeners.delete(listener);
-        }
-
-        publish(status, { newOperation = false } = {}) {
-            if (newOperation) this.operationId += 1;
-            this.status = status;
-            this.revision += 1;
-            const snapshot = this.getSnapshot();
-            this.listeners.forEach(listener => {
-                try { listener(snapshot, snapshot); } catch (error) { console.error('[NextUI] Creation settlement subscriber failed:', error); }
-            });
-            return snapshot;
-        }
-
-        whenSettled(options = {}) {
-            const wait = this.window.VCPSettlement?.waitForSettlement;
-            if (!wait) return Promise.reject(new Error('VCPSettlement is unavailable.'));
-            const operationId = Number.isFinite(options.operationId) ? Number(options.operationId) : this.operationId;
-            const generation = Number.isFinite(options.generation) ? Number(options.generation) : this.generation;
-            return wait({
-                ...options,
-                label: 'Creation',
-                getSnapshot: () => this.getSnapshot(),
-                subscribe: (listener, subscribeOptions) => this.subscribe(listener, subscribeOptions),
-                predicate: snapshot => snapshot.operationId >= operationId
-                    && snapshot.generation >= generation
-                    && snapshot.pendingOperations === 0
-                    && ['idle', 'ready', 'failed', 'disposed'].includes(snapshot.status),
-            });
         }
 
         mount(scope = null) {
@@ -102,29 +52,18 @@
         close() { this.activeModal?.close(null); }
 
         async open() {
-            this.pendingOperations += 1;
-            try {
-                return await this.openInternal();
-            } catch (error) {
-                if (this.status === 'opening') this.publish('failed');
-                throw error;
-            } finally {
-                this.pendingOperations = Math.max(0, this.pendingOperations - 1);
-                this.publish(this.status);
-            }
+            return this.openInternal();
         }
 
         async openInternal() {
             if (!this.mounted) return;
             if (this.activeModal?.element?.isConnected) return void this.activeModal.focus();
-            this.publish('opening', { newOperation: true });
             const ui = this.getUi();
             const api = this.getApi();
             const commands = this.commands();
             const generation = this.generation;
             if (!ui || !commands?.createAgent || !commands?.createGroup) {
                 this.showUnavailable();
-                this.publish('failed');
                 return;
             }
 
@@ -185,7 +124,6 @@
                 if (surface.fallback) {
                     await surface.dispose('create-surface-fallback');
                     this.showUnavailable();
-                    this.publish('failed');
                     return;
                 }
             } else {
@@ -226,7 +164,6 @@
                 if (cleaned) return;
                 cleaned = true;
                 if (this.activeModal === modal) this.activeModal = null;
-                this.publish(this.mounted ? 'idle' : 'disposed');
                 if (surface || dialogScope) void disposeDialog('create-modal-closed').catch(reason => console.error('[NextUI] Failed to dispose create dialog:', reason));
                 else {
                     this.releaseOverlay(overlayOwner);
@@ -265,8 +202,6 @@
                     return;
                 }
                 submitting = true;
-                this.pendingOperations += 1;
-                this.publish('submitting', { newOperation: true });
                 error.textContent = '';
                 nameField.update({ error: '' });
                 createButton.update({ label: '创建中', loading: true });
@@ -307,11 +242,7 @@
                         cancelButton.update({ disabled: false });
                         modal.update({ dismissible: true, closeOnBackdrop: true });
                         submitting = false;
-                        this.publish('failed');
                     } else ui.feedback?.toast(creationError.message || '创建失败，请稍后重试。', { variant: 'error' });
-                } finally {
-                    this.pendingOperations = Math.max(0, this.pendingOperations - 1);
-                    this.publish(this.status);
                 }
             };
             const listen = (target, type, handler, options) => dialogScope
@@ -342,13 +273,11 @@
                 if (this.activeModal !== modal || !modal.element.isConnected) return;
                 modelControl.update({ disabled: false, options: [{ value: '', label: '使用默认模型' }, ...options] });
                 syncType();
-                this.publish('ready');
             } catch (modelError) {
                 console.warn('[NextUI] Failed to load cached models:', modelError);
                 if (this.activeModal !== modal || !modal.element.isConnected) return;
                 modelControl.update({ disabled: false, options: [{ value: '', label: '使用默认模型' }] });
                 modelField.update({ helper: '模型列表暂不可用，将使用系统默认模型。' });
-                this.publish('ready');
             }
         }
 
@@ -358,8 +287,6 @@
             this.generation += 1;
             this.close();
             this.scope = null;
-            this.publish('disposed');
-            this.listeners.clear();
         }
     }
 
