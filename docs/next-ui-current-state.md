@@ -52,24 +52,24 @@
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
 
-最近一次完整证据基线（2026-08-17，P2）：UI System 75/75、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 408 个 listener、8 个 Scope、164 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
+最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
-## 4. 当前未完成或名不副实的能力
+## 4. 公共能力收口状态
 
 P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement/state facade。中央策略仍报告 `0 active rebuilt, 12 upstream classic`；未来只有在首个真实页面消费者与测试同时进入时才重新引入最小 runtime。设置、创建和 item list 测试改为等待真实 Promise、结果事件或 DOM 终态；具有真实 Electron 消费者的 `AppTabHost.whenSettled()` 继续保留。
 
-### 4.1 Contribution Registry 只有部分种类成立
+### 4.1 Contribution Registry
 
-- `commands`：有真实业务消费者，应保留。
-- `apps`：目前主要服务组件展示应用，需要随展示页产品定位重新判断。
-- `menus`：有消费端但没有稳定生产注册者。
-- `settings`：没有生产 producer 或 consumer。
+- `commands`：由 `MainChatCommands` 生产并由 Shell/facade 消费。
+- `apps`：由正式内部应用生产，并由 Launchpad、tab host 和 session restore 消费；“UI 组件库”是用户可见的正式内部应用。
+- `menus`：因没有生产注册者已删除。
+- `settings`：因没有生产 producer 或 consumer 已删除。
 
-Registry 应遵循“第一个真实消费者与抽象同时进入”的规则。没有消费者的 contribution kind 不视为已完成能力。
+保留 Registry 均满足 register → production use → owner dispose → absent；打开中的内部应用注销时，其 tab 与 Surface 同步关闭。
 
-### 4.2 VCPUI 组件成熟度声明过宽
+### 4.2 VCPUI 组件成熟度
 
-组件清单中部分 `stable` 组件只有展示页、测试或文档消费者，与“至少一个真实业务界面使用”的工程规则冲突。首次主 PR 前需要生成消费者报告，只有具备业务使用和 Electron 验证的组件可保持 `stable`；其余降为 `candidate` 或退出公共 API。
+组件清单现有 13 个 `stable` 和 19 个 `candidate`。Consumer gate 为每个 Stable 组件校验真实业务源码与 Electron 证据，并确认 32 个组件均继续出现在用户可见组件库；展示页独占组件只能保持 Candidate。
 
 ## 5. 明确边界
 
@@ -89,14 +89,15 @@ Registry 应遵循“第一个真实消费者与抽象同时进入”的规则�
 当前分支适合继续稳定化开发，但尚未达到干净的上游主 PR 门槛。阻塞项是：
 
 1. 让 `git diff --check upstream/main...HEAD` 对生成 vendor 文件采用安全、限定范围的 whitespace 策略并通过。
-2. 校正 contribution kinds 与 VCPUI `stable` 声明。
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
 P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
 
 P2 无消费者架构减法已于 2026-08-17 关闭：产品文件树不再携带休眠子页面 runtime、静态 mode facade 或 Settings/Creation/item list 测试 Store；负向边界门禁阻止这些接口在无生产消费者时回归。完整 Windows 验证为 UI System 75/75、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过。
 
-上述四项阻塞关闭后，还需要重新运行完整 UI、Electron smoke、主聊天序列、生命周期压力和离线打包门禁。用户本地 `styles/themes.css` 修改必须继续独立处理，不得误入架构收敛提交。
+P3 公共合同收口已于 2026-08-17 关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。完整 Windows 验证为 UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、162 项受管资源、407 个 listener、5 个 Electron process，detached root/icon/option 为 0。
+
+P4 仍需解决全分支相对上游的历史/vendor whitespace 门禁，并形成最终 PR 证据。用户本地 `styles/themes.css` 修改必须继续独立处理，不得误入架构收敛提交。
 
 ## 7. 文档权威关系
 

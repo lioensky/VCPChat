@@ -97,6 +97,7 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/performance-recorder.js',
     'modules/ui-system/task-handle.js',
     'modules/ui-system/contribution-registry.js',
+    'modules/ui-system/component-manifest.js',
     'modules/ui-system/component-showcase.js',
     'modules/ui-system/state-channel.js',
     'modules/ui-system/settlement.js',

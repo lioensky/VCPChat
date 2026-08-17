@@ -6,7 +6,7 @@
 
 公共 API 继续使用原生 DOM、CSS Layer 和 ES Module。基础控件允许在 `VCPUI` 内部受控采用 Web Awesome Web Components，但业务页面不得直接依赖 `<wa-*>`。系统不引入 Vue、React 或新的构建步骤。
 
-Web Awesome runtime 只能在真实 VCPUI Surface 需要时按需加载；Surface 销毁时必须释放其 adapter/controller。组件展示页目前仍是待收敛的开发工具，不能作为组件 `stable` 或业务页面已迁移的唯一证据。
+Web Awesome runtime 只能在真实 VCPUI Surface 需要时按需加载；Surface 销毁时必须释放其 adapter/controller。“UI 组件库”是普通用户可见的正式内部应用，但仍不能作为组件 `stable` 或业务页面已迁移的唯一证据。
 
 `VCPUI.create('Select')` 用于新代码，直接返回统一 controller；`VCPUI.enhance('Select', nativeSelect)` 用于旧页面，在 next mode 创建可见的 Web Awesome Proxy，并保留隐藏原生 select 作为 `.value/.options`、旧事件和表单提交的兼容真源。动态表单使用 `VCPUI.observeControls(root)` 接入，同一原生节点重复 enhance 必须返回同一 controller。业务代码不得查询或操作 `wa-select`。
 
@@ -73,7 +73,9 @@ controller.destroy(); // 清理组件状态，但不删除原 input
 
 `enhance` 只用于已登记的渐进增强器。新增增强器必须保证 `destroy()` 后恢复原节点的组件类、ARIA 和 `data-*` 状态，不能接管 IPC 或业务数据。
 
-当前清单包含 20 个稳定组件家族，以及 Divider、Tooltip、Skeleton、SegmentedControl、Pagination、ScrollArea、Range、SettingsSection、SettingsActionBar 九个候选组件。候选组件完成至少一次真实业务迁移和 Electron 视觉验证后才能升级为 `stable`。
+当前清单包含 13 个稳定组件家族和 19 个候选组件。`scripts/check-vcpui-consumers.mjs` 校验 Stable 的真实业务与 Electron 证据，并确保 32 个组件全部保留在用户可见组件库；展示页独占组件保持 Candidate。
+
+Contribution Registry 只包含 `commands` 与 `apps`。前者承载主窗口命令，后者承载正式内部应用及 Launchpad/tab 生命周期；它不是 `VCPFrontendPlugins` 的替代协议。
 
 反馈接口：
 
@@ -126,7 +128,7 @@ window.nextUiApps.register({
 | Surface | Status | Evidence required before stable |
 | --- | --- | --- |
 | 顶栏、标签、应用启动器 | migrated | 明暗主题、标签关闭、内部应用复用，以及 Host/标签/反馈容器清理 |
-| 全局 Toast 与反馈 Host | partial | owner 隔离、并发清理；组件展示页仍需移除全局 `cancelAll()` |
+| 全局 Toast 与反馈 Host | migrated | owner 隔离、并发清理与展示页关闭后跨 owner 保留 |
 | 聊天输入、附件与发送/中断 | migrated | 禁用、焦点、附件、发送与中断状态 |
 | 侧栏、话题列表与通知抽屉 | migrated | 选中、滚动、通知打开与窄窗口 |
 | 全局设置弹窗 | partial | 双栏导航、内容滚动、保存栏以及浅色默认/深色 700×500 真实审查已通过；每个分区的保存、错误与键盘关闭仍待完成 |

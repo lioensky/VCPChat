@@ -36,7 +36,7 @@
 | P0 事实基线与文档收敛 | 已完成 | 让代码、测试、文档对当前拓扑使用同一套描述 | 权威关系明确；旧文档不再声明冲突架构 |
 | P1 所有权缺陷修复 | 已完成 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
 | P2 无消费者架构减法 | 已完成 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
-| P3 VCPUI 与 Registry 收口 | 待开始 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
+| P3 VCPUI 与 Registry 收口 | 已完成 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
 | P4 PR 证据与交付 | 待开始 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
 | P5 合入后稳定周期 | 未开始 | 观察真实环境，不扩张架构 | 一个稳定发布周期无资源和恢复阻塞 |
 | P6 按业务逐页演进 | 条件式远期 | 只在真实需求出现时迁移一个子页面 | 页面独立 PR，consumer/runtime/test 同时进入 |
@@ -142,6 +142,8 @@ await feedback.dispose();
 
 ## 7. P3：VCPUI 与 Contribution Registry 收口
 
+> 状态：已完成（2026-08-17）。机器可重复的 consumer gate 证明 13 个 Stable 组件均具备真实业务与 Electron 证据，19 个展示或实验组件明确为 Candidate；用户可见的“UI 组件库”继续作为正式内部应用。Contribution Registry 收缩为具有完整生产闭环的 `commands` 与 `apps`，无 producer 的 `menus` 和零 producer/consumer 的 `settings` 已删除。
+
 ### 7.1 组件成熟度
 
 生成 VCPUI consumer report，将使用分为：
@@ -156,16 +158,16 @@ await feedback.dispose();
 处理顺序：
 
 1. 校正 manifest 状态，不先删除仍被内部组合组件依赖的 primitive。
-2. 决定组件展示页是开发工具还是产品应用。
-3. 若为开发工具，从普通用户 Launchpad 移除，并通过开发开关或测试入口加载。
-4. 删除只服务 Web Awesome 对比演示、没有产品价值的公开入口与样式。
+2. 组件展示页作为正式用户可见内部应用保留在普通 Launchpad。
+3. 展示页独占组件保持 `candidate`，不能单独支撑 `stable` 声明。
+4. Consumer gate 同时校验 manifest、业务证据、Electron 证据和展示页覆盖。
 
 ### 7.2 Registry kinds
 
 - 保留有真实业务消费者的 `commands`。
 - `apps` 只在存在正式内部应用 contribution 时保留。
-- `menus` 必须有生产 producer 才进入稳定合同。
-- 删除零 producer/consumer 的 `settings` kind。
+- 已删除没有生产 producer 的 `menus`。
+- 已删除零 producer/consumer 的 `settings`。
 
 每种 Registry 都必须满足：register → use → dispose → absent；注册者销毁时仍打开的 UI 也必须关闭。
 

@@ -87,7 +87,8 @@ Appearance Studio、全局设置和启动加载不再把 `uiMode` 当作可预�
 - 不依赖 DOM 被删除来间接回收 IPC、timer 或原生 View。
 - 所有 async completion 必须有 generation、identity 或 Scope guard。
 - 异步 acquire 返回后必须再次确认 owner 仍为 `active`；若 owner 已进入 `disposing`，立即归还刚取得的 lease/handle，不能只检查最终 `disposed` 状态。
-- Registry 新增项必须有 register → dispose → absent 测试。
+- Registry 只保留具有生产闭环的 `commands/apps`；新增 kind 必须与首个 producer/consumer 同时进入，并具备 register → use → dispose → absent 测试。
+- 内部应用注销时，Launchpad 必须刷新，已打开的 tab 与 Surface 必须同步关闭。
 - `destroy()`/`dispose()` 必须幂等。
 - Classic 代码不因 Next 生命周期化而改写；共享增强器必须能恢复原 DOM 身份和状态。
 
@@ -105,7 +106,7 @@ Electron 压力测试在真实 renderer 中反复执行 Ask Nova、设置、Agen
 
 `Memory.getDOMCounters().nodes` 仍作为趋势诊断输出，但不单独判定泄漏：Electron 当前 Chromium 的 Blink 原生 node wrapper 会在 JavaScript 已不可达后延迟回收，而实验性的 `DOM.getDetachedDomNodes` 本身还会延长其寿命。需要定位时显式开启 detached debug；正常门禁使用活动 DOM 不变量、JS heap、listener 和所有权资源共同判定，不能用单一原生计数制造假阳性。
 
-2026-08-16 最终压力验收为 3 次预热加 20 次测量；所有 checkpoint 保持 8 个活动 Scope、164 项受管资源、408 个 listener、2 个 page、5 个 Electron process 和 2 个 renderer process。活动 DOM root、VCP icon、option 的 detached 计数均为 0；JS heap 从 9.2 MiB 回落并稳定在约 9.1 MiB。reload、crash、Overlay 和 View session 均完成恢复与对账。插件 Loader 保持上游实现，不计入 Next Scope 基线。
+2026-08-17 P3 最终压力验收为 3 次预热加 20 次测量；所有 checkpoint 保持 8 个活动 Scope、162 项受管资源、407 个 listener、2 个 page、5 个 Electron process 和 2 个 renderer process。活动 DOM root、VCP icon、option 的 detached 计数均为 0；JS heap 在 8.9-9.1 MiB 间稳定。reload、crash、Overlay 和 View session 均完成恢复与对账。插件 Loader 保持上游实现，不计入 Next Scope 基线。
 
 ## Next Delta Contract
 
