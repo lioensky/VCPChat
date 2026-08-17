@@ -7,7 +7,14 @@ const { SurfaceController } = require('../modules/ui-system/surface-controller.j
 function fixture(runtimeState = 'ready') {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body><button id="origin">open</button><div id="host"></div></body></html>');
     dom.window.VCPLifecycle = { LifecycleScope };
-    dom.window.VCPWebAwesome = { getRuntimeState: () => ({ state: runtimeState }) };
+    dom.window.__kernelScope = { mounted: 0, released: 0 };
+    dom.window.VCPWebAwesome = {
+        getRuntimeState: () => ({ state: runtimeState }),
+        mountScope: () => {
+            dom.window.__kernelScope.mounted += 1;
+            return () => { dom.window.__kernelScope.released += 1; };
+        },
+    };
     return dom;
 }
 
@@ -30,9 +37,11 @@ test('surface chooses one kernel, owns controls and restores focus', async () =>
         assert.equal(context.kernel, 'web-awesome');
     });
     assert.equal(surface.kernel, 'web-awesome');
+    assert.deepEqual(dom.window.__kernelScope, { mounted: 1, released: 0 });
     await surface.dispose();
     await surface.dispose();
     assert.equal(destroyed, 1);
+    assert.deepEqual(dom.window.__kernelScope, { mounted: 1, released: 1 });
     assert.equal(origin, dom.window.document.activeElement);
 });
 
@@ -50,6 +59,7 @@ test('surface falls back atomically when render fails', async () => {
     assert.equal(surface.kernel, 'native');
     assert.equal(surface.fallback, true);
     assert.equal(destroyed, 1);
+    assert.deepEqual(dom.window.__kernelScope, { mounted: 0, released: 0 });
     assert.equal(host.textContent, 'fallback:render failed');
     await surface.dispose();
 });

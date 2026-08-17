@@ -93,10 +93,16 @@ assert.match(vcpUiSource, /_listen\(wa, 'wa-after-hide',[\s\S]*?finalize\(null\)
 const creationSource = read('modules/ui-system/next-shell/creation-controller.js');
 assert.doesNotMatch(creationSource, /getSnapshot|whenSettled|pendingOperations|listeners|\brevision\b|\boperationId\b/,
     'creation must not expose test-only settlement state');
+assert.match(creationSource, /await this\.window\.VCPWebAwesome\?\.loadComponents\?\.\(\)/,
+    'creation must await its own Web Awesome dependency before choosing a Surface kernel');
 assert.match(creationSource, /modal\.update\(\{ dismissible: false, closeOnBackdrop: false \}\)/,
     'durable Agent/group creation must lock user dismissal at its commit boundary');
 assert.match(creationSource, /modal\.update\(\{ dismissible: true, closeOnBackdrop: true \}\)/,
     'failed creation must restore user dismissal controls');
+
+const surfaceSource = read('modules/ui-system/surface-controller.js');
+assert.match(surfaceSource, /kernel === 'web-awesome'[\s\S]*?mountScope\?\.\(host\)[\s\S]*?this\.own\(releaseKernelScope/,
+    'Web Awesome Surfaces must own and release their theme/token scope');
 
 const commandsSource = read('modules/mainChatCommands.js');
 assert.doesNotMatch(commandsSource, /\.click\s*\(/,
