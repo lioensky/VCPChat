@@ -47,34 +47,96 @@
 
         function setValue(value, options = {}) {
             const normalized = String(value || '');
-            if (normalized === getValue()) return false;
+            const previous = getValue();
+            if (normalized === previous) return false;
             syncingEditor = true;
             try {
                 if (editor) {
-                    const cursor = options.preserveCursor === true
-                        ? editor.getCursor()
-                        : null;
+                    const preserveCursor = options.preserveCursor === true;
                     const scrollInfo = options.preserveScroll === false
                         ? null
                         : editor.getScrollInfo?.();
-                    editor.setValue(normalized);
-                    if (cursor) {
-                        editor.setCursor({
-                            line: Math.min(
-                                cursor.line,
-                                Math.max(0, editor.lineCount() - 1)
-                            ),
-                            ch: cursor.ch,
-                        });
+
+                    if (preserveCursor && typeof editor.replaceRange === 'function') {
+                        // 渲染态文字写回模型时只替换源码中的最小差异范围。
+                        // editor.setValue() 会重建整篇 CodeMirror 文档并重新计算
+                        // viewport，造成右侧源码分屏滚动到旧位置后再闪回，用户
+                        // 因而无法稳定看到刚刚发生的源码变化。
+                        let prefix = 0;
+                        const shared = Math.min(
+                            previous.length,
+                            normalized.length
+                        );
+                        while (prefix < shared
+                            && previous[prefix] === normalized[prefix]) {
+                            prefix += 1;
+                        }
+
+                        let previousEnd = previous.length;
+                        let normalizedEnd = normalized.length;
+                        while (previousEnd > prefix
+                            && normalizedEnd > prefix
+                            && previous[previousEnd - 1]
+                                === normalized[normalizedEnd - 1]) {
+                            previousEnd -= 1;
+                            normalizedEnd -= 1;
+                        }
+
+                        const selections = editor.listSelections?.()
+                            ?.map((selection) => ({
+                                anchor: editor.indexFromPos(selection.anchor),
+                                head: editor.indexFromPos(selection.head),
+                            })) || null;
+                        const removedLength = previousEnd - prefix;
+                        const insertedLength = normalizedEnd - prefix;
+                        const translateOffset = (offset) => {
+                            if (offset <= prefix) return offset;
+                            if (offset >= previousEnd) {
+                                return offset - removedLength + insertedLength;
+                            }
+                            return prefix + insertedLength;
+                        };
+
+                        editor.replaceRange(
+                            normalized.slice(prefix, normalizedEnd),
+                            editor.posFromIndex(prefix),
+                            editor.posFromIndex(previousEnd),
+                            'scriptorium-model-sync'
+                        );
+
+                        if (selections?.length && editor.setSelections) {
+                            editor.setSelections(selections.map((selection) => ({
+                                anchor: editor.posFromIndex(
+                                    translateOffset(selection.anchor)
+                                ),
+                                head: editor.posFromIndex(
+                                    translateOffset(selection.head)
+                                ),
+                            })));
+                        }
+                    } else {
+                        const cursor = preserveCursor
+                            ? editor.getCursor()
+                            : null;
+                        editor.setValue(normalized);
+                        if (cursor) {
+                            editor.setCursor({
+                                line: Math.min(
+                                    cursor.line,
+                                    Math.max(0, editor.lineCount() - 1)
+                                ),
+                                ch: cursor.ch,
+                            });
+                        }
                     }
+
                     if (scrollInfo) {
-                        window.requestAnimationFrame(() => {
-                            if (disposed || !editor) return;
-                            editor.scrollTo(
-                                scrollInfo.left,
-                                scrollInfo.top
-                            );
-                        });
+                        // 最小差异替换通常不会改变滚动；仍在当前任务内立即
+                        // 对齐一次，避免异步 RAF 覆盖用户随后主动滚动的位置。
+                        editor.scrollTo(
+                            scrollInfo.left,
+                            scrollInfo.top
+                        );
                     }
                 } else if (elements['source-editor']) {
                     elements['source-editor'].value = normalized;
