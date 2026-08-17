@@ -37,7 +37,7 @@
 | P1 所有权缺陷修复 | 已完成 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
 | P2 无消费者架构减法 | 已完成 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
 | P3 VCPUI 与 Registry 收口 | 已完成 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
-| P4 PR 证据与交付 | 待开始 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
+| P4 PR 证据与交付 | 自动化完成；人工待验 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
 | P5 合入后稳定周期 | 未开始 | 观察真实环境，不扩张架构 | 一个稳定发布周期无资源和恢复阻塞 |
 | P6 按业务逐页演进 | 条件式远期 | 只在真实需求出现时迁移一个子页面 | 页面独立 PR，consumer/runtime/test 同时进入 |
 
@@ -179,6 +179,8 @@ await feedback.dispose();
 - VCPUI 仍是 UI adapter，不演化为聊天业务框架。
 
 ## 8. P4：PR 证据与交付
+
+> 状态（2026-08-17）：已同步 `upstream/main` `a9b36d8d`，macOS 上 UI System、Electron smoke、主聊天序列、20 轮生命周期压力、离线 closure、pack check 与完整 diff check 全部通过。CRLF/LF 冻结基线和生成 vendor whitespace 策略已跨平台化。剩余发布证据为同步后的 Windows 复验和 30–60 分钟人工 soak；完成前不标记 P4 全部完成。
 
 ### 8.1 每次提交最小检查
 

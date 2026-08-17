@@ -2,7 +2,7 @@
 
 > 状态：当前权威事实文档<br>
 > 核对日期：2026-08-17<br>
-> 核对范围：`codex/design-system-upstream-latest` 已提交文件树相对 `upstream/main`<br>
+> 核对范围：`codex/design-system-upstream-no-workflow-20260817` 已提交文件树相对 `upstream/main`<br>
 > 后续施工顺序：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
 
 ## 1. 文档用途
@@ -86,9 +86,21 @@ P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement
 
 ## 6. 当前 PR 就绪判断
 
-当前分支适合继续稳定化开发，但尚未达到干净的上游主 PR 门槛。阻塞项是：
+当前分支已完成 P0–P3 与 P4 自动化门禁。2026-08-17 同步至 `upstream/main` `a9b36d8d`；文件树此前已经包含其前置提交，本次合并实际只接收 `messageRenderer.js` 与 `streamManager.js` 的 Scoped HTML 流式修复。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
 
-1. 让 `git diff --check upstream/main...HEAD` 对生成 vendor 文件采用安全、限定范围的 whitespace 策略并通过。
+Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字节；门禁现统一按 LF 文本语义计算 SHA-256，并用 LF/CRLF 等价断言防复发。Web Awesome 生成产物通过 `.gitattributes` 仅在 `vendor/webawesome-runtime/**` 禁用 text conversion 和 whitespace diagnostics；源码检查保持启用，pack check 会验证该属性没有丢失。
+
+同步后的 macOS 自动证据：
+
+- `npm run check:ui-system`：通过，UI System 75/75。
+- Electron UI Apps：22/22。
+- 主聊天操作序列：24 actions、11 action kinds、21 pairs、12 transitions、2 faults、required edge 1/1。
+- 生命周期压力：3 次预热 + 20 次测量；861 listener、8 Scope、162 受管资源、5 process、2 renderer process 在全部 checkpoint 恒定，detached root/icon/option 为 0，heap 约 9.8 MiB → 9.7 MiB。
+- Web Awesome closure：101 files、0.46 MiB，可重复生成；pack check 通过。
+- `git diff --check upstream/main...HEAD`：通过。
+
+尚未完成的发布证据只有同步后 Windows 复验和 30–60 分钟人工 soak。二者不应由 macOS 自动结果代替，因此当前状态是“代码与自动门禁就绪，跨平台/人工发布证据待补”。本分支明确不携带 `.github/workflows/**`，跨平台验证由外部 Windows 环境或上游 CI 执行。
+
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
 P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
@@ -97,7 +109,7 @@ P2 无消费者架构减法已于 2026-08-17 关闭：产品文件树不再携�
 
 P3 公共合同收口已于 2026-08-17 关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。完整 Windows 验证为 UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、162 项受管资源、407 个 listener、5 个 Electron process，detached root/icon/option 为 0。
 
-P4 仍需解决全分支相对上游的历史/vendor whitespace 门禁，并形成最终 PR 证据。用户本地 `styles/themes.css` 修改必须继续独立处理，不得误入架构收敛提交。
+P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐。动态壁纸、插件运行时和业务子页面迁移继续排除在本轮之外。
 
 ## 7. 文档权威关系
 
