@@ -1,0 +1,21 @@
+/*
+ * styles/app-surfaces/app-surface-translator.css
+ * Translator 页面专属视觉（vcp.page 层）。
+ */
+@layer vcp.page {
+    /* 头部标题与共享 Toolbar 的衔接：标题占一行，控件组靠右 */
+    body.vcp-app-surface .translator-header h2 {
+        font-size: var(--vcp-app-font-emphasis);
+        font-weight: 600;
+    }
+
+    /* 复制按钮浮在输出框上，hover 时保持 Raised 背景 */
+    body.vcp-app-surface #copyBtn.vcp-app-icon-btn {
+        width: var(--vcp-app-control-md);
+        height: var(--vcp-app-control-md);
+    }
+
+    body.vcp-app-surface #copyBtn.vcp-app-icon-btn:hover {
+        background: var(--vcp-app-fill-3);
+    }
+}

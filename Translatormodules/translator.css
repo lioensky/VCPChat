@@ -1,19 +1,21 @@
 /*
- * 全局和基础样式
- * 使用主程序传入的 CSS 变量进行统一样式
+ * translator.css — Translator 页面功能布局（视觉 token 来自 styles/app-surfaces/）
  */
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+        Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     margin: 0;
-    padding: 0;
     height: 100vh;
     overflow: hidden;
-    /* background-color: var(--primary-bg); */ /* Let the wallpaper show through */
-    color: var(--primary-text);
-    display: flex; /* 使用 Flexbox 布局 */
+    /* 平面化 App Surface：不再透出聊天壁纸 */
+    background-image: none;
+    background-color: var(--vcp-app-bg);
+    color: var(--vcp-app-text);
+    display: flex;
     flex-direction: column;
-    /* Add some padding to the body to create space around the container */
-    padding: 15px;
+    padding: var(--vcp-app-page-gutter);
+    /* 为固定标题栏留出空间 */
+    padding-top: calc(40px + var(--vcp-app-space-2));
     box-sizing: border-box;
 }
 
@@ -21,54 +23,52 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 20px;
+    padding: var(--vcp-app-space-4);
     box-sizing: border-box;
-    gap: 15px; /* 调整元素间距 */
-
-    /* --- Frosted Glass Effect --- */
-    background-color: var(--panel-bg);
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    gap: var(--vcp-app-space-3);
+    background-color: var(--vcp-app-bg-raised);
+    border-radius: var(--vcp-app-card-radius);
+    border: 1px solid var(--vcp-app-border);
 }
 
-/* 头部样式 */
+/* 头部（App Header 语义：标题 + 主要操作） */
 .translator-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 15px;
-    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    gap: var(--vcp-app-space-2);
+    min-height: var(--vcp-app-toolbar-height);
+    padding-bottom: var(--vcp-app-space-3);
+    border-bottom: 1px solid var(--vcp-app-border);
 }
 
 .translator-header h2 {
     margin: 0;
-    font-size: 1.2em;
-    color: var(--primary-text);
+    font-size: var(--vcp-app-font-title);
+    color: var(--vcp-app-text);
 }
 
 .translator-controls {
     display: flex;
-    gap: 12px;
+    gap: var(--vcp-app-space-2);
     align-items: center;
+    flex-wrap: wrap;
 }
 
-/* 输入控件 (下拉、输入框、按钮) 统一样式 */
+/* 输入控件 (下拉、输入框) 统一样式 */
 .translator-controls select,
-.translator-controls input[type="text"],
-.translator-controls button,
-#copyBtn {
-    padding: 7px 14px 8px; /* 调整 padding-top 使文本稍微向上偏移 */
-    border-radius: 8px; /* 更圆润的边角 */
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
-    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    height: 36px; /* 统一高度 */
-    box-sizing: border-box; /* 确保 padding 和 border 包含在 height 内 */
+.translator-controls input[type="text"] {
+    height: var(--vcp-app-control-md);
+    padding: 0 var(--vcp-app-space-3);
+    border-radius: var(--vcp-app-control-radius);
+    border: 1px solid var(--vcp-app-border);
+    background-color: var(--vcp-app-bg-input);
+    color: var(--vcp-app-text);
+    font-size: var(--vcp-app-font-body);
+    transition: border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+        box-shadow var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+    box-sizing: border-box;
 }
 
 /* --- 自定义下拉箭头 --- */
@@ -85,60 +85,44 @@ body {
 .translator-controls input[type="text"]:focus,
 .translator-main textarea:focus {
     outline: none;
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px rgba(var(--highlight-text), 0.3); /* 使用高亮色作为聚焦效果 */
-}
-
-/* 按钮专属样式 */
-.translator-controls button,
-#copyBtn {
-    background-color: var(--button-bg);
-    cursor: pointer;
-    display: flex; /* 使用 Flexbox 布局 */
-    align-items: center; /* 垂直居中 */
-    justify-content: center; /* 水平居中 */
-}
-/* 为翻译按钮设置白色文本 */
-#translateBtn {
-    color: var(--text-on-accent); /* 确保翻译按钮文本与主题匹配 */
-}
-
-.translator-controls button:hover,
-#copyBtn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--highlight-text);
+    border-color: var(--vcp-app-border-strong);
+    box-shadow: 0 0 0 2px var(--vcp-app-focus-ring);
 }
 
 /* 主要内容区域 (文本框) */
 .translator-main {
     display: flex;
     flex-grow: 1;
-    gap: 20px;
+    gap: var(--vcp-app-space-4);
     min-height: 0; /* 防止 flex 溢出的关键 */
 }
 
 .translator-main textarea {
     flex: 1;
-    padding: 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    /* Use a more solid background for readability on a frosted panel */
-    background-color: var(--secondary-bg);
-    color: var(--primary-text);
-    font-size: 1em;
-    line-height: 1.6;
+    padding: var(--vcp-app-space-3);
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-card-radius);
+    background-color: var(--vcp-app-bg-input);
+    color: var(--vcp-app-text);
+    font-size: var(--vcp-app-font-emphasis);
+    line-height: var(--vcp-app-line-relaxed);
     resize: none;
     box-sizing: border-box;
 }
 
 .translator-main textarea::placeholder {
-    color: var(--secondary-text);
+    color: var(--vcp-app-text-disabled);
 }
 
 /* “翻译中”的闪烁效果 */
 .translator-main textarea.streaming {
     animation: shimmer 1.5s infinite linear;
-    background-image: linear-gradient(to right, var(--input-bg) 0%, var(--accent-bg) 50%, var(--input-bg) 100%);
+    background-image: linear-gradient(
+        to right,
+        var(--vcp-app-bg-input) 0%,
+        var(--vcp-app-fill-3) 50%,
+        var(--vcp-app-bg-input) 100%
+    );
     background-size: 200% 100%;
 }
 
@@ -151,7 +135,6 @@ body {
     }
 }
 
-
 /* 输出区域和复制按钮 */
 .output-area {
     position: relative;
@@ -161,45 +144,21 @@ body {
 
 #copyBtn {
     position: absolute;
-    top: 12px;
-    right: 12px;
+    top: var(--vcp-app-space-3);
+    right: var(--vcp-app-space-3);
     z-index: 10;
-    padding: 6px;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background-color: var(--vcp-app-bg-raised);
+    border: 1px solid var(--vcp-app-border);
 }
 
 #copyBtn svg {
     width: 18px;
     height: 18px;
-    color: var(--text-on-accent); /* 确保复制按钮图标与主题匹配 */
 }
 
 .copy-feedback {
-    font-size: 12px;
-    font-family: sans-serif;
-    color: var(--primary-text);
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
+    font-size: var(--vcp-app-font-caption);
+    color: var(--vcp-app-text);
 }
 
 /* ------------------------- */
@@ -215,7 +174,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 15px;
+    padding: 0 var(--vcp-app-space-4);
     background-color: transparent;
     z-index: 1000;
     -webkit-app-region: drag;
@@ -223,15 +182,15 @@ body {
 }
 
 #custom-title-bar .title {
-    font-size: 14px;
+    font-size: var(--vcp-app-font-body);
     font-weight: 600;
-    color: var(--primary-text);
+    color: var(--vcp-app-text);
     -webkit-app-region: no-drag;
 }
 
 #custom-title-bar .window-controls {
     display: flex;
-    gap: 10px;
+    gap: var(--vcp-app-space-2);
     -webkit-app-region: no-drag;
 }
 
@@ -240,30 +199,25 @@ body {
     height: 30px;
     border: none;
     background-color: transparent;
-    color: var(--secondary-text);
-    border-radius: 8px;
+    color: var(--vcp-app-text-secondary);
+    border-radius: var(--vcp-app-control-radius);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+        color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
 .window-control-btn:hover {
-    background-color: var(--button-hover-bg);
-    color: var(--primary-text);
+    background-color: var(--vcp-app-fill-2);
+    color: var(--vcp-app-text);
 }
 
 #close-translator-btn:hover {
-    background-color: #e81123;
-    color: white;
+    background-color: var(--vcp-app-danger);
+    color: var(--vcp-app-on-accent);
 }
-
-/* 调整 body 元素的 padding 以适应标题栏 */
-body {
-    padding-top: 40px; /* 15px 原有 padding + 40px 标题栏高度 */
-}
-
 
 /* ------------------------- */
 /* --- 翻译设置模态窗 --- */
@@ -291,7 +245,7 @@ body {
 .settings-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--vcp-app-backdrop);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
 }
@@ -303,13 +257,11 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: var(--panel-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    background-color: var(--vcp-app-bg-raised);
+    color: var(--vcp-app-text);
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-card-radius);
+    box-shadow: var(--vcp-app-shadow-lg);
 }
 
 .settings-modal-header,
@@ -317,100 +269,83 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
-    border-color: var(--border-color);
+    padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
+    border-color: var(--vcp-app-border);
 }
 
 .settings-modal-header {
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--vcp-app-border);
 }
 
 .settings-modal-footer {
     justify-content: flex-end;
-    gap: 10px;
-    border-top: 1px solid var(--border-color);
+    gap: var(--vcp-app-space-2);
+    border-top: 1px solid var(--vcp-app-border);
 }
 
 .settings-modal-header h3 {
     margin: 0;
-    font-size: 1.05em;
+    font-size: var(--vcp-app-font-emphasis);
     font-weight: 600;
-}
-
-.settings-close-btn {
-    width: 30px;
-    height: 30px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--secondary-text);
-    font-size: 22px;
-    line-height: 1;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.settings-close-btn:hover {
-    background-color: var(--button-hover-bg);
-    color: var(--primary-text);
 }
 
 .settings-modal-body {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px;
+    gap: var(--vcp-app-space-3);
+    padding: var(--vcp-app-space-4);
     overflow-y: auto;
 }
 
 .setting-field {
     display: flex;
     flex-direction: column;
-    gap: 7px;
-    font-size: 0.92em;
-    color: var(--secondary-text);
+    gap: var(--vcp-app-space-1);
+    font-size: var(--vcp-app-font-body);
+    color: var(--vcp-app-text-secondary);
 }
 
 .setting-field input[type="text"] {
     width: 100%;
-    height: 38px;
+    height: var(--vcp-app-control-md);
     box-sizing: border-box;
-    padding: 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    padding: 0 var(--vcp-app-space-3);
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-control-radius);
+    background-color: var(--vcp-app-bg-input);
+    color: var(--vcp-app-text);
+    font-size: var(--vcp-app-font-body);
+    transition: border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+        box-shadow var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
 .setting-field input[type="text"]:focus {
     outline: none;
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px rgba(var(--highlight-text), 0.3);
+    border-color: var(--vcp-app-border-strong);
+    box-shadow: 0 0 0 2px var(--vcp-app-focus-ring);
 }
 
 .setting-toggle {
     display: grid;
     grid-template-columns: 1fr auto auto;
-    gap: 12px;
+    gap: var(--vcp-app-space-3);
     align-items: center;
-    padding: 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    background-color: var(--secondary-bg);
+    padding: var(--vcp-app-space-3);
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-card-radius);
+    background-color: var(--vcp-app-fill-1);
 }
 
 .setting-toggle strong {
     display: block;
     margin-bottom: 3px;
-    color: var(--primary-text);
-    font-size: 0.95em;
+    color: var(--vcp-app-text);
+    font-size: var(--vcp-app-font-body);
 }
 
 .setting-toggle small {
     display: block;
-    color: var(--secondary-text);
+    color: var(--vcp-app-text-secondary);
     line-height: 1.4;
 }
 
@@ -425,10 +360,11 @@ body {
     width: 46px;
     height: 24px;
     border-radius: 999px;
-    background-color: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background-color: var(--vcp-app-bg-input);
+    border: 1px solid var(--vcp-app-border);
     cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+        border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
 .toggle-slider::before {
@@ -439,67 +375,41 @@ body {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background-color: var(--secondary-text);
-    transition: transform 0.2s ease, background-color 0.2s ease;
+    background-color: var(--vcp-app-text-secondary);
+    transition: transform var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+        background-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
 }
 
 .setting-toggle input[type="checkbox"]:checked + .toggle-slider {
-    background-color: var(--button-bg);
-    border-color: var(--highlight-text);
+    background-color: var(--vcp-app-accent);
+    border-color: var(--vcp-app-border-strong);
 }
 
 .setting-toggle input[type="checkbox"]:checked + .toggle-slider::before {
     transform: translateX(22px);
-    background-color: var(--text-on-accent);
+    background-color: var(--vcp-app-on-accent);
 }
 
 .settings-save-status {
     min-height: 18px;
-    color: var(--secondary-text);
-    font-size: 0.86em;
+    color: var(--vcp-app-text-secondary);
+    font-size: var(--vcp-app-font-caption);
 }
 
 .settings-save-status[data-type="success"] {
-    color: #36d399;
+    color: var(--vcp-app-success);
 }
 
 .settings-save-status[data-type="error"] {
-    color: #ff6b6b;
+    color: var(--vcp-app-danger);
 }
 
 .settings-save-status[data-type="pending"] {
-    color: var(--highlight-text);
+    color: var(--vcp-app-accent);
 }
 
+/* 模态窗底部按钮（primary-btn / secondary-btn 类保留给 JS，视觉对齐共享按钮） */
 .primary-btn,
 .secondary-btn {
     min-width: 92px;
-    height: 36px;
-    padding: 0 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
-}
-
-.primary-btn {
-    background-color: var(--button-bg);
-    color: var(--text-on-accent);
-}
-
-.secondary-btn {
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-}
-
-.primary-btn:hover,
-.secondary-btn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--highlight-text);
-}
-
-.primary-btn:disabled,
-.secondary-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
 }

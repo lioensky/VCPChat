@@ -6,15 +6,17 @@
     <title>翻译</title>
     <!-- 假设主程序的 style.css 已经加载并定义了颜色变量 -->
 <link rel="stylesheet" href="../styles/themes.css"> <!-- 引用主题样式 -->
-    <link rel="stylesheet" href="../style.css">
+    <!-- App Surface 共享视觉层（替代原主程序 style.css 全量样式栈） -->
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surfaces.css">
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surface-translator.css">
     <!-- 链接到新的、统一风格的 CSS 文件 -->
     <link rel="stylesheet" href="translator.css">
 </head>
-<body>
+<body class="vcp-app-surface">
 <!-- Custom Title Bar -->
-    <div id="custom-title-bar">
-        <div class="title">VCP - 翻译</div>
-        <div class="window-controls">
+    <div id="custom-title-bar" class="vcp-app-header">
+        <div class="title vcp-app-header-title">VCP - 翻译</div>
+        <div class="window-controls vcp-app-header-actions">
             <button id="translator-settings-btn" class="window-control-btn" title="翻译设置">
                 <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.63l-1.92-3.32a.49.49 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94L14.39 2.8a.48.48 0 0 0-.48-.4h-3.82a.48.48 0 0 0-.48.4l-.36 2.53c-.58.23-1.12.54-1.63.94l-2.39-.96a.49.49 0 0 0-.6.22L2.71 8.85a.49.49 0 0 0 .12.63l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.63l1.92 3.32c.13.23.4.32.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.53c.04.23.24.4.48.4h3.82c.24 0 .44-.17.48-.4l.36-2.53c.58-.23 1.12-.54 1.63-.94l2.39.96c.2.1.47.01.6-.22l1.92-3.32a.49.49 0 0 0-.12-.63l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path></svg>
             </button>
@@ -30,15 +32,15 @@
         </div>
     </div>
     <div class="translator-container">
-        <header class="translator-header">
+        <header class="translator-header vcp-app-toolbar">
             <h2>翻译助手</h2>
-            <div class="translator-controls">
-                <select id="modelSelect">
+            <div class="translator-controls vcp-app-toolbar-group vcp-app-toolbar-group--end">
+                <select id="modelSelect" class="vcp-app-input">
                     <option value="fast">快速</option>
                     <option value="balanced">均衡</option>
                     <option value="quality">质量</option>
                 </select>
-                <select id="targetLanguageSelect">
+                <select id="targetLanguageSelect" class="vcp-app-input">
                     <option value="en">英语</option>
                     <option value="zh">中文</option>
                     <option value="ja">日语</option>
@@ -48,8 +50,8 @@
                     <option value="es">西班牙语</option>
                     <option value="custom">自定义</option>
                 </select>
-                <input type="text" id="customPromptVar" placeholder="自定义提示词 (可选)">
-                <button id="translateBtn">翻译</button>
+                <input type="text" id="customPromptVar" class="vcp-app-input" placeholder="自定义提示词 (可选)">
+                <button id="translateBtn" class="vcp-app-btn vcp-app-btn--primary">翻译</button>
             </div>
         </header>
         <main class="translator-main">
@@ -58,7 +60,7 @@
             <div class="output-area">
                 <textarea id="translatedText" placeholder="翻译结果将显示在这里..." rows="10" readonly></textarea>
                 <!-- 复制按钮 -->
-                <button id="copyBtn" title="复制译文">
+                <button id="copyBtn" class="vcp-app-icon-btn" title="复制译文">
                     <!-- 初始图标 -->
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
                       <path d="M7.5 3.375c0-1.036.84-1.875 1.875-1.875h.375a3.75 3.75 0 0 1 3.75 3.75v1.875h-8.25V3.375Z" />
@@ -74,7 +76,7 @@
         <div class="settings-modal-panel">
             <div class="settings-modal-header">
                 <h3 id="settingsModalTitle">翻译设置</h3>
-                <button id="closeSettingsModalBtn" class="settings-close-btn" title="关闭设置">×</button>
+                <button id="closeSettingsModalBtn" class="settings-close-btn vcp-app-icon-btn" title="关闭设置">×</button>
             </div>
             <div class="settings-modal-body">
                 <label class="setting-field">
@@ -100,8 +102,8 @@
                 <div id="settingsSaveStatus" class="settings-save-status" aria-live="polite"></div>
             </div>
             <div class="settings-modal-footer">
-                <button id="resetSettingsBtn" class="secondary-btn">恢复默认</button>
-                <button id="saveSettingsBtn" class="primary-btn">保存设置</button>
+                <button id="resetSettingsBtn" class="secondary-btn vcp-app-btn">恢复默认</button>
+                <button id="saveSettingsBtn" class="primary-btn vcp-app-btn vcp-app-btn--primary">保存设置</button>
             </div>
         </div>
     </div>
