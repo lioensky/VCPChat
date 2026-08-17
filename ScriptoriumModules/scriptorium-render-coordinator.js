@@ -103,14 +103,21 @@
                 return state.editSurface;
             }
 
-            state.editSurface?.dispose?.();
             const scrollHost =
                 options.scrollHost || context.editScrollHost;
+            const preservedScroll = options.preserveScroll === false
+                ? null
+                : {
+                    left: Number(scrollHost?.scrollLeft) || 0,
+                    top: Number(scrollHost?.scrollTop) || 0,
+                };
+            state.editSurface?.dispose?.();
             state.editSurface = adapter.renderEditSurface(target, {
                 ...options,
                 zoom: state.zoom,
                 scrollHost,
             });
+            const renderedSurface = state.editSurface;
             const status = documentPort.status();
             state.editRevision = status.revision;
             state.editDocumentId = status.documentId;
@@ -131,6 +138,19 @@
                 adapter,
                 result: state.editSurface,
             });
+            if (preservedScroll && scrollHost) {
+                window.requestAnimationFrame(() => {
+                    if (state.disposed
+                        || state.editSurface !== renderedSurface) {
+                        return;
+                    }
+                    scrollHost.scrollTo?.({
+                        left: preservedScroll.left,
+                        top: preservedScroll.top,
+                        behavior: 'auto',
+                    });
+                });
+            }
             return state.editSurface;
         }
 

@@ -19,6 +19,7 @@
         let abortController = null;
         let storeDisposer = null;
         const automaticApprovalTimers = new Map();
+        let autoApprovalTypesCollapsed = false;
         const avatarCache = new Map();
         let agentDirectoryPromise = null;
         let disposed = false;
@@ -289,6 +290,54 @@
                 if (elements['auto-approval-enabled']) {
                     elements['auto-approval-enabled'].checked = false;
                 }
+            }
+        }
+
+        function setAutoApprovalTypesCollapsed(collapsed, options = {}) {
+            autoApprovalTypesCollapsed = collapsed === true;
+            const types = elements['auto-approval-types'];
+            const button = elements['auto-approval-collapse-btn'];
+            if (types) types.hidden = autoApprovalTypesCollapsed;
+            if (button) {
+                button.setAttribute(
+                    'aria-expanded',
+                    String(!autoApprovalTypesCollapsed)
+                );
+                button.setAttribute(
+                    'aria-label',
+                    autoApprovalTypesCollapsed
+                        ? '展开自动允许类型'
+                        : '折叠自动允许类型'
+                );
+                button.title = autoApprovalTypesCollapsed
+                    ? '展开自动允许类型'
+                    : '折叠自动允许类型';
+                button.classList.toggle(
+                    'collapsed',
+                    autoApprovalTypesCollapsed
+                );
+            }
+            if (options.persist !== false) {
+                localStorage.setItem(
+                    'scriptorium:auto-approval-types-collapsed',
+                    JSON.stringify(autoApprovalTypesCollapsed)
+                );
+            }
+            return autoApprovalTypesCollapsed;
+        }
+
+        function restoreAutoApprovalTypesCollapsed() {
+            try {
+                setAutoApprovalTypesCollapsed(
+                    JSON.parse(
+                        localStorage.getItem(
+                            'scriptorium:auto-approval-types-collapsed'
+                        ) || 'false'
+                    ) === true,
+                    { persist: false }
+                );
+            } catch {
+                setAutoApprovalTypesCollapsed(false, { persist: false });
             }
         }
 
@@ -706,6 +755,13 @@
                 },
                 options
             );
+            elements['auto-approval-collapse-btn']?.addEventListener(
+                'click',
+                () => setAutoApprovalTypesCollapsed(
+                    !autoApprovalTypesCollapsed
+                ),
+                options
+            );
             elements['auto-approval-enabled']?.addEventListener(
                 'change',
                 () => {
@@ -723,6 +779,7 @@
                 options
             );
             restoreAutoApprovalConfig();
+            restoreAutoApprovalTypesCollapsed();
             storeDisposer?.();
             storeDisposer = lineagePort.subscribe(render);
             render();

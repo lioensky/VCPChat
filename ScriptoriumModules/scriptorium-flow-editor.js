@@ -2926,6 +2926,17 @@
 
             root.addEventListener('contextmenu', (event) => {
                 if (event.target.closest?.('[data-vdoc-object-id]')) return;
+                const island = event.target.closest?.('[data-vdoc-island]');
+                if (island) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    context.onIslandContextMenu?.({
+                        event,
+                        island,
+                        editor: api,
+                    });
+                    return;
+                }
                 captureSelection();
                 const selection = selectionState();
                 if (!selection.text || !selection.range) return;

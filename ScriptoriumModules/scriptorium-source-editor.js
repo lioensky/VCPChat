@@ -12,6 +12,7 @@
         let colorMarks = [];
         let colorTimer = null;
         let networkFontTimer = null;
+        let renderTimer = null;
         let documentDisposer = null;
         let syncingEditor = false;
         let disposed = false;
@@ -53,6 +54,9 @@
                     const cursor = options.preserveCursor === true
                         ? editor.getCursor()
                         : null;
+                    const scrollInfo = options.preserveScroll === false
+                        ? null
+                        : editor.getScrollInfo?.();
                     editor.setValue(normalized);
                     if (cursor) {
                         editor.setCursor({
@@ -61,6 +65,15 @@
                                 Math.max(0, editor.lineCount() - 1)
                             ),
                             ch: cursor.ch,
+                        });
+                    }
+                    if (scrollInfo) {
+                        window.requestAnimationFrame(() => {
+                            if (disposed || !editor) return;
+                            editor.scrollTo(
+                                scrollInfo.left,
+                                scrollInfo.top
+                            );
                         });
                     }
                 } else if (elements['source-editor']) {
@@ -79,6 +92,21 @@
                 : activeAdapter.currentCss();
         }
 
+        function valueForMode(mode = sourceMode) {
+            const activeAdapter = currentAdapter();
+            return mode === 'css'
+                ? activeAdapter.currentCss()
+                : activeAdapter.currentSource();
+        }
+
+        function scheduleRender() {
+            window.clearTimeout(renderTimer);
+            renderTimer = window.setTimeout(() => {
+                if (disposed) return;
+                context.renderPort?.renderEdit?.({ force: true });
+            }, 80);
+        }
+
         function commitEditorValue(reason = 'source-editor-input') {
             if (syncingEditor || disposed) return false;
             const activeAdapter = currentAdapter();
@@ -89,6 +117,7 @@
             if (!changed) return false;
             context.historyPort?.schedule?.({ reason });
             context.renderPort?.invalidate?.(reason);
+            scheduleRender();
             return true;
         }
 
@@ -96,6 +125,7 @@
             if (!adapter && !context.getAdapter?.()) return false;
             return setValue(modelValue(), {
                 preserveCursor: options.preserveCursor === true,
+                preserveScroll: options.preserveScroll !== false,
             });
         }
 
@@ -237,7 +267,7 @@
             return sourceMode;
         }
 
-        function open(mode = 'html') {
+        function open(mode = 'html', options = {}) {
             configureMode(mode);
             const activeAdapter = currentAdapter();
             if (elements['source-title']) {
@@ -256,7 +286,7 @@
             );
             window.setTimeout(() => {
                 editor?.refresh();
-                editor?.focus();
+                if (options.focus !== false) editor?.focus();
                 validate();
                 refreshColorMarks();
             }, 0);
@@ -336,6 +366,39 @@
             return true;
         }
 
+        function revealOffset(offset, options = {}) {
+            if (!editor) return false;
+            const source = getValue();
+            const index = Math.max(
+                0,
+                Math.min(source.length, Number(offset) || 0)
+            );
+            const position = editor.posFromIndex(index);
+            const line = position.line;
+            editor.scrollIntoView(
+                { from: position, to: position },
+                Number.isFinite(Number(options.duration))
+                    ? Number(options.duration)
+                    : 120
+            );
+            editor.setCursor(position);
+            editor.addLineClass(
+                line,
+                'background',
+                'cm-vdoc-source-target'
+            );
+            window.setTimeout(() => {
+                if (!editor || editor.getValue() !== source) return;
+                editor.removeLineClass(
+                    line,
+                    'background',
+                    'cm-vdoc-source-target'
+                );
+            }, 1400);
+            if (options.focus !== false) editor.focus();
+            return true;
+        }
+
         function initialize() {
             if (!window.CodeMirror || editor) return editor;
             editor = window.CodeMirror.fromTextArea(
@@ -367,12 +430,7 @@
                     context.documentPort.EVENTS?.DOCUMENT_MUTATED
                         || 'document-mutated',
                     (event) => {
-                        if (!isOpen()
-                            || syncingEditor
-                            || event.reason === 'source-editor-live-input'
-                            || event.reason === 'source-editor-explicit-sync') {
-                            return;
-                        }
+                        if (!isOpen() || syncingEditor) return;
                         syncFromModel({ preserveCursor: true });
                         validate();
                         scheduleColorMarks();
@@ -399,6 +457,7 @@
             if (disposed) return;
             window.clearTimeout(colorTimer);
             window.clearTimeout(networkFontTimer);
+            window.clearTimeout(renderTimer);
             context.networkFontPort?.cancel?.();
             documentDisposer?.();
             documentDisposer = null;
@@ -416,6 +475,7 @@
             getValue,
             setValue,
             modelValue,
+            valueForMode,
             commitEditorValue,
             syncFromModel,
             configureMode,
@@ -427,6 +487,7 @@
             refresh,
             refreshColorMarks,
             replaceColor,
+            revealOffset,
             dispose,
         });
     }

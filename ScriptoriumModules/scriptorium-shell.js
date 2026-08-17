@@ -8,11 +8,14 @@
         let documentDisposer = null;
         let themeDisposer = null;
         let mode = 'edit';
+        let rightSourceMode = null;
+        let rightSourceOpenedMode = null;
         let zoom = 100;
         let focusMode = false;
         let scrollDocumentId = null;
         let scrollRestoreToken = 0;
         const scrollPositions = new Map();
+        let islandContext = null;
         let disposed = false;
 
         function cacheElements() {
@@ -68,6 +71,7 @@
         function updateDocumentStatus() {
             updateIdentity();
             updateMetrics();
+            updateSourceMirror();
         }
 
         function updateIdentity() {
@@ -173,6 +177,85 @@
             return mode;
         }
 
+        function updateSourceMirror(options = {}) {
+            const host = elements['source-right-host'];
+            if (!host) return false;
+            const active = mode === 'edit' && rightSourceMode;
+            host.hidden = !active;
+            if (!active) return false;
+            const isCss = rightSourceMode === 'source-css';
+            const sourceMode = isCss ? 'css' : 'html';
+            const shouldOpen = options.open === true
+                || rightSourceOpenedMode !== rightSourceMode;
+            if (shouldOpen) {
+                context.sourceRightPort?.open?.(
+                    sourceMode,
+                    { focus: false }
+                );
+                rightSourceOpenedMode = rightSourceMode;
+            } else {
+                context.sourceRightPort?.syncFromModel?.({
+                    preserveCursor: true,
+                });
+            }
+            return true;
+        }
+
+        function closeRightSurface() {
+            if (!rightSourceMode) return false;
+            rightSourceMode = null;
+            rightSourceOpenedMode = null;
+            const host = elements['source-right-host'];
+            if (host) host.hidden = true;
+            syncSurfaceButtons();
+            return true;
+        }
+
+        function setRightSourceMode(nextMode) {
+            if (mode !== 'edit') {
+                showToast('只有左侧为连续编辑时才能开启右侧源码', 'info');
+                return false;
+            }
+            const normalized = nextMode === 'source-css'
+                ? 'source-css'
+                : nextMode === 'source-html'
+                    ? 'source-html'
+                    : null;
+            if (!normalized) return false;
+            if (rightSourceMode === normalized) {
+                return closeRightSurface();
+            }
+            rightSourceMode = normalized;
+            updateSourceMirror({ open: true });
+            syncSurfaceButtons();
+            return true;
+        }
+
+        function syncSurfaceButtons() {
+            [
+                ['render', mode === 'edit'],
+                ['read', mode === 'read'],
+                ['html', mode === 'source-html'],
+                ['css', mode === 'source-css'],
+            ].forEach(([name, active]) => {
+                const button = elements[`${name}-mode-btn`];
+                button?.classList.toggle('active', active);
+                button?.classList.toggle(
+                    'right-surface',
+                    rightSourceMode === `source-${name}`
+                );
+                button?.setAttribute('aria-pressed', String(active));
+            });
+            elements['html-mode-btn']?.classList.toggle(
+                'right-surface',
+                rightSourceMode === 'source-html'
+            );
+            elements['css-mode-btn']?.classList.toggle(
+                'right-surface',
+                rightSourceMode === 'source-css'
+            );
+        }
+
         function resetScrollPositionsIfDocumentChanged() {
             const documentId = context.documentPort.status().documentId || null;
             if (documentId === scrollDocumentId) return;
@@ -275,6 +358,11 @@
                 scrollRestoreToken += 1;
             }
             mode = normalized;
+            if (mode !== 'edit' && rightSourceMode) {
+                rightSourceMode = null;
+                rightSourceOpenedMode = null;
+                elements['source-right-host'].hidden = true;
+            }
             context.historyPort?.activate?.(undefined, {
                 reason: 'surface-history-activated',
             });
@@ -285,16 +373,7 @@
             elements['render-host'].hidden = !edit;
             elements['read-host'].hidden = !read;
             elements['source-host'].hidden = !source;
-            [
-                ['render', edit],
-                ['read', read],
-                ['html', normalized === 'source-html'],
-                ['css', normalized === 'source-css'],
-            ].forEach(([name, active]) => {
-                const button = elements[`${name}-mode-btn`];
-                button?.classList.toggle('active', active);
-                button?.setAttribute('aria-pressed', String(active));
-            });
+            syncSurfaceButtons();
             if (edit) context.renderPort.renderEdit({
                 force: options.force === true,
             });
@@ -302,9 +381,11 @@
                 force: options.force === true,
             });
             else context.sourcePort?.open?.(
-                normalized === 'source-html' ? 'html' : 'css'
+                normalized === 'source-html' ? 'html' : 'css',
+                { focus: true }
             );
             restoreScrollPosition(normalized);
+            updateSourceMirror();
             syncFocusModeControls();
             context.findPort?.refresh?.();
             return true;
@@ -353,6 +434,47 @@
                 elements['zoom-value'].textContent = `${zoom}%`;
             }
             return zoom;
+        }
+
+        function hideIslandContextMenu() {
+            const menu = elements['island-context-menu'];
+            if (menu) menu.hidden = true;
+            islandContext = null;
+        }
+
+        function showIslandContextMenu(x, y, payload = {}) {
+            const menu = elements['island-context-menu'];
+            if (!menu || !Number.isFinite(Number(payload.sourceOffset))) {
+                return false;
+            }
+            islandContext = {
+                islandId: String(payload.islandId || ''),
+                sourceOffset: Number(payload.sourceOffset),
+            };
+            menu.hidden = false;
+            const width = 202;
+            const height = 58;
+            menu.style.left = `${Math.max(
+                8,
+                Math.min(innerWidth - width - 8, Number(x) || 8)
+            )}px`;
+            menu.style.top = `${Math.max(
+                8,
+                Math.min(innerHeight - height - 8, Number(y) || 8)
+            )}px`;
+            return true;
+        }
+
+        function locateIslandSource() {
+            const target = islandContext;
+            hideIslandContextMenu();
+            if (!target) return false;
+            if (!switchMode('source-html')) return false;
+            window.setTimeout(() => {
+                if (disposed) return;
+                context.sourcePort?.revealOffset?.(target.sourceOffset);
+            }, 30);
+            return true;
         }
 
         function bindControls() {
@@ -413,7 +535,19 @@
                     && !startMenuDropdown?.contains(target)) {
                     setStartMenuOpen(false);
                 }
+                if (!elements['island-context-menu']?.contains(target)) {
+                    hideIslandContextMenu();
+                }
             }, options);
+            elements['island-context-menu']?.addEventListener(
+                'click',
+                (event) => {
+                    if (event.target.closest('[data-island-action="source"]')) {
+                        locateIslandSource();
+                    }
+                },
+                options
+            );
 
             click('minimize-btn', context.persistencePort.minimizeWindow);
             click('maximize-btn', context.persistencePort.maximizeWindow);
@@ -473,6 +607,17 @@
             click('read-mode-btn', () => switchMode('read'));
             click('html-mode-btn', () => switchMode('source-html'));
             click('css-mode-btn', () => switchMode('source-css'));
+
+            ['html-mode-btn', 'css-mode-btn'].forEach((id) => {
+                elements[id]?.addEventListener('contextmenu', (event) => {
+                    event.preventDefault();
+                    setRightSourceMode(
+                        id === 'css-mode-btn'
+                            ? 'source-css'
+                            : 'source-html'
+                    );
+                }, options);
+            });
             click('format-source-btn', () => context.sourcePort?.format?.());
             click('insert-media-btn', () => context.mediaPort?.open?.());
             click('insert-block-btn', () =>
@@ -530,6 +675,7 @@
                         setFocusMode(false);
                     }
                     setStartMenuOpen(false);
+                    hideIslandContextMenu();
                     context.findPort?.close?.();
                     context.mediaPort?.close?.();
                     context.stylePort?.close?.();
@@ -598,6 +744,10 @@
             updateIdentity,
             updateMetrics,
             switchMode,
+            setRightSourceMode,
+            closeRightSurface,
+            showIslandContextMenu,
+            hideIslandContextMenu,
             setFocusMode,
             syncFocusModeControls,
             updateZoom,
