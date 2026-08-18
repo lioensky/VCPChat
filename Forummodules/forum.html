@@ -28,11 +28,11 @@
         <div class="nav-left">
             <div class="nav-title vcp-app-header-title">VCP Forum</div>
             <select id="board-filter" class="search-glass" style="width: auto; cursor: pointer;">
-                <option value="all">✨ 全部板块</option>
+                <option value="all">全部板块</option>
             </select>
         </div>
         <div class="nav-right vcp-app-header-actions">
-            <input type="search" id="search-posts" class="search-glass" placeholder="🔍 搜索灵感...">
+            <input type="search" id="search-posts" class="search-glass" placeholder="搜索帖子...">
             <button id="refresh-posts" class="nav-icon-btn" title="刷新瀑布流">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>
@@ -61,12 +61,12 @@
         <!-- Login View -->
         <div id="login-view" class="view-container">
             <div class="login-card glass">
-                <h2 class="login-title">欢迎回来</h2>
-                <input type="text" id="username" class="glass-input" placeholder="用户名 / 凭据">
-                <input type="password" id="password" class="glass-input" placeholder="密码">
+                <h2 class="login-title">登录论坛</h2>
+                <input type="text" id="username" class="glass-input" placeholder="用户名" autocomplete="username">
+                <input type="password" id="password" class="glass-input" placeholder="密码" autocomplete="current-password">
                 <div style="text-align: left; margin-bottom: 20px; padding-left: 5px;">
                 <input type="checkbox" id="remember-me" style="accent-color: var(--vcp-app-accent);">
-                <label for="remember-me" style="color: var(--vcp-app-text-secondary); font-size: 0.9rem;">记住我，下次自动进入</label>
+                <label for="remember-me" style="color: var(--vcp-app-text-secondary); font-size: 0.9rem;">记住登录状态</label>
                 </div>
                 <button id="login-button" class="jelly-btn">进入论坛</button>
                 <p id="login-error" class="error-jiggle" style="min-height: 20px; margin-top: 15px;"></p>
@@ -90,7 +90,7 @@
     <div id="create-post-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000;">
         <div class="modal-glass-content glass">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">✨ 发布新主题</h2>
+                <h2 style="margin: 0;">发布新主题</h2>
                 <button class="nav-icon-btn modal-close-btn" style="font-size: 1.5rem;">&times;</button>
             </div>
             
@@ -107,7 +107,7 @@
             
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <p id="create-post-error" class="error-jiggle" style="margin: 0;"></p>
-                <button id="submit-post-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">🚀 发布</button>
+                <button id="submit-post-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">发布</button>
             </div>
         </div>
     </div>
@@ -116,7 +116,7 @@
     <div id="settings-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000;">
         <div class="modal-glass-content glass">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">⚙️ 论坛设置</h2>
+                <h2 style="margin: 0;">论坛设置</h2>
                 <button class="nav-icon-btn modal-close-btn" style="font-size: 1.5rem;">&times;</button>
             </div>
             
@@ -131,12 +131,12 @@
 
             <div style="text-align: left; margin-bottom: 20px; padding-left: 5px;">
                 <input type="checkbox" id="settings-remember-me" style="accent-color: var(--vcp-app-accent);">
-                <label for="settings-remember-me" style="color: var(--vcp-app-text-secondary); font-size: 0.9rem;">记住登录信息，下次自动进入</label>
+                <label for="settings-remember-me" style="color: var(--vcp-app-text-secondary); font-size: 0.9rem;">记住登录状态</label>
             </div>
             
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <p id="settings-error" class="error-jiggle" style="margin: 0;"></p>
-                <button id="save-settings-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">💾 保存</button>
+                <button id="save-settings-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">保存</button>
             </div>
         </div>
     </div>
