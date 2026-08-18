@@ -253,6 +253,13 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
 
       const { history } = await readHistoryStrict(historyPath);
       const canonical = canonicalizeHistory(history, safeTopicId);
+      if (canonical.topicIdRewrites > 0) {
+        getLogger().logInfo(
+          "message",
+          `topicId 归一化：${safeTopicId} 有 ${canonical.topicIdRewrites} 条消息重写为 frame topic（${canonical.topicIdRewriteSamples.join("; ")}）`,
+          "warn",
+        );
+      }
       const wanted = new Set(msgIds);
       const messages = wanted.size === 0
         ? canonical.frame.messages
@@ -554,6 +561,13 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
   try {
     const { history } = await readHistoryStrict(filePath);
     const canonical = canonicalizeHistory(history, topicId);
+    if (canonical.topicIdRewrites > 0) {
+      logger.logInfo(
+        "message",
+        `topicId 归一化：${topicId} 有 ${canonical.topicIdRewrites} 条消息重写为 frame topic（${canonical.topicIdRewriteSamples.join("; ")}）`,
+        "warn",
+      );
+    }
     const now = Date.now();
     const fingerprints = [];
     let attachmentCount = 0;

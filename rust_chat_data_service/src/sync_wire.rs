@@ -173,14 +173,23 @@ pub fn canonicalize_message(
     let message_id = required_string(object.get("id"), &format!("Topic {topic_id} message id"))?;
     let role = required_string(object.get("role"), &format!("Message {message_id} role"))?;
 
-    match object.get("topicId") {
-        None | Some(Value::Null) => {}
-        Some(Value::String(message_topic)) if message_topic == topic_id => {}
-        Some(Value::String(message_topic)) => anyhow::bail!(
-            "Message {message_id} topicId {message_topic} conflicts with frame topic {topic_id}"
-        ),
-        Some(_) => anyhow::bail!("Message {message_id} topicId must be a string"),
-    }
+    // topicId 是来源元数据而非消息身份：frame topic 才是双端存储权威，消息指纹
+    // 也不含 topicId。话题分支会合法地让消息携带旧话题的 topicId（1.0 时代从未
+    // 校验过），因此 Wire 1.1 硬切引入的"topicId 必须等于 frame topic"硬校验
+    // 降级为 frame 权威归一化：不一致（或非字符串）时重写为 frame topic 并记日志。
+    let topic_id_override = match object.get("topicId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(message_topic)) if message_topic == topic_id => None,
+        Some(original) => {
+            tracing::warn!(
+                message_id,
+                frame_topic = topic_id,
+                original_topic_id = ?original,
+                "message topicId normalized to frame topic"
+            );
+            Some(Value::String(topic_id.to_string()))
+        }
+    };
     if object.get("status").and_then(Value::as_str) == Some("removed")
         || object
             .get("deletedAt")
@@ -224,7 +233,10 @@ pub fn canonicalize_message(
         ("topicId", "string"),
         ("isGroupMessage", "boolean"),
     ] {
-        let value = object.get(key).cloned().unwrap_or(Value::Null);
+        let value = match &topic_id_override {
+            Some(override_value) if key == "topicId" => override_value.clone(),
+            _ => object.get(key).cloned().unwrap_or(Value::Null),
+        };
         let valid = value.is_null()
             || (expected == "boolean" && value.is_boolean())
             || (expected == "string" && value.is_string());
@@ -320,7 +332,7 @@ mod tests {
     const GOLDEN: &[u8] = include_bytes!(
         "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
     );
-    const GOLDEN_SHA256: &str = "7226118ea55766f952575032efc8cfff883a19c9d196f637ac267cb8795fcef8";
+    const GOLDEN_SHA256: &str = "62d4eecb639feb1a6e46302dc4046c622a5477d6a53463320c891757be629a9b";
 
     #[test]
     fn protocol_1_2_golden_bundle_matches_mobile() {
