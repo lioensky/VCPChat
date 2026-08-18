@@ -77,6 +77,8 @@ body {
 
 .sidebar-actions .vcp-app-btn {
   flex: 1; /* Each button takes a third of the space */
+  min-width: 0;
+  white-space: nowrap;
 }
 
 /* Common input styling */
