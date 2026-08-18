@@ -30,7 +30,7 @@ body {
     padding: 0 var(--vcp-app-space-4);
     z-index: 1000;
     background: var(--vcp-app-bg-raised);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     -webkit-app-region: drag;
 }
 
@@ -51,14 +51,6 @@ body {
     white-space: nowrap;
 }
 
-.nav-divider {
-    width: 1px;
-    height: 20px;
-    background: var(--vcp-app-border);
-    margin: 0 var(--vcp-app-space-1);
-    flex: 0 0 auto;
-}
-
 /* 板块筛选下拉 */
 #board-filter {
     appearance: none;
@@ -70,7 +62,7 @@ body {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-control-radius);
     color: var(--vcp-app-text);
     font-family: inherit;
@@ -240,7 +232,7 @@ body {
     color: var(--vcp-app-text-secondary);
     margin-top: var(--vcp-app-space-2);
     padding-top: var(--vcp-app-space-2);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
 }
 
 .meta-left { display: flex; gap: var(--vcp-app-space-2); align-items: center; min-width: 0; }
@@ -271,7 +263,7 @@ body {
     color: var(--vcp-app-on-accent);
     font-size: var(--vcp-app-font-caption);
     flex-shrink: 0;
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     overflow: hidden;
 }
 
@@ -415,7 +407,7 @@ body {
 .reply-content pre {
     display: block;
     background: var(--vcp-app-bg-sunken);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     padding: var(--vcp-app-space-3);
     border-radius: var(--vcp-app-card-radius);
     margin: 15px 0;
@@ -452,7 +444,7 @@ body {
 .reply-content hr {
     display: block;
     border: none;
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
     margin: 20px 0;
 }
 
@@ -475,7 +467,7 @@ body {
 .reply-content img,
 .expanded-card .post-preview img,
 .reply-item img {
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     background-color: var(--vcp-app-bg-sunken) !important;
     padding: 2px;
 }
@@ -516,7 +508,7 @@ img[src*="file://"] {
     padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
     border-radius: var(--vcp-app-card-radius);
     margin-bottom: var(--vcp-app-space-5);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     font-size: var(--vcp-app-font-body);
     line-height: 1.7;
 }
@@ -555,7 +547,7 @@ img[src*="file://"] {
     padding: var(--vcp-app-space-4);
     border-radius: var(--vcp-app-card-radius);
     background: var(--vcp-app-fill-1);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     animation: slideInRight 0.4s ease backwards;
 }
 
@@ -577,7 +569,7 @@ img[src*="file://"] {
 .delete-floor-btn {
     background: transparent;
     color: var(--vcp-app-danger);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     min-height: var(--vcp-app-control-sm);
     padding: 0 var(--vcp-app-space-3);
     border-radius: var(--vcp-app-control-radius);
@@ -614,7 +606,7 @@ img[src*="file://"] {
 .edit-btn {
     background: transparent;
     color: var(--vcp-app-accent);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     min-height: var(--vcp-app-control-sm);
     padding: 0 var(--vcp-app-space-3);
     border-radius: var(--vcp-app-control-radius);
@@ -665,7 +657,7 @@ img[src*="file://"] {
     align-items: center;
     margin-top: var(--vcp-app-space-4);
     padding-top: var(--vcp-app-space-4);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
 }
 
 /* --- 回帖固定区 --- */
@@ -681,7 +673,7 @@ img[src*="file://"] {
     box-sizing: border-box;
     background: var(--vcp-app-bg-raised);
     padding: var(--vcp-app-space-3) var(--vcp-app-space-6);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
     border-radius: 0 0 var(--vcp-app-card-radius) var(--vcp-app-card-radius);
     display: flex;
     gap: var(--vcp-app-space-3);
@@ -747,7 +739,7 @@ img[src*="file://"] {
 
 .post-preview th, .reply-content th,
 .post-preview td, .reply-content td {
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     padding: var(--vcp-app-space-2) var(--vcp-app-space-3);
     text-align: left;
 }
@@ -819,7 +811,7 @@ img[src*="file://"] {
     width: 270px;
     height: 240px;
     background-color: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-card-radius);
     box-shadow: var(--vcp-app-shadow-lg);
     padding: var(--vcp-app-space-2);

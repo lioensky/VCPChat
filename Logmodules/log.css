@@ -29,7 +29,7 @@ body {
     gap: var(--vcp-app-space-3);
     padding: 0 var(--vcp-app-space-3) 0 var(--vcp-app-space-4);
     background: var(--vcp-app-bg-raised);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     -webkit-app-region: drag;
 }
 
@@ -68,14 +68,6 @@ body {
 #close-log-btn:hover {
     background: var(--vcp-app-danger-bg);
     color: var(--vcp-app-danger);
-}
-
-.window-divider {
-    width: 1px;
-    height: 20px;
-    background: var(--vcp-app-border);
-    margin: 0 var(--vcp-app-space-1);
-    flex: 0 0 auto;
 }
 
 /* --- 页面布局 --- */
@@ -139,7 +131,7 @@ body {
     -webkit-appearance: none;
     min-height: var(--vcp-app-control-sm);
     padding: 0 var(--vcp-app-space-3);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: 999px;
     background: transparent;
     color: var(--vcp-app-text-secondary);
@@ -289,7 +281,7 @@ body {
     -webkit-appearance: none;
     width: var(--vcp-app-control-lg);
     height: var(--vcp-app-control-lg);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-control-radius);
     font-size: var(--vcp-app-font-emphasis);
     font-weight: 700;

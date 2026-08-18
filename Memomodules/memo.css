@@ -38,7 +38,7 @@ body {
     width: var(--sidebar-width);
     flex: 0 0 auto;
     background-color: var(--vcp-app-bg-raised);
-    border-right: 1px solid var(--vcp-app-border);
+    border-right: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     flex-direction: column;
 }
@@ -65,7 +65,7 @@ body {
     min-height: var(--vcp-app-control-sm);
     padding: 0 var(--vcp-app-space-2);
     background: var(--vcp-app-bg-input);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-control-radius);
     color: var(--vcp-app-text);
     font-family: inherit;
@@ -203,7 +203,7 @@ body {
     justify-content: space-between;
     align-items: center;
     gap: var(--vcp-app-space-3);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
 }
 
 .folder-title {
@@ -311,7 +311,7 @@ body {
     justify-content: space-between;
     align-items: center;
     gap: var(--vcp-app-space-2);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
     padding-top: var(--vcp-app-space-2);
 }
 
@@ -368,7 +368,7 @@ body {
     display: flex;
     flex-direction: column;
     background: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-card-radius);
     overflow: hidden;
     box-shadow: var(--vcp-app-shadow-lg);
@@ -377,7 +377,7 @@ body {
 .editor-header {
     min-height: var(--vcp-app-header-height);
     padding: 0 var(--vcp-app-space-4);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -456,7 +456,7 @@ body {
     resize: none;
     outline: none;
     font-family: 'Consolas', 'Monaco', monospace;
-    border-right: 1px solid var(--vcp-app-border);
+    border-right: 1px solid var(--vcp-app-border-subtle);
 }
 
 .editor-preview {
@@ -471,7 +471,7 @@ body {
 .editor-footer {
     min-height: var(--vcp-app-toolbar-height);
     padding: 0 var(--vcp-app-space-4);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -487,7 +487,7 @@ body {
 /* --- 右键菜单 --- */
 .context-menu {
     background: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-card-radius);
     box-shadow: var(--vcp-app-shadow-lg);
     overflow: hidden;
@@ -544,7 +544,7 @@ body {
 
 .batch-bar-header {
     padding: var(--vcp-app-space-2) var(--vcp-app-space-3);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -564,7 +564,7 @@ body {
 
 .batch-item-tag {
     background: var(--vcp-app-fill-1);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-control-radius);
     padding: var(--vcp-app-space-1) var(--vcp-app-space-2);
     display: flex;
@@ -642,7 +642,7 @@ body {
     height: 6px;
     border-radius: 3px;
     outline: none;
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     margin: 10px 0;
 }
 
@@ -668,7 +668,7 @@ body {
     padding: var(--vcp-app-space-2);
     background: var(--vcp-app-bg-input);
     border-radius: var(--vcp-app-card-radius);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     max-height: 150px;
     overflow-y: auto;
 }
@@ -680,7 +680,7 @@ body {
     display: inline-flex;
     align-items: center;
     background: var(--vcp-app-fill-1);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: 999px;
     font-size: var(--vcp-app-font-body);
     cursor: pointer;
@@ -780,7 +780,7 @@ body {
     padding: var(--vcp-app-space-6);
     border-radius: var(--vcp-app-card-radius);
     background: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     box-shadow: var(--vcp-app-shadow-lg);
     animation: scaleIn 0.5s var(--vcp-app-easing-standard);
 }
@@ -867,7 +867,7 @@ body {
     align-items: center;
     padding: 0 var(--vcp-app-space-4);
     z-index: 5010;
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     background: var(--vcp-app-bg-raised);
 }
 
@@ -906,7 +906,7 @@ body {
     padding: 2px var(--vcp-app-space-3);
     border-radius: 999px;
     background: var(--vcp-app-fill-1);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
 }
 
 .graph-controls {
@@ -943,7 +943,7 @@ body {
 
 .panel-header {
     padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1010,7 +1010,7 @@ body {
     font-size: var(--vcp-app-font-caption);
     padding: 1px var(--vcp-app-space-2);
     background: var(--vcp-app-fill-1);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-radius-xs);
     cursor: pointer;
 }
@@ -1037,7 +1037,7 @@ body {
 
 .panel-footer {
     padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     flex-direction: column;
     gap: var(--vcp-app-space-2);
@@ -1073,7 +1073,7 @@ body {
 .workbench-header {
     min-height: var(--vcp-app-header-height);
     padding: 0 var(--vcp-app-space-5);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1149,7 +1149,7 @@ body {
     cursor: pointer;
     transition: border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
       box-shadow var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
 }
 
 .workbench-memo-card:hover {
