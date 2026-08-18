@@ -55,7 +55,7 @@ body {
   max-width: 500px; /* Prevent it from becoming too large */
   background-color: var(--vcp-app-bg-raised);
   border-radius: var(--vcp-app-card-radius);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden; /* Important for internal scrolling */
@@ -63,7 +63,7 @@ body {
 
 .sidebar-header {
   padding: var(--vcp-app-space-3);
-  border-bottom: 1px solid var(--vcp-app-border);
+  border-bottom: 1px solid var(--vcp-app-border-subtle);
   display: flex;
   flex-direction: column;
   gap: var(--vcp-app-space-2);
@@ -274,7 +274,7 @@ textarea:focus {
   flex: 1; /* Take up remaining horizontal space */
   background-color: var(--vcp-app-bg-raised);
   border-radius: var(--vcp-app-card-radius);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   display: flex;
   flex-direction: column;
   overflow: hidden; /* Crucial for internal scrolling of note body */
@@ -284,7 +284,7 @@ textarea:focus {
   padding: var(--vcp-app-space-2) var(--vcp-app-space-3);
   min-height: var(--vcp-app-header-height);
   box-sizing: border-box;
-  border-bottom: 1px solid var(--vcp-app-border);
+  border-bottom: 1px solid var(--vcp-app-border-subtle);
   display: flex;
   align-items: center;
   gap: var(--vcp-app-space-2);
@@ -332,7 +332,7 @@ textarea:focus {
   position: relative; /* For positioning the bubble */
   overflow: hidden; /* Prevent internal content from overflowing this container */
   background-color: var(--vcp-app-bg-input); /* Give them a distinct background */
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-card-radius);
   transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
     width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
@@ -466,7 +466,7 @@ body.preview-collapsed .preview-container > * {
   align-items: center;
   gap: var(--vcp-app-space-1);
   padding: var(--vcp-app-space-1);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-card-radius);
   background-color: var(--vcp-app-bg-raised);
   box-shadow: var(--vcp-app-shadow-md);
@@ -535,7 +535,7 @@ body.preview-collapsed .preview-container > * {
 .markdown-preview h5,
 .markdown-preview h6 {
   color: var(--vcp-app-text);
-  border-bottom: 1px solid var(--vcp-app-border);
+  border-bottom: 1px solid var(--vcp-app-border-subtle);
   padding-bottom: 0.3em;
   margin-top: 1.2em;
   margin-bottom: 0.6em;
@@ -570,7 +570,7 @@ body.preview-collapsed .preview-container > * {
   border-collapse: collapse;
   margin: 1.2em 0;
   overflow: hidden;
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-card-radius);
   background-color: var(--vcp-app-fill-1);
   display: table;
@@ -582,7 +582,7 @@ body.preview-collapsed .preview-container > * {
 
 .markdown-preview th,
 .markdown-preview td {
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   padding: var(--vcp-app-space-2) var(--vcp-app-space-3);
   text-align: left;
   vertical-align: top;
@@ -631,7 +631,7 @@ body.preview-collapsed .preview-container > * {
   color: var(--vcp-app-text);
   padding: 1em;
   border-radius: var(--vcp-app-card-radius);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   overflow-x: auto;
   white-space: pre-wrap; /* Allow wrapping of long lines */
   word-wrap: break-word; /* Break words if necessary */
@@ -658,7 +658,7 @@ body.preview-collapsed .preview-container > * {
   padding: 6px;
   background-color: var(--vcp-app-bg-raised);
   color: var(--vcp-app-text-secondary);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-radius-xs);
   cursor: pointer;
   opacity: 0; /* Hidden by default, shown on pre:hover */
@@ -689,7 +689,7 @@ body.preview-collapsed .preview-container > * {
 .custom-context-menu {
   position: absolute;
   background-color: var(--vcp-app-bg-raised);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-control-radius);
   box-shadow: var(--vcp-app-shadow-md);
   z-index: 1000;
@@ -728,7 +728,7 @@ body.preview-collapsed .preview-container > * {
   left: 100%;
   top: -5px; /* Align with parent item */
   background-color: var(--vcp-app-bg-raised);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-control-radius);
   box-shadow: var(--vcp-app-shadow-md);
   z-index: 1001;
@@ -754,7 +754,7 @@ body.preview-collapsed .preview-container > * {
 /* --- Mermaid diagram rendering --- */
 .markdown-preview .mermaid {
   background-color: var(--vcp-app-fill-1);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   border-radius: var(--vcp-app-card-radius);
   padding: 1em;
   margin: 1em 0;
@@ -889,7 +889,6 @@ body.preview-collapsed .preview-container > * {
   min-height: var(--vcp-app-toolbar-height);
   box-sizing: border-box;
   padding: var(--vcp-app-space-1) var(--vcp-app-space-3);
-  border-bottom: 1px solid var(--vcp-app-border);
 }
 
 .view-mode-group,
@@ -952,7 +951,7 @@ body[data-note-view-mode="preview"] .preview-container {
   padding: var(--vcp-app-space-5);
   border-radius: var(--vcp-app-card-radius);
   box-shadow: var(--vcp-app-shadow-lg);
-  border: 1px solid var(--vcp-app-border);
+  border: 1px solid var(--vcp-app-border-subtle);
   width: 90%;
   max-width: 400px;
   text-align: center;
@@ -1041,7 +1040,7 @@ body.light-theme .markdown-preview pre .hljs-meta {
   align-items: center;
   padding: 0 var(--vcp-app-space-4);
   background-color: var(--vcp-app-bg-raised);
-  border-bottom: 1px solid var(--vcp-app-border);
+  border-bottom: 1px solid var(--vcp-app-border-subtle);
   z-index: 1000;
   -webkit-app-region: drag;
   user-select: none;
