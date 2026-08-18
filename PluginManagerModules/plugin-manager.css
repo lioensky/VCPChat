@@ -109,26 +109,12 @@ body {
     border-radius: var(--vcp-app-card-radius);
     border: 1px solid var(--vcp-app-border);
     background: var(--vcp-app-bg-raised);
-    padding: var(--vcp-app-space-5);
+    padding: var(--vcp-app-space-4) var(--vcp-app-space-5);
     display: flex;
     justify-content: space-between;
     gap: var(--vcp-app-space-5);
-    align-items: stretch;
+    align-items: center;
     margin-bottom: var(--vcp-app-space-4);
-}
-
-.eyebrow {
-    color: var(--vcp-app-accent);
-    font-size: var(--vcp-app-font-caption);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 700;
-    margin-bottom: var(--vcp-app-space-2);
-}
-
-.hero-copy h1 {
-    margin: 0 0 var(--vcp-app-space-2);
-    font-size: var(--vcp-app-font-display);
 }
 
 .hero-copy p {
@@ -316,6 +302,14 @@ input:checked + .switch-slider::before {
     color: var(--vcp-app-text-secondary);
     font-size: var(--vcp-app-font-caption);
     font-weight: 600;
+}
+
+.summary-card--alert {
+    background: var(--vcp-app-danger-bg);
+}
+
+.summary-card--alert strong {
+    color: var(--vcp-app-danger);
 }
 
 /* --- 插件分组与卡片 --- */

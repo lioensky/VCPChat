@@ -248,18 +248,14 @@ function renderSummary() {
     const enabled = allPlugins.filter(p => p.enabled && !p.parseError).length;
     const disabled = allPlugins.filter(p => !p.enabled && !p.parseError).length;
     const invalid = allPlugins.filter(p => p.parseError).length;
-    const commands = allPlugins.reduce((sum, p) => sum + getCommands(p).length, 0);
-    const withEnv = allPlugins.filter(p => p.hasConfigEnv).length;
 
     els.summaryDashboard.innerHTML = [
         ['总插件', allPlugins.length],
         ['已启用', enabled],
         ['已禁用', disabled],
-        ['异常', invalid],
-        ['命令数', commands],
-        ['含 config.env', withEnv]
-    ].map(([label, value]) => `
-        <div class="summary-card">
+        ['异常', invalid, invalid > 0]
+    ].map(([label, value, alert]) => `
+        <div class="summary-card${alert ? ' summary-card--alert' : ''}">
             <strong>${value}</strong>
             <span>${label}</span>
         </div>
