@@ -220,6 +220,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     context: '上下文源码',
     target: '目标源码',
     insert: '插入源码',
+    append: '末尾追加源码',
     replace: '替换源码',
     replacement: '替换源码',
     heading: '章节标题',
@@ -278,6 +279,7 @@ const MARKDOWN_CODE_FIELDS = new Set([
     'context',
     'target',
     'insert',
+    'append',
     'replace',
     'replacement',
 ]);
@@ -322,6 +324,7 @@ function codeLanguage(key, parent = {}) {
         'context',
         'target',
         'insert',
+        'append',
         'replace',
         'replacement',
     ].includes(key)) {
@@ -779,19 +782,24 @@ async function deleteSvgAssetPack(args, executionContext = {}) {
 }
 
 async function submitSourcePr(args, executionContext = {}) {
+    const hasAppend = Object.prototype.hasOwnProperty.call(args, 'append');
     const hasInsert = Object.prototype.hasOwnProperty.call(args, 'insert');
     const replacements = args.replacements === undefined
         ? [
-            hasInsert
+            hasAppend
                 ? {
-                    insert: args.insert,
-                    line: args.line,
+                    append: args.append,
                 }
-                : {
-                    target: args.target,
-                    replace: args.replace ?? args.replacement ?? '',
-                    startLine: args.startLine,
-                },
+                : hasInsert
+                    ? {
+                        insert: args.insert,
+                        line: args.line,
+                    }
+                    : {
+                        target: args.target,
+                        replace: args.replace ?? args.replacement ?? '',
+                        startLine: args.startLine,
+                    },
         ]
         : parseArray(args.replacements, 'replacements');
     const maid = authorFromMaid(args, executionContext);
