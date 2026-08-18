@@ -525,22 +525,6 @@ body.preview-collapsed .preview-container > * {
   color: var(--vcp-app-text);
 }
 
-/* Styling for the content bubbles */
-.content-bubble {
-  position: absolute;
-  bottom: 10px; /* Adjusted for better placement */
-  right: 10px; /* Adjusted for better placement */
-  background-color: var(--vcp-app-fill-3);
-  color: var(--vcp-app-text-secondary);
-  padding: var(--vcp-app-space-1) var(--vcp-app-space-2);
-  border-radius: var(--vcp-app-control-radius);
-  font-size: var(--vcp-app-font-caption);
-  pointer-events: none;
-  z-index: 2;
-  white-space: nowrap;
-  box-shadow: var(--vcp-app-shadow-sm);
-}
-
 /* Markdown specific styles */
 .markdown-preview h1,
 .markdown-preview h2,
@@ -812,10 +796,14 @@ body.preview-collapsed .preview-container > * {
   width: auto;
   border: 0;
   background: transparent;
-  color: var(--vcp-app-accent);
+  color: var(--vcp-app-text-secondary);
   cursor: pointer;
   padding: 2px 0;
   font: inherit;
+}
+
+.text-button:hover {
+  color: var(--vcp-app-accent);
 }
 
 .notes-filter-row {
@@ -921,18 +909,6 @@ body.preview-collapsed .preview-container > * {
   margin-left: auto;
   color: var(--vcp-app-text-secondary);
   font-size: var(--vcp-app-font-caption);
-}
-
-.markdown-hint {
-  margin: 0;
-  padding: var(--vcp-app-space-1) var(--vcp-app-space-3);
-  color: var(--vcp-app-text-secondary);
-  font-size: var(--vcp-app-font-caption);
-  border-bottom: 1px solid var(--vcp-app-border);
-}
-
-.markdown-hint code {
-  color: var(--vcp-app-accent);
 }
 
 body[data-note-view-mode="editor"] .preview-container,

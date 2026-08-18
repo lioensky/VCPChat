@@ -143,8 +143,9 @@
               id="newFolderBtn"
               class="button vcp-app-btn vcp-app-btn--sm"
               type="button"
+              title="创建文件夹"
             >
-              新建文档
+              新建文件夹
             </button>
           </div>
           <div class="notes-filter-row" aria-label="笔记筛选">
@@ -316,11 +317,6 @@
             </select>
           </div>
         </div>
-        <p class="markdown-hint">
-          支持 Markdown：<code># 标题</code>、<code>**加粗**</code>、<code
-            >- 列表</code
-          >；可粘贴或通过“插入图片”添加图片。
-        </p>
         <div class="note-body">
           <!-- Editor Area -->
           <div class="editor-container">
@@ -364,10 +360,9 @@
             </div>
             <textarea
               id="noteContent"
-              placeholder="开始写笔记..."
+              placeholder="开始写笔记… 支持 Markdown（# 标题、**加粗**、- 列表），可直接粘贴图片。"
               aria-label="笔记内容"
             ></textarea>
-            <div class="content-bubble editor-bubble">编辑区</div>
           </div>
           <div
             id="editorPreviewResizer"
@@ -386,7 +381,6 @@
             >
               <!-- Markdown 预览将在此处渲染 -->
             </div>
-            <div class="content-bubble preview-bubble">预览区</div>
           </div>
         </div>
       </div>
