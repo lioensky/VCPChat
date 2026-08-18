@@ -385,7 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.deviceSelect.onchange = () => app.configureOutput();
         app.wasapiSwitch.onchange = () => { if (!app.wasapiSwitch._programmaticUpdate) app.configureOutput(); };
-        app.eqSwitch.onchange = () => { if (!app.eqSwitch._programmaticUpdate) app.sendEqSettings(); };
+        app.eqSwitch.onchange = () => {
+            app.updateEqSectionState();
+            if (!app.eqSwitch._programmaticUpdate) app.sendEqSettings();
+        };
         app.eqTypeSelect.onchange = () => {
             app.firTapsSelect.style.display = app.eqTypeSelect.value === 'FIR' ? 'block' : 'none';
             app.sendEqSettings();
@@ -762,7 +765,9 @@ document.addEventListener('DOMContentLoaded', () => {
         Promise.resolve().then(() => app.wasapiSwitch._programmaticUpdate = false);
         if (s.eq_enabled !== undefined) {
             app.eqEnabled = s.eq_enabled; app.eqSwitch._programmaticUpdate = true;
-            app.eqSwitch.checked = s.eq_enabled; Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
+            app.eqSwitch.checked = s.eq_enabled;
+            app.updateEqSectionState();
+            Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
         }
         if (s.eq_type !== undefined) app.eqTypeSelect.value = s.eq_type;
         if (s.dither_enabled !== undefined) {
