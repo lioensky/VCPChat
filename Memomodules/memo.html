@@ -25,7 +25,7 @@
             <div class="nav-title vcp-app-header-title">VCP Memo</div>
             <div class="nav-divider"></div>
             <div class="search-container" style="display: flex; align-items: center; gap: 8px;">
-                <input type="search" id="search-memos" class="search-glass" placeholder="🔍 搜索日记...">
+                <input type="search" id="search-memos" class="search-glass" placeholder="搜索日记...">
                 <button id="search-scope-btn" class="nav-icon-btn scope-toggle-btn" title="当前范围：文件夹内">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 </button>
@@ -94,7 +94,7 @@
                                 <option value="">-- 选择文件夹 --</option>
                             </select>
                         </div>
-                        <button id="batch-delete-btn" class="glass-btn danger" style="padding: 5px 12px; font-size: 0.85rem;">🗑️ 批量删除</button>
+                        <button id="batch-delete-btn" class="glass-btn danger" style="padding: 5px 12px; font-size: 0.85rem;">批量删除</button>
                         <button id="batch-workbench-btn" class="glass-btn primary" style="padding: 5px 12px; font-size: 0.85rem;">🛠️ 进入工作台</button>
                         <button id="cancel-batch-btn" class="nav-icon-btn" title="取消">&times;</button>
                     </div>
@@ -131,8 +131,8 @@
             </div>
             <div class="editor-footer">
                 <p id="editor-status" style="margin-right: auto; font-size: 0.8rem; color: var(--vcp-app-text-secondary);"></p>
-                <button id="delete-memo-btn" class="glass-btn danger">🗑️ 删除</button>
-                <button id="save-memo-btn" class="glass-btn primary">💾 保存修改</button>
+                <button id="delete-memo-btn" class="glass-btn danger">删除</button>
+                <button id="save-memo-btn" class="glass-btn primary">保存修改</button>
             </div>
         </div>
     </div>
@@ -141,7 +141,7 @@
     <div id="create-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000">
         <div class="modal-glass-content glass" style="max-width: 600px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">📝 新建日记</h2>
+                <h2 style="margin: 0;">新建日记</h2>
                 <button id="close-create-modal-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
             </div>
             <div style="margin-bottom: 15px;">
@@ -149,11 +149,11 @@
                 <input type="date" id="new-memo-date" class="glass-input" style="width: 100%;">
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">署名 <span style="opacity: 0.5; font-size: 0.8rem;">(maid)</span></label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">署名</label>
                 <input type="text" id="new-memo-maid" class="glass-input" style="width: 100%;" placeholder="如：Nova">
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">目标文件夹 <span style="opacity: 0.5; font-size: 0.8rem;">(folder, 可选，留空写入默认日记本)</span></label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">目标文件夹 <span style="opacity: 0.5; font-size: 0.8rem;">（可选，留空写入默认日记本）</span></label>
                 <input type="text" id="new-memo-folder" class="glass-input" style="width: 100%;" placeholder="如：Nova的知识">
             </div>
             <div style="margin-bottom: 15px;">
@@ -169,7 +169,7 @@
                 <textarea id="new-memo-content" class="glass-input" style="width: 100%; min-height: 150px; resize: vertical;" placeholder="写下今天的故事..."></textarea>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
-                <button id="submit-new-memo-btn" class="jelly-btn" style="width: auto; padding: 10px 30px;">🚀 发布</button>
+                <button id="submit-new-memo-btn" class="jelly-btn" style="width: auto; padding: 10px 30px;">发布</button>
             </div>
         </div>
     </div>
@@ -200,7 +200,7 @@
     <div id="hidden-folders-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000">
         <div class="modal-glass-content glass" style="max-width: 500px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">🙈 隐藏文件夹管理</h2>
+                <h2 style="margin: 0;">隐藏文件夹管理</h2>
                 <button id="close-hidden-modal-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
             </div>
             <div id="hidden-folders-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px;">
@@ -225,7 +225,7 @@
                     📦 归档到「已整理」文件夹
                 </button>
                 <button id="post-publish-delete-btn" class="glass-btn danger" style="width: 100%; padding: 12px; justify-content: center; font-size: 0.95rem;">
-                    🗑️ 删除原始日记（不可撤销）
+                    删除原始日记（不可撤销）
                 </button>
             </div>
         </div>
@@ -289,7 +289,7 @@
                                 <input type="date" id="workbench-new-date" class="glass-input">
                             </div>
                             <div class="form-group">
-                                <label>署名 / 目标文件夹 <span style="opacity: 0.5; font-size: 0.8rem;">(maid)</span></label>
+                                <label>署名 / 目标文件夹</label>
                                 <input type="text" id="workbench-new-folder" class="glass-input" placeholder="如：Nova 或 [Nova的知识]Nova">
                             </div>
                         </div>
@@ -308,7 +308,7 @@
                             <textarea id="workbench-new-content" class="glass-input" style="flex: 1; min-height: 200px; resize: none;" placeholder="基于上方参考资料，写下你的整合发现..."></textarea>
                         </div>
                         <div class="form-footer">
-                            <button id="workbench-submit-btn" class="jelly-btn" style="width: auto; padding: 12px 40px;">🚀 发布整合日记</button>
+                            <button id="workbench-submit-btn" class="jelly-btn" style="width: auto; padding: 12px 40px;">发布整合日记</button>
                         </div>
                     </div>
                 </div>
@@ -363,7 +363,7 @@
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--vcp-app-border); padding-top: 25px; margin-top: 10px;">
-                <button id="start-assoc-btn" class="jelly-btn" style="width: 100%; padding: 14px; font-weight: bold; font-size: 1.1rem;">🚀 开启视觉化联想</button>
+                <button id="start-assoc-btn" class="jelly-btn" style="width: 100%; padding: 14px; font-weight: bold; font-size: 1.1rem;">开启视觉化联想</button>
             </div>
         </div>
     </div>
@@ -433,7 +433,7 @@
             <div class="panel-footer">
                 <button id="node-edit-btn" class="glass-btn">✏️ 编辑内容</button>
                 <button id="node-relink-btn" class="glass-btn primary">🧠 继续联想</button>
-                <button id="node-delete-btn" class="glass-btn danger">🗑️ 删除</button>
+                <button id="node-delete-btn" class="glass-btn danger">删除</button>
                 <button id="node-add-workbench-btn" class="glass-btn primary">🛠️ 加入工作台</button>
             </div>
         </div>

@@ -48,15 +48,17 @@ const newMemoContentInput = document.getElementById('new-memo-content');
 function blockStartup(message) {
     memoStartupBlocked = true;
     currentFolder = '';
-    currentFolderNameEl.textContent = '初始化未完成';
+    currentFolderNameEl.textContent = '无法初始化';
     folderListEl.innerHTML = `
-        <div class="folder-item" style="cursor: default; opacity: 0.8;">
-            <span>${escapeHtml(message)}</span>
+        <div class="folder-item" style="cursor: default; opacity: 0.6;">
+            <span>暂不可用</span>
         </div>
     `;
     memoGridEl.innerHTML = `
-        <div style="padding: 20px; color: var(--danger-color); line-height: 1.7;">
-            ${escapeHtml(message)}
+        <div class="vcp-app-state vcp-app-state--error" style="grid-column: 1 / -1;">
+            <div class="vcp-app-state-icon">!</div>
+            <div class="vcp-app-state-title">无法加载日记</div>
+            <div class="vcp-app-state-hint">${escapeHtml(message)}</div>
         </div>
     `;
 }
@@ -114,7 +116,7 @@ async function initApp() {
         // 1. 获取服务器地址
         const settings = await api.loadSettings();
         if (!settings?.vcpServerUrl) {
-            alert('请先在主设置中配置 VCP 服务器 URL');
+            alert('请先在全局设置中配置 VCP 服务器地址，然后回到这里刷新。');
             return;
         }
         serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
@@ -125,7 +127,7 @@ async function initApp() {
         if (forumConfig && forumConfig.username && forumConfig.password) {
             apiAuthHeader = `Basic ${btoa(`${forumConfig.username}:${forumConfig.password}`)}`;
         } else {
-            alert('未找到论坛模块的登录配置，请先在论坛模块登录。');
+            alert('未找到论坛登录凭据。请先打开「论坛」应用并登录，然后回到这里刷新。');
             return;
         }
 
@@ -339,7 +341,7 @@ function setupEventListeners() {
     document.getElementById('node-delete-btn').onclick = async () => {
         if (graphState.selectedNode) {
             const node = graphState.selectedNode;
-            const confirmed = await customConfirm(`确定要删除日记 "${node.name}" 吗？`, '⚠️ 删除确认');
+            const confirmed = await customConfirm(`确定要删除日记 "${node.name}" 吗？`, '删除确认');
             if (confirmed) {
                 try {
                     await apiFetch('/delete-batch', {
@@ -968,7 +970,7 @@ async function handleSaveMemo() {
 }
 
 async function handleDeleteFolder(folderName) {
-    const confirmed = await customConfirm(`确定要删除文件夹 "${folderName}" 吗？\n注意：仅限空文件夹可以被删除。`, '⚠️ 删除文件夹');
+    const confirmed = await customConfirm(`确定要删除文件夹 "${folderName}" 吗？\n注意：仅限空文件夹可以被删除。`, '删除文件夹');
     if (!confirmed) return;
 
     try {
@@ -998,7 +1000,7 @@ async function handleDeleteFolder(folderName) {
 
 async function handleDeleteMemo() {
     if (!currentMemo) return;
-    const confirmed = await customConfirm(`确定要删除日记 "${currentMemo.file}" 吗？\n此操作不可撤销。`, '⚠️ 删除确认');
+    const confirmed = await customConfirm(`确定要删除日记 "${currentMemo.file}" 吗？\n此操作不可撤销。`, '删除确认');
     if (!confirmed) return;
 
     try {
@@ -1084,7 +1086,7 @@ Date:「始」${date}「末」,`;
         alert('发布失败: ' + error.message);
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = '🚀 发布';
+        submitBtn.textContent = '发布';
     }
 }
 
@@ -1353,7 +1355,7 @@ function parseSemanticMemoPath(rawPath) {
 
 async function handleBatchDelete() {
     if (selectedMemos.size === 0) return;
-    const confirmed = await customConfirm(`确定要批量删除选中的 ${selectedMemos.size} 项日记吗？\n此操作不可撤销！`, '⚠️ 批量删除确认');
+    const confirmed = await customConfirm(`确定要批量删除选中的 ${selectedMemos.size} 项日记吗？\n此操作不可撤销！`, '批量删除确认');
     if (!confirmed) return;
 
     try {
@@ -1379,7 +1381,7 @@ async function handleBatchMove(e) {
     const targetFolder = e.target.value;
     if (!targetFolder || selectedMemos.size === 0) return;
 
-    const confirmed = await customConfirm(`确定要将选中的 ${selectedMemos.size} 项日记移动到 "${targetFolder}" 吗？`, '📦 批量移动确认');
+    const confirmed = await customConfirm(`确定要将选中的 ${selectedMemos.size} 项日记移动到 "${targetFolder}" 吗？`, '批量移动确认');
     if (!confirmed) {
         e.target.value = ''; // 重置下拉框
         return;
@@ -1411,7 +1413,7 @@ async function handleBatchMove(e) {
 }
 
 async function handleHideFolder(folderName) {
-    const confirmed = await customConfirm(`确定要隐藏文件夹 "${folderName}" 吗？\n隐藏后将不会在列表中显示，也不会被检索到。`, '🙈 隐藏文件夹');
+    const confirmed = await customConfirm(`确定要隐藏文件夹 "${folderName}" 吗？\n隐藏后将不会在列表中显示，也不会被检索到。`, '隐藏文件夹');
     if (!confirmed) return;
 
     hiddenFolders.add(folderName);
