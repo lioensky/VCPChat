@@ -255,8 +255,8 @@ async function fetchLog({ incremental, silent }) {
         }
 
         trimLines();
+        baseEmptyMessage = '暂无日志内容';
         render();
-        setEmptyMessage('暂无日志内容');
 
         const sizeText = data.fileSize ? formatBytes(data.fileSize) : '--';
         setStatus(currentLogPath ? `监听: ${currentLogPath}` : '日志已载入');
@@ -265,7 +265,7 @@ async function fetchLog({ incremental, silent }) {
         console.error('[LogCenter] Fetch log failed:', error);
         setStatus(`读取失败: ${error.message}`);
         if (!silent) {
-            setEmptyMessage(`读取日志失败：${error.message}`);
+            if (allLines.length === 0) setEmptyMessage(`读取日志失败：${error.message}`);
             showToast(`读取日志失败: ${error.message}`);
         }
     } finally {
@@ -459,7 +459,10 @@ function setStatus(message) {
 
 function setEmptyMessage(message) {
     baseEmptyMessage = message;
-    if (elements.empty) elements.empty.textContent = message;
+    if (elements.empty) {
+        elements.empty.textContent = message;
+        elements.empty.classList.add('active');
+    }
 }
 
 function setMeta(message) {
