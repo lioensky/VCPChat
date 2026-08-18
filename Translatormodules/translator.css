@@ -28,7 +28,7 @@ body {
     gap: var(--vcp-app-space-3);
     background-color: var(--vcp-app-bg-raised);
     border-radius: var(--vcp-app-card-radius);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
 }
 
 /* 头部（App Header 语义：标题 + 主要操作） */
@@ -40,7 +40,6 @@ body {
     gap: var(--vcp-app-space-2);
     min-height: var(--vcp-app-toolbar-height);
     padding-bottom: var(--vcp-app-space-3);
-    border-bottom: 1px solid var(--vcp-app-border);
 }
 
 .translator-controls {
@@ -151,7 +150,7 @@ body {
     right: var(--vcp-app-space-3);
     z-index: 10;
     background-color: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
 }
 
 #copyBtn svg {
@@ -179,7 +178,7 @@ body {
     align-items: center;
     padding: 0 var(--vcp-app-space-4);
     background-color: var(--vcp-app-bg-raised);
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
     z-index: 1000;
     -webkit-app-region: drag;
     user-select: none;
@@ -263,7 +262,7 @@ body {
     overflow: hidden;
     background-color: var(--vcp-app-bg-raised);
     color: var(--vcp-app-text);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-card-radius);
     box-shadow: var(--vcp-app-shadow-lg);
 }
@@ -278,13 +277,13 @@ body {
 }
 
 .settings-modal-header {
-    border-bottom: 1px solid var(--vcp-app-border);
+    border-bottom: 1px solid var(--vcp-app-border-subtle);
 }
 
 .settings-modal-footer {
     justify-content: flex-end;
     gap: var(--vcp-app-space-2);
-    border-top: 1px solid var(--vcp-app-border);
+    border-top: 1px solid var(--vcp-app-border-subtle);
 }
 
 .settings-modal-header h3 {
@@ -314,7 +313,7 @@ body {
     height: var(--vcp-app-control-md);
     box-sizing: border-box;
     padding: 0 var(--vcp-app-space-3);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-control-radius);
     background-color: var(--vcp-app-bg-input);
     color: var(--vcp-app-text);
@@ -335,7 +334,7 @@ body {
     gap: var(--vcp-app-space-3);
     align-items: center;
     padding: var(--vcp-app-space-3);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     border-radius: var(--vcp-app-card-radius);
     background-color: var(--vcp-app-fill-1);
 }
@@ -365,7 +364,7 @@ body {
     height: 24px;
     border-radius: 999px;
     background-color: var(--vcp-app-bg-input);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     cursor: pointer;
     transition: background-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
         border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
