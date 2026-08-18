@@ -451,15 +451,29 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
     let mut local_by_key = HashMap::new();
     let mut local_ids = HashSet::new();
     for item in local {
-        anyhow::ensure!(
-            local_ids.insert(item.id.clone()),
-            "local manifest contains ambiguous topic id {}",
-            item.id
-        );
-        local_by_key.insert(
-            manifest_key(&item.id, item.owner_type, item.owner_id.as_deref()),
-            item,
-        );
+        let key = manifest_key(&item.id, item.owner_type, item.owner_id.as_deref());
+        if request.data_type == "topic" {
+            // topics 表 PK 为 (owner_type, owner_id, topic_id)：topic id 仅在
+            // 单个 owner 内唯一，跨 owner 重名（如每个 Agent 的 default 话题）
+            // 是合法数据形态。协议 1.1 下 topic 条目强制携带 ownerType/ownerId，
+            // diff 只走 manifest_key 精确匹配、不走 id-only 回退（歧义防护由
+            // unique_manifest_item_by_id 多匹配返回 None 承担），因此唯一性
+            // 按完整 key 校验；裸 id 全局查重会把多 owner 全量同步误报成 500。
+            anyhow::ensure!(
+                !local_by_key.contains_key(&key),
+                "local manifest contains duplicate topic key {}",
+                key
+            );
+        } else {
+            // agent/group manifest 按 owner_type 过滤查询，PK 已保证唯一；
+            // 此守卫仅作为 id-only 回退路径的防御性断言保留。
+            anyhow::ensure!(
+                local_ids.insert(item.id.clone()),
+                "local manifest contains ambiguous id {}",
+                item.id
+            );
+        }
+        local_by_key.insert(key, item);
     }
 
     let mut actions = Vec::new();
@@ -1919,7 +1933,11 @@ const fn is_zero(value: &usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, fs, sync::Arc};
+    use std::{
+        collections::{HashMap, HashSet},
+        fs,
+        sync::Arc,
+    };
 
     use super::{
         aggregate_hash, manifest, message_manifest, mobile_message_hash_from_json,
@@ -2466,6 +2484,84 @@ mod tests {
             .expect("push delete action");
         assert_eq!(action.action, "PUSH_DELETE");
         assert_eq!(action.deleted_at, Some(123));
+    }
+
+    /// 回归：topic id 仅在单个 owner 内唯一。多个 targeted owner 各自拥有
+    /// 同名 topic（如每个 Agent 的 default 话题）时，topic manifest diff 不得
+    /// 误报 "ambiguous topic id" 500——这正是全量全新同步（targetedOwners
+    /// 包含全部 owner）此前必炸的场景。
+    #[tokio::test]
+    async fn topic_manifest_allows_same_topic_id_across_targeted_owners() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        // agent-a 追加 default 话题（fixture 原本只有 topic-a）。
+        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/default"))
+            .expect("create agent-a default topic dir");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/default/history.json"),
+            br#"[{"id":"a1","role":"user","content":"hello from a","timestamp":1}]"#,
+        )
+        .expect("write agent-a default history");
+        fs::write(
+            config.app_data.join("Agents/agent-a/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent A",
+                "topics": [
+                    {"id":"topic-a","name":"Topic A","createdAt":1},
+                    {"id":"default","name":"Default","createdAt":1}
+                ]
+            }))
+            .expect("serialize agent-a config"),
+        )
+        .expect("rewrite agent-a config");
+        // agent-b 只有 default 话题，与 agent-a 的 default 跨 owner 同名。
+        fs::create_dir_all(config.app_data.join("Agents/agent-b")).expect("create agent-b");
+        fs::create_dir_all(config.user_data_dir.join("agent-b/topics/default"))
+            .expect("create agent-b default topic dir");
+        fs::write(
+            config.app_data.join("Agents/agent-b/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent B",
+                "topics": [{"id":"default","name":"Default","createdAt":1}]
+            }))
+            .expect("serialize agent-b config"),
+        )
+        .expect("write agent-b config");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-b/topics/default/history.json"),
+            br#"[{"id":"b1","role":"user","content":"hello from b","timestamp":1}]"#,
+        )
+        .expect("write agent-b default history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "topic".to_string(),
+                data: Vec::new(),
+                targeted_owners: Some(vec!["agent-a".to_string(), "agent-b".to_string()]),
+            },
+        )
+        .expect("cross-owner duplicate topic ids must not fail the manifest diff");
+
+        let pulls: Vec<_> = response
+            .data
+            .iter()
+            .filter(|action| action.id == "default" && action.action == "PULL")
+            .collect();
+        assert_eq!(
+            pulls.len(),
+            2,
+            "both owners' default topics must produce PULL actions"
+        );
+        let owners: HashSet<_> = pulls
+            .iter()
+            .filter_map(|action| action.owner_id.as_deref())
+            .collect();
+        assert!(owners.contains("agent-a") && owners.contains("agent-b"));
     }
 
     /// S3-β：已删 owner（目录已物理删除）不再炸掉 owner manifest。
