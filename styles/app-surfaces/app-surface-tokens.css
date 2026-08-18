@@ -23,7 +23,8 @@
         --vcp-app-accent: var(--highlight-text, var(--button-bg, oklch(0.75 0.14 85)));
         --vcp-app-accent-hover: var(--button-hover-bg, color-mix(in srgb, var(--vcp-app-accent) 88%, oklch(1 0 0)));
         --vcp-app-on-accent: var(--text-on-accent, oklch(0.15 0.02 230));
-        --vcp-app-border: var(--border-color, oklch(1 0 0 / 0.12));
+        --vcp-app-border: color-mix(in srgb, var(--vcp-app-text) 10%, transparent);
+        --vcp-app-border-subtle: color-mix(in srgb, var(--vcp-app-text) 6%, transparent);
         --vcp-app-border-strong: color-mix(in srgb, var(--vcp-app-accent) 36%, var(--vcp-app-border));
         --vcp-app-danger: var(--danger-color, oklch(0.6 0.2 25));
         --vcp-app-success: var(--success-color, oklch(0.65 0.17 150));
@@ -57,9 +58,16 @@
         --vcp-app-control-sm: 28px;
         --vcp-app-control-md: 32px;
         --vcp-app-control-lg: 36px;
-        --vcp-app-control-radius: 6px;
-        --vcp-app-card-radius: 8px;
+        --vcp-app-control-radius: 8px;
+        --vcp-app-card-radius: 12px;
+        --vcp-app-modal-radius: 16px;
+        --vcp-app-radius-pill: 999px;
         --vcp-app-radius-xs: 4px;
+
+        /* --- 图标尺寸（Lucide 基准：24 网格 stroke 图标） --- */
+        --vcp-app-icon-sm: 14px;
+        --vcp-app-icon-md: 16px;
+        --vcp-app-icon-lg: 18px;
 
         /* --- 间距阶梯 --- */
         --vcp-app-space-1: 4px;
@@ -79,10 +87,10 @@
         --vcp-app-line-body: 1.5;
         --vcp-app-line-relaxed: 1.65;
 
-        /* --- 阴影（深色默认） --- */
-        --vcp-app-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.24);
-        --vcp-app-shadow-md: 0 6px 18px oklch(0 0 0 / 0.3);
-        --vcp-app-shadow-lg: 0 16px 48px oklch(0 0 0 / 0.42);
+        /* --- 阴影（深色默认）：极淡，只给浮层 --- */
+        --vcp-app-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.2);
+        --vcp-app-shadow-md: 0 4px 12px oklch(0 0 0 / 0.24);
+        --vcp-app-shadow-lg: 0 0 1px oklch(1 0 0 / 0.1), 0 12px 32px oklch(0 0 0 / 0.4);
 
         /* --- 滚动条 --- */
         --vcp-app-scrollbar-size: 6px;
@@ -98,9 +106,9 @@
     body.vcp-app-surface.light-theme {
         color-scheme: light;
         --vcp-app-backdrop: oklch(0.2 0.01 240 / 0.28);
-        --vcp-app-shadow-sm: 0 1px 2px oklch(0.12 0.01 230 / 0.08);
-        --vcp-app-shadow-md: 0 8px 22px oklch(0.12 0.01 230 / 0.12);
-        --vcp-app-shadow-lg: 0 18px 48px oklch(0.12 0.01 230 / 0.18);
+        --vcp-app-shadow-sm: 0 1px 2px oklch(0.12 0.01 230 / 0.05);
+        --vcp-app-shadow-md: 0 4px 12px oklch(0.12 0.01 230 / 0.06);
+        --vcp-app-shadow-lg: 0 0 1px oklch(0.12 0.01 230 / 0.08), 0 12px 32px oklch(0.12 0.01 230 / 0.1);
     }
 
     /* 窄窗口收缩：内边距与标题栏先降一档，不断布局 */

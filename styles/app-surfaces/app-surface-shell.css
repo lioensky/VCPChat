@@ -34,9 +34,21 @@
         height: var(--vcp-app-header-height);
         flex: none;
         padding-inline: var(--vcp-app-page-gutter);
-        border-bottom: 1px solid var(--vcp-app-border);
+        border-bottom: 1px solid var(--vcp-app-border-subtle);
         background: var(--vcp-app-bg-raised);
         -webkit-app-region: drag;
+    }
+
+    /* 图标统一：头部动作 18px，窗口控制 12px（Lucide 24 网格等比缩放） */
+    body.vcp-app-surface .vcp-app-header-actions button svg,
+    body.vcp-app-surface .vcp-app-icon-btn svg {
+        width: var(--vcp-app-icon-lg);
+        height: var(--vcp-app-icon-lg);
+    }
+
+    body.vcp-app-surface .vcp-app-header .window-control-btn svg {
+        width: var(--vcp-app-icon-sm);
+        height: var(--vcp-app-icon-sm);
     }
 
     body.vcp-app-surface .vcp-app-header :is(button, a, input, select, [role="button"]) {
@@ -96,7 +108,6 @@
         flex: none;
         padding-block: var(--vcp-app-space-1);
         padding-inline: var(--vcp-app-page-gutter);
-        border-bottom: 1px solid var(--vcp-app-border);
     }
 
     body.vcp-app-surface .vcp-app-toolbar .vcp-app-toolbar-search {
@@ -147,7 +158,7 @@
         height: var(--vcp-app-footer-height);
         flex: none;
         padding-inline: var(--vcp-app-page-gutter);
-        border-top: 1px solid var(--vcp-app-border);
+        border-top: 1px solid var(--vcp-app-border-subtle);
         font-size: var(--vcp-app-font-caption);
         color: var(--vcp-app-text-secondary);
     }

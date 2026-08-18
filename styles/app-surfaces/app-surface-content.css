@@ -7,7 +7,7 @@
  * 加载态用 Skeleton 保持布局稳定。
  */
 @layer vcp.components {
-    /* --- 按钮 --- */
+    /* --- 按钮（胶囊几何 + 填充式，无描边） --- */
     body.vcp-app-surface .vcp-app-btn {
         display: inline-flex;
         align-items: center;
@@ -15,8 +15,8 @@
         gap: var(--vcp-app-space-1);
         height: var(--vcp-app-control-md);
         padding-inline: var(--vcp-app-space-3);
-        border: 1px solid var(--vcp-app-border);
-        border-radius: var(--vcp-app-control-radius);
+        border: 1px solid transparent;
+        border-radius: var(--vcp-app-radius-pill);
         background: var(--vcp-app-fill-2);
         color: var(--vcp-app-text);
         font-size: var(--vcp-app-font-body);
@@ -95,12 +95,18 @@
         height: var(--vcp-app-control-sm);
         flex: none;
         border: none;
-        border-radius: var(--vcp-app-control-radius);
+        border-radius: var(--vcp-app-radius-pill);
         background: transparent;
         color: var(--vcp-app-text-secondary);
         cursor: pointer;
         transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
             color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+    }
+
+    /* 工具栏内图标 16px */
+    body.vcp-app-surface .vcp-app-toolbar button svg {
+        width: var(--vcp-app-icon-md);
+        height: var(--vcp-app-icon-md);
     }
 
     body.vcp-app-surface .vcp-app-icon-btn:hover {
@@ -184,11 +190,12 @@
         text-overflow: ellipsis;
     }
 
-    /* --- 卡片（仅用于可重复对象或确需边界的工具，不嵌套） --- */
+    /* --- 卡片（hairline + 淡阴影，仅用于可重复对象或确需边界的工具，不嵌套） --- */
     body.vcp-app-surface .vcp-app-card {
         background: var(--vcp-app-bg-raised);
-        border: 1px solid var(--vcp-app-border);
+        border: 1px solid var(--vcp-app-border-subtle);
         border-radius: var(--vcp-app-card-radius);
+        box-shadow: var(--vcp-app-shadow-sm);
         padding: var(--vcp-app-space-4);
     }
 

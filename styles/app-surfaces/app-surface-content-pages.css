@@ -10,7 +10,7 @@
   /* --- 平面化玻璃表面：glass 成为"抬升卡片"的别名 --- */
   body.vcp-app-surface .glass {
     background: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
+    border: 1px solid var(--vcp-app-border-subtle);
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -36,7 +36,7 @@
     padding: 0;
     background: transparent;
     border: none;
-    border-radius: var(--vcp-app-control-radius);
+    border-radius: var(--vcp-app-radius-pill);
     color: var(--vcp-app-text-secondary);
     cursor: pointer;
     display: inline-flex;
@@ -99,8 +99,8 @@
     min-height: var(--vcp-app-control-md);
     padding: 0 var(--vcp-app-space-4);
     background: var(--vcp-app-accent);
-    border: 1px solid var(--vcp-app-accent);
-    border-radius: var(--vcp-app-control-radius);
+    border: 1px solid transparent;
+    border-radius: var(--vcp-app-radius-pill);
     color: var(--vcp-app-on-accent);
     font-family: inherit;
     font-size: var(--vcp-app-font-body);
@@ -125,9 +125,9 @@
     -webkit-appearance: none;
     min-height: var(--vcp-app-control-md);
     padding: 0 var(--vcp-app-space-3);
-    background: transparent;
-    border: 1px solid var(--vcp-app-border);
-    border-radius: var(--vcp-app-control-radius);
+    background: var(--vcp-app-fill-2);
+    border: 1px solid transparent;
+    border-radius: var(--vcp-app-radius-pill);
     color: var(--vcp-app-text);
     font-family: inherit;
     font-size: var(--vcp-app-font-body);
@@ -145,13 +145,11 @@
   }
 
   body.vcp-app-surface .glass-btn:hover {
-    background: var(--vcp-app-fill-2);
-    border-color: var(--vcp-app-border-strong);
+    background: var(--vcp-app-fill-3);
   }
 
   body.vcp-app-surface .glass-btn.primary {
     background: var(--vcp-app-accent);
-    border-color: var(--vcp-app-accent);
     color: var(--vcp-app-on-accent);
   }
 
@@ -166,12 +164,10 @@
 
   body.vcp-app-surface .glass-btn.danger:hover {
     background: var(--vcp-app-danger-bg);
-    border-color: var(--vcp-app-danger);
   }
 
   body.vcp-app-surface .glass-btn.danger-solid {
     background: var(--vcp-app-danger);
-    border-color: var(--vcp-app-danger);
     color: var(--vcp-app-on-accent);
   }
 
@@ -194,8 +190,8 @@
     overflow-y: auto;
     padding: var(--vcp-app-space-5);
     background: var(--vcp-app-bg-raised);
-    border: 1px solid var(--vcp-app-border);
-    border-radius: var(--vcp-app-card-radius);
+    border: 1px solid var(--vcp-app-border-subtle);
+    border-radius: var(--vcp-app-modal-radius);
     box-shadow: var(--vcp-app-shadow-lg);
   }
 }
