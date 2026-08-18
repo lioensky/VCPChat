@@ -72,7 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         Array.from(modelSelect.options).forEach((option) => {
             const modelName = translatorSettings.models[option.value] || DEFAULT_TRANSLATOR_SETTINGS.models[option.value] || '';
-            option.textContent = `${labels[option.value] || option.value} · ${modelName}`;
+            // 选项只显示模式名；具体模型见 tooltip 与设置弹窗
+            option.textContent = labels[option.value] || option.value;
             option.title = modelName;
         });
     };

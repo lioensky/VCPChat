@@ -43,17 +43,20 @@ body {
     border-bottom: 1px solid var(--vcp-app-border);
 }
 
-.translator-header h2 {
-    margin: 0;
-    font-size: var(--vcp-app-font-title);
-    color: var(--vcp-app-text);
-}
-
 .translator-controls {
     display: flex;
     gap: var(--vcp-app-space-2);
     align-items: center;
     flex-wrap: wrap;
+}
+
+/* 低频输入：收起默认宽度，聚焦时放宽 */
+#customPromptVar {
+    width: 140px;
+}
+
+#customPromptVar:focus {
+    width: 220px;
 }
 
 /* 输入控件 (下拉、输入框) 统一样式 */

@@ -33,7 +33,6 @@
     </div>
     <div class="translator-container">
         <header class="translator-header vcp-app-toolbar">
-            <h2>翻译助手</h2>
             <div class="translator-controls vcp-app-toolbar-group vcp-app-toolbar-group--end">
                 <select id="modelSelect" class="vcp-app-input">
                     <option value="fast">快速</option>
@@ -50,12 +49,12 @@
                     <option value="es">西班牙语</option>
                     <option value="custom">自定义</option>
                 </select>
-                <input type="text" id="customPromptVar" class="vcp-app-input" placeholder="自定义提示词 (可选)">
+                <input type="text" id="customPromptVar" class="vcp-app-input" placeholder="提示词（可选）" title="自定义提示词，留空使用默认翻译行为">
                 <button id="translateBtn" class="vcp-app-btn vcp-app-btn--primary">翻译</button>
             </div>
         </header>
         <main class="translator-main">
-            <textarea id="sourceText" placeholder="输入要翻译的文本..." rows="10"></textarea>
+            <textarea id="sourceText" placeholder="输入或粘贴要翻译的文本…" rows="10"></textarea>
             <!-- 包裹文本框和按钮的容器 -->
             <div class="output-area">
                 <textarea id="translatedText" placeholder="翻译结果将显示在这里..." rows="10" readonly></textarea>
