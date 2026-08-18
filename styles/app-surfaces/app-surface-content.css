@@ -279,6 +279,17 @@
         color: var(--vcp-app-danger);
     }
 
+    /* legacy .empty-state（Plugin Manager / Log 等页面的 JS 直接生成该类名）
+       统一为同一套空态视觉：居中次要文字 + 虚线占位卡片 */
+    body.vcp-app-surface .empty-state {
+        padding: var(--vcp-app-space-5);
+        color: var(--vcp-app-text-secondary);
+        font-size: var(--vcp-app-font-body);
+        text-align: center;
+        border: 1px dashed var(--vcp-app-border);
+        border-radius: var(--vcp-app-card-radius);
+    }
+
     /* --- Skeleton：加载时保持布局稳定 --- */
     body.vcp-app-surface .vcp-app-skeleton {
         border-radius: var(--vcp-app-control-radius);

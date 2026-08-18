@@ -245,13 +245,15 @@ body {
     font-weight: 700;
 }
 
-/* --- 空态 --- */
+/* --- 空态（覆盖共享 .empty-state 的占位卡片样式：日志区用居中文本浮层） --- */
 .empty-state {
     position: absolute;
     inset: 0;
     display: none;
     align-items: center;
     justify-content: center;
+    padding: 0;
+    border: none;
     color: var(--vcp-app-text-secondary);
     font-size: var(--vcp-app-font-body);
     pointer-events: none;

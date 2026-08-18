@@ -15,7 +15,7 @@ body {
     flex-direction: column;
     padding: var(--vcp-app-page-gutter);
     /* 为固定标题栏留出空间 */
-    padding-top: calc(40px + var(--vcp-app-space-2));
+    padding-top: calc(var(--vcp-app-header-height) + var(--vcp-app-space-2));
     box-sizing: border-box;
 }
 
@@ -170,19 +170,20 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    height: 40px;
+    height: var(--vcp-app-header-height);
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0 var(--vcp-app-space-4);
-    background-color: transparent;
+    background-color: var(--vcp-app-bg-raised);
+    border-bottom: 1px solid var(--vcp-app-border);
     z-index: 1000;
     -webkit-app-region: drag;
     user-select: none;
 }
 
 #custom-title-bar .title {
-    font-size: var(--vcp-app-font-body);
+    font-size: var(--vcp-app-font-emphasis);
     font-weight: 600;
     color: var(--vcp-app-text);
     -webkit-app-region: no-drag;
@@ -195,8 +196,8 @@ body {
 }
 
 .window-control-btn {
-    width: 30px;
-    height: 30px;
+    width: var(--vcp-app-control-sm);
+    height: var(--vcp-app-control-sm);
     border: none;
     background-color: transparent;
     color: var(--vcp-app-text-secondary);

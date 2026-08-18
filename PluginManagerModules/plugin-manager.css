@@ -719,15 +719,8 @@ input:checked + .switch-slider::before {
     flex-wrap: wrap;
 }
 
-/* --- 空态 --- */
-.empty-state {
-    padding: var(--vcp-app-space-5);
-    color: var(--vcp-app-text-secondary);
-    text-align: center;
-    border: 1px dashed var(--vcp-app-border);
-    border-radius: var(--vcp-app-card-radius);
-    grid-column: 1 / -1;
-}
+/* --- 空态：共享层 vcp.components 的 .empty-state 提供视觉，
+   网格跨列由 app-surface-plugin-manager.css（vcp.page）负责 --- */
 
 /* --- Toast --- */
 #toast-container {
