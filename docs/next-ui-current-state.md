@@ -62,6 +62,8 @@
 | Ask Nova 与聊天模式交互合同 | 已完成核心范围 | Ask Nova tabs 使用 roving tabindex/方向键/tabpanel 关系；聊天模式浮层同步 `aria-hidden`/`inert`，保存按最新意图串行化 |
 | Native Modal 可访问名称 | 已完成核心范围 | VCPUI native dialog 生成稳定 `aria-labelledby` 与标题节点；contract test 覆盖 |
 | 兼容确认框模态语义 | 已完成核心范围 | 上游 `showConfirmDialog` 保留原 API，但补齐同步 active 状态、dialog/aria-modal、焦点陷阱、Escape 捕获和焦点恢复 |
+| 动态应用标签与设置导航可访问性 | 已完成核心范围 | 动态标签使用独立 tab button、关闭 sibling 与 labelled tabpanel；全局设置分类使用垂直 tablist、方向键/Home/End 与 section 关系 |
+| 应用托盘设置弹窗 | 已完成核心范围 | 保留上游托盘 API，补齐 dialog 语义、焦点陷阱、Escape owner 与迟到 overlay acquire 的安全释放 |
 
 最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
