@@ -87,14 +87,14 @@
             // load to reach a terminal state before SurfaceController chooses.
             // A genuine load failure is an application-integrity error in the
             // packaged desktop app. Do not disguise it as a second UI.
+            let webAwesomeReady = false;
             try {
                 await webAwesome.loadComponents();
                 const missing = REQUIRED_WEB_AWESOME_COMPONENTS.filter(tag => !webAwesome.isDefined(tag));
-                if (missing.length) throw new Error(`Web Awesome components were not defined: ${missing.join(', ')}`);
+                webAwesomeReady = missing.length === 0;
+                if (!webAwesomeReady) console.warn(`[NextUI] Creation Web Awesome components missing; using native kernel: ${missing.join(', ')}`);
             } catch (kernelError) {
-                console.error('[NextUI] Web Awesome creation kernel unavailable:', kernelError);
-                this.showUnavailable('创建界面组件加载失败，请按 Ctrl+R 重新加载应用。');
-                return;
+                console.warn('[NextUI] Web Awesome creation kernel unavailable; using native kernel:', kernelError);
             }
             if (!this.mounted || generation !== this.generation) return;
 
@@ -143,6 +143,7 @@
                 label: 'next:create-item-modal',
                 ownerScope: this.scope,
                 getUi: this.getUi,
+                kernelPreference: webAwesomeReady ? 'web-awesome' : 'native',
             });
             await surface.mount(host, context => {
                 buildControls((name, options) => context.create(name, options));
@@ -152,13 +153,9 @@
                 },
             });
             if (surface.fallback) {
-                await surface.dispose('create-surface-fallback');
-                this.showUnavailable();
-                return;
-            }
-            if (surface.kernel !== 'web-awesome') {
-                await surface.dispose('create-kernel-unavailable');
-                this.showUnavailable('创建界面组件尚未就绪，请按 Ctrl+R 重新加载应用。');
+                console.warn('[NextUI] Creation surface render failed; fallback content is active.');
+                await surface.dispose('create-surface-render-failed');
+                this.showUnavailable('创建界面无法完成初始化，请稍后重试。');
                 return;
             }
             const dialogScope = surface.scope;

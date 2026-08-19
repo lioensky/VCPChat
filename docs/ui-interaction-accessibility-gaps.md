@@ -22,6 +22,8 @@
 
 当前 A4 证据：`test:ui-motion-contract` 已接入 `check:ui-system`，检查高频 Surface 存在 reduced-motion 规则且不会保留非零动画时长；它不替代 Electron 的 reduced-motion、DPI、GPU 和 WA/native fallback 矩阵，后者仍是未完成证据。
 
+创建 Surface 的 fallback 已修复：Web Awesome 加载失败或组件缺失时，`CreationController` 现在明确选择 `SurfaceController` 的 native kernel，仍复用同一字段、校验、提交命令、overlay lease 和 teardown；组件渲染中途失败仍原子销毁并提示错误。单元测试覆盖终端 kernel 失败和部分构建失败，真实 Electron 的 native/WA 视觉与键盘等价性仍待补。
+
 当前 A3 状态矩阵：`scripts/ui-async-state-matrix.json` 和 `guard:ui-async-state` 已把创建、设置、Ask Nova、聊天流和内嵌应用统一要求为 idle/loading/success/failure/cancelled/late-result-after-dispose 六类终态，并绑定生产源文件和测试入口；门禁证明覆盖清单完整，不宣称每条终态的真实 Electron 证据已经完成。
 
 当前 A5 任务矩阵：`scripts/ui-task-journey-matrix.json` 和 `guard:ui-task-journeys` 已登记启动主题、通知、创建、设置、Ask Nova、内嵌应用和聊天流七条真实入口任务；它只验证入口与证据绑定，实际 Electron 世界状态和跨平台视觉基线仍需后续执行。

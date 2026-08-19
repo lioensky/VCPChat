@@ -184,7 +184,7 @@ test('disposing while the creation kernel loads prevents a late surface mount', 
     dom.window.close();
 });
 
-test('a terminal Web Awesome load failure exposes an error without mounting a second UI', async () => {
+test('a terminal Web Awesome load failure mounts the same creation surface with native kernel', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
     const ui = createUi(dom.window);
     const unavailable = [];
@@ -201,9 +201,9 @@ test('a terminal Web Awesome load failure exposes an error without mounting a se
     });
     controller.mount();
     await controller.open();
-    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null);
-    assert.equal(ui.controls.length, 0, 'kernel failure must not construct native substitutes');
-    assert.deepEqual(unavailable, ['创建界面组件加载失败，请按 Ctrl+R 重新加载应用。']);
+    assert.equal(dom.window.document.querySelectorAll('.next-ui-create-dialog-host').length, 1);
+    assert.ok(ui.controls.length > 0, 'kernel failure must retain the native creation surface');
+    assert.deepEqual(unavailable, []);
     dom.window.close();
 });
 
