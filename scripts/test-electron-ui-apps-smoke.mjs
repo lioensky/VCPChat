@@ -932,6 +932,13 @@ try {
     assert.equal(narrowDock.iconsVisible, true, `narrow notification dock icons are clipped: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.buttonOverflow, false, `narrow notification dock buttons overflow: ${JSON.stringify(narrowDock)}`);
     await page.$eval('#appTrayPinnedApps > .capsule-button', button => button.focus());
+    // Programmatic focus is intentionally not :focus-visible in Chromium.
+    // Move away and back with real keyboard input so this assertion exercises
+    // the shipped keyboard modality rather than forcing a pseudo-state.
+    await page.keyboard.press('Tab');
+    await page.keyboard.down('Shift');
+    await page.keyboard.press('Tab');
+    await page.keyboard.up('Shift');
     await new Promise(resolve => setTimeout(resolve, 220));
     const dockTooltip = await page.$eval('#appTrayPinnedApps > .capsule-button', button => ({
         label: button.getAttribute('aria-label'),
