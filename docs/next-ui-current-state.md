@@ -102,7 +102,7 @@ P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement
 
 ## 6. 当前 PR 就绪判断
 
-当前分支已完成 P0–P3 与 P4 自动化门禁。分支基线最后一次施工同步为 `upstream/main` `3da77f00`；随后已只读审计当前 `upstream/main` `94923696` 的 7 个新提交：聊天气泡边界提交与本路线相关但尚未回移，VCPMobileSync/Rust 更新属于独立上游范围，暂不合并以避免扩大本路线和插件/数据服务边界。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
+当前分支已完成 P0–P3 与 P4 自动化门禁。分支基线最后一次施工同步为 `upstream/main` `3da77f00`；随后已只读审计当前 `upstream/main` `94923696` 的 7 个新提交：其中聊天气泡边界提交 `fabcbbd1` 已由本分支既有 `14b47e74` 等价实现覆盖（`styles/chat.css` 哈希一致），无需重复合并；VCPMobileSync/Rust 更新属于独立上游范围，暂不合并以避免扩大本路线和插件/数据服务边界。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
 
 Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字节；门禁现统一按 LF 文本语义计算 SHA-256，并用 LF/CRLF 等价断言防复发。Web Awesome 生成产物通过 `.gitattributes` 仅在 `vendor/webawesome-runtime/**` 禁用 text conversion 和 whitespace diagnostics；源码检查保持启用，pack check 会验证该属性没有丢失。
 

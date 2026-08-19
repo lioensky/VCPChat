@@ -184,7 +184,7 @@ await feedback.dispose();
 
 ## 8. P4：PR 证据与交付
 
-> 状态（2026-08-20）：分支最近一次施工同步基于 `upstream/main` `3da77f00`；当前远程 `upstream/main` 已到 `94923696`，新增提交已完成只读归因。聊天气泡边界提交待单独评估，VCPMobileSync/Rust 更新不纳入本路线。macOS 上 UI System、Electron smoke、主聊天序列、20 轮生命周期压力、离线 closure、pack check 与完整 diff check 全部通过；剩余发布证据为上游增量重新归因、Windows 复验、签名 packaged launch 和 30–60 分钟人工 soak，完成前不标记 P4 全部完成。
+> 状态（2026-08-20）：分支最近一次施工同步基于 `upstream/main` `3da77f00`；当前远程 `upstream/main` 已到 `94923696`，新增提交已完成只读归因。聊天气泡边界提交 `fabcbbd1` 已确认由本分支既有 `14b47e74` 等价覆盖；VCPMobileSync/Rust 更新不纳入本路线。macOS 上 UI System、Electron smoke、主聊天序列、20 轮生命周期压力、离线 closure、pack check 与完整 diff check 全部通过；剩余发布证据为 Windows 复验、签名 packaged launch 和 30–60 分钟人工 soak，完成前不标记 P4 全部完成。
 
 ### 8.1 每次提交最小检查
 
