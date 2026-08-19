@@ -184,7 +184,7 @@ await feedback.dispose();
 
 ## 8. P4：PR 证据与交付
 
-> 状态（2026-08-17）：已同步 `upstream/main` `a9b36d8d`，macOS 上 UI System、Electron smoke、主聊天序列、20 轮生命周期压力、离线 closure、pack check 与完整 diff check 全部通过。CRLF/LF 冻结基线和生成 vendor whitespace 策略已跨平台化。剩余发布证据为同步后的 Windows 复验和 30–60 分钟人工 soak；完成前不标记 P4 全部完成。
+> 状态（2026-08-20）：分支最近一次施工同步基于 `upstream/main` `3da77f00`；当前远程 `upstream/main` 已到 `94923696`，新增提交已完成只读归因。聊天气泡边界提交待单独评估，VCPMobileSync/Rust 更新不纳入本路线。macOS 上 UI System、Electron smoke、主聊天序列、20 轮生命周期压力、离线 closure、pack check 与完整 diff check 全部通过；剩余发布证据为上游增量重新归因、Windows 复验、签名 packaged launch 和 30–60 分钟人工 soak，完成前不标记 P4 全部完成。
 
 ### 8.1 每次提交最小检查
 

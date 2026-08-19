@@ -102,7 +102,7 @@ P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement
 
 ## 6. 当前 PR 就绪判断
 
-当前分支已完成 P0–P3 与 P4 自动化门禁。2026-08-19 基于 `upstream/main` `3da77f00` 更新了共享 settings 基线，并恢复了被历史提交链遗漏的优先级 Escape dispatcher 与 Launchpad 键盘/降级监听所有权。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
+当前分支已完成 P0–P3 与 P4 自动化门禁。分支基线最后一次施工同步为 `upstream/main` `3da77f00`；随后已只读审计当前 `upstream/main` `94923696` 的 7 个新提交：聊天气泡边界提交与本路线相关但尚未回移，VCPMobileSync/Rust 更新属于独立上游范围，暂不合并以避免扩大本路线和插件/数据服务边界。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
 
 Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字节；门禁现统一按 LF 文本语义计算 SHA-256，并用 LF/CRLF 等价断言防复发。Web Awesome 生成产物通过 `.gitattributes` 仅在 `vendor/webawesome-runtime/**` 禁用 text conversion 和 whitespace diagnostics；源码检查保持启用，pack check 会验证该属性没有丢失。
 
@@ -115,7 +115,7 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 - Web Awesome closure：101 files、0.46 MiB，可重复生成；pack check 通过。
 - `git diff --check upstream/main...HEAD`：通过。
 
-尚未完成的发布证据只有同步后 Windows 复验和 30–60 分钟人工 soak。二者不应由 macOS 自动结果代替，因此当前状态是“代码与自动门禁就绪，跨平台/人工发布证据待补”。本分支明确不携带 `.github/workflows/**`，跨平台验证由外部 Windows 环境或上游 CI 执行。
+尚未完成的发布证据包括当前上游增量重新归因、Windows 复验、签名/可见桌面环境中的 packaged launch 和 30–60 分钟人工 soak。二者不应由 macOS 自动结果代替，因此当前状态是“代码与自动门禁就绪，跨平台/打包/人工发布证据待补”。本分支明确不携带 `.github/workflows/**`，跨平台验证由外部 Windows 环境或上游 CI 执行。
 
 2026-08-19 Harness 路线最新自动证据：`test:ui-system` 86/86，Electron UI Apps 22/22，主聊天序列 24 actions / 11 action kinds / 21 pairs / 12 transitions / 2 faults，生命周期压力 3 次预热加 20 次测量后保持 873 listener、8 Scope、174 项受管资源和 5 个 Electron process，detached root/icon/option 为 0，heap 约 10.2 MiB → 10.1 MiB；Web Awesome 101 文件 closure 与 pack check 通过。这些数字是该次 macOS 运行证据，不替代 Windows 与人工 soak。
 
