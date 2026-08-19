@@ -22,6 +22,7 @@
             this.tones = options.tones || DEFAULT_TONES;
             this.scope = null;
             this.renderScope = null;
+            this.abortController = null;
             this.mounted = false;
         }
 
@@ -41,11 +42,15 @@
                 const previous = this.renderScope;
                 this.renderScope = null;
                 void previous.dispose('launchpad-rerender').catch(error => console.error('[NextUI] Failed to dispose launchpad listeners:', error));
+            } else {
+                this.abortController?.abort();
+                const AbortControllerConstructor = this.document.defaultView?.AbortController || AbortController;
+                this.abortController = new AbortControllerConstructor();
             }
             this.renderScope = this.scope?.child('next:app-grid') || null;
             const listen = (target, handler) => this.renderScope
                 ? this.renderScope.listen(target, 'click', handler, undefined, 'launchpad:click')
-                : target.addEventListener('click', handler);
+                : target.addEventListener('click', handler, { signal: this.abortController.signal });
             const listenKeydown = target => {
                 const handler = event => {
                     if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -66,7 +71,7 @@
                 };
                 return this.renderScope
                     ? this.renderScope.listen(target, 'keydown', handler, undefined, 'launchpad:keydown')
-                    : target.addEventListener('keydown', handler);
+                    : target.addEventListener('keydown', handler, { signal: this.abortController.signal });
             };
             grid.replaceChildren();
             this.getExternalApps().filter(app => app.id !== 'vchat-app-main').forEach((app, index) => {
@@ -103,6 +108,8 @@
             const current = this.renderScope;
             this.renderScope = null;
             if (current) void current.dispose('launchpad-dispose');
+            this.abortController?.abort();
+            this.abortController = null;
             this.scope = null;
         }
     }
