@@ -16,6 +16,8 @@
 
 当前 A1 证据：`npm run guard:ui-interaction` 已接入 `check:ui-system`，验证清单中的生产入口、ARIA 控件目标和静态隐藏焦点内容；动态 App Tab 已支持 Arrow/Home/End，账户菜单已支持 roving focus，单元测试覆盖这些路径；真实 Electron 键盘矩阵仍需在后续交付证据中完成。
 
+当前 A2 证据：`OverlayCoordinator` 的 modal lease 已记录 root/generation，旧 Surface 的迟到关闭事件不会释放重开后的新 lease；`tests/overlay-coordinator.test.js` 覆盖该故障注入。Select、创建、设置和 Ask Nova 的完整真实 Electron overlay 矩阵仍未完成。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。

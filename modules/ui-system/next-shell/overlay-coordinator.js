@@ -88,17 +88,24 @@
             if (event.detail?.active === true) {
                 if (this.modalOwners.has(modalId)) return;
                 const owner = Symbol(`modal-overlay:${modalId}`);
-                this.modalOwners.set(modalId, owner);
+                this.modalOwners.set(modalId, {
+                    owner,
+                    root: event.detail?.root || this.document.getElementById(modalId) || null,
+                    generation: event.detail?.generation ?? null,
+                });
                 void this.acquire(owner).catch(error => {
-                    if (this.modalOwners.get(modalId) === owner) this.modalOwners.delete(modalId);
+                    if (this.modalOwners.get(modalId)?.owner === owner) this.modalOwners.delete(modalId);
                     this.warn(`[NextUI] Failed to acquire overlay for modal ${modalId}:`, error);
                 });
                 return;
             }
-            const owner = this.modalOwners.get(modalId);
-            if (!owner) return;
+            const record = this.modalOwners.get(modalId);
+            if (!record) return;
+            if (event.detail?.root && record.root && event.detail.root !== record.root) return;
+            if (event.detail?.generation != null && record.generation != null
+                && event.detail.generation !== record.generation) return;
             this.modalOwners.delete(modalId);
-            this.release(owner);
+            this.release(record.owner);
         }
 
         reconcileVisibleModals() {

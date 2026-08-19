@@ -6,6 +6,7 @@
     let croppedAgentAvatarFile = null;
     let croppedUserAvatarFile = null;
     let croppedGroupAvatarFile = null;
+    const modalGenerations = new Map();
 
     const uiHelperFunctions = {};
     const textareaResizeStates = new WeakMap();
@@ -342,9 +343,11 @@
         }
 
         if (modalElement) {
+            const generation = (modalGenerations.get(modalId) || 0) + 1;
+            modalGenerations.set(modalId, generation);
             modalElement.classList.add('active');
             document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
-                detail: { modalId, active: true }
+                detail: { modalId, active: true, root: modalElement, generation }
             }));
             // 确保新打开的模态框获得焦点
             modalElement.focus();
@@ -362,7 +365,7 @@
         if (modalElement) {
             modalElement.classList.remove('active');
             document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
-                detail: { modalId, active: false }
+                detail: { modalId, active: false, root: modalElement, generation: modalGenerations.get(modalId) || 0 }
             }));
         }
     };

@@ -70,3 +70,29 @@ test('dispose clears leases, retracts fallback listeners and is idempotent', asy
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(calls.hide, 1, 'disposed coordinator must not respond to later modal events');
 });
+
+test('stale close from an older modal root cannot release a reopened modal lease', async () => {
+    const { dom, coordinator } = createFixture();
+    const oldRoot = dom.window.document.getElementById('settings');
+    coordinator.mount();
+    await new Promise(resolve => setImmediate(resolve));
+    oldRoot.classList.remove('active');
+    dom.window.document.dispatchEvent(new dom.window.CustomEvent('modal-visibility-changed', {
+        detail: { modalId: 'settings', active: false, root: oldRoot, generation: 1 },
+    }));
+    const newRoot = oldRoot.cloneNode(true);
+    newRoot.classList.add('active');
+    oldRoot.replaceWith(newRoot);
+    dom.window.document.dispatchEvent(new dom.window.CustomEvent('modal-visibility-changed', {
+        detail: { modalId: 'settings', active: true, root: newRoot, generation: 2 },
+    }));
+    dom.window.document.dispatchEvent(new dom.window.CustomEvent('modal-visibility-changed', {
+        detail: { modalId: 'settings', active: false, root: oldRoot, generation: 1 },
+    }));
+    assert.equal(coordinator.active, true);
+    dom.window.document.dispatchEvent(new dom.window.CustomEvent('modal-visibility-changed', {
+        detail: { modalId: 'settings', active: false, root: newRoot, generation: 2 },
+    }));
+    assert.equal(coordinator.active, false);
+    coordinator.dispose();
+});

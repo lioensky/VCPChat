@@ -47,7 +47,7 @@ open
 |---|---|---|---|---|
 | A0 事实与风险基线 | 进行中 | 盘点所有交互层、焦点入口、ARIA 和真实消费者 | `scripts/ui-interaction-inventory.json`、缺口报告、审计门禁 | 每个高频 Surface 有 owner、触发源和终态负责人，且清单引用真实入口 |
 | A1 基础交互合同 | 进行中 | 统一 IconButton、focus-visible、ARIA 状态和 Escape 作用域 | 基础规则、静态 gate、键盘工具 | 主窗口关键导航和菜单通过键盘/ARIA 矩阵 |
-| A2 Modal/Popover/Select 内核 | 未开始 | 消除误关闭、焦点丢失和层级竞争 | Overlay/Focus contract、真实测试 | 创建、设置、Ask Nova、Account Menu、托盘路径闭环 |
+| A2 Modal/Popover/Select 内核 | 进行中 | 消除误关闭、焦点丢失和层级竞争 | Overlay/Focus contract、真实测试 | 创建、设置、Ask Nova、Account Menu、托盘路径闭环 |
 | A3 异步终态与错误恢复 | 未开始 | 统一 loading、disabled、error、提交和取消行为 | 页面状态矩阵、错误字段合同 | 成功/失败/取消/迟到 Promise 均有唯一终态 |
 | A4 主题、动画、DPI 与 fallback | 未开始 | 让视觉内核和平台降级遵守同一交互合同 | 主题真源 gate、motion/DPI 矩阵 | Windows/macOS 关键主题和窗口尺寸通过视觉与键盘验证 |
 | A5 页面模式和任务级回归 | 未开始 | 把设置、创建、搜索、App、聊天变成固定工作流 | Task journey tests、截图基线 | 高频任务可从真实入口完成并验证世界状态 |
