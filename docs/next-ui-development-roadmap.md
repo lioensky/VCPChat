@@ -4,6 +4,8 @@
 > 基线日期：2026-08-17<br>
 > 当前事实与完成度：[`next-ui-current-state.md`](./next-ui-current-state.md)
 
+交互、键盘、焦点、ARIA、异步终态、主题/DPI/fallback 和任务级视觉回归的完整施工路线见 [`ui-interaction-accessibility-roadmap.md`](./ui-interaction-accessibility-roadmap.md)。该路线建立在 P1–P3 之上，不重新打开已完成的架构减法，也不提前迁移业务子页面。
+
 ## 1. 路线目标
 
 后续工作的重点不是继续搭建抽象，而是把已经形成的唯一主窗口 presentation 收敛成一个边界清楚、可证明稳定、适合上游长期维护的增量。
@@ -40,6 +42,8 @@
 | P4 PR 证据与交付 | 自动化完成；人工待验 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
 | P5 合入后稳定周期 | 未开始 | 观察真实环境，不扩张架构 | 一个稳定发布周期无资源和恢复阻塞 |
 | P6 按业务逐页演进 | 条件式远期 | 只在真实需求出现时迁移一个子页面 | 页面独立 PR，consumer/runtime/test 同时进入 |
+
+| 交互与可访问性行为合同 | 规划中 | 将键盘/焦点/ARIA、Modal/Select、异步终态、主题/DPI/fallback 和任务级视觉回归纳入真实 Electron 证据 | [`ui-interaction-accessibility-roadmap.md`](./ui-interaction-accessibility-roadmap.md) 的 A0–A6 全部退出；A7 仍按真实需求条件式执行 |
 
 P0–P4 是当前上游 PR 的实际路线。P5–P6 不阻塞当前施工，也不得提前把实现放入本 PR。
 
