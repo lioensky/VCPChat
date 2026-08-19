@@ -15,6 +15,9 @@ for (const surface of inventory.surfaces) {
   for (const field of ['owner', 'triggerIds', 'focusEntry', 'escape', 'terminal', 'test']) {
     if (!surface[field] || (Array.isArray(surface[field]) && surface[field].length === 0)) errors.push(`${surface.id}: missing ${field}`);
   }
+  if (surface.test && !fs.existsSync(path.join(root, surface.test))) {
+    errors.push(`${surface.id}: evidence test file not found: ${surface.test}`);
+  }
   if (!(surface.rootIds?.length || surface.rootSelectors?.length || surface.dynamicRootIds?.length)) errors.push(`${surface.id}: missing root declaration`);
   for (const selector of surface.rootSelectors || []) {
     if (!selector || !(html.includes(selector.replace(/^\./, '')) || askNovaSource.includes(selector.replace(/^\./, '')))) errors.push(`${surface.id}: dynamic root selector not represented in source: ${selector}`);
