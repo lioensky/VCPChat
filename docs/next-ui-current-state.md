@@ -52,6 +52,7 @@
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
 | Escape 与键盘导航所有权 | 已完成核心范围 | 优先级 Escape dispatcher、Launchpad 方向键/Home/End、controller fallback listener dispose 回归 |
+| 通知菜单单一所有者 | 已完成 | 旧 `event-listeners` 重复绑定已停用；controller 单测与 Electron 命令计数证明每个动作只执行一次 |
 
 最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
@@ -101,6 +102,8 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 - `git diff --check upstream/main...HEAD`：通过。
 
 尚未完成的发布证据只有同步后 Windows 复验和 30–60 分钟人工 soak。二者不应由 macOS 自动结果代替，因此当前状态是“代码与自动门禁就绪，跨平台/人工发布证据待补”。本分支明确不携带 `.github/workflows/**`，跨平台验证由外部 Windows 环境或上游 CI 执行。
+
+2026-08-19 Harness 路线最新自动证据：`test:ui-system` 86/86，Electron UI Apps 22/22，主聊天序列 24 actions / 11 action kinds / 21 pairs / 12 transitions / 2 faults，生命周期压力 3 次预热加 20 次测量后保持 873 listener、8 Scope、174 项受管资源和 5 个 Electron process，detached root/icon/option 为 0，heap 约 10.2 MiB → 10.1 MiB；Web Awesome 101 文件 closure 与 pack check 通过。这些数字是该次 macOS 运行证据，不替代 Windows 与人工 soak。
 
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 

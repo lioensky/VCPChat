@@ -1,6 +1,6 @@
 # VCPChat UI 交互与可访问性行为合同路线
 
-> 状态：规划中  
+> 状态：施工中
 > 基线：P1–P3 已完成，P4 仍需同步后的 Windows 复验与人工 soak   
 > 目的：把“可访问性、键盘、焦点、异步终态、视觉稳定性和资源清理”从分散的实现细节提升为可重复验证的 UI 行为合同。  
 > 上位路线：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)  
@@ -55,6 +55,8 @@ open
 | A7 条件式逐页演进 | 条件式远期 | 仅在真实需求下迁移一个业务子页面 | 独立页面 PR | consumer/runtime/test/teardown 同步进入 |
 
 A0–A6 是完整落地这套行为合同所需的主路线；A7 不应提前进入当前主 PR。
+
+2026-08-19 进展：交互 inventory 现在必须解析到真实存在的测试文件；通知菜单具备独立 controller 证据，旧 document 级重复绑定已移除；Escape 使用单一优先级 owner；Launchpad 具备方向键/Home/End 与 fallback listener teardown。macOS Electron UI Apps、主聊天序列、20 轮生命周期压力和 pack closure 均通过。A1–A6 仍保持进行中，直至异步状态逐项真实终态、Windows/打包产物、人工 soak 与稳定周期证据完成。
 
 ## 4. A0：事实与风险基线
 
