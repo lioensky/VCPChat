@@ -74,8 +74,6 @@
             const webAwesome = this.window.VCPWebAwesome;
             const SurfaceController = this.window.VCPUISurface?.SurfaceController;
             if (!ui || !commands?.createAgent || !commands?.createGroup
-                || typeof webAwesome?.loadComponents !== 'function'
-                || typeof webAwesome?.isDefined !== 'function'
                 || typeof SurfaceController !== 'function') {
                 this.showUnavailable('创建界面运行时不完整，请按 Ctrl+R 重新加载应用。');
                 return;
@@ -89,6 +87,9 @@
             // packaged desktop app. Do not disguise it as a second UI.
             let webAwesomeReady = false;
             try {
+                if (typeof webAwesome?.loadComponents !== 'function' || typeof webAwesome?.isDefined !== 'function') {
+                    throw new Error('Web Awesome runtime is unavailable');
+                }
                 await webAwesome.loadComponents();
                 const missing = REQUIRED_WEB_AWESOME_COMPONENTS.filter(tag => !webAwesome.isDefined(tag));
                 webAwesomeReady = missing.length === 0;
