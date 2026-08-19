@@ -650,8 +650,10 @@ assert.match(nextShellControllerSource, /subscribeWindowState[\s\S]*syncWindowCo
     'Next shell must project the shared window state into its control');
 assert.match(mainHtml, /id="nextUiDynamicTabs"[^>]*role="tablist"/,
     'the dynamic application strip must expose tablist semantics');
-assert.match(appTabHostSource, /createElement\('div'\)[\s\S]*setAttribute\('role', 'tab'\)[\s\S]*createElement\('button'\)[\s\S]*next-ui-tab-close/,
-    'dynamic tabs must avoid nested buttons and use a real close button');
+assert.match(appTabHostSource, /setAttribute\('role', 'presentation'\)[\s\S]*className = 'next-ui-tab-label next-ui-tab-label-button'[\s\S]*setAttribute\('role', 'tab'\)[\s\S]*next-ui-tab-close/,
+    'dynamic tabs must keep the tab button and close button as siblings');
+assert.match(appTabHostSource, /setAttribute\('role', 'tabpanel'\)[\s\S]*aria-labelledby/,
+    'dynamic app panels must be labelled by their tab button');
 assert.doesNotMatch(topTabManagerSource, /createElement\('div'\)[\s\S]*next-ui-tab-close/,
     'topTabManager must delegate tab presentation to AppTabHost');
 const saveSettingsHandler = settingsHandlersSource.match(/ipcMain\.handle\('save-settings',[\s\S]*?\n\s*}\);/)?.[0] || '';
@@ -707,6 +709,12 @@ assert.match(mainHtml, /id="appTrayPinnedApps"[\s\S]*id="appTrayMoreBtn"[\s\S]*i
     'the app tray must retain pinned apps and the complete app drawer');
 assert.match(trayManagerSource, /localStorage\.setItem\('vcp-tray-pinned-apps'/,
     'the app tray must retain the upstream pinned-app persistence contract');
+assert.match(trayManagerSource, /modal\.setAttribute\('role', 'dialog'\)[\s\S]*modal\.setAttribute\('aria-modal', 'true'\)[\s\S]*aria-labelledby/,
+    'app tray settings must expose dialog semantics');
+assert.match(trayManagerSource, /event\.key !== 'Tab'[\s\S]*focusable\(\)[\s\S]*event\.shiftKey/,
+    'app tray settings must own a focus trap');
+assert.match(trayManagerSource, /overlayAcquired[\s\S]*if \(closed\)[\s\S]*releaseOverlay/,
+    'app tray settings must release a late overlay acquisition');
 
 const commandDom = new JSDOM(`<!doctype html><html><body>
     <button id="nextUiMaximizeBtn"><span class="vcp-ui-icon">crop_square</span></button>

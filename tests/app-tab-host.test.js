@@ -30,7 +30,9 @@ test('tab host owns registration, activation, accessibility and persistence', ()
     host.register('app:notes', { kind: 'internal', app: { id: 'notes' }, tab, container });
     host.setView('app:notes');
     assert.equal(host.activeViewId, 'app:notes');
-    assert.equal(tab.getAttribute('aria-selected'), 'true');
+    assert.equal(tab.querySelector('[role="tab"]')?.getAttribute('aria-selected'), 'true');
+    assert.equal(tab.querySelector('[role="tab"]')?.getAttribute('aria-controls'), container.id);
+    assert.equal(container.getAttribute('role'), 'tabpanel');
     assert.equal(container.hidden, false);
     assert.equal(activations.at(-1), 'app:notes');
     assert.deepEqual(host.readSession(), {
@@ -75,15 +77,16 @@ test('dynamic tabs support directional, Home and End keyboard focus', () => {
         host.register(`app:${id}`, { kind: 'internal', app: { id }, tab, container });
         return tab;
     });
-    tabs[1].focus();
-    tabs[1].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    assert.equal(document.activeElement, tabs[2]);
-    tabs[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    assert.equal(document.activeElement, tabs[0]);
-    tabs[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-    assert.equal(document.activeElement, tabs[2]);
-    tabs[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-    assert.equal(document.activeElement, tabs[0]);
+    const buttons = tabs.map(tab => tab.querySelector('[role="tab"]'));
+    buttons[1].focus();
+    buttons[1].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.activeElement, buttons[2]);
+    buttons[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.activeElement, buttons[0]);
+    buttons[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(document.activeElement, buttons[2]);
+    buttons[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    assert.equal(document.activeElement, buttons[0]);
     host.dispose();
 });
 
@@ -106,7 +109,7 @@ test('closing the active tab restores focus to the adjacent tab or home', () => 
     const tab = host.createTab({ id: 'app:notes', title: '笔记', scope: null });
     host.register('app:notes', { app: { id: 'notes' }, tab, container });
     host.setView('app:notes');
-    tab.focus();
+    tab.querySelector('[role="tab"]').focus();
     host.unregister('app:notes');
     assert.equal(dom.window.document.activeElement.id, 'nextUiHomeTab');
     host.dispose();

@@ -279,6 +279,19 @@ html #nextUiHomeTab > span:last-child {
     min-width: 0;
 }
 
+.next-ui-tab-label-button {
+    min-width: 0;
+    flex: 1 1 auto;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .next-ui-tab-close {
     width: 20px;
     height: 20px;
@@ -290,6 +303,12 @@ html #nextUiHomeTab > span:last-child {
     color: var(--next-muted);
     background: transparent;
     cursor: pointer;
+}
+
+.next-ui-tab-label-button:focus-visible {
+    outline: 2px solid #3f70ff;
+    outline-offset: -2px;
+    border-radius: 5px;
 }
 
 .next-ui-tab-close:hover {
@@ -1130,6 +1149,7 @@ body.light-theme .next-ui-nova-panel::before {
 
 .next-ui-app-item:focus-visible,
 .next-ui-tab:focus-visible,
+.next-ui-tab-label-button:focus-visible,
 .next-ui-add-tab:focus-visible,
 .next-ui-icon-button:focus-visible,
 .next-ui-window-button:focus-visible {

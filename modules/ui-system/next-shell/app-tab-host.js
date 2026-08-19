@@ -94,11 +94,20 @@
             const tab = this.document.createElement('div');
             tab.className = 'next-ui-tab';
             tab.dataset.viewId = id;
-            tab.setAttribute('role', 'tab');
-            tab.setAttribute('aria-selected', 'false');
-            tab.tabIndex = -1;
+            // The wrapper owns the visual tab slot and drag affordance. Keep
+            // the actionable tab and close control as siblings: a `role=tab`
+            // must not contain an interactive descendant (AT treats tab
+            // descendants as presentational).
+            tab.setAttribute('role', 'presentation');
+            const tabButton = this.document.createElement('button');
+            tabButton.type = 'button';
+            tabButton.className = 'next-ui-tab-label next-ui-tab-label-button';
+            tabButton.id = `nextUiTab-${String(id).replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+            tabButton.setAttribute('role', 'tab');
+            tabButton.setAttribute('aria-selected', 'false');
+            tabButton.tabIndex = -1;
             const label = this.document.createElement('span');
-            label.className = 'next-ui-tab-label vcp-ui-scope';
+            label.className = 'vcp-ui-scope';
             if (icon || iconSvg) {
                 const symbol = this.document.createElement('span');
                 symbol.className = icon ? 'vcp-ui-icon next-ui-tab-symbol' : 'next-ui-tab-symbol next-ui-tab-svg';
@@ -110,13 +119,14 @@
             const text = this.document.createElement('span');
             text.textContent = title;
             label.append(text);
+            tabButton.append(label);
             const close = this.document.createElement('button');
             close.type = 'button';
             close.className = 'next-ui-tab-close';
             close.setAttribute('aria-label', closeLabel || `关闭${title}标签`);
             close.title = '关闭标签';
             close.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">close</span>';
-            tab.append(label, close);
+            tab.append(tabButton, close);
             const listen = (type, handler) => scope
                 ? scope.listen(tab, type, handler, undefined, `tab:${id}:${type}`)
                 : tab.addEventListener(type, handler);
@@ -134,8 +144,8 @@
             });
             listen('keydown', event => {
                 if (event.target.closest('.next-ui-tab-close')) return;
-                const tabs = [...this.document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
-                const current = tabs.indexOf(tab);
+                const tabs = [...this.document.querySelectorAll('#nextUiDynamicTabs .next-ui-tab-label-button')];
+                const current = tabs.indexOf(tabButton);
                 if (current < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault();
                 const next = event.key === 'Home' ? 0
@@ -148,6 +158,13 @@
         }
 
         register(viewId, view) {
+            const tabButton = view.tabButton || view.tab?.querySelector?.('.next-ui-tab-label-button') || view.tab;
+            view.tabButton = tabButton;
+            const panelId = view.container.id || `nextUiPanel-${String(viewId).replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+            view.container.id = panelId;
+            tabButton.setAttribute('aria-controls', panelId);
+            view.container.setAttribute('role', 'tabpanel');
+            if (tabButton.id) view.container.setAttribute('aria-labelledby', tabButton.id);
             this.views.set(viewId, view);
             this.publish();
         }
@@ -182,9 +199,12 @@
             this.views.forEach((view, id) => {
                 const active = id === this.activeViewId;
                 view.tab.classList.toggle('active', active);
-                view.tab.setAttribute('aria-selected', String(active));
-                view.tab.tabIndex = active ? 0 : -1;
+                const tabButton = view.tabButton || view.tab;
+                tabButton.setAttribute('aria-selected', String(active));
+                tabButton.tabIndex = active ? 0 : -1;
                 view.container.hidden = !active;
+                view.container.setAttribute('role', 'tabpanel');
+                if (tabButton.id) view.container.setAttribute('aria-labelledby', tabButton.id);
             });
             this.onActivate(this.activeViewId, activeView);
             this._lastActiveViewId = this.activeViewId;
