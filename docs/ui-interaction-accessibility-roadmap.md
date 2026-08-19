@@ -62,6 +62,8 @@ A0–A6 是完整落地这套行为合同所需的主路线；A7 不应提前进
 
 同一真实 Electron smoke 现在额外连续执行 20 次明暗主题切换，并验证最终主题以及 Web Awesome theme link/owner 数量不漂移；这覆盖 Windows 上常见的高频切换候选竞态，但不替代 Windows 实机性能证据。
 
+本机曾生成 macOS unpacked `.app` 并审计 `app.asar` 资源，但未签名产物直接启动没有建立调试端点，因此 packaged launch 仍标记为外部证据，不能用生成成功替代真实启动。
+
 2026-08-19 进展：交互 inventory 现在必须解析到真实存在的测试文件；任务 journey gate 进一步要求每条声明的 Electron 证据包含关键入口、操作和世界状态标记，避免“文件存在”被误报为覆盖。通知菜单具备独立 controller 证据，旧 document 级重复绑定已移除；Escape 使用单一优先级 owner；Launchpad 具备方向键/Home/End、打开时焦点转移与 fallback listener teardown。补充修复了动态 Launchpad 和应用托盘抽屉的隐藏可访问性：关闭时由各自 owner 设置 `inert`，避免运行时生成的应用按钮在隐藏或出场动画期间进入 Tab 顺序；对应 controller/Electron 回归覆盖打开/关闭终态。Ask Nova tabs 现在具备 roving tabindex、方向键导航和 tabpanel 关系；主聊天流式发送通过 `aria-busy` 暴露 loading 终态；聊天模式浮层同步 `aria-hidden`/`inert`，快速切换保存按最新意图串行化并避免旧失败回滚新选择。OverlayCoordinator dispose 现在会主动 reconcile 原生 WebContentsView，避免隐藏 View 遗留；AppTabHost 关闭当前动态 tab 时恢复焦点到相邻 tab 或 Home；native Modal 具备可访问名称；兼容确认框保留上游 API 但补齐同步 active、焦点陷阱、Escape 捕获与焦点恢复。macOS Electron UI Apps、主聊天序列、20 轮生命周期压力和 pack closure 均通过。A1–A6 仍保持进行中，直至异步状态逐项真实终态、Windows/打包产物、人工 soak 与稳定周期证据完成。
 
 ## 4. A0：事实与风险基线
