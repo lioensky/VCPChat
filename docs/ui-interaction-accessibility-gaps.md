@@ -26,7 +26,7 @@
 
 当前 A5 任务矩阵：`scripts/ui-task-journey-matrix.json` 和 `guard:ui-task-journeys` 已登记启动主题、通知、创建、设置、Ask Nova、内嵌应用和聊天流七条真实入口任务；它只验证入口与证据绑定，实际 Electron 世界状态和跨平台视觉基线仍需后续执行。
 
-当前真实证据：`npm run test:electron-ui-apps` 通过 22/22，覆盖 canonical 主界面、设置、创建、托盘、Ask Nova 和上游 Classic 子页面；`npm run test:electron-main-chat-sequences` 通过 24 actions；`npm run test:electron-lifecycle-stress` 通过 3 次预热 + 20 次测量，listener 874、Scope 8、资源 162、进程 5、detached root/icon/option 为 0；`npm run pack:check` 通过 101 个 Web Awesome closure 文件。它们证明 macOS 当前树的自动证据，不替代 Windows/DPI/GPU、打包实际启动和 30–60 分钟人工 soak。
+当前真实证据：`npm run test:electron-ui-apps` 通过 22/22，覆盖 canonical 主界面、设置、创建、托盘、Ask Nova 和上游 Classic 子页面，并在真实 renderer 中执行 deviceScaleFactor 1/1.25/1.5、reduced-motion 和横向溢出检查；`npm run test:electron-main-chat-sequences` 通过 24 actions；`npm run test:electron-lifecycle-stress` 通过 3 次预热 + 20 次测量，listener 874、Scope 8、资源 162、进程 5、detached root/icon/option 为 0；`npm run pack:check` 通过 101 个 Web Awesome closure 文件。它们证明 macOS 当前树的自动证据，不替代 Windows/DPI/GPU、打包实际启动和 30–60 分钟人工 soak。
 
 ## P2：视觉和平台证据
 

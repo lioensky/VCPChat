@@ -504,6 +504,38 @@ try {
     assert.equal(initialThemeState.visibility, 'visible', `startup body remains hidden after renderer readiness: ${JSON.stringify(initialThemeState)}`);
     assert.equal(initialThemeState.startupStatusHidden, true, `startup initialization error status is visible on a healthy boot: ${JSON.stringify(initialThemeState)}`);
 
+    // A4 platform-independent evidence: exercise the real renderer at the
+    // common Windows scale factors and reduced-motion preference. The page
+    // must remain visible, the canonical shell must retain a usable width,
+    // and no interaction may depend on an animation-end callback.
+    for (const deviceScaleFactor of [1, 1.25, 1.5]) {
+        await page.setViewport({ width: 1280, height: 820, deviceScaleFactor });
+        const scaleState = await page.evaluate(() => {
+            const shell = document.getElementById('nextUiMainPanel');
+            const body = document.body;
+            const rect = shell?.getBoundingClientRect();
+            return {
+                dpr: window.devicePixelRatio,
+                visible: getComputedStyle(body).visibility === 'visible',
+                shellWidth: rect?.width || 0,
+                overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+            };
+        });
+        assert.equal(scaleState.visible, true, `body hidden at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
+        assert.ok(scaleState.shellWidth > 500, `canonical shell collapsed at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
+        assert.equal(scaleState.overflowX, false, `horizontal overflow at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
+    }
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    const reducedMotionState = await page.evaluate(() => ({
+        media: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        launchpad: getComputedStyle(document.getElementById('nextUiLaunchpad')).animationDuration,
+        bodyVisible: getComputedStyle(document.body).visibility === 'visible',
+    }));
+    assert.equal(reducedMotionState.media, true, `reduced-motion preference was not applied: ${JSON.stringify(reducedMotionState)}`);
+    assert.equal(reducedMotionState.bodyVisible, true, `reduced-motion boot is not visible: ${JSON.stringify(reducedMotionState)}`);
+    await page.emulateMediaFeatures([]);
+    await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
+
     // 1. Web Awesome runtime must not be fetched nor registered at boot.
     const bootWaState = await page.evaluate(() => ({
         waButton: typeof customElements !== 'undefined' ? customElements.get('wa-button') : null,
