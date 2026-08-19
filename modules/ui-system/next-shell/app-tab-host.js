@@ -166,6 +166,10 @@
             homeTab?.classList.toggle('active', isHome);
             homeTab?.setAttribute('aria-selected', String(isHome));
             launchpad?.setAttribute('aria-hidden', String(!isLaunchpad));
+            // App buttons are created dynamically, so static interaction gates
+            // cannot see their focusability while the surface is closed.
+            // Keep the hidden launchpad out of keyboard/AT navigation.
+            if (launchpad) launchpad.inert = !isLaunchpad;
             host?.setAttribute('aria-hidden', String(!isInternal));
             if (host) {
                 host.hidden = !isInternal;

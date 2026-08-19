@@ -52,6 +52,7 @@
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
 | Escape 与键盘导航所有权 | 已完成核心范围 | 优先级 Escape dispatcher、Launchpad 方向键/Home/End、controller fallback listener dispose 回归 |
+| Launchpad 隐藏状态可访问性 | 已完成核心范围 | 关闭时 AppTabHost 设置 `aria-hidden` 与 `inert`，防止动态应用按钮获得焦点；打开/关闭回归覆盖 |
 | 通知菜单单一所有者 | 已完成 | 旧 `event-listeners` 重复绑定已停用；controller 单测与 Electron 命令计数证明每个动作只执行一次 |
 | 全局设置永久 pending | 已完成核心范围 | 保存 IPC 有界等待，超时释放提交锁并进入可恢复失败；新增回归覆盖 |
 

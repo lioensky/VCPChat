@@ -86,3 +86,14 @@ test('dynamic tabs support directional, Home and End keyboard focus', () => {
     assert.equal(document.activeElement, tabs[0]);
     host.dispose();
 });
+
+test('launchpad is inert while closed so dynamic app buttons cannot receive focus', () => {
+    const dom = new JSDOM('<!doctype html><body><button id="nextUiHomeTab"></button><button id="nextUiAddTabBtn"></button><section id="nextUiLaunchpad"><div id="nextUiLaunchpadInner"></div></section><div id="nextUiInternalAppHost"></div><div id="nextUiDynamicTabs"></div></body>', { url: 'http://vcpchat.local/' });
+    const host = new AppTabHost({ document: dom.window.document, storage: dom.window.sessionStorage });
+    host.mount();
+    host.setView('home');
+    assert.equal(dom.window.document.getElementById('nextUiLaunchpad').inert, true);
+    host.setView('launchpad');
+    assert.equal(dom.window.document.getElementById('nextUiLaunchpad').inert, false);
+    host.dispose();
+});
