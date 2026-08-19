@@ -1,8 +1,8 @@
 # Next UI 当前架构与交付基线
 
 > 状态：当前权威事实文档<br>
-> 核对日期：2026-08-17<br>
-> 核对范围：`codex/design-system-upstream-no-workflow-20260817` 已提交文件树相对 `upstream/main`<br>
+> 核对日期：2026-08-19<br>
+> 核对范围：`codex/ui-ux-harness-research-20260819` 已提交文件树相对 `upstream/main`<br>
 > 后续施工顺序：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
 
 ## 1. 文档用途
@@ -51,6 +51,7 @@
 | Web Awesome 离线闭包 | 已完成 | 固定版本、101 文件 closure、vendor 与 pack check |
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
+| Escape 与键盘导航所有权 | 已完成核心范围 | 优先级 Escape dispatcher、Launchpad 方向键/Home/End、controller fallback listener dispose 回归 |
 
 最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
@@ -86,13 +87,13 @@ P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement
 
 ## 6. 当前 PR 就绪判断
 
-当前分支已完成 P0–P3 与 P4 自动化门禁。2026-08-17 同步至 `upstream/main` `a9b36d8d`；文件树此前已经包含其前置提交，本次合并实际只接收 `messageRenderer.js` 与 `streamManager.js` 的 Scoped HTML 流式修复。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
+当前分支已完成 P0–P3 与 P4 自动化门禁。2026-08-19 基于 `upstream/main` `3da77f00` 更新了共享 settings 基线，并恢复了被历史提交链遗漏的优先级 Escape dispatcher 与 Launchpad 键盘/降级监听所有权。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
 
 Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字节；门禁现统一按 LF 文本语义计算 SHA-256，并用 LF/CRLF 等价断言防复发。Web Awesome 生成产物通过 `.gitattributes` 仅在 `vendor/webawesome-runtime/**` 禁用 text conversion 和 whitespace diagnostics；源码检查保持启用，pack check 会验证该属性没有丢失。
 
 同步后的 macOS 自动证据：
 
-- `npm run check:ui-system`：通过，UI System 75/75。
+- `npm run check:ui-system`：通过（含 Escape dispatcher、Launchpad 与最新共享边界证据）。
 - Electron UI Apps：22/22。
 - 主聊天操作序列：24 actions、11 action kinds、21 pairs、12 transitions、2 faults、required edge 1/1。
 - 生命周期压力：3 次预热 + 20 次测量；861 listener、8 Scope、162 受管资源、5 process、2 renderer process 在全部 checkpoint 恒定，detached root/icon/option 为 0，heap 约 9.8 MiB → 9.7 MiB。
