@@ -814,6 +814,20 @@ try {
         window.uiManager.applyTheme('light');
         await tick();
         const lightThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
+        const initialWaThemeState = {
+            waThemeOwners: Number(document.querySelector('link[data-webawesome-runtime-theme]')?.dataset.ownerCount || 0),
+            themeLinkCount: document.querySelectorAll('link[data-webawesome-runtime-theme]').length,
+        };
+        for (let index = 0; index < 20; index += 1) {
+            window.uiManager.applyTheme(index % 2 === 0 ? 'dark' : 'light');
+            await tick();
+        }
+        const rapidThemeState = {
+            bodyTheme: document.body.classList.contains('dark-theme') ? 'dark' : document.body.classList.contains('light-theme') ? 'light' : 'none',
+            waThemeOwners: Number(document.querySelector('link[data-webawesome-runtime-theme]')?.dataset.ownerCount || 0),
+            themeLinkCount: document.querySelectorAll('link[data-webawesome-runtime-theme]').length,
+            initialWaThemeState,
+        };
         window.uiManager.applyTheme(originalTheme);
         await tick();
 
@@ -893,6 +907,7 @@ try {
             presentationClosedByEscape,
             darkThemeActionLabel,
             lightThemeActionLabel,
+            rapidThemeState,
             firstFocus,
             arrowFocus,
             closedByEscape,
@@ -916,6 +931,11 @@ try {
     assert.equal(parityControls.presentationClosedByEscape, true, `presentation popup did not close on Escape: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.darkThemeActionLabel, '切换为浅色模式', `dark theme action state is stale: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.lightThemeActionLabel, '切换为深色模式', `light theme action state is stale: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rapidThemeState.bodyTheme, 'light', `rapid theme switching left stale body state: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rapidThemeState.waThemeOwners, parityControls.rapidThemeState.initialWaThemeState.waThemeOwners,
+        `rapid theme switching changed WA theme ownership: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rapidThemeState.themeLinkCount, parityControls.rapidThemeState.initialWaThemeState.themeLinkCount,
+        `rapid theme switching changed WA theme link count: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.firstFocus, 'nextUiNotificationForum', `notification menu initial focus is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.arrowFocus, 'nextUiNotificationMemo', `notification menu arrow navigation is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.closedByEscape, true, `notification menu did not close on Escape: ${JSON.stringify(parityControls)}`);
