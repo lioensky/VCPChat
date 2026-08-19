@@ -20,6 +20,8 @@
 
 当前 A3 证据：创建 Surface 已在生产代码中用 generation、dialog Scope 和 task ownership 拒绝关闭后的迟到结果；`tests/creation-controller.test.js` 已覆盖提交失败恢复和 dispose 后迟到成功不发布反馈。设置保存、Ask Nova、聊天流式和应用打开仍需补齐统一状态矩阵与真实 Electron 证据。
 
+当前 A4 证据：`test:ui-motion-contract` 已接入 `check:ui-system`，检查高频 Surface 存在 reduced-motion 规则且不会保留非零动画时长；它不替代 Electron 的 reduced-motion、DPI、GPU 和 WA/native fallback 矩阵，后者仍是未完成证据。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。

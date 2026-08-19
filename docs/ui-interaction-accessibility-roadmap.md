@@ -49,7 +49,7 @@ open
 | A1 基础交互合同 | 进行中 | 统一 IconButton、focus-visible、ARIA 状态和 Escape 作用域 | 基础规则、静态 gate、键盘工具 | 主窗口关键导航和菜单通过键盘/ARIA 矩阵 |
 | A2 Modal/Popover/Select 内核 | 进行中 | 消除误关闭、焦点丢失和层级竞争 | Overlay/Focus contract、真实测试 | 创建、设置、Ask Nova、Account Menu、托盘路径闭环 |
 | A3 异步终态与错误恢复 | 进行中 | 统一 loading、disabled、error、提交和取消行为 | 页面状态矩阵、错误字段合同 | 成功/失败/取消/迟到 Promise 均有唯一终态 |
-| A4 主题、动画、DPI 与 fallback | 未开始 | 让视觉内核和平台降级遵守同一交互合同 | 主题真源 gate、motion/DPI 矩阵 | Windows/macOS 关键主题和窗口尺寸通过视觉与键盘验证 |
+| A4 主题、动画、DPI 与 fallback | 进行中 | 让视觉内核和平台降级遵守同一交互合同 | 主题真源 gate、motion/DPI 矩阵 | Windows/macOS 关键主题和窗口尺寸通过视觉与键盘验证 |
 | A5 页面模式和任务级回归 | 未开始 | 把设置、创建、搜索、App、聊天变成固定工作流 | Task journey tests、截图基线 | 高频任务可从真实入口完成并验证世界状态 |
 | A6 交付门禁与稳定周期 | 未开始 | 形成持续回归和发布证据 | CI/本地矩阵、人工 soak 记录、P5 观测 | 一个稳定发布周期无阻塞性回归 |
 | A7 条件式逐页演进 | 条件式远期 | 仅在真实需求下迁移一个业务子页面 | 独立页面 PR | consumer/runtime/test/teardown 同步进入 |
