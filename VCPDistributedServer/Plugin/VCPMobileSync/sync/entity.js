@@ -402,7 +402,11 @@ async function uploadEntitiesBatch(items, appDataPath) {
           }
         }
       } catch (e) {
-        // 文件级错误，标记该组所有 item 为失败
+        // 文件级错误，标记该组所有 item 为失败。
+        // 缺口 D：父 config 不存在（ENOENT）时与单条路径（entity.js:497-510）
+        // 对齐为 SYNC_ENTITY_NOT_FOUND——手机端可据此区分"先补建父 Agent"与
+        // 真正的写入失败；其余错误保持 SYNC_ENTITY_BATCH_FAILED。
+        const isMissingParent = e && e.code === "ENOENT";
         logger.logOperation("topic_metadata", "batch_upload", configPath, "error", e.message);
         const groupIds = new Set(group.items.map((item) => item.id));
         for (let index = results.length - 1; index >= 0; index -= 1) {
@@ -410,7 +414,7 @@ async function uploadEntitiesBatch(items, appDataPath) {
         }
         for (const item of group.items) {
           results.push(entityFailure(e, {
-            code: "SYNC_ENTITY_BATCH_FAILED",
+            code: isMissingParent ? "SYNC_ENTITY_NOT_FOUND" : "SYNC_ENTITY_BATCH_FAILED",
             stage: "topic_metadata",
             failedTopicIds: [item.id],
           }, { id: item.id }));

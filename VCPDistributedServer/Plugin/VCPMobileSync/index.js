@@ -29,7 +29,7 @@ const {
   handleMessageManifest,
 } = require("./sync/manifest");
 const { handleSyncTopicHashBatch, handleSyncMessageDiffBatch } = require("./sync/diff");
-const { ingestHistoryToDb } = require("./sync/message");
+const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
@@ -79,30 +79,42 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     await services.chatDataService.startShadowMode();
   }
 
-  const useCentralIndex =
-    centralRequested && services.chatDataService?.client;
-  if (centralRequested && !useCentralIndex) {
-    throw new Error(
-      "MobileSyncUseCentralIndex is enabled but VCP-CDS is unavailable; disable the flag to roll back",
-    );
-  }
-  const centralSync = useCentralIndex
+  const cdsClient = services.chatDataService?.client ?? null;
+  // S8 降级注册（F7）：CDS 不可用（启动失败/版本不匹配熔断等）时不再让插件
+  // 整体缺席——WS/HTTP 照常注册，中央入口经 requireClient() 抛结构化
+  // CDS_UNAVAILABLE（origin=desktop_cds，stage 由观测边界按契约收窄）
+  // → WS 边界转 SYNC_ERROR 上 wire，手机端可诊断为"桌面数据服务不可用"，
+  // 而非只见 TCP 拒绝。
+  // avatar/attachment 等本地功能在降级模式下保留；回退 legacy 请设
+  // MobileSyncUseCentralIndex=false 并重启。
+  const centralDegraded = Boolean(centralRequested && !cdsClient);
+  const centralSync = centralRequested
     ? createCentralSyncAdapter({
-        chatDataService: services.chatDataService,
+        chatDataService: services.chatDataService ?? { client: null },
         appDataPath,
       })
     : null;
 
   const logger = resetLogger();
   logger.startSession("system");
+  if (centralDegraded) {
+    logger.logInfo(
+      "startup",
+      "VCP-CDS 不可用，MobileSync 以降级模式注册：同步请求将收到结构化 CDS_UNAVAILABLE；如需回退 legacy 本地索引，请设置 MobileSyncUseCentralIndex=false 并重启",
+      "warn",
+    );
+  }
 
   // 中央模式不再打开持久化 sync_state.db。保留一个仅服务于附件、头像和
   // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
   if (centralSync) {
     initDb(":memory:");
-    await centralSync.reconcile();
+    // 降级模式下 CDS 缺席，跳过启动 reconcile（避免 CDS_UNAVAILABLE 中止注册）。
+    if (!centralDegraded) {
+      await centralSync.reconcile();
+      centralSync.logEnabled();
+    }
     await reconcileCompatibilityAssets(appDataPath);
-    centralSync.logEnabled();
   } else {
     const dbPath = path.join(__dirname, "sync_state.db");
     initDb(dbPath);
@@ -630,8 +642,10 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
         }
       }
     } catch (error) {
+      // 条目级降级：单个实体 config 损坏不应中止整个 reconcile；
+      // 该实体缺席索引后，其磁盘历史目录会在 scanHistory 按孤儿话题跳过
       logger.logOperation("reconcile", type, entry.name, "error", error.message);
-      throw error;
+      continue;
     }
   }
   return { count, topicCount };
@@ -667,11 +681,16 @@ async function scanHistory(userDataDir, db, logger) {
       const historyPath = path.join(topicsDir, topicId, "history.json");
       try {
         const { history } = await readHistoryStrict(historyPath);
-        totalMessages += history.length;
         await ingestHistoryToDb(historyPath, topicId, "reconcile");
+        totalMessages += history.length;
       } catch (error) {
+        // 条目级降级：孤儿话题（磁盘有历史但 config 无此话题）、损坏的
+        // history.json 等单话题故障不应中止整个 reconcile。ingest 路径已
+        // 在 message.js 中 markHistoryTopicUnhealthy；读取阶段的失败在此补标，
+        // 使该话题进入 per-topic 哨兵隔离而非整批爆炸。
+        markHistoryTopicUnhealthy(topicId, error);
         logger.logOperation("reconcile", "history", topicId, "error", error.message);
-        throw error;
+        continue;
       }
     }
   }
