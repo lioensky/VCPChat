@@ -204,6 +204,7 @@ function updateSendButtonState() {
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
     sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
     sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
+    sendMessageBtn.setAttribute('aria-busy', String(nextMode === 'interrupt'));
 }
 
 async function interruptActiveResponseFromSendButton() {

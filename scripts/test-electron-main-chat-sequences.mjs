@@ -566,6 +566,7 @@ try {
                 document.getElementById('sendMessageBtn').click();
             });
             await page.waitForFunction(() => document.getElementById('sendMessageBtn')?.dataset.mode === 'interrupt', { timeout: 5_000 });
+            assert.equal(await page.$eval('#sendMessageBtn', button => button.getAttribute('aria-busy')), 'true', 'send button must expose streaming busy state');
             await click('#sendMessageBtn');
             const requestDeadline = Date.now() + 5_000;
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
@@ -581,6 +582,7 @@ try {
                 }));
                 throw new Error(`cancel did not settle: ${JSON.stringify(state)}`, { cause: error });
             }
+            assert.equal(await page.$eval('#sendMessageBtn', button => button.getAttribute('aria-busy')), 'false', 'send button must clear streaming busy state after cancel');
         },
         async sendFault(kind) {
             const before = fixture.requests.length;
