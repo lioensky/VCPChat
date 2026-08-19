@@ -26,6 +26,17 @@ for (const surface of inventory.surfaces) {
 for (const match of html.matchAll(/\baria-controls=["']([^"']+)["']/g)) {
   if (!ids.has(match[1])) errors.push(`aria-controls target not found: ${match[1]}`);
 }
+for (const match of html.matchAll(/<([a-z0-9-]+)\b([^>]*)\baria-hidden=["']true["'][^>]*>/gi)) {
+  const tag = match[1];
+  const attrs = match[2];
+  if (tag === 'template' || /\bdata-dynamic-surface\b/.test(attrs)) continue;
+  const start = match.index + match[0].length;
+  const close = html.indexOf(`</${tag}>`, start);
+  const body = close >= 0 ? html.slice(start, close) : '';
+  if (/\btabindex=["'](?!-1)[0-9]+["']|\bautofocus\b/i.test(body)) {
+    errors.push(`aria-hidden surface contains focusable markup: <${tag}>`);
+  }
+}
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exitCode = 1;
