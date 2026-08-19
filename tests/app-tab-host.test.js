@@ -64,3 +64,25 @@ test('tab host settlement observes a requested mutation revision without timers'
     assert.equal(snapshot.revision, boundary);
     assert.equal(snapshot.activeViewId, 'launchpad');
 });
+
+test('dynamic tabs support directional, Home and End keyboard focus', () => {
+    const { dom, host } = fixture();
+    const document = dom.window.document;
+    const tabs = ['notes', 'translator', 'forum'].map(id => {
+        const container = document.createElement('section');
+        document.getElementById('nextUiInternalAppHost').append(container);
+        const tab = host.createTab({ id: `app:${id}`, title: id });
+        host.register(`app:${id}`, { kind: 'internal', app: { id }, tab, container });
+        return tab;
+    });
+    tabs[1].focus();
+    tabs[1].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.activeElement, tabs[2]);
+    tabs[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.activeElement, tabs[0]);
+    tabs[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(document.activeElement, tabs[2]);
+    tabs[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    assert.equal(document.activeElement, tabs[0]);
+    host.dispose();
+});

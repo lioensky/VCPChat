@@ -79,13 +79,13 @@
                         <path d="M9 3v18"></path>
                     </svg>
                 </button>
-                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" aria-selected="true">
+                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" role="tab" aria-controls="nextUiMainPanel" aria-selected="true" tabindex="0">
                     <span>VCPChat</span>
                 </button>
             </div>
             <div id="nextUiDynamicTabs" class="next-ui-dynamic-tabs" role="tablist" aria-label="已打开应用"></div>
             <button id="nextUiAddTabBtn" class="next-ui-add-tab" type="button" title="打开应用" aria-label="打开应用"
-                aria-selected="false" aria-expanded="false" aria-controls="nextUiLaunchpad">
+                aria-haspopup="menu" aria-expanded="false" aria-controls="nextUiLaunchpad">
                 <span class="vcp-ui-icon" aria-hidden="true">add</span>
             </button>
         </nav>
@@ -706,20 +706,20 @@
             </div>
             <div class="next-ui-account-dock">
                 <div id="nextUiAccountMenu" class="next-ui-account-menu" role="menu" aria-label="界面快捷设置" hidden>
-                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem">
                         <span class="vcp-ui-icon" aria-hidden="true">tune</span>
                         <span class="next-ui-account-menu-label">外观与布局</span>
                         <span id="nextUiAccountAppearanceStudioValue" class="next-ui-account-menu-value">自定义</span>
                         <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
                     </button>
-                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="打开主题管理器">
                         <span class="vcp-ui-icon" aria-hidden="true">palette</span>
                         <span class="next-ui-account-menu-label">主题管理器</span>
                         <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
                     </button>
-                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="切换深色或浅色模式">
                         <span id="nextUiAccountThemeIcon" class="vcp-ui-icon" aria-hidden="true">dark_mode</span>
                         <span id="nextUiAccountThemeLabel" class="next-ui-account-menu-label">切换为深色模式</span>
@@ -731,7 +731,7 @@
                     <span id="nextUiAccountName">用户</span>
                     <span class="vcp-ui-icon next-ui-account-expand-icon" aria-hidden="true">expand_less</span>
                 </button>
-                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" type="button"
+                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" role="menuitem" type="button"
                     title="全局设置" aria-label="全局设置">
                     <span class="vcp-ui-icon" aria-hidden="true">settings</span>
                 </button>

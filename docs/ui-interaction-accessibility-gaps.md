@@ -14,6 +14,8 @@
 - 建立真实键盘路径：Tab、Enter/Space、Arrow、Home/End、Escape、ContextMenu/Shift+F10；测试必须从 Electron 真实页面进入。
 - Select 代理与 native fallback 需要共享 value、change、required、multiple、reset、focus 和销毁终态。
 
+当前 A1 证据：`npm run guard:ui-interaction` 已接入 `check:ui-system`，验证清单中的生产入口、ARIA 控件目标和静态隐藏焦点内容；动态 App Tab 已支持 Arrow/Home/End，账户菜单已支持 roving focus，单元测试覆盖这些路径；真实 Electron 键盘矩阵仍需在后续交付证据中完成。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。

@@ -79,6 +79,7 @@
                 this.setOpen(false);
                 elements.trigger.focus();
             });
+            listen(elements.menu, 'keydown', event => this.handleMenuKeydown(event));
             listen(this.document, 'next-ui-overlay-changed', event => {
                 if (event.detail?.active === true) this.setOpen(false);
             });
@@ -124,7 +125,27 @@
             if (!this.mounted) return;
             this.elements.menu.hidden = !open;
             this.elements.trigger.setAttribute('aria-expanded', String(open));
-            if (open) this.sync();
+            if (open) {
+                this.sync();
+                this.menuItems()[0]?.focus();
+            }
+        }
+
+        menuItems() {
+            if (!this.elements?.menu) return [];
+            return [...this.elements.menu.querySelectorAll('[role="menuitem"]')].filter(item => !item.disabled && !item.hidden);
+        }
+
+        handleMenuKeydown(event) {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            const items = this.menuItems();
+            const current = items.indexOf(this.document.activeElement);
+            if (!items.length) return;
+            event.preventDefault();
+            const next = event.key === 'Home' ? 0
+                : event.key === 'End' ? items.length - 1
+                    : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            items[next]?.focus();
         }
 
         open() { this.setOpen(true); }
