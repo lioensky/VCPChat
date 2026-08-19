@@ -624,7 +624,15 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
         "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL",
       ).run(topicRootHash, now, topicId);
       if (updated.changes !== 1) {
-        throw new Error(`Topic ${topicId} is missing or ambiguous in the local index`);
+        // 区分 0 行（孤儿话题：磁盘历史在、config 索引缺席）与 >1 行（跨 owner 歧义）
+        const matches = db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL",
+          )
+          .get(topicId).n;
+        throw new Error(
+          `Topic ${topicId} is ${matches === 0 ? "missing" : "ambiguous"} in the local index (matches=${matches})`,
+        );
       }
 
       if (source !== "reconcile") {

@@ -29,7 +29,7 @@ const {
   handleMessageManifest,
 } = require("./sync/manifest");
 const { handleSyncTopicHashBatch, handleSyncMessageDiffBatch } = require("./sync/diff");
-const { ingestHistoryToDb } = require("./sync/message");
+const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
@@ -642,8 +642,10 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
         }
       }
     } catch (error) {
+      // 条目级降级：单个实体 config 损坏不应中止整个 reconcile；
+      // 该实体缺席索引后，其磁盘历史目录会在 scanHistory 按孤儿话题跳过
       logger.logOperation("reconcile", type, entry.name, "error", error.message);
-      throw error;
+      continue;
     }
   }
   return { count, topicCount };
@@ -679,11 +681,16 @@ async function scanHistory(userDataDir, db, logger) {
       const historyPath = path.join(topicsDir, topicId, "history.json");
       try {
         const { history } = await readHistoryStrict(historyPath);
-        totalMessages += history.length;
         await ingestHistoryToDb(historyPath, topicId, "reconcile");
+        totalMessages += history.length;
       } catch (error) {
+        // 条目级降级：孤儿话题（磁盘有历史但 config 无此话题）、损坏的
+        // history.json 等单话题故障不应中止整个 reconcile。ingest 路径已
+        // 在 message.js 中 markHistoryTopicUnhealthy；读取阶段的失败在此补标，
+        // 使该话题进入 per-topic 哨兵隔离而非整批爆炸。
+        markHistoryTopicUnhealthy(topicId, error);
         logger.logOperation("reconcile", "history", topicId, "error", error.message);
-        throw error;
+        continue;
       }
     }
   }
