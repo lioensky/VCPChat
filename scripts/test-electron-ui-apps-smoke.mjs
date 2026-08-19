@@ -497,10 +497,12 @@ try {
         hasLight: document.body.classList.contains('light-theme'),
         hasDark: document.body.classList.contains('dark-theme'),
         visibility: getComputedStyle(document.body).visibility,
+        startupStatusHidden: document.getElementById('startupInitializationStatus')?.hidden ?? true,
     }));
     assert.equal(initialThemeState.pending, null, `startup theme gate was not released: ${JSON.stringify(initialThemeState)}`);
     assert.equal(initialThemeState.hasLight || initialThemeState.hasDark, true, `startup theme class missing: ${JSON.stringify(initialThemeState)}`);
     assert.equal(initialThemeState.visibility, 'visible', `startup body remains hidden after renderer readiness: ${JSON.stringify(initialThemeState)}`);
+    assert.equal(initialThemeState.startupStatusHidden, true, `startup initialization error status is visible on a healthy boot: ${JSON.stringify(initialThemeState)}`);
 
     // 1. Web Awesome runtime must not be fetched nor registered at boot.
     const bootWaState = await page.evaluate(() => ({

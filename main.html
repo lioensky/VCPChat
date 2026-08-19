@@ -15,6 +15,21 @@
     <style>
         /* Avoid painting the canonical shell with uninitialized theme variables. */
         body[data-theme-pending="true"] { visibility: hidden; }
+        .startup-initialization-status {
+            position: fixed;
+            top: 8px;
+            left: 50%;
+            z-index: 10000;
+            max-width: min(90vw, 720px);
+            padding: 6px 10px;
+            transform: translateX(-50%);
+            border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+            border-radius: 6px;
+            background: Canvas;
+            color: CanvasText;
+            font: 12px/1.4 system-ui, sans-serif;
+            pointer-events: none;
+        }
     </style>
     <link rel="stylesheet" href="vendor/fontawesome-v6/fontawesome-v6.css">
     <link rel="stylesheet" href="style.css">
@@ -44,6 +59,7 @@
 </head>
 
 <body data-theme-pending="true">
+    <div id="startupInitializationStatus" class="startup-initialization-status" role="status" aria-live="polite" hidden></div>
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
         <nav class="next-ui-tab-strip" aria-label="页面标签">
