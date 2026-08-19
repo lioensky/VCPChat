@@ -24,6 +24,8 @@
 
 当前 A3 状态矩阵：`scripts/ui-async-state-matrix.json` 和 `guard:ui-async-state` 已把创建、设置、Ask Nova、聊天流和内嵌应用统一要求为 idle/loading/success/failure/cancelled/late-result-after-dispose 六类终态，并绑定生产源文件和测试入口；门禁证明覆盖清单完整，不宣称每条终态的真实 Electron 证据已经完成。
 
+当前 A5 任务矩阵：`scripts/ui-task-journey-matrix.json` 和 `guard:ui-task-journeys` 已登记启动主题、通知、创建、设置、Ask Nova、内嵌应用和聊天流七条真实入口任务；它只验证入口与证据绑定，实际 Electron 世界状态和跨平台视觉基线仍需后续执行。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。
