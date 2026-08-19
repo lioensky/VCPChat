@@ -3240,7 +3240,8 @@ body.focus-mode .chamber-aura {
     tab-size: 4;
 }
 
-.surface-mode.active {
+.surface-mode.active,
+.surface-mode.right-surface {
     border-color: var(--scriptorium-accent-mid);
     color: var(--highlight-text);
     background: var(--scriptorium-accent-soft);
@@ -3674,6 +3675,69 @@ body.light-theme .source-editor-shell .cm-vdoc-find-current {
     z-index: 1;
 }
 
+.document-workspace:has(> .source-right-host:not([hidden])) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, .92fr);
+    gap: 0;
+    min-width: 0;
+    min-height: 0;
+}
+
+.document-workspace:has(> .source-right-host:not([hidden])) > .render-host {
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid var(--scriptorium-hairline);
+}
+
+.document-workspace:has(> .source-right-host:not([hidden])) > .source-right-host {
+    min-width: 0;
+    min-height: 0;
+    padding: 14px;
+    overflow: hidden;
+}
+
+.source-right-host .source-header {
+    min-width: 0;
+    padding: 11px 13px;
+}
+
+.source-right-host .source-header strong {
+    font-size: 12px;
+}
+
+.source-right-host .source-header span {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.source-right-host .source-tools {
+    flex: 0 0 auto;
+}
+
+.source-right-host .source-live-sync {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 8px;
+}
+
+.source-right-host .source-editor-shell {
+    min-height: 0;
+}
+
+@media (max-width: 900px) {
+    .document-workspace:has(> .source-right-host:not([hidden])) {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) minmax(260px, .82fr);
+    }
+
+    .document-workspace:has(> .source-right-host:not([hidden])) > .render-host {
+        border-right: 0;
+        border-bottom: 1px solid var(--scriptorium-hairline);
+    }
+}
+
 body.light-theme .document-workspace {
     border-color: rgba(210, 203, 192, .88);
     border-left-color: rgba(33, 103, 92, .72);
@@ -3725,8 +3789,16 @@ body.focus-mode .document-workspace::before {
 }
 
 .auto-approval-master {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24px;
+    align-items: center;
+    gap: 8px;
+}
+
+.auto-approval-master-copy {
     display: flex;
     align-items: center;
+    min-width: 0;
     gap: 9px;
     cursor: pointer;
 }
@@ -3736,9 +3808,41 @@ body.focus-mode .document-workspace::before {
     accent-color: var(--highlight-text);
 }
 
-.auto-approval-master span {
+.auto-approval-master-copy span {
     display: grid;
     gap: 2px;
+}
+
+.auto-approval-collapse-btn {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--secondary-text);
+    background: transparent;
+    cursor: pointer;
+    transition: color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.auto-approval-collapse-btn:hover,
+.auto-approval-collapse-btn:focus-visible {
+    border-color: var(--scriptorium-hairline);
+    outline: 0;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.auto-approval-collapse-btn svg {
+    width: 15px;
+    height: 15px;
+    transition: transform .16s ease;
+}
+
+.auto-approval-collapse-btn.collapsed svg {
+    transform: rotate(-90deg);
 }
 
 .auto-approval-master strong {

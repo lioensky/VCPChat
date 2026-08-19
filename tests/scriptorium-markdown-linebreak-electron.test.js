@@ -323,6 +323,7 @@ app.whenReady().then(async () => {
         let enterAfterBackspace = null;
         let placeholderInput = null;
         let repeatedPlaceholderTyping = null;
+        let imePlaceholderTyping = null;
         if (editorAfterBackspace) {
             const retryEnterEvent = new KeyboardEvent('keydown', {
                 key: 'Enter',
@@ -440,6 +441,81 @@ app.whenReady().then(async () => {
                 passed: stressFailures.length === 0,
                 failures: stressFailures
             };
+
+            // Enter 后立即进入 IME：Chromium 会先在 contenteditable DOM
+            // 固化组合文字，再于 compositionend 后派发最终 input。该序列
+            // 必须清除 ↵、同步源码并保持当前编辑器焦点与光标。
+            const editorBeforeImeEnter = root.querySelector(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            const imeEnter = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                composed: true,
+                cancelable: true
+            });
+            editorBeforeImeEnter?.dispatchEvent(imeEnter);
+            await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+
+            const imeEditor = root.querySelector(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            const imeLine = imeEditor?.querySelector(
+                '.vdoc-md-live-preview-line:last-of-type'
+            ) || imeEditor;
+            const compositionStart = new CompositionEvent(
+                'compositionstart',
+                {
+                    data: '',
+                    bubbles: true,
+                    composed: true,
+                    cancelable: true
+                }
+            );
+            imeEditor?.dispatchEvent(compositionStart);
+            imeLine?.appendChild(document.createTextNode('IME输入'));
+            const compositionEnd = new CompositionEvent('compositionend', {
+                data: 'IME输入',
+                bubbles: true,
+                composed: true,
+                cancelable: true
+            });
+            imeEditor?.dispatchEvent(compositionEnd);
+            const finalCompositionInput = new InputEvent('input', {
+                inputType: 'insertCompositionText',
+                data: 'IME输入',
+                bubbles: true,
+                composed: true
+            });
+            imeEditor?.dispatchEvent(finalCompositionInput);
+            await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+
+            const sourceAfterIme = source();
+            const editorAfterIme = root.querySelector(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            const selectionAfterIme = root.getSelection
+                ? root.getSelection()
+                : window.getSelection();
+            imePlaceholderTyping = {
+                enterHandled: imeEnter.defaultPrevented,
+                sourceCommitted: sourceAfterIme.includes('\\nIME输入'),
+                placeholderRemoved:
+                    !sourceAfterIme.includes('↵IME输入')
+                    && !sourceAfterIme.includes('IME输入↵'),
+                rendered:
+                    (editorAfterIme?.textContent || '').includes('IME输入'),
+                editorFocused: root.activeElement === editorAfterIme,
+                caretInEditor: Boolean(
+                    editorAfterIme
+                    && selectionAfterIme?.anchorNode
+                    && editorAfterIme.contains(selectionAfterIme.anchorNode)
+                )
+            };
         }
 
         return {
@@ -488,6 +564,13 @@ app.whenReady().then(async () => {
                 && placeholderInput?.placeholderReplaced === true,
             repeatedPlaceholderTypingIsStable:
                 repeatedPlaceholderTyping?.passed === true,
+            imeTypingReplacesParagraphBreak:
+                imePlaceholderTyping?.enterHandled === true
+                && imePlaceholderTyping?.sourceCommitted === true
+                && imePlaceholderTyping?.placeholderRemoved === true
+                && imePlaceholderTyping?.rendered === true
+                && imePlaceholderTyping?.editorFocused === true
+                && imePlaceholderTyping?.caretInEditor === true,
             diagnostic: {
                 inputType: backspaceEvent.inputType,
                 editorConnected: editor.isConnected,
@@ -505,7 +588,8 @@ app.whenReady().then(async () => {
                 thirdEnter,
                 enterAfterBackspace,
                 placeholderInput,
-                repeatedPlaceholderTyping
+                repeatedPlaceholderTyping,
+                imePlaceholderTyping
             }
         };
     })()`);

@@ -21,10 +21,19 @@
             );
         }
 
+        const inputSyncModule = context.inputSync
+            || window.ScriptoriumInputSync;
+        if (!inputSyncModule?.createInputSync) {
+            throw new TypeError(
+                'Deck editor requires the shared input synchronization module.'
+            );
+        }
+
         const state = {
             root: null,
             abortController: null,
             activeEditable: null,
+            inputSync: null,
             selectionRange: null,
             selectionText: '',
             selectedBlockIds: [],
@@ -272,6 +281,7 @@
         }
 
         function flush() {
+            state.inputSync?.flush();
             window.clearTimeout(state.flushTimer);
             state.flushTimer = null;
             if (!state.pendingNodes.size) return true;
@@ -684,6 +694,21 @@
             assertActive();
             disposeSurface();
             state.root = root;
+            state.inputSync = inputSyncModule.createInputSync({
+                delay: 0,
+                snapshot: (target) => target,
+                onVisualInput: ({ target }) => {
+                    // 原生 contenteditable 已经完成 DOM 修改；这里仅同步
+                    // 选择状态，不触碰源码或渲染树，保证输入反馈立即可见。
+                    state.activeEditable = target;
+                    if (!state.explicitBlockSelection) captureSelection();
+                },
+                commit: ({ snapshot }) => {
+                    // 源码提交与视觉输入解耦：这里只把最新节点放入
+                    // deck 原有合并队列，真正写源码仍由 flush 完成。
+                    queueNode(snapshot);
+                },
+            });
             state.abortController = new AbortController();
             const options = { signal: state.abortController.signal };
 
@@ -723,10 +748,25 @@
             root.addEventListener('keyup', captureSelection, options);
 
             root.addEventListener('input', (event) => {
-                const block = event.target.closest?.('[data-vdoc-text]');
+                if (event.defaultPrevented) return;
+                const block = event.target.closest?.(core.EDITABLE_SELECTOR)
+                    || event.target.closest?.('[data-vdoc-text]');
                 if (!block) return;
-                state.activeEditable = block;
-                queueNode(block);
+                state.inputSync?.markInput(block, event);
+            }, options);
+
+            root.addEventListener('compositionstart', (event) => {
+                const block = event.target.closest?.(core.EDITABLE_SELECTOR)
+                    || event.target.closest?.('[data-vdoc-text]');
+                if (!block) return;
+                state.inputSync?.compositionStart(block, event);
+            }, options);
+
+            root.addEventListener('compositionend', (event) => {
+                const block = event.target.closest?.(core.EDITABLE_SELECTOR)
+                    || event.target.closest?.('[data-vdoc-text]');
+                if (!block) return;
+                state.inputSync?.compositionEnd(block, event);
             }, options);
 
             root.addEventListener('copy', (event) => {
@@ -753,6 +793,8 @@
 
         function disposeSurface() {
             flush();
+            state.inputSync?.dispose();
+            state.inputSync = null;
             state.abortController?.abort();
             state.abortController = null;
             state.root = null;

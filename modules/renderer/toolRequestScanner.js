@@ -1,6 +1,10 @@
 const TOOL_REQUEST_START_MARKER = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
 
+// VCP 后端对协议标记采用语义理解，实际输出偶尔会丢失或多输出尖括号。
+// 这里允许左右各 2–4 个尖括号；中间的协议名称仍保持严格，避免把普通文本误判为结束标记。
+const TOOL_REQUEST_END_REGEX = /<{2,4}\[END_TOOL_REQUEST\]>{2,4}/gi;
+
 const FIELD_START_REGEX = /(^|\n|,)([ \t]*)([^\s,:：「」{}]+)[ \t]*[:：][ \t]*(「始(?:escape)?」|\{始(?:escape)?\})/gi;
 
 function isBacktickWrappedToolMarker(text, index, marker) {
@@ -76,20 +80,23 @@ function findNextFieldStart(text, fromIndex) {
 }
 
 function findUnwrappedRequestEnd(text, fromIndex) {
-    let cursor = fromIndex;
+    TOOL_REQUEST_END_REGEX.lastIndex = Math.max(0, fromIndex);
 
-    while (cursor < text.length) {
-        const index = text.indexOf(TOOL_REQUEST_END_MARKER, cursor);
-        if (index === -1) return -1;
-
-        if (!isBacktickWrappedToolMarker(text, index, TOOL_REQUEST_END_MARKER)) {
-            return index;
+    let match;
+    while ((match = TOOL_REQUEST_END_REGEX.exec(text)) !== null) {
+        const marker = match[0];
+        if (!isBacktickWrappedToolMarker(text, match.index, marker)) {
+            TOOL_REQUEST_END_REGEX.lastIndex = 0;
+            return {
+                start: match.index,
+                end: match.index + marker.length,
+                marker
+            };
         }
-
-        cursor = index + TOOL_REQUEST_END_MARKER.length;
     }
 
-    return -1;
+    TOOL_REQUEST_END_REGEX.lastIndex = 0;
+    return null;
 }
 
 /**
@@ -120,14 +127,14 @@ function scanToolRequestEnd(text, contentStart) {
     let cursor = Math.max(0, contentStart);
 
     while (cursor <= text.length) {
-        const requestEndStart = findUnwrappedRequestEnd(text, cursor);
+        const requestEnd = findUnwrappedRequestEnd(text, cursor);
         const field = findNextFieldStart(text, cursor);
 
-        if (requestEndStart !== -1 && (!field || requestEndStart < field.declarationStart)) {
+        if (requestEnd && (!field || requestEnd.start < field.declarationStart)) {
             return {
                 status: 'complete',
-                endIndex: requestEndStart + TOOL_REQUEST_END_MARKER.length,
-                requestMarkerStart: requestEndStart
+                endIndex: requestEnd.end,
+                requestMarkerStart: requestEnd.start
             };
         }
 
@@ -141,6 +148,26 @@ function scanToolRequestEnd(text, contentStart) {
 
         const fieldEnd = findFieldEnd(text, field);
         if (!fieldEnd) {
+            // 流式输出或模型格式轻微损坏时，字段闭合符可能缺失，但请求围栏
+            // 已经完整生成。此时请求结束标记优先作为整个请求的兜底边界，
+            // 否则前端会把一个后端已经成功调用的请求永久当成未完成。
+            const fallbackRequestEnd = findUnwrappedRequestEnd(text, field.markerEnd);
+            if (fallbackRequestEnd) {
+                return {
+                    status: 'complete',
+                    endIndex: fallbackRequestEnd.end,
+                    requestMarkerStart: fallbackRequestEnd.start,
+                    field: {
+                        ...field,
+                        contentStart: field.markerEnd,
+                        contentEnd: fallbackRequestEnd.start,
+                        endMarkerStart: -1,
+                        endMarkerEnd: -1,
+                        recoveredFromUnclosedField: true
+                    }
+                };
+            }
+
             return {
                 status: 'incomplete-field',
                 endIndex: -1,

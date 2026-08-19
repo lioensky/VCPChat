@@ -203,6 +203,52 @@ SAFE`;
     assert.equal(text.slice(scan.endIndex).trim(), 'SAFE');
 });
 
+test('字段未闭合时仍使用请求结束标记完成工具请求', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        scanToolRequestEnd
+    } = await loadScanner();
+
+    const text = `${TOOL_REQUEST_START_MARKER}
+tool_name:「始」Demo「末」,
+replace:「始ESCAPE」<div>streaming
+<<<[END_TOOL_REQUEST]>>>
+AFTER`;
+
+    const scan = scanToolRequestEnd(text, TOOL_REQUEST_START_MARKER.length);
+
+    assert.equal(scan.status, 'complete');
+    assert.equal(scan.field.recoveredFromUnclosedField, true);
+    assert.equal(scan.requestMarkerStart, text.indexOf('<<<[END_TOOL_REQUEST]>>>'));
+    assert.equal(text.slice(scan.endIndex).trim(), 'AFTER');
+});
+
+test('容错识别左右二至四个尖括号的工具请求结束标记', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        scanToolRequestEnd
+    } = await loadScanner();
+
+    for (const endMarker of [
+        '<<[END_TOOL_REQUEST]>>',
+        '<<<[END_TOOL_REQUEST]>>>',
+        '<<<<[END_TOOL_REQUEST]>>>>',
+        '<<<<[END_TOOL_REQUEST]>>',
+        '<<[END_TOOL_REQUEST]>>>>'
+    ]) {
+        const text = `${TOOL_REQUEST_START_MARKER}
+tool_name:「始」Demo「末」
+${endMarker}
+AFTER`;
+
+        const scan = scanToolRequestEnd(text, TOOL_REQUEST_START_MARKER.length);
+
+        assert.equal(scan.status, 'complete', endMarker);
+        assert.equal(text.slice(scan.endIndex).trim(), 'AFTER', endMarker);
+        assert.equal(text.slice(scan.requestMarkerStart, scan.endIndex), endMarker);
+    }
+});
+
 test('反引号包裹的协议示例不会被当作真实工具请求', async () => {
     const {
         TOOL_REQUEST_START_MARKER,

@@ -350,6 +350,24 @@
                 <div id="read-host" class="render-host read-host" aria-label="只读分页预览" hidden>
                     <div id="read-page-stream" class="page-stream"></div>
                 </div>
+                <section id="source-right-host" class="source-host source-right-host"
+                    aria-label="右侧文档源码编辑面" hidden>
+                    <header class="source-header">
+                        <div>
+                            <strong id="source-right-title">Markdown-first 混合源码</strong>
+                            <span id="source-right-description">实时连接唯一文档源码；修改进入渲染队列</span>
+                        </div>
+                        <div class="source-tools">
+                            <span id="source-right-diagnostics" class="source-diagnostics">等待检查</span>
+                            <span class="source-live-sync" role="status">实时同步</span>
+                        </div>
+                    </header>
+                    <div class="source-editor-shell">
+                        <textarea id="source-editor-right"
+                            spellcheck="false" autocomplete="off"
+                            aria-label="右侧文档源码"></textarea>
+                    </div>
+                </section>
                 <section id="source-host" class="source-host" hidden aria-label="文档源码编辑面">
                     <header class="source-header">
                         <div>
@@ -410,13 +428,26 @@
             </div>
 
             <section class="agent-approval-policy" aria-label="Agent 自动允许策略">
-                <label class="auto-approval-master">
-                    <input id="auto-approval-enabled" type="checkbox">
-                    <span>
-                        <strong>自动允许</strong>
-                        <small>仅按下方已勾选类型自动合并</small>
-                    </span>
-                </label>
+                <div class="auto-approval-master">
+                    <label class="auto-approval-master-copy">
+                        <input id="auto-approval-enabled" type="checkbox">
+                        <span>
+                            <strong>自动允许</strong>
+                            <small>仅按下方已勾选类型自动合并</small>
+                        </span>
+                    </label>
+                    <button id="auto-approval-collapse-btn"
+                        class="auto-approval-collapse-btn"
+                        type="button"
+                        aria-expanded="true"
+                        aria-controls="auto-approval-types"
+                        title="折叠自动允许类型"
+                        aria-label="折叠自动允许类型">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6"/>
+                        </svg>
+                    </button>
+                </div>
                 <div id="auto-approval-types" class="auto-approval-types">
                     <label><input type="checkbox" value="source-replace">源码替换</label>
                     <label><input type="checkbox" value="slide-add">新增末页</label>
@@ -762,6 +793,13 @@
         </button>
     </nav>
 
+    <nav id="island-context-menu" class="object-context-menu" role="menu"
+        aria-label="编程岛操作" hidden>
+        <button type="button" data-island-action="source" role="menuitem">
+            定位到源码
+        </button>
+    </nav>
+
     <nav id="object-context-menu" class="object-context-menu" role="menu"
         aria-label="视觉对象操作" hidden>
         <button type="button" data-object-action="edit" role="menuitem">编辑对象属性…</button>
@@ -1101,6 +1139,7 @@
     <script src="scriptorium-pagination.js"></script>
     <script src="scriptorium-visibility.js"></script>
     <script src="scriptorium-async.js"></script>
+    <script src="scriptorium-input-sync.js"></script>
     <script src="scriptorium-export-resources.js"></script>
     <script src="scriptorium-objects.js"></script>
     <script src="vdoc-svg-asset-library.js"></script>

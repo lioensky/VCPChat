@@ -873,20 +873,34 @@
                 const dependencies = [];
                 const diagnostics = [];
                 replacements = suppliedReplacements.map((replacement, index) => {
-                    const normalized = reviewProgrammableHtml(
-                        replacement?.replace ?? replacement?.replacement ?? '',
-                        {
-                            phase: 'agent-pr-replacement',
-                            documentKind: 'pptx',
-                            slideIndex,
-                            replacementIndex: index,
-                        }
+                    const hasAppend = Object.prototype.hasOwnProperty.call(
+                        replacement || {},
+                        'append'
                     );
+                    const hasInsert = Object.prototype.hasOwnProperty.call(
+                        replacement || {},
+                        'insert'
+                    );
+                    const contentField = hasAppend
+                        ? 'append'
+                        : hasInsert
+                            ? 'insert'
+                            : 'replace';
+                    const content = contentField === 'replace'
+                        ? replacement?.replace ?? replacement?.replacement ?? ''
+                        : replacement?.[contentField] ?? '';
+                    const normalized = reviewProgrammableHtml(content, {
+                        phase: 'agent-pr-replacement',
+                        documentKind: 'pptx',
+                        slideIndex,
+                        replacementIndex: index,
+                        operation: contentField,
+                    });
                     dependencies.push(...(normalized.dependencies || []));
                     diagnostics.push(...(normalized.diagnostics || []));
                     return {
                         ...replacement,
-                        replace: normalized.html,
+                        [contentField]: normalized.html,
                     };
                 });
                 const candidate = diff.applyReplacements(

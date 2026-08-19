@@ -38,7 +38,8 @@ Scriptorium 没有走这条路。
 它实现的是一条 **源码保持型渲染编辑管线**：
 
 ```text
-Markdown-first 唯一真源
+Markdown 主导的混合源码唯一真源
+（Markdown / HTML / CSS / LaTeX / Mermaid / 可编程岛）
         │
         ▼
 混合源码扫描与受保护区域识别
@@ -153,20 +154,41 @@ KaTeX 输出、Mermaid SVG、脚本创建的 Canvas、运行时 class、动画 s
 
 ---
 
+## Flow 编辑引擎：渲染态编辑的近期迭代
+
+VDOCX 的连续流编辑已经从“渲染结果上挂一个 `contenteditable`”升级为编译器、源码映射、浏览器 Selection 和局部渲染协同工作的编辑引擎。
+
+这里的“连续流”并不等于“纯 Markdown 编辑器”。VDOCX 使用的是**以 Markdown 作为普通正文默认表达、同时原生容纳 HTML / CSS / LaTeX / Mermaid / 可编程岛的混合文档源码**。机器字段名 `markdown-hybrid` 描述的是这套源码格式，而不是把文档能力限制为 Markdown：
+
+- 当前混合编译器版本为 `vdoc-hybrid-compiler/3`。它先扫描并保护代码 / Mermaid 围栏、可编程岛、样式块、块级公式和行内公式，再使用 GFM lexer 建立 Markdown token 级编辑区；
+- 每个编辑区同时拥有临时 key、类型、flow kind、源码字符区间、内容哈希、Markdown token 类型和岛 ID。普通文字是 `text-flow`，HTML 块拥有独立布局边界，代码、Mermaid、样式、块级公式和可编程岛是 `stable-atomic`；
+- 静态渲染树默认保留浏览器原生拖选、跨块选择、复制、右键和系统 Selection。只有确认是折叠点击后，才将局部区域替换成视觉编辑树；无法证明 `editableSourceText === 原始源码片段` 时拒绝激活；
+- 编辑树按源码行保留标题、引用、列表、任务列表、表格和行内 Markdown 标记的语义排版。语法字符只按当前光标和选区上下文显隐，静态 HTML 标签则作为隐藏的无损骨架参与源码序列化；
+- 中文输入法 composition 不在候选词生命周期内重建编辑 DOM。系统会延迟等待最终 `beforeinput/input`，保留活动编辑器和候选窗，必要时使用文本快照提交，并屏蔽旧编辑器的迟到事件；
+- Enter、Backspace、Delete、粘贴、剪切、跨编辑区选择、空白段落和 HTML 块边界均转换为源码事务。显式 `↵` 用于表达可继续编辑的空白行，避免空 DOM 与 Markdown 空行在往返时丢失语义；
+- 每次事务都会执行 expected 原文、源码哈希、稳定原子边界和当前修订检查。结构变化时只重建必要区域；结构未变化时尽量保留当前 `contenteditable` DOM、Selection、滚动位置和焦点，并通过局部 patch 恢复光标；
+- 编辑器支持按选区将基础格式、高级样式、列表和结构插入表达为 Markdown 或受控 HTML，不调用浏览器富文本命令，也不把浏览器生成的 DOM 反序列化为正文。
+
+因此，Flow 的核心保证不只是“可以直接编辑预览”，而是：**浏览器负责提供自然 Selection，编辑器负责把 Selection 还原为源码偏移，编译器负责证明边界，事务负责拒绝过期写入，渲染器负责局部恢复。**
+
+---
+
 ## 一份文档，两类原生工程
 
 Scriptorium 使用自己的 VDOC 工程模型，不是 OOXML 原位编辑器。
 
-### VDOCX：Markdown-first 连续流文稿
+### VDOCX：Markdown 主导的混合连续流文稿
 
-VDOCX 的正文真源是 `markdown-hybrid`：
+VDOCX 不是“Markdown 加几个插件”，而是一种**Markdown 主导的混合文档源码**：
 
-- 标题、段落、列表、任务列表、引文和表格优先使用 CommonMark / GFM Markdown；
-- 行内与块级 LaTeX 保留原始公式；
-- Mermaid 保留为 `mermaid` 围栏；
-- Markdown 无法无损表达的静态版式可以嵌入 HTML；
-- 文档级样式独立保存为 `document-css`；
-- 需要脚本、Canvas、WebGL、运行时依赖或长期身份的内容进入可编程岛。
+- 标题、段落、列表、任务列表、引文和表格通常优先使用 CommonMark / GFM Markdown；
+- 原生 HTML 是与 Markdown 并列的源码表达，用于复杂静态结构、语义标签、布局和局部文字表现；
+- 文档级样式独立保存为 `document-css`；源码中的受控 `<style>` 也可以作为被保护的结构区域存在；
+- 行内与块级 LaTeX 保留原始公式，由编译器识别并以稳定区域交给公式渲染器；
+- Mermaid 保留为 `mermaid` 围栏，由编译器识别并以稳定区域交给 Mermaid 渲染器；
+- 需要脚本、Canvas、WebGL、运行时依赖或长期身份的内容进入具有唯一语义 ID 的可编程岛；
+- `markdown-hybrid` 是 VDOCX 的源码格式标识，不意味着 HTML、CSS、LaTeX、Mermaid 或可编程岛是 Markdown 的附属扩展；
+- 不同语法域拥有各自的边界、编译策略、编辑策略和生命周期，但最终仍保存在同一份可审阅源码真源中。
 
 普通正文不需要也不应被随机永久 ID 淹没。编译块 key 和章节 ID 都是当前修订的临时寻址信息，不会写回正文。
 
@@ -179,7 +201,9 @@ VPPTX 不是“文稿分页”，而是独立的页面场景模型：
 - 演示共享样式独立保存为 `deck-css`；
 - 每页拥有稳定页面 ID、名称、备注、资源、转场和时长；
 - 页面支持自由坐标对象、图层顺序、动画与交互；
-- 画布尺寸、宽高比、主题和默认转场属于演示场景配置。
+- 画布尺寸、宽高比、主题和默认转场属于演示场景配置；
+- 面向 Agent 的 `slideIndex`、`activeSlideIndex` 和页面 `index` 均是从 1 开始的人类页码，插件内部才转换为数组索引；
+- 页内脚本由运行时注入当前场景根 `scene`、演示控制 `deck`、生命周期管理器 `runtime`、页内作用域 `document` 和本地动画参数 `anime`。脚本必须以 `scene` 为根查询本页节点，不应依赖 `document.currentScript`、脚本标签物理位置或全局 `document` 查询来识别当前页。
 
 完整页面源码不会被拆成互相漂移的 HTML、CSS、JavaScript 三份草稿。源码面看到的，就是该页被保存和协作的完整真相。
 
@@ -244,6 +268,8 @@ Scriptorium 不只是执行一段脚本。它为每个页面或岛建立可释�
 切页、重渲染、切换工作面或关闭文档时，帧、计时器和 interval 会被停止，清理函数逆序执行。离开视口的动画和媒体可以暂停，重新进入时恢复。
 
 内置支持 Anime.js 与 Three.js。常见 CDN 声明在进入工程或审批前会被转换为本地固定依赖；未知公网脚本保留审计信息，但会变成不可执行声明。
+
+VDOCX 阅读分页也不会只对初始静态 HTML 做一次测量。分页器会把文字流、标题、列表、表格、媒体、数学、Mermaid 和交互岛按不同边界处理：普通安全文字可以按字素拆分，表格按行续页，列表保留列表语义，标题尽量与后续内容保持在同页，交互岛和复杂媒体保持原子块。阅读渲染会等待字体、图片、Mermaid 和运行态岛完成初始化，再经过两帧布局稳定，用运行态快照获得真实几何后重新分页；随后清除分页测量阶段产生的运行时节点并重新激活最终运行态。无法拆分且超过页面容量的原子内容会产生可诊断的溢出警告，而不是静默破坏结构。
 
 ---
 
@@ -378,7 +404,7 @@ resources/fonts/<sha256>.<ext>
 mimetype
 ```
 
-VDOCX 的 Markdown 正文和文档 CSS 是独立真实文件，不再埋在一个难以 diff 的 JSON 字符串中。VPPTX 的页面场景由清单中的正式页面模型承载。
+VDOCX 的混合文档源码和文档 CSS 是独立真实文件，不再埋在一个难以 diff 的 JSON 字符串中。这里的混合文档源码通常以 Markdown 为普通正文入口，但也可以原生包含 HTML、LaTeX、Mermaid、受控样式和可编程岛。VPPTX 的页面场景由清单中的正式页面模型承载。
 
 资源系统使用 SHA-256 内容寻址：
 
@@ -428,8 +454,9 @@ VDOCX 编辑独立 `document-css`，VPPTX 编辑共享 `deck-css`。样式不需
 
 - 高级文字样式可以保存为样式库条目，并以主题或样式包的形式导入、导出和分发；
 - 人类可以从选区创建、调整、预览和复用效果，而不必反复手写同一组规则；
-- Agent 可以创建、编辑、管理和分发样式包，并通过真源 PR 将样式应用到明确的文字范围；
+- Agent 可以通过协作者命令创建、整体替换、查询和删除非内置样式包；样式包管理需要 `maid` 署名和幂等 `requestId`，作用于全局运行期资产库，不经过当前文档 PR；
 - Agent 在创作过程中临时生成、经人类确认有效的字体效果，可以永久收藏并在后续作品中复用；
+- 内置 `vcp.scriptorium.classics` 样式包及其中样式永久只读，其他导入包采用完整包原子替换，替换时未提交的旧样式会被删除；
 - 样式最终仍以可检查、可审阅的源码表达进入文档，而不是固化成不可理解的位图。
 
 这使字体特效从旧式办公软件的封闭功能，提升为一种可编程、可收藏、可协作演进的视觉资产。
@@ -442,7 +469,10 @@ Scriptorium 中的图形不局限于内置形状集合。系统既提供参数�
 - 支持通过图形界面完成常用参数、尺寸、颜色和对象属性调整；
 - 支持直接编辑 SVG 源码及附加样式，为基础 GUI 无法覆盖的细节保留完整表达能力；
 - 支持由 Agent 创建、编辑、管理和分发高级图形资产，例如复杂设备、角色、动物与场景插画；
-- 支持包含受控 CSS 或 SVG 动画的动态图形，并由文档运行时管理其展示生命周期；
+- 支持静态 SVG、SMIL 和 SVG 内部 CSS 动画；资产会分类为 `static` 或 `animated`，实例化时会重写内部 ID，避免同一页面中的渐变、剪裁和引用互相冲突；
+- SVG 资产包管理需要 `maid` 署名和幂等 `requestId`，作用于全局运行期资产库；内置 `vcp.scriptorium.basic-shapes` 永久只读，其他导入包支持整体替换和删除；
+- 资产源码、节点数量和动画数量受安全配额限制，禁止脚本、事件属性、`foreignObject`、危险外部 URL 等主动内容；
+- 插入 VDOCX / VPPTX 的图形保存为自包含 SVG 快照，因此删除全局资产包不会破坏历史文档中的既有实例；
 - 图形可以作为可复用资产进入作品，而不是退化成失去结构与语义的截图。
 
 因此，简单图标与“PS5 手柄”“骑自行车的鹈鹕”这类复杂创作共享同一种开放表示。图形能力的上限由 SVG、CSS 与 Agent 创作能力共同决定，而不是由编辑器预置了多少种形状决定。
@@ -468,7 +498,7 @@ Scriptorium 中的图形不局限于内置形状集合。系统既提供参数�
 
 ---
 
-## ScriptoriumCollaborator v3 命令
+## ScriptoriumCollaborator v3.3 命令（Agent Port v5）
 
 插件定义见 [`plugin-manifest.json`](../VCPDistributedServer/Plugin/ScriptoriumCollaborator/plugin-manifest.json)，服务实现见 [`ScriptoriumCollaboratorService.js`](../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService.js)。
 
@@ -492,16 +522,16 @@ Scriptorium 中的图形不局限于内置形状集合。系统既提供参数�
 | `CreateProject` | 规范化、审查并直接创建完整工程 | 不修改当前窗口 |
 | `GetStorageInfo` | 查询直接落盘目录与覆盖规则 | 否 |
 
-完整字段约定与调用示例以插件清单为准。
+完整字段约定与调用示例以 [`plugin-manifest.json`](../VCPDistributedServer/Plugin/ScriptoriumCollaborator/plugin-manifest.json) 为准。当前插件清单版本为 `3.3.0`，浏览器侧 Agent 端口版本为 `5`。
 
-插件支持 `command1`、`command2`、`command3` 等编号串行调用，也支持显式 wait / sleep / delay。步骤严格顺序执行；中途失败会停止后续步骤，但此前成功的 Markdown 文本和图片回执仍会保留。
+插件支持 `command1`、`command2`、`command3` 等编号串行调用，也支持显式 `wait` / `sleep` / `delay`。步骤严格顺序执行；中途失败会停止后续步骤，但此前成功的 Markdown 文本和图片回执仍会保留。视觉上下文在指定 VPPTX 页面后会等待切页、资源和布局稳定；串行回执会保留此前成功步骤返回的全部文本和图片，并以 `partial_failure` 与 `failedStep` 标识中途失败。
 
 ### Agent 直接创建完整工程
 
 `CreateProject` 不需要先打开一个空白窗口再逐段修改。Agent 可以一次提交完整 VDOCX 或 VPPTX，由 Scriptorium 内核执行：
 
 1. 工程模型规范化；
-2. Markdown 混合源码与岛身份校验；
+2. Markdown 主导的混合源码与岛身份校验；
 3. 可编程内容审查；
 4. 依赖识别；
 5. v2 容器打包；
@@ -539,9 +569,9 @@ refuse 规则覆盖 Node 模块、进程与文件系统、Electron / IPC、动�
 
 | 边界 | 实现 |
 | --- | --- |
-| 混合源码编译与映射 | [`vdoc-hybrid-compiler.js`](vdoc-hybrid-compiler.js) |
-| 渲染态源码编辑事务 | [`scriptorium-flow-editor.js`](scriptorium-flow-editor.js) |
-| 连续流渲染与局部 patch | [`scriptorium-flow-renderer.js`](scriptorium-flow-renderer.js) |
+| 混合源码编译与映射（`vdoc-hybrid-compiler/3`） | [`vdoc-hybrid-compiler.js`](vdoc-hybrid-compiler.js) |
+| 渲染态源码编辑事务、Selection / IME / 剪切粘贴与局部结构恢复 | [`scriptorium-flow-editor.js`](scriptorium-flow-editor.js) |
+| 连续流渲染、运行态快照分页与局部 patch | [`scriptorium-flow-renderer.js`](scriptorium-flow-renderer.js)、[`scriptorium-pagination.js`](scriptorium-pagination.js) |
 | 渲染缓存与工作面协调 | [`scriptorium-render-coordinator.js`](scriptorium-render-coordinator.js) |
 | 唯一文档模型与真源适配 | [`scriptorium-document-store.js`](scriptorium-document-store.js)、[`scriptorium-flow-adapter.js`](scriptorium-flow-adapter.js)、[`scriptorium-deck-adapter.js`](scriptorium-deck-adapter.js) |
 | CodeMirror 真源工作面 | [`scriptorium-source-editor.js`](scriptorium-source-editor.js) |
@@ -577,11 +607,12 @@ Scriptorium 重新定义了自己的文档系统，但不假装已经解决所�
 
 - VDOCX / VPPTX 是 VCP 自有 v2 ZIP 工程，不与 DOCX / PPTX 二进制兼容；
 - Office 文件导入是语义或静态版式转换，不保证无损往返；
+- VDOCX 虽以 Markdown 作为普通正文的优先表达，但不是纯 Markdown 格式；HTML、CSS、LaTeX、Mermaid 和可编程岛的边界与运行语义属于格式本身；
 - 分页器遵循 Web 富文档语义，不追求 Word 排版引擎逐像素一致；
 - Markdown 渲染态编辑以“可证明还原原源码”为准，无法建立安全映射的区域会保持原子或拒绝编辑；
 - 可编程岛、代码、Mermaid 与块级公式不会像普通段落一样任意跨边界编辑；
 - VPPTX 尚不等价于完整桌面演示软件的组合、参考线和图层管理能力；
-- SVG 支持源码级编辑，但不提供路径节点与布尔运算 GUI；
+- SVG 支持源码级编辑，但不提供路径节点与布尔运算 GUI；全局 SVG 资产包的安全配额和清洗也不等价于通用 SVG 沙箱；
 - 对象级 CSS 为保证可靠作用域分析，不接受任意复杂 at-rule；
 - 会话撤销栈不是长期版本库，长期恢复应使用持久化文脉；
 - 规则式脚本审查不是恶意代码形式化沙箱；
