@@ -223,12 +223,27 @@ function initialize(options) {
 // Function to broadcast theme updates to all windows
 function broadcastThemeUpdate(theme) {
     console.log(`[ThemeHandlers] Theme updated to: ${theme}. Notifying windows.`);
-    const windows = [mainWindow, ...openChildWindows];
-    windows.forEach(win => {
-        if (win && !win.isDestroyed()) {
-            // Also include assistant windows, dice window etc if they are managed separately
-            // For now, this covers main and any direct children in openChildWindows
-            win.webContents.send('theme-updated', theme);
+    const targets = new Set();
+    const addContents = contents => {
+        if (contents && !contents.isDestroyed?.() && !contents.isCrashed?.()) targets.add(contents);
+    };
+    const addWindow = win => {
+        if (win && !win.isDestroyed?.()) addContents(win.webContents);
+    };
+
+    addWindow(mainWindow);
+    openChildWindows.forEach(addWindow);
+
+    // Embedded applications are WebContentsViews owned by the main window,
+    // not BrowserWindows, so they are absent from openChildWindows.
+    // Forward the same authoritative theme event to every live child view.
+    mainWindow?.contentView?.children?.forEach(view => addContents(view?.webContents));
+
+    targets.forEach(contents => {
+        try {
+            contents.send('theme-updated', theme);
+        } catch (error) {
+            console.warn('[ThemeHandlers] Failed to notify a theme target:', error.message);
         }
     });
 }
