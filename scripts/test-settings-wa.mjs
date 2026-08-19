@@ -132,7 +132,6 @@ const populateForm = (settings) => {
     set('chatCodeFontPreset', settings.chatCodeFontPreset || 'consolas');
     set('chatDiaryFontPreset', settings.chatDiaryFontPreset || 'serif');
     set('chatToolFontPreset', settings.chatToolFontPreset || 'system');
-    check('enableAgentBubbleTheme', settings.enableAgentBubbleTheme !== false);
     check('enableSmoothStreaming', settings.enableSmoothStreaming === true);
     set('assistantAgent', settings.assistantAgent || '');
     check('rustDebugMode', Boolean(settings.rustConfig?.debugMode));
@@ -299,7 +298,7 @@ const categories = [
     },
     {
         name: '界面与外观', key: 'appearance-settings',
-        initial: { chatFontPreset: 'system', enableAgentBubbleTheme: true },
+        initial: { chatFontPreset: 'system' },
         assertLoaded: () => document.getElementById('chatFontPreset').value === 'system',
         modify: () => setField('chatFontPreset', 'serif'),
         savedKey: 'chatFontPreset', expected: 'serif',

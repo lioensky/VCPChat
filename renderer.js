@@ -2250,7 +2250,6 @@ async function syncGlobalSettingsToUI() {
         }
     }
 
-    safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
     safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
     safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);

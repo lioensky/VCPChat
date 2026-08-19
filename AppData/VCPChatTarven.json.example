@@ -180,6 +180,15 @@
       "content": "LightMemo生产构型A/B对比。所有轨道共享同一SQL权限作用域、同一查询向量与同一候选事实域；固定比较原始KNN、标准TagMemo V9、下沉到Rust/Rayon的RiverMemo Topology V3，并默认在三轨候选并集上增加独立Rerank。该入口不再加载或运行任何V10实验构型。\n参数:\n- command (字符串, 必需): 固定传入 tagmemo_ab；兼容tagmemo-ab、tagmemo_compare、memory_address_ab、v91_compare、寻址对照。\n- query (字符串, 必需): 检索查询。\n- maid / folder / search_all_knowledge_bases: 与普通搜索一致；必须提供maid/folder，或显式开启全库搜索。\n- k (整数, 可选, 默认5): 每条轨道展示的Top-K。\n- candidate_k / candidateK (整数, 可选, 默认max(30,k×5)): TagMemo V9、Rust V3与Rerank使用的对称候选窗口。\n- tag_boost (数字, 可选, 默认0.6): V9增强及Rust V3共享V9观测源的强度。\n- core_tags / core_boost_factor: 核心Tag及额外增强系数。\n- BM25 / bm25 / use_bm25 (布尔, 可选, 默认true): 是否向Rust V3候选超集提供BM25来源。\n- compare_rerank / compareRerank / rerank_compare (布尔, 可选, 默认true): 是否增加独立Rerank轨道；未配置服务时报告会明确标记不可用。\n输出为紧凑Markdown，包括三组Top-K重合率及KNN、TagMemo V9、Rust Topology V3、Rerank统一排名表。",
       "scope": "agent",
       "wrap": false
+    },
+    {
+      "id": "rule_1787148627889_ii4gtc",
+      "name": "Agent输出动画气泡",
+      "type": "system_suffix",
+      "enabled": true,
+      "content": "输出规范要求：{{VarDivRender}}",
+      "scope": "global",
+      "wrap": true
     }
   ]
 }
