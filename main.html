@@ -4,12 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- frame-src: 仅放通本机环回的 VCPDistributedServer(5974)，供 VCPWEWallpaper
+         插件以 iframe 隔离渲染 Wallpaper Engine 的 web 类型壁纸。不开放任何外网源。 -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:;
                    script-src 'self' 'unsafe-inline';
                    style-src 'self' 'unsafe-inline' https:;
                    img-src * data: file: blob:;
                    media-src * data: file: blob:;
                    font-src *;
+                   frame-src 'self' http://127.0.0.1:5974 http://localhost:5974;
                    connect-src * ws: wss: data:;">
     <title>VCPChat</title>
     <style>
