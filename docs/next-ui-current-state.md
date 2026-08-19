@@ -53,6 +53,7 @@
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
 | Escape 与键盘导航所有权 | 已完成核心范围 | 优先级 Escape dispatcher、Launchpad 方向键/Home/End、controller fallback listener dispose 回归 |
 | 通知菜单单一所有者 | 已完成 | 旧 `event-listeners` 重复绑定已停用；controller 单测与 Electron 命令计数证明每个动作只执行一次 |
+| 全局设置永久 pending | 已完成核心范围 | 保存 IPC 有界等待，超时释放提交锁并进入可恢复失败；新增回归覆盖 |
 
 最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
