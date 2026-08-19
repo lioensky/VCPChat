@@ -1,7 +1,7 @@
 # DeepSeek Harness 对 VCPChat UI/UX 的启发研究
 
-> 研究日期：2026-08-19  
-> 研究对象：`C:\VCP\vchat-develop\deepseek-harness` 的 Agent/工程规范，以及 VCPChat 当前主窗口、VCPUI、内嵌应用、主题和 Electron 交付体系  
+> 研究日期：2026-08-19
+> 研究对象：`C:\VCP\vchat-develop\deepseek-harness` 的 Agent/工程规范，以及 VCPChat 当前主窗口、VCPUI、内嵌应用、主题和 Electron 交付体系
 > 结论性质：设计与工程决策参考，不自动成为施工计划。具体实现以 [`next-ui-current-state.md`](./next-ui-current-state.md) 和 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md) 为准。
 
 ## 一、结论先行

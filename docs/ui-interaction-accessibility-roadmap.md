@@ -1,9 +1,9 @@
 # VCPChat UI 交互与可访问性行为合同路线
 
 > 状态：施工中
-> 基线：P1–P3 已完成，P4 仍需同步后的 Windows 复验与人工 soak   
-> 目的：把“可访问性、键盘、焦点、异步终态、视觉稳定性和资源清理”从分散的实现细节提升为可重复验证的 UI 行为合同。  
-> 上位路线：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)  
+> 基线：P1–P3 已完成，P4 仍需同步后的 Windows 复验与人工 soak
+> 目的：把“可访问性、键盘、焦点、异步终态、视觉稳定性和资源清理”从分散的实现细节提升为可重复验证的 UI 行为合同。
+> 上位路线：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
 > 当前事实：[`next-ui-current-state.md`](./next-ui-current-state.md)
 
 ## 1. 为什么建立这条路线
