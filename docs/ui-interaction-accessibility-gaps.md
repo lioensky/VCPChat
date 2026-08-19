@@ -22,6 +22,8 @@
 
 当前 A4 证据：`test:ui-motion-contract` 已接入 `check:ui-system`，检查高频 Surface 存在 reduced-motion 规则且不会保留非零动画时长；它不替代 Electron 的 reduced-motion、DPI、GPU 和 WA/native fallback 矩阵，后者仍是未完成证据。
 
+当前 A3 状态矩阵：`scripts/ui-async-state-matrix.json` 和 `guard:ui-async-state` 已把创建、设置、Ask Nova、聊天流和内嵌应用统一要求为 idle/loading/success/failure/cancelled/late-result-after-dispose 六类终态，并绑定生产源文件和测试入口；门禁证明覆盖清单完整，不宣称每条终态的真实 Electron 证据已经完成。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。
