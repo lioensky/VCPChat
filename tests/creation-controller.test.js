@@ -239,3 +239,31 @@ test('creation submission waits for the command promise and restores controls af
     controller.dispose();
     dom.window.close();
 });
+
+test('late creation completion loses authority after the modal is disposed', async () => {
+    const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>', { pretendToBeVisual: true });
+    const ui = createUi(dom.window);
+    installSurfaceRuntime(dom.window);
+    let resolveCreation;
+    const creation = new Promise(resolve => { resolveCreation = resolve; });
+    let toasts = 0;
+    const controller = new CreationController({
+        window: dom.window,
+        document: dom.window.document,
+        getUi: () => ({ ...ui, feedback: { toast: () => { toasts += 1; } } }),
+        getApi: () => ({ getCachedModels: async () => [] }),
+        commands: () => ({ createAgent: () => creation, createGroup: () => creation }),
+    });
+    controller.mount();
+    await controller.open();
+    const form = dom.window.document.querySelector('.next-ui-create-dialog-form');
+    form.querySelector('input').value = 'Late';
+    form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(resolve => setImmediate(resolve));
+    controller.dispose();
+    resolveCreation({ success: true });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(toasts, 0, 'disposed creation must not publish a late success toast');
+    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null);
+    dom.window.close();
+});

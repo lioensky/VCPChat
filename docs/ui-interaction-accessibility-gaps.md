@@ -18,6 +18,8 @@
 
 当前 A2 证据：`OverlayCoordinator` 的 modal lease 已记录 root/generation，旧 Surface 的迟到关闭事件不会释放重开后的新 lease；`tests/overlay-coordinator.test.js` 覆盖该故障注入。Select、创建、设置和 Ask Nova 的完整真实 Electron overlay 矩阵仍未完成。
 
+当前 A3 证据：创建 Surface 已在生产代码中用 generation、dialog Scope 和 task ownership 拒绝关闭后的迟到结果；`tests/creation-controller.test.js` 已覆盖提交失败恢复和 dispose 后迟到成功不发布反馈。设置保存、Ask Nova、聊天流式和应用打开仍需补齐统一状态矩阵与真实 Electron 证据。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。
