@@ -1,0 +1,16 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "VCPWEWallpaperUI",
+  "version": "0.1.0",
+  "displayName": "Wallpaper Engine 壁纸",
+  "description": "在聊天窗口使用 Wallpaper Engine 库存壁纸作为动态背景：网格选择器（预览图+类型过滤）+ 播放控制面板 + 断点续播。需配套 service 插件 VCPWEWallpaper。",
+  "author": "PiCode (播放内核移植自 VChatDynamicWallpaper by 辉宝)",
+  "pluginType": "renderer",
+  "frontend": {
+    "style": "plugin.css",
+    "script": "plugin.js"
+  },
+  "capabilities": {
+    "invocationCommands": []
+  }
+}
