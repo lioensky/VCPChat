@@ -105,6 +105,8 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 
 2026-08-19 Harness 路线最新自动证据：`test:ui-system` 86/86，Electron UI Apps 22/22，主聊天序列 24 actions / 11 action kinds / 21 pairs / 12 transitions / 2 faults，生命周期压力 3 次预热加 20 次测量后保持 873 listener、8 Scope、174 项受管资源和 5 个 Electron process，detached root/icon/option 为 0，heap 约 10.2 MiB → 10.1 MiB；Web Awesome 101 文件 closure 与 pack check 通过。这些数字是该次 macOS 运行证据，不替代 Windows 与人工 soak。
 
+本机 `npm run pack` 能生成 macOS arm64 目录，但在当前未签名环境从打包 app 启动未在 12 秒内出现 remote-debugging 端口；因此“打包产物实际启动”仍是未通过的 A6 证据，不被 repo closure 检查替代。
+
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
 P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
