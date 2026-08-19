@@ -465,7 +465,10 @@ html .next-ui-main-panel {
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
-    background-attachment: fixed;
+    /* The panel itself does not scroll; its chat descendants do. `fixed`
+       needlessly promotes a viewport-sized background and increases repaint
+       cost while resizing either sidebar. */
+    background-attachment: scroll;
     backdrop-filter: var(--next-surface-backdrop-filter);
     -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
 }
@@ -879,7 +882,9 @@ html .next-ui-launchpad {
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
-    background-attachment: fixed;
+    /* This fixed-position surface already owns the viewport below the topbar.
+       Avoid a second fixed-background compositing layer. */
+    background-attachment: scroll;
 }
 
 body.light-theme .next-ui-launchpad {
@@ -1238,8 +1243,14 @@ body.light-theme .next-ui-nova-panel::before {
         transition: none;
     }
 
+    .next-ui-nova-panel::before,
     .next-ui-empty-brand {
         animation: none;
+    }
+
+    .next-ui-nova-panel::before {
+        opacity: 0.68;
+        transform: translateX(0) scale(1);
     }
 
     .next-ui-empty-brand-flow {
