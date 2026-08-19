@@ -97,3 +97,17 @@ test('launchpad is inert while closed so dynamic app buttons cannot receive focu
     assert.equal(dom.window.document.getElementById('nextUiLaunchpad').inert, false);
     host.dispose();
 });
+
+test('closing the active tab restores focus to the adjacent tab or home', () => {
+    const dom = new JSDOM('<!doctype html><body><button id="nextUiHomeTab"></button><button id="nextUiAddTabBtn"></button><section id="nextUiLaunchpad"></section><div id="nextUiInternalAppHost"></div><div id="nextUiDynamicTabs"></div></body>', { url: 'http://vcpchat.local/' });
+    const host = new AppTabHost({ document: dom.window.document, storage: dom.window.sessionStorage });
+    host.mount();
+    const container = dom.window.document.createElement('section');
+    const tab = host.createTab({ id: 'app:notes', title: '笔记', scope: null });
+    host.register('app:notes', { app: { id: 'notes' }, tab, container });
+    host.setView('app:notes');
+    tab.focus();
+    host.unregister('app:notes');
+    assert.equal(dom.window.document.activeElement.id, 'nextUiHomeTab');
+    host.dispose();
+});

@@ -199,6 +199,7 @@
         unregister(viewId) {
             const view = this.views.get(viewId);
             if (!view) return null;
+            const restoreFocus = view.tab.contains(this.document.activeElement);
             const tabs = [...this.document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
             const tabIndex = tabs.indexOf(view.tab);
             view.tab.remove();
@@ -208,6 +209,7 @@
                 const remaining = [...this.document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
                 const left = tabIndex > 0 ? remaining[tabIndex - 1] : null;
                 this.setView(left?.dataset.viewId || 'home');
+                if (restoreFocus) (left || this.document.getElementById('nextUiHomeTab'))?.focus();
             }
             this.persist();
             this.publish();
