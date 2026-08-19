@@ -120,6 +120,7 @@ P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐�
 | `next-ui-lifecycle-architecture.md` | 生命周期合同和所有权规则 |
 | `main-chat-operation-sequence-testing.md` | 操作序列模型、覆盖与故障注入规则 |
 | `ui-engineering-standard.md` | 新代码的工程 Definition of Done |
+| `ui-interaction-accessibility-roadmap.md` | 键盘、焦点、ARIA、异步终态、主题/DPI/fallback 与任务级回归的完整施工路线 |
 | `classic-retirement-architecture.md` | 已完成的主窗口收敛决策与历史施工记录 |
 | `design-system-upstream-pr-convergence.md` | 历次 PR 审查和整改日志，不代表当前状态 |
 | `upstream-function-parity.md` | 历史双 presentation 验证记录，不再定义当前产品拓扑 |
