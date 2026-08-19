@@ -10,13 +10,56 @@ const chokidar = require('chokidar');
 
 // --- GUI Window Management ---
 let guiWindow = null;
+let guiReady = false;
+let guiReadyPromise = Promise.resolve();
+let resolveGuiReady = null;
+
+function createGuiReadyBarrier() {
+    guiReady = false;
+    guiReadyPromise = new Promise((resolve) => {
+        resolveGuiReady = resolve;
+    });
+}
+
+async function waitForGuiReady(timeoutMs = 15000) {
+    if (!guiWindow || guiWindow.isDestroyed()) {
+        throw new Error('PowerShell GUI window is not available.');
+    }
+
+    if (guiReady) {
+        return;
+    }
+
+    const targetWebContents = guiWindow.webContents;
+    let timeoutId = null;
+
+    try {
+        await Promise.race([
+            guiReadyPromise,
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(new Error(`PowerShell GUI initialization timed out after ${timeoutMs}ms.`));
+                }, timeoutMs);
+            })
+        ]);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    if (!guiWindow || guiWindow.isDestroyed() || guiWindow.webContents !== targetWebContents || !guiReady) {
+        throw new Error('PowerShell GUI window changed or closed during initialization.');
+    }
+}
 
 function ensureGuiWindow() {
     if (guiWindow && !guiWindow.isDestroyed()) {
         guiWindow.focus();
-        return;
+        return guiWindow;
     }
 
+    createGuiReadyBarrier();
     guiWindow = new BrowserWindow({
         width: 800,
         height: 600,
@@ -37,6 +80,11 @@ function ensureGuiWindow() {
     guiWindow.loadFile(path.join(__dirname, 'gui', 'PowerShellViewer.html'));
 
     guiWindow.on('closed', () => {
+        guiReady = false;
+        if (resolveGuiReady) {
+            resolveGuiReady();
+            resolveGuiReady = null;
+        }
         guiWindow = null;
         // 当GUI关闭时，也终止关联的 pty 进程
         if (ptyProcess) {
@@ -49,6 +97,8 @@ function ensureGuiWindow() {
             // ptyProcess 的 onExit 事件处理器会自动将其设置为 null 并从 childProcesses 集合中移除
         }
     });
+
+    return guiWindow;
 }
 
 // --- 主题管理与文件监视 ---
@@ -105,10 +155,20 @@ function setupThemeWatcher() {
 setupThemeWatcher();
 
 
-// 监听来自GUI的“就绪”信号
+// 监听来自GUI的“就绪”信号。
+// 只有当前窗口在 xterm 挂载、IPC 监听注册和首次 fit 完成后发出的信号才能解除屏障；
+// 旧窗口的迟到消息不能误解锁新窗口。
 ipcMain.on('powershell-gui-ready', (event) => {
-    // 当GUI准备好时，发送初始主题
-    // 强制发送初始主题
+    if (!guiWindow || guiWindow.isDestroyed() || event.sender !== guiWindow.webContents) {
+        return;
+    }
+
+    guiReady = true;
+    if (resolveGuiReady) {
+        resolveGuiReady();
+        resolveGuiReady = null;
+    }
+
     sendThemeUpdate(event.sender, true);
 });
 
@@ -357,6 +417,7 @@ let isExecutingCommand = false; // 仅表示 AI 短命令执行中；不要用�
 let interactiveMode = false; // 表示当前 PTY 被 snow/codex/claude 等交互式程序占用
 let activeCommandAbort = null; // 当前同步命令的本地等待中止器；供并发 interrupt 工具调用解除阻塞
 let lastKnownSize = { cols: 80, rows: 24 }; // GUI 最近一次 fit 出来的尺寸，用作 PTY 初始尺寸
+let ptyReadyPromise = Promise.resolve();
 
 // --- 配置加载 ---
 const defaultConfig = {
@@ -680,6 +741,49 @@ function dispatchPtyData(rawData) {
 }
 
 /**
+ * 等待指定 PTY 完成 PowerShell 初始化探针。
+ * Promise 与具体 PTY 实例绑定，旧会话的迟到结果不能被新会话复用。
+ * @param {object} targetPtyProcess - 要等待的 node-pty 实例。
+ * @param {number} timeoutMs - 最大等待时间。
+ */
+async function waitForPtyReady(targetPtyProcess = ptyProcess, timeoutMs = 15000) {
+    if (!targetPtyProcess || targetPtyProcess !== ptyProcess) {
+        throw new Error('PowerShell PTY session is not available.');
+    }
+
+    let timeoutId = null;
+    try {
+        await Promise.race([
+            ptyReadyPromise,
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(new Error(`PowerShell PTY initialization timed out after ${timeoutMs}ms.`));
+                }, timeoutMs);
+            })
+        ]);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    if (!ptyProcess || ptyProcess !== targetPtyProcess) {
+        throw new Error('PowerShell PTY session changed or exited during initialization.');
+    }
+}
+
+/**
+ * 同时等待渲染端 xterm 和后端 PTY 就绪，确保指令不会在界面初始化前注入。
+ */
+async function waitForTerminalReady() {
+    const targetPtyProcess = ptyProcess;
+    await Promise.all([
+        waitForGuiReady(),
+        waitForPtyReady(targetPtyProcess)
+    ]);
+}
+
+/**
  * 创建一个新的伪终端 (pty) 进程。
  */
 function createNewPtySession() {
@@ -736,9 +840,6 @@ function createNewPtySession() {
     childProcesses.add(ptyProcess);
     const currentPtyProcess = ptyProcess;
 
-    // 设置 PowerShell 输出为 UTF-8 编码
-    currentPtyProcess.write('[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\r');
-
     // 创建GUI数据监听器（带 AI 短命令执行状态检查）
     guiDataListener = (data) => {
         // AI 短命令期间由 executeSingleCommandInPty 的临时监听器负责 flushToGui，避免重复输出。
@@ -752,6 +853,62 @@ function createNewPtySession() {
 
     // 设置数据监听器，将所有 pty 输出直接代理到 GUI
     currentPtyProcess.onData(guiDataListener);
+
+    // 不再用固定延时猜测 PowerShell 是否启动完成。随机边界不会以明文出现在
+    // PSReadLine 的输入回显中；只有 PowerShell 真正执行 Write-Host 后才会命中。
+    const readyBoundary = `__VCP_PTY_READY_${crypto.randomUUID()}__`;
+    const encodedReadyBoundary = Buffer.from(readyBoundary, 'utf8').toString('base64');
+    ptyReadyPromise = new Promise((resolve, reject) => {
+        let startupOutput = '';
+        let settled = false;
+        let timeoutId = null;
+        let readyListener = null;
+
+        const cleanupReadyProbe = () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            if (readyListener && typeof readyListener.dispose === 'function') {
+                readyListener.dispose();
+                readyListener = null;
+            }
+        };
+
+        readyListener = currentPtyProcess.onData((data) => {
+            if (settled) {
+                return;
+            }
+
+            startupOutput += data.toString('utf8');
+            // 防止异常启动输出无限占用内存，同时保留足够长度处理跨 chunk 边界。
+            if (startupOutput.length > 65536) {
+                startupOutput = startupOutput.slice(-65536);
+            }
+
+            if (startupOutput.includes(readyBoundary)) {
+                settled = true;
+                cleanupReadyProbe();
+                resolve();
+            }
+        });
+
+        timeoutId = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanupReadyProbe();
+            reject(new Error('PowerShell did not complete its startup readiness probe within 15 seconds.'));
+        }, 15000);
+
+        const initializationCommand = [
+            '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+            `$__vcpReady = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodedReadyBoundary}'))`,
+            'Write-Host $__vcpReady'
+        ].join('; ');
+        currentPtyProcess.write(`${initializationCommand}\r`);
+    });
 
     // 当 pty 进程意外退出时，清理资源。
     // 注意：newSession 会先 kill 旧 PTY 再创建新 PTY，旧 PTY 的异步 onExit 不能误清理新会话。
@@ -864,11 +1021,16 @@ function openGuiTerminal() {
     }
 
     if (shouldPlayHumanLaunchAnimation && ptyProcess) {
-        setTimeout(() => {
-            if (ptyProcess) {
-                ptyProcess.write(buildHumanLaunchAnimationCommand());
-            }
-        }, 650);
+        const targetPtyProcess = ptyProcess;
+        waitForTerminalReady()
+            .then(() => {
+                if (ptyProcess === targetPtyProcess) {
+                    targetPtyProcess.write(buildHumanLaunchAnimationCommand());
+                }
+            })
+            .catch((error) => {
+                console.error('[PowerShellExecutor] Failed to initialize terminal launch animation:', error);
+            });
     }
 
     return guiWindow;
@@ -1045,6 +1207,7 @@ async function processToolCall(args) {
 
     if (action.startsWith('queryVisible')) {
         ensureGuiWindow();
+        await waitForGuiReady();
 
         const legacyMatch = action.match(/^queryVisible(\d+)?$/);
         const requestedMaxLines = declaredCommand === 'QueryVisible' ? args.maxLines : (legacyMatch && legacyMatch[1]);
@@ -1187,8 +1350,11 @@ async function processToolCall(args) {
 
     if (newSession || !ptyProcess) {
         createNewPtySession();
-        await new Promise(resolve => setTimeout(resolve, 500)); // 等待PTY初始化
     }
+
+    // 必须等渲染端完成 xterm 挂载/监听/首次 fit，且 PowerShell 执行完启动探针，
+    // 才允许向 PTY 注入用户或 AI 指令。替代容易产生竞态的固定 500ms 延时。
+    await waitForTerminalReady();
 
     if (action === 'startInteractive') {
         if (commandEntries.length > 1) {
@@ -1261,6 +1427,12 @@ function cleanup() {
         }
         guiWindow = null;
     }
+    guiReady = false;
+    if (resolveGuiReady) {
+        resolveGuiReady();
+        resolveGuiReady = null;
+    }
+    guiReadyPromise = Promise.resolve();
 
     // 2. 终止所有跟踪的子进程
     if (childProcesses.size > 0) {
@@ -1290,6 +1462,7 @@ function cleanup() {
 
     // 4. 确保 ptyProcess 状态被重置
     ptyProcess = null;
+    ptyReadyPromise = Promise.resolve();
     guiDataListener = null;
     isExecutingCommand = false;
     interactiveMode = false;
