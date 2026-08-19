@@ -734,6 +734,7 @@ try {
         const opened = drawer?.classList.contains('active') === true
             && getComputedStyle(drawer).visibility === 'visible'
             && drawer.getAttribute('aria-hidden') === 'false'
+            && drawer.inert === false
             && moreButton.getAttribute('aria-expanded') === 'true';
         moreButton?.click();
         const closing = drawer?.classList.contains('is-closing') === true
@@ -741,6 +742,7 @@ try {
             && getComputedStyle(drawer).visibility === 'visible'
             && getComputedStyle(drawer.closest('.notifications-sidebar')).overflow === 'visible';
         const closed = drawer?.getAttribute('aria-hidden') === 'true'
+            && drawer?.inert === true
             && moreButton?.getAttribute('aria-expanded') === 'false';
         await new Promise(resolve => setTimeout(resolve, 360));
         const exitSettled = drawer?.classList.contains('is-closing') === false

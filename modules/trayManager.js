@@ -215,6 +215,7 @@ const trayManager = (function () {
             drawer.classList.remove('is-closing');
             drawer.classList.add('active');
             drawer.setAttribute('aria-hidden', 'false');
+            drawer.inert = false;
             btn.classList.add('active');
             btn.setAttribute('aria-expanded', 'true');
 
@@ -236,6 +237,9 @@ const trayManager = (function () {
             drawer.classList.add('is-closing');
             drawer.classList.remove('active');
             drawer.setAttribute('aria-hidden', 'true');
+            // Keep the exit transition visual, but remove the drawer from
+            // keyboard and assistive-technology navigation immediately.
+            drawer.inert = true;
             btn.classList.remove('active');
             btn.setAttribute('aria-expanded', 'false');
             if (outsideClickListenerBound) {
