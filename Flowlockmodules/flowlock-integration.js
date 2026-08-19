@@ -86,6 +86,21 @@ async function continueWritingForContext(params) {
         throw new Error(`无法获取 Agent 配置: ${agentConfig.error}`);
     }
 
+    // 获取与普通单聊一致的合并后高级回复规则。
+    // IPC 返回官方预置 + 用户覆盖；权限预置默认关闭，不会因 Flowlock 后台运行而隐式授权。
+    let tavernRules = [];
+    const tavernEngine = window.TavernRulesEngine;
+    if (typeof chatAPI.tavernGetRules === 'function') {
+        try {
+            const tavernResult = await chatAPI.tavernGetRules();
+            if (tavernResult?.success && Array.isArray(tavernResult.store?.rules)) {
+                tavernRules = tavernResult.store.rules;
+            }
+        } catch (error) {
+            console.warn('[Flowlock] Failed to load advanced reply rules:', error);
+        }
+    }
+
     // 确定提示词
     let temporaryPrompt = prompt;
     if (!temporaryPrompt || !temporaryPrompt.trim()) {
@@ -100,6 +115,9 @@ async function continueWritingForContext(params) {
 
     // 所有 Flowlock 心跳消息必须使用系统提示标记；已有前缀时不重复添加。
     temporaryPrompt = normalizeFlowlockHeartbeatPrompt(temporaryPrompt);
+    if (tavernEngine && tavernRules.length > 0) {
+        temporaryPrompt = tavernEngine.applyUserSuffix(temporaryPrompt, tavernRules, 'agent');
+    }
 
     // 构建 VCP 消息
     const messagesForVCP = await Promise.all(historyForVCP.map(async msg => {
@@ -145,7 +163,30 @@ async function continueWritingForContext(params) {
             systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
         }
 
+        if (tavernEngine && tavernRules.length > 0) {
+            systemPromptContent = tavernEngine.applySystemSuffix(systemPromptContent, tavernRules, 'agent');
+        }
         messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
+    } else if (tavernEngine && tavernRules.length > 0) {
+        const tavernSystemOnly = tavernEngine.applySystemSuffix('', tavernRules, 'agent');
+        if (tavernSystemOnly.trim()) {
+            messagesForVCP.unshift({ role: 'system', content: tavernSystemOnly });
+        }
+    }
+
+    if (
+        tavernEngine &&
+        tavernRules.some(rule => rule.type === 'context_inject' && rule.enabled !== false)
+    ) {
+        const systemMessages = messagesForVCP.filter(message => message.role === 'system');
+        const nonSystemMessages = messagesForVCP.filter(message => message.role !== 'system');
+        const injectedMessages = tavernEngine.applyContextInject(
+            nonSystemMessages,
+            tavernRules,
+            'agent'
+        );
+        messagesForVCP.length = 0;
+        messagesForVCP.push(...systemMessages, ...injectedMessages);
     }
 
     const useStreaming = (agentConfig?.streamOutput !== false);
