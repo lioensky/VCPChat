@@ -14,6 +14,7 @@
     "guard:classic-retirement": "node scripts/check-classic-retirement-boundary.mjs",
     "guard:next-delta": "node scripts/check-next-delta-contract.mjs",
     "guard:ui-system": "node scripts/check-ui-system.mjs && node scripts/check-vcpui-consumers.mjs",
+    "guard:ui-interaction": "node scripts/check-ui-interaction-inventory.mjs",
     "check:ui-applications": "node scripts/check-ui-applications.mjs && node scripts/test-page-runtime.mjs",
     "pack:check": "npm run vendor:webawesome:check && node scripts/check-webawesome-pack.mjs",
     "vendor:webawesome:report": "node scripts/build-webawesome-runtime.mjs",

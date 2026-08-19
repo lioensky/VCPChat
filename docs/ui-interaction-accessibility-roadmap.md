@@ -45,7 +45,7 @@ open
 
 | 阶段 | 状态 | 目标 | 主要产物 | 退出条件 |
 |---|---|---|---|---|
-| A0 事实与风险基线 | 未开始 | 盘点所有交互层、焦点入口、ARIA 和真实消费者 | Surface/键盘/属性清单、缺口报告 | 每个高频 Surface 有 owner、触发源和终态负责人 |
+| A0 事实与风险基线 | 进行中 | 盘点所有交互层、焦点入口、ARIA 和真实消费者 | `scripts/ui-interaction-inventory.json`、缺口报告、审计门禁 | 每个高频 Surface 有 owner、触发源和终态负责人，且清单引用真实入口 |
 | A1 基础交互合同 | 未开始 | 统一 IconButton、focus-visible、ARIA 状态和 Escape 作用域 | 基础规则、静态 gate、键盘工具 | 主窗口关键导航和菜单通过键盘/ARIA 矩阵 |
 | A2 Modal/Popover/Select 内核 | 未开始 | 消除误关闭、焦点丢失和层级竞争 | Overlay/Focus contract、真实测试 | 创建、设置、Ask Nova、Account Menu、托盘路径闭环 |
 | A3 异步终态与错误恢复 | 未开始 | 统一 loading、disabled、error、提交和取消行为 | 页面状态矩阵、错误字段合同 | 成功/失败/取消/迟到 Promise 均有唯一终态 |
