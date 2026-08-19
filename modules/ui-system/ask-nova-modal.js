@@ -359,7 +359,9 @@ export function createAskNovaController(options = {}) {
                 button.setAttribute('aria-selected', String(selected));
             });
             const hasReplies = sessions[state.targetId].messages.some(message => message.role === 'assistant');
-            status.textContent = `${target.title} · ${hasReplies ? '连续会话' : '新会话'}${state.deepResearch ? ' · Deep Research' : ''}`;
+            status.textContent = state.isAsking
+                ? `${target.title} · 正在检索源码知识图谱…`
+                : `${target.title} · ${hasReplies ? '连续会话' : '新会话'}${state.deepResearch ? ' · Deep Research' : ''}`;
             prompts.replaceChildren();
             target.prompts.forEach(prompt => {
                 const button = documentRef.createElement('button');
@@ -370,6 +372,7 @@ export function createAskNovaController(options = {}) {
             });
             textarea.placeholder = `询问 ${target.repo} 的源码细节...`;
             textarea.disabled = state.isAsking;
+            composer.setAttribute('aria-busy', String(state.isAsking));
             sendButton.disabled = state.isAsking || !textarea.value.trim();
             clearButton.disabled = state.isAsking;
             deepResearchInput.disabled = state.isAsking;

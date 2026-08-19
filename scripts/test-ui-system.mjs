@@ -130,10 +130,12 @@ const askNovaTextarea = askNovaModal.element.querySelector('.ask-nova-composer t
 askNovaTextarea.value = 'Explain plugins';
 askNovaTextarea.dispatchEvent(new Event('input', { bubbles: true }));
 askNovaModal.element.querySelector('.ask-nova-composer').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+assert.equal(askNovaModal.element.querySelector('.ask-nova-composer').getAttribute('aria-busy'), 'true', 'Ask Nova composer must expose its loading terminal state');
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(askNovaCalls[0].target, 'backend');
 assert.deepEqual(askNovaCalls[0].history, []);
 assert.match(askNovaModal.element.querySelector('.ask-nova-message-assistant .ask-nova-message-bubble')?.textContent || '', /Answer/);
+assert.equal(askNovaModal.element.querySelector('.ask-nova-composer').getAttribute('aria-busy'), 'false', 'Ask Nova composer must clear its loading state after success');
 askNovaModal.switchTarget('frontend');
 assert.equal(askNovaModal.getState().targetId, 'frontend');
 assert.equal(askNovaModal.getState().sessions.frontend.messages.length, 1, 'Ask Nova tabs must keep independent sessions');
