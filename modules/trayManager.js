@@ -319,12 +319,15 @@ const trayManager = (function () {
         const modal = document.createElement('div');
         modal.id = modalId;
         modal.className = 'modal active';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'appTraySettingsTitle');
         modal.tabIndex = -1;
         modal.style.zIndex = '20001'; 
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 400px;">
                 <button type="button" class="close-button" data-tray-settings-close aria-label="关闭">×</button>
-                <h2 style="margin-top: 0; font-size: 1.2em;">优先显示的按钮</h2>
+                <h2 id="appTraySettingsTitle" style="margin-top: 0; font-size: 1.2em;">优先显示的按钮</h2>
                 <p style="font-size: 0.85em; opacity: 0.7; margin-bottom: 15px;">请选择 4 个要在底栏直接显示的应用：</p>
                 <div class="settings-app-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 400px; overflow-y: auto; padding: 5px;">
                     ${VCHAT_APPS.map(app => `
@@ -341,24 +344,49 @@ const trayManager = (function () {
             </div>
         `;
         const container = document.getElementById('modal-container') || document.body;
-        const focusReturnTarget = document.getElementById('appTrayMoreBtn');
+        const focusReturnTarget = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : document.getElementById('appTraySettingsBtn');
         const overlayOwner = Symbol('app-tray-settings-overlay');
         let closed = false;
+        let overlayAcquired = false;
+        const focusable = () => [...modal.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')]
+            .filter(node => !node.disabled && node.offsetParent !== null);
         const handleKeydown = event => {
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            closeModal();
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                closeModal();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const nodes = focusable();
+            if (!nodes.length) return;
+            const first = nodes[0];
+            const last = nodes[nodes.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
         };
         const closeModal = () => {
             if (closed) return;
             closed = true;
             document.removeEventListener('keydown', handleKeydown, true);
             modal.remove();
-            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            if (overlayAcquired) window.topTabManager?.releaseOverlay?.(overlayOwner);
             focusReturnTarget?.focus();
         };
-        Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).catch(error => {
+        Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).then(() => {
+            overlayAcquired = true;
+            if (closed) {
+                window.topTabManager?.releaseOverlay?.(overlayOwner);
+                overlayAcquired = false;
+            }
+        }).catch(error => {
             console.warn('[TrayManager] Failed to hide embedded app for tray settings:', error);
         });
         container.appendChild(modal);
@@ -369,7 +397,7 @@ const trayManager = (function () {
         modal.addEventListener('click', event => {
             if (event.target === modal) closeModal();
         });
-        requestAnimationFrame(() => modal.focus());
+        requestAnimationFrame(() => focusable()[0]?.focus() || modal.focus());
 
         // 限制选择数量为 4
         const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
