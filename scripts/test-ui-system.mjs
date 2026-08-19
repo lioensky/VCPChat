@@ -126,6 +126,14 @@ const askNovaController = createAskNovaController({ document, api: askNovaApi, V
 const askNovaModal = await askNovaController.open('backend');
 assert.equal(askNovaModal.getState().targetId, 'backend');
 assert.ok(askNovaModal.element.querySelector('.ask-nova-dialog'), 'Ask Nova modal must mount through VCPUI');
+const askNovaTabs = [...askNovaModal.element.querySelectorAll('[role="tab"]')];
+assert.equal(askNovaTabs.length, 3, 'Ask Nova must expose all target tabs');
+assert.equal(askNovaTabs.filter(tab => tab.tabIndex === 0).length, 1, 'Ask Nova tabs must use roving tabindex');
+assert.equal(askNovaTabs.find(tab => tab.getAttribute('aria-selected') === 'true')?.tabIndex, 0, 'selected Ask Nova tab must be focusable');
+askNovaTabs[1].focus();
+askNovaTabs[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+assert.equal(askNovaModal.getState().targetId, 'fullstack', 'Ask Nova tab arrows must switch target');
+askNovaModal.switchTarget('backend');
 const askNovaTextarea = askNovaModal.element.querySelector('.ask-nova-composer textarea');
 askNovaTextarea.value = 'Explain plugins';
 askNovaTextarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -613,6 +621,12 @@ const windowStateServiceSource = fs.readFileSync(new URL('../modules/services/wi
 const nextShellControllerSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/next-shell-controller.js', import.meta.url), 'utf8');
 const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners.js', import.meta.url), 'utf8');
 const rendererSource = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
+assert.match(rendererSource, /switcher\.setAttribute\('aria-hidden', String\(!open\)\)/,
+    'chat presentation switcher must expose hidden state to assistive technology');
+assert.match(rendererSource, /switcher\.inert = !open/,
+    'closed chat presentation switcher must leave the focus tree');
+assert.match(rendererSource, /chatPresentationSaveChain/,
+    'chat presentation persistence must serialize rapid intent changes');
 const topTabManagerSource = fs.readFileSync(new URL('../modules/topTabManager.js', import.meta.url), 'utf8');
 const appTabHostSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/app-tab-host.js', import.meta.url), 'utf8');
 const accountMenuControllerSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/account-menu-controller.js', import.meta.url), 'utf8');
@@ -865,6 +879,9 @@ const behaviorModal = VCPUI.create('Modal', {
 });
 scope.append(behaviorModal.element);
 assert.equal(behaviorModal.element.querySelector('.vcp-ui-modal').getAttribute('role'), 'dialog');
+const behaviorDialog = behaviorModal.element.querySelector('.vcp-ui-modal');
+const behaviorTitleId = behaviorDialog.getAttribute('aria-labelledby');
+assert.ok(behaviorTitleId && behaviorDialog.querySelector(`#${behaviorTitleId}`), 'native modal must expose an accessible title');
 behaviorModal.element.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 assert.ok(!behaviorModal.element.isConnected, 'Escape must close the modal');
 behaviorModal.close(null);

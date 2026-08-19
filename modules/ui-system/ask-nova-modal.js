@@ -254,10 +254,15 @@ export function createAskNovaController(options = {}) {
             button.type = 'button';
             button.className = 'ask-nova-target-tab';
             button.dataset.target = target.id;
+            button.id = `askNovaTarget-${target.id}`;
             button.setAttribute('role', 'tab');
+            button.setAttribute('aria-controls', 'askNovaMessages');
             button.textContent = target.tab;
             tabs.append(button);
         });
+        messages.id = 'askNovaMessages';
+        messages.setAttribute('role', 'tabpanel');
+        messages.setAttribute('aria-live', 'polite');
 
         const scopeHost = documentRef.createElement('div');
         scopeHost.className = 'vcp-ui-scope ask-nova-scope';
@@ -357,7 +362,10 @@ export function createAskNovaController(options = {}) {
                 const selected = button.dataset.target === state.targetId;
                 button.classList.toggle('active', selected);
                 button.setAttribute('aria-selected', String(selected));
+                button.tabIndex = selected ? 0 : -1;
             });
+            const selectedTab = tabs.querySelector('[aria-selected="true"]');
+            messages.setAttribute('aria-labelledby', selectedTab?.id || '');
             const hasReplies = sessions[state.targetId].messages.some(message => message.role === 'assistant');
             status.textContent = state.isAsking
                 ? `${target.title} · 正在检索源码知识图谱…`
@@ -451,6 +459,18 @@ export function createAskNovaController(options = {}) {
         listen(tabs, 'click', event => {
             const button = event.target.closest('[data-target]');
             if (button) switchTarget(button.dataset.target);
+        });
+        listen(tabs, 'keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            const buttons = [...tabs.querySelectorAll('[role="tab"]')];
+            const current = buttons.indexOf(documentRef.activeElement);
+            if (current < 0 || !buttons.length) return;
+            event.preventDefault();
+            const next = event.key === 'Home' ? 0
+                : event.key === 'End' ? buttons.length - 1
+                    : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+            buttons[next].focus();
+            switchTarget(buttons[next].dataset.target);
         });
         listen(prompts, 'click', event => {
             const button = event.target.closest('button');

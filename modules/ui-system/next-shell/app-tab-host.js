@@ -153,6 +153,7 @@
         }
 
         updateVisibility() {
+            const previousViewId = this._lastActiveViewId || 'home';
             const isHome = this.activeViewId === 'home';
             const isLaunchpad = this.activeViewId === 'launchpad';
             const isInternal = this.activeViewId.startsWith('app:');
@@ -186,6 +187,16 @@
                 view.container.hidden = !active;
             });
             this.onActivate(this.activeViewId, activeView);
+            this._lastActiveViewId = this.activeViewId;
+            if (previousViewId !== 'launchpad' && isLaunchpad) {
+                const focusFirst = () => {
+                    if (this.activeViewId === 'launchpad') this.document.querySelector('#nextUiAppGrid .next-ui-app-item')?.focus();
+                };
+                this.document.defaultView?.requestAnimationFrame ? this.document.defaultView.requestAnimationFrame(focusFirst) : queueMicrotask(focusFirst);
+            } else if (previousViewId === 'launchpad' && !isLaunchpad
+                && this.document.activeElement?.closest?.('#nextUiLaunchpad')) {
+                this.document.getElementById('nextUiAddTabBtn')?.focus();
+            }
         }
 
         setView(viewId, options = {}) {
