@@ -1437,6 +1437,7 @@ function listFactory(options = {}) {
             if (row instanceof HTMLButtonElement) row.type = 'button';
             row.className = 'vcp-ui-list-item';
             row.setAttribute('role', 'listitem');
+            if (item.value !== undefined) row.dataset.value = String(item.value);
             row.disabled = Boolean(item.disabled);
             row.dataset.state = item.selected ? 'selected' : 'default';
             if (item.icon) row.append(icon(item.icon));
