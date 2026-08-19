@@ -38,6 +38,8 @@ A6 证据入口 `npm run check:ui-harness-evidence` 已按当前主机顺序执�
 - 为 reduced-motion、100/125/150% DPI、Windows/macOS、透明材质、字体加载和 Web Awesome fallback 建立可重复证据。
 - 为主聊天启动首帧、快速滚动、设置、创建、托盘、Ask Nova 和内嵌 App 建立带主题/DPI/窗口元数据的视觉基线。
 
+主题来源门禁已新增：`guard:theme-provenance` 要求运行时 `styles/themes.css` 与 `styles/themes/` 中恰好一个源文件逐字节一致；当前工作区若存在用户独立的自定义 `styles/themes.css`，该门禁会有意失败，不能通过提交用户文件来掩盖来源漂移。
+
 ## 明确非目标
 
 - 不重新引入 Classic/Next 双主窗口 presentation。
