@@ -56,6 +56,7 @@
 | 应用托盘抽屉隐藏状态可访问性 | 已完成核心范围 | 关闭/出场动画期间 trayManager 同步 `aria-hidden` 与 `inert`；Electron smoke 验证打开和关闭终态 |
 | 通知菜单单一所有者 | 已完成 | 旧 `event-listeners` 重复绑定已停用；controller 单测与 Electron 命令计数证明每个动作只执行一次 |
 | 全局设置永久 pending | 已完成核心范围 | 保存 IPC 有界等待，超时释放提交锁并进入可恢复失败；新增回归覆盖 |
+| 异步 busy 状态语义 | 已完成核心范围 | Ask Nova composer 与主聊天流式发送按钮同步 `aria-busy`，成功/取消后由真实终态清除；Electron 主聊天序列与 UI contract 覆盖 |
 
 最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
