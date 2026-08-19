@@ -972,7 +972,13 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
     try {
         setupChatPresentationQuickSwitcher();
-        await loadAndApplyGlobalSettings();
+        try {
+            await loadAndApplyGlobalSettings();
+        } catch (error) {
+            // Do not leave the startup gate closed if settings IPC fails.
+            console.error('[RENDERER_INIT] Failed to load global settings:', error);
+            applyInitialThemeClass('system');
+        }
         await window.itemListManager.loadItems(); // Load both agents and groups
         await window.chatManager.restoreLastOpenState(globalSettings);
 
@@ -1574,6 +1580,11 @@ async function loadAndApplyGlobalSettings() {
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings };
         window.globalSettings = globalSettings;
+
+        // Theme variables must be selected before any item/chat restoration can paint.
+        // The uiManager listener is initialized later and receives the same effective value.
+        applyInitialThemeClass(globalSettings.currentThemeMode);
+
         globalSettings.appearanceProfile = window.VCPAppearance?.commit(
             globalSettings.appearanceProfile,
             { uiMode: 'next', source: 'settings-load' }
@@ -1635,8 +1646,20 @@ async function loadAndApplyGlobalSettings() {
         }
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
+        applyInitialThemeClass('system');
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
     }
+}
+
+function applyInitialThemeClass(mode) {
+    let effectiveTheme = mode === 'light' || mode === 'dark' ? mode : null;
+    if (!effectiveTheme && typeof window.matchMedia === 'function') {
+        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    effectiveTheme = effectiveTheme || 'light';
+    document.body.classList.remove('light-theme', 'dark-theme');
+    document.body.classList.add(`${effectiveTheme}-theme`);
+    document.body.removeAttribute('data-theme-pending');
 }
 
 const CHAT_PRESENTATION_MODES = Object.freeze(['bubble', 'panel', 'immersive']);

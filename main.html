@@ -12,6 +12,10 @@
                    font-src *;
                    connect-src * ws: wss: data:;">
     <title>VCPChat</title>
+    <style>
+        /* Avoid painting the canonical shell with uninitialized theme variables. */
+        body[data-theme-pending="true"] { visibility: hidden; }
+    </style>
     <link rel="stylesheet" href="vendor/fontawesome-v6/fontawesome-v6.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="styles/compact-sidebar.css">
@@ -39,7 +43,7 @@
     <script src="vendor/morphdom.min.js"></script>
 </head>
 
-<body>
+<body data-theme-pending="true">
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
         <nav class="next-ui-tab-strip" aria-label="页面标签">

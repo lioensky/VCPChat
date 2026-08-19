@@ -492,6 +492,16 @@ try {
 
     await page.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout: timeoutMs });
 
+    const initialThemeState = await page.evaluate(() => ({
+        pending: document.body.getAttribute('data-theme-pending'),
+        hasLight: document.body.classList.contains('light-theme'),
+        hasDark: document.body.classList.contains('dark-theme'),
+        visibility: getComputedStyle(document.body).visibility,
+    }));
+    assert.equal(initialThemeState.pending, null, `startup theme gate was not released: ${JSON.stringify(initialThemeState)}`);
+    assert.equal(initialThemeState.hasLight || initialThemeState.hasDark, true, `startup theme class missing: ${JSON.stringify(initialThemeState)}`);
+    assert.equal(initialThemeState.visibility, 'visible', `startup body remains hidden after renderer readiness: ${JSON.stringify(initialThemeState)}`);
+
     // 1. Web Awesome runtime must not be fetched nor registered at boot.
     const bootWaState = await page.evaluate(() => ({
         waButton: typeof customElements !== 'undefined' ? customElements.get('wa-button') : null,
