@@ -533,6 +533,26 @@ try {
     }));
     assert.equal(reducedMotionState.media, true, `reduced-motion preference was not applied: ${JSON.stringify(reducedMotionState)}`);
     assert.equal(reducedMotionState.bodyVisible, true, `reduced-motion boot is not visible: ${JSON.stringify(reducedMotionState)}`);
+    const reducedLaunchpad = await page.evaluate(async () => {
+        window.topTabManager?.openLaunchpad?.();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const root = document.getElementById('nextUiLaunchpad');
+        const style = root ? getComputedStyle(root) : null;
+        const opened = root?.getAttribute('aria-hidden') === 'false'
+            && style?.visibility === 'visible';
+        window.topTabManager?.setView?.('home');
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        return {
+            opened,
+            transition: style?.transitionDuration || '',
+            animation: style?.animationDuration || '',
+            closed: root?.getAttribute('aria-hidden') === 'true',
+        };
+    });
+    assert.equal(reducedLaunchpad.opened, true, `reduced-motion Launchpad did not reach visible state: ${JSON.stringify(reducedLaunchpad)}`);
+    assert.match(reducedLaunchpad.transition, /0|1ms/, `reduced-motion Launchpad retains a long transition: ${JSON.stringify(reducedLaunchpad)}`);
+    assert.match(reducedLaunchpad.animation, /0|1ms/, `reduced-motion Launchpad retains a long animation: ${JSON.stringify(reducedLaunchpad)}`);
+    assert.equal(reducedLaunchpad.closed, true, `reduced-motion Launchpad did not reach closed state: ${JSON.stringify(reducedLaunchpad)}`);
     await page.emulateMediaFeatures([]);
     await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
 
