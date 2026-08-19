@@ -63,6 +63,7 @@ test('dispose clears leases, retracts fallback listeners and is idempotent', asy
     coordinator.dispose();
     coordinator.dispose();
     assert.equal(coordinator.active, false);
+    assert.equal(calls.reconcile, 1, 'dispose must reconcile a native view released with the coordinator');
     assert.deepEqual(stateEvents, [true, false]);
     dom.window.document.dispatchEvent(new dom.window.CustomEvent('modal-visibility-changed', {
         detail: { modalId: 'late', active: true },

@@ -132,6 +132,10 @@
             this.modalOwners.clear();
             if (this.owners.size > 0) this.dispatchState(false);
             this.owners.clear();
+            // Disposal can happen while an overlay still owns the native
+            // view. Reconcile immediately so teardown never leaves a hidden
+            // WebContentsView after the coordinator has gone away.
+            this.reconcileEmbeddedView();
         }
     }
 
