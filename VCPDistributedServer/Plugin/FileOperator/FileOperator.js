@@ -9,9 +9,16 @@ const ExcelJS = require('exceljs');
 const axios = require('axios');
 const { validateCode } = require('./CodeValidator');
 
-// Load environment variables without writing tips to stdout,
-// because plugin stdout must remain clean JSON for the VCP protocol.
-require('dotenv').config({ quiet: true });
+// Load environment variables with fallback chain: config.env → .env → defaults
+const dotenv = require('dotenv');
+const configEnvPath = path.join(__dirname, 'config.env');
+const dotEnvPath = path.join(__dirname, '.env');
+if (fsSync.existsSync(configEnvPath)) {
+  dotenv.config({ path: configEnvPath });
+} else if (fsSync.existsSync(dotEnvPath)) {
+  dotenv.config({ path: dotEnvPath });
+}
+// If neither exists, all config falls back to code defaults below.
 
 // Configuration
 const CANVAS_DIRECTORY = path.join(__dirname, '..', '..', '..', 'AppData', 'Canvas');
@@ -290,6 +297,36 @@ function applyDiffLogic(originalContent, diffContent) {
   return replaceResult.result;
 }
 
+/**
+ * Detect file encoding from raw buffer.
+ * Progressive: BOM detection (zero-dep) → chardet (if installed) → fallback utf-8.
+ */
+function detectEncoding(buffer) {
+  // 1. BOM detection (zero dependency)
+  if (buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+    return { encoding: 'utf-8', bom: true, confidence: 'bom' };
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+    return { encoding: 'utf-16le', bom: true, confidence: 'bom' };
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) {
+    return { encoding: 'utf-16be', bom: true, confidence: 'bom' };
+  }
+
+  // 2. Try chardet if available (progressive upgrade)
+  try {
+    const chardet = require('chardet');
+    const sample = buffer.slice(0, 4096);
+    const detected = chardet.detect(sample);
+    return { encoding: detected || 'utf-8', bom: false, confidence: 'chardet' };
+  } catch (_e) {
+    // chardet not installed — fallback
+  }
+
+  // 3. Fallback: assume utf-8
+  return { encoding: 'utf-8', bom: false, confidence: 'fallback' };
+}
+
 // Normalize user-provided paths before file operations.
 // This mirrors the server-side operator behavior and makes ApplyDiff more robust
 // for relative paths, accidental whitespace, and virtual-root style paths.
@@ -437,6 +474,7 @@ async function webReadFile(fileUrl, lines) {
 
 async function readFile(filePath, encoding = 'utf8', lines) {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Reading file', { filePath, encoding, lines });
 
     if (!isPathAllowed(filePath, 'ReadFile')) {
@@ -504,13 +542,18 @@ async function readFile(filePath, encoding = 'utf8', lines) {
       content = fileBuffer.toString(encoding);
     }
 
+    // Detect encoding for text files (non-extracted, non-binary)
+    const isDataContent = typeof content === 'string' && content.startsWith('data:');
+    const encodingInfo = (!isExtracted && !isDataContent) ? detectEncoding(fileBuffer) : null;
+
     const returnData = {
       size: stats.size,
       sizeFormatted: formatFileSize(stats.size),
       lastModified: stats.mtime.toISOString(),
       encoding: isExtracted ? 'utf8' : encoding,
       isExtracted: isExtracted,
-      fileName: path.basename(filePath)
+      fileName: path.basename(filePath),
+      detectedEncoding: encodingInfo
     };
 
     let headerText = `已读取文件 '${returnData.fileName}' (${returnData.sizeFormatted})。`;
@@ -611,6 +654,7 @@ async function writeFile(filePath, content, encoding = 'utf8') {
 
 async function appendFile(filePath, content, encoding = 'utf8') {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Appending to file', { filePath, contentLength: content.length, encoding });
 
     if (!isPathAllowed(filePath, 'AppendFile')) {
@@ -658,6 +702,7 @@ async function appendFile(filePath, content, encoding = 'utf8') {
 
 async function editFile(filePath, content, encoding = 'utf8') {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Editing file', { filePath, contentLength: content.length, encoding });
 
     if (!isPathAllowed(filePath, 'EditFile')) {
@@ -681,7 +726,17 @@ async function editFile(filePath, content, encoding = 'utf8') {
       throw new Error(`Content too large: exceeds limit of ${formatFileSize(MAX_FILE_SIZE)}`);
     }
 
-    await fs.writeFile(filePath, content, encoding);
+    // Preserve original file's line ending style
+    let finalContent = content;
+    try {
+      const originalContent = await fs.readFile(filePath, encoding);
+      const helper = createLineEndingHelper(originalContent);
+      finalContent = helper.denormalize(helper.normalize(content));
+    } catch (_e) {
+      // If read fails for any reason, write content as-is
+    }
+
+    await fs.writeFile(filePath, finalContent, encoding);
     const stats = await fs.stat(filePath);
 
     let result = {
@@ -707,6 +762,7 @@ async function editFile(filePath, content, encoding = 'utf8') {
 
 async function listDirectory(dirPath, showHidden = ENABLE_HIDDEN_FILES) {
   try {
+    dirPath = resolveAndNormalizePath(dirPath);
     debugLog('Listing directory', { dirPath, showHidden });
 
     if (!isPathAllowed(dirPath, 'ListDirectory')) {
@@ -771,6 +827,7 @@ async function listDirectory(dirPath, showHidden = ENABLE_HIDDEN_FILES) {
 
 async function getFileInfo(filePath) {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Getting file info', { filePath });
 
     if (!isPathAllowed(filePath, 'FileInfo')) {
@@ -829,6 +886,8 @@ async function getFileInfo(filePath) {
 
 async function copyFile(sourcePath, destinationPath) {
   try {
+    sourcePath = resolveAndNormalizePath(sourcePath);
+    destinationPath = resolveAndNormalizePath(destinationPath);
     debugLog('Copying file', { sourcePath, destinationPath });
 
     if (!isPathAllowed(sourcePath, 'CopyFile') || !isPathAllowed(destinationPath, 'CopyFile')) {
@@ -874,6 +933,8 @@ async function copyFile(sourcePath, destinationPath) {
 
 async function moveFile(sourcePath, destinationPath) {
   try {
+    sourcePath = resolveAndNormalizePath(sourcePath);
+    destinationPath = resolveAndNormalizePath(destinationPath);
     debugLog('Moving file', { sourcePath, destinationPath });
 
     if (!isPathAllowed(sourcePath, 'MoveFile') || !isPathAllowed(destinationPath, 'MoveFile')) {
@@ -912,6 +973,8 @@ async function moveFile(sourcePath, destinationPath) {
 
 async function renameFile(sourcePath, destinationPath) {
   try {
+    sourcePath = resolveAndNormalizePath(sourcePath);
+    destinationPath = resolveAndNormalizePath(destinationPath);
     debugLog('Renaming file', { sourcePath, destinationPath });
 
     if (!isPathAllowed(sourcePath, 'RenameFile') || !isPathAllowed(destinationPath, 'RenameFile')) {
@@ -957,6 +1020,7 @@ async function renameFile(sourcePath, destinationPath) {
 
 async function deleteFile(filePath) {
   try {
+    filePath = resolveAndNormalizePath(filePath);
     debugLog('Deleting file', { filePath });
 
     if (!isPathAllowed(filePath, 'DeleteFile')) {
@@ -993,6 +1057,7 @@ async function deleteFile(filePath) {
 
 async function createDirectory(dirPath) {
   try {
+    dirPath = resolveAndNormalizePath(dirPath);
     debugLog('Creating directory', { dirPath });
 
     if (!isPathAllowed(dirPath, 'CreateDirectory')) {
@@ -1021,6 +1086,7 @@ async function createDirectory(dirPath) {
 
 async function searchFiles(searchPath, pattern, options = {}) {
   try {
+    searchPath = resolveAndNormalizePath(searchPath);
     debugLog('Searching files', { searchPath, pattern, options });
 
     if (!isPathAllowed(searchPath, 'SearchFiles')) {
@@ -1111,9 +1177,9 @@ async function downloadFile(url, downloadDir, customFileName) {
     // 3. Fallback to AppData/file directory
     let baseDir;
     if (downloadDir && downloadDir.trim()) {
-      baseDir = downloadDir.trim();
+      baseDir = resolveAndNormalizePath(downloadDir.trim());
     } else if (DEFAULT_DOWNLOAD_DIR) {
-      baseDir = DEFAULT_DOWNLOAD_DIR;
+      baseDir = resolveAndNormalizePath(DEFAULT_DOWNLOAD_DIR);
     } else {
       baseDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
     }
