@@ -79,12 +79,39 @@ const uiManager = (() => {
             theme = 'light';
         }
 
-        // Apply class to body for CSS styling
-        document.body.classList.remove('light-theme', 'dark-theme');
-        document.body.classList.add(`${theme}-theme`);
-        themeChannel?.publish(Object.freeze({ ready: true, effective: theme }), { source: 'ui-manager' });
+        const body = document.body;
+        if (!body) return false;
+
+        const shouldUseLight = theme === 'light';
+        const domAlreadyApplied = body.classList.contains('light-theme') === shouldUseLight
+            && body.classList.contains('dark-theme') !== shouldUseLight;
+        const channelState = themeChannel?.get();
+        const channelAlreadyApplied = channelState?.ready === true
+            && channelState.effective === theme;
+
+        // setThemeMode() performs an optimistic renderer-side update and the main
+        // process broadcasts the persisted value afterwards. Keep this operation
+        // idempotent so that the echo cannot invalidate and repaint the whole tree.
+        if (domAlreadyApplied && channelAlreadyApplied) {
+            return false;
+        }
+
+        // Express the final state directly. Removing both classes before adding the
+        // target class creates an avoidable unthemed intermediate style state.
+        if (!domAlreadyApplied) {
+            body.classList.toggle('light-theme', shouldUseLight);
+            body.classList.toggle('dark-theme', !shouldUseLight);
+        }
+
+        if (!channelAlreadyApplied) {
+            themeChannel?.publish(
+                Object.freeze({ ready: true, effective: theme }),
+                { source: 'ui-manager' }
+            );
+        }
 
         console.log(`[UIManager] Theme applied: ${theme}`);
+        return true;
     }
 
     /**

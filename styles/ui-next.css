@@ -454,7 +454,11 @@ html .next-ui-main-panel {
     border-bottom: 0;
     border-radius: var(--vcp-ui-shell-radius) 0 0 0;
     box-sizing: border-box;
-    background-color: var(--primary-bg, var(--next-surface));
+    /* The navigation material is the continuous shell base. Keeping an opaque
+       primary-bg here creates a hard rectangular patch for legacy themes that
+       do not define the optional --next-theme-* contract. The translucent
+       chat surface and wallpaper below remain the panel's visual authority. */
+    background-color: transparent;
     background-image:
         linear-gradient(var(--next-chat-surface), var(--next-chat-surface)),
         var(--next-wallpaper);

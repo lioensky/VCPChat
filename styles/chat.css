@@ -269,7 +269,15 @@ body.light-theme #moon-icon {
     position: relative;
     backdrop-filter: blur(8px); /* Keep if desired */
     -webkit-backdrop-filter: blur(8px); /* Keep if desired */
-    transition: max-width 0.4s ease-in-out, background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease; /* Smooth transition for width and surface changes */
+    /* Theme backgrounds can be multi-layer color-mix() gradients over a
+     * backdrop-filter. Interpolating them on every visible message is much
+     * more expensive than committing the target surface once. Keep layout,
+     * text, border and shadow feedback smooth without animating background. */
+    transition:
+        max-width 0.4s ease-in-out,
+        color 0.16s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
 }
 
 /* When notifications sidebar is active, make bubbles wider to fill more of the narrower space */
