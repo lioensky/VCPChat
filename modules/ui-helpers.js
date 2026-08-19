@@ -872,6 +872,7 @@
      */
     uiHelperFunctions.showConfirmDialog = function(message, title = '确认', confirmText = '确定', cancelText = '取消', isDanger = false) {
         return new Promise((resolve) => {
+            const previousFocus = document.activeElement;
             // 创建模态框容器
             const overlay = document.createElement('div');
             overlay.id = 'confirm-dialog-overlay';
@@ -880,10 +881,15 @@
             // 创建对话框
             const dialog = document.createElement('div');
             dialog.className = 'confirm-dialog';
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            const titleId = `confirm-dialog-title-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            dialog.setAttribute('aria-labelledby', titleId);
             
             // 标题
             const titleEl = document.createElement('div');
             titleEl.className = 'confirm-dialog-title';
+            titleEl.id = titleId;
             titleEl.textContent = title;
             dialog.appendChild(titleEl);
             
@@ -920,24 +926,30 @@
             dialog.appendChild(buttonsEl);
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
-            
-            // 显示动画
-            requestAnimationFrame(() => {
-                overlay.classList.add('visible');
-                confirmBtn.focus();
-            });
+            // Publish the active state synchronously so a same-frame Escape
+            // cannot close the owning settings modal underneath this dialog.
+            overlay.classList.add('visible');
+            confirmBtn.focus();
             
             // 键盘事件
             const handleKeydown = (e) => {
                 if (e.key === 'Escape') {
+                    e.preventDefault();
                     cleanup();
                     resolve(false);
                 } else if (e.key === 'Enter') {
+                    e.preventDefault();
                     cleanup();
                     resolve(true);
+                } else if (e.key === 'Tab') {
+                    const focusables = [cancelBtn, confirmBtn];
+                    const current = focusables.indexOf(document.activeElement);
+                    if (current < 0) return;
+                    e.preventDefault();
+                    focusables[(current + (e.shiftKey ? -1 : 1) + focusables.length) % focusables.length].focus();
                 }
             };
-            document.addEventListener('keydown', handleKeydown);
+            document.addEventListener('keydown', handleKeydown, true);
             
             // 点击遮罩关闭
             overlay.onclick = (e) => {
@@ -949,12 +961,13 @@
             
             // 清理函数
             function cleanup() {
-                document.removeEventListener('keydown', handleKeydown);
+                document.removeEventListener('keydown', handleKeydown, true);
                 overlay.classList.remove('visible');
                 setTimeout(() => {
                     if (overlay.parentNode) {
                         overlay.parentNode.removeChild(overlay);
                     }
+                    if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
                 }, 200);
             }
         });
