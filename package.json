@@ -17,6 +17,7 @@
     "guard:ui-interaction": "node scripts/check-ui-interaction-inventory.mjs",
     "guard:ui-async-state": "node scripts/check-ui-async-state-matrix.mjs",
     "guard:ui-task-journeys": "node scripts/check-ui-task-journeys.mjs",
+    "check:ui-harness-evidence": "node scripts/check-ui-harness-evidence.mjs",
     "check:ui-applications": "node scripts/check-ui-applications.mjs && node scripts/test-page-runtime.mjs",
     "pack:check": "npm run vendor:webawesome:check && node scripts/check-webawesome-pack.mjs",
     "vendor:webawesome:report": "node scripts/build-webawesome-runtime.mjs",

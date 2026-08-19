@@ -30,6 +30,8 @@
 
 当前真实证据：`npm run test:electron-ui-apps` 通过 22/22，覆盖 canonical 主界面、设置、创建、托盘、Ask Nova 和上游 Classic 子页面，并在真实 renderer 中执行 deviceScaleFactor 1/1.25/1.5、reduced-motion 和横向溢出检查；`npm run test:electron-main-chat-sequences` 通过 24 actions；`npm run test:electron-lifecycle-stress` 通过 3 次预热 + 20 次测量，listener 874、Scope 8、资源 162、进程 5、detached root/icon/option 为 0；`npm run pack:check` 通过 101 个 Web Awesome closure 文件。它们证明 macOS 当前树的自动证据，不替代 Windows/DPI/GPU、打包实际启动和 30–60 分钟人工 soak。
 
+A6 证据入口 `npm run check:ui-harness-evidence` 已按当前主机顺序执行交互、异步状态、任务旅程、motion、Electron UI、主聊天序列、生命周期压力和 Web Awesome closure；脚本明确把 Windows、打包后启动和人工 soak 保留为外部证据，不把本地自动通过扩大解释为发布完成。
+
 ## P2：视觉和平台证据
 
 - 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。

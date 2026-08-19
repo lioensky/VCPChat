@@ -1287,8 +1287,8 @@ try {
         delete window.__nextDeltaOriginalCommands;
         delete window.__nextDeltaResolveCreate;
     });
-    // A terminal component-load failure is an application-integrity error.
-    // It must report the failure without mounting a visually divergent UI.
+    // A terminal component-load failure must keep the same creation task
+    // usable through the native kernel; it must not create a second form.
     await page.evaluate(() => {
         window.__nextDeltaOriginalWebAwesome = window.VCPWebAwesome;
         window.VCPWebAwesome = Object.freeze({
@@ -1300,10 +1300,19 @@ try {
         });
         document.getElementById('nextUiCreateItemBtn')?.click();
     });
-    await page.waitForFunction(() => [...document.querySelectorAll('.vcp-ui-toast')]
-        .some(item => item.textContent.includes('创建界面组件加载失败')), { timeout: timeoutMs });
-    assert.equal(await page.evaluate(() => Boolean(document.querySelector('.next-ui-create-dialog-host'))), false,
-        'failed WA creation mounted a native substitute');
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host')), { timeout: timeoutMs });
+    const fallbackCreation = await page.evaluate(() => ({
+        host: Boolean(document.querySelector('.next-ui-create-dialog-host')),
+        nativeInputs: document.querySelectorAll('.next-ui-create-dialog-host input, .next-ui-create-dialog-host select, .next-ui-create-dialog-host textarea').length,
+        webAwesomeInputs: document.querySelectorAll('.next-ui-create-dialog-host wa-input, .next-ui-create-dialog-host wa-select').length,
+        formCount: document.querySelectorAll('.next-ui-create-dialog-host form').length,
+    }));
+    assert.equal(fallbackCreation.host, true, `failed WA creation did not retain a surface: ${JSON.stringify(fallbackCreation)}`);
+    assert.equal(fallbackCreation.formCount, 1, `fallback creation created duplicate forms: ${JSON.stringify(fallbackCreation)}`);
+    assert.ok(fallbackCreation.nativeInputs > 0, `fallback creation did not use native controls: ${JSON.stringify(fallbackCreation)}`);
+    assert.equal(fallbackCreation.webAwesomeInputs, 0, `fallback creation mounted Web Awesome controls: ${JSON.stringify(fallbackCreation)}`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
     await page.evaluate(() => {
         window.VCPWebAwesome = window.__nextDeltaOriginalWebAwesome;
         delete window.__nextDeltaOriginalWebAwesome;
