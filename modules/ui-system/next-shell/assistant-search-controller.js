@@ -13,10 +13,12 @@
         constructor(options = {}) {
             this.document = options.document || globalThis.document;
             this.filter = options.filter || (() => {});
+            this.escapeDispatcher = options.escapeDispatcher || null;
             this.scope = null;
             this.abortController = null;
             this.elements = null;
             this.mounted = false;
+            this.escapeDisposer = null;
         }
 
         mount(scope = null) {
@@ -38,7 +40,13 @@
                 : target.addEventListener(type, handler, { signal: this.abortController.signal });
             listen(trigger, 'click', () => this.setOpen(true, false));
             listen(close, 'click', () => this.setOpen(false));
-            listen(input, 'keydown', event => {
+            if (this.escapeDispatcher) {
+                this.escapeDisposer = this.escapeDispatcher.register({
+                    priority: 35,
+                    isActive: () => header.classList.contains('is-searching'),
+                    close: () => { this.setOpen(false); return true; },
+                });
+            } else listen(input, 'keydown', event => {
                 if (event.key !== 'Escape') return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -73,6 +81,8 @@
             const { header, trigger, input } = this.elements;
             this.mounted = false;
             this.abortController?.abort();
+            this.escapeDisposer?.();
+            this.escapeDisposer = null;
             this.abortController = null;
             header.classList.remove('is-searching');
             trigger.setAttribute('aria-expanded', 'false');

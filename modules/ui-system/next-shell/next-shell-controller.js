@@ -9,6 +9,9 @@
     let mountAbortController = null;
     let mountScope = null;
     let accountMenuController = null;
+    let notificationMenuController = null;
+    let escapeDispatcher = null;
+    let settingsEscapeDisposer = null;
     let sidebarResizeObserver = null;
     let creationController = null;
     let embeddedAppController = null;
@@ -560,17 +563,21 @@
         if (teardownPromise) return teardownPromise.then(() => mount());
         const finishMountTiming = window.VCPPerformance?.begin?.('next.mount');
         const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
+        const EscapeDispatcher = window.VCPNextShell?.EscapeDispatcher;
         const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
         const AppTabHost = window.VCPNextShell?.AppTabHost;
         const AssistantSearchController = window.VCPNextShell?.AssistantSearchController;
         const AccountMenuController = window.VCPNextShell?.AccountMenuController;
+        const NotificationMenuController = window.VCPNextShell?.NotificationMenuController;
         const LaunchpadController = window.VCPNextShell?.LaunchpadController;
         const CreationController = window.VCPNextShell?.CreationController;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
+        if (!EscapeDispatcher) throw new Error('EscapeDispatcher is unavailable.');
         if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
         if (!AppTabHost) throw new Error('AppTabHost is unavailable.');
         if (!AssistantSearchController) throw new Error('AssistantSearchController is unavailable.');
         if (!AccountMenuController) throw new Error('AccountMenuController is unavailable.');
+        if (!NotificationMenuController) throw new Error('NotificationMenuController is unavailable.');
         if (!LaunchpadController) throw new Error('LaunchpadController is unavailable.');
         if (!CreationController) throw new Error('CreationController is unavailable.');
         mounted = true;
@@ -578,6 +585,22 @@
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
         mountScope = LifecycleScope ? new LifecycleScope('next:tab-host') : null;
         mountAbortController = mountScope ? null : new AbortController();
+        escapeDispatcher = new EscapeDispatcher({ document });
+        escapeDispatcher.mount(mountScope);
+        settingsEscapeDisposer = escapeDispatcher.register({
+            priority: 20,
+            isActive: () => {
+                const modal = document.getElementById('globalSettingsModal');
+                if (modal?.classList.contains('active') !== true) return false;
+                return !document.querySelector('.vcp-ui-modal-overlay, wa-dialog[open], .confirm-dialog-overlay.visible');
+            },
+            close: () => {
+                if (typeof window.uiHelperFunctions?.closeModal !== 'function') return false;
+                window.uiHelperFunctions.closeModal('globalSettingsModal');
+                return true;
+            },
+        });
+        if (mountScope) mountScope.own(settingsEscapeDisposer, 'next:settings-escape-owner', 'controller');
         releaseWindowState = window.MainChatCommands?.subscribeWindowState?.(syncWindowControl) || null;
         if (mountScope && releaseWindowState) mountScope.own(releaseWindowState, 'next:window-state', 'subscription');
         appTabHost = new AppTabHost({
@@ -593,6 +616,7 @@
         assistantSearchController = new AssistantSearchController({
             document,
             filter: value => window.uiHelperFunctions?.filterAgentList?.(value),
+            escapeDispatcher,
         });
         assistantSearchController.mount(mountScope);
         accountMenuController = new AccountMenuController({
@@ -607,8 +631,18 @@
             syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),
             setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),
             subscribeTheme: (listener, options) => window.uiManager?.subscribeTheme?.(listener, options),
+            escapeDispatcher,
         });
         accountMenuController.mount(mountScope);
+        notificationMenuController = new NotificationMenuController({
+            window,
+            document,
+            commands: () => window.MainChatCommands,
+            filterManager: window.filterManager,
+            showToast: (message, variant) => window.uiHelperFunctions?.showToastNotification?.(message, variant),
+            escapeDispatcher,
+        });
+        notificationMenuController.mount(mountScope);
         launchpadController = new LaunchpadController({
             document,
             getExternalApps: () => window.trayManager?.getApps?.() || [],
@@ -676,6 +710,10 @@
         mounted = false;
         mountGeneration += 1;
         if (!mountScope) mountAbortController?.abort();
+        if (!mountScope) {
+            notificationMenuController?.dispose();
+            escapeDispatcher?.dispose();
+        }
         if (!mountScope) releaseWindowState?.();
         releaseWindowState = null;
         mountAbortController = null;
@@ -686,6 +724,7 @@
             appTabHost?.dispose();
             assistantSearchController?.dispose();
             accountMenuController?.dispose();
+            notificationMenuController?.dispose();
             launchpadController?.dispose();
             creationController?.dispose();
         }
