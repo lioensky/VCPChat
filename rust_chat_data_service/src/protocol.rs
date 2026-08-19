@@ -37,9 +37,8 @@ use crate::{
     storage::now_ms,
     sync::{
         self, ChangeFeedResponse, ManifestRequest, ManifestResponse, MessageDiffRequest,
-        MessageDiffResponse, MessageManifestResponse, MessagesPullRequest,
-        MessagesPushRequest, MessagesPushResponse, TopicHashDiffRequest, TopicHashDiffResponse,
-        TopicSelector,
+        MessageDiffResponse, MessageManifestResponse, MessagesPullRequest, MessagesPushRequest,
+        MessagesPushResponse, TopicHashDiffRequest, TopicHashDiffResponse, TopicSelector,
     },
     watcher::WatcherMetrics,
 };

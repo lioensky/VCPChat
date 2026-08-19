@@ -1940,10 +1940,10 @@ mod tests {
     };
 
     use super::{
-        aggregate_hash, manifest, message_manifest, mobile_message_hash_from_json,
-        owner_manifest, pull_topic_messages, push_messages, topic_content_hash, topic_hash_diff,
-        topic_identity, topic_manifests, unique_manifest_item_by_id, validate_manifest_request,
-        ManifestItem, ManifestRequest, MessagesPullTopic, MessagesPushRequest, MessagesPushTopic,
+        aggregate_hash, manifest, message_manifest, mobile_message_hash_from_json, owner_manifest,
+        pull_topic_messages, push_messages, topic_content_hash, topic_hash_diff, topic_identity,
+        topic_manifests, unique_manifest_item_by_id, validate_manifest_request, ManifestItem,
+        ManifestRequest, MessagesPullTopic, MessagesPushRequest, MessagesPushTopic,
         RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector,
         TOMBSTONE_CONTENT_HASH,
     };
@@ -2669,10 +2669,7 @@ mod tests {
         {
             let connection = database.connection.lock();
             connection
-                .execute(
-                    "UPDATE messages SET deleted_at=99 WHERE msg_id='m1'",
-                    [],
-                )
+                .execute("UPDATE messages SET deleted_at=99 WHERE msg_id='m1'", [])
                 .expect("tombstone m1");
             // metadata 里残留 status:"removed"——canonicalize 必炸的形态，
             // 但 deleted 行短路后不应再被解析。
@@ -2752,8 +2749,7 @@ mod tests {
             .iter()
             .map(|message| (message.msg_id.as_str(), message))
             .collect();
-        let expected_sentinel =
-            sha256_hex(format!("vcp-invalid-message:{poison_raw}").as_bytes());
+        let expected_sentinel = sha256_hex(format!("vcp-invalid-message:{poison_raw}").as_bytes());
         assert_eq!(by_id["synthetic_1"].content_hash, expected_sentinel);
         // 健康消息的哈希与无哨兵时逐字节一致。
         assert_eq!(
@@ -2776,10 +2772,7 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(
             first,
-            aggregate_hash(vec![
-                by_id["m1"].content_hash.clone(),
-                expected_sentinel
-            ])
+            aggregate_hash(vec![by_id["m1"].content_hash.clone(), expected_sentinel])
         );
     }
 
@@ -2791,14 +2784,18 @@ mod tests {
         let (_temp, config, database, reconciler) = sync_fixture();
         // 第二个健康 topic 作为"零变化"对照。
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-a/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
             br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
         )
         .expect("write topic-a history");
         fs::create_dir_all(config.user_data_dir.join("agent-a/topics/topic-b"))
             .expect("create topic-b dir");
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-b/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-b/history.json"),
             br#"[{"id":"m2","role":"user","content":"b","timestamp":2}]"#,
         )
         .expect("write topic-b history");
@@ -2821,7 +2818,13 @@ mod tests {
         let baseline_b = baseline
             .iter()
             .find(|item| item.id == "topic-b")
-            .map(|item| (item.hash.clone(), item.config_hash.clone(), item.content_hash.clone()))
+            .map(|item| {
+                (
+                    item.hash.clone(),
+                    item.config_hash.clone(),
+                    item.content_hash.clone(),
+                )
+            })
             .expect("baseline topic-b");
 
         // 毒化 topic-a 的 source（对齐 S5 的 invalid 毒态）。
@@ -2842,8 +2845,7 @@ mod tests {
             .iter()
             .find(|item| item.id == "topic-a")
             .expect("degraded topic-a entry");
-        let sentinel =
-            sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
+        let sentinel = sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
         assert_eq!(degraded_a.config_hash, sentinel);
         assert_eq!(degraded_a.content_hash, sentinel);
         assert_eq!(degraded_a.deleted_at, None);
@@ -2851,7 +2853,13 @@ mod tests {
         let after_b = items
             .iter()
             .find(|item| item.id == "topic-b")
-            .map(|item| (item.hash.clone(), item.config_hash.clone(), item.content_hash.clone()))
+            .map(|item| {
+                (
+                    item.hash.clone(),
+                    item.config_hash.clone(),
+                    item.content_hash.clone(),
+                )
+            })
             .expect("topic-b after degradation");
         assert_eq!(after_b, baseline_b);
 
@@ -2890,7 +2898,9 @@ mod tests {
     async fn unhealthy_topic_delete_precedence_and_tail_pull() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-a/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
             br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
         )
         .expect("write history");
@@ -2959,14 +2969,18 @@ mod tests {
         let (_temp, config, database, reconciler) = sync_fixture();
         // agent-a 增开 topic-b；另建健康 owner agent-b 作对照。
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-a/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
             br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
         )
         .expect("write topic-a history");
         fs::create_dir_all(config.user_data_dir.join("agent-a/topics/topic-b"))
             .expect("create topic-b dir");
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-b/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-b/history.json"),
             br#"[{"id":"m2","role":"user","content":"b","timestamp":2}]"#,
         )
         .expect("write topic-b history");
@@ -2995,7 +3009,9 @@ mod tests {
         )
         .expect("write agent-b config");
         fs::write(
-            config.user_data_dir.join("agent-b/topics/topic-c/history.json"),
+            config
+                .user_data_dir
+                .join("agent-b/topics/topic-c/history.json"),
             br#"[{"id":"m3","role":"user","content":"c","timestamp":3}]"#,
         )
         .expect("write topic-c history");
@@ -3084,15 +3100,16 @@ mod tests {
     async fn unreadable_owner_config_degrades_to_skip() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-a/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
             br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
 
         // reconcile 间隙删掉 config（目录还在、行还是活的）。
-        fs::remove_file(config.app_data.join("Agents/agent-a/config.json"))
-            .expect("remove config");
+        fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
 
         let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
         let degraded = agents
@@ -3156,13 +3173,14 @@ mod tests {
     async fn degraded_owner_delete_precedence() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
-            config.user_data_dir.join("agent-a/topics/topic-a/history.json"),
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
             br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
-        fs::remove_file(config.app_data.join("Agents/agent-a/config.json"))
-            .expect("remove config");
+        fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
 
         let response = manifest(
             &database,
