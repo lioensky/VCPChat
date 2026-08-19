@@ -46,6 +46,28 @@
             const listen = (target, handler) => this.renderScope
                 ? this.renderScope.listen(target, 'click', handler, undefined, 'launchpad:click')
                 : target.addEventListener('click', handler);
+            const listenKeydown = target => {
+                const handler = event => {
+                    if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                    const buttons = [...grid.querySelectorAll('button.next-ui-app-item')];
+                    const index = buttons.indexOf(this.document.activeElement);
+                    if (!buttons.length || index < 0) return;
+                    const columns = Math.max(1, Number.parseInt(this.document.defaultView?.getComputedStyle(grid).getPropertyValue('--app-grid-columns'), 10) || 1);
+                    let next = index;
+                    if (event.key === 'Home') next = 0;
+                    else if (event.key === 'End') next = buttons.length - 1;
+                    else if (event.key === 'ArrowRight') next = Math.min(buttons.length - 1, index + 1);
+                    else if (event.key === 'ArrowLeft') next = Math.max(0, index - 1);
+                    else if (event.key === 'ArrowDown') next = Math.min(buttons.length - 1, index + columns);
+                    else if (event.key === 'ArrowUp') next = Math.max(0, index - columns);
+                    if (next === index) return;
+                    event.preventDefault();
+                    buttons[next].focus();
+                };
+                return this.renderScope
+                    ? this.renderScope.listen(target, 'keydown', handler, undefined, 'launchpad:keydown')
+                    : target.addEventListener('keydown', handler);
+            };
             grid.replaceChildren();
             this.getExternalApps().filter(app => app.id !== 'vchat-app-main').forEach((app, index) => {
                 const button = this.document.createElement('button');
@@ -57,6 +79,7 @@
                 listen(button, () => app.embed ? this.openEmbedded(app) : this.openExternal(app));
                 grid.append(button);
             });
+            listenKeydown(grid);
             this.getInternalApps().forEach(app => {
                 const button = this.document.createElement('button');
                 button.type = 'button';
