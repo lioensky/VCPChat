@@ -521,6 +521,8 @@ try {
                 overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
             };
         });
+        assert.ok(Math.abs(scaleState.dpr - deviceScaleFactor) < 0.01,
+            `deviceScaleFactor ${deviceScaleFactor} was not applied (reported ${scaleState.dpr}): ${JSON.stringify(scaleState)}`);
         assert.equal(scaleState.visible, true, `body hidden at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
         assert.ok(scaleState.shellWidth > 500, `canonical shell collapsed at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
         assert.equal(scaleState.overflowX, false, `horizontal overflow at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
@@ -553,6 +555,16 @@ try {
     assert.match(reducedLaunchpad.transition, /0|1ms/, `reduced-motion Launchpad retains a long transition: ${JSON.stringify(reducedLaunchpad)}`);
     assert.match(reducedLaunchpad.animation, /0|1ms/, `reduced-motion Launchpad retains a long animation: ${JSON.stringify(reducedLaunchpad)}`);
     assert.equal(reducedLaunchpad.closed, true, `reduced-motion Launchpad did not reach closed state: ${JSON.stringify(reducedLaunchpad)}`);
+    await page.setViewport({ width: 900, height: 600, deviceScaleFactor: 1 });
+    const minimumWindowState = await page.evaluate(() => ({
+        visible: getComputedStyle(document.body).visibility === 'visible',
+        overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        overflowY: document.documentElement.scrollHeight > document.documentElement.clientHeight + 1,
+        shellWidth: document.getElementById('nextUiMainPanel')?.getBoundingClientRect().width || 0,
+    }));
+    assert.equal(minimumWindowState.visible, true, `minimum window body is not visible: ${JSON.stringify(minimumWindowState)}`);
+    assert.equal(minimumWindowState.overflowX, false, `minimum window has horizontal overflow: ${JSON.stringify(minimumWindowState)}`);
+    assert.ok(minimumWindowState.shellWidth > 500, `minimum window canonical shell collapsed: ${JSON.stringify(minimumWindowState)}`);
     await page.emulateMediaFeatures([]);
     await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
 
