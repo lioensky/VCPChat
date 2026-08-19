@@ -4,8 +4,8 @@
   "surfaces": [
     {"id":"assistant-creation","owner":"CreationController","source":"modules/ui-system/next-shell/creation-controller.js","test":"tests/creation-controller.test.js","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]},
     {"id":"global-settings-save","owner":"settings-bridge/global-settings-manager","source":"modules/ui-system/settings-bridge.js","test":"tests/global-settings-save.test.mjs","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]},
-    {"id":"ask-nova","owner":"AskNovaModalController","source":"modules/ui-system/ask-nova-modal.js","test":"scripts/test-ask-nova-service.mjs","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]},
+    {"id":"ask-nova","owner":"AskNovaModalController","source":"modules/ui-system/ask-nova-modal.js","test":"scripts/test-ui-system.mjs","serviceTest":"scripts/test-ask-nova-service.mjs","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]},
     {"id":"chat-stream","owner":"streamManager/chatManager","source":"modules/renderer/streamManager.js","test":"scripts/test-electron-main-chat-sequences.mjs","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]},
-    {"id":"embedded-app-open","owner":"EmbeddedAppController/AppTabHost","source":"modules/ui-system/next-shell/embedded-app-controller.js","test":"tests/embedded-app-controller.test.js","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]}
+    {"id":"embedded-app-open","owner":"EmbeddedAppController/AppTabHost","source":"modules/ui-system/next-shell/embedded-app-controller.js","test":"scripts/test-electron-ui-apps-smoke.mjs","unitTest":"tests/embedded-app-controller.test.js","states":["idle","loading","success","failure","cancelled","late-result-after-dispose"]}
   ]
 }

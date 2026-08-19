@@ -16,7 +16,8 @@ for (const surface of matrix.surfaces) {
   for (const state of required) {
     if (!surface.states?.includes(state)) errors.push(`${surface.id}: missing state ${state}`);
   }
-  for (const file of [surface.source, surface.test]) {
+  for (const file of [surface.source, surface.test, surface.serviceTest, surface.unitTest]) {
+    if (!file) continue;
     if (!fs.existsSync(path.join(root, file))) errors.push(`${surface.id}: missing evidence file ${file}`);
   }
 }
