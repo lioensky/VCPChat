@@ -332,28 +332,8 @@ const DESKTOP_PUSH_PARTIAL_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; //
 
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
-    try {
-        // 检查是否已经通过 ID 或 href 引入了该样式表
-        const existingStyleElement = document.getElementById('vcp-enhanced-ui-styles');
-        if (existingStyleElement) return;
-
-        const links = document.getElementsByTagName('link');
-        for (let i = 0; i < links.length; i++) {
-            if (links[i].href && links[i].href.includes('messageRenderer.css')) {
-                return;
-            }
-        }
-
-        // 如果没有引入，则尝试从根路径引入（仅对根目录 HTML 有效）
-        const linkElement = document.createElement('link');
-        linkElement.id = 'vcp-enhanced-ui-styles';
-        linkElement.rel = 'stylesheet';
-        linkElement.type = 'text/css';
-        linkElement.href = 'styles/messageRenderer.css';
-        document.head.appendChild(linkElement);
-    } catch (error) {
-        console.error('VCPSub Enhanced UI: Failed to load external styles:', error);
-    }
+    // The stylesheet is imported through style.css in the legacy cascade layer.
+    // Keeping it there lets the next-UI system override only its own message surface.
 }
 
 // --- Core Logic ---
@@ -2177,10 +2157,10 @@ function fixEmoticonUrlsInMarkdown(text) {
  * @property {'user'|'assistant'|'system'} role
  * @property {string} content
  * @property {number} timestamp
- * @property {string} [id] 
+ * @property {string} [id]
  * @property {boolean} [isThinking]
  * @property {Array<{type: string, src: string, name: string}>} [attachments]
- * @property {string} [finishReason] 
+ * @property {string} [finishReason]
  * @property {boolean} [isGroupMessage] // New: Indicates if it's a group message
  * @property {string} [agentId] // New: ID of the speaking agent in a group
  * @property {string} [name] // New: Name of the speaking agent in a group (can override default role name)
@@ -2192,7 +2172,7 @@ function fixEmoticonUrlsInMarkdown(text) {
 /**
  * @typedef {Object} CurrentSelectedItem
  * @property {string|null} id - Can be agentId or groupId
- * @property {'agent'|'group'|null} type 
+ * @property {'agent'|'group'|null} type
  * @property {string|null} name
  * @property {string|null} avatarUrl
  * @property {object|null} config - Full config of the selected item
@@ -2567,16 +2547,16 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.chatMessagesDiv.addEventListener('dragover', (e) => {
         const messageItem = e.target.closest('.message-item.user');
         if (!messageItem) return;
-        
+
         const mdContent = messageItem.querySelector('.md-content');
         if (!mdContent) return;
-        
+
         e.preventDefault();
         e.stopPropagation();
-        
+
         // 关键修复：显式设置 dropEffect 允许外部文件放置
         e.dataTransfer.dropEffect = 'copy';
-        
+
         if (!mdContent.classList.contains('drag-over')) {
             console.debug(`[MessageRenderer] Dragover detected on message ${messageItem.dataset.messageId}`);
             mdContent.classList.add('drag-over');
@@ -2586,10 +2566,10 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.chatMessagesDiv.addEventListener('dragleave', (e) => {
         const messageItem = e.target.closest('.message-item.user');
         if (!messageItem) return;
-        
+
         const mdContent = messageItem.querySelector('.md-content');
         if (!mdContent) return;
-        
+
         // 仅当鼠标真正离开该容器（而不是进入了它的子元素）时才移除类
         const rect = mdContent.getBoundingClientRect();
         if (e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom) {
@@ -2600,25 +2580,25 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.chatMessagesDiv.addEventListener('drop', async (e) => {
         const messageItem = e.target.closest('.message-item.user');
         if (!messageItem) return;
-        
+
         const mdContent = messageItem.querySelector('.md-content');
         if (!mdContent) return;
-        
+
         e.preventDefault();
         e.stopPropagation();
         mdContent.classList.remove('drag-over');
-        
+
         const messageId = messageItem.dataset.messageId;
         const files = e.dataTransfer.files;
-        
+
         console.log(`[MessageRenderer] Drop detected on message ${messageId}. Files count: ${files?.length || 0}`);
-        
+
         if (files && files.length > 0) {
             if (window.chatManager && window.chatManager.processFilesData) {
                 // 使用通用的文件读取管线
                 const processedFiles = await window.chatManager.processFilesData(files);
                 const successfulFiles = processedFiles.filter(f => !f.error);
-                
+
                 if (successfulFiles.length > 0) {
                     window.chatManager.addAttachmentsToMessage(messageId, successfulFiles);
                 } else if (processedFiles.length > 0) {
@@ -2925,7 +2905,7 @@ async function renderAttachments(message, contentDiv) {
         message.attachments.forEach((att, index) => {
             const wrapper = document.createElement('div');
             wrapper.classList.add('message-attachment-wrapper');
-            
+
             let attachmentElement;
             if (att.type.startsWith('image/')) {
                 attachmentElement = document.createElement('img');
@@ -3101,6 +3081,10 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
 }
 
 async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
+    if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) {
+        return null;
+    }
+
     // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
@@ -3193,7 +3177,11 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
     // 先添加到DOM
     if (appendToDom) {
+        if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) {
+            return null;
+        }
         chatMessagesDiv.appendChild(messageItem);
+        window.chatManager?.syncNextUiEmptyStateWithMessages?.();
         // 观察新消息的可见性
         visibilityOptimizer.observeMessage(messageItem);
     }
@@ -3469,7 +3457,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
          const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
          currentChatHistoryArray.push(message);
          mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray); // Update the ref
- 
+
          if (currentSelectedItem.id && mainRendererReferences.currentTopicIdRef.get()) {
               if (currentSelectedItem.type === 'agent') {
                  electronAPI.saveChatHistory(currentSelectedItem.id, mainRendererReferences.currentTopicIdRef.get(), currentChatHistoryArray);
@@ -3502,6 +3490,10 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
 function startStreamingMessage(message, messageItem = null) {
     return streamManager.startStreamingMessage(message, messageItem);
+}
+
+function discardStreamingMessage(messageId) {
+    return streamManager.discardStreamingMessage(messageId);
 }
 
 
@@ -3880,6 +3872,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
 
             // Step 1: Append all elements to the DOM at once.
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            window.chatManager?.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
             messageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
@@ -3944,6 +3937,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 } else {
                     chatMessagesDiv.appendChild(batchFragment);
                 }
+                window.chatManager?.syncNextUiEmptyStateWithMessages?.();
 
                 elementsForProcessing.forEach(el => processDeferredMessageElement(el, renderSessionId, {
                     ...renderContext,
@@ -4005,6 +3999,7 @@ async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSes
 
             // Step 1: Append all elements to the DOM.
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            window.chatManager?.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Run the deferred processing for each element now that it's attached.
             allMessageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
@@ -4045,6 +4040,7 @@ window.messageRenderer = {
     renderHistoryLegacy, // Expose the legacy rendering for compatibility
     renderMessageBatch, // Expose batch rendering utility
     startStreamingMessage,
+    discardStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
     renderFullMessage,
@@ -4105,4 +4101,3 @@ window.messageRenderer = {
         }
     }
 };
-

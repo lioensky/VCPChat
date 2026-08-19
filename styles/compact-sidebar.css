@@ -1,0 +1,71 @@
+/* Final, unlayered geometry for the legacy compact sidebar.
+ * Legacy sidebar rules are deliberately layered below the Next UI system.
+ * This file is linked after style.css so compact mode has one final axis. */
+
+.sidebar.avatar-only {
+    --compact-sidebar-avatar-size: 42px;
+    width: 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    box-sizing: border-box;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+html .sidebar.avatar-only {
+    --compact-sidebar-avatar-size: var(--vcp-ui-sidebar-avatar-size);
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 60px !important;
+}
+
+.sidebar.avatar-only #tabContentAgents,
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll {
+    scrollbar-width: none;
+}
+
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.sidebar.avatar-only #agentList {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.sidebar.avatar-only #agentList > li {
+    box-sizing: border-box;
+    width: 48px;
+    min-width: 48px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 0;
+    padding-right: 0;
+    justify-content: center;
+}
+
+.sidebar.avatar-only #agentList .avatar-wrapper {
+    width: var(--compact-sidebar-avatar-size);
+    height: var(--compact-sidebar-avatar-size);
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.sidebar.avatar-only #agentList .avatar-wrapper > img.avatar {
+    display: block;
+    width: var(--compact-sidebar-avatar-size);
+    height: var(--compact-sidebar-avatar-size);
+    margin: 0;
+}

@@ -1,6 +1,20 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
+    showHomeVisualBrand: true,
+    showHomeVisualTagline: true,
+    homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
+    appearanceProfile: {
+        density: 'comfortable',
+        radius: 'small',
+        typography: 'system',
+        fontScale: 'normal',
+        contentWidth: 'full',
+        sidebarRowHeight: 46,
+        sidebarAvatarSize: 32,
+        customRadius: 10,
+        surface: 'translucent'
+    },
     enableMiddleClickQuickAction: false,
     middleClickQuickAction: '',
     enableMiddleClickAdvanced: false,
@@ -59,6 +73,7 @@ let currentChatHistory = [];
 window.__vcpRendererReady = false;
 window.__vcpPendingTopicSelection = null;
 const chatAPI = window.chatAPI || window.electronAPI;
+const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -89,9 +104,6 @@ let globalSettingsForm = null;
 let userAvatarInput = null;
 let userAvatarPreview = null;
 
-const createNewAgentBtn = document.getElementById('createNewAgentBtn'); // Text will change
-const createNewGroupBtn = document.getElementById('createNewGroupBtn'); // New button
-
 const itemSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); // Will be itemSettingsContainerTitle
 const selectedItemNameForSettingsSpan = document.getElementById('selectedAgentNameForSettings'); // Will show Agent or Group name
 
@@ -117,15 +129,11 @@ const deleteItemBtn = document.getElementById('deleteAgentBtn'); // Will be dele
 
 const currentItemActionBtn = document.getElementById('currentAgentSettingsBtn'); // Text will change (e.g. "New Topic" / "New Group Topic")
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
-const openForumBtn = document.getElementById('openForumBtn');
-const themeToggleBtn = document.getElementById('themeToggleBtn');
 const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn');
 
 const notificationsSidebar = document.getElementById('notificationsSidebar');
 const vcpLogConnectionStatusDiv = document.getElementById('vcpLogConnectionStatus');
 const notificationsListUl = document.getElementById('notificationsList');
-const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
-const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
 
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab-button');
 const sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
@@ -135,9 +143,9 @@ const tabContentSettings = document.getElementById('tabContentSettings');
 const topicSearchInput = document.getElementById('topicSearchInput'); // Should be in tabContentTopics
 const DEFAULT_SEND_BUTTON_HTML = sendMessageBtn?.innerHTML || '';
 const INTERRUPT_SEND_BUTTON_HTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-        fill="none" stroke="none" aria-hidden="true">
-        <rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor"></rect>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="6" width="12" height="12" rx="1"></rect>
     </svg>
 `;
 
@@ -195,6 +203,7 @@ function updateSendButtonState() {
     sendMessageBtn.classList.toggle('interrupt-mode', nextMode === 'interrupt');
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
     sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
+    sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
 }
 
 async function interruptActiveResponseFromSendButton() {
@@ -266,12 +275,6 @@ const rightNotificationsSidebar = document.getElementById('notificationsSidebar'
 const resizerLeft = document.getElementById('resizerLeft');
 const resizerRight = document.getElementById('resizerRight');
 
-const minimizeBtn = document.getElementById('minimize-btn');
-const maximizeBtn = document.getElementById('maximize-btn');
-const restoreBtn = document.getElementById('restore-btn');
-const closeBtn = document.getElementById('close-btn');
-const settingsBtn = document.getElementById('settings-btn'); // DevTools button
-const minimizeToTrayBtn = document.getElementById('minimize-to-tray-btn');
 const agentSearchInput = document.getElementById('agentSearchInput');
 
 // Cropped file state is now managed within modules/ui-helpers.js
@@ -283,6 +286,7 @@ let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的�
 
 // Assistant settings elements
 const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New button
+const toggleSidebarModeBtn = document.getElementById('toggleSidebarModeBtn');
 // 模态框内部元素延迟加载
 let assistantAgentContainer = null;
 let assistantAgentSelect = null;
@@ -303,8 +307,15 @@ const uiHelperFunctions = window.uiHelperFunctions;
 import searchManager from './modules/searchManager.js';
 import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
 import * as interruptHandler from './modules/interruptHandler.js';
+import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/startup-theme-gate.js';
  
 import { setupEventListeners } from './modules/event-listeners.js';
+
+const startupThemeGate = new StartupThemeGate({
+    document,
+    applyTheme: applyInitialThemeClass,
+    statusElement: document.getElementById('startupInitializationStatus'),
+});
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
@@ -323,6 +334,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
         window.trayManager.init();
     } else {
         console.error('[RENDERER_INIT] trayManager module not found!');
+    }
+
+    if (window.topTabManager) {
+        window.topTabManager.init();
+    } else {
+        console.error('[RENDERER_INIT] topTabManager module not found!');
     }
 
     // 确保在GroupRenderer初始化之前，其容器已准备好
@@ -819,9 +836,9 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         Object.assign(currentSelectedItem, newConfig);
                     }
                 },
-                handleTopicDeletion: (remainingTopics) => {
+                handleTopicDeletion: (remainingTopics, deletionContext) => {
                     if (window.chatManager) {
-                        return window.chatManager.handleTopicDeletion(remainingTopics);
+                        return window.chatManager.handleTopicDeletion(remainingTopics, deletionContext);
                     } else {
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
@@ -963,8 +980,15 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
     try {
         setupChatPresentationQuickSwitcher();
-        await loadAndApplyGlobalSettings();
+        try {
+            await loadAndApplyGlobalSettings();
+        } catch (error) {
+            // Do not leave the startup gate closed if settings IPC fails.
+            console.error('[RENDERER_INIT] Failed to load global settings:', error);
+            startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败，已使用系统主题' });
+        }
         await window.itemListManager.loadItems(); // Load both agents and groups
+        await window.chatManager.restoreLastOpenState(globalSettings);
 
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
@@ -978,12 +1002,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
                     resizerLeft: document.getElementById('resizerLeft'),
                     resizerRight: document.getElementById('resizerRight'),
-                    minimizeBtn: document.getElementById('minimize-btn'),
-                    maximizeBtn: document.getElementById('maximize-btn'),
-                    restoreBtn: document.getElementById('restore-btn'),
-                    closeBtn: document.getElementById('close-btn'),
-                    settingsBtn: document.getElementById('settings-btn'),
-                    themeToggleBtn: document.getElementById('themeToggleBtn'),
                     digitalClockElement: document.getElementById('digitalClock'),
                     dateDisplayElement: document.getElementById('dateDisplay'),
                     notificationTitleElement: document.getElementById('notificationTitle'),
@@ -1010,18 +1028,17 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
         setupEventListeners({
             chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
-            globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-            currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
-            notificationsSidebar, agentSearchInput, minimizeToTrayBtn, leftSidebar,
+            globalSettingsForm, userAvatarInput,
+            currentItemActionBtn, toggleNotificationsBtn,
+            notificationsSidebar, agentSearchInput, leftSidebar,
             openTranslatorBtn: document.getElementById('openTranslatorBtn'),
             openNotesBtn: document.getElementById('openNotesBtn'),
             openMusicBtn: document.getElementById('openMusicBtn'),
             openCanvasBtn: document.getElementById('openCanvasBtn'),
-            toggleAssistantBtn,
+            toggleAssistantBtn, toggleSidebarModeBtn,
             voiceChatBtn: document.getElementById('voiceChatBtn'),
             enableContextSanitizerCheckbox: document.getElementById('enableContextSanitizer'),
             contextSanitizerDepthContainer: document.getElementById('contextSanitizerDepthContainer'),
-            seamFixer: document.getElementById('title-bar-seam-fixer'),
             addNetworkPathBtn: document.getElementById('addNetworkPathBtn'),
             refs: {
                 currentSelectedItem: { get: () => currentSelectedItem },
@@ -1042,6 +1059,13 @@ import { setupEventListeners } from './modules/event-listeners.js';
             filterAgentList: uiHelperFunctions.filterAgentList,
             addNetworkPathInput: uiHelperFunctions.addNetworkPathInput
         });
+
+        // A visible DOM shell is not enough to call the desktop interactive:
+        // template-backed modals and settings actions depend on the listeners
+        // registered above.  Expose one explicit readiness point for startup
+        // diagnostics and isolated Electron smoke tests.
+        document.documentElement.dataset.vcpRendererReady = 'true';
+        window.dispatchEvent(new CustomEvent('vcp-renderer-ready'));
 
         // Emoticon panel event listener
         if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {
@@ -1155,11 +1179,15 @@ import { setupEventListeners } from './modules/event-listeners.js';
     } catch (error) {
         window.__vcpRendererReady = false;
         console.error('Error during DOMContentLoaded initialization:', error);
-        chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
+        startupThemeGate.release({
+            mode: 'system',
+            message: `初始化失败，已使用系统主题：${error?.message || '未知错误'}`,
+        });
+        if (chatMessagesDiv) {
+            chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error?.message || '未知错误'}</div>`;
+        }
     }
 
-    console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
-    
     // --- Agent Settings Reload Listener ---
     if (chatAPI?.onReloadAgentSettings) {
         chatAPI.onReloadAgentSettings(async ({ agentId }) => {
@@ -1562,10 +1590,32 @@ function setupTtsListeners() {
 
 
 async function loadAndApplyGlobalSettings() {
-    const settings = await chatAPI.loadSettings();
+    let settings;
+    try {
+        settings = await loadSettingsWithTimeout(
+            chatAPI?.loadSettings,
+            STARTUP_SETTINGS_TIMEOUT_MS,
+            '加载设置超时'
+        );
+    } catch (error) {
+        startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败' });
+        throw error;
+    }
     if (settings && !settings.error) {
-        globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
+        globalSettings = { ...globalSettings, ...settings };
         window.globalSettings = globalSettings;
+
+        // Theme variables must be selected before any item/chat restoration can paint.
+        // The uiManager listener is initialized later and receives the same effective value.
+        startupThemeGate.release({ mode: globalSettings.currentThemeMode });
+
+        globalSettings.appearanceProfile = window.VCPAppearance?.commit(
+            globalSettings.appearanceProfile,
+            { uiMode: 'next', source: 'settings-load' }
+        ) || globalSettings.appearanceProfile;
+        window.dispatchEvent(new CustomEvent('global-settings-updated', {
+            detail: { settings: globalSettings, source: 'settings-load' }
+        }));
         applyChatBubbleLayoutSettings(globalSettings);
         
         // 🟢 优化：仅更新始终存在的 UI 元素
@@ -1596,13 +1646,16 @@ async function loadAndApplyGlobalSettings() {
         if (toggleAssistantBtn) {
             toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
         }
+        if (toggleSidebarModeBtn) {
+            const avatarOnly = globalSettings.sidebarActive !== false && globalSettings.sidebarAvatarOnly === true;
+            toggleSidebarModeBtn.classList.toggle('active', avatarOnly);
+            toggleSidebarModeBtn.setAttribute('aria-pressed', String(avatarOnly));
+        }
         // Selection listener startup moved to post-renderer-ready stage.
 
         // Load filter mode setting
         let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
         globalSettings.filterEnabled = filterEnabled;
-        doNotDisturbBtn.classList.toggle('active', !!filterEnabled);
-
         // 🟢 核心逻辑：监听模态框就绪事件，届时再同步模态框内部 UI
         document.addEventListener('modal-ready', (e) => {
             const { modalId } = e.detail;
@@ -1617,8 +1670,24 @@ async function loadAndApplyGlobalSettings() {
         }
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
+        startupThemeGate.release({ mode: 'system', message: settings?.error || '设置加载失败，已使用系统主题' });
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
     }
+}
+
+function applyInitialThemeClass(mode) {
+    let effectiveTheme = mode === 'light' || mode === 'dark' ? mode : null;
+    if (!effectiveTheme && typeof window.matchMedia === 'function') {
+        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    effectiveTheme = effectiveTheme || 'light';
+    if (window.uiManager?.applyTheme) {
+        window.uiManager.applyTheme(effectiveTheme);
+    } else {
+        document.body.classList.remove('light-theme', 'dark-theme');
+        document.body.classList.add(`${effectiveTheme}-theme`);
+    }
+    document.body.removeAttribute('data-theme-pending');
 }
 
 const CHAT_PRESENTATION_MODES = Object.freeze(['bubble', 'panel', 'immersive']);
@@ -1726,46 +1795,83 @@ function syncChatPresentationModeControls(mode = globalSettings.chatPresentation
 }
 
 function setupChatPresentationQuickSwitcher() {
-    const switcher = document.getElementById('chat-presentation-quick-switcher');
-    const options = Array.from(switcher?.querySelectorAll('.chat-presentation-quick-option') || []);
-    if (!switcher || !options.length || switcher.dataset.bound === 'true') return;
+    document.querySelectorAll('.chat-presentation-quick-switcher').forEach((switcher) => {
+        const options = Array.from(switcher.querySelectorAll('.chat-presentation-quick-option'));
+        if (!options.length || switcher.dataset.bound === 'true') return;
+        const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
+        const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
 
-    const selectMode = async (option) => {
-        const mode = option?.dataset.presentationMode;
-        if (!mode) return;
-        await applyChatPresentationMode(mode, {
-            persist: true,
-            preserveScroll: true,
-            notify: false,
-            source: 'title-bar-quick-switcher'
+        const setOpen = (open) => {
+            switcher.classList.toggle('is-open', open);
+            trigger?.setAttribute('aria-expanded', String(open));
+        };
+
+        const selectMode = async (option) => {
+            const mode = option?.dataset.presentationMode;
+            if (!mode) return;
+            await applyChatPresentationMode(mode, {
+                persist: true,
+                preserveScroll: true,
+                notify: false,
+                source: `${switcher.id || 'chat-presentation'}-quick-switcher`
+            });
+        };
+
+        if (usesExplicitState && trigger) {
+            trigger.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const open = !switcher.classList.contains('is-open');
+                setOpen(open);
+                if (open) {
+                    options.find(option => option.getAttribute('aria-checked') === 'true')?.focus();
+                }
+            });
+            document.addEventListener('pointerdown', (event) => {
+                if (!switcher.classList.contains('is-open')) return;
+                if (switcher.contains(event.target) || trigger.contains(event.target)) return;
+                setOpen(false);
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape' || !switcher.classList.contains('is-open')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+                trigger.focus();
+            });
+        }
+
+        options.forEach((option) => {
+            option.addEventListener('click', async () => {
+                await selectMode(option);
+                if (usesExplicitState) setOpen(false);
+            });
+            option.addEventListener('keydown', (event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+
+                const currentIndex = Math.max(0, options.indexOf(option));
+                let nextIndex = currentIndex;
+                if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
+                if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
+                if (event.key === 'Home') nextIndex = 0;
+                if (event.key === 'End') nextIndex = options.length - 1;
+
+                options[nextIndex].focus();
+                selectMode(options[nextIndex]);
+            });
         });
-    };
 
-    options.forEach((option) => {
-        option.addEventListener('click', () => selectMode(option));
-        option.addEventListener('keydown', (event) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        switcher.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
             event.preventDefault();
-
-            const currentIndex = Math.max(0, options.indexOf(option));
-            let nextIndex = currentIndex;
-            if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
-            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
-            if (event.key === 'Home') nextIndex = 0;
-            if (event.key === 'End') nextIndex = options.length - 1;
-
-            options[nextIndex].focus();
-            selectMode(options[nextIndex]);
+            event.stopPropagation();
+            if (usesExplicitState) setOpen(false);
+            trigger?.focus();
+            if (!usesExplicitState) trigger?.blur();
         });
-    });
 
-    switcher.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        document.getElementById('themes-btn')?.focus();
+        switcher.dataset.bound = 'true';
     });
-
-    switcher.dataset.bound = 'true';
     syncChatPresentationModeControls(globalSettings.chatPresentationMode);
 }
 
@@ -2146,6 +2252,25 @@ async function syncGlobalSettingsToUI() {
 
     safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
+    safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
+    safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
+    safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
+    const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, 'next');
+    safeSet('appearanceDensity', appearance?.density || 'comfortable');
+    safeSet('appearanceRadius', appearance?.radius || 'small');
+    safeSet('appearanceTypography', appearance?.typography || 'system');
+    safeSet('appearanceFontScale', appearance?.fontScale || 'normal');
+    safeSet('appearanceContentWidth', appearance?.contentWidth || 'full');
+    safeSet('appearanceSidebarRowHeight', appearance?.sidebarRowHeight ?? 46);
+    safeSet('appearanceSidebarRowHeightValue', `${appearance?.sidebarRowHeight ?? 46}px`);
+    safeSet('appearanceSidebarAvatarSize', appearance?.sidebarAvatarSize ?? 32);
+    safeSet('appearanceSidebarAvatarSizeValue', `${appearance?.sidebarAvatarSize ?? 32}px`);
+    safeSet('appearanceSidebarRadius', appearance?.sidebarRadius || 'tuned');
+    safeCheck(`appearanceSidebarRadiusChoice-${appearance?.sidebarRadius || 'tuned'}`, true);
+    safeSet('appearanceCustomRadius', appearance?.customRadius ?? 10);
+    safeSet('appearanceCustomRadiusValue', `${appearance?.customRadius ?? 10}px`);
+    document.getElementById('appearanceSidebarAvatarSize')?.dispatchEvent(new Event('input', { bubbles: true }));
+    safeSet('appearanceSurface', appearance?.surface || 'translucent');
     safeSet('chatFontPreset', globalSettings.chatFontPreset || 'system');
     safeSet('chatFontCustom', globalSettings.chatFontCustom || '');
     safeSet('chatCodeFontPreset', globalSettings.chatCodeFontPreset || 'consolas');
@@ -2406,7 +2531,7 @@ if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Mar
     console.warn("Marked library not found or not in expected format, Markdown rendering will be basic.");
     markedInstance = { parse: (text) => `<p>${String(text || '').replace(/\n/g, '<br>')}</p>` };
 }
- 
+
 window.addEventListener('contextmenu', (e) => {
     // Allow context menu for text input fields
     if (e.target.closest('textarea, input[type="text"], .message-item .md-content')) { // Also allow on rendered message content

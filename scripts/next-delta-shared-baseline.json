@@ -1,0 +1,42 @@
+{
+  "modules/chatManager.js": {
+    "sha256": "22319b39d5d8d13b811166df21b869fc8abb0e02e871e97803b411b489bdce2b",
+    "reason": "upstream chat core plus separately reviewed M9 ownership fixes"
+  },
+  "modules/messageRenderer.js": {
+    "sha256": "8334f93f39e11c0f3b342a8b8546f4e032a9e7627eff966051fc976083c7b41f",
+    "reason": "upstream message semantics with idempotent scoped-style reuse; Next may not restyle or fork it"
+  },
+  "modules/renderer/streamManager.js": {
+    "sha256": "42a850a2a53b59ef43200e6edf35af222bac33aa7b110b90fe66e675ec7dfcb2",
+    "reason": "shared stream core with reviewed scoped-HTML streaming and M9 terminal ownership fixes"
+  },
+  "modules/topicListManager.js": {
+    "sha256": "69e9bee1fdb65f2e899e28e24df77093888327386a77a756a3e355275ab5c52f",
+    "reason": "shared topic authority with canonical presentation projection only"
+  },
+  "modules/itemListManager.js": {
+    "sha256": "1a227093cc438de479c1ca8dc9c1abf7acd4dace1bd773c4d4256f10be1bd162",
+    "reason": "shared Agent/group catalog authority with stale-load commit protection"
+  },
+  "Groupmodules/grouprenderer.js": {
+    "sha256": "e7ac3a92057075c43578ade49b2be4b4650ed7c126ba10e9f20856edd91b5094",
+    "reason": "upstream group business surface with retired toolbar binding removed"
+  },
+  "modules/settingsManager.js": {
+    "sha256": "3cfe7e5ca2fa60e1cbbb7eeb663da19c19866a87c6cc2e2dd44bbbd36fb93ac8",
+    "reason": "reviewed Agent settings save settlement after fallible UI projection"
+  },
+  "modules/filterManager.js": {
+    "sha256": "8b632c78f2d0bd525cbe24022b8883c8e6a4c3565352779c5ebc49be9350c17f",
+    "reason": "shared filter authority; canonical menu calls its public API"
+  },
+  "modules/notificationRenderer.js": {
+    "sha256": "24b2510275b74eee40a99ec03ed73d256284b1117c785f8733a4094fff13341e",
+    "reason": "upstream notification rendering semantics"
+  },
+  "VCPDistributedServer/frontend-plugin-loader.js": {
+    "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",
+    "reason": "upstream plugin loader contract; dynamic wallpaper internals remain out of scope"
+  }
+}

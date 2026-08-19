@@ -1,0 +1,288 @@
+html .vcp-ui-scope[data-wa-scope],
+html .vcp-ui-scope .vcp-ui-wa-comparison.wa-light,
+html .vcp-ui-scope .vcp-ui-wa-comparison.wa-dark {
+    --wa-font-family-body: inherit;
+    --wa-font-family-heading: inherit;
+    --wa-font-size-s: var(--vcp-ui-font-caption);
+    --wa-font-size-m: var(--vcp-ui-font-body);
+    --wa-font-size-l: var(--vcp-ui-font-emphasis);
+    --wa-line-height-condensed: var(--vcp-ui-line-compact);
+    --wa-line-height-normal: var(--vcp-ui-line-body);
+    --wa-line-height-expanded: var(--vcp-ui-line-relaxed);
+    --wa-color-surface-raised: var(--vcp-ui-bg-secondary);
+    --wa-color-surface-default: var(--vcp-ui-bg-primary);
+    --wa-color-surface-lowered: var(--vcp-ui-bg-tertiary);
+    --wa-color-surface-border: var(--vcp-ui-border);
+    --wa-color-text-normal: var(--vcp-ui-text-primary);
+    --wa-color-text-quiet: var(--vcp-ui-text-secondary);
+    --wa-color-text-link: var(--vcp-ui-text-accent);
+    --wa-color-focus: var(--vcp-ui-control-focus);
+    --wa-color-brand-fill-loud: var(--vcp-ui-accent);
+    --wa-color-brand-border-loud: var(--vcp-ui-accent);
+    --wa-color-brand-on-loud: var(--vcp-ui-on-accent);
+    --wa-color-neutral-fill-quiet: var(--vcp-ui-surface-soft);
+    --wa-color-neutral-fill-normal: var(--vcp-ui-surface);
+    --wa-color-neutral-fill-loud: var(--vcp-ui-text-primary);
+    --wa-color-neutral-border-quiet: var(--vcp-ui-border);
+    --wa-color-neutral-border-normal: var(--vcp-ui-border-strong);
+    --wa-color-neutral-on-quiet: var(--vcp-ui-text-secondary);
+    --wa-color-neutral-on-normal: var(--vcp-ui-text-primary);
+    --wa-color-neutral-on-loud: var(--vcp-ui-bg-primary);
+    --wa-color-danger-fill-loud: var(--vcp-ui-danger);
+    --wa-color-danger-border-loud: var(--vcp-ui-danger);
+    --wa-color-danger-on-loud: var(--vcp-ui-on-accent);
+    --wa-border-radius-s: var(--vcp-ui-radius-sm);
+    --wa-border-radius-m: var(--vcp-ui-radius-md);
+    --wa-border-radius-l: var(--vcp-ui-radius-lg);
+    --wa-space-xs: var(--vcp-ui-space-1);
+    --wa-space-s: var(--vcp-ui-space-2);
+    --wa-space-m: var(--vcp-ui-space-3);
+    --wa-space-l: var(--vcp-ui-space-4);
+    --wa-focus-ring-color: var(--vcp-ui-focus-ring);
+    --wa-focus-ring-width: 2px;
+    --wa-focus-ring-offset: 1px;
+    --wa-shadow-s: var(--vcp-ui-shadow-sm);
+    --wa-shadow-m: var(--vcp-ui-shadow-md);
+    --wa-shadow-l: var(--vcp-ui-shadow-lg);
+    --wa-transition-fast: var(--vcp-ui-duration-fast);
+    --wa-transition-normal: var(--vcp-ui-duration-normal);
+    --wa-transition-slow: var(--vcp-ui-duration-slow);
+    --wa-transition-easing: var(--vcp-ui-easing-standard);
+    --wa-form-control-background-color: var(--vcp-ui-control-bg);
+    --wa-form-control-border-color: var(--vcp-ui-control-border);
+    --wa-form-control-border-radius: var(--vcp-ui-radius-control);
+    --wa-form-control-height: var(--vcp-ui-control-md);
+    --wa-form-control-placeholder-color: var(--vcp-ui-text-3);
+}
+html .vcp-ui-scope.vcp-ui-human-toolbox wa-card.tool-card::part(base) {
+    height: 100%;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    box-shadow: none;
+}
+
+html .vcp-ui-scope.vcp-ui-human-toolbox wa-card.tool-card::part(body) {
+    height: 100%;
+    padding: 0;
+}
+
+/* --- VCPUI <-> Web Awesome component kernel integration ---
+   Business pages never see wa-*; these rules align the WA-backed controls that
+   VCPUI.create returns (next mode) with the shared VCP design tokens. */
+html .vcp-ui-scope wa-button.vcp-ui-wa-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-button:hover,
+html .vcp-ui-scope wa-button.vcp-ui-wa-button:active {
+    background: transparent;
+    box-shadow: none;
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-button::part(base) {
+    border-radius: var(--vcp-ui-radius-control);
+    font-weight: 600;
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-button.is-block {
+    width: 100%;
+}
+
+html .vcp-ui-scope wa-button.vcp-ui-wa-icon-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    width: var(--vcp-ui-control-md);
+    height: var(--vcp-ui-control-md);
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-icon-button:hover,
+html .vcp-ui-scope wa-button.vcp-ui-wa-icon-button:active {
+    background: transparent;
+    box-shadow: none;
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-icon-button[data-size="sm"] {
+    width: var(--vcp-ui-control-sm);
+    height: var(--vcp-ui-control-sm);
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-icon-button::part(base) {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+html .vcp-ui-scope wa-button.vcp-ui-window-control-button::part(base) {
+    pointer-events: auto;
+    -webkit-app-region: no-drag;
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-icon-button > .vcp-ui-icon {
+    margin: 0;
+}
+
+html .vcp-ui-scope wa-input.vcp-ui-wa-input,
+html .vcp-ui-scope wa-textarea.vcp-ui-wa-textarea,
+html .vcp-ui-scope wa-select.vcp-ui-wa-select {
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+}
+
+/* Neutralize native .vcp-ui-input/.vcp-ui-textarea host geometry. WA owns
+   the internal padding and height; applying both contracts creates an inset,
+   narrower control beside a full-width WA Select. */
+html .vcp-ui-scope wa-input.vcp-ui-wa-input,
+html .vcp-ui-scope wa-textarea.vcp-ui-wa-textarea {
+    height: auto;
+}
+
+/* VCPUI Field owns the visible label and required marker. Keep the WA
+   control required for validation, but suppress its otherwise empty label
+   row (which renders as a second, orphaned asterisk). */
+html .vcp-ui-scope .vcp-ui-field-control > wa-input.vcp-ui-wa-input::part(form-control-label),
+html .vcp-ui-scope .vcp-ui-field-control > wa-textarea.vcp-ui-wa-textarea::part(form-control-label),
+html .vcp-ui-scope .vcp-ui-field-control > wa-select.vcp-ui-wa-select::part(form-control-label) {
+    display: none;
+}
+
+html .vcp-ui-scope select.vcp-ui-select-source {
+    display: none;
+    width: 0;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy {
+    --wa-color-text-normal: var(--vcp-ui-text-1);
+    --wa-color-neutral-fill-normal: var(--vcp-ui-fill-2);
+    --wa-color-neutral-on-normal: var(--vcp-ui-text-0);
+    --wa-form-control-activated-color: var(--vcp-ui-selection-bg);
+    --wa-color-brand-on-loud: var(--vcp-ui-text-0);
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    color: inherit;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    appearance: none;
+    vertical-align: middle;
+    -webkit-app-region: no-drag;
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy:hover,
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy:focus,
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy:focus-within,
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy:active {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy::part(combobox) {
+    border-radius: var(--vcp-ui-radius-control);
+    background: var(--vcp-ui-control-bg);
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy[aria-invalid="true"]::part(combobox) {
+    border-color: var(--vcp-ui-danger);
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy::part(listbox) {
+    z-index: 10020;
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-button[data-variant="primary"]::part(base) {
+    color: var(--vcp-ui-on-accent);
+    border-color: var(--vcp-ui-accent);
+    background: var(--vcp-ui-accent);
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-button[data-variant="ghost"]::part(base) {
+    color: var(--vcp-ui-text-accent);
+    border-color: transparent;
+    background: transparent;
+}
+
+/* A WA dialog is the behavior kernel; VCPUI remains the visual contract. */
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog {
+    --width: min(520px, calc(100vw - (2 * var(--vcp-ui-space-4))));
+    --spacing: var(--vcp-ui-space-4);
+    --backdrop-filter: blur(2px);
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog[data-size="sm"] {
+    --width: min(400px, calc(100vw - (2 * var(--vcp-ui-space-4))));
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog[data-size="lg"] {
+    --width: min(720px, calc(100vw - (2 * var(--vcp-ui-space-4))));
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(dialog) {
+    max-height: min(760px, calc(100vh - (2 * var(--vcp-ui-space-4))));
+    border: 1px solid var(--vcp-ui-border);
+    border-radius: var(--vcp-ui-radius-lg);
+    background: var(--vcp-ui-bg-secondary);
+    box-shadow: var(--vcp-ui-shadow-lg);
+    overflow: hidden;
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(header) {
+    min-height: var(--vcp-ui-control-lg);
+    padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+    border-bottom: 1px solid var(--vcp-ui-border);
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(title) {
+    font-size: var(--vcp-ui-font-heading);
+    font-weight: 700;
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(body) {
+    padding: 0;
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(footer) {
+    padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+    border-top: 1px solid var(--vcp-ui-border);
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog .vcp-ui-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--vcp-ui-space-2);
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option[data-group-start="true"] {
+    border-top: 1px solid var(--vcp-ui-border);
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option {
+    --current-text-color: var(--vcp-ui-text-0);
+    color: var(--vcp-ui-text-1);
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option:hover,
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option:state(hover),
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option:state(current) {
+    color: var(--vcp-ui-text-0);
+}
+
+html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option::part(checked-icon) {
+    color: var(--vcp-ui-accent);
+}
+
+html .vcp-ui-scope wa-checkbox.vcp-ui-wa-checkbox,
+html .vcp-ui-scope wa-switch.vcp-ui-wa-switch {
+    vertical-align: middle;
+}
+
+html .vcp-ui-scope wa-card.vcp-ui-wa-card {
+    padding: 0;
+}
+html .vcp-ui-scope wa-card.vcp-ui-wa-card::part(base) {
+    height: 100%;
+}

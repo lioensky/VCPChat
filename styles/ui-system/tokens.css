@@ -1,0 +1,187 @@
+@layer vcp-ui.tokens {
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope {
+        color-scheme: dark;
+
+        --vcp-ui-palette-cyan: oklch(0.75 0.14 230);
+        --vcp-ui-palette-cyan-strong: oklch(0.68 0.16 230);
+        --vcp-ui-palette-cyan-hover: oklch(0.60 0.18 230);
+        --vcp-ui-palette-red: oklch(0.58 0.22 25);
+        --vcp-ui-palette-green: oklch(0.62 0.18 145);
+        --vcp-ui-palette-amber: oklch(0.78 0.16 85);
+        --vcp-ui-palette-blue: oklch(0.66 0.16 250);
+
+        --vcp-ui-bg-primary: var(--vcp-ui-theme-bg-primary, var(--primary-bg, oklch(0.04 0.012 230)));
+        --vcp-ui-bg-secondary: var(--vcp-ui-theme-bg-secondary, var(--secondary-bg, oklch(0.18 0.015 230 / 0.92)));
+        --vcp-ui-bg-tertiary: var(--vcp-ui-theme-bg-tertiary, var(--tertiary-bg, oklch(0.25 0.012 230 / 0.72)));
+        --vcp-ui-bg-input: var(--vcp-ui-theme-bg-input, var(--input-bg, oklch(0.25 0.012 230 / 0.82)));
+        --vcp-ui-text-primary: var(--vcp-ui-theme-text-primary, var(--primary-text, oklch(0.96 0.008 230)));
+        --vcp-ui-text-secondary: var(--vcp-ui-theme-text-secondary, var(--secondary-text, oklch(0.68 0.015 230)));
+        --vcp-ui-text-accent: var(--vcp-ui-theme-text-accent, var(--highlight-text, var(--vcp-ui-palette-cyan)));
+        --vcp-ui-text-disabled: color-mix(in srgb, var(--vcp-ui-text-secondary) 58%, transparent);
+        --vcp-ui-border: var(--vcp-ui-theme-border, var(--border-color, oklch(1 0 0 / 0.10)));
+        --vcp-ui-border-strong: color-mix(in srgb, var(--vcp-ui-text-accent) 40%, var(--vcp-ui-border));
+        --vcp-ui-accent: var(--vcp-ui-theme-accent, var(--button-bg, var(--vcp-ui-palette-cyan-strong)));
+        --vcp-ui-accent-hover: var(--vcp-ui-theme-accent-hover, var(--button-hover-bg, var(--vcp-ui-palette-cyan-hover)));
+        --vcp-ui-on-accent: var(--vcp-ui-theme-on-accent, oklch(1 0 0));
+
+        --vcp-ui-bg-0: var(--vcp-ui-bg-primary);
+        --vcp-ui-bg-1: var(--vcp-ui-bg-secondary);
+        --vcp-ui-bg-2: var(--vcp-ui-bg-tertiary);
+        --vcp-ui-bg-3: color-mix(in srgb, var(--vcp-ui-bg-secondary) 88%, var(--vcp-ui-text-primary));
+        --vcp-ui-bg-4: color-mix(in srgb, var(--vcp-ui-bg-secondary) 82%, var(--vcp-ui-text-primary));
+        --vcp-ui-text-0: var(--vcp-ui-text-primary);
+        --vcp-ui-text-1: color-mix(in srgb, var(--vcp-ui-text-primary) 82%, var(--vcp-ui-text-secondary));
+        --vcp-ui-text-2: var(--vcp-ui-text-secondary);
+        --vcp-ui-text-3: color-mix(in srgb, var(--vcp-ui-text-secondary) 72%, transparent);
+
+        --vcp-ui-success: var(--success-color, var(--vcp-ui-palette-green));
+        --vcp-ui-warning: var(--warning-color, var(--vcp-ui-palette-amber));
+        --vcp-ui-danger: var(--danger-color, var(--vcp-ui-palette-red));
+        --vcp-ui-info: var(--vcp-ui-palette-blue);
+        --vcp-ui-success-bg: color-mix(in srgb, var(--vcp-ui-success) 16%, transparent);
+        --vcp-ui-warning-bg: color-mix(in srgb, var(--vcp-ui-warning) 16%, transparent);
+        --vcp-ui-danger-bg: color-mix(in srgb, var(--vcp-ui-danger) 16%, transparent);
+        --vcp-ui-info-bg: color-mix(in srgb, var(--vcp-ui-info) 16%, transparent);
+
+        --vcp-ui-surface-soft: color-mix(in srgb, var(--vcp-ui-text-primary) 4%, transparent);
+        --vcp-ui-surface: color-mix(in srgb, var(--vcp-ui-text-primary) 7%, transparent);
+        --vcp-ui-surface-strong: color-mix(in srgb, var(--vcp-ui-text-primary) 11%, transparent);
+        --vcp-ui-fill-0: color-mix(in srgb, var(--vcp-ui-text-primary) 5%, transparent);
+        --vcp-ui-fill-1: color-mix(in srgb, var(--vcp-ui-text-primary) 8%, transparent);
+        --vcp-ui-fill-2: color-mix(in srgb, var(--vcp-ui-text-primary) 12%, transparent);
+        --vcp-ui-disabled-bg: color-mix(in srgb, var(--vcp-ui-bg-input) 70%, transparent);
+        --vcp-ui-disabled-border: color-mix(in srgb, var(--vcp-ui-border) 60%, transparent);
+        --vcp-ui-backdrop: oklch(0 0 0 / 0.58);
+        --vcp-ui-focus-ring: color-mix(in srgb, var(--vcp-ui-text-accent) 30%, transparent);
+        --vcp-ui-selection-bg: color-mix(in srgb, var(--vcp-ui-accent) 14%, transparent);
+        --vcp-ui-selection-hover: color-mix(in srgb, var(--vcp-ui-accent) 20%, transparent);
+
+        --vcp-ui-space-1: 4px;
+        --vcp-ui-space-2: 8px;
+        --vcp-ui-space-3: 12px;
+        --vcp-ui-space-4: 16px;
+        --vcp-ui-space-5: 24px;
+        --vcp-ui-space-6: 32px;
+        --vcp-ui-space-7: 48px;
+        --vcp-ui-space-8: 64px;
+
+        --vcp-ui-radius-xs: 4px;
+        --vcp-ui-radius-sm: 6px;
+        --vcp-ui-radius-md: 8px;
+        --vcp-ui-radius-lg: 12px;
+        --vcp-ui-radius-xl: 18px;
+        --vcp-ui-radius-control: 10px;
+        --vcp-ui-radius-card: 8px;
+        --vcp-ui-radius-full: 9999px;
+
+        --vcp-ui-font-caption: 12px;
+        --vcp-ui-font-micro: 10px;
+        --vcp-ui-font-helper: 13px;
+        --vcp-ui-font-body: 14px;
+        --vcp-ui-font-emphasis: 15px;
+        --vcp-ui-font-title: 18px;
+        --vcp-ui-font-display: 22px;
+        --vcp-ui-font-reasoning-icon: 21px;
+        --vcp-ui-font-disclosure: 24px;
+        --vcp-ui-line-compact: 1.35;
+        --vcp-ui-line-body: 1.5;
+        --vcp-ui-line-relaxed: 1.65;
+
+        --vcp-ui-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.24);
+        --vcp-ui-shadow-md: 0 6px 18px oklch(0 0 0 / 0.30);
+        --vcp-ui-shadow-lg: 0 16px 48px oklch(0 0 0 / 0.42);
+
+        --vcp-ui-duration-fast: 160ms;
+        --vcp-ui-duration-normal: 260ms;
+        --vcp-ui-duration-slow: 360ms;
+        --vcp-ui-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+        --vcp-ui-easing-spring: cubic-bezier(0.22, 1, 0.36, 1);
+        --vcp-ui-transition-fast: var(--vcp-ui-duration-fast) var(--vcp-ui-easing-standard);
+        --vcp-ui-transition-normal: var(--vcp-ui-duration-normal) var(--vcp-ui-easing-standard);
+        --vcp-ui-transition-spring: 220ms var(--vcp-ui-easing-spring);
+
+        --vcp-ui-z-dropdown: 1300;
+        --vcp-ui-z-overlay: 1400;
+        --vcp-ui-z-toast: 1500;
+        --vcp-ui-shell-height: var(--next-topbar-height, 44px);
+        --vcp-ui-app-icon-size: 64px;
+
+        --vcp-ui-control-sm: 28px;
+        --vcp-ui-control-md: 32px;
+        --vcp-ui-control-lg: 36px;
+        --vcp-ui-control-border: var(--vcp-ui-border);
+        --vcp-ui-control-bg: var(--vcp-ui-bg-input);
+        --vcp-ui-control-hover: var(--vcp-ui-surface-strong);
+        --vcp-ui-control-focus: var(--vcp-ui-border-strong);
+        --vcp-ui-row-height: 44px;
+        --vcp-ui-shell-header-height: 46px;
+        --vcp-ui-panel-padding: var(--vcp-ui-space-4);
+        --vcp-ui-density-gap: var(--vcp-ui-space-3);
+        --vcp-ui-scrollbar-size: 6px;
+        --vcp-ui-scrollbar-thumb: color-mix(in srgb, var(--vcp-ui-text-secondary) 30%, transparent);
+        --vcp-ui-scrollbar-thumb-hover: color-mix(in srgb, var(--vcp-ui-text-secondary) 50%, transparent);
+        --vcp-ui-icon-sm: 16px;
+        --vcp-ui-icon-md: 18px;
+        --vcp-ui-icon-lg: 22px;
+        --vcp-ui-message-avatar: 36px;
+        --vcp-ui-message-max-width: 82%;
+        --vcp-ui-message-max-width-wide: 92%;
+        --vcp-ui-message-max-width-notifications: 90%;
+        --vcp-ui-message-max-width-wide-notifications: 96%;
+        --vcp-ui-sidebar-row-height: var(--vcp-appearance-sidebar-row-height, 46px);
+        --vcp-ui-sidebar-avatar-size: var(--vcp-appearance-sidebar-avatar-size, clamp(24px, calc(var(--vcp-ui-sidebar-row-height) - 14px), 44px));
+        --vcp-ui-sidebar-font-size: 14.5px;
+        --vcp-ui-sidebar-item-radius: 10px;
+        --vcp-ui-sidebar-list-gutter: 8px;
+        --vcp-ui-sidebar-account-left-padding: 6px;
+        --vcp-ui-sidebar-item-shadow: 0 1px 2px oklch(0 0 0 / 0.05);
+        --vcp-ui-send-button-size: 36px;
+        --vcp-ui-send-icon-size: 24px;
+        --vcp-ui-send-button-shadow: 0 6px 18px oklch(0 0 0 / 0.18);
+        --vcp-ui-message-user-bg: var(--user-bubble-bg, var(--vcp-ui-accent));
+        --vcp-ui-message-user-text: var(--user-text, var(--vcp-ui-on-accent));
+        --vcp-ui-message-assistant-bg: color-mix(in srgb, var(--assistant-bubble-bg, var(--vcp-ui-bg-2)) 88%, transparent);
+        --vcp-ui-message-assistant-text: var(--agent-text, var(--vcp-ui-text-0));
+        --vcp-ui-message-code-bg: color-mix(in srgb, var(--vcp-ui-bg-0) 78%, transparent);
+        --vcp-ui-message-code-text: var(--vcp-ui-text-1);
+        --vcp-ui-message-max-width-narrow: 88%;
+        --vcp-ui-modal-width: 520px;
+        --vcp-ui-modal-wide-width: 800px;
+        --vcp-ui-modal-height: 760px;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope[data-density="compact"] {
+        --vcp-ui-control-sm: 26px;
+        --vcp-ui-control-md: 30px;
+        --vcp-ui-control-lg: 34px;
+        --vcp-ui-row-height: 38px;
+        --vcp-ui-panel-padding: var(--vcp-ui-space-3);
+        --vcp-ui-density-gap: var(--vcp-ui-space-2);
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope[data-density="comfortable"] {
+        --vcp-ui-control-sm: 28px;
+        --vcp-ui-control-md: 32px;
+        --vcp-ui-control-lg: 36px;
+        --vcp-ui-row-height: 44px;
+        --vcp-ui-panel-padding: var(--vcp-ui-space-4);
+        --vcp-ui-density-gap: var(--vcp-ui-space-3);
+    }
+
+    :is(html, html.vcp-appearance-studio-host) body.light-theme .vcp-ui-scope {
+        color-scheme: light;
+        --vcp-ui-backdrop: oklch(0.2 0.01 240 / 0.28);
+        --vcp-ui-shadow-sm: 0 1px 2px oklch(0.12 0.01 230 / 0.08);
+        --vcp-ui-shadow-md: 0 8px 22px oklch(0.12 0.01 230 / 0.12);
+        --vcp-ui-shadow-lg: 0 18px 48px oklch(0.12 0.01 230 / 0.18);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope *, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope *::before, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope *::after {
+            scroll-behavior: auto;
+            animation-duration: 1ms;
+            animation-iteration-count: 1;
+            transition-duration: 1ms;
+        }
+    }
+}

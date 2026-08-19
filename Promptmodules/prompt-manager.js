@@ -30,6 +30,7 @@ class PromptManager {
     this.isInitialized = false;
     this.containerElement = null;
     this.electronAPI = null;
+    this.boundContainerListeners = [];
   }
 
   /**
@@ -42,12 +43,45 @@ class PromptManager {
     const { containerElement, electronAPI } = options;
     this.containerElement = containerElement;
     this.electronAPI = electronAPI;
+    this.bindContainerEvents();
 
     // 初始化三个模块（仅实例化，不加载数据）
     this.initModules();
 
     this.isInitialized = true;
     console.log('[PromptManager] Global initialization complete.');
+  }
+
+  bindContainerEvents() {
+    if (!this.containerElement || this.boundContainerListeners.length) return;
+    const listen = (type, handler) => {
+      this.containerElement.addEventListener(type, handler);
+      this.boundContainerListeners.push([type, handler]);
+    };
+    const modeButton = (event) => event.target.closest?.('.prompt-mode-button');
+    listen('click', (event) => {
+      const button = modeButton(event);
+      if (button) this.switchMode(button.dataset.mode);
+    });
+    listen('dblclick', (event) => {
+      const button = modeButton(event);
+      if (!button) return;
+      event.preventDefault();
+      this.enterEditMode(button, button.dataset.mode);
+    });
+    listen('contextmenu', (event) => {
+      const button = modeButton(event);
+      if (!button) return;
+      event.preventDefault();
+      this.startRightClickTimer(button.dataset.mode);
+    });
+    listen('mouseup', (event) => {
+      if (event.button === 2 && modeButton(event)) this.cancelRightClickTimer();
+    });
+    listen('mouseout', (event) => {
+      const button = modeButton(event);
+      if (button && !button.contains(event.relatedTarget)) this.cancelRightClickTimer();
+    });
   }
 
   /**
@@ -106,21 +140,30 @@ class PromptManager {
    */
   render() {
     if (!this.containerElement) return;
+    let modeSelector = this.containerElement.querySelector(':scope > .prompt-mode-selector');
+    if (!modeSelector) {
+      modeSelector = this.createModeSelector();
+      this.containerElement.appendChild(modeSelector);
+    } else {
+      modeSelector.querySelectorAll('.prompt-mode-button').forEach((button) => {
+        const modeId = button.dataset.mode;
+        button.innerHTML = `
+          <span class="prompt-mode-button-icon" aria-hidden="true">${this.getModeIcon(modeId)}</span>
+          <span class="prompt-mode-button-label">${this.getModeName(modeId)}</span>
+        `;
+      });
+    }
 
-    // 清空容器
-    this.containerElement.innerHTML = "";
-
-    // 创建模式切换按钮区域
-    const modeSelector = this.createModeSelector();
-    this.containerElement.appendChild(modeSelector);
-
-    // 创建内容容器
-    const contentContainer = document.createElement("div");
-    contentContainer.className = "prompt-content-container";
-    contentContainer.id = "promptContentContainer";
-    this.containerElement.appendChild(contentContainer);
+    let contentContainer = this.containerElement.querySelector(':scope > .prompt-content-container');
+    if (!contentContainer) {
+      contentContainer = document.createElement("div");
+      contentContainer.className = "prompt-content-container";
+      contentContainer.id = "promptContentContainer";
+      this.containerElement.appendChild(contentContainer);
+    }
 
     // 渲染当前模式的内容
+    this.updateModeButtons();
     this.renderCurrentMode();
   }
 
@@ -149,32 +192,6 @@ class PromptManager {
       if (this.currentMode === mode.id) {
         button.classList.add("active");
       }
-
-      // 左键单击：切换模式
-      button.addEventListener("click", () => this.switchMode(mode.id));
-
-      // 双击：进入编辑模式
-      button.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        this.enterEditMode(button, mode.id);
-      });
-
-      // 右键长按：恢复默认名称
-      button.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        this.startRightClickTimer(mode.id);
-      });
-
-      button.addEventListener("mouseup", (e) => {
-        if (e.button === 2) {
-          // 右键
-          this.cancelRightClickTimer();
-        }
-      });
-
-      button.addEventListener("mouseleave", () => {
-        this.cancelRightClickTimer();
-      });
 
       container.appendChild(button);
     });
@@ -335,6 +352,11 @@ class PromptManager {
       clearTimeout(this.rightClickTimer);
       this.rightClickTimer = null;
     }
+
+    this.boundContainerListeners.forEach(([type, handler]) => {
+      this.containerElement?.removeEventListener(type, handler);
+    });
+    this.boundContainerListeners = [];
   }
 
   /**

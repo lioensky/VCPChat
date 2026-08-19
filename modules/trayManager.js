@@ -15,6 +15,9 @@ const trayManager = (function () {
     // 常用应用 ID 列表（默认 4 个）
     let pinnedAppIds = ['vchat-app-translator', 'vchat-app-notes', 'vchat-app-music', 'vchat-app-canvas'];
     let outsideClickListenerBound = false;
+    let outsideClickBindTimer = null;
+    let drawerKeydownListenerBound = false;
+    let drawerCloseTimer = null;
 
     // VChat 系统应用注册表 (从 vchatApps.js 复制的核心定义)
     const VCHAT_APPS = [
@@ -116,10 +119,12 @@ const trayManager = (function () {
             // 托盘按钮不属于页面 Header，避免被全局 .header-button 主题规则覆盖，
             // 确保其普通态与 Hover 态始终和“更多”按钮使用同一套 Dock 配色。
             btn.className = 'capsule-button';
-            btn.title = app.name;
+            btn.type = 'button';
+            btn.setAttribute('aria-label', app.name);
+            btn.dataset.tooltip = app.name;
             btn.innerHTML = `
                 ${SVG_ICONS[app.icon] || ''}
-                <span class="notes-button-label">${app.name}</span>
+                <span class="notes-button-label" aria-hidden="true">${app.name}</span>
             `;
             btn.onclick = () => launchApp(app);
             container.appendChild(btn);
@@ -203,24 +208,67 @@ const trayManager = (function () {
         const isActive = force !== undefined ? force : !drawer.classList.contains('active');
         
         if (isActive) {
+            if (drawerCloseTimer) {
+                clearTimeout(drawerCloseTimer);
+                drawerCloseTimer = null;
+            }
+            drawer.classList.remove('is-closing');
             drawer.classList.add('active');
+            drawer.setAttribute('aria-hidden', 'false');
             btn.classList.add('active');
+            btn.setAttribute('aria-expanded', 'true');
 
             // 防止重复打开时叠加全局点击监听
             if (!outsideClickListenerBound) {
                 outsideClickListenerBound = true;
-                setTimeout(() => {
+                outsideClickBindTimer = setTimeout(() => {
+                    outsideClickBindTimer = null;
+                    if (!outsideClickListenerBound) return;
                     document.addEventListener('click', closeOnOutsideClick, true);
                 }, 0);
             }
+            if (!drawerKeydownListenerBound) {
+                document.addEventListener('keydown', closeDrawerOnEscape, true);
+                drawerKeydownListenerBound = true;
+            }
         } else {
+            if (!drawer.classList.contains('active') && !drawer.classList.contains('is-closing')) return;
+            drawer.classList.add('is-closing');
             drawer.classList.remove('active');
+            drawer.setAttribute('aria-hidden', 'true');
             btn.classList.remove('active');
+            btn.setAttribute('aria-expanded', 'false');
             if (outsideClickListenerBound) {
+                if (outsideClickBindTimer) {
+                    clearTimeout(outsideClickBindTimer);
+                    outsideClickBindTimer = null;
+                }
                 document.removeEventListener('click', closeOnOutsideClick, true);
                 outsideClickListenerBound = false;
             }
+            if (drawerKeydownListenerBound) {
+                document.removeEventListener('keydown', closeDrawerOnEscape, true);
+                drawerKeydownListenerBound = false;
+            }
+
+            // Keep the notification rail unclipped for the entire exit motion.
+            // Without a separate closing state, removing `.active` restores the
+            // rail's overflow immediately and visibly chops the popover first.
+            if (drawerCloseTimer) clearTimeout(drawerCloseTimer);
+            drawerCloseTimer = setTimeout(() => {
+                drawer.classList.remove('is-closing');
+                drawerCloseTimer = null;
+            }, 320);
         }
+    }
+
+    function closeDrawerOnEscape(event) {
+        if (event.key !== 'Escape') return;
+        const btn = document.getElementById('appTrayMoreBtn');
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleDrawer(false);
+        btn?.focus();
     }
 
     function closeOnOutsideClick(e) {
@@ -237,6 +285,7 @@ const trayManager = (function () {
     function setupEventListeners() {
         const moreBtn = document.getElementById('appTrayMoreBtn');
         if (moreBtn) {
+            moreBtn.setAttribute('aria-expanded', 'false');
             moreBtn.onclick = (e) => {
                 e.stopPropagation();
                 toggleDrawer();
@@ -250,6 +299,7 @@ const trayManager = (function () {
                 console.log('[TrayManager] Settings button clicked (Capture Phase)');
                 e.stopPropagation();
                 e.preventDefault();
+                toggleDrawer(false);
                 showSettingsModal();
             }, true);
         }
@@ -265,10 +315,11 @@ const trayManager = (function () {
         const modal = document.createElement('div');
         modal.id = modalId;
         modal.className = 'modal active';
+        modal.tabIndex = -1;
         modal.style.zIndex = '20001'; 
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 400px;">
-                <span class="close-button" onclick="this.closest('.modal').remove()">×</span>
+                <button type="button" class="close-button" data-tray-settings-close aria-label="关闭">×</button>
                 <h2 style="margin-top: 0; font-size: 1.2em;">优先显示的按钮</h2>
                 <p style="font-size: 0.85em; opacity: 0.7; margin-bottom: 15px;">请选择 4 个要在底栏直接显示的应用：</p>
                 <div class="settings-app-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 400px; overflow-y: auto; padding: 5px;">
@@ -280,13 +331,41 @@ const trayManager = (function () {
                     `).join('')}
                 </div>
                 <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
-                    <button class="vcp-btn" onclick="this.closest('.modal').remove()" style="background: rgba(255,255,255,0.1); color: var(--primary-text);">取消</button>
+                    <button type="button" class="vcp-btn" data-tray-settings-close style="background: rgba(255,255,255,0.1); color: var(--primary-text);">取消</button>
                     <button id="saveTraySettingsBtn" class="vcp-btn vcp-btn-success">保存修改</button>
                 </div>
             </div>
         `;
         const container = document.getElementById('modal-container') || document.body;
+        const focusReturnTarget = document.getElementById('appTrayMoreBtn');
+        const overlayOwner = Symbol('app-tray-settings-overlay');
+        let closed = false;
+        const handleKeydown = event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            closeModal();
+        };
+        const closeModal = () => {
+            if (closed) return;
+            closed = true;
+            document.removeEventListener('keydown', handleKeydown, true);
+            modal.remove();
+            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            focusReturnTarget?.focus();
+        };
+        Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).catch(error => {
+            console.warn('[TrayManager] Failed to hide embedded app for tray settings:', error);
+        });
         container.appendChild(modal);
+        document.addEventListener('keydown', handleKeydown, true);
+        modal.querySelectorAll('[data-tray-settings-close]').forEach(button => {
+            button.addEventListener('click', closeModal);
+        });
+        modal.addEventListener('click', event => {
+            if (event.target === modal) closeModal();
+        });
+        requestAnimationFrame(() => modal.focus());
 
         // 限制选择数量为 4
         const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
@@ -316,7 +395,7 @@ const trayManager = (function () {
             saveSettings();
             renderPinnedApps();
             renderDrawerGrid();
-            modal.remove();
+            closeModal();
             if (window.uiHelperFunctions?.showToastNotification) {
                 window.uiHelperFunctions.showToastNotification('常用应用设置已保存', 'success');
             }
@@ -324,7 +403,13 @@ const trayManager = (function () {
     }
 
     return {
-        init: init
+        init: init,
+        getApps: () => VCHAT_APPS.map(app => ({
+            ...app,
+            embed: window.VCPEmbeddedAppAllowlist?.isEmbeddable?.(app.action) === true,
+        })),
+        getIcon: (iconName) => SVG_ICONS[iconName] || '',
+        launchApp: launchApp
     };
 })();
 

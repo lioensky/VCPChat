@@ -12,7 +12,7 @@ require = function (id) {
     return result;
 };
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu } = require('electron'); // Added screen, clipboard, and shell
+const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -24,6 +24,7 @@ const groupChat = require('./Groupmodules/groupchat'); // Import the group chat 
 const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window IPC handlers
 const settingsHandlers = require('./modules/ipc/settingsHandlers'); // Import settings IPC handlers
 const fileDialogHandlers = require('./modules/ipc/fileDialogHandlers'); // Import file dialog handlers
+const deepWikiHandlers = require('./modules/ipc/deepWikiHandlers'); // Ask Nova DeepWiki MCP handlers
 const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
 const regexHandlers = require('./modules/ipc/regexHandlers'); // Import regex handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
@@ -114,20 +115,27 @@ const docxHandlers = {
 };
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
+const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
+const { SenderTaskRegistry } = require('./modules/services/senderTaskRegistry');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
+const { createHistoryWatcherLeaseManager } = require('./modules/services/historyWatcherLeaseManager');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
 let historyWatcher = null;
+let embeddedAppSessions = null;
+let embeddedAppTasks = null;
 let lastInternalSaveTime = 0; // 🔧 改为时间戳记录
 let internalSaveTimeout = null; // 🔧 超时保护
 let isEditingInProgress = false; // 🔧 编辑状态标识
 const INTERNAL_SAVE_WINDOW_MS = 2000; // 🔧 内部保存时间窗口（2秒）
 
 const fileWatcher = {
-    watchFile: (filePath, callback) => {
+    watchFile: async (filePath, callback) => {
         if (historyWatcher) {
-            historyWatcher.close();
+            const watcherToClose = historyWatcher;
+            historyWatcher = null;
+            await watcherToClose.close();
         }
         console.log(`[FileWatcher] Watching new file: ${filePath}`);
         const chokidar = require('chokidar'); // Lazy load
@@ -153,11 +161,12 @@ const fileWatcher = {
         });
         historyWatcher.on('error', error => console.error(`[FileWatcher] Error: ${error}`));
     },
-    stopWatching: () => {
+    stopWatching: async () => {
         if (historyWatcher) {
             console.log('[FileWatcher] Stopping file watch.');
-            historyWatcher.close();
+            const watcherToClose = historyWatcher;
             historyWatcher = null;
+            await watcherToClose.close();
         }
         // 🔧 清理状态
         isEditingInProgress = false;
@@ -188,10 +197,36 @@ const fileWatcher = {
         console.log(`[FileWatcher] Editing mode set to: ${editing}`);
     }
 };
+
+const historyWatcherLeases = createHistoryWatcherLeaseManager({
+    startWatching: ({ filePath, callback }) => fileWatcher.watchFile(filePath, callback),
+    stopWatching: () => fileWatcher.stopWatching()
+});
+const historyWatcherSenderOwners = new WeakMap();
+let historyWatcherSenderSequence = 0;
+
+function getHistoryWatcherOwner(sender) {
+    const existing = historyWatcherSenderOwners.get(sender);
+    if (existing) return existing;
+    // Electron may reuse numeric WebContents IDs. Include a main-process
+    // generation so a late destroyed event cannot revoke a newer renderer.
+    const ownerId = `${sender.id}:${++historyWatcherSenderSequence}`;
+    historyWatcherSenderOwners.set(sender, ownerId);
+    sender.once('destroyed', () => {
+        void historyWatcherLeases.revoke(ownerId).catch((error) => {
+            console.warn('[FileWatcher] Failed to release destroyed renderer lease:', error);
+        });
+    });
+    return ownerId;
+}
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
 const PROJECT_ROOT = __dirname; // __dirname is the directory of main.js
-const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
+const isolatedAppDataRoot = process.env.VCPCHAT_APP_DATA_DIR?.trim();
+if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoot));
+const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
+    ? path.resolve(isolatedAppDataRoot)
+    : path.join(PROJECT_ROOT, 'AppData');
 
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
@@ -227,6 +262,77 @@ let audioEngineStopPromise = null;
 let isAudioEngineStopping = false;
 let appQuitCleanupPromise = null;
 let isFinalizingQuit = false;
+const MAIN_RENDERER_CRASH_WINDOW_MS = 60_000;
+const MAIN_RENDERER_STABLE_RESET_MS = 30_000;
+const MAIN_RENDERER_MAX_RECOVERIES = 3;
+let mainRendererCrashTimes = [];
+let mainRendererRecoveryTimer = null;
+let mainRendererStableTimer = null;
+let mainRendererFailurePromptOpen = false;
+
+function clearMainRendererRecoveryTimers() {
+    if (mainRendererRecoveryTimer) clearTimeout(mainRendererRecoveryTimer);
+    if (mainRendererStableTimer) clearTimeout(mainRendererStableTimer);
+    mainRendererRecoveryTimer = null;
+    mainRendererStableTimer = null;
+}
+
+function markMainRendererStable() {
+    if (mainRendererStableTimer) clearTimeout(mainRendererStableTimer);
+    mainRendererStableTimer = setTimeout(() => {
+        mainRendererCrashTimes = [];
+        mainRendererStableTimer = null;
+    }, MAIN_RENDERER_STABLE_RESET_MS);
+}
+
+async function showMainRendererFailurePrompt(details) {
+    if (mainRendererFailurePromptOpen || isFinalizingQuit || app.isQuitting) return;
+    mainRendererFailurePromptOpen = true;
+    try {
+        const options = {
+            type: 'error',
+            title: 'VCPChat 界面连续崩溃',
+            message: '主界面在短时间内多次异常退出，已停止自动恢复以避免崩溃循环。',
+            detail: details?.reason ? `最后一次退出原因：${details.reason}` : '',
+            buttons: ['重试一次', '退出应用'],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+        };
+        const result = mainWindow && !mainWindow.isDestroyed()
+            ? await dialog.showMessageBox(mainWindow, options)
+            : await dialog.showMessageBox(options);
+        if (result.response === 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainRendererCrashTimes = [];
+            scheduleMainRendererRecovery({ reason: 'manual-retry' });
+        } else {
+            app.quit();
+        }
+    } finally {
+        mainRendererFailurePromptOpen = false;
+    }
+}
+
+function scheduleMainRendererRecovery(details = {}) {
+    if (isFinalizingQuit || app.isQuitting || !mainWindow || mainWindow.isDestroyed()) return;
+    if (mainRendererRecoveryTimer) return;
+    const now = Date.now();
+    mainRendererCrashTimes = mainRendererCrashTimes.filter(timestamp => now - timestamp < MAIN_RENDERER_CRASH_WINDOW_MS);
+    if (mainRendererCrashTimes.length >= MAIN_RENDERER_MAX_RECOVERIES) {
+        void showMainRendererFailurePrompt(details);
+        return;
+    }
+    mainRendererCrashTimes.push(now);
+    mainRendererRecoveryTimer = setTimeout(() => {
+        mainRendererRecoveryTimer = null;
+        if (isFinalizingQuit || app.isQuitting || !mainWindow || mainWindow.isDestroyed()) return;
+        console.warn(`[Main] Recovering main renderer (${mainRendererCrashTimes.length}/${MAIN_RENDERER_MAX_RECOVERIES}) after ${details.reason || 'unknown failure'}.`);
+        mainWindow.loadFile('main.html').catch(error => {
+            console.error('[Main] Failed to recover main renderer:', error);
+            scheduleMainRendererRecovery({ reason: 'reload-failed' });
+        });
+    }, 250);
+}
 
 function toggleDevToolsForWindow(focusedWindow) {
     if (!focusedWindow || focusedWindow.isDestroyed()) return;
@@ -367,6 +473,8 @@ async function performQuitCleanup() {
     }
 
     appQuitCleanupPromise = (async () => {
+        await historyWatcherLeases.dispose();
+
         if (distributedServer) {
             console.log('[Main] Stopping distributed server...');
             try {
@@ -464,6 +572,8 @@ function createWindow({ deferLoad = false } = {}) {
     mainWindow.on('closed', () => {
         // When the main window is closed, we should only quit on non-macOS
         // when there are no remaining windows (e.g. RAG Observer may still be open).
+        clearMainRendererRecoveryTimers();
+        mainRendererCrashTimes = [];
         mainWindow = null;
         if (process.platform !== 'darwin' && BrowserWindow.getAllWindows().length === 0) {
             app.quit();
@@ -474,9 +584,21 @@ function createWindow({ deferLoad = false } = {}) {
         console.error('[Main] Main window did-fail-load', errorCode, errorDescription, validatedURL);
     });
 
-    mainWindow.webContents.on('render-process-gone', (event, details) => {
-        console.error('[Main] Main window render-process-gone', details);
+    mainWindow.webContents.on('did-start-loading', () => {
+        embeddedAppSessions?.suspend?.();
     });
+
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+        embeddedAppSessions?.suspend?.();
+        if (mainRendererStableTimer) {
+            clearTimeout(mainRendererStableTimer);
+            mainRendererStableTimer = null;
+        }
+        console.error('[Main] Main window render-process-gone', details);
+        if (details?.reason !== 'clean-exit') scheduleMainRendererRecovery(details);
+    });
+
+    mainWindow.webContents.on('did-finish-load', markMainRendererStable);
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
 
@@ -625,7 +747,7 @@ function createTray() {
 
 
 // --- App Lifecycle ---
-const gotTheLock = app.requestSingleInstanceLock();
+const gotTheLock = process.argv.includes('--allow-multiple-instances') || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
     // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
@@ -724,7 +846,7 @@ if (!gotTheLock) {
         // The native splash screen is started by the batch file, so no action is needed here.
 
         // Pre-warm the audio engine in the background. This doesn't block the main window.
-        startAudioEngine().catch(err => {
+        if (process.env.VCPCHAT_E2E_TEST !== '1') startAudioEngine().catch(err => {
             console.error('[Main] Failed to pre-warm audio engine on startup:', err);
             // We don't need to show a dialog here, as it will be handled when the
             // music window is actually opened.
@@ -1073,6 +1195,7 @@ if (!gotTheLock) {
             startSelectionListener: assistantHandlers.startSelectionListener,
             openChildWindows
         });
+        deepWikiHandlers.initialize({ mainWindow });
         groupChatHandlers.initialize(mainWindow, {
             AGENT_DIR,
             USER_DATA_DIR,
@@ -1095,26 +1218,45 @@ if (!gotTheLock) {
             agentConfigManager
         });
 
-        // New dedicated watcher IPC handlers
-        ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
-            if (fileWatcher) {
-                fileWatcher.watchFile(filePath, (changedPath) => {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        // Pass back the agentId and topicId to the renderer for context
-                        mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
-                    }
-                });
-                return { success: true, watching: filePath };
-            }
-            return { success: false, error: 'File watcher not initialized.' };
+        // A renderer claims a lease before beginning asynchronous selection.
+        // Late start/stop completions from older selections are rejected in
+        // the main process, where the single chokidar watcher is actually
+        // owned.
+        ipcMain.handle('watcher:begin', async (event) => {
+            const ownerId = getHistoryWatcherOwner(event.sender);
+            const lease = historyWatcherLeases.claim(ownerId);
+            const stopped = await lease.stopped;
+            return { success: stopped.success, stale: stopped.stale === true, token: lease.token };
         });
 
-        ipcMain.handle('watcher:stop', () => {
-            if (fileWatcher) {
-                fileWatcher.stopWatching();
-                return { success: true };
+        ipcMain.handle('watcher:start', async (event, filePath, agentId, topicId, leaseToken = null) => {
+            const ownerId = getHistoryWatcherOwner(event.sender);
+            let token = leaseToken;
+            if (!token) {
+                const lease = historyWatcherLeases.claim(ownerId);
+                token = lease.token;
+                await lease.stopped;
             }
-            return { success: false, error: 'File watcher not initialized.' };
+            const sender = event.sender;
+            const result = await historyWatcherLeases.start(ownerId, token, {
+                filePath,
+                callback: (changedPath) => {
+                    if (!sender.isDestroyed()) {
+                        sender.send('history-file-updated', { path: changedPath, agentId, topicId });
+                    }
+                }
+            });
+            return { ...result, token, watching: result.success ? filePath : null };
+        });
+
+        ipcMain.handle('watcher:stop', async (event, leaseToken = null) => {
+            const ownerId = getHistoryWatcherOwner(event.sender);
+            if (!leaseToken) {
+                const lease = historyWatcherLeases.claim(ownerId);
+                const result = await lease.stopped;
+                return { ...result, token: lease.token };
+            }
+            return historyWatcherLeases.stop(ownerId, leaseToken);
         });
         ipcMain.handle('chat-data-service-status', async () => {
             if (!chatDataService) {
@@ -1153,6 +1295,95 @@ if (!gotTheLock) {
             logger: console,
         });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+        await embeddedAppSessions?.closeAll();
+        embeddedAppTasks?.dispose('main-window-reinitialized');
+        embeddedAppTasks = new SenderTaskRegistry({ label: 'embedded-app-tasks' });
+        embeddedAppSessions = createEmbeddedAppSessionManager({
+            mainWindow,
+            powerMonitor,
+            launchStandalone: desktopHandlers.launchVchatApp,
+        });
+        [
+            'embedded-vchat-app:create',
+            'embedded-vchat-app:list',
+            'embedded-vchat-app:activate',
+            'embedded-vchat-app:set-bounds',
+            'embedded-vchat-app:close',
+            'embedded-vchat-app:detach',
+            'embedded-vchat-app:close-all',
+            'embedded-vchat-app:cancel',
+            'lifecycle:get-main-snapshot',
+        ].forEach(channel => ipcMain.removeHandler(channel));
+        const normalizeEmbeddedRequest = (payload, fallbackPoint = undefined) => (
+            payload && typeof payload === 'object' && !Array.isArray(payload)
+                ? { requestId: String(payload.requestId || ''), action: payload.action, point: payload.point }
+                : { requestId: '', action: payload, point: fallbackPoint }
+        );
+        const runEmbeddedTask = async (event, request, operation, execute) => {
+            if (!request.requestId) return execute(null);
+            try {
+                return await embeddedAppTasks.run(event.sender, request.requestId, operation, execute);
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        ipcMain.handle('embedded-vchat-app:create', (event, payload) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            const request = normalizeEmbeddedRequest(payload);
+            return runEmbeddedTask(event, request, 'embedded:create', signal => (
+                embeddedAppSessions.create(request.action, { signal })
+            ));
+        });
+        ipcMain.handle('embedded-vchat-app:list', event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.list();
+        });
+        ipcMain.handle('embedded-vchat-app:activate', (event, appAction) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.activate(appAction || null);
+        });
+        ipcMain.handle('embedded-vchat-app:set-bounds', (event, appAction, bounds) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.setBounds(appAction, bounds);
+        });
+        ipcMain.handle('embedded-vchat-app:close', (event, payload) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            const request = normalizeEmbeddedRequest(payload);
+            return runEmbeddedTask(event, request, 'embedded:close', () => embeddedAppSessions.close(request.action));
+        });
+        ipcMain.handle('embedded-vchat-app:detach', (event, payload, legacyPoint) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            const request = normalizeEmbeddedRequest(payload, legacyPoint);
+            return runEmbeddedTask(event, request, 'embedded:detach', signal => (
+                embeddedAppSessions.detach(request.action, request.point, { signal })
+            ));
+        });
+        ipcMain.handle('embedded-vchat-app:cancel', (event, requestId) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return { success: true, cancelled: embeddedAppTasks.cancel(event.sender, requestId, 'renderer-cancelled') };
+        });
+        ipcMain.handle('lifecycle:get-main-snapshot', event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            const embedded = embeddedAppSessions.list();
+            return {
+                embeddedSessions: embedded.sessions,
+                activeEmbeddedAction: embedded.activeAction,
+                tasks: embeddedAppTasks.snapshot(),
+                chatTasks: chatHandlers.getVcpStreamTaskSnapshot(),
+            };
+        });
+        ipcMain.handle('embedded-vchat-app:close-all', async event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            await embeddedAppSessions.closeAll();
+            return { success: true };
+        });
+        ipcMain.removeAllListeners('embedded-vchat-app:request-close');
+        ipcMain.on('embedded-vchat-app:request-close', async event => {
+            const result = await embeddedAppSessions?.closeBySender(event.sender);
+            if (!result?.success) {
+                console.warn('[EmbeddedApps] Rejected child close request:', result?.error || 'unknown sender');
+            }
+        });
         loomManager = await loomManagerModule.initialize({
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,

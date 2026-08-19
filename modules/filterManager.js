@@ -3,10 +3,30 @@ window.filterManager = (() => {
     let _electronAPI;
     let _uiHelper;
     let _globalSettingsRef;
+    const stateChannel = window.VCPStateChannels?.create('notification-filter', Object.freeze({
+        ready: false, enabled: false, ruleCount: 0
+    })) || null;
 
     // --- Helper Functions to access refs ---
     const getGlobalSettings = () => _globalSettingsRef.get();
     const setGlobalSettings = (newSettings) => _globalSettingsRef.set(newSettings);
+
+    function publishFilterState(source = 'filter-manager') {
+        const settings = _globalSettingsRef ? getGlobalSettings() : {};
+        const state = Object.freeze({
+            ready: Boolean(_globalSettingsRef),
+            enabled: settings?.filterEnabled === true,
+            ruleCount: Array.isArray(settings?.filterRules) ? settings.filterRules.filter(rule => rule.enabled).length : 0,
+        });
+        stateChannel?.publish(state, {
+            source,
+            equals: (left, right) => left?.ready === right.ready
+                && left?.enabled === right.enabled
+                && left?.ruleCount === right.ruleCount,
+        });
+        window.dispatchEvent(new CustomEvent('notification-filter-changed', { detail: state }));
+        return state;
+    }
 
     /**
      * 过滤规则数据结构
@@ -92,6 +112,35 @@ window.filterManager = (() => {
             settings.toolAutoApprovalEnabled = false;
         }
         return settings;
+    }
+
+    function isFilterEnabled() {
+        return getGlobalSettings()?.filterEnabled === true;
+    }
+
+    async function toggleFilterMode(forceEnabled) {
+        const settings = getGlobalSettings();
+        const previousValue = settings.filterEnabled === true;
+        const isActive = typeof forceEnabled === 'boolean' ? forceEnabled : !previousValue;
+        settings.filterEnabled = isActive;
+        setGlobalSettings(settings);
+        localStorage.setItem('filterEnabled', isActive.toString());
+
+        try {
+            const result = await _electronAPI.saveSettings({ ...settings, filterEnabled: isActive });
+            if (!result?.success) throw new Error(result?.error || '未知错误');
+            updateFilterStatusDisplay();
+            _uiHelper.showToastNotification(`过滤模式已${isActive ? '开启' : '关闭'}`, 'info');
+            publishFilterState('toggle-committed');
+            return { success: true, enabled: isActive };
+        } catch (error) {
+            settings.filterEnabled = previousValue;
+            setGlobalSettings(settings);
+            localStorage.setItem('filterEnabled', previousValue.toString());
+            _uiHelper.showToastNotification(`设置过滤模式失败: ${error.message}`, 'error');
+            publishFilterState('toggle-rollback');
+            return { success: false, enabled: previousValue, error: error.message };
+        }
     }
 
     /**
@@ -497,6 +546,8 @@ window.filterManager = (() => {
 
         if (!result.success) {
             _uiHelper.showToastNotification(`保存过滤设置失败: ${result.error}`, 'error');
+        } else {
+            publishFilterState('rules-saved');
         }
     }
 
@@ -588,46 +639,7 @@ window.filterManager = (() => {
         _globalSettingsRef = dependencies.refs.globalSettingsRef;
 
         normalizeToolAutoApprovalRules(getGlobalSettings());
-
-        const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
-
-        if (doNotDisturbBtn) {
-            // 左键点击：切换过滤总开关
-            doNotDisturbBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                const isActive = doNotDisturbBtn.classList.toggle('active');
-                const settings = getGlobalSettings();
-                settings.filterEnabled = isActive;
-                setGlobalSettings(settings);
-
-                // Also save to localStorage as backup
-                localStorage.setItem('filterEnabled', isActive.toString());
-
-                // Save the setting immediately
-                const result = await _electronAPI.saveSettings({
-                    ...settings, // Send all settings to avoid overwriting
-                    filterEnabled: isActive
-                });
-
-                if (result.success) {
-                    updateFilterStatusDisplay();
-                    _uiHelper.showToastNotification(`过滤模式已${isActive ? '开启' : '关闭'}`, 'info');
-                } else {
-                    _uiHelper.showToastNotification(`设置过滤模式失败: ${result.error}`, 'error');
-                    // Revert UI on failure
-                    doNotDisturbBtn.classList.toggle('active', !isActive);
-                    settings.filterEnabled = !isActive;
-                    setGlobalSettings(settings);
-                    localStorage.setItem('filterEnabled', (!isActive).toString());
-                }
-            });
-
-            // 右键点击：打开过滤规则设置页面
-            doNotDisturbBtn.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                openFilterRulesModal();
-            });
-        }
+        publishFilterState('initialized');
 
         // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
         document.addEventListener('modal-ready', (e) => {
@@ -712,13 +724,17 @@ window.filterManager = (() => {
             }
         });
 
-        // 移除了 globalFilterCheckbox 的事件监听器，因为现在通过左键点击 doNotDisturbBtn 来切换总开关
+        // The canonical notification menu owns the filter toggle entry.
     }
 
     // --- Public API ---
     return {
         init,
         openFilterRulesModal,
+        toggleFilterMode,
+        isFilterEnabled,
+        getState: () => stateChannel?.get() || publishFilterState('query'),
+        subscribe: (listener, options) => stateChannel?.subscribe(listener, options) || (() => false),
         checkMessageFilter,
         checkToolAutoApproval
     };

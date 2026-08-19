@@ -12,10 +12,7 @@
     flex-shrink: 0;
     padding: 10px 8px 10px 17px; /* 整体向右边距增加2px，由6px变为8px */
 }
-/* 为亮色主题添加对应样式 */
-body.light-theme .notifications-header {
-    background: transparent !important;
-}
+/* 经典 UI 的亮色标题栏保持透明；新版标题栏由 UI System 的主题材质接管。 */
 
 .notification-header-actions {
     display: grid;
@@ -440,6 +437,30 @@ body.light-theme .app-tray-drawer-item:hover {
     overflow: hidden;
     text-overflow: ellipsis;
     width: 100%;
+}
+
+/* A narrow notification rail is an icon dock, not a compressed text list.
+ * Keep this in the legacy layer beside the original !important capsule
+ * geometry so the Next layer cannot lose the cascade to those declarations. */
+@container notifications-sidebar (max-width: 280px) {
+    html #vchatAppTray #appTrayPinnedApps > .capsule-button {
+        min-width: 0;
+        padding: 0 !important;
+        gap: 0 !important;
+    }
+
+    html #vchatAppTray #appTrayPinnedApps .notes-button-label {
+        display: none !important;
+    }
+
+    html #vchatAppTray #appTrayPinnedApps svg,
+    html #vchatAppTray > .app-tray-more-btn svg {
+        display: block;
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+    }
 }
 
 /* "更多" 按钮样式 */

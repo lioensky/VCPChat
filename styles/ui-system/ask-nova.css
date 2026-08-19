@@ -1,0 +1,473 @@
+@layer vcp-ui.components {
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host {
+        --width: min(1120px, calc(100vw - 48px));
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .vcp-ui-modal[data-size="lg"] {
+        width: min(1120px, calc(100vw - 48px));
+        height: min(760px, calc(100vh - 72px));
+        max-height: calc(100vh - 72px);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .vcp-ui-modal-body {
+        min-height: 0;
+        padding: 0;
+        display: flex;
+        overflow: hidden;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .vcp-ui-modal > footer:empty {
+        display: none;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-dialog {
+        min-width: 0;
+        min-height: 0;
+        flex: 1;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-0);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar-actions,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tabs {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar {
+        min-height: 52px;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-4);
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+        border-bottom: 1px solid var(--vcp-ui-border);
+        background: var(--vcp-ui-bg-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tabs {
+        padding: var(--vcp-ui-space-1);
+        gap: var(--vcp-ui-space-1);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-bg-0);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tab,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-clear,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-open-external {
+        min-height: var(--vcp-ui-control-md);
+        padding: 0 var(--vcp-ui-space-3);
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        font-weight: 600;
+        letter-spacing: 0;
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tab:hover,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-clear:hover,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-open-external:hover {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tab.active {
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar-actions {
+        flex: 0 0 auto;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-open-external {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-open-external .vcp-ui-icon {
+        --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-status {
+        min-height: 28px;
+        padding: 0 var(--vcp-ui-space-4);
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid var(--vcp-ui-border);
+        color: var(--vcp-ui-text-3);
+        background: var(--vcp-ui-bg-2);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-workspace {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 240px;
+        background:
+            linear-gradient(var(--vcp-ui-border) 1px, transparent 1px),
+            linear-gradient(90deg, var(--vcp-ui-border) 1px, transparent 1px),
+            var(--vcp-ui-bg-0);
+        background-size: 32px 32px;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-messages {
+        min-width: 0;
+        min-height: 0;
+        padding: var(--vcp-ui-space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--vcp-ui-space-4);
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message {
+        max-width: min(760px, 88%);
+        display: grid;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-user {
+        margin-left: auto;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-meta {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-micro);
+        font-weight: 700;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-user .ask-nova-message-meta {
+        text-align: right;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble-wrap {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--vcp-ui-space-2);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble {
+        min-width: 0;
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-sm);
+        line-height: var(--vcp-ui-line-relaxed);
+        overflow-wrap: anywhere;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-user .ask-nova-message-bubble {
+        border-color: var(--vcp-ui-accent);
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-system .ask-nova-message-bubble {
+        border-color: color-mix(in srgb, var(--vcp-ui-info) 42%, var(--vcp-ui-border));
+        background: color-mix(in srgb, var(--vcp-ui-info) 10%, var(--vcp-ui-bg-1));
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble > :first-child {
+        margin-top: 0;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble > :last-child {
+        margin-bottom: 0;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble :is(p, ul, ol, blockquote, pre, table) {
+        margin: 0 0 var(--vcp-ui-space-3);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble a {
+        color: var(--vcp-ui-text-accent);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-user .ask-nova-message-bubble a {
+        color: inherit;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble pre {
+        max-height: 320px;
+        padding: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-bg-0);
+        overflow: auto;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble :not(pre) > code {
+        padding: 2px 5px;
+        border-radius: var(--vcp-ui-radius-xs);
+        background: var(--vcp-ui-fill-2);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-bubble :is(th, td) {
+        padding: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        text-align: left;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-copy {
+        min-width: 48px;
+        min-height: var(--vcp-ui-control-sm);
+        padding: 0 var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-bg-1);
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-copy:hover {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-thinking {
+        min-height: 48px;
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-bg-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-thinking span {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--vcp-ui-radius-full);
+        background: var(--vcp-ui-accent);
+        animation: ask-nova-pulse 900ms ease-in-out infinite alternate;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-thinking span:nth-child(2) {
+        animation-delay: 150ms;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-thinking span:nth-child(3) {
+        animation-delay: 300ms;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-thinking strong {
+        margin-left: var(--vcp-ui-space-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-side {
+        min-height: 0;
+        padding: var(--vcp-ui-space-3);
+        display: flex;
+        flex-direction: column;
+        gap: var(--vcp-ui-space-3);
+        border-left: 1px solid var(--vcp-ui-border);
+        background: color-mix(in srgb, var(--vcp-ui-bg-1) 92%, transparent);
+        overflow: auto;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-side section {
+        padding: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-bg-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-side h3 {
+        margin: 0 0 var(--vcp-ui-space-3);
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-caption);
+        text-transform: uppercase;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-prompts {
+        display: grid;
+        gap: var(--vcp-ui-space-2);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-prompts button {
+        min-height: 38px;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-0);
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-prompts button:hover {
+        border-color: var(--vcp-ui-border-strong);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-deep-research {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+        font-weight: 600;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-deep-research input {
+        accent-color: var(--vcp-ui-accent);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-side p {
+        margin: var(--vcp-ui-space-2) 0 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-composer {
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--vcp-ui-space-3);
+        border-top: 1px solid var(--vcp-ui-border);
+        background: var(--vcp-ui-bg-1);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-composer textarea {
+        width: 100%;
+        min-height: 48px;
+        max-height: 128px;
+        box-sizing: border-box;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        resize: vertical;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        outline: none;
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-0);
+        font: inherit;
+        line-height: var(--vcp-ui-line-body);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-composer textarea:focus {
+        border-color: var(--vcp-ui-border-strong);
+        box-shadow: 0 0 0 3px var(--vcp-ui-focus-ring);
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-composer button {
+        min-width: 92px;
+        padding: 0 var(--vcp-ui-space-4);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-accent);
+        border-radius: var(--vcp-ui-radius-md);
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-dialog button:disabled,
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-dialog textarea:disabled {
+        cursor: not-allowed;
+        opacity: 0.52;
+    }
+
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-dialog button:focus-visible {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    @keyframes ask-nova-pulse {
+        from { opacity: 0.3; transform: translateY(1px); }
+        to { opacity: 1; transform: translateY(-1px); }
+    }
+
+    @media (max-width: 820px) {
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .vcp-ui-modal[data-size="lg"] {
+            width: calc(100vw - 24px);
+            height: calc(100vh - 52px);
+            max-height: calc(100vh - 52px);
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-workspace {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-side {
+            display: none;
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tabs,
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar-actions {
+            width: 100%;
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-target-tab {
+            flex: 1 1 0;
+            padding: 0 var(--vcp-ui-space-2);
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-toolbar-actions {
+            justify-content: flex-end;
+        }
+    }
+
+    @media (max-width: 520px) {
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .vcp-ui-modal[data-size="lg"] {
+            width: calc(100vw - 16px);
+            height: calc(100vh - 32px);
+            max-height: calc(100vh - 32px);
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message {
+            max-width: 96%;
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-composer {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-composer button {
+            min-height: var(--vcp-ui-control-lg);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-thinking span {
+            animation: none;
+        }
+    }
+}

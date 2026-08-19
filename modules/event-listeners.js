@@ -18,12 +18,12 @@ export function setupEventListeners(deps) {
     const {
         // DOM Elements from a future dom-elements.js or passed directly
         chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
-        globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-        currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
-        notificationsSidebar, agentSearchInput, minimizeToTrayBtn, addNetworkPathBtn,
-        openTranslatorBtn, openNotesBtn, openMusicBtn, openCanvasBtn, toggleAssistantBtn,
+        globalSettingsForm, userAvatarInput,
+        currentItemActionBtn, toggleNotificationsBtn,
+        notificationsSidebar, agentSearchInput, addNetworkPathBtn,
+        openTranslatorBtn, openNotesBtn, openMusicBtn, openCanvasBtn, toggleAssistantBtn, toggleSidebarModeBtn,
         leftSidebar, toggleSidebarBtn,
-        enableContextSanitizerCheckbox, contextSanitizerDepthContainer, seamFixer,
+        enableContextSanitizerCheckbox, contextSanitizerDepthContainer,
 
         // State variables (passed via refs)
         refs,
@@ -502,44 +502,84 @@ export function setupEventListeners(deps) {
         }
     });
 
-
-    globalSettingsBtn.addEventListener('click', () => uiHelperFunctions.openModal('globalSettingsModal'));
-
-    // 🟢 优化：监听模态框就绪事件，动态绑定内部元素的事件
-    document.addEventListener('modal-ready', (e) => {
-        const { modalId } = e.detail;
-        if (modalId === 'globalSettingsModal') {
-            const form = document.getElementById('globalSettingsForm');
-            if (form) form.addEventListener('submit', (ev) => handleSaveGlobalSettings(ev, deps));
-
-            const addPathBtn = document.getElementById('addNetworkPathBtn');
-            if (addPathBtn) addPathBtn.addEventListener('click', () => addNetworkPathInput());
-
-            const avatarInput = document.getElementById('userAvatarInput');
-            if (avatarInput) setupUserAvatarListener(avatarInput);
-
-            const resetBtn = document.getElementById('resetUserAvatarColorsBtn');
-            if (resetBtn) setupResetUserColorsListener(resetBtn);
-
-            const styleHeader = document.getElementById('userStyleCollapseHeader');
-            if (styleHeader) {
-                styleHeader.addEventListener('click', () => {
-                    const container = styleHeader.closest('.agent-style-collapsible-container');
-                    if (container) container.classList.toggle('collapsed');
-                });
-            }
-
-            // 绑定颜色选择器同步
-            setupColorSyncListeners();
-
-            // 绑定 Rust 助手配置相关的事件
-            setupRustAssistantConfigListeners();
-
-            // 绑定全局设置导航切换
-            setupGlobalSettingsNavigation();
-
-            // continueWritingPrompt 使用 CSS field-sizing: content 自动调整高度，无需 JS 处理
+    // The modal is template-backed.  Do not rely solely on its one-time
+    // `modal-ready` event: an early open can otherwise leave the existing
+    // form without a submit listener, making the Save button appear inert.
+    function bindGlobalSettingsModal() {
+        const modal = document.getElementById('globalSettingsModal');
+        if (!modal) return;
+        const closeButton = modal.querySelector('.close-button');
+        if (closeButton && !closeButton.dataset.closeBound) {
+            closeButton.addEventListener('click', () => uiHelperFunctions.closeModal('globalSettingsModal'));
+            closeButton.dataset.closeBound = 'true';
         }
+
+        const form = modal.querySelector('#globalSettingsForm');
+        if (form && !form.dataset.globalSettingsSaveBound) {
+            form.addEventListener('submit', (ev) => {
+                Promise.resolve(handleSaveGlobalSettings(ev, deps)).catch((error) => {
+                    console.error('[GlobalSettings] Unexpected save failure:', error);
+                    form.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+                        detail: { success: false, error: error?.message || String(error) }
+                    }));
+                    uiHelperFunctions.showToastNotification(`保存全局设置失败: ${error?.message || error}`, 'error');
+                });
+            });
+            form.dataset.globalSettingsSaveBound = 'true';
+        }
+
+        const addPathBtn = modal.querySelector('#addNetworkPathBtn');
+        if (addPathBtn && !addPathBtn.dataset.globalSettingsBound) {
+            addPathBtn.addEventListener('click', () => addNetworkPathInput());
+            addPathBtn.dataset.globalSettingsBound = 'true';
+        }
+
+        const avatarInput = modal.querySelector('#userAvatarInput');
+        if (avatarInput && !avatarInput.dataset.globalSettingsBound) {
+            setupUserAvatarListener(avatarInput);
+            avatarInput.dataset.globalSettingsBound = 'true';
+        }
+
+        const resetBtn = modal.querySelector('#resetUserAvatarColorsBtn');
+        if (resetBtn && !resetBtn.dataset.globalSettingsBound) {
+            setupResetUserColorsListener(resetBtn);
+            resetBtn.dataset.globalSettingsBound = 'true';
+        }
+
+        const styleHeader = modal.querySelector('#userStyleCollapseHeader');
+        if (styleHeader && !styleHeader.dataset.globalSettingsBound) {
+            styleHeader.addEventListener('click', () => {
+                const container = styleHeader.closest('.agent-style-collapsible-container');
+                if (container) container.classList.toggle('collapsed');
+            });
+            styleHeader.dataset.globalSettingsBound = 'true';
+        }
+
+        if (!modal.dataset.globalSettingsControlsBound) {
+            setupColorSyncListeners();
+            setupRustAssistantConfigListeners();
+            setupGlobalSettingsNavigation();
+            modal.dataset.globalSettingsControlsBound = 'true';
+        }
+    }
+
+    const openGlobalSettings = () => {
+        uiHelperFunctions.openModal('globalSettingsModal');
+        bindGlobalSettingsModal();
+    };
+    // Classic settings and the Next UI account dock are two visual entry
+    // points for one shared settings surface. Keep their lifecycle identical
+    // instead of letting the redesigned shell expose an inert gear button.
+    [globalSettingsBtn, document.getElementById('nextUiAccountSettingsBtn')]
+        .filter(Boolean)
+        .forEach((trigger) => {
+            if (trigger.dataset.globalSettingsOpenBound) return;
+            trigger.addEventListener('click', openGlobalSettings);
+            trigger.dataset.globalSettingsOpenBound = 'true';
+        });
+
+    document.addEventListener('modal-ready', (e) => {
+        if (e.detail?.modalId === 'globalSettingsModal') bindGlobalSettingsModal();
     });
 
     // 全局设置双栏导航切换
@@ -549,6 +589,8 @@ export function setupEventListeners(deps) {
         let isAnimating = false;
 
         navItems.forEach(item => {
+            if (item.dataset.globalSettingsNavBound) return;
+            item.dataset.globalSettingsNavBound = 'true';
             item.addEventListener('click', () => {
                 // 防止动画过程中重复点击
                 if (isAnimating) return;
@@ -609,6 +651,7 @@ export function setupEventListeners(deps) {
             });
         });
     }
+    document.addEventListener('vcp-settings-navigation-restored', setupGlobalSettingsNavigation);
 
     function setupUserAvatarListener(input) {
         input.addEventListener('change', (event) => {
@@ -968,37 +1011,6 @@ export function setupEventListeners(deps) {
         });
     }
 
-    if (createNewAgentBtn) {
-        createNewAgentBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M2 21a8 8 0 0 1 13.292-6"></path>
-                <circle cx="10" cy="8" r="5"></circle>
-                <path d="M19 16v6"></path>
-                <path d="M22 19h-6"></path>
-            </svg>
-            <span class="sidebar-button-label">
-                <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                <span class="sidebar-button-keyword">Agent</span>
-            </span>
-        `;
-        createNewAgentBtn.style.width = 'auto';
-        createNewAgentBtn.addEventListener('click', async () => {
-            const defaultAgentName = `新Agent_${Date.now()}`;
-            const result = await chatAPI.createAgent(defaultAgentName);
-            if (result.success) {
-                await itemListManager.loadItems();
-                await chatManager.selectItem(result.agentId, 'agent', result.agentName, null, result.config);
-                uiManager.switchToTab('settings');
-            } else {
-                uiHelperFunctions.showToastNotification(`创建Agent失败: ${result.error}`, 'error');
-            }
-        });
-    }
-
-    if (createNewGroupBtn) {
-        createNewGroupBtn.style.display = 'inline-flex';
-    }
-
     currentItemActionBtn.addEventListener('click', async () => {
         const currentSelectedItem = refs.currentSelectedItem.get();
         if (!currentSelectedItem.id) {
@@ -1107,18 +1119,140 @@ export function setupEventListeners(deps) {
         }
     }
 
-    clearNotificationsBtn.addEventListener('click', () => {
-        const notificationsList = document.getElementById('notificationsList');
-        if (!notificationsList) return;
+    const nextUiNotificationMenuBtn = document.getElementById('nextUiNotificationMenuBtn');
+    const nextUiNotificationMenu = document.getElementById('nextUiNotificationMenu');
+    const nextUiNotificationForum = document.getElementById('nextUiNotificationForum');
+    const nextUiNotificationMemo = document.getElementById('nextUiNotificationMemo');
+    const nextUiNotificationFilterToggle = document.getElementById('nextUiNotificationFilterToggle');
+    const nextUiNotificationFilterState = document.getElementById('nextUiNotificationFilterState');
+    const nextUiNotificationClear = document.getElementById('nextUiNotificationClear');
+    if (
+        nextUiNotificationMenuBtn
+        && nextUiNotificationMenu
+        && nextUiNotificationForum
+        && nextUiNotificationMemo
+        && nextUiNotificationFilterToggle
+        && nextUiNotificationFilterState
+        && nextUiNotificationClear
+    ) {
+        const syncNotificationFilterState = (state = null) => {
+            const isActive = typeof state?.enabled === 'boolean' ? state.enabled : window.filterManager?.isFilterEnabled?.() === true;
+            nextUiNotificationFilterToggle.setAttribute('aria-checked', String(isActive));
+            nextUiNotificationFilterState.textContent = isActive ? '开启' : '关闭';
+        };
 
-        notificationsList.querySelectorAll('.notification-item').forEach(item => {
-            if (item.dataset.protectedNotification === 'tool-approval') return;
-            item.remove();
+        const closeNotificationMenu = ({ restoreFocus = false } = {}) => {
+            if (nextUiNotificationMenu.hidden) return;
+            nextUiNotificationMenu.hidden = true;
+            nextUiNotificationMenuBtn.setAttribute('aria-expanded', 'false');
+            if (restoreFocus) nextUiNotificationMenuBtn.focus();
+        };
+
+        const openNotificationMenu = () => {
+            syncNotificationFilterState();
+            nextUiNotificationMenu.hidden = false;
+            nextUiNotificationMenuBtn.setAttribute('aria-expanded', 'true');
+            nextUiNotificationForum.focus();
+        };
+
+        nextUiNotificationMenuBtn.addEventListener('click', () => {
+            if (nextUiNotificationMenu.hidden) {
+                openNotificationMenu();
+            } else {
+                closeNotificationMenu();
+            }
         });
-    });
 
-    if (openForumBtn) {
-        openForumBtn.style.display = 'inline-block';
+        const runMenuAction = async (action, { restoreFocus = true } = {}) => {
+            try {
+                return await action?.();
+            } catch (error) {
+                console.warn('[Notifications] Menu action failed:', error);
+                uiHelperFunctions.showToastNotification(`通知操作失败：${error.message}`, 'error');
+                return { success: false, error: error.message };
+            } finally {
+                syncNotificationFilterState();
+                closeNotificationMenu({ restoreFocus });
+            }
+        };
+
+        nextUiNotificationForum.addEventListener('click', () => {
+            void runMenuAction(() => window.MainChatCommands?.openForum?.());
+        });
+        nextUiNotificationMemo.addEventListener('click', () => {
+            void runMenuAction(() => window.MainChatCommands?.openMemo?.());
+        });
+
+        nextUiNotificationFilterToggle.addEventListener('click', () => {
+            void runMenuAction(() => window.MainChatCommands?.toggleNotificationFilter?.());
+        });
+        nextUiNotificationFilterToggle.addEventListener('contextmenu', event => {
+            event.preventDefault();
+            void runMenuAction(() => window.MainChatCommands?.openNotificationFilterSettings?.(), {
+                restoreFocus: false
+            });
+        });
+
+        nextUiNotificationClear.addEventListener('click', () => {
+            void runMenuAction(() => window.MainChatCommands?.clearNotifications?.());
+        });
+
+        document.addEventListener('pointerdown', (event) => {
+            if (
+                !nextUiNotificationMenu.hidden
+                && !nextUiNotificationMenu.contains(event.target)
+                && !nextUiNotificationMenuBtn.contains(event.target)
+            ) {
+                closeNotificationMenu();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !nextUiNotificationMenu.hidden) {
+                event.preventDefault();
+                closeNotificationMenu({ restoreFocus: true });
+            }
+        });
+
+        document.addEventListener('next-ui-overlay-changed', (event) => {
+            if (event.detail?.active === true) closeNotificationMenu();
+        });
+
+        nextUiNotificationMenu.addEventListener('keydown', (event) => {
+            if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+                && document.activeElement === nextUiNotificationFilterToggle) {
+                event.preventDefault();
+                document.activeElement.dispatchEvent(new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 2
+                }));
+                return;
+            }
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+
+            const menuItems = [...nextUiNotificationMenu.querySelectorAll('[role^="menuitem"]')];
+            const currentIndex = menuItems.indexOf(document.activeElement);
+            let nextIndex = currentIndex;
+
+            if (event.key === 'Home') nextIndex = 0;
+            if (event.key === 'End') nextIndex = menuItems.length - 1;
+            if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % menuItems.length;
+            if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length;
+
+            event.preventDefault();
+            menuItems[nextIndex]?.focus();
+        });
+
+        if (window.filterManager?.subscribe) {
+            window.filterManager.subscribe(syncNotificationFilterState);
+        } else {
+            window.addEventListener('notification-filter-changed', event => syncNotificationFilterState(event.detail));
+            syncNotificationFilterState();
+        }
+    }
+
+    {
         const enableMiddleClickCheckbox = document.getElementById('enableMiddleClickQuickAction');
         const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
         const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
@@ -1173,25 +1307,6 @@ export function setupEventListeners(deps) {
             });
         }
 
-        openForumBtn.addEventListener('click', async () => {
-            if (chatAPI?.openForumWindow) {
-                await chatAPI.openForumWindow();
-            } else {
-                console.warn('[Renderer] electronAPI.openForumWindow is not available.');
-                uiHelperFunctions.showToastNotification('无法打开论坛：功能不可用。', 'error');
-            }
-        });
-
-        // 右键点击 - 打开 VCPMemo 中心
-        openForumBtn.addEventListener('contextmenu', async (e) => {
-            e.preventDefault();
-            if (chatAPI?.openMemoWindow) {
-                await chatAPI.openMemoWindow();
-            } else {
-                console.warn('[Renderer] electronAPI.openMemoWindow is not available.');
-                uiHelperFunctions.showToastNotification('无法打开 VCPMemo 中心：功能不可用。', 'error');
-            }
-        });
     }
 
     if (openTranslatorBtn) {
@@ -1237,6 +1352,20 @@ export function setupEventListeners(deps) {
     }
 
     if (toggleNotificationsBtn && notificationsSidebar) {
+        const syncNotificationTogglePlacement = (isActive = notificationsSidebar.classList.contains('active')) => {
+            const chatHost = document.getElementById('nextUiChatNotificationHost');
+            const panelHost = document.getElementById('nextUiPanelNotificationHost');
+            const targetHost = isActive ? panelHost : chatHost;
+            if (targetHost && toggleNotificationsBtn.parentElement !== targetHost) {
+                targetHost.append(toggleNotificationsBtn);
+            }
+
+            toggleNotificationsBtn.classList.toggle('notification-panel-active', isActive);
+            toggleNotificationsBtn.setAttribute('aria-expanded', String(isActive));
+            toggleNotificationsBtn.setAttribute('aria-label', isActive ? '关闭通知面板' : '打开通知面板');
+            toggleNotificationsBtn.title = `${isActive ? '左键关闭通知面板' : '左键打开通知面板'}/右键监控面板`;
+        };
+
         toggleNotificationsBtn.addEventListener('click', () => {
             chatAPI.sendToggleNotificationsSidebar();
         });
@@ -1260,14 +1389,17 @@ export function setupEventListeners(deps) {
             if (isActive && refs.globalSettings.get().notificationsSidebarWidth) {
                 notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
             }
+            syncNotificationTogglePlacement(isActive);
         });
+
+        syncNotificationTogglePlacement();
     }
 
     if (toggleAssistantBtn) {
         let longPressTimer;
         let wasLongPress = false;
-        let rightLongPressTimer = null;
-        let wasRightLongPress = false;
+        let sidebarLongPressTimer = null;
+        let wasSidebarLongPress = false;
 
         const saveSidebarState = () => {
             if (!chatAPI?.saveSettings) return;
@@ -1288,14 +1420,17 @@ export function setupEventListeners(deps) {
         };
 
         const setAvatarOnlyMode = (enabled) => {
-            if (!leftSidebar) return false;
+            const target = leftSidebar;
+            if (!target) return false;
 
             const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
             if (enabled && !agentsTabIsActive) return false;
 
-            leftSidebar.classList.toggle('avatar-only', enabled);
+            target.classList.toggle('avatar-only', enabled);
+            toggleSidebarModeBtn?.classList.toggle('active', enabled);
+            toggleSidebarModeBtn?.setAttribute('aria-pressed', String(enabled));
             if (enabled) {
-                leftSidebar.classList.add('active');
+                target.classList.add('active');
                 syncSidebarVisibility(true);
             }
 
@@ -1306,6 +1441,27 @@ export function setupEventListeners(deps) {
             return true;
         };
 
+        const toggleSidebarVisibility = () => {
+            const target = leftSidebar;
+            if (!target) return;
+            target.classList.remove('avatar-only', 'compact-topics-open');
+            document.getElementById('tabContentTopics')?.classList.remove('compact-drawer-open');
+            toggleSidebarModeBtn?.classList.remove('active');
+            toggleSidebarModeBtn?.setAttribute('aria-pressed', 'false');
+
+            const isActive = target.classList.toggle('active');
+            syncSidebarVisibility(isActive);
+
+            const globalSettings = refs.globalSettings.get();
+            globalSettings.sidebarActive = isActive;
+            globalSettings.sidebarAvatarOnly = false;
+            saveSidebarState();
+            uiHelperFunctions.showToastNotification(`侧栏已${isActive ? '显示' : '隐藏'}`, 'info');
+        };
+
+        toggleAssistantBtn.title = '点击：开关划词助手｜长按：直接呼出';
+        toggleAssistantBtn.setAttribute('aria-label', '划词助手开关与呼出');
+
         toggleAssistantBtn.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
                 wasLongPress = false;
@@ -1314,32 +1470,6 @@ export function setupEventListeners(deps) {
                     chatAPI.assistantAction('open');
                     wasLongPress = true;
                     longPressTimer = null;
-                }, 600);
-                return;
-            }
-
-            if (e.button === 2) {
-                wasRightLongPress = false;
-                rightLongPressTimer = setTimeout(() => {
-                    rightLongPressTimer = null;
-                    if (!leftSidebar) return;
-
-                    wasRightLongPress = true;
-                    leftSidebar.classList.remove('avatar-only', 'compact-topics-open');
-                    document.getElementById('tabContentTopics')?.classList.remove('compact-drawer-open');
-
-                    const isActive = leftSidebar.classList.toggle('active');
-                    syncSidebarVisibility(isActive);
-
-                    const globalSettings = refs.globalSettings.get();
-                    globalSettings.sidebarActive = isActive;
-                    globalSettings.sidebarAvatarOnly = false;
-                    saveSidebarState();
-
-                    uiHelperFunctions.showToastNotification(
-                        `侧栏已${isActive ? '显示' : '隐藏'}`,
-                        'info'
-                    );
                 }, 600);
             }
         });
@@ -1351,21 +1481,17 @@ export function setupEventListeners(deps) {
             }
         };
 
-        const clearRightLongPress = () => {
-            if (rightLongPressTimer) {
-                clearTimeout(rightLongPressTimer);
-                rightLongPressTimer = null;
+        const clearSidebarLongPress = () => {
+            if (sidebarLongPressTimer) {
+                clearTimeout(sidebarLongPressTimer);
+                sidebarLongPressTimer = null;
             }
         };
 
         toggleAssistantBtn.addEventListener('mouseup', (e) => {
             if (e.button === 0) clearLongPress();
-            if (e.button === 2) clearRightLongPress();
         });
-        toggleAssistantBtn.addEventListener('mouseleave', () => {
-            clearLongPress();
-            clearRightLongPress();
-        });
+        toggleAssistantBtn.addEventListener('mouseleave', clearLongPress);
 
         toggleAssistantBtn.addEventListener('click', async () => {
             if (wasLongPress) {
@@ -1391,27 +1517,45 @@ export function setupEventListeners(deps) {
             }
         });
 
-        // 短按右键在助手页切换完整/头像窄栏；长按右键切换侧栏显示/隐藏。
-        toggleAssistantBtn.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            clearRightLongPress();
+        if (toggleSidebarModeBtn) {
+            toggleSidebarModeBtn.addEventListener('mousedown', e => {
+                if (e.button !== 0) return;
+                wasSidebarLongPress = false;
+                sidebarLongPressTimer = setTimeout(() => {
+                    sidebarLongPressTimer = null;
+                    if (!leftSidebar) return;
 
-            if (wasRightLongPress) {
-                wasRightLongPress = false;
-                return;
-            }
+                    wasSidebarLongPress = true;
+                    toggleSidebarVisibility();
+                }, 600);
+            });
+            toggleSidebarModeBtn.addEventListener('mouseup', e => {
+                if (e.button === 0) clearSidebarLongPress();
+            });
+            toggleSidebarModeBtn.addEventListener('mouseleave', clearSidebarLongPress);
+            toggleSidebarModeBtn.addEventListener('click', () => {
+                if (wasSidebarLongPress) {
+                    wasSidebarLongPress = false;
+                    return;
+                }
+                clearSidebarLongPress();
 
-            const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
-            if (!leftSidebar || !agentsTabIsActive) return;
+                const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
+                if (!leftSidebar || !agentsTabIsActive) {
+                    uiHelperFunctions.showToastNotification('请先切换到助手列表。', 'info');
+                    return;
+                }
 
-            const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
-            if (setAvatarOnlyMode(enableAvatarOnly)) {
-                uiHelperFunctions.showToastNotification(
-                    enableAvatarOnly ? '侧栏已切换为仅头像模式' : '侧栏已恢复完整模式',
-                    'info'
-                );
-            }
-        });
+                const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
+                if (setAvatarOnlyMode(enableAvatarOnly)) {
+                    uiHelperFunctions.showToastNotification(
+                        enableAvatarOnly ? '侧栏已切换为仅头像模式' : '侧栏已恢复完整模式',
+                        'info'
+                    );
+                }
+            });
+            toggleSidebarModeBtn.addEventListener('contextmenu', e => e.preventDefault());
+        }
     }
 
     // 语音聊天按钮事件处理
@@ -1443,12 +1587,6 @@ export function setupEventListeners(deps) {
     if (agentSearchInput) {
         agentSearchInput.addEventListener('input', (e) => {
             filterAgentList(e.target.value);
-        });
-    }
-
-    if (minimizeToTrayBtn) {
-        minimizeToTrayBtn.addEventListener('click', () => {
-            chatAPI.minimizeToTray();
         });
     }
 
@@ -1539,25 +1677,4 @@ export function setupEventListeners(deps) {
         });
     }
 
-    if (seamFixer && notificationsSidebar) {
-        let seamFrame = 0;
-        let pendingSidebarWidth = 0;
-
-        const scheduleSeamFixerWidth = (width) => {
-            pendingSidebarWidth = width;
-            if (seamFrame) return;
-
-            seamFrame = requestAnimationFrame(() => {
-                seamFrame = 0;
-                const offset = pendingSidebarWidth > 0 ? 3 : 0;
-                seamFixer.style.right = `${pendingSidebarWidth + offset}px`;
-            });
-        };
-
-        const resizeObserver = new ResizeObserver((entries) => {
-            const entry = entries[entries.length - 1];
-            scheduleSeamFixerWidth(entry?.contentRect?.width || 0);
-        });
-        resizeObserver.observe(notificationsSidebar);
-    }
 }
