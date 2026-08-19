@@ -13,6 +13,14 @@ for (const journey of matrix.journeys) {
   }
   if (!['messageInput', 'main.html'].includes(journey.entry) && !ids.has(journey.entry)) errors.push(`${journey.id}: entry not found in main.html: ${journey.entry}`);
   if (!fs.existsSync(path.join(root, journey.evidence))) errors.push(`${journey.id}: evidence file missing: ${journey.evidence}`);
+  const evidenceSource = fs.existsSync(path.join(root, journey.evidence))
+    ? fs.readFileSync(path.join(root, journey.evidence), 'utf8') : '';
+  for (const marker of journey.requiredEvidence || []) {
+    const alternatives = String(marker).split('|');
+    if (!alternatives.some(candidate => evidenceSource.includes(candidate))) {
+      errors.push(`${journey.id}: evidence does not contain required operation/assertion marker: ${marker}`);
+    }
+  }
 }
 if (errors.length) {
   console.error(errors.join('\n'));
