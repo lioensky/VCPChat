@@ -201,6 +201,7 @@ const allowedSourceDifferences = new Set([
     'tests/assistant-search-controller.test.js',
     'tests/account-menu-controller.test.js',
     'tests/escape-dispatcher.test.js',
+    'tests/notification-menu-controller.test.js',
     'tests/launchpad-controller.test.js',
     'tests/creation-controller.test.js',
     'tests/global-settings-save.test.mjs',
