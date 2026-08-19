@@ -1,0 +1,19 @@
+{
+  "name": "VCPWEWallpaper",
+  "displayName": "Wallpaper Engine 壁纸服务",
+  "version": "0.1.0",
+  "description": "发现本机 Wallpaper Engine 安装，枚举壁纸库存（video/web 可播放），并通过分布式服务器 Express 路由提供 inventory 与媒体流。",
+  "author": "PiCode (核心定位/枚举/流式逻辑移植自 elysia395/dsh-wallpaper-engine, MIT)",
+  "pluginType": "service",
+  "communication": {
+    "protocol": "direct",
+    "timeout": 10000
+  },
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "we-wallpaper-service.js"
+  },
+  "capabilities": {
+    "invocationCommands": []
+  }
+}
