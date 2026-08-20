@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createChatHistoryPersistence } from '../modules/chat/chatHistoryPersistence.js';
+import { createChatHistoryPersistence, createTransientChatHistoryPersistence } from '../modules/chat/chatHistoryPersistence.js';
 
 const projected = history => ({
     messageId: 'assistant-a',
@@ -54,4 +54,22 @@ test('temporary assistant and group projections do not write renderer-owned hist
     await persistence.commit({ ...projected([]), context: { agentId: 'a', topicId: 'assistant_chat' } });
     await persistence.commit({ ...projected([]), context: { groupId: 'g', topicId: 't', isGroupMessage: true } });
     assert.equal(writes, 0);
+});
+
+test('auxiliary session persistence updates transient history without claiming durability', async () => {
+    let sessionHistory = [{ id: 'user-a', role: 'user', content: 'question', timestamp: 1 }];
+    const persistence = createTransientChatHistoryPersistence({
+        async getHistory() { return sessionHistory; },
+        async saveHistory(_itemId, _itemType, _topicId, history) { sessionHistory = history; },
+    });
+
+    assert.equal(persistence.durable, false);
+    await persistence.commit({
+        messageId: 'assistant-a',
+        finishReason: 'completed',
+        content: 'answer',
+        context: { agentId: 'a', topicId: 'assistant_chat' },
+        history: [...sessionHistory, { id: 'assistant-a', role: 'assistant', content: 'answer', timestamp: 2 }],
+    });
+    assert.deepEqual(sessionHistory.map(message => message.id), ['user-a', 'assistant-a']);
 });

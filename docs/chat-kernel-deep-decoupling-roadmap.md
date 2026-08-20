@@ -87,7 +87,8 @@ D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一
 - `MainChatSurfaceAdapter` 已组合主聊天 Surface、stream route、bridge、capability provider 与 teardown；终态副作用和错误 DOM 已从 `renderer.js` closure 移入 adapter。`renderer.js` 仍保留大量主题、设置、Electron 和 ChatManager wiring，D5 尚未完成。
 
 最近验证：`test:chat-kernel` 58/58、`test:ui-system` 80/80、Electron UI apps 24/24、主聊天 24 步、生命周期压力 3 次预热加 20 次循环均通过。此前一次生命周期运行在 renderer crash recovery 期间超时，复跑完整通过；该偶发环境信号仍保留在 D7 的稳定性审查中，不视为退出证据。
-- `window.chatManager`、`window.messageRenderer`、`window.streamManager` 仍被 VoiceChat、Rust Assistant、Flowlock、设置与旧模块真实消费。它们属于经 consumer report 证明的过渡兼容入口，不能在生产引用归零前删除。
+- VoiceChat 与 Rust Assistant 的流终态先提交到显式的 transient session repository；窗口关闭会取消并等待真实 stream operation Promise，再由 `ChatHistoryMutationAuthority` 把完整会话写入新建的 durable topic。该设计不把内存提交描述为 durable，也不使用轮询 settlement facade；窗口在最终 topic 创建前异常退出仍可能丢失短会话，这是 D7 soak 与产品恢复策略需要继续评估的已知限制。
+- `window.chatManager`、`window.messageRenderer`、`window.streamManager` 已无生产引用并完成删除。consumer gate 自动扫描全部生产 `.js/.mjs/.html`，新增文件若重新读取这些全局会确定性失败；仍保留的 renderer legacy methods 必须逐项提供生产消费者证据。
 
 ## Stream Session 目标接口
 

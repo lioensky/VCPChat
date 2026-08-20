@@ -50,6 +50,9 @@ export function createWindowStreamRuntime({
             if (!contextFilter(event?.context)) return false;
             return bridge.accept(event);
         },
+        cancel(messageId, reason = 'window-close') {
+            return bridge.cancelOperation(messageId, reason);
+        },
         dispose() { return bridge.dispose(); },
         getSelection,
         getTopicId,

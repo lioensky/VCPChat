@@ -9,7 +9,7 @@ const cloneHistory = history => history.map(message => ({ ...message }));
  * Serialization belongs to the coordinator; this provider owns repository
  * read/merge/write policy and propagates every durable failure to its caller.
  */
-export function createChatHistoryPersistence(repository) {
+function createHistoryPersistence(repository, { durable, skipTemporaryContexts }) {
     if (!repository || typeof repository.getHistory !== 'function' || typeof repository.saveHistory !== 'function') {
         throw new TypeError('ChatHistoryPersistence requires a chat repository');
     }
@@ -19,7 +19,7 @@ export function createChatHistoryPersistence(repository) {
             if (!projected?.context || !Array.isArray(projected.history)) return projected || null;
 
             const context = projected.context;
-            if (context.topicId === 'assistant_chat' || context.isGroupMessage) {
+            if (skipTemporaryContexts && (context.topicId === 'assistant_chat' || context.isGroupMessage)) {
                 return Object.freeze({
                     messageId: projected.messageId,
                     context,
@@ -62,5 +62,20 @@ export function createChatHistoryPersistence(repository) {
                 finishReason: projected.finishReason,
             });
         },
+        durable,
     });
+}
+
+export function createChatHistoryPersistence(repository) {
+    return createHistoryPersistence(repository, { durable: true, skipTemporaryContexts: true });
+}
+
+/**
+ * Creates terminal persistence for a short-lived auxiliary session.
+ * The operation Promise settles only after the in-memory session snapshot is
+ * updated; the session owner separately commits that snapshot to durable
+ * history when it creates the final topic during close.
+ */
+export function createTransientChatHistoryPersistence(repository) {
+    return createHistoryPersistence(repository, { durable: false, skipTemporaryContexts: false });
 }

@@ -1,6 +1,6 @@
 // Assistantmodules/assistant.js
 import { createMemoryChatRepository } from '../../modules/chat/memoryChatRepository.js';
-import { createChatHistoryPersistence } from '../../modules/chat/chatHistoryPersistence.js';
+import { createTransientChatHistoryPersistence } from '../../modules/chat/chatHistoryPersistence.js';
 import { createChatHistoryMutationAuthority } from '../../modules/chat/chatHistoryMutationAuthority.js';
 import { createChatRepository } from '../../modules/chat/chatRepository.js';
 import { createWindowStreamRuntime } from '../../modules/renderer/windowStreamRuntime.js';
@@ -46,6 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            if (activeStreamingMessageId) {
+                await window.electronAPI.interruptVcpRequest?.({ messageId: activeStreamingMessageId });
+                await streamRuntime?.cancel(activeStreamingMessageId, 'assistant-window-close');
+            }
             await saveAssistantChatToHistory();
         } catch (error) {
             console.error('[Assistant] Error saving history on close:', error);
@@ -69,38 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return eventTopicId === getAssistantTopicId() && eventAgentId === agentId;
     }
 
-    async function waitForActiveStreamToSettle(timeoutMs = 4000) {
-        if (!activeStreamingMessageId) return true;
-
-        const pendingMessageId = activeStreamingMessageId;
-        console.log(`[Assistant] Waiting for active stream to settle before close: ${pendingMessageId}`);
-
-        return await new Promise((resolve) => {
-            let settled = false;
-            const startedAt = Date.now();
-
-            const check = () => {
-                if (settled) return;
-                if (activeStreamingMessageId !== pendingMessageId) {
-                    settled = true;
-                    resolve(true);
-                    return;
-                }
-
-                if (Date.now() - startedAt >= timeoutMs) {
-                    console.warn(`[Assistant] Timed out while waiting stream to settle: ${pendingMessageId}`);
-                    settled = true;
-                    resolve(false);
-                    return;
-                }
-
-                setTimeout(check, 80);
-            };
-
-            check();
-        });
-    }
-
     function restoreComposerAfterStream() {
         activeStreamingMessageId = null;
         messageInput.disabled = false;
@@ -111,8 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function saveAssistantChatToHistory() {
         if (!agentId) return;
-
-        await waitForActiveStreamToSettle();
 
         const persistedHistory = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
         if (persistedHistory.length === 0) return;
@@ -233,7 +203,7 @@ window.electronAPI.onAssistantData(async (data) => {
                 read: () => currentChatHistory,
                 write: history => { currentChatHistory = history; },
             });
-            const historyPersistence = createChatHistoryPersistence(chatRepository);
+            const historyPersistence = createTransientChatHistoryPersistence(chatRepository);
             const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
             messageRenderer.initializeMessageRenderer({
                 chatRepository,
