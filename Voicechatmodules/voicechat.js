@@ -4,7 +4,9 @@ import { createTransientChatHistoryPersistence } from '../modules/chat/chatHisto
 import { createChatHistoryMutationAuthority } from '../modules/chat/chatHistoryMutationAuthority.js';
 import { createChatRepository } from '../modules/chat/chatRepository.js';
 import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
-import { messageRenderer } from '../modules/messageRenderer.js';
+import { createMessageRenderer } from '../modules/messageRenderer.js';
+
+const messageRenderer = createMessageRenderer();
 import { streamManager } from '../modules/renderer/streamManager.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -90,6 +92,8 @@ document.addEventListener('DOMContentLoaded', () => {
             await saveVoiceChatToHistory();
         } finally {
             await streamRuntime?.dispose();
+            await messageRenderer.disposeRootResources(chatMessagesDiv);
+            messageRenderer.disposeRendererResources();
             await historyMutationAuthority?.dispose();
             window.close();
         }

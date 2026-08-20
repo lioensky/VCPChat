@@ -1,8 +1,10 @@
 import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
 import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
-import { messageRenderer } from './modules/messageRenderer.js';
+import { createMessageRenderer } from './modules/messageRenderer.js';
 import { streamManager } from './modules/renderer/streamManager.js';
+
+const messageRenderer = createMessageRenderer({ streamManager });
 import { chatManager } from './modules/chatManager.js';
 
 window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());
@@ -526,6 +528,7 @@ const startupThemeGate = new StartupThemeGate({
                 dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
             },
             disposeRenderer: async () => {
+                await messageRenderer.disposeRootResources(chatMessagesDiv);
                 messageRenderer.disposeRendererResources();
                 await streamManager?.cleanupTransientState?.();
             },

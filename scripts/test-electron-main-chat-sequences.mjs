@@ -364,7 +364,7 @@ try {
     trackPage(page);
     await page.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout });
     const providerBoundary = await page.evaluate(async () => {
-        const [{ chatManager }, { messageRenderer }, { streamManager }] = await Promise.all([
+        const [{ chatManager }, { createMessageRenderer }, { streamManager }] = await Promise.all([
             import('./modules/chatManager.js'),
             import('./modules/messageRenderer.js'),
             import('./modules/renderer/streamManager.js'),
@@ -374,7 +374,7 @@ try {
                 && !('messageRenderer' in window)
                 && !('streamManager' in window),
             chatProvider: typeof chatManager.sendMessage === 'function',
-            rendererProvider: typeof messageRenderer.renderMessage === 'function',
+            rendererProvider: typeof createMessageRenderer === 'function',
             streamProvider: typeof streamManager.getDiagnostics === 'function',
         };
     });

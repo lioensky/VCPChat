@@ -1,4 +1,48 @@
+import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
+import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
+import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
+import * as defaultVisibilityOptimizer from './renderer/visibilityOptimizer.js';
+import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
+import * as defaultStreamManager from './renderer/streamManager.js';
+import * as defaultEmoticonUrlFixer from './renderer/emoticonUrlFixer.js';
+import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
+import { createContentRuntime } from './chat/contentRuntime.js';
+import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
+import { createChatDomRenderer } from './chat/chatDomRenderer.js';
+import { createRenderDependencies } from './renderer/renderDependencies.js';
+import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.js';
+import { createSurfaceTaskOwner } from './renderer/surfaceTaskOwner.js';
+import {
+    TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
+    TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
+    findToolRequestEnd,
+    isBacktickWrappedToolMarker as isBacktickWrappedMarker,
+    replaceToolRequestBlocks
+} from './renderer/toolRequestScanner.js';
+
+import * as defaultContentProcessor from './renderer/contentProcessor.js';
+import * as defaultContextMenu from './renderer/messageContextMenu.js';
+
+
+import * as defaultMiddleClickHandler from './renderer/middleClickHandler.js';
+
 // modules/messageRenderer.js
+
+export function createMessageRenderer(options = {}) {
+const visibilityOptimizer = options.visibilityOptimizer || defaultVisibilityOptimizer;
+const streamManager = options.streamManager || defaultStreamManager;
+const emoticonUrlFixer = options.emoticonUrlFixer || defaultEmoticonUrlFixer;
+const contentProcessor = options.contentProcessor || defaultContentProcessor;
+const contextMenu = options.contextMenu || defaultContextMenu;
+const middleClickHandler = options.middleClickHandler || defaultMiddleClickHandler;
+const colorExtractionPromises = new Map();
+
+async function getDominantAvatarColorCached(url) {
+    if (!colorExtractionPromises.has(url)) {
+        colorExtractionPromises.set(url, getDominantAvatarColor(url));
+    }
+    return colorExtractionPromises.get(url);
+}
 
 // --- Enhanced Rendering Constants ---
 const ENHANCED_RENDER_DEBOUNCE_DELAY = 400; // ms, for general blocks during streaming
@@ -26,42 +70,6 @@ const renderHtmlCacheStats = {
     skips: 0,
     evictions: 0
 };
-
-import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
-import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
-import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
-import * as visibilityOptimizer from './renderer/visibilityOptimizer.js';
-import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
-import * as streamManager from './renderer/streamManager.js';
-import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
-import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
-import { createContentRuntime } from './chat/contentRuntime.js';
-import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
-import { createChatDomRenderer } from './chat/chatDomRenderer.js';
-import { createRenderDependencies } from './renderer/renderDependencies.js';
-import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.js';
-import {
-    TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
-    TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
-    findToolRequestEnd,
-    isBacktickWrappedToolMarker as isBacktickWrappedMarker,
-    replaceToolRequestBlocks
-} from './renderer/toolRequestScanner.js';
-
-const colorExtractionPromises = new Map();
-
-async function getDominantAvatarColorCached(url) {
-    if (!colorExtractionPromises.has(url)) {
-        colorExtractionPromises.set(url, getDominantAvatarColor(url));
-    }
-    return colorExtractionPromises.get(url);
-}
-
-import * as contentProcessor from './renderer/contentProcessor.js';
-import * as contextMenu from './renderer/messageContextMenu.js';
-
-
-import * as middleClickHandler from './renderer/middleClickHandler.js';
 
 
 // --- LaTeX Protection ---
@@ -2226,9 +2234,10 @@ function disposeRendererResources() {
     disposeRendererListeners();
     visibilityOptimizer.destroyVisibilityOptimizer?.();
 }
-function disposeRootResources(root) {
+async function disposeRootResources(root) {
     if (!root?.querySelectorAll) return;
     invalidateRenderSession(root);
+    await renderTaskOwner.dispose(root);
     root.querySelectorAll('.message-item').forEach(item => cleanupMessageDomResources(item, item.dataset?.messageId || null));
     root.replaceChildren();
 }
@@ -2240,9 +2249,12 @@ function ownRendererListener(target, type, handler, options) {
 const renderSessionAuthority = createRenderSessionAuthority({
     resolveDefaultRoot: () => mainRendererReferences?.chatMessagesDiv || null,
 });
+const renderTaskOwner = createSurfaceTaskOwner();
 
 function invalidateRenderSession(root = null) {
-    return renderSessionAuthority.invalidate(root);
+    const ownerRoot = root || mainRendererReferences?.chatMessagesDiv || null;
+    if (ownerRoot) renderTaskOwner.revoke(ownerRoot);
+    return renderSessionAuthority.invalidate(ownerRoot);
 }
 
 function getActiveRenderSessionId(root = null) {
@@ -2263,15 +2275,16 @@ function escapeCssAttributeValue(value) {
 
 function cleanupScopedStylesForMessage(messageItem, messageId = null) {
     if (!messageItem && !messageId) return;
+    const ownerDocument = messageItem?.ownerDocument || mainRendererReferences?.chatMessagesDiv?.ownerDocument || document;
 
     const scopeId = messageItem?.id;
     if (scopeId) {
-        document.querySelectorAll(`style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`).forEach(el => el.remove());
+        ownerDocument.querySelectorAll(`style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`).forEach(el => el.remove());
     }
 
     const chatScopeId = messageItem?.getAttribute?.('data-chat-scope') || (messageId ? `vcp-chat-${messageId}` : null);
     if (chatScopeId) {
-        document.querySelectorAll(`style[data-chat-scope-id="${escapeCssAttributeValue(chatScopeId)}"]`).forEach(el => el.remove());
+        ownerDocument.querySelectorAll(`style[data-chat-scope-id="${escapeCssAttributeValue(chatScopeId)}"]`).forEach(el => el.remove());
     }
 }
 
@@ -2311,6 +2324,10 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
     }
 
     cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null);
+    const ownedMessageId = messageId || messageItem.dataset?.messageId || null;
+    if (ownedMessageId && window.pretextBridge?.evict) {
+        window.pretextBridge.evict(ownedMessageId);
+    }
     visibilityOptimizer.unobserveMessage(messageItem);
 }
 
@@ -2366,15 +2383,6 @@ function clearChat() {
         allMessages.forEach(item => {
             cleanupMessageDomResources(item, item.dataset?.messageId || null);
         });
-
-        // 🟢 清理所有注入的 scoped CSS
-        document.querySelectorAll('style[data-vcp-scope-id]').forEach(el => el.remove());
-        document.querySelectorAll('style[data-chat-scope-id]').forEach(el => el.remove());
-
-        // [Pretext集成] 清空所有高度缓存
-        if (window.pretextBridge && window.pretextBridge.clearAll) {
-            window.pretextBridge.clearAll();
-        }
 
         mainRendererReferences.chatMessagesDiv.innerHTML = '';
     }
@@ -3382,10 +3390,10 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         // If we are appending directly to the DOM, schedule the processing immediately.
         if (appendToDom) {
             // We still use requestAnimationFrame to ensure the element is painted before we process it.
-            requestAnimationFrame(() => {
+            void renderTaskOwner.animationFrame(renderRoot, () => {
                 if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected) return;
-                runPostRenderProcessing();
-            });
+                return runPostRenderProcessing();
+            }).catch(error => console.warn('[MessageRenderer] deferred post-processing failed:', error));
         } else {
             // If not, attach the processing function to the element itself.
             // The caller (e.g., a batch renderer) will be responsible for executing it
@@ -3923,16 +3931,13 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
     // 一次性添加到 fragment
     messageElements.forEach(el => fragment.appendChild(el));
 
-    // 使用 requestAnimationFrame 确保 DOM 更新不阻塞 UI
-    return new Promise(resolve => {
-        requestAnimationFrame(() => {
-            if (!isRenderSessionActive(renderSessionId)) {
-                resolve();
-                return;
-            }
+    // 使用 owner-managed animation frame，Surface teardown 会取消并等待它。
+    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
+    return renderTaskOwner.animationFrame(renderRoot, () => {
+            if (!isRenderSessionActive(renderSessionId)) return;
 
             // Step 1: Append all elements to the DOM at once.
-            (renderContext.root || mainRendererReferences.chatMessagesDiv).appendChild(fragment);
+            renderRoot.appendChild(fragment);
             mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
@@ -3941,8 +3946,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
             if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
             }
-            resolve();
-        });
+            return messageElements;
     });
 }
 
@@ -3980,42 +3984,28 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
             }
         }
 
-        // 🟢 使用 requestIdleCallback 在空闲时插入（降级到 requestAnimationFrame）
-        await new Promise(resolve => {
-            const insertBatch = () => {
-                if (!isRenderSessionActive(renderSessionId)) {
-                    resolve();
-                    return;
-                }
+        // 🟢 owner-managed idle work，当前 root revoke/dispose 时会被取消。
+        const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
+        await renderTaskOwner.idle(renderRoot, () => {
+                if (!isRenderSessionActive(renderSessionId)) return;
 
-                const chatMessagesDiv = renderContext.root || mainRendererReferences.chatMessagesDiv;
-                let insertPoint = chatMessagesDiv.firstChild;
+                let insertPoint = renderRoot.firstChild;
                 while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
                     insertPoint = insertPoint.nextSibling;
                 }
 
                 if (insertPoint) {
-                    chatMessagesDiv.insertBefore(batchFragment, insertPoint);
+                    renderRoot.insertBefore(batchFragment, insertPoint);
                 } else {
-                    chatMessagesDiv.appendChild(batchFragment);
+                    renderRoot.appendChild(batchFragment);
                 }
-            mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
+                mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
                 elementsForProcessing.forEach(el => processDeferredMessageElement(el, renderSessionId, {
                     ...renderContext,
                     deferHeavy: true
                 }));
-
-                resolve();
-            };
-
-            // 优先使用 requestIdleCallback，不支持时降级到 rAF
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(insertBatch, { timeout: 1000 });
-            } else {
-                requestAnimationFrame(insertBatch);
-            }
-        });
+        }, { timeout: 1000 });
 
         if (!isRenderSessionActive(renderSessionId)) return;
 
@@ -4053,15 +4043,12 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
     // Phase 2: Append all created elements at once using a DocumentFragment
     allMessageElements.forEach(el => fragment.appendChild(el));
 
-    return new Promise(resolve => {
-        requestAnimationFrame(() => {
-            if (!isRenderSessionActive(renderSessionId)) {
-                resolve();
-                return;
-            }
+    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
+    return renderTaskOwner.animationFrame(renderRoot, () => {
+            if (!isRenderSessionActive(renderSessionId)) return;
 
             // Step 1: Append all elements to the DOM.
-            (renderContext.root || mainRendererReferences.chatMessagesDiv).appendChild(fragment);
+            renderRoot.appendChild(fragment);
                 mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Run the deferred processing for each element now that it's attached.
@@ -4070,8 +4057,7 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
             if (isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
             }
-            resolve();
-        });
+            return allMessageElements;
     });
 }
 
@@ -4084,13 +4070,13 @@ function refreshLayoutDependentState() {
         messageItem.style.containIntrinsicSize = 'auto 100px';
     });
 
-    requestAnimationFrame(() => {
+    void renderTaskOwner.animationFrame(chatMessagesDiv, () => {
         if (!chatMessagesDiv.isConnected) return;
         visibilityOptimizer.recheckVisibility();
-    });
+    }).catch(error => console.warn('[MessageRenderer] layout refresh failed:', error));
 }
 
-export const messageRenderer = {
+const messageRenderer = {
     initializeMessageRenderer,
     setCurrentSelectedItem, // Keep for renderer.js to call
     setCurrentTopicId,      // Keep for renderer.js to call
@@ -4167,3 +4153,6 @@ export const messageRenderer = {
         }
     }
 };
+
+return Object.freeze(messageRenderer);
+}

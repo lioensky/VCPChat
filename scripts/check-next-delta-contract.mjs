@@ -169,6 +169,10 @@ assert.match(read('modules/messageRenderer.js'), /createRenderSessionAuthority[\
     'message rendering must revoke progressive work per owning Surface root');
 assert.doesNotMatch(read('modules/messageRenderer.js'), /let activeRenderSessionId\s*=/,
     'message rendering must not retain a module-wide scalar render generation');
+assert.match(read('modules/messageRenderer.js'), /export function createMessageRenderer\(options = \{\}\)/,
+    'message rendering must be created by an explicit Surface-owned factory');
+assert.doesNotMatch(read('modules/messageRenderer.js'), /export const messageRenderer\s*=/,
+    'message rendering must not expose a shared mutable singleton instance');
 assert.match(read('modules/renderer/animation.js'), /cleanupAnimationsInContent[\s\S]*renderer\.dispose\(\)/,
     'animation cleanup must dispose Three.js renderers');
 assert.match(read('modules/renderer/animation.js'), /_vcpMutationObserver[\s\S]*disconnect/,

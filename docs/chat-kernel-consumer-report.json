@@ -363,6 +363,7 @@
     "modules/renderer/renderDependencies.js",
     "modules/renderer/renderSessionAuthority.js",
     "modules/renderer/streamManager.js",
+    "modules/renderer/surfaceTaskOwner.js",
     "modules/renderer/toolRequestScanner.js",
     "modules/renderer/visibilityOptimizer.js",
     "modules/renderer/windowStreamRuntime.js",
@@ -576,7 +577,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 6,
+          "line": 8,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "js",
@@ -584,7 +585,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 265,
+          "line": 267,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -592,7 +593,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 266,
+          "line": 268,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -600,7 +601,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 384,
+          "line": 386,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -608,7 +609,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 439,
+          "line": 441,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -616,7 +617,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 455,
+          "line": 457,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayTopicTimestampBubble",
@@ -624,7 +625,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 494,
+          "line": 496,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "processFilesData",
@@ -632,7 +633,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 495,
+          "line": 497,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "addAttachmentsToMessage",
@@ -640,7 +641,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 496,
+          "line": 498,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeAttachmentFromMessage",
@@ -648,7 +649,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 497,
+          "line": 499,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncNextUiEmptyStateWithMessages",
@@ -656,7 +657,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 498,
+          "line": 500,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -664,7 +665,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 738,
+          "line": 741,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleTopicDeletion",
@@ -672,7 +673,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 745,
+          "line": 748,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -680,7 +681,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 758,
+          "line": 761,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "init",
@@ -688,7 +689,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 872,
+          "line": 875,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -696,7 +697,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 896,
+          "line": 899,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -704,7 +705,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1047,
+          "line": 1050,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -712,7 +713,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1082,
+          "line": 1085,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -720,7 +721,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1123,
+          "line": 1126,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -728,7 +729,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1124,
+          "line": 1127,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -736,7 +737,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2586,
+          "line": 2589,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -744,7 +745,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2587,
+          "line": 2590,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -752,7 +753,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2591,
+          "line": 2594,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -1258,11 +1259,27 @@
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "js",
-          "snippet": "import { messageRenderer } from '../modules/messageRenderer.js';"
+          "snippet": "import { createMessageRenderer } from '../modules/messageRenderer.js';"
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "line": 287,
+          "line": 95,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "disposeRootResources",
+          "snippet": "await messageRenderer.disposeRootResources(chatMessagesDiv);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 96,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "disposeRendererResources",
+          "snippet": "messageRenderer.disposeRendererResources();"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 291,
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "initializeMessageRenderer",
@@ -1270,7 +1287,7 @@
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "line": 348,
+          "line": 352,
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -1278,7 +1295,7 @@
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "line": 367,
+          "line": 371,
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -1286,7 +1303,7 @@
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "line": 429,
+          "line": 433,
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "extractSpeakableTextFromContentElement",
@@ -1294,7 +1311,7 @@
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "line": 467,
+          "line": 471,
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "extractSpeakableTextFromContentElement",
@@ -1698,11 +1715,19 @@
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "js",
-          "snippet": "import { messageRenderer } from './modules/messageRenderer.js';"
+          "snippet": "import { createMessageRenderer } from './modules/messageRenderer.js';"
         },
         {
           "file": "renderer.js",
-          "line": 529,
+          "line": 531,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "disposeRootResources",
+          "snippet": "await messageRenderer.disposeRootResources(chatMessagesDiv);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 532,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "disposeRendererResources",
@@ -1710,7 +1735,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 549,
+          "line": 552,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setContextMenuDependencies",
@@ -1718,7 +1743,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 651,
+          "line": 654,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderFullMessage",
@@ -1726,7 +1751,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 659,
+          "line": 662,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderFullMessage",
@@ -1734,7 +1759,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 670,
+          "line": 673,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -1742,7 +1767,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1576,
+          "line": 1579,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setUserAvatar",
@@ -1750,7 +1775,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1577,
+          "line": 1580,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setUserAvatarColor",
@@ -1770,11 +1795,27 @@
           "surface": "rust-assistant",
           "access": "explicit-provider",
           "member": "js",
-          "snippet": "import { messageRenderer } from '../../modules/messageRenderer.js';"
+          "snippet": "import { createMessageRenderer } from '../../modules/messageRenderer.js';"
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 211,
+          "line": 61,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "disposeRootResources",
+          "snippet": "await messageRenderer.disposeRootResources(chatMessagesDiv);"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 62,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "disposeRendererResources",
+          "snippet": "messageRenderer.disposeRendererResources();"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 215,
           "surface": "rust-assistant",
           "access": "explicit-provider",
           "member": "initializeMessageRenderer",
@@ -1782,7 +1823,7 @@
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 334,
+          "line": 338,
           "surface": "rust-assistant",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -1790,7 +1831,7 @@
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 357,
+          "line": 361,
           "surface": "rust-assistant",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -1803,7 +1844,7 @@
       "production": [
         {
           "file": "Voicechatmodules/voicechat.js",
-          "line": 8,
+          "line": 10,
           "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "js",
@@ -1811,15 +1852,15 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 35,
+          "line": 6,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "js",
-          "snippet": "import * as streamManager from './renderer/streamManager.js';"
+          "snippet": "import * as defaultStreamManager from './renderer/streamManager.js';"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2546,
+          "line": 2554,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1827,7 +1868,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2562,
+          "line": 2570,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "initStreamManager",
@@ -1835,7 +1876,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3285,
+          "line": 3293,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -1843,7 +1884,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3286,
+          "line": 3294,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -1851,7 +1892,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3572,
+          "line": 3580,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -1859,7 +1900,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3576,
+          "line": 3584,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1867,7 +1908,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3581,
+          "line": 3589,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "appendStreamChunk",
@@ -1875,7 +1916,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4147,
+          "line": 4133,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1883,7 +1924,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4148,
+          "line": 4134,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1915,7 +1956,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 8,
+          "line": 10,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "getDiagnostics",
@@ -1931,7 +1972,7 @@
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 8,
+          "line": 10,
           "surface": "rust-assistant",
           "access": "explicit-provider",
           "member": "js",
@@ -4616,10 +4657,10 @@
       "mutableMaps": 0
     },
     "modules/messageRenderer.js": {
-      "windowReferences": 40,
-      "documentReferences": 42,
+      "windowReferences": 38,
+      "documentReferences": 39,
       "electronReferences": 17,
-      "timers": 15,
+      "timers": 8,
       "listeners": 7,
       "mutableMaps": 6
     },
@@ -4790,6 +4831,14 @@
       "timers": 12,
       "listeners": 2,
       "mutableMaps": 15
+    },
+    "modules/renderer/surfaceTaskOwner.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
     },
     "modules/renderer/toolRequestScanner.js": {
       "windowReferences": 0,
