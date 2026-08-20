@@ -214,7 +214,7 @@ fn main() {
     icon_pixmap.pixels_mut().copy_from_slice(bytemuck::cast_slice(img_rgba.as_raw()));
 
     // --- 3. Load Font and cache the current status text ---
-    let font_bytes = include_bytes!("蒙纳简漫画体.ttf");
+    let font_bytes = include_bytes!("ZiHun219Hao-MengQuLuoLiTi-2.ttf");
     let font = Font::from_bytes(font_bytes as &[u8], FontSettings::default())
         .expect("Failed to load font");
     let mut glyphs = rasterize_text(&font, INITIAL_TEXT);
