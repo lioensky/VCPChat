@@ -66,6 +66,23 @@ test('desktop push consumer owns subscription, message timer, and terminal clean
     assert.equal(harness.unsubscribeCalls, 1);
 });
 
+test('starting an owned consumer repeatedly does not duplicate the status subscription', () => {
+    const harness = createHarness();
+    const consumer = createDesktopPushConsumer({
+        electronAPI: harness.electronAPI,
+        scheduler: harness.scheduler,
+        logger: { log() {}, warn() {} },
+    });
+
+    consumer.start();
+    const firstListener = harness.captureStatusListener();
+    consumer.start();
+
+    assert.equal(harness.captureStatusListener(), firstListener);
+    consumer.dispose();
+    assert.equal(harness.unsubscribeCalls, 1);
+});
+
 test('dispose revokes late status, timer, and token side effects', () => {
     const harness = createHarness();
     let clock = 1;
