@@ -144,7 +144,10 @@ function createFixture(options = {}) {
     let initError = null;
     try {
         window.chatManager.init({
-        allowLegacyHistoryFallback: true,
+        chatRepository: {
+            getHistory: (itemId, _itemType, requestedTopicId) => electronAPI.getChatHistory(itemId, requestedTopicId),
+            saveHistory: (itemId, _itemType, requestedTopicId, messages) => electronAPI.saveChatHistory(itemId, requestedTopicId, messages),
+        },
         electronAPI,
         uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
         modules: {

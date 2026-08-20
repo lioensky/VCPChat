@@ -27,7 +27,10 @@ const topicId = { value: null };
 const history = { value: [] };
 
 window.chatManager.init({
-    allowLegacyHistoryFallback: true,
+    chatRepository: {
+        getHistory: async () => [],
+        saveHistory: async () => ({ success: true })
+    },
     electronAPI: {
         onCanvasContentUpdate() {},
         onCanvasWindowClosed() {},

@@ -21,7 +21,6 @@ const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌�
 const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
 const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', '<style', 'target:','<!--'];
 let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
-let allowLegacyHistoryFallback = false;
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -208,7 +207,7 @@ let transientCleanupRegistered = false;
  */
 export function initStreamManager(dependencies) {
     refs = dependencies;
-    allowLegacyHistoryFallback = dependencies.allowLegacyHistoryFallback === true;
+    if (!dependencies.chatRepository) throw new Error('StreamManager requires ChatRepository');
 
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
@@ -338,7 +337,7 @@ function isMessageForCurrentView(context) {
 }
 
 async function getHistoryForContext(context) {
-    const { electronAPI, chatRepository } = refs;
+    const { chatRepository } = refs;
     if (!context) return null;
     
     const { agentId, groupId, topicId, isGroupMessage } = context;
@@ -347,12 +346,7 @@ async function getHistoryForContext(context) {
     if (!itemId || !topicId) return null;
     
     try {
-        if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatRepository is required for stream history');
-        const historyResult = chatRepository
-            ? await chatRepository.getHistory(itemId, isGroupMessage ? 'group' : 'agent', topicId)
-            : (isGroupMessage
-                ? await electronAPI.getGroupChatHistory(itemId, topicId)
-                : await electronAPI.getChatHistory(itemId, topicId));
+        const historyResult = await chatRepository.getHistory(itemId, isGroupMessage ? 'group' : 'agent', topicId);
         
         if (historyResult && !historyResult.error) {
             return historyResult;

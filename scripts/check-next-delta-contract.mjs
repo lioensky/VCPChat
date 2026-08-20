@@ -134,8 +134,19 @@ assert.match(read('renderer.js'), /searchManager\.init\([\s\S]*?chatRepository,/
 assert.match(read('modules/messageRenderer.js'), /streamManager\.initStreamManager\([\s\S]*?chatRepository:/,
     'StreamManager must receive the shared ChatRepository at its production entry');
 const historyPersistenceSource = read('modules/chat/chatHistoryPersistence.js');
-assert.match(historyPersistenceSource, /createChatHistoryPersistence[\s\S]*repository\.getHistory[\s\S]*repository\.saveHistory/,
+assert.match(historyPersistenceSource, /createHistoryPersistence[\s\S]*repository\.getHistory[\s\S]*repository\.saveHistory/,
     'ChatHistoryPersistence must own the durable stream read/merge/write policy');
+assert.match(historyPersistenceSource, /createTransientChatHistoryPersistence[\s\S]*durable: false/,
+    'auxiliary terminal persistence must explicitly identify its transient session contract');
+for (const auxiliaryWindow of ['Voicechatmodules/voicechat.js', 'rust_assistant_engine/ui/assistant.js']) {
+    const auxiliarySource = read(auxiliaryWindow);
+    assert.match(auxiliarySource, /createTransientChatHistoryPersistence/,
+        `${auxiliaryWindow} must not describe its short-lived session repository as durable`);
+    assert.match(auxiliarySource, /await streamRuntime\?\.cancel\(activeStreamingMessageId,/,
+        `${auxiliaryWindow} must await its real stream operation before durable close save`);
+    assert.doesNotMatch(auxiliarySource, /waitForActiveStreamToSettle|Timed out while waiting stream to settle/,
+        `${auxiliaryWindow} must not reintroduce polling settlement`);
+}
 assert.doesNotMatch(historyPersistenceSource, /\b(?:window|document|electronAPI)\b/,
     'ChatHistoryPersistence must remain independent from DOM and Electron');
 assert.match(read('modules/chat/chatDomRenderer.js'), /createChatDomRenderer/,
@@ -224,6 +235,15 @@ assert.match(read('Flowlockmodules/flowlock-integration.js'), /requires a histor
     'Flowlock must fail fast when its durable mutation authority is absent');
 assert.doesNotMatch(read('Flowlockmodules/flowlock-integration.js'), /saveChatHistory|saveGroupChatHistory/,
     'Flowlock must not bypass the shared durable history mutation authority');
+for (const sourceFile of [
+    'modules/chatManager.js',
+    'modules/topicListManager.js',
+    'modules/searchManager.js',
+    'modules/renderer/streamManager.js',
+]) {
+    assert.doesNotMatch(read(sourceFile), /allowLegacyHistoryFallback/,
+        `${sourceFile} must not retain a production-unused direct IPC history fallback`);
+}
 
 const contributionSource = read('modules/ui-system/contribution-registry.js');
 assert.doesNotMatch(contributionSource, /new ContributionRegistry\(['"](?:menu|setting)['"]\)|\bmenus\b|\bsettings\b/,

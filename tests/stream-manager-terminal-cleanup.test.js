@@ -92,9 +92,9 @@ test('a runtime background-history failure releases every stream owner', async (
     const selected = { id: 'visible-agent', type: 'agent' };
     const api = dom.window.__testStreamManager;
     api.initStreamManager({
-        allowLegacyHistoryFallback: true,
-        electronAPI: {
-            getChatHistory: async () => { throw new Error('controlled history failure'); },
+        chatRepository: {
+            getHistory: async () => { throw new Error('controlled history failure'); },
+            saveHistory: async () => ({ success: true }),
         },
         currentSelectedItemRef: { get: () => selected },
         currentTopicIdRef: { get: () => 'visible-topic' },

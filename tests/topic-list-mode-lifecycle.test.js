@@ -34,6 +34,7 @@ test('legacy mode events cannot tear down canonical topic management state', asy
     window.topicListManager.init({
         elements: { topicListContainer: window.document.getElementById('tabContentTopics') },
         electronAPI: {},
+        chatRepository: { getHistory: async () => [] },
         refs: {
             currentSelectedItemRef: { get: () => ({ id: '', type: '' }) },
             currentTopicIdRef: { get: () => 'topic-a' }

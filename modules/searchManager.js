@@ -10,7 +10,6 @@ const searchManager = {
     // --- Properties ---
     electronAPI: null,
     chatRepository: null,
-    allowLegacyHistoryFallback: false,
     uiHelper: null,
     chatManager: null,
     currentSelectedItemRef: null,
@@ -32,7 +31,7 @@ const searchManager = {
         console.log('[SearchManager] Initializing...');
         this.electronAPI = dependencies.electronAPI;
         this.chatRepository = dependencies.chatRepository || null;
-        this.allowLegacyHistoryFallback = dependencies.allowLegacyHistoryFallback === true;
+        if (!this.chatRepository) throw new Error('SearchManager requires ChatRepository');
         this.uiHelper = dependencies.uiHelper;
         this.chatManager = dependencies.modules.chatManager;
         this.currentSelectedItemRef = dependencies.refs.currentSelectedItemRef;
@@ -319,12 +318,7 @@ const searchManager = {
 
             const historyReadPromises = topicsToFetch.map(info => {
                 const { itemType, itemId, topicId } = info.context;
-                if (!this.chatRepository && !this.allowLegacyHistoryFallback) throw new Error('ChatRepository is required for search history');
-                const promise = this.chatRepository
-                    ? this.chatRepository.getHistory(itemId, itemType, topicId)
-                    : (itemType === 'agent'
-                        ? this.electronAPI.getChatHistory(itemId, topicId)
-                        : this.electronAPI.getGroupChatHistory(itemId, topicId));
+                const promise = this.chatRepository.getHistory(itemId, itemType, topicId);
 
                 return promise.then(history => {
                     if (history && !history.error) {

@@ -5,7 +5,6 @@ window.topicListManager = (() => {
     let topicListContainer;
     let electronAPI;
     let chatRepository;
-    let allowLegacyHistoryFallback = false;
     let currentSelectedItemRef;
     let currentTopicIdRef;
     let uiHelper;
@@ -42,7 +41,7 @@ window.topicListManager = (() => {
         topicListContainer = config.elements.topicListContainer;
         electronAPI = config.electronAPI;
         chatRepository = config.chatRepository || null;
-        allowLegacyHistoryFallback = config.allowLegacyHistoryFallback === true;
+        if (!chatRepository) throw new Error('TopicListManager requires ChatRepository');
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
         currentTopicIdRef = config.refs.currentTopicIdRef;
         uiHelper = config.uiHelper;
@@ -56,12 +55,7 @@ window.topicListManager = (() => {
     }
 
     function getHistory(itemId, itemType, topicId) {
-        if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatRepository is required for topic history');
-        return chatRepository
-            ? chatRepository.getHistory(itemId, itemType, topicId)
-            : (itemType === 'group'
-                ? electronAPI.getGroupChatHistory(itemId, topicId)
-                : electronAPI.getChatHistory(itemId, topicId));
+        return chatRepository.getHistory(itemId, itemType, topicId);
     }
 
     function hasUserParticipation(history) {

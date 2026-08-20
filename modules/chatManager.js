@@ -21,21 +21,15 @@ export const chatManager = (() => {
     let chatRepository;
     let historyMutationAuthority;
     let streamConsumerRegistry;
-    let allowLegacyHistoryFallback = false;
 
     function requireHistoryRepository() {
-        if (chatRepository) return chatRepository;
-        if (!allowLegacyHistoryFallback) throw new Error('ChatRepository is required for chat history operations');
-        return null;
+        if (!chatRepository) throw new Error('ChatRepository is required for chat history operations');
+        return chatRepository;
     }
 
     function getHistory(itemId, itemType, topicId) {
         const repository = requireHistoryRepository();
-        return repository
-            ? repository.getHistory(itemId, itemType, topicId)
-            : (itemType === 'group'
-                ? electronAPI.getGroupChatHistory(itemId, topicId)
-                : electronAPI.getChatHistory(itemId, topicId));
+        return repository.getHistory(itemId, itemType, topicId);
     }
 
     function saveHistory(itemId, itemType, topicId, history) {
@@ -48,11 +42,7 @@ export const chatManager = (() => {
             }, history).then(commit => commit.result || { success: true });
         }
         const repository = requireHistoryRepository();
-        return repository
-            ? repository.saveHistory(itemId, itemType, topicId, history)
-            : (itemType === 'group'
-                ? electronAPI.saveGroupChatHistory(itemId, topicId, history)
-                : electronAPI.saveChatHistory(itemId, topicId, history));
+        return repository.saveHistory(itemId, itemType, topicId, history);
     }
 
     // DOM Elements from renderer.js
@@ -366,8 +356,7 @@ export const chatManager = (() => {
         chatRepository = config.chatRepository || null;
         historyMutationAuthority = config.historyMutationAuthority || null;
         streamConsumerRegistry = config.streamConsumerRegistry || null;
-        allowLegacyHistoryFallback = config.allowLegacyHistoryFallback === true;
-        if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatManager requires ChatRepository');
+        if (!chatRepository) throw new Error('ChatManager requires ChatRepository');
         chatDomRenderer = config.chatDomRenderer || null;
         electronAPI = config.electronAPI;
         uiHelper = config.uiHelper;
