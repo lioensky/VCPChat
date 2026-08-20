@@ -1,0 +1,17 @@
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; background: #11151c; color: #eef2f8; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 20% 0%, #26324a, #11151c 52%); }
+.shell { width: min(100% - 40px, 520px); margin: 0 auto; padding: 48px 0 32px; }
+.eyebrow { color: #8fa9d3; font-size: 11px; letter-spacing: .18em; }
+h1 { margin: 12px 0 10px; font-size: 28px; }
+p { color: #b5c0d1; line-height: 1.55; }
+.progress { height: 6px; margin: 24px 0; overflow: hidden; border-radius: 99px; background: #2a3445; }
+.progress > div { width: 8%; height: 100%; border-radius: inherit; background: #79a9ff; transition: width .25s ease; }
+.checks { display: grid; gap: 8px; margin: 22px 0; }
+.check { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid #2b3649; border-radius: 10px; background: #171e29; }
+.check small { color: #9cabc0; text-align: right; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+button { border: 0; border-radius: 9px; padding: 10px 14px; color: #07111f; background: #9cc0ff; cursor: pointer; font: inherit; }
+button.quiet { color: #c4cede; background: #2a3445; }
+button:disabled { opacity: .5; cursor: wait; }
+pre { max-height: 180px; overflow: auto; padding: 12px; border-radius: 10px; background: #0b0e14; color: #aebed7; font-size: 11px; white-space: pre-wrap; }

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VCPChat 准备与恢复</title><link rel="stylesheet" href="recovery.css"></head>
+<body>
+<main class="shell" aria-live="polite">
+  <div class="eyebrow">VCPCHAT MANAGED BOOTSTRAP</div>
+  <h1 id="title">正在检查运行环境</h1>
+  <p id="summary">这是独立的准备与恢复入口，不会修改原有启动脚本。</p>
+  <div class="progress"><div id="bar"></div></div>
+  <pre id="log" hidden></pre>
+  <section id="checks" class="checks"></section>
+  <div class="actions">
+    <button id="repair" hidden>按计划修复</button>
+    <button id="safe" hidden>最小启动（禁用 GPU）</button>
+    <button id="launch" hidden>启动 VCPChat</button>
+    <button id="logs">查看诊断</button>
+    <button id="quit" class="quiet">退出</button>
+  </div>
+</main>
+<script src="recovery-renderer.js"></script>
+</body>
+</html>
