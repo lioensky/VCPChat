@@ -2650,13 +2650,13 @@ function initializeMessageRenderer(refs) {
         console.log(`[MessageRenderer] Drop detected on message ${messageId}. Files count: ${files?.length || 0}`);
 
         if (files && files.length > 0) {
-            if (mainRendererReferences.chatManager?.processFilesData) {
+            if (mainRendererReferences.messageCommands.processFilesData) {
                 // 使用通用的文件读取管线
-                const processedFiles = await mainRendererReferences.chatManager.processFilesData(files);
+                const processedFiles = await mainRendererReferences.messageCommands.processFilesData(files);
                 const successfulFiles = processedFiles.filter(f => !f.error);
 
                 if (successfulFiles.length > 0) {
-                    mainRendererReferences.chatManager.addAttachmentsToMessage(messageId, successfulFiles);
+                    mainRendererReferences.messageCommands.addAttachmentsToMessage(messageId, successfulFiles);
                 } else if (processedFiles.length > 0) {
                     const firstError = processedFiles.find(f => f.error)?.error;
                     console.error(`[MessageRenderer] All files failed to process: ${firstError}`);
@@ -3078,8 +3078,8 @@ async function renderAttachments(message, contentDiv) {
                 removeBtn.title = '移除此附件';
                 const onRemoveClick = (e) => {
                     e.preventDefault(); e.stopPropagation();
-                    if (mainRendererReferences.chatManager?.removeAttachmentFromMessage) {
-                        mainRendererReferences.chatManager.removeAttachmentFromMessage(message.id, index);
+                    if (mainRendererReferences.messageCommands.removeAttachmentFromMessage) {
+                        mainRendererReferences.messageCommands.removeAttachmentFromMessage(message.id, index);
                     }
                 };
                 removeBtn.addEventListener('click', onRemoveClick);
@@ -3272,7 +3272,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             return null;
         }
         renderRoot.appendChild(messageItem);
-        mainRendererReferences.chatManager?.syncNextUiEmptyStateWithMessages?.();
+        mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
         // 观察新消息的可见性
         visibilityOptimizer.observeMessage(messageItem);
     }
@@ -3938,7 +3938,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
 
             // Step 1: Append all elements to the DOM at once.
             (renderContext.root || mainRendererReferences.chatMessagesDiv).appendChild(fragment);
-            mainRendererReferences.chatManager?.syncNextUiEmptyStateWithMessages?.();
+            mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
             messageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
@@ -4003,7 +4003,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 } else {
                     chatMessagesDiv.appendChild(batchFragment);
                 }
-            mainRendererReferences.chatManager?.syncNextUiEmptyStateWithMessages?.();
+            mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
                 elementsForProcessing.forEach(el => processDeferredMessageElement(el, renderSessionId, {
                     ...renderContext,
@@ -4065,7 +4065,7 @@ async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSes
 
             // Step 1: Append all elements to the DOM.
             (renderContext.root || mainRendererReferences.chatMessagesDiv).appendChild(fragment);
-                mainRendererReferences.chatManager?.syncNextUiEmptyStateWithMessages?.();
+                mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Run the deferred processing for each element now that it's attached.
             allMessageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));

@@ -38,6 +38,14 @@ export function createRenderDependencies(input = {}) {
         summarizeTopic: requireFunction(input.summarizeTopicFromMessages, 'summarizeTopic'),
         createBranch: requireFunction(input.handleCreateBranch, 'createBranch'),
     });
+    const providedMessageCommands = input.messageCommands || {};
+    const messageCommands = Object.freeze({
+        processFilesData: providedMessageCommands.processFilesData || null,
+        addAttachmentsToMessage: providedMessageCommands.addAttachmentsToMessage || null,
+        removeAttachmentFromMessage: providedMessageCommands.removeAttachmentFromMessage || null,
+        syncNextUiEmptyStateWithMessages: providedMessageCommands.syncNextUiEmptyStateWithMessages || null,
+        handleSendMessage: providedMessageCommands.handleSendMessage || null,
+    });
     const closure = {
         root,
         state,
@@ -46,8 +54,8 @@ export function createRenderDependencies(input = {}) {
         markdown: input.markedInstance,
         feedback: input.uiHelper,
         commands,
+        messageCommands,
         interrupt: input.interruptHandler || null,
-        chatManager: input.chatManager || null,
         chatDomRenderer: input.chatDomRenderer || null,
 
         // Flat aliases are temporary D4 migration adapters, not public globals.
@@ -63,7 +71,7 @@ export function createRenderDependencies(input = {}) {
         summarizeTopicFromMessages: commands.summarizeTopic,
         handleCreateBranch: commands.createBranch,
         interruptHandler: input.interruptHandler || null,
-        chatManager: input.chatManager || null,
+        messageCommands,
     };
     return Object.freeze(closure);
 }

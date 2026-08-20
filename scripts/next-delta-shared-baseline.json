@@ -1,10 +1,10 @@
 {
   "modules/chatManager.js": {
-    "sha256": "461ef64b92d29c7c1e5768d80af4c482e24d3657f815f4ef531b3b3709950fec",
-    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, explicit ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
+    "sha256": "5b960996b150ae1ca5266e8540e5f8136da4931bf89f40a4551ea3bd109eae2d",
+    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, explicit ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
-    "sha256": "05afdf07b3c35b0075177b12711b20818315ca6a33a36551e9ee1e5c41bc4b03",
+    "sha256": "701f4e0500229a1431643a3e8a0cd1ca390b081d89834e64ae72ab8cc05fbcb7",
     "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure with explicit chat capabilities, coordinator-owned terminal entry points, explicit ESM provider with the unconsumed window facade removed, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {

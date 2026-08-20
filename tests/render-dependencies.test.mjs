@@ -15,6 +15,7 @@ const valid = () => ({
     uiHelper: { scrollToBottom() {} },
     summarizeTopicFromMessages() {},
     handleCreateBranch() {},
+    messageCommands: { handleSendMessage() {} },
 });
 
 test('RenderDependencies creates one frozen explicit capability closure', () => {
@@ -24,6 +25,9 @@ test('RenderDependencies creates one frozen explicit capability closure', () => 
     assert.equal(dependencies.root, dependencies.chatMessagesDiv);
     assert.equal(dependencies.transport, dependencies.electronAPI);
     assert.equal(dependencies.state.history, dependencies.currentChatHistoryRef);
+    assert.equal(typeof dependencies.messageCommands.handleSendMessage, 'function');
+    assert.equal('chatManager' in dependencies, false,
+        'the renderer closure must expose narrow message commands rather than the full chat manager');
 });
 
 test('RenderDependencies fails fast for absent root, state, transport and parser powers', () => {

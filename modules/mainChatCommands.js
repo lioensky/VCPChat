@@ -92,10 +92,18 @@
         return Boolean(signal?.aborted);
     }
 
+    function chatManagerReady() {
+        return Boolean(chatManagerProvider?.selectItem)
+            && (typeof chatManagerProvider.isReady !== 'function' || chatManagerProvider.isReady());
+    }
+
     async function createAgent({ name, model = '', signal = null }) {
         const result = await api()?.createAgent?.(name, model ? { model } : undefined);
         if (!result?.success) return result || { success: false, error: '创建功能不可用' };
         if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
+        if (!chatManagerReady()) {
+            return { ...result, navigationSuccess: false, warning: '聊天界面尚未就绪，请稍后重试。' };
+        }
         try {
             await window.itemListManager?.loadItems?.();
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
@@ -117,6 +125,9 @@
         const group = result.agentGroup;
         if (!group?.id) return { success: false, error: '群组已创建，但返回数据不完整。' };
         if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
+        if (!chatManagerReady()) {
+            return { ...result, navigationSuccess: false, warning: '聊天界面尚未就绪，请稍后重试。' };
+        }
         try {
             await window.itemListManager?.loadItems?.();
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };

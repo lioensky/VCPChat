@@ -62,6 +62,7 @@ export const chatManager = (() => {
     const outgoingPersistenceQueues = new Map();
     const pendingSendContexts = new Set();
     let lastOpenSaveQueue = Promise.resolve();
+    let initialized = false;
 
     function insertAfterMessage(history, ownerMessageId, message) {
         const next = Array.isArray(history) ? [...history] : [];
@@ -395,6 +396,7 @@ export const chatManager = (() => {
         mainRendererFunctions = config.mainRendererFunctions;
 
         console.log('[ChatManager] Initialized successfully.');
+        initialized = true;
 
         // Listen for Canvas events
         if (electronAPI) {
@@ -2247,6 +2249,7 @@ export const chatManager = (() => {
     // --- Public API ---
     return {
         init,
+        isReady: () => initialized,
         selectItem,
         restoreLastOpenState,
         selectTopic,

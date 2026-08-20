@@ -5,7 +5,6 @@ import { streamManager } from './modules/renderer/streamManager.js';
 import { chatManager } from './modules/chatManager.js';
 
 window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());
-window.MainChatCommands?.setChatManagerProvider?.(chatManager);
 
 // --- Globals ---
 let globalSettings = {
@@ -490,7 +489,13 @@ const startupThemeGate = new StartupThemeGate({
             markedInstance,
             uiHelper: uiHelperFunctions,
             interruptHandler,
-            chatManager,
+            messageCommands: {
+                processFilesData: (...args) => chatManager.processFilesData(...args),
+                addAttachmentsToMessage: (...args) => chatManager.addAttachmentsToMessage(...args),
+                removeAttachmentFromMessage: (...args) => chatManager.removeAttachmentFromMessage(...args),
+                syncNextUiEmptyStateWithMessages: (...args) => chatManager.syncNextUiEmptyStateWithMessages(...args),
+                handleSendMessage: (...args) => chatManager.handleSendMessage(...args),
+            },
             summarizeTopicFromMessages: (messages, agentName) => {
                 if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);
                 console.error('[MessageRenderer] summarizeTopicFromMessages function not found on window scope.');
@@ -743,8 +748,6 @@ const startupThemeGate = new StartupThemeGate({
             streamConsumerRegistry: mainChatAdapter?.streamRoutes,
             chatDomRenderer: mainChatDomRenderer,
             electronAPI: chatAPI,
-            chatRepository,
-            chatRepository,
             uiHelper: uiHelperFunctions,
             modules: {
                 messageRenderer,
@@ -787,6 +790,7 @@ const startupThemeGate = new StartupThemeGate({
                 // This is no longer needed as chatManager will call messageRenderer's summarizer
             }
         });
+        window.MainChatCommands?.setChatManagerProvider?.(chatManager);
     } else {
         console.error('[RENDERER_INIT] chatManager module not found!');
     }

@@ -733,9 +733,12 @@ assert.equal(JSON.stringify(creationCalls[0]), JSON.stringify(['Nova', { model: 
     'renderer creation must pass only the model override to the main process');
 assert.equal(partialCreation.success, true, 'a persisted Agent must remain a successful creation result');
 assert.equal(partialCreation.navigationSuccess, false, 'post-create UI failure must be reported separately');
+assert.match(partialCreation.warning, /尚未就绪/,
+    'creation before provider readiness must expose a retryable terminal instead of reporting navigation success');
 const selectedItems = [];
 const chatManagerProvider = {
-    selectItem: async (...args) => { selectedItems.push(args); }
+    selectItem: async (...args) => { selectedItems.push(args); },
+    isReady: () => true,
 };
 commandDom.window.MainChatCommands.setChatManagerProvider(chatManagerProvider);
 assert.throws(
