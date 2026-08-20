@@ -858,12 +858,22 @@ export const chatManager = (() => {
             console.debug('[ChatManager] Ignoring stale topic deletion completion', deletionContext);
             return false;
         }
+        const deletedTopicIds = new Set([
+            ...(Array.isArray(deletionContext?.deletedTopicIds) ? deletionContext.deletedTopicIds : []),
+            ...(deletionContext?.topicId ? [deletionContext.topicId] : []),
+        ].filter(Boolean).map(String));
+        const sanitizedRemainingTopics = (Array.isArray(remainingTopics) ? remainingTopics : [])
+            .filter(topic => !deletedTopicIds.has(String(topic?.id)));
         const config = currentSelectedItem.config || currentSelectedItem;
-        config.topics = remainingTopics;
+        config.topics = sanitizedRemainingTopics;
         currentSelectedItemRef.set(currentSelectedItem);
 
-        if (remainingTopics && remainingTopics.length > 0) {
-            const newSelectedTopic = remainingTopics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+        if (sanitizedRemainingTopics.length > 0) {
+            const fallbackTopic = deletionContext?.fallbackTopicId
+                ? sanitizedRemainingTopics.find(topic => String(topic?.id) === String(deletionContext.fallbackTopicId))
+                : null;
+            const newSelectedTopic = fallbackTopic || [...sanitizedRemainingTopics]
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
             await selectTopic(newSelectedTopic.id);
         } else {
             ++topicSelectionGeneration;

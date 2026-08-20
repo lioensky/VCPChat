@@ -1,7 +1,7 @@
 {
   "modules/chatManager.js": {
-    "sha256": "73c3e9642f8e0934537b93145207f43dfe54d58d77704f256c6492e718f4e5f3",
-    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback"
+    "sha256": "174ccff7c8cb14bb0a5020bee608972c2703e976ac79d88b3675bb8d40014db9",
+    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists"
   },
   "modules/messageRenderer.js": {
     "sha256": "81b5bba599f6645e39a6005c773e761d9d3f2289474dbefece513d1792679ea5",
@@ -12,8 +12,8 @@
     "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation"
   },
   "modules/topicListManager.js": {
-    "sha256": "ee31c578ad3fd6e8af5cb3788a56572b5bdd26d63f7be684c6bcf0eec6b510e1",
-    "reason": "shared topic authority with canonical presentation projection and mandatory repository access without a direct IPC fallback"
+    "sha256": "4641eee164db74fd85ea72db58c7112971be74fcf36d45a3cc70905628d8c973",
+    "reason": "shared topic authority with canonical presentation projection and mandatory repository access without a direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists"
   },
   "modules/itemListManager.js": {
     "sha256": "1a227093cc438de479c1ca8dc9c1abf7acd4dace1bd773c4d4256f10be1bd162",

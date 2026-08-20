@@ -583,7 +583,7 @@ try {
             const deletion = await page.evaluate(async ({ itemId, itemType, topicId }) => {
                 const result = await window.chatAPI.deleteTopic(itemId, topicId);
                 if (!result?.success) return result;
-                await (await import('./modules/chatManager.js')).chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType });
+                await (await import('./modules/chatManager.js')).chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType, topicId, fallbackTopicId: 'a-two' });
                 return result;
             }, { itemId: item.id, itemType: item.type, topicId: createdTopicId });
             assert.equal(deletion?.success, true, `topic deletion roundtrip failed: ${JSON.stringify(deletion)}`);
