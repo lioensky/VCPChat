@@ -11,7 +11,7 @@ const { selectRepairStages, validateLockfile, createRepairPlan } = require('../m
 const { runProcess } = require('../modules/bootstrap/process-runner');
 const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require('../modules/bootstrap/progress-protocol');
 const { createRuntimeClosureManifest, validateRuntimePolicy, verifyDirectoryAgainstManifest } = require('../modules/bootstrap/runtime-closure');
-const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest } = require('../modules/bootstrap/update-manager');
+const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest, checkStagingCapacity } = require('../modules/bootstrap/update-manager');
 const { liveReadyRecords } = await import('../scripts/vcpchat-update.mjs');
 const { collectEvidence } = await import('../scripts/vcpchat-release-evidence.mjs');
 
@@ -123,6 +123,15 @@ test('M7 update staging rejects unlisted symlinks in the source tree', () => {
     fs.writeFileSync(target, 'one'); fs.symlinkSync(target, link);
     const digest = require('node:crypto').createHash('sha256').update('one').digest('hex');
     assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { schemaVersion: 1, version: '1', files: [{ path: 'real.js', sha256: digest }] } }), /符号链接/);
+});
+
+test('M7 update staging rejects insufficient disk capacity before copying', () => {
+    assert.throws(() => checkStagingCapacity({
+        stateRoot: tempDir(),
+        manifest: { files: [{ path: 'main.js', size: 100 }] },
+        reserveBytes: 1,
+        statfs: () => ({ bavail: 1, bsize: 10 }),
+    }), error => error.code === 'E_UPDATE_DISK_SPACE');
 });
 
 test('M7 update gate detects a live VCPChat ready process before staging', () => {

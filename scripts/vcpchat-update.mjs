@@ -49,6 +49,7 @@ async function verifyCandidateReady({ current, manifest, stateRoot, timeoutMs = 
         },
         stdio: 'ignore',
         windowsHide: true,
+        detached: process.platform !== 'win32',
     });
     let spawnError = null;
     child.once('error', error => { spawnError = error; });
@@ -82,7 +83,9 @@ function liveReadyRecords(stateRoot) {
         if (!name.startsWith('ready-') || !name.endsWith('.json')) continue;
         try {
             const record = JSON.parse(fs.readFileSync(path.join(stateRoot, name), 'utf8'));
-            if (record?.pid > 0) {
+            const readyAt = Date.parse(record?.readyAt || '') || 0;
+            const plausible = readyAt > 0 && Date.now() - readyAt < 7 * 24 * 60 * 60 * 1000;
+            if (record?.pid > 0 && plausible) {
                 try { process.kill(record.pid, 0); records.push(record); } catch { /* stale */ }
             }
         } catch { /* malformed records are ignored and cleaned by operation owner */ }

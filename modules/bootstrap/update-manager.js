@@ -8,6 +8,7 @@ const { verifyDirectoryAgainstManifest, resolveContainedPath, containedPathKey }
 
 const UPDATE_SCHEMA_VERSION = 1;
 const UPDATE_LOCK_MAX_AGE_MS = 20 * 60 * 1000;
+const UPDATE_RESERVE_BYTES = 64 * 1024 * 1024;
 
 function sha256File(filePath) { return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'); }
 function updateRoot(stateRoot) { return path.join(stateRoot, 'versions'); }
@@ -70,6 +71,27 @@ function validateUpdateManifest({ sourceRoot, manifest } = {}) {
     return { ok: true };
 }
 
+function checkStagingCapacity({ stateRoot, manifest, reserveBytes = UPDATE_RESERVE_BYTES, statfs = fs.statfsSync } = {}) {
+    const totalBytes = (manifest.files || []).reduce((sum, entry) => sum + (Number.isFinite(entry.size) ? Math.max(0, entry.size) : 0), 0);
+    const requiredBytes = totalBytes * 2 + reserveBytes;
+    try {
+        const stats = statfs(stateRoot);
+        const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+        if (Number.isFinite(availableBytes) && availableBytes < requiredBytes) {
+            const error = new Error(`更新需要约 ${Math.ceil(requiredBytes / 1024 / 1024)} MiB 可用空间，当前仅有约 ${Math.floor(availableBytes / 1024 / 1024)} MiB。`);
+            error.code = 'E_UPDATE_DISK_SPACE';
+            error.requiredBytes = requiredBytes;
+            error.availableBytes = availableBytes;
+            throw error;
+        }
+    } catch (error) {
+        if (error.code === 'E_UPDATE_DISK_SPACE') throw error;
+        // statfs is unavailable on some older runtimes/filesystems; integrity
+        // and atomic staging still protect the update, so capacity is advisory.
+    }
+    return { ok: true, requiredBytes };
+}
+
 function copyTree(sourceRoot, destinationRoot) {
     fs.mkdirSync(destinationRoot, { recursive: true });
     fs.cpSync(sourceRoot, destinationRoot, { recursive: true, errorOnExist: false, force: false });
@@ -81,6 +103,7 @@ function switchVersion({ stateRoot, sourceRoot, manifest, verify = verifyDirecto
     const root = updateRoot(stateRoot);
     fs.mkdirSync(root, { recursive: true });
     validateUpdateManifest({ sourceRoot, manifest });
+    checkStagingCapacity({ stateRoot: root, manifest });
     const versionRoot = path.join(root, `${manifest.version}-${manifest.buildId || Date.now()}`);
     if (fs.existsSync(versionRoot)) throw Object.assign(new Error('目标版本目录已存在。'), { code: 'E_UPDATE_MANIFEST_INVALID' });
     copyTree(sourceRoot, versionRoot);
@@ -145,11 +168,13 @@ function acquireUpdateLock(stateRoot) {
 module.exports = {
     UPDATE_SCHEMA_VERSION,
     UPDATE_LOCK_MAX_AGE_MS,
+    UPDATE_RESERVE_BYTES,
     updateRoot,
     pointerPath,
     readJson,
     activeVersion,
     validateUpdateManifest,
+    checkStagingCapacity,
     switchVersion,
     rollbackVersion,
     promoteVersionWithHealthCheck,
