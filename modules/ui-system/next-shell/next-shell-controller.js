@@ -314,9 +314,29 @@
             return;
         }
         const viewId = `app:${app.id}`;
-        if (appTabHost.views.has(viewId)) {
-            setView(viewId);
-            return;
+        const existingView = appTabHost.views.get(viewId);
+        if (existingView) {
+            // A child WebContents can close before its asynchronous state
+            // notification removes the renderer tab. Reusing that stale tab
+            // leaves the user looking at an empty native Surface and prevents
+            // a new session from being created. Main is the session authority:
+            // reconcile before treating an existing renderer view as reusable.
+            try {
+                const authoritative = await embeddedAppController.list();
+                if (!mounted || generation !== mountGeneration) return;
+                const sessionExists = authoritative?.sessions?.some(session => session.action === existingView.action);
+                if (sessionExists) {
+                    setView(viewId);
+                    return;
+                }
+                closeView(viewId, { skipEmbeddedClose: true });
+            } catch (error) {
+                // If Main cannot be queried, preserve the existing renderer
+                // view rather than risk creating a duplicate native session.
+                console.warn(`[NextUI] Failed to reconcile embedded app ${app.id} before reopen:`, error);
+                setView(viewId);
+                return;
+            }
         }
         const host = ensureInternalHost();
         const container = document.createElement('section');
