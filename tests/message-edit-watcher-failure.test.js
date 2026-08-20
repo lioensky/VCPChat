@@ -46,6 +46,12 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
             get: () => ({ id: 'agent-1', type: 'agent', config: { agentDataPath: '/fixture/agent-1' } }),
         },
         currentTopicIdRef: { get: () => 'topic-1' },
+        historyMutationAuthority: {
+            replace: async (_descriptor, nextHistory) => {
+                durableWrites.push(JSON.parse(JSON.stringify(nextHistory)));
+                return { result: { success: true }, history: nextHistory };
+            },
+        },
     }, {
         updateMessageContent(_messageId, content) { renderedContent = content; },
     });

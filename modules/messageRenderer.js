@@ -2335,12 +2335,12 @@ function removeMessageById(messageId, saveHistory = false) {
             const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
             const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
             if (currentSelectedItemVal.id && currentTopicIdVal) {
-                mainRendererReferences.chatRepository?.saveHistory(
-                    currentSelectedItemVal.id,
-                    currentSelectedItemVal.type,
-                    currentTopicIdVal,
-                    currentChatHistoryArray
-                );
+                void mainRendererReferences.historyMutationAuthority?.replace({
+                    itemId: currentSelectedItemVal.id,
+                    itemType: currentSelectedItemVal.type,
+                    topicId: currentTopicIdVal,
+                    category: 'message-remove',
+                }, currentChatHistoryArray).catch(error => console.error('[MessageRenderer] history mutation failed:', error));
             }
         }
     }
@@ -3621,7 +3621,12 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
             if (mainRendererReferences.chatRepository) {
                 try {
-                    await mainRendererReferences.chatRepository.saveHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicIdVal, currentChatHistoryArray.filter(m => !m.isThinking));
+                    await mainRendererReferences.historyMutationAuthority.replace({
+                        itemId: currentSelectedItem.id,
+                        itemType: currentSelectedItem.type,
+                        topicId: currentTopicIdVal,
+                        category: 'non-stream-terminal',
+                    }, currentChatHistoryArray.filter(m => !m.isThinking));
                 } catch (error) {
                     console.error(`[MR renderFullMessage] FAILED to save GROUP history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
                 }

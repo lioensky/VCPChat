@@ -213,8 +213,8 @@ for (const sourceFile of [
     'modules/renderer/messageContextMenu.js', 'modules/renderer/streamManager.js',
     'modules/topicListManager.js', 'modules/searchManager.js'
 ]) {
-    assert.match(read(sourceFile), /chatRepository/,
-        `${sourceFile} must consume the shared ChatRepository boundary or explicitly retain its compatibility fallback`);
+    assert.match(read(sourceFile), /chatRepository|historyMutationAuthority/,
+        `${sourceFile} must consume the shared ChatRepository or history mutation authority boundary`);
 }
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,
     'message edit persistence must use ChatRepository rather than renderer IPC fallbacks');

@@ -546,13 +546,13 @@ function toggleEditMode(messageItem, message) {
 
             try {
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
-                    if (!mainRefs.chatRepository) throw new Error('ChatRepository is required for message edits');
-                    const saveResult = await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, currentChatHistoryArray);
-                    
-                    // 🔧 检查保存结果
-                    if (saveResult && !saveResult.success) {
-                        throw new Error(saveResult.error || '保存失败');
-                    }
+                    if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for message edits');
+                    await mainRefs.historyMutationAuthority.replace({
+                        itemId: currentSelectedItemVal.id,
+                        itemType: currentSelectedItemVal.type,
+                        topicId: currentTopicIdVal,
+                        category: 'message-edit',
+                    }, currentChatHistoryArray);
                 }
             } catch (error) {
                 console.error('[EditMode] Save failed, rolling back:', error);
@@ -682,8 +682,13 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
     if (currentSelectedItemVal.id && currentTopicIdVal) {
         try {
-            if (!mainRefs.chatRepository) throw new Error('ChatRepository is required for regeneration');
-            await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, currentChatHistoryArray);
+            if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for regeneration');
+            await mainRefs.historyMutationAuthority.replace({
+                itemId: currentSelectedItemVal.id,
+                itemType: currentSelectedItemVal.type,
+                topicId: currentTopicIdVal,
+                category: 'regeneration-truncate',
+            }, currentChatHistoryArray);
         } catch (saveError) {
             console.error("ContextMenu: Failed to save chat history after splice in regenerate:", saveError);
         }
@@ -1045,24 +1050,22 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 };
 
                 // 【修复2】采用更健壮的“读-改-写”模式
-                if (!mainRefs.chatRepository) throw new Error('ChatRepository is required for regeneration');
-                const historyForSave = await mainRefs.chatRepository.getHistory(context.agentId, context.isGroupMessage ? 'group' : 'agent', context.topicId);
-                if (historyForSave && !historyForSave.error) {
-                    // 确保历史记录中没有残余的 "thinking" 消息
+                if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for regeneration');
+                const commit = await mainRefs.historyMutationAuthority.mutate({
+                    itemId: context.agentId,
+                    itemType: context.isGroupMessage ? 'group' : 'agent',
+                    topicId: context.topicId,
+                    category: 'regeneration-terminal',
+                }, historyForSave => {
                     const finalHistory = historyForSave.filter(msg => msg.id !== regenerationThinkingMessage.id && !msg.isThinking);
                     finalHistory.push(assistantMessage);
-                    
-                    await mainRefs.chatRepository.saveHistory(context.agentId, context.isGroupMessage ? 'group' : 'agent', context.topicId, finalHistory);
+                    return finalHistory;
+                });
+                const finalHistory = [...commit.history];
 
-                    if (isForActiveChat) {
-                        mainRefs.currentChatHistoryRef.set(finalHistory);
-                        contextMenuDependencies.renderMessage(assistantMessage);
-                    }
-                } else {
-                    console.error(`[ContextMenu] Regenerate failed to get history for saving:`, historyForSave.error);
-                     if (isForActiveChat) {
-                        contextMenuDependencies.renderMessage({ role: 'system', content: `重新生成失败：无法读取历史记录以保存。`, timestamp: Date.now() });
-                    }
+                if (isForActiveChat) {
+                    mainRefs.currentChatHistoryRef.set(finalHistory);
+                    contextMenuDependencies.renderMessage(assistantMessage);
                 }
             }
             if (isForActiveChat) {
@@ -1087,8 +1090,13 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 content: `客户端错误 (重新生成): ${error.message}`,
                 timestamp: Date.now(),
             });
-            if (currentSelectedItemVal.id && currentTopicIdVal && mainRefs.chatRepository) {
-                await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, failedHistory);
+            if (currentSelectedItemVal.id && currentTopicIdVal && mainRefs.historyMutationAuthority) {
+                await mainRefs.historyMutationAuthority.replace({
+                    itemId: currentSelectedItemVal.id,
+                    itemType: currentSelectedItemVal.type,
+                    topicId: currentTopicIdVal,
+                    category: 'regeneration-failure-cleanup',
+                }, failedHistory);
             }
         }
         uiHelper.scrollToBottom();

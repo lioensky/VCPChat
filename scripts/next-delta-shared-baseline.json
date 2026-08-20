@@ -1,11 +1,11 @@
 {
   "modules/chatManager.js": {
-    "sha256": "b2d604fe983afde5ea1fe134b5bc63f011c756251ae08a39b082934f4e2cda25",
-    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, explicit ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
+    "sha256": "9f5157f1eced89141069cacf0352aa8f3613a6253be26c7eefc2bce772f0d7ca",
+    "reason": "upstream chat core plus reviewed ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, explicit durable history mutation authority, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
-    "sha256": "701f4e0500229a1431643a3e8a0cd1ca390b081d89834e64ae72ab8cc05fbcb7",
-    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure with explicit chat capabilities, coordinator-owned terminal entry points, explicit ESM provider with the unconsumed window facade removed, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
+    "sha256": "8fcd0fa51b7599abe5e412b1cf08d4b33eb7c69df7aa419f4f3dfb4c767d9f1f",
+    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, coordinator-owned terminal entry points, explicit ESM provider with the unconsumed window facade removed, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {
     "sha256": "c6eea429e9a50600fe9162037ccbfafd73ce35a3bcbef8ceac73b52ab208ad30",

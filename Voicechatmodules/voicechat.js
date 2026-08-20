@@ -1,6 +1,7 @@
 // Voicechatmodules/voicechat.js
 import { createMemoryChatRepository } from '../modules/chat/memoryChatRepository.js';
 import { createChatHistoryPersistence } from '../modules/chat/chatHistoryPersistence.js';
+import { createChatHistoryMutationAuthority } from '../modules/chat/chatHistoryMutationAuthority.js';
 import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
 import { messageRenderer } from '../modules/messageRenderer.js';
 import { streamManager } from '../modules/renderer/streamManager.js';
@@ -308,8 +309,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 write: history => { currentChatHistory = history; },
             });
             const historyPersistence = createChatHistoryPersistence(chatRepository);
+            const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: chatRepository });
             messageRenderer.initializeMessageRenderer({
                 chatRepository,
+                historyMutationAuthority,
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,

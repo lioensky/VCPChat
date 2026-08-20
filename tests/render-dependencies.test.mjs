@@ -11,6 +11,7 @@ const valid = () => ({
     globalSettingsRef: ref({}),
     electronAPI: {},
     chatRepository: { saveHistory() {} },
+    historyMutationAuthority: { replace() {} },
     markedInstance: { parse: value => value },
     uiHelper: { scrollToBottom() {} },
     summarizeTopicFromMessages() {},
@@ -31,7 +32,7 @@ test('RenderDependencies creates one frozen explicit capability closure', () => 
 });
 
 test('RenderDependencies fails fast for absent root, state, transport and parser powers', () => {
-    for (const key of ['chatMessagesDiv', 'currentChatHistoryRef', 'electronAPI', 'markedInstance']) {
+    for (const key of ['chatMessagesDiv', 'currentChatHistoryRef', 'electronAPI', 'markedInstance', 'historyMutationAuthority']) {
         const input = valid();
         delete input[key];
         assert.throws(() => createRenderDependencies(input), /RenderDependencies requires/, key);

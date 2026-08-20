@@ -19,6 +19,7 @@ export const chatManager = (() => {
     let globalSettingsRef;
     let chatContext;
     let chatRepository;
+    let historyMutationAuthority;
     let streamConsumerRegistry;
     let allowLegacyHistoryFallback = false;
 
@@ -38,6 +39,14 @@ export const chatManager = (() => {
     }
 
     function saveHistory(itemId, itemType, topicId, history) {
+        if (historyMutationAuthority) {
+            return historyMutationAuthority.replace({
+                itemId,
+                itemType,
+                topicId,
+                category: 'chat-manager',
+            }, history).then(commit => commit.result || { success: true });
+        }
         const repository = requireHistoryRepository();
         return repository
             ? repository.saveHistory(itemId, itemType, topicId, history)
@@ -355,6 +364,7 @@ export const chatManager = (() => {
         initialized = false;
         chatContext = config.chatContext || null;
         chatRepository = config.chatRepository || null;
+        historyMutationAuthority = config.historyMutationAuthority || null;
         streamConsumerRegistry = config.streamConsumerRegistry || null;
         allowLegacyHistoryFallback = config.allowLegacyHistoryFallback === true;
         if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatManager requires ChatRepository');

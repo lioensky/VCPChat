@@ -1,5 +1,6 @@
 import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
+import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
 import { messageRenderer } from './modules/messageRenderer.js';
 import { streamManager } from './modules/renderer/streamManager.js';
 import { chatManager } from './modules/chatManager.js';
@@ -325,6 +326,7 @@ const chatContext = createChatContext({
 });
 window.__vcpChatContext = chatContext;
 const chatRepository = createChatRepository(chatAPI);
+const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: chatRepository });
 const presentationState = createChatPresentationState({ theme: document.body.classList.contains('dark-theme') ? 'dark' : 'light', activeSurface: 'main' });
 window.__vcpPresentationState = presentationState;
 window.__vcpChatRepository = chatRepository;
@@ -474,6 +476,7 @@ const startupThemeGate = new StartupThemeGate({
         const historyPersistence = createChatHistoryPersistence(chatRepository);
         const renderDependencies = {
             chatRepository,
+            historyMutationAuthority,
             currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
             currentSelectedItemRef: {
                 get: () => currentSelectedItem,
