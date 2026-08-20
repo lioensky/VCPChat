@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const { resolveProjectStateRoot, createOperationId, readReadyRecord, removeReadyRecord } = require('../modules/bootstrap/launch-protocol');
 const { resolveContainedPath } = require('../modules/bootstrap/runtime-closure');
 const { terminateProcess } = require('../modules/bootstrap/process-runner');
+const { managedSpawnOptions } = require('../modules/bootstrap/platform-process');
 const { promoteVersionWithHealthCheck, rollbackVersion, acquireUpdateLock } = require('../modules/bootstrap/update-manager');
 
 function parseArguments(argv) {
@@ -48,8 +49,7 @@ async function verifyCandidateReady({ current, manifest, stateRoot, timeoutMs = 
             VCPCHAT_BUILD_ID: manifest.buildId || '',
         },
         stdio: 'ignore',
-        windowsHide: true,
-        detached: process.platform !== 'win32',
+        ...managedSpawnOptions(),
     });
     let spawnError = null;
     child.once('error', error => { spawnError = error; });

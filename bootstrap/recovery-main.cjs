@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 
 const projectRoot = path.resolve(process.env.VCPCHAT_PROJECT_ROOT || path.join(__dirname, '..'));
 const { terminateProcess } = require(path.join(projectRoot, 'modules', 'bootstrap', 'process-runner'));
+const { managedSpawnOptions } = require(path.join(projectRoot, 'modules', 'bootstrap', 'platform-process'));
 let windowRef;
 let operation;
 
@@ -23,8 +24,7 @@ function runScript(name, args = []) {
             cwd: projectRoot,
             env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VCPCHAT_PROJECT_ROOT: projectRoot },
             stdio: ['ignore', 'pipe', 'pipe'],
-            windowsHide: true,
-            detached: process.platform !== 'win32',
+            ...managedSpawnOptions(),
         });
         operation = child;
         let stdout = '';

@@ -15,6 +15,7 @@ const {
 } = require('../modules/bootstrap/launch-protocol');
 const { collectDoctorReport, resolveElectronBinary } = require('../modules/bootstrap/environment-doctor');
 const { writeDiagnosticReport } = require('../modules/bootstrap/diagnostic-report');
+const { managedSpawnOptions, terminateManagedProcess } = require('../modules/bootstrap/platform-process');
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
 
@@ -115,15 +116,8 @@ async function waitForReady({ stateRoot, operationId, child, timeoutMs, sleep = 
 }
 
 function terminateChild(child) {
-    if (!child || child.killed || child.exitCode !== null) return;
-    try {
-        if (process.platform === 'win32' && child.pid) {
-            const { spawn: spawnKiller } = require('node:child_process');
-            spawnKiller('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-        } else if (child.pid) {
-            try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
-        } else child.kill();
-    } catch { /* best effort */ }
+    if (child?.killed) return;
+    terminateManagedProcess(child);
 }
 
 export async function runManagedLauncher({
@@ -185,8 +179,7 @@ export async function runManagedLauncher({
             cwd: root,
             env: childEnv,
             stdio: 'inherit',
-            windowsHide: false,
-            detached: process.platform !== 'win32',
+            ...managedSpawnOptions(),
         });
         lock.updateStage('awaiting-ready');
         const ready = await waitForReady({

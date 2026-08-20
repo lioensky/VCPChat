@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 const { createRepairManifest } = require('../modules/bootstrap/repair-manifest');
 const { selectRepairStages, validateLockfile, createRepairPlan } = require('../modules/bootstrap/repair-planner');
 const { runProcess } = require('../modules/bootstrap/process-runner');
+const { managedSpawnOptions, terminationPlan, terminateManagedProcess } = require('../modules/bootstrap/platform-process');
 const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require('../modules/bootstrap/progress-protocol');
 const { createRuntimeClosureManifest, validateRuntimePolicy, verifyDirectoryAgainstManifest } = require('../modules/bootstrap/runtime-closure');
 const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest, checkStagingCapacity } = require('../modules/bootstrap/update-manager');
@@ -60,6 +61,25 @@ test('M3 process runner cancels and settles exactly once', async () => {
     const result = await promise;
     assert.equal(result.cancelled, true);
     assert.equal(child.killed, true);
+});
+
+test('H4 process boundary emits explicit Windows and POSIX ownership plans', () => {
+    assert.deepEqual(managedSpawnOptions('win32'), { detached: false, windowsHide: true });
+    assert.deepEqual(managedSpawnOptions('darwin'), { detached: true, windowsHide: false });
+    assert.deepEqual(terminationPlan(42, { platform: 'win32' }), {
+        kind: 'command', command: 'taskkill.exe', args: ['/PID', '42', '/T', '/F'], options: { windowsHide: true, stdio: 'ignore' },
+    });
+    assert.deepEqual(terminationPlan(42, { platform: 'linux', signal: 'SIGKILL' }), { kind: 'process-group', pid: -42, signal: 'SIGKILL' });
+});
+
+test('H4 process boundary kills a Windows tree and falls back from POSIX group kill', () => {
+    const calls = [];
+    const windowsChild = { pid: 42, exitCode: null, signalCode: null, kill() { calls.push('unexpected-child-kill'); } };
+    terminateManagedProcess(windowsChild, { platform: 'win32', spawnProcess: (command, args) => calls.push([command, args]) });
+    assert.deepEqual(calls.shift(), ['taskkill.exe', ['/PID', '42', '/T', '/F']]);
+    const posixChild = { pid: 43, exitCode: null, signalCode: null, kill(signal) { calls.push(['fallback', signal]); } };
+    terminateManagedProcess(posixChild, { platform: 'linux', killProcess: () => { throw new Error('no group'); } });
+    assert.deepEqual(calls.shift(), ['fallback', 'SIGTERM']);
 });
 
 test('M4 progress protocol rejects malformed or unknown frames', () => {

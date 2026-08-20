@@ -1,19 +1,10 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const { managedSpawnOptions, terminateManagedProcess } = require('./platform-process');
 
 function terminateProcess(child) {
-    if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    try {
-        if (process.platform === 'win32') {
-            const { spawn } = require('child_process');
-            spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-        } else if (child.pid) {
-            try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill('SIGTERM'); }
-        } else {
-            child.kill('SIGTERM');
-        }
-    } catch { /* best effort */ }
+    return terminateManagedProcess(child);
 }
 
 function runProcess({
@@ -51,7 +42,7 @@ function runProcess({
                 windowsHide: true,
                 shell: false,
                 stdio: ['ignore', 'pipe', 'pipe'],
-                detached: process.platform !== 'win32',
+                ...managedSpawnOptions(),
             });
         } catch (error) {
             finish({ ok: false, code: error.code || 'E_REPAIR_STAGE_FAILED', error, exitCode: null });

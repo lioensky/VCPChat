@@ -79,6 +79,7 @@ const allowedSourceDifferences = new Set([
     'modules/bootstrap/environment-doctor.js',
     'modules/bootstrap/launch-protocol.js',
     'modules/bootstrap/packed-runtime.js',
+    'modules/bootstrap/platform-process.js',
     'modules/bootstrap/process-runner.js',
     'modules/bootstrap/progress-protocol.js',
     'modules/bootstrap/repair-manifest.js',
