@@ -3644,9 +3644,10 @@ function projectStreamTerminal(messageId, finishReason, context, finalPayload = 
  * @param {string} agentName - The name of the agent sending the message.
  * @param {string} agentId - The ID of the agent sending the message.
  */
-async function renderFullMessage(messageId, fullContent, agentName, agentId) {
+async function renderFullMessage(messageId, fullContent, agentName, agentId, options = {}) {
     console.debug(`[MessageRenderer renderFullMessage] Rendering full message for ID: ${messageId}`);
-    const { chatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
+    const { chatMessagesDiv: defaultChatMessagesDiv, electronAPI, uiHelper, markedInstance } = mainRendererReferences;
+    const chatMessagesDiv = options.root || defaultChatMessagesDiv;
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
@@ -3663,7 +3664,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
 
         // Save history
-        if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
+        if (options.persistHistory !== false && currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
             if (mainRendererReferences.chatRepository) {
                 try {
                     await mainRendererReferences.historyMutationAuthority.replace({
@@ -3777,6 +3778,10 @@ function scheduleMessagePretextEstimate(messageId, text, container) {
         const id = setTimeout(wrappedRun, 0);
         if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'timer', id };
     }
+}
+
+async function renderFullMessageProjection(messageId, fullContent, agentName, agentId, root = mainRendererReferences.chatMessagesDiv) {
+    return renderFullMessage(messageId, fullContent, agentName, agentId, { persistHistory: false, root });
 }
 
 function updateMessageContent(messageId, newContent) {
@@ -4141,6 +4146,7 @@ const messageRenderer = {
     appendStreamChunk,
     projectStreamTerminal,
     renderFullMessage,
+    renderFullMessageProjection,
     clearChat,
     removeMessageById,
     updateMessageContent, // Expose the new function

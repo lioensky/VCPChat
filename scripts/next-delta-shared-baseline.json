@@ -4,11 +4,11 @@
     "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup and send capability for non-streaming/button paths, durable history authority, and no direct IPC fallback"
   },
   "modules/messageRenderer.js": {
-    "sha256": "af5375ff85fc14609977a4e603441632e505a35fb3bc0b27f8cb4b88d1e56d3b",
+    "sha256": "782dbac8779c3cc1faeedda9da68286e1ac6f4519ed38ed8c781e4b9c7fe79ad",
     "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
   },
   "modules/renderer/streamManager.js": {
-      "sha256": "39e59ba82f61e9ae315c9c521dfccb267c2120f836173c62830f8d99aa43cf0b",
+      "sha256": "e885be11f041a779c9c55e1f4535b739d684742a432b89b9f4c43a874d32553c",
     "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, injected view authority, owned animation-frame scheduling and pending operation disposal, no exported singleton or hidden root side channel, no direct durable commit or global send-button facade, ContentRuntime render models, and owned Desktop push subscription/timer consumer"
   },
   "modules/topicListManager.js": {

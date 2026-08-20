@@ -318,6 +318,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
 import { createChatContext } from './modules/chat/chatContext.js';
 import { createChatRepository } from './modules/chat/chatRepository.js';
 import { createMainChatComposition } from './modules/renderer/mainChatComposition.js';
+import { createNonStreamingEventConsumer } from './modules/renderer/nonStreamingEventConsumer.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
 // First production seam for the Chat Kernel migration. Legacy refs remain
@@ -333,6 +334,7 @@ const presentationState = createChatPresentationState({ theme: document.body.cla
 let mainChatDomRenderer = null;
 let mainChatSurface = null;
 let mainChatAdapter = null;
+let nonStreamingEventConsumer = null;
 let releaseNextUiChatCapabilities = null;
 
 function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
@@ -619,6 +621,8 @@ const startupThemeGate = new StartupThemeGate({
             }),
             createInternalRenderer: createOwnedInternalChatRenderer,
             disposeCapabilities: async () => {
+                nonStreamingEventConsumer?.dispose();
+                nonStreamingEventConsumer = null;
                 releaseNextUiChatCapabilities?.();
                 releaseNextUiChatCapabilities = null;
             },
@@ -626,6 +630,11 @@ const startupThemeGate = new StartupThemeGate({
         mainChatAdapter = mainComposition.adapter;
         mainChatSurface = mainChatAdapter.surface;
         mainChatDomRenderer = mainChatAdapter.domRenderer;
+        nonStreamingEventConsumer = createNonStreamingEventConsumer({
+            renderTarget: mainChatDomRenderer,
+            messageRenderer,
+            viewAuthority: { isCurrent: isContextForCurrentChat },
+        });
         releaseNextUiChatCapabilities = mainComposition.releaseCapabilities;
 
     } else {
@@ -701,6 +710,15 @@ const startupThemeGate = new StartupThemeGate({
         }
 
         if (mainChatAdapter?.acceptStreamEvent(eventData)) return;
+        if (nonStreamingEventConsumer?.consume(eventData)) return;
+
+        // Group non-streaming responses and redo removals are explicit business
+        // events, not a second stream terminal path. They are consumed by the
+        // main Surface adapter only when their captured conversation is active.
+        if (type === 'full_response' || type === 'remove_message') {
+            await mainChatAdapter?.consumeNonStreamingEvent?.(eventData);
+            return;
+        }
 
         // --- Asynchronous Logic: Update data model regardless of UI state ---
         // This is where you would update a global or context-specific data store
@@ -719,32 +737,8 @@ const startupThemeGate = new StartupThemeGate({
         // Data model updates should ALWAYS happen, regardless of the current view.
         // UI updates (creating new DOM elements) should only happen if the view is relevant.
         switch (type) {
-            case 'full_response':
-                // This also needs to update history unconditionally and render only if relevant.
-                // `renderFullMessage` should handle this logic.
-                if (isRelevantToCurrentView) {
-                    console.log(`[Renderer onVCPStreamEvent FULL_RESPONSE] Rendering for ${context.agentName} (msgId: ${messageId})`);
-                    messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
-                } else {
-                    // If not relevant, we need a way to update the history without rendering.
-                    // Let's assume `renderFullMessage` needs a flag or we need a new function.
-                    // For now, let's add a placeholder to history.
-                    console.log(`[Renderer onVCPStreamEvent FULL_RESPONSE] History update for non-visible chat needed for msgId: ${messageId}`);
-                    // This part is tricky. The message might not exist in history yet.
-                    // Let's ensure `renderFullMessage` can handle this.
-                    messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
-                }
-                break;
-
             case 'no_ai_response':
                  console.log(`[onVCPStreamEvent] No AI response needed for messageId: ${messageId}. Message: ${eventData.message}`);
-                break;
-
-            case 'remove_message':
-                if (isRelevantToCurrentView) {
-                    console.log(`[onVCPStreamEvent] Removing message ${messageId} from UI.`);
-                    messageRenderer.removeMessageById(messageId, false); // false: don't save history again
-                }
                 break;
 
             default:

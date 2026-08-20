@@ -262,6 +262,9 @@ function initStreamManager(dependencies) {
     if (disposed) throw new Error('StreamProjection is disposed');
     refs = dependencies;
     if (!dependencies.chatRepository) throw new Error('StreamManager requires ChatRepository');
+    if (!dependencies.historyAuthority || typeof dependencies.historyAuthority.get !== 'function' || typeof dependencies.historyAuthority.replace !== 'function') {
+        throw new TypeError('StreamProjection requires an explicit transient history capability');
+    }
 
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
@@ -423,16 +426,12 @@ function applyStreamingPreprocessors(text) {
 }
 
 function getOwnedHistory() {
-    return refs.historyAuthority?.get?.() || refs.currentChatHistoryRef.get();
+    return refs.historyAuthority.get();
 }
 
 function setOwnedHistory(history) {
     const snapshot = Array.isArray(history) ? [...history] : [];
-    if (refs.historyAuthority?.replace) {
-        refs.historyAuthority.replace(snapshot);
-    } else {
-        refs.currentChatHistoryRef.set(snapshot);
-    }
+    refs.historyAuthority.replace(snapshot);
     return snapshot;
 }
 

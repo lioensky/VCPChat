@@ -240,15 +240,25 @@ assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /contextMenu
     'regeneration and context-menu cancellation must use the coordinator-owned bridge');
 assert.match(read('renderer.js'), /mainChatAdapter\?\.cancelStream/,
     'main send-button cancellation fallback must use the coordinator-owned operation');
-assert.match(read('renderer.js'), /createMainChatSurfaceAdapter\([\s\S]*?createChatOperations/,
+const rendererStreamHandler = read('renderer.js');
+assert.match(rendererStreamHandler, /createNonStreamingEventConsumer/,
+    'non-streaming VCP events must have an explicit consumer');
+assert.doesNotMatch(rendererStreamHandler, /messageRenderer\.renderFullMessage\(/,
+    'renderer must not retain a non-streaming terminal fallback');
+assert.doesNotMatch(rendererStreamHandler, /messageRenderer\.removeMessageById\(/,
+    'renderer must not retain a non-streaming removal fallback');
+const compositionSource = read('modules/renderer/mainChatComposition.js');
+assert.match(compositionSource, /createMainChatSurfaceAdapter\(/,
     'main chat must be owned by a real MainChatSurfaceAdapter');
+assert.match(compositionSource, /createChatOperations/,
+    'main chat composition must provide a real operation consumer');
 assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /createChatSurface\([\s\S]*?mode: 'interactive'/,
     'MainChatSurfaceAdapter must compose a real interactive ChatSurface');
 assert.match(read('modules/ui-system/standalone-chat-app.js'), /id: 'standalone-chat-history'/,
     'standalone read-only chat must have a registered internal-app consumer');
 assert.match(read('modules/ui-system/standalone-chat-app.js'), /createChatSurfaceSlots/,
     'named surface slots must have a real production consumer');
-assert.match(read('renderer.js'), /createChatOperations/,
+assert.match(read('modules/renderer/mainChatComposition.js'), /createChatOperations/,
     'main chat must have a real operation consumer');
 assert.match(read('modules/chat/chatPresentationState.js'), /createChatPresentationState/,
     'presentation state must define a narrow read-only state provider');

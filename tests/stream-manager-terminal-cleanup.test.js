@@ -28,6 +28,7 @@ function createDependencies(dom, overrides = {}) {
         currentSelectedItemRef: { get: () => ({ id: 'visible-agent', type: 'agent' }) },
         currentTopicIdRef: { get: () => 'visible-topic' },
         currentChatHistoryRef: { get: () => [], set() {} },
+        historyAuthority: { get: () => [], replace() {} },
         globalSettingsRef: { get: () => ({ enableSmoothStreaming: false }) },
         chatMessagesDiv: root,
         renderMessage: () => null,
