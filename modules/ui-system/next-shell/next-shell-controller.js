@@ -16,6 +16,7 @@
     let pendingTabRestore = null;
     let teardownPromise = null;
     let overlayCoordinator = null;
+    let chatCapabilities = null;
     let releaseWindowState = null;
     let tabOperationId = 0;
     let tabOperationRevision = 0;
@@ -221,7 +222,8 @@
             close: () => closeView(viewId),
             activate: () => setView(viewId),
             feedback: window.VCPUI?.feedback,
-            scope: viewScope
+            scope: viewScope,
+            chat: chatCapabilities,
         });
         let disposer = null;
         try {
@@ -732,6 +734,23 @@
         mount();
     }
 
+    function provideChatCapabilities(capabilities) {
+        if (!capabilities || !capabilities.repository || !capabilities.context
+            || !capabilities.renderer || !capabilities.manager) {
+            throw new TypeError('Next UI chat capabilities require repository, context, renderer and manager.');
+        }
+        chatCapabilities = Object.freeze({
+            repository: capabilities.repository,
+            context: capabilities.context,
+            renderer: capabilities.renderer,
+            manager: capabilities.manager,
+            presentation: capabilities.presentation || null,
+        });
+        return () => {
+            if (chatCapabilities?.repository === capabilities.repository) chatCapabilities = null;
+        };
+    }
+
     // Internal applications may need to enter the shared VCPChat Agent/Group
     // creation flow.  Expose the action itself rather than asking them to
     // synthesize a click on #nextUiCreateItemBtn: that element is part of a
@@ -752,6 +771,7 @@
         setView,
         acquireOverlay,
         releaseOverlay,
+        provideChatCapabilities,
         getDiagnostics: () => Object.freeze({
             mounted,
             generation: mountGeneration,

@@ -324,15 +324,13 @@ const chatContext = createChatContext({
     topicId: currentTopicId,
     history: currentChatHistory
 });
-window.__vcpChatContext = chatContext;
 const chatRepository = createChatRepository(chatAPI);
 const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: chatRepository });
 const presentationState = createChatPresentationState({ theme: document.body.classList.contains('dark-theme') ? 'dark' : 'light', activeSurface: 'main' });
-window.__vcpPresentationState = presentationState;
-window.__vcpChatRepository = chatRepository;
 let mainChatDomRenderer = null;
 let mainChatSurface = null;
 let mainChatAdapter = null;
+let releaseNextUiChatCapabilities = null;
 
 const startupThemeGate = new StartupThemeGate({
     document,
@@ -534,7 +532,19 @@ const startupThemeGate = new StartupThemeGate({
         });
         mainChatSurface = mainChatAdapter.surface;
         mainChatDomRenderer = mainChatAdapter.domRenderer;
-        window.addEventListener('beforeunload', () => mainChatAdapter?.dispose(), { once: true });
+        releaseNextUiChatCapabilities?.();
+        releaseNextUiChatCapabilities = window.VCPNextShellController?.provideChatCapabilities?.({
+            repository: chatRepository,
+            context: chatContext,
+            renderer: messageRenderer,
+            manager: chatManager,
+            presentation: presentationState,
+        }) || null;
+        window.addEventListener('beforeunload', () => {
+            releaseNextUiChatCapabilities?.();
+            releaseNextUiChatCapabilities = null;
+            void mainChatAdapter?.dispose();
+        }, { once: true });
         // Pass the new function to the context menu
         messageRenderer.setContextMenuDependencies({
             showForwardModal: showForwardModal,

@@ -567,15 +567,7 @@
         },
         {
           "file": "modules/ui-system/interactive-chat-app.js",
-          "line": 5,
-          "surface": "internal-app",
-          "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { chatManager } from '../chatManager.js';"
-        },
-        {
-          "file": "modules/ui-system/interactive-chat-app.js",
-          "line": 24,
+          "line": 27,
           "surface": "internal-app",
           "access": "explicit-provider",
           "member": "sendMessage",
@@ -607,7 +599,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 386,
+          "line": 384,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -615,7 +607,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 441,
+          "line": 439,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -623,7 +615,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 457,
+          "line": 455,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayTopicTimestampBubble",
@@ -631,7 +623,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 496,
+          "line": 494,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "processFilesData",
@@ -639,7 +631,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 497,
+          "line": 495,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "addAttachmentsToMessage",
@@ -647,7 +639,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 498,
+          "line": 496,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeAttachmentFromMessage",
@@ -655,7 +647,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 499,
+          "line": 497,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncNextUiEmptyStateWithMessages",
@@ -663,7 +655,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 500,
+          "line": 498,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -671,7 +663,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 728,
+          "line": 738,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleTopicDeletion",
@@ -679,7 +671,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 735,
+          "line": 745,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -687,7 +679,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 748,
+          "line": 758,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "init",
@@ -695,7 +687,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 862,
+          "line": 872,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -703,7 +695,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 886,
+          "line": 896,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -711,7 +703,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1037,
+          "line": 1047,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -719,7 +711,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1072,
+          "line": 1082,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -727,7 +719,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1113,
+          "line": 1123,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -735,7 +727,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1114,
+          "line": 1124,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -743,7 +735,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2576,
+          "line": 2586,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -751,7 +743,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2577,
+          "line": 2587,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -759,7 +751,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2581,
+          "line": 2591,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -1700,22 +1692,6 @@
           "snippet": "<link rel=\"stylesheet\" href=\"../styles/messageRenderer.css\">"
         },
         {
-          "file": "modules/ui-system/interactive-chat-app.js",
-          "line": 4,
-          "surface": "internal-app",
-          "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { messageRenderer } from '../messageRenderer.js';"
-        },
-        {
-          "file": "modules/ui-system/standalone-chat-app.js",
-          "line": 8,
-          "surface": "internal-app",
-          "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { messageRenderer } from '../messageRenderer.js';"
-        },
-        {
           "file": "renderer.js",
           "line": 4,
           "surface": "main-window",
@@ -1725,7 +1701,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 531,
+          "line": 529,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "disposeRendererResources",
@@ -1733,7 +1709,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 539,
+          "line": 549,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setContextMenuDependencies",
@@ -1741,7 +1717,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 641,
+          "line": 651,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderFullMessage",
@@ -1749,7 +1725,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 649,
+          "line": 659,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderFullMessage",
@@ -1757,7 +1733,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 660,
+          "line": 670,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -1765,7 +1741,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1566,
+          "line": 1576,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setUserAvatar",
@@ -1773,7 +1749,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1567,
+          "line": 1577,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setUserAvatarColor",
@@ -5111,7 +5087,7 @@
       "mutableMaps": 1
     },
     "modules/ui-system/interactive-chat-app.js": {
-      "windowReferences": 2,
+      "windowReferences": 0,
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
@@ -5255,7 +5231,7 @@
       "mutableMaps": 0
     },
     "modules/ui-system/standalone-chat-app.js": {
-      "windowReferences": 3,
+      "windowReferences": 0,
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
@@ -5471,7 +5447,7 @@
       "mutableMaps": 0
     },
     "renderer.js": {
-      "windowReferences": 157,
+      "windowReferences": 155,
       "documentReferences": 184,
       "electronReferences": 12,
       "timers": 2,
