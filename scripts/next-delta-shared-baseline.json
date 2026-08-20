@@ -4,8 +4,8 @@
     "reason": "upstream chat core plus reviewed ESM provider export, exact Surface stream routing, explicit independent conversation capability, propagated auxiliary operation failures, durable history authority, and no direct IPC fallback"
   },
   "modules/messageRenderer.js": {
-    "sha256": "50c39201149fb65f4b1092dd7e2a7ccb6dacacaf7eea4d85d427e966f7c0fd0c",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, injected realm/services/capabilities, per-Surface StreamProjection, owned scheduler/resource teardown, and no ambient renderer command, flowlock, Pretext or send-button facade"
+    "sha256": "077dcc5653a77d256b27ec65dcb90c72c4dbf26f159d1efab0e4195c6b4b1a54",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, injected realm/services/capabilities, per-Surface StreamProjection, owner-scoped context-menu and middle-click callbacks, owned scheduler/resource teardown, and no ambient renderer command facade"
   },
   "modules/renderer/streamManager.js": {
     "sha256": "2483e5bdd5b0f596e84af33137ac1083733cef5c4badca806bce0fa01baf74f5",

@@ -2577,11 +2577,6 @@ function initializeMessageRenderer(refs) {
         extractSpeakableTextFromContentElement: extractSpeakableTextFromContentElement,
     });
 
-    if (features.contextMenu && features.globalCommands && typeof contextMenu.toggleEditMode === 'function') {
-        window.toggleEditMode = contextMenu.toggleEditMode;
-        window.messageContextMenu = contextMenu;
-    }
-
     if (features.streamProjection) streamManager.initStreamManager({
         chatRepository: mainRendererReferences.chatRepository,
         chatDomRenderer: mainRendererReferences.chatDomRenderer,
@@ -2624,6 +2619,8 @@ function initializeMessageRenderer(refs) {
     if (features.middleClick) middleClickHandler.initialize(mainRendererReferences, {
         removeMessageById: removeMessageById,
         streamManager,
+        toggleEditMode: contextMenu.toggleEditMode,
+        handleRegenerateResponse: contextMenu.handleRegenerateResponse,
     });
 
     // --- 用户气泡文件拖拽支持 ---

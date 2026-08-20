@@ -1862,7 +1862,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2566,
+          "line": 2569,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1870,7 +1870,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2582,
+          "line": 2580,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "initStreamManager",
@@ -4684,7 +4684,7 @@
     },
     "modules/messageRenderer.js": {
       "windowReferences": 13,
-      "documentReferences": 39,
+      "documentReferences": 41,
       "electronReferences": 17,
       "timers": 8,
       "listeners": 7,
@@ -4811,7 +4811,7 @@
       "mutableMaps": 0
     },
     "modules/renderer/middleClickHandler.js": {
-      "windowReferences": 15,
+      "windowReferences": 7,
       "documentReferences": 10,
       "electronReferences": 14,
       "timers": 9,
@@ -4859,8 +4859,8 @@
       "mutableMaps": 0
     },
     "modules/renderer/streamManager.js": {
-      "windowReferences": 7,
-      "documentReferences": 9,
+      "windowReferences": 4,
+      "documentReferences": 1,
       "electronReferences": 3,
       "timers": 8,
       "listeners": 2,

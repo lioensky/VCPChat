@@ -574,10 +574,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
 
                         // Now proceed with edit mode
                         try {
-                            if (typeof window.toggleEditMode === 'function') {
-                                window.toggleEditMode(messageItem, message);
-                            } else if (window.messageContextMenu && typeof window.messageContextMenu.toggleEditMode === 'function') {
-                                window.messageContextMenu.toggleEditMode(messageItem, message);
+                            if (typeof callbacks.toggleEditMode === 'function') {
+                                callbacks.toggleEditMode(messageItem, message);
                             } else {
                                 uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
                             }
@@ -786,8 +784,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                     }
                 } else {
                     // 非群聊重新回复逻辑（原有逻辑）
-                    if (window.messageContextMenu && typeof window.messageContextMenu.handleRegenerateResponse === 'function') {
-                        window.messageContextMenu.handleRegenerateResponse(message);
+                    if (typeof callbacks.handleRegenerateResponse === 'function') {
+                        callbacks.handleRegenerateResponse(message);
                         uiHelper.showToastNotification("已开始重新生成回复", "success");
                     } else {
                         uiHelper.showToastNotification("重新回复功能暂时不可用", "warning");
