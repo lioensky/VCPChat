@@ -1,5 +1,7 @@
 import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
+import { messageRenderer } from './modules/messageRenderer.js';
+import { streamManager } from './modules/renderer/streamManager.js';
 
 // --- Globals ---
 let globalSettings = {
@@ -173,8 +175,8 @@ function getInterruptibleMessageForCurrentChat() {
         }
     }
 
-    const activeStreamingMessageId = window.streamManager?.getActiveStreamingMessageId?.();
-    const activeStreamingContext = window.streamManager?.getActiveStreamingContext?.();
+    const activeStreamingMessageId = streamManager?.getActiveStreamingMessageId?.();
+    const activeStreamingContext = streamManager?.getActiveStreamingContext?.();
     if (!activeStreamingMessageId || !isContextForCurrentChat(activeStreamingContext)) {
         return null;
     }
@@ -240,9 +242,9 @@ async function interruptActiveResponseFromSendButton() {
         result.error || 'interrupt-request-failed'
     );
     if (!localOutcome) {
-        window.streamManager?.discardStreamingMessage?.(activeMessage.id);
+        streamManager?.discardStreamingMessage?.(activeMessage.id);
         currentChatHistory = currentChatHistory.filter(message => message?.id !== activeMessage.id);
-        window.messageRenderer?.removeMessageById?.(activeMessage.id, false);
+        messageRenderer?.removeMessageById?.(activeMessage.id, false);
     }
 
     updateSendButtonState();
@@ -424,7 +426,7 @@ const startupThemeGate = new StartupThemeGate({
                     window.currentTopicId = val;
                 }
             },
-            messageRenderer: window.messageRenderer, // Will be initialized later, pass ref
+            messageRenderer, // Explicit provider; initialized below
             uiHelper: uiHelperFunctions,
             mainRendererElements: mainRendererElementsForGroupRenderer, // 使用构造好的对象
             mainRendererFunctions: { // Pass shared functions with delayed binding
@@ -463,7 +465,7 @@ const startupThemeGate = new StartupThemeGate({
     }
 
     // Initialize other modules after GroupRenderer, in case they depend on its setup
-    if (window.messageRenderer) {
+    if (messageRenderer) {
         interruptHandler.initialize(chatAPI);
 
         const historyPersistence = createChatHistoryPersistence(chatRepository);
@@ -493,7 +495,7 @@ const startupThemeGate = new StartupThemeGate({
         };
         mainChatAdapter = createMainChatSurfaceAdapter({
             root: chatMessagesDiv,
-            renderer: window.messageRenderer,
+            renderer: messageRenderer,
             repository: chatRepository,
             focusTarget: messageInput,
             operations: createChatOperations({
@@ -503,9 +505,9 @@ const startupThemeGate = new StartupThemeGate({
             presentationState,
             renderDependencies,
             streamServices: {
-                streamProjection: window.streamManager,
+                streamProjection: streamManager,
                 historyPersistence,
-                messageRenderer: window.messageRenderer,
+                messageRenderer,
                 chatManager: window.chatManager,
                 flowlockManager: window.flowlockManager,
                 getSelection: () => currentSelectedItem,
@@ -513,15 +515,15 @@ const startupThemeGate = new StartupThemeGate({
                 dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
             },
             disposeRenderer: async () => {
-                window.messageRenderer.disposeRendererResources();
-                await window.streamManager?.cleanupTransientState?.();
+                messageRenderer.disposeRendererResources();
+                await streamManager?.cleanupTransientState?.();
             },
         });
         mainChatSurface = mainChatAdapter.surface;
         mainChatDomRenderer = mainChatAdapter.domRenderer;
         window.addEventListener('beforeunload', () => mainChatAdapter?.dispose(), { once: true });
         // Pass the new function to the context menu
-        window.messageRenderer.setContextMenuDependencies({
+        messageRenderer.setContextMenuDependencies({
             showForwardModal: showForwardModal,
             acceptStreamEvent: event => mainChatAdapter?.acceptStreamEvent(event),
             cancelStream: (messageId, reason) => mainChatAdapter?.cancelStream(messageId, reason),
@@ -587,7 +589,7 @@ const startupThemeGate = new StartupThemeGate({
 
     // Unified listener for all VCP stream events (agent and group)
     chatAPI.onVCPStreamEvent(async (eventData) => {
-        if (!window.messageRenderer) {
+        if (!messageRenderer) {
             console.error("onVCPStreamEvent: messageRenderer not available.");
             return;
         }
@@ -623,7 +625,7 @@ const startupThemeGate = new StartupThemeGate({
                 // `renderFullMessage` should handle this logic.
                 if (isRelevantToCurrentView) {
                     console.log(`[Renderer onVCPStreamEvent FULL_RESPONSE] Rendering for ${context.agentName} (msgId: ${messageId})`);
-                    window.messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
+                    messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
                 } else {
                     // If not relevant, we need a way to update the history without rendering.
                     // Let's assume `renderFullMessage` needs a flag or we need a new function.
@@ -631,7 +633,7 @@ const startupThemeGate = new StartupThemeGate({
                     console.log(`[Renderer onVCPStreamEvent FULL_RESPONSE] History update for non-visible chat needed for msgId: ${messageId}`);
                     // This part is tricky. The message might not exist in history yet.
                     // Let's ensure `renderFullMessage` can handle this.
-                    window.messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
+                    messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);
                 }
                 break;
 
@@ -642,7 +644,7 @@ const startupThemeGate = new StartupThemeGate({
             case 'remove_message':
                 if (isRelevantToCurrentView) {
                     console.log(`[onVCPStreamEvent] Removing message ${messageId} from UI.`);
-                    window.messageRenderer.removeMessageById(messageId, false); // false: don't save history again
+                    messageRenderer.removeMessageById(messageId, false); // false: don't save history again
                 }
                 break;
 
@@ -740,7 +742,7 @@ const startupThemeGate = new StartupThemeGate({
             chatRepository,
             uiHelper: uiHelperFunctions,
             modules: {
-                messageRenderer: window.messageRenderer,
+                messageRenderer,
                 itemListManager: window.itemListManager,
                 topicListManager: window.topicListManager,
                 groupRenderer: window.GroupRenderer,
@@ -1543,9 +1545,9 @@ async function loadAndApplyGlobalSettings() {
             }
         });
 
-        if (window.messageRenderer) {
-            window.messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);
-            window.messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
+        if (messageRenderer) {
+            messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);
+            messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
         }
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
@@ -1777,7 +1779,7 @@ async function applyChatPresentationMode(mode, options = {}) {
     } else {
         window.pretextBridge?.clearAll?.();
     }
-    window.messageRenderer?.refreshLayoutDependentState?.();
+    messageRenderer?.refreshLayoutDependentState?.();
 
     if (anchor) {
         requestAnimationFrame(() => {

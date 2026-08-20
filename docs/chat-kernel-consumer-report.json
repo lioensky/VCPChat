@@ -96,7 +96,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 24
+          "occurrences": 23
         },
         {
           "file": "modules/event-listeners.js",
@@ -166,7 +166,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 5
+          "occurrences": 7
         },
         {
           "file": "modules/chatManager.js",
@@ -242,7 +242,7 @@
   ],
   "ownershipSignals": {
     "renderer.js": {
-      "windowReferences": 207,
+      "windowReferences": 186,
       "documentReferences": 184,
       "electronReferences": 12,
       "timers": 2,
