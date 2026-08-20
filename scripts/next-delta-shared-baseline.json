@@ -1,7 +1,7 @@
 {
   "modules/chatManager.js": {
-    "sha256": "174ccff7c8cb14bb0a5020bee608972c2703e976ac79d88b3675bb8d40014db9",
-    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists"
+    "sha256": "28c60fbd43f477abf42503b236430c33543c58a1b1ecfabe60405aee0ad2e71f",
+    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists; selection intent persisted before watcher/history work for renderer recovery"
   },
   "modules/messageRenderer.js": {
     "sha256": "81b5bba599f6645e39a6005c773e761d9d3f2289474dbefece513d1792679ea5",

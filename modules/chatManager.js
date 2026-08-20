@@ -809,6 +809,10 @@ export const chatManager = (() => {
         try {
             currentTopicIdRef.set(topicId);
             if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
+            // Persist the selection intent before watcher/history work. A
+            // renderer reload or crash during that work must restore the
+            // topic the user actually selected, not the previous durable one.
+            await _saveLastOpenState();
             const lease = await beginHistoryWatcherOperation();
             if (!isTopicSelectionCurrent() || lease?.stale || lease?.success === false) return;
             watcherLeaseToken = lease.token || null;
