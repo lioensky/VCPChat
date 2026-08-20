@@ -220,6 +220,10 @@ assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI
     'message edit persistence must use ChatRepository rather than renderer IPC fallbacks');
 assert.match(read('Flowlockmodules/flowlock-integration.js'), /requires a ready ChatManager provider/,
     'Flowlock must fail fast when its production history consumer is absent or not ready');
+assert.match(read('Flowlockmodules/flowlock-integration.js'), /requires a history mutation authority/,
+    'Flowlock must fail fast when its durable mutation authority is absent');
+assert.doesNotMatch(read('Flowlockmodules/flowlock-integration.js'), /saveChatHistory|saveGroupChatHistory/,
+    'Flowlock must not bypass the shared durable history mutation authority');
 
 const contributionSource = read('modules/ui-system/contribution-registry.js');
 assert.doesNotMatch(contributionSource, /new ContributionRegistry\(['"](?:menu|setting)['"]\)|\bmenus\b|\bsettings\b/,

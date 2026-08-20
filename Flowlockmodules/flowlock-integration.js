@@ -4,6 +4,7 @@
 
 console.log('[Flowlock Integration] Loading integration script (multi-session)...');
 let chatManagerProvider = null;
+let historyMutationAuthorityProvider = null;
 
 /**
  * 初始化Flowlock模块
@@ -235,7 +236,12 @@ async function continueWritingForContext(params) {
             historyWithThinking = [];
         }
         historyWithThinking.push(thinkingMessage);
-        await chatAPI.saveChatHistory(agentId, topicId, historyWithThinking);
+        await historyMutationAuthorityProvider.replace({
+            itemId: agentId,
+            itemType: 'agent',
+            topicId,
+            category: 'flowlock-start'
+        }, historyWithThinking);
     }
 
     // 发送到 VCP
@@ -272,7 +278,12 @@ async function continueWritingForContext(params) {
             if (historyForSave && !historyForSave.error) {
                 const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessageId && !msg.isThinking);
                 finalHistory.push(assistantMessage);
-                await chatAPI.saveChatHistory(agentId, topicId, finalHistory);
+                await historyMutationAuthorityProvider.replace({
+                    itemId: agentId,
+                    itemType: 'agent',
+                    topicId,
+                    category: 'flowlock-terminal'
+                }, finalHistory);
 
                 if (isForCurrentView && chatManagerProvider?.loadChatHistory) {
                     await chatManagerProvider.loadChatHistory(agentId, 'agent', topicId);
@@ -404,10 +415,18 @@ function initializeFlowlockIntegration(dependencies = {}) {
         if (!provider || typeof provider.loadChatHistory !== 'function' || provider.isReady?.() === false) {
             throw new TypeError('Flowlock integration requires a ready ChatManager provider.');
         }
+        const mutationAuthority = dependencies.historyMutationAuthority;
+        if (!mutationAuthority || typeof mutationAuthority.replace !== 'function') {
+            throw new TypeError('Flowlock integration requires a history mutation authority.');
+        }
         if (chatManagerProvider && chatManagerProvider !== provider) {
             throw new Error('Flowlock ChatManager provider is already registered.');
         }
+        if (historyMutationAuthorityProvider && historyMutationAuthorityProvider !== mutationAuthority) {
+            throw new Error('Flowlock history mutation authority is already registered.');
+        }
         chatManagerProvider = provider;
+        historyMutationAuthorityProvider = mutationAuthority;
         initializeFlowlock();
         setupFlowlockInteractions();
         setupFlowlockShortcuts();

@@ -1117,7 +1117,7 @@ const startupThemeGate = new StartupThemeGate({
 
     // --- Initialize Flowlock Module ---
     if (window.initializeFlowlockIntegration) {
-        window.initializeFlowlockIntegration({ chatManager });
+        window.initializeFlowlockIntegration({ chatManager, historyMutationAuthority });
         console.log('[Renderer] Flowlock integration initialized.');
     } else {
         console.warn('[Renderer] Flowlock integration function not found.');
