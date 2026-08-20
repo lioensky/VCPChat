@@ -7,6 +7,7 @@ import { applyUserMessageLayoutState } from './modules/renderer/domBuilder.js';
 import { createStreamProjection } from './modules/renderer/streamManager.js';
 import { createMainChatEventBridge } from './modules/renderer/mainChatEventBridge.js';
 import { createOwnedPreloadSubscription } from './modules/renderer/ownedPreloadSubscription.js';
+import { createTopicSelectionReadiness } from './modules/renderer/topicSelectionReadiness.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -86,14 +87,21 @@ let currentSelectedItem = {
 };
 let currentTopicId = null;
 let currentChatHistory = [];
-window.__vcpRendererReady = false;
-window.__vcpPendingTopicSelection = null;
+const mainChatStateAuthority = createMainChatStateAuthority({ selectedItem: currentSelectedItem, topicId: currentTopicId });
+const topicSelectionReadiness = createTopicSelectionReadiness();
 const chatAPI = window.chatAPI || window.electronAPI;
 const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
 
-// 暴露到window对象以便其他模块访问
-window.currentSelectedItem = currentSelectedItem;
-window.currentTopicId = currentTopicId;
+// Plugin-facing state is read-only; mutation authority remains here.
+window.VCPMainChatState = mainChatStateAuthority.consumer;
+const setCurrentSelectedItem = value => {
+    currentSelectedItem = value;
+    mainChatStateAuthority.setSelectedItem(value);
+};
+const setCurrentTopicId = value => {
+    currentTopicId = value;
+    mainChatStateAuthority.setTopicId(value);
+};
 let attachedFiles = [];
 let audioContext = null;
 let currentAudioSource = null;
@@ -272,6 +280,7 @@ import { createChatContext } from './modules/chat/chatContext.js';
 import { createChatRepository } from './modules/chat/chatRepository.js';
 import { createMainChatComposition } from './modules/renderer/mainChatComposition.js';
 import { createMainChatDomBindings } from './modules/renderer/mainChatDomBindings.js';
+import { createMainChatStateAuthority } from './modules/chat/mainChatStateAuthority.js';
 import { createNonStreamingEventConsumer } from './modules/renderer/nonStreamingEventConsumer.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
@@ -467,15 +476,13 @@ const startupThemeGate = new StartupThemeGate({
             currentSelectedItemRef: {
                 get: () => currentSelectedItem,
                 set: (val) => {
-                    currentSelectedItem = val;
-                    window.currentSelectedItem = val;
+                    setCurrentSelectedItem(val);
                 }
             },
             currentTopicIdRef: {
                 get: () => currentTopicId,
                 set: (val) => {
-                    currentTopicId = val;
-                    window.currentTopicId = val;
+                    setCurrentTopicId(val);
                 }
             },
             messageRenderer, // Explicit provider; initialized below
@@ -533,11 +540,11 @@ const startupThemeGate = new StartupThemeGate({
             transientStreamHistory,
             currentSelectedItemRef: {
                 get: () => currentSelectedItem,
-                set: (val) => { currentSelectedItem = val; window.currentSelectedItem = val; }
+                set: setCurrentSelectedItem
             },
             currentTopicIdRef: {
                 get: () => currentTopicId,
-                set: (val) => { currentTopicId = val; window.currentTopicId = val; }
+                set: setCurrentTopicId
             },
             globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
             chatMessagesDiv,
@@ -734,6 +741,7 @@ const startupThemeGate = new StartupThemeGate({
                     get: () => currentTopicId
                 },
             },
+            topicSelectionReadiness,
             uiHelper: uiHelperFunctions,
             mainRendererFunctions: {
                 updateCurrentItemConfig: (newConfig) => {
@@ -742,6 +750,7 @@ const startupThemeGate = new StartupThemeGate({
                     } else {
                         Object.assign(currentSelectedItem, newConfig);
                     }
+                    mainChatStateAuthority.setSelectedItem(currentSelectedItem);
                 },
                 handleTopicDeletion: (remainingTopics, deletionContext) => {
                     if (chatManager) {
@@ -784,15 +793,13 @@ const startupThemeGate = new StartupThemeGate({
                 currentSelectedItemRef: {
                     get: () => currentSelectedItem,
                     set: (val) => {
-                        currentSelectedItem = val;
-                        window.currentSelectedItem = val;
+                        setCurrentSelectedItem(val);
                     }
                 },
                 currentTopicIdRef: {
                     get: () => currentTopicId,
                     set: (val) => {
-                        currentTopicId = val;
-                        window.currentTopicId = val;
+                        setCurrentTopicId(val);
                     }
                 },
                 currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
@@ -831,15 +838,13 @@ const startupThemeGate = new StartupThemeGate({
                 currentSelectedItemRef: {
                     get: () => currentSelectedItem,
                     set: (val) => {
-                        currentSelectedItem = val;
-                        window.currentSelectedItem = val;
+                        setCurrentSelectedItem(val);
                     }
                 },
                 currentTopicIdRef: {
                     get: () => currentTopicId,
                     set: (val) => {
-                        currentTopicId = val;
-                        window.currentTopicId = val;
+                        setCurrentTopicId(val);
                     }
                 },
                 currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
@@ -1078,13 +1083,13 @@ const startupThemeGate = new StartupThemeGate({
         }
 
        // Emoticon URL fixer is now initialized within messageRenderer
-        window.__vcpRendererReady = true;
+        topicSelectionReadiness.setReady(true);
 
         chatAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
 
-        if (window.__vcpPendingTopicSelection && chatManager) {
-            const pending = window.__vcpPendingTopicSelection;
-            window.__vcpPendingTopicSelection = null;
+        const pendingTopicSelection = topicSelectionReadiness.takePending();
+        if (pendingTopicSelection && chatManager) {
+            const pending = pendingTopicSelection;
             const matchesCurrentItem =
                 currentSelectedItem &&
                 currentSelectedItem.id === pending.itemId &&
@@ -1097,7 +1102,7 @@ const startupThemeGate = new StartupThemeGate({
             }
         }
     } catch (error) {
-        window.__vcpRendererReady = false;
+        topicSelectionReadiness.setReady(false);
         console.error('Error during DOMContentLoaded initialization:', error);
         startupThemeGate.release({
             mode: 'system',

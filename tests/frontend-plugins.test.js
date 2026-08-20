@@ -379,7 +379,8 @@ test('自动 TTS 开关注入 Sovits 设置区且只朗读启动后完成的新�
     });
     const { window } = dom;
     createRegistry(window);
-    window.currentSelectedItem = { id: 'agent-a', type: 'agent', name: 'Agent A' };
+    const selectedItem = Object.freeze({ id: 'agent-a', type: 'agent', name: 'Agent A' });
+    window.VCPMainChatState = Object.freeze({ snapshot: () => Object.freeze({ selectedItem, topicId: 'topic-a' }) });
     const calls = [];
     window.chatAPI = {
         getAgentConfig: async () => ({

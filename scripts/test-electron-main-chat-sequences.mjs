@@ -418,15 +418,15 @@ try {
     const waitState = async (id, topicId) => {
         try {
             await page.waitForFunction((expectedId, expectedTopic) => (
-                window.currentSelectedItem?.id === expectedId
-                && window.currentTopicId === expectedTopic
+                window.VCPMainChatState?.snapshot?.()?.selectedItem?.id === expectedId
+                && window.VCPMainChatState?.snapshot?.()?.topicId === expectedTopic
                 && document.querySelector(`#agentList > [data-item-id="${expectedId}"][data-item-type="agent"].active`)
                 && document.querySelector(`[data-topic-id="${expectedTopic}"].active`)
             ), { timeout: 8_000 }, id, topicId);
         } catch (error) {
             const actual = await page.evaluate(() => ({
-                id: window.currentSelectedItem?.id,
-                topicId: window.currentTopicId,
+                id: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id,
+                topicId: window.VCPMainChatState?.snapshot?.()?.topicId,
                 activeItems: [...document.querySelectorAll('#agentList > .active')].map(node => node.dataset.itemId),
                 activeTopics: [...document.querySelectorAll('.topic-item.active')].map(node => node.dataset.topicId),
             }));
@@ -476,12 +476,12 @@ try {
             await waitState(last, topicId);
         },
         async selectTopic(topicId) {
-            const id = await page.evaluate(() => window.currentSelectedItem.id);
+            const id = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
             await click(`[data-topic-id="${topicId}"][data-item-id="${id}"]`);
             await waitState(id, topicId);
         },
         async raceTopics(first, last) {
-            const id = await page.evaluate(() => window.currentSelectedItem.id);
+            const id = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
             await page.evaluate(({ firstId, lastId, itemId }) => {
                 document.querySelector(`[data-topic-id="${firstId}"][data-item-id="${itemId}"]`)?.click();
                 document.querySelector(`[data-topic-id="${lastId}"][data-item-id="${itemId}"]`)?.click();
@@ -499,14 +499,14 @@ try {
             const requestDeadline = Date.now() + 5_000;
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
             assert.ok(fixture.requests.length > before, 'stream request did not reach the controlled VCP fixture');
-            const id = await page.evaluate(() => window.currentSelectedItem.id);
+            const id = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
             await click(`[data-topic-id="${targetTopic}"][data-item-id="${id}"]`);
             await waitState(id, targetTopic);
             await sleep(500);
         },
         async concurrentStreamsReverse(targetTopic, nonce) {
-            const itemId = await page.evaluate(() => window.currentSelectedItem.id);
-            const sourceTopic = await page.evaluate(() => window.currentTopicId);
+            const itemId = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
+            const sourceTopic = await page.evaluate(() => window.VCPMainChatState.snapshot().topicId);
             const firstKey = `first-${nonce}`;
             const secondKey = `second-${nonce}`;
             const sendHeld = key => page.evaluate(holdKey => {
@@ -572,8 +572,8 @@ try {
         },
         async createDeleteTopicRoundtrip(expectedTopic) {
             const item = await page.evaluate(() => ({
-                id: window.currentSelectedItem.id,
-                type: window.currentSelectedItem.type,
+                id: window.VCPMainChatState.snapshot().selectedItem.id,
+                type: window.VCPMainChatState.snapshot().selectedItem.type,
             }));
             const createdTopicId = await page.evaluate(async ({ itemId, itemType }) => {
                 const before = new Set((await window.chatAPI.getAgentTopics(itemId)).map(topic => topic.id));
@@ -628,8 +628,8 @@ try {
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
             if (fixture.requests.length === before) {
                 const state = await page.evaluate(() => ({
-                    selected: window.currentSelectedItem?.id || null,
-                    topicId: window.currentTopicId || null,
+                    selected: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id || null,
+                    topicId: window.VCPMainChatState?.snapshot?.()?.topicId || null,
                     inputDisabled: document.getElementById('messageInput')?.disabled,
                     sendDisabled: document.getElementById('sendMessageBtn')?.disabled,
                     sendMode: document.getElementById('sendMessageBtn')?.dataset.mode,
@@ -646,8 +646,8 @@ try {
         },
         async recoverDuringHeldStream(kind, nonce) {
             const expected = await page.evaluate(() => ({
-                id: window.currentSelectedItem?.id,
-                topicId: window.currentTopicId,
+                id: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id,
+                topicId: window.VCPMainChatState?.snapshot?.()?.topicId,
             }));
             assert.ok(expected.id && expected.topicId, `${kind}: no selected conversation`);
             const key = `${kind}-${nonce}`;
@@ -731,8 +731,8 @@ try {
         },
     };
     const observe = () => page.evaluate(() => ({
-        identity: window.currentSelectedItem?.id || null,
-        topicId: window.currentTopicId || null,
+        identity: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id || null,
+        topicId: window.VCPMainChatState?.snapshot?.()?.topicId || null,
         activeItems: [...document.querySelectorAll('#agentList > [data-item-id][data-item-type].active')].map(node => node.dataset.itemId),
         activeTopics: [...document.querySelectorAll('.topic-item.active')].map(node => node.dataset.topicId),
         rendererReady: document.documentElement.dataset.vcpRendererReady,
@@ -820,8 +820,8 @@ try {
         const itemId = identities[0];
         const topicId = topics[itemId][0];
         await click(`#agentList > [data-item-id="${itemId}"][data-item-type="agent"]`);
-        await page.waitForFunction(expectedId => window.currentSelectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
-        const activeTopic = await page.evaluate(() => window.currentTopicId);
+        await page.waitForFunction(expectedId => window.VCPMainChatState?.snapshot?.()?.selectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
+        const activeTopic = await page.evaluate(() => window.VCPMainChatState.snapshot().topicId);
         if (activeTopic !== topicId) {
             // Selecting an item starts the asynchronous topic-list load. Do
             // not issue the imperative selectTopic command until its real DOM

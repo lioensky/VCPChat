@@ -1307,11 +1307,11 @@ try {
     }, productionCreationName);
     await page.waitForFunction(expectedName => (
         !document.querySelector('.next-ui-create-dialog-host')
-        && window.currentSelectedItem?.name === expectedName
-        && window.currentSelectedItem?.type === 'agent'
+        && window.VCPMainChatState?.snapshot?.()?.selectedItem?.name === expectedName
+        && window.VCPMainChatState?.snapshot?.()?.selectedItem?.type === 'agent'
     ), { timeout: timeoutMs }, productionCreationName);
     const productionCreation = await page.evaluate(async expectedName => {
-        const selected = window.currentSelectedItem;
+        const selected = window.VCPMainChatState?.snapshot?.()?.selectedItem;
         const listEntry = selected?.id
             ? document.querySelector(`#agentList [data-item-id="${CSS.escape(selected.id)}"][data-item-type="agent"]`)
             : null;

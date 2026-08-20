@@ -5,6 +5,7 @@
 console.log('[Flowlock Integration] Loading integration script (multi-session)...');
 let chatManagerProvider = null;
 let historyMutationAuthorityProvider = null;
+const mainChatSnapshot = () => window.VCPMainChatState?.snapshot?.() || { selectedItem: null, topicId: null };
 
 /**
  * 初始化Flowlock模块
@@ -213,8 +214,7 @@ async function continueWritingForContext(params) {
         avatarColor: agentConfig?.avatarCalculatedColor
     };
 
-    const currentSelectedItem = window.currentSelectedItem;
-    const currentTopicId = window.currentTopicId;
+    const { selectedItem: currentSelectedItem, topicId: currentTopicId } = mainChatSnapshot();
     const isForCurrentView = currentSelectedItem?.id === agentId && currentTopicId === topicId;
 
     // 构建上下文。后台流也必须带完整身份，streamManager 才能写入正确历史。
@@ -322,8 +322,7 @@ function setupFlowlockInteractions() {
 
         e.preventDefault();
 
-        const currentItem = window.currentSelectedItem;
-        const currentTopic = window.currentTopicId;
+        const { selectedItem: currentItem, topicId: currentTopic } = mainChatSnapshot();
 
         if (!currentItem || !currentItem.id || !currentTopic) {
             if (window.uiHelperFunctions?.showToastNotification) {
@@ -350,8 +349,7 @@ function setupFlowlockInteractions() {
 
         if (!window.flowlockManager) return;
 
-        const currentItem = window.currentSelectedItem;
-        const currentTopic = window.currentTopicId;
+        const { selectedItem: currentItem, topicId: currentTopic } = mainChatSnapshot();
 
         if (window.flowlockManager.isAgentLocked(currentItem.id)) {
             // 如果已激活，则停止
@@ -383,8 +381,7 @@ function setupFlowlockShortcuts() {
 
             if (!window.flowlockManager) return;
 
-            const currentItem = window.currentSelectedItem;
-            const currentTopic = window.currentTopicId;
+            const { selectedItem: currentItem, topicId: currentTopic } = mainChatSnapshot();
 
             if (!currentItem || !currentItem.id || !currentTopic) {
                 if (window.uiHelperFunctions?.showToastNotification) {
