@@ -726,8 +726,12 @@ const startupThemeGate = new StartupThemeGate({
         consumeNonStreamingEvent: eventData => nonStreamingEventConsumer?.consume(eventData),
     });
 
-    // Listener for group topic title updates
-    chatAPI.onVCPGroupTopicUpdated(async (eventData) => {
+    // Listener for group topic title updates. Keep the preload subscription
+    // under the renderer owner so reload/crash teardown cannot leave a late
+    // callback mutating a replaced selection.
+    if (chatAPI?.onVCPGroupTopicUpdated) ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
+        subscribe: chatAPI.onVCPGroupTopicUpdated,
+        consume: async (eventData) => {
         const { groupId, topicId, newTitle, topics } = eventData;
         console.log(`[Renderer] Received topic update for group ${groupId}, topic ${topicId}: "${newTitle}"`);
         if (currentSelectedItem.id === groupId && currentSelectedItem.type === 'group') {
@@ -755,7 +759,8 @@ const startupThemeGate = new StartupThemeGate({
             // }
             console.log(`群组 "${currentSelectedItem.name}" 的话题 "${newTitle}" 已自动总结并更新 (通知已移除).`);
         }
-    });
+        },
+    }));
 
 
     // Initialize TopicListManager
