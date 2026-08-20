@@ -224,6 +224,8 @@ assert.match(read('modules/chat/surfaceConversation.js'), /createSurfaceConversa
     'internal chat Surfaces must own fixed conversation identity, local history and disposal authority');
 assert.doesNotMatch(read('modules/renderer/streamManager.js'), /(?<![A-Za-z_$])(document|window)\s*[.\[]/,
     'StreamProjection must consume its owning DOM realm through injected capabilities');
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /(?<![A-Za-z_$.])requestAnimationFrame\s*\(/,
+    'StreamProjection animation frames must be owned by its scheduler capability');
 assert.match(read('renderer.js'), /createSurfaceConversation[\s\S]*conversationCapability/,
     'internal Surface renderers must receive an explicit conversation capability');
 assert.match(read('modules/ui-system/interactive-chat-app.js'), /conversation: rendererOwner\.conversation[\s\S]*awaitTerminal: true/,
