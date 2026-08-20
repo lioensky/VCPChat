@@ -119,6 +119,8 @@ D0 consumer baseline 已接入 `check:ui-system`：生产引用、测试引用�
 
 D0 consumer baseline、D1 StreamSession/Coordinator、D2–D4 Surface/realm/history 边界均已接入生产并有测试；D5–D7 尚未完成。当前 Chat Kernel 单元为 107/107，静态门禁通过；主聊天完整 20-run/489-action/173-request 已通过。剩余是辅助窗口并发/reload/crash 的独立长矩阵和 30–60 分钟人工 soak。
 
+最新 D6 增量已将主聊天选择与话题初始化改为显式 capability：`VCPMainChatState` 只读快照替代可变 selection globals，`TopicSelectionReadiness` 替代 renderer-ready/pending selection 全局字段；Flowlock、AutoTTS 和 Electron 序列测试均已迁移到真实 consumer。Chat Kernel 当前为 109/109，辅助 Voice/Rust 并发流场景已纳入主聊天序列。
+
 并发流的终态持久化现在会在 stream terminal 显式 flush 并等待当前 topic 的 ChatRepository 保存；独立交互 Surface 的测试也在下一次请求前等待真实 `aria-busy=false` 终态，避免把 terminal 事件误当成发送 Promise 已完成。
 
 ## 7. 文档权威关系

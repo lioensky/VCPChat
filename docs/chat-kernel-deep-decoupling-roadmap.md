@@ -92,6 +92,8 @@ D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一
 
 ## Stream Session 目标接口
 
+D6 最新增量已移除主聊天 selection 与 topic-readiness 的无界全局 facade：`VCPMainChatState` 是 composition root 创建的只读 consumer，`TopicSelectionReadiness` 由 TopicListManager 显式注入；辅助 Voice/Rust 并发场景已覆盖 context binding、独立 terminal 和分别关闭。D5/D7 仍以完整 renderer composition 收口和人工 soak 为退出条件。
+
 第一版只保留真实消费者需要的最小接口，不做通用 Store：
 
 ```js
