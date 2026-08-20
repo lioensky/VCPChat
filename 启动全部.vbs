@@ -1,13 +1,15 @@
 Option Explicit
 
-Dim WshShell, projectPath, launcherPath
+Dim WshShell, projectPath, electronPath, commandToRun
 
 projectPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
-launcherPath = """" & projectPath & "\StartVCPchat.exe"""
+electronPath = projectPath & "\node_modules\electron\dist\electron.exe"
+commandToRun = """" & electronPath & """ ."
 
-' 兼容旧快捷方式：Rust 启动器现在独立负责启动、进度监听与生命周期监督。
+' 无启动动画的独立兜底入口，不依赖 Rust 启动器。
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run launcherPath, 0, False
+WshShell.CurrentDirectory = projectPath
+WshShell.Run commandToRun, 0, False
 Set WshShell = Nothing
 
 WScript.Quit
