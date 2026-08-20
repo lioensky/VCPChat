@@ -92,14 +92,14 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 
 同步后的 macOS 自动证据：
 
-- `npm run check:ui-system`：通过，UI System 75/75。
-- Electron UI Apps：22/22。
-- 主聊天操作序列：24 actions、11 action kinds、21 pairs、12 transitions、2 faults、required edge 1/1。
+- `npm run check:ui-system`：通过，UI System 80/80。
+- Electron UI Apps：24/24。
+- 主聊天操作序列：24 actions；最近 3 次连续运行累计 72 actions、28 个 VCP 请求，11 action kinds、54 pairs、24 transitions、4 faults、required edge 1/1。
 - 生命周期压力：3 次预热 + 20 次测量；861 listener、8 Scope、162 受管资源、5 process、2 renderer process 在全部 checkpoint 恒定，detached root/icon/option 为 0，heap 约 9.8 MiB → 9.7 MiB。
 - Web Awesome closure：101 files、0.46 MiB，可重复生成；pack check 通过。
 - `git diff --check upstream/main...HEAD`：通过。
 
-尚未完成的发布证据只有同步后 Windows 复验和 30–60 分钟人工 soak。二者不应由 macOS 自动结果代替，因此当前状态是“代码与自动门禁就绪，跨平台/人工发布证据待补”。本分支明确不携带 `.github/workflows/**`，跨平台验证由外部 Windows 环境或上游 CI 执行。
+尚未纳入自动化的发布证据仍是 30–60 分钟人工 soak；这不影响 C0–C7 实现退出条件，但不应把自动矩阵代替人工体验观察。本分支明确不携带 `.github/workflows/**`。
 
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
@@ -110,6 +110,10 @@ P2 无消费者架构减法已于 2026-08-17 关闭：产品文件树不再携�
 P3 公共合同收口已于 2026-08-17 关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。完整 Windows 验证为 UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、162 项受管资源、407 个 listener、5 个 Electron process，detached root/icon/option 为 0。
 
 P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐。动态壁纸、插件运行时和业务子页面迁移继续排除在本轮之外。
+
+Chat Kernel 路线已完成 C0–C7：C2 生产 Repository 收口、C3 协议顺序/附件归一化、C4 延迟工作/媒体/Mermaid/附件 listener/Three.js observer 清理，以及 C7 presentation-state、slot/provider rollback、卸载后迟到状态静默和能力拒绝均有证据。`npm run test:chat-kernel` 当前为 30/30，Electron UI Apps 为 24/24；独立交互 Surface 覆盖 pending close 与迟到终态隔离。最终 Windows 矩阵和逐项审计已通过。
+
+并发流的终态持久化现在会在 stream terminal 显式 flush 并等待当前 topic 的 ChatRepository 保存；独立交互 Surface 的测试也在下一次请求前等待真实 `aria-busy=false` 终态，避免把 terminal 事件误当成发送 Promise 已完成。
 
 ## 7. 文档权威关系
 
