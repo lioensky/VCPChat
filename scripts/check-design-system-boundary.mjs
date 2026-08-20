@@ -246,12 +246,21 @@ const allowedSourceDifferences = new Set([
     'assets/nova_button_light.png',
     'assets/svg/acrylic-noise.svg',
     'Notemodules/notes.js',
+    'renderer.js',
+    'modules/messageRenderer.js',
+    'modules/renderer/streamManager.js',
+    'scripts/check-chat-kernel-consumers.mjs',
+    'docs/chat-kernel-consumer-report.json',
+    'docs/chat-kernel-deep-decoupling-roadmap.md',
+    'docs/deepseek-harness-plugin-ui-architecture-research.md',
+    'docs/chat-kernel-rendering-roadmap.md',
 ]);
 const allowedSourceDifferencePatterns = [
     /^vendor\/webawesome(?:-runtime)?\//,
     /^modules\/chat\//,
+    /^modules\/renderer\/(?:mainChatStreamConsumer|mainChatSurfaceAdapter|renderDependencies)\.js$/,
     /^modules\/ui-system\/(?:standalone-chat-app|interactive-chat-app)\.js$/,
-    /^tests\/(?:chat-|content-pipeline)/,
+    /^tests\/(?:chat-|content-|stream-|render-dependencies|main-chat-surface-adapter|vcp-stream-bridge)/,
     /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\//,
     /^Notemodules\/notemini\.(?:html|js|css)$/,
 ];

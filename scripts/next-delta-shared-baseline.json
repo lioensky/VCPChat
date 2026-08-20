@@ -1,15 +1,15 @@
 {
   "modules/chatManager.js": {
-    "sha256": "d38642c72216cf486a119ad3f76f620b19a880bb50efbe6c01a5cb3d2a642c5c",
-    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, independent renderer seam, opt-in operation error propagation, and production fail-fast repository requirement"
+    "sha256": "261f9ff3fdc278247d7d9540f9e63183da4699ce9e0eb5d6e2103bb626b7923a",
+    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, message-scoped stream consumer routing, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
-    "sha256": "7277e869d082aab465a59f70819bdf56bb4a8e0f22d1aa36eff8758cbac2371b",
-    "reason": "upstream message semantics plus reviewed per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free Mermaid transform for independent ContentRuntime consumers"
+    "sha256": "0f9274f5fe8232a5e35671561da1e412b07248c1d93c797aebc3d9b0d0675336",
+    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "5974e329c59868d950d4eeea0a0f4c56f34fb943c26270e7f981bf255323f323",
-    "reason": "shared stream core with reviewed terminal ownership, serialized durable history merge for reverse-completing streams, ChatDomRenderer routing, per-surface message DOM cache, explicit repository requirement, and ContentRuntime render-model consumption"
+    "sha256": "2f8daf0cf9fd5f979cbb7120449e097236ab0423c11e3902f6032718961cfeec",
+    "reason": "shared stream DOM adapter with reviewed coordinator terminal ownership, serialized durable history merge, immediate terminal cache release, explicit repository requirement, and ContentRuntime render-model consumption"
   },
   "modules/topicListManager.js": {
     "sha256": "6f93242d843253f672f2afe1af2b6567781b0925c8292fbdda5bf53f490418be",

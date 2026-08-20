@@ -159,8 +159,10 @@ assert.match(read('modules/chat/chatOperation.js'), /cancelRequested[\s\S]*if \(
     'interactive surface cancellation must be idempotent for repeated user actions');
 assert.match(read('modules/renderer/streamManager.js'), /flushHistorySave[\s\S]*await flushHistorySave\(storedContext\)/,
     'stream terminal persistence must await the real history save instead of relying on debounce timing');
-assert.match(read('renderer.js'), /createChatSurface\([\s\S]*?mode: 'interactive'/,
-    'main chat must be owned by a real ChatSurface');
+assert.match(read('renderer.js'), /createMainChatSurfaceAdapter\([\s\S]*?createChatOperations/,
+    'main chat must be owned by a real MainChatSurfaceAdapter');
+assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /createChatSurface\([\s\S]*?mode: 'interactive'/,
+    'MainChatSurfaceAdapter must compose a real interactive ChatSurface');
 assert.match(read('modules/ui-system/standalone-chat-app.js'), /id: 'standalone-chat-history'/,
     'standalone read-only chat must have a registered internal-app consumer');
 assert.match(read('modules/ui-system/standalone-chat-app.js'), /createChatSurfaceSlots/,
