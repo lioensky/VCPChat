@@ -1052,10 +1052,11 @@ try {
     // same time. Opening and settling them independently catches accidental
     // singleton renderer/stream state, while the final close verifies that
     // each window reaches its own quiescent terminal before teardown.
-    await Promise.all([
-        page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]),
-        page.evaluate(() => window.chatAPI.assistantAction('open')),
-    ]);
+    // Open through the main renderer serially (the two IPC open commands share
+    // one composition root), then run their actual stream operations in
+    // parallel below.
+    await page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]);
+    await page.evaluate(() => window.chatAPI.assistantAction('open'));
     const [concurrentVoicePage, concurrentAssistantPage] = await Promise.all([
         waitForAuxiliaryPage('Voicechatmodules/voicechat.html'),
         waitForAuxiliaryPage('rust_assistant_engine/ui/assistant.html'),
@@ -1080,10 +1081,8 @@ try {
             ), { timeout });
         })(),
     ]);
-    await Promise.all([
-        concurrentVoicePage.click('#close-btn-voicechat'),
-        concurrentAssistantPage.click('#close-btn-assistant'),
-    ]);
+    await concurrentVoicePage.click('#close-btn-voicechat');
+    await concurrentAssistantPage.click('#close-btn-assistant');
     await Promise.all([
         waitForAuxiliaryClose(concurrentVoicePage),
         waitForAuxiliaryClose(concurrentAssistantPage),
