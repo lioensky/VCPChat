@@ -11,7 +11,7 @@ const { selectRepairStages, validateLockfile, createRepairPlan } = require('../m
 const { runProcess } = require('../modules/bootstrap/process-runner');
 const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require('../modules/bootstrap/progress-protocol');
 const { createRuntimeClosureManifest, validateRuntimePolicy, verifyDirectoryAgainstManifest } = require('../modules/bootstrap/runtime-closure');
-const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck } = require('../modules/bootstrap/update-manager');
+const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest } = require('../modules/bootstrap/update-manager');
 const { collectEvidence } = await import('../scripts/vcpchat-release-evidence.mjs');
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'vcpchat-m3-m8-')); }
@@ -104,6 +104,16 @@ test('M7 failed health check atomically returns current pointer to the prior ver
     await assert.rejects(() => promoteVersionWithHealthCheck({ stateRoot: state, sourceRoot: second, manifest: two, healthCheck: async () => ({ ok: false }) }));
     const pointer = JSON.parse(fs.readFileSync(pointerPath(state), 'utf8'));
     assert.match(pointer.directory, /1-a/);
+});
+
+test('M7 update manifests reject path aliases, malformed entries, and uncovered launch executables', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'main.js'), 'one');
+    const digest = require('node:crypto').createHash('sha256').update('one').digest('hex');
+    const base = { schemaVersion: 1, version: '1.0.0', files: [{ path: 'main.js', sha256: digest }] };
+    assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { ...base, files: [{ path: 'main.js', sha256: digest }, { path: './main.js', sha256: digest }] } }), /更新运行时校验失败/);
+    assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { ...base, files: [null] } }), /更新运行时校验失败/);
+    assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { ...base, launch: { executable: 'missing' } } }), /更新运行时校验失败/);
 });
 
 test('M8 evidence explicitly records external platform proof instead of claiming it', () => {

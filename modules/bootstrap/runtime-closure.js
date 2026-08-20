@@ -34,6 +34,27 @@ function normalize(relativePath) {
     return relativePath.split(path.sep).join('/');
 }
 
+function resolveContainedPath(root, relativePath) {
+    if (typeof relativePath !== 'string' || !relativePath || path.isAbsolute(relativePath)) {
+        throw new Error(`Unsafe runtime path: ${relativePath}`);
+    }
+    const normalized = relativePath.replace(/\\/g, '/');
+    if (normalized.split('/').some(segment => segment === '..' || segment === '')) {
+        throw new Error(`Unsafe runtime path: ${relativePath}`);
+    }
+    const resolvedRoot = path.resolve(root);
+    const resolved = path.resolve(resolvedRoot, normalized);
+    if (resolved !== resolvedRoot && !resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
+        throw new Error(`Runtime path escapes its root: ${relativePath}`);
+    }
+    return resolved;
+}
+
+function containedPathKey(relativePath) {
+    const normalized = String(relativePath).replace(/\\/g, '/');
+    return path.posix.normalize(normalized);
+}
+
 function runtimeExecutableRelative(platform = process.platform, arch = process.arch) {
     const executable = platform === 'win32' ? 'vcp_chat_data_service.exe' : 'vcp_chat_data_service';
     return normalize(path.join('modules', 'services', 'chatDataService', 'bin', `${platform}-${arch}`, executable));
@@ -108,9 +129,17 @@ function createRuntimeClosureManifest({ projectRoot, buildId = null, platform = 
 function verifyDirectoryAgainstManifest({ root, manifest }) {
     const failures = [];
     for (const entry of manifest.files || []) {
-        const absolute = path.join(root, entry.path);
+        let absolute;
+        try { absolute = resolveContainedPath(root, entry?.path); } catch (error) {
+            failures.push({ path: entry?.path, reason: error.message });
+            continue;
+        }
         if (!fs.existsSync(absolute)) {
             failures.push({ path: entry.path, reason: 'missing' });
+            continue;
+        }
+        if (fs.lstatSync(absolute).isSymbolicLink()) {
+            failures.push({ path: entry.path, reason: 'symbolic links are not allowed in a runtime closure' });
             continue;
         }
         const stat = fs.statSync(absolute);
@@ -148,4 +177,6 @@ module.exports = {
     createRuntimeClosureManifest,
     verifyDirectoryAgainstManifest,
     validateRuntimePolicy,
+    resolveContainedPath,
+    containedPathKey,
 };

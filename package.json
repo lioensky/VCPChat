@@ -129,8 +129,7 @@
     "asarUnpack": [
       "modules/services/chatDataService/bin/**/*",
       "audio_engine/**/*",
-      "rust_assistant_engine/runtime/**/*",
-      "VCPDistributedServer/Plugin/**/*"
+      "rust_assistant_engine/runtime/**/*"
     ],
     "files": [
       "main.js",

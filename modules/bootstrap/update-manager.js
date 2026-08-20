@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { acquireOperationLock, createOperationId, writeJsonAtomic } = require('./launch-protocol');
-const { verifyDirectoryAgainstManifest } = require('./runtime-closure');
+const { verifyDirectoryAgainstManifest, resolveContainedPath, containedPathKey } = require('./runtime-closure');
 
 const UPDATE_SCHEMA_VERSION = 1;
 const UPDATE_LOCK_MAX_AGE_MS = 20 * 60 * 1000;
@@ -18,11 +18,27 @@ function validateUpdateManifest({ sourceRoot, manifest } = {}) {
     if (!manifest || manifest.schemaVersion !== UPDATE_SCHEMA_VERSION || !manifest.version || !manifest.files?.length) {
         const error = new Error('更新清单缺少版本、schema 或文件校验列表。'); error.code = 'E_UPDATE_MANIFEST_INVALID'; throw error;
     }
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(manifest.version)
+        || (manifest.buildId != null && !/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(manifest.buildId))) {
+        const error = new Error('更新版本或 build ID 不是安全的目录标识。'); error.code = 'E_UPDATE_MANIFEST_INVALID'; throw error;
+    }
     const failures = [];
+    const seen = new Set();
     for (const entry of manifest.files) {
-        const file = path.join(sourceRoot, entry.path);
+        let file;
+        try { file = resolveContainedPath(sourceRoot, entry?.path); } catch (error) {
+            failures.push({ path: entry?.path, reason: error.message });
+            continue;
+        }
+        const key = containedPathKey(entry.path);
+        if (seen.has(key)) { failures.push({ path: entry.path, reason: 'duplicate' }); continue; }
+        seen.add(key);
         if (!fs.existsSync(file)) failures.push({ path: entry.path, reason: 'missing' });
+        else if (fs.lstatSync(file).isSymbolicLink()) failures.push({ path: entry.path, reason: 'symbolic-link' });
         else if (entry.sha256 && sha256File(file) !== entry.sha256) failures.push({ path: entry.path, reason: 'sha256' });
+    }
+    if (manifest.launch?.executable && !seen.has(containedPathKey(manifest.launch.executable))) {
+        failures.push({ path: manifest.launch.executable, reason: 'launch executable is not covered by the manifest' });
     }
     if (failures.length) {
         const error = new Error(`更新运行时校验失败：${failures.slice(0, 4).map(item => item.path).join(', ')}`);

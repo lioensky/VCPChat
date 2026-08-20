@@ -16,7 +16,7 @@ function findPackagedExecutable(distRoot, platform = process.platform) {
         ? fs.readdirSync(distRoot, { recursive: true, withFileTypes: true })
         : [];
     const files = entries.filter(entry => entry.isFile()).map(entry => path.join(entry.parentPath, entry.name));
-    if (platform === 'darwin') return files.find(file => /\.app\/Contents\/MacOS\//.test(file)) || null;
+    if (platform === 'darwin') return files.find(file => /\.app\/Contents\/MacOS\//.test(file) && !/\/Frameworks\//.test(file)) || null;
     if (platform === 'win32') return files.find(file => /win[^/\\]*-unpacked[/\\].+\.exe$/i.test(file)) || null;
     return files.find(file => /linux-unpacked[/\\]/.test(file) && !path.extname(file)) || null;
 }
@@ -30,6 +30,17 @@ async function waitForReady({ stateRoot, operationId, child, timeoutMs = 60_000 
         await new Promise(resolve => setTimeout(resolve, 100));
     }
     throw new Error('Packaged app ready timeout.');
+}
+
+function terminateProcessTree(child) {
+    if (!child || child.exitCode !== null) return;
+    try {
+        if (process.platform === 'win32' && child.pid) {
+            spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        } else if (child.pid) {
+            try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+        } else child.kill('SIGKILL');
+    } catch { /* best effort */ }
 }
 
 export async function run(argv = process.argv.slice(2), io = process) {
@@ -73,13 +84,14 @@ export async function run(argv = process.argv.slice(2), io = process) {
         },
         stdio: 'ignore',
         windowsHide: true,
+        detached: process.platform !== 'win32',
     });
     try {
         await waitForReady({ stateRoot, operationId, child });
         io.stdout.write(`Packaged runtime smoke passed: ${executable}\n`);
         return 0;
     } finally {
-        try { child.kill(); } catch { /* best effort */ }
+        terminateProcessTree(child);
         removeReadyRecord({ stateRoot, operationId });
         fs.rmSync(isolatedRoot, { recursive: true, force: true });
     }

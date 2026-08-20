@@ -10,7 +10,7 @@ let windowRef;
 let operation;
 
 function nodeCommand() {
-    return process.env.VCPCHAT_NODE_PATH || process.env.npm_node_execpath || 'node';
+    return process.env.VCPCHAT_NODE_PATH || process.execPath;
 }
 
 function scriptPath(name) { return path.join(projectRoot, 'scripts', name); }
@@ -20,7 +20,7 @@ function runScript(name, args = []) {
     return new Promise((resolve, reject) => {
         const child = spawn(nodeCommand(), [scriptPath(name), ...args], {
             cwd: projectRoot,
-            env: { ...process.env, VCPCHAT_PROJECT_ROOT: projectRoot },
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VCPCHAT_PROJECT_ROOT: projectRoot },
             stdio: ['ignore', 'pipe', 'pipe'],
             windowsHide: true,
         });

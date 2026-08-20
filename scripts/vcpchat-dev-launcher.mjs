@@ -116,7 +116,14 @@ async function waitForReady({ stateRoot, operationId, child, timeoutMs, sleep = 
 
 function terminateChild(child) {
     if (!child || child.killed || child.exitCode !== null) return;
-    try { child.kill(); } catch { /* best effort */ }
+    try {
+        if (process.platform === 'win32' && child.pid) {
+            const { spawn: spawnKiller } = require('node:child_process');
+            spawnKiller('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        } else if (child.pid) {
+            try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+        } else child.kill();
+    } catch { /* best effort */ }
 }
 
 export async function runManagedLauncher({
@@ -179,6 +186,7 @@ export async function runManagedLauncher({
             env: childEnv,
             stdio: 'inherit',
             windowsHide: false,
+            detached: process.platform !== 'win32',
         });
         lock.updateStage('awaiting-ready');
         const ready = await waitForReady({

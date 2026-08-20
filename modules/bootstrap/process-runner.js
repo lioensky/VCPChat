@@ -4,7 +4,16 @@ const { spawn } = require('child_process');
 
 function terminateProcess(child) {
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
-    try { child.kill('SIGTERM'); } catch { /* best effort */ }
+    try {
+        if (process.platform === 'win32') {
+            const { spawn } = require('child_process');
+            spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        } else if (child.pid) {
+            try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill('SIGTERM'); }
+        } else {
+            child.kill('SIGTERM');
+        }
+    } catch { /* best effort */ }
 }
 
 function runProcess({
@@ -42,6 +51,7 @@ function runProcess({
                 windowsHide: true,
                 shell: false,
                 stdio: ['ignore', 'pipe', 'pipe'],
+                detached: process.platform !== 'win32',
             });
         } catch (error) {
             finish({ ok: false, code: error.code || 'E_REPAIR_STAGE_FAILED', error, exitCode: null });
@@ -63,8 +73,8 @@ function runProcess({
             signal: processSignal,
         }));
         timeout = setTimeout(() => {
-            terminateProcess(child);
             finish({ ok: false, timedOut: true, code: 'E_REPAIR_TIMEOUT', exitCode: null, signal: null });
+            terminateProcess(child);
         }, timeoutMs);
         timeout.unref?.();
     });
