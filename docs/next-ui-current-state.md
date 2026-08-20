@@ -113,6 +113,12 @@ P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐�
 
 Chat Kernel 路线已完成 C0–C7：C2 生产 Repository 收口、C3 协议顺序/附件归一化、C4 延迟工作/媒体/Mermaid/附件 listener/Three.js observer 清理，以及 C7 presentation-state、slot/provider rollback、卸载后迟到状态静默和能力拒绝均有证据。`npm run test:chat-kernel` 当前为 30/30，Electron UI Apps 为 24/24；独立交互 Surface 覆盖 pending close 与迟到终态隔离。最终 Windows 矩阵和逐项审计已通过。
 
+深度解耦尚未开始施工：`renderer.js`、`messageRenderer.js`、`chatManager.js` 仍是主窗口的 composition、业务状态和兼容 facade 集合；`modules/renderer/streamManager.js` 仍同时拥有流读取、session registry、DOM 投影、桌面 push、按钮状态和历史保存。后续以 [`chat-kernel-deep-decoupling-roadmap.md`](./chat-kernel-deep-decoupling-roadmap.md) 的 D0–D7 为唯一施工路线，先拆 Stream Session，再收敛 renderer adapter；没有真实 consumer 和终态测试的新增 facade 不得合入。
+
+D0 consumer baseline 已接入 `check:ui-system`：生产引用、测试引用和 Kernel 禁止反向依赖均由 `guard:chat-kernel-consumers` 重复检查。该报告只记录当前事实，不把 legacy facade 自动升级为稳定公共 API。
+
+D1 已建立未接入生产的纯 `StreamSession`/`StreamState` 协议与 5 项单元测试；现有 `streamManager` 尚未迁移，D1–D7 仍保持规划中。
+
 并发流的终态持久化现在会在 stream terminal 显式 flush 并等待当前 topic 的 ChatRepository 保存；独立交互 Surface 的测试也在下一次请求前等待真实 `aria-busy=false` 终态，避免把 terminal 事件误当成发送 Promise 已完成。
 
 ## 7. 文档权威关系

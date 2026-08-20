@@ -1,0 +1,242 @@
+{
+  "phase": "D0",
+  "productionFiles": [
+    "renderer.js",
+    "modules/event-listeners.js",
+    "modules/chatManager.js",
+    "modules/messageRenderer.js",
+    "modules/renderer/streamManager.js",
+    "modules/renderer/messageContextMenu.js",
+    "modules/renderer/middleClickHandler.js",
+    "Flowlockmodules/flowlock-integration.js"
+  ],
+  "testFiles": [
+    "tests/chat-context.test.mjs",
+    "tests/chat-dom-renderer.test.mjs",
+    "tests/chat-manager-selection-race.test.js",
+    "tests/chat-operation.test.mjs",
+    "tests/chat-plugin-manifest.test.mjs",
+    "tests/chat-presentation-skin.test.mjs",
+    "tests/chat-presentation-state.test.mjs",
+    "tests/chat-repository.test.mjs",
+    "tests/chat-surface-slots.test.mjs",
+    "tests/chat-surface.test.mjs",
+    "tests/chat-theme-plugin.test.mjs",
+    "tests/lifecycle-inspector.test.js",
+    "tests/lifecycle-scope.test.js",
+    "tests/main-chat-sequence-model.test.js",
+    "tests/mobile-sync-streaming.test.js",
+    "tests/stream-coordinator.test.mjs",
+    "tests/stream-manager-terminal-cleanup.test.js",
+    "tests/stream-session.test.mjs",
+    "tests/topic-list-mode-lifecycle.test.js"
+  ],
+  "references": {
+    "chatManager": {
+      "production": [
+        {
+          "file": "renderer.js",
+          "occurrences": 46
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "occurrences": 13
+        },
+        {
+          "file": "modules/chatManager.js",
+          "occurrences": 2
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "occurrences": 13
+        },
+        {
+          "file": "modules/renderer/messageContextMenu.js",
+          "occurrences": 1
+        },
+        {
+          "file": "Flowlockmodules/flowlock-integration.js",
+          "occurrences": 2
+        }
+      ],
+      "tests": [
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "occurrences": 35
+        }
+      ]
+    },
+    "messageRenderer": {
+      "production": [
+        {
+          "file": "renderer.js",
+          "occurrences": 36
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "occurrences": 14
+        },
+        {
+          "file": "modules/chatManager.js",
+          "occurrences": 84
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "occurrences": 5
+        },
+        {
+          "file": "modules/renderer/streamManager.js",
+          "occurrences": 1
+        },
+        {
+          "file": "modules/renderer/messageContextMenu.js",
+          "occurrences": 1
+        },
+        {
+          "file": "Flowlockmodules/flowlock-integration.js",
+          "occurrences": 1
+        }
+      ],
+      "tests": [
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "occurrences": 2
+        }
+      ]
+    },
+    "streamManager": {
+      "production": [
+        {
+          "file": "renderer.js",
+          "occurrences": 13
+        },
+        {
+          "file": "modules/chatManager.js",
+          "occurrences": 2
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "occurrences": 18
+        },
+        {
+          "file": "modules/renderer/streamManager.js",
+          "occurrences": 3
+        },
+        {
+          "file": "modules/renderer/middleClickHandler.js",
+          "occurrences": 5
+        },
+        {
+          "file": "Flowlockmodules/flowlock-integration.js",
+          "occurrences": 3
+        }
+      ],
+      "tests": [
+        {
+          "file": "tests/stream-manager-terminal-cleanup.test.js",
+          "occurrences": 2
+        }
+      ]
+    }
+  },
+  "kernelFiles": [
+    "modules/chat/chatContext.js",
+    "modules/chat/chatRepository.js",
+    "modules/chat/contentRuntime.js",
+    "modules/chat/contentTransforms.js",
+    "modules/chat/chatDomRenderer.js",
+    "modules/chat/chatSurface.js",
+    "modules/chat/chatOperation.js",
+    "modules/chat/chatPresentationState.js",
+    "modules/chat/chatPresentationSkin.js",
+    "modules/chat/chatSurfaceSlots.js",
+    "modules/chat/chatThemePlugin.js",
+    "modules/chat/chatPluginManifest.js",
+    "modules/chat/streamSession.js"
+  ],
+  "pureKernelFiles": [
+    "modules/chat/chatContext.js",
+    "modules/chat/contentRuntime.js",
+    "modules/chat/contentTransforms.js",
+    "modules/chat/chatDomRenderer.js",
+    "modules/chat/chatSurface.js",
+    "modules/chat/chatOperation.js",
+    "modules/chat/chatPresentationState.js",
+    "modules/chat/chatPresentationSkin.js",
+    "modules/chat/chatSurfaceSlots.js",
+    "modules/chat/chatThemePlugin.js",
+    "modules/chat/chatPluginManifest.js",
+    "modules/chat/streamSession.js"
+  ],
+  "ownershipSignals": {
+    "renderer.js": {
+      "windowReferences": 226,
+      "documentReferences": 185,
+      "electronReferences": 12,
+      "timers": 2,
+      "listeners": 28,
+      "mutableMaps": 0
+    },
+    "modules/event-listeners.js": {
+      "windowReferences": 42,
+      "documentReferences": 95,
+      "electronReferences": 8,
+      "timers": 6,
+      "listeners": 70,
+      "mutableMaps": 0
+    },
+    "modules/chatManager.js": {
+      "windowReferences": 28,
+      "documentReferences": 14,
+      "electronReferences": 49,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/messageRenderer.js": {
+      "windowReferences": 54,
+      "documentReferences": 42,
+      "electronReferences": 18,
+      "timers": 16,
+      "listeners": 7,
+      "mutableMaps": 6
+    },
+    "modules/renderer/streamManager.js": {
+      "windowReferences": 12,
+      "documentReferences": 9,
+      "electronReferences": 20,
+      "timers": 15,
+      "listeners": 2,
+      "mutableMaps": 17
+    },
+    "modules/renderer/messageContextMenu.js": {
+      "windowReferences": 9,
+      "documentReferences": 26,
+      "electronReferences": 36,
+      "timers": 1,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "modules/renderer/middleClickHandler.js": {
+      "windowReferences": 18,
+      "documentReferences": 26,
+      "electronReferences": 14,
+      "timers": 9,
+      "listeners": 8,
+      "mutableMaps": 2
+    },
+    "Flowlockmodules/flowlock-integration.js": {
+      "windowReferences": 47,
+      "documentReferences": 2,
+      "electronReferences": 5,
+      "timers": 0,
+      "listeners": 4,
+      "mutableMaps": 0
+    }
+  },
+  "invariants": [
+    "pure kernel files have no document/window/electronAPI dependency",
+    "production and test consumers are reported separately",
+    "legacy facade removal requires a later zero-production-consumer proof"
+  ]
+}
