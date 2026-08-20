@@ -2593,7 +2593,7 @@ function initializeMessageRenderer(refs) {
         extractSpeakableTextFromContentElement: extractSpeakableTextFromContentElement,
     });
 
-    if (features.streamProjection) streamManager.initStreamManager({
+    if (features.streamProjection) streamManager.attachStreamProjection({
         chatDomRenderer: mainRendererReferences.chatDomRenderer,
         globalSettingsRef: mainRendererReferences.globalSettingsRef,
         currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
@@ -2615,7 +2615,6 @@ function initializeMessageRenderer(refs) {
         renderMermaidDiagrams: renderMermaidDiagrams,
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
-        notifySurfaceOperationStateChanged: mainRendererReferences.messageCommands.updateSendButtonState,
         morphdom: mainRendererReferences.morphdom,
         renderMessage: renderMessage,
         showContextMenu: contextMenu.showContextMenu,

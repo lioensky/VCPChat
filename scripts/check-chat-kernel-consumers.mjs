@@ -231,7 +231,9 @@ assert.doesNotMatch(source('modules/event-listeners.js'), /window\.handleSendBut
 assert.match(messageRendererSource, /vcp-\$\{surfaceId\}-chat-\$\{message\.id\}/, 'message styles must be namespaced by Surface and message');
 assert.match(messageRendererSource, /audioRoot\?\.querySelectorAll\?\.\(['"]audio\.vcp-audio-native['"]\)/, 'audio playback isolation must be scoped to the owning Surface root');
 assert.doesNotMatch(source('modules/renderer/streamManager.js'), /onStreamStateChanged/, 'stream projection must not retain the legacy generic state callback');
-assert.match(source('modules/renderer/streamManager.js'), /notifySurfaceOperationStateChanged/, 'stream projection state notification must be an explicit Surface capability');
+assert.doesNotMatch(source('modules/renderer/streamManager.js'), /notifySurfaceOperationStateChanged|updateSendButtonState/,
+    'stream projection must not reverse-control main-window send state');
+assert.match(chatManagerSource, /notifySendStateChanged/, 'ChatManager operation owner must publish main send-state changes');
 assert.match(source('modules/renderer/streamManager.js'), /transientStreamHistory/, 'stream projection history must be delegated to the transient history provider');
 assert.match(source('modules/renderer/streamManager.js'), /streamOperationId/, 'stream projection must carry producer operation identity into its Surface runtime');
 assert.match(source('modules/renderer/streamManager.js'), /createRuntimeStateMap/, 'stream projection runtime state must use the operation-scoped map adapter');

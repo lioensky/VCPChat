@@ -286,7 +286,7 @@ function cancelScheduledAnimationFrames() {
  * Initializes the Stream Manager with necessary dependencies from the main renderer.
  * @param {object} dependencies - An object containing all required functions and references.
  */
-function initStreamManager(dependencies) {
+function attachStreamProjection(dependencies) {
     if (disposed) throw new Error('StreamProjection is disposed');
     refs = dependencies;
     if (!dependencies?.chatMessagesDiv?.querySelector) {
@@ -1760,10 +1760,6 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         accumulatedStreamText.set(messageId, newText);
     }
     
-    if (isForCurrentView) {
-        refs.notifySurfaceOperationStateChanged?.();
-    }
-    
     // Initialization is complete, message is ready to process chunks.
     // 如果 end/error 事件在异步初始化期间已经到达，不能把状态从 finalized 回退到 ready。
     if (messageInitializationStatus.get(messageId) !== 'finalized') {
@@ -2169,13 +2165,6 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     refs.transientStreamHistory.discard?.(messageId);
     cleanupDesktopPushState(messageId);
 
-    // Finalization can start in a background topic and finish after the user
-    // has navigated again. Refreshing only inside isForCurrentView leaves the
-    // shared send button stuck in interrupt mode even though all stream state
-    // is already gone. The updater derives state from the *current* chat, so
-    // it is safe and necessary to run after cleanup for every finalization.
-    refs.notifySurfaceOperationStateChanged?.();
-
     // Terminal means ownership has ended; no delayed cache lease survives `done`.
     messageDomCache.delete(messageId);
     messageInitializationStatus.delete(messageId);
@@ -2216,7 +2205,6 @@ function discardStreamingMessage(messageId) {
     cleanupDesktopPushState(messageId);
     activeStreamingMessages.delete(messageId);
     messageRuntimeKeys.delete(String(messageId));
-    refs.notifySurfaceOperationStateChanged?.();
 }
 
 async function dispose() {
@@ -2297,7 +2285,7 @@ function getStreamDiagnostics() {
 }
 
 return Object.freeze({
-    initStreamManager,
+    attachStreamProjection,
     dispose,
     startStreamingMessage: (...args) => trackAsyncOperation(startStreamingMessage(...args)),
     appendStreamChunk,
