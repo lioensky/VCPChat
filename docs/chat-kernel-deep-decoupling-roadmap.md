@@ -1,6 +1,6 @@
 # VCPChat Chat Kernel 深度解耦路线
 
-> 状态：D0–D2 已建立协议、测试基线、协调器和独立 durable history provider；StreamManager 不再拥有保存队列或 repository merge/write policy，但仍裁决 DOM/history 投影终态。D3–D5 仅完成部分入口接入和能力闭包骨架；D6–D7 未完成。未满足全部退出条件前不得宣称 renderer 已完成解耦。
+> 状态：D0–D2 已建立协议、测试基线、协调器和独立 durable history provider；Bridge 现在携带 producer `streamOperationId`，同一可见消息的 retry 与迟到事件按 operation identity 隔离。D3–D5 仍仅完成部分入口接入和能力闭包；D6 已完成三个旧全局 facade 的生产迁移、零引用门禁和真实创建入口证据，但 renderer legacy methods 及 StreamManager DOM/history 投影仍未完成收口；D7 未完成。未满足全部退出条件前不得宣称 renderer 已完成解耦。
 > 规范依据：`C:\VCP\vchat-develop\deepseek-harness\AGENTS.md`、`docs/event-producer-consumer.zh.md`、`docs/defensive-patterns.zh.md` 和 `.agents/skills/dsh-code-review/SKILL.md`。
 
 ## 目标
@@ -36,7 +36,7 @@ D0 的可重复基线由 `npm run guard:chat-kernel-consumers` 生成到 `docs/c
 - `renderer.js` 仍然是主窗口 composition root，同时把固定 DOM、`window.*` facade、Electron API、主题、设置、聊天管理和事件监听连接在一起。
 - `messageRenderer.js` 仍通过 `mainRendererReferences` 读取 history、selected item、settings、Electron API 和主窗口 helper；它虽支持显式 root，但不是纯 renderer adapter。
 - `chatManager.js` 仍同时负责选择、历史、文件、VCP 请求、业务副作用、DOM 查询和全局按钮状态。
-- 兼容 facade（`window.chatManager`、`window.streamManager` 等）仍是生产入口的一部分，不能贸然删除；必须先迁移真实消费者并由门禁证明零生产引用。
+- `window.chatManager`、`window.messageRenderer`、`window.streamManager` 已完成生产迁移并删除；consumer gate 对全生产源码做负向扫描并对 compatibility-global 计数强制为零。其他 renderer legacy methods 仍需逐项审计，不能把三个 facade 的退役误认为 renderer 已纯化。
 
 ### StreamManager
 
