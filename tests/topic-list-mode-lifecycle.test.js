@@ -40,7 +40,11 @@ test('legacy mode events cannot tear down canonical topic management state', asy
             currentTopicIdRef: { get: () => 'topic-a' }
         },
         uiHelper: {},
-        mainRendererFunctions: {}
+        mainRendererFunctions: {},
+        topicSelectionReadiness: {
+            isReady: () => true,
+            defer() {},
+        }
     });
 
     window.document.documentElement.dataset.uiMode = 'classic';
