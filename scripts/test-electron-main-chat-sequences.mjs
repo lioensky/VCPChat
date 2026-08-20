@@ -163,6 +163,16 @@ async function writeAgent(appData, id, topics) {
     }
 }
 
+async function findFilesNamed(directory, fileName) {
+    const matches = [];
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        const fullPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) matches.push(...await findFilesNamed(fullPath, fileName));
+        else if (entry.isFile() && entry.name === fileName) matches.push(fullPath);
+    }
+    return matches;
+}
+
 function requestJson(url) {
     return new Promise((resolve, reject) => http.get(url, response => {
         let body = '';
@@ -313,6 +323,7 @@ const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-main-sequence-'
 await Promise.all(identities.map(id => writeAgent(appData, id, topics[id])));
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({
     uiMode: requestedUiMode, enableDistributedServer: false, vcpServerUrl: fixture.url, vcpApiKey: 'sequence-key',
+    assistantAgent: identities[0], assistantEnabled: false,
 }), 'utf8');
 const debugPort = await freePort();
 const stderr = { value: '' };
@@ -862,6 +873,47 @@ try {
         while (fixture.requests.length <= before && Date.now() < requestDeadline) await sleep(10);
         assert.ok(fixture.requests.length > before, `standalone VCP request did not reach fixture: ${content}`);
     };
+    const waitForAuxiliaryPage = async fragment => {
+        const deadline = Date.now() + timeout;
+        while (Date.now() < deadline) {
+            const candidate = (await browser.pages()).find(entry => !entry.isClosed() && entry.url().includes(fragment));
+            if (candidate) {
+                trackPage(candidate);
+                await candidate.waitForSelector('#messageInput:not([disabled])', { timeout: 8_000 });
+                return candidate;
+            }
+            await sleep(50);
+        }
+        throw new Error(`Auxiliary Electron page did not open: ${fragment}`);
+    };
+    const waitForAuxiliaryClose = async auxiliaryPage => {
+        const deadline = Date.now() + timeout;
+        while (!auxiliaryPage.isClosed() && Date.now() < deadline) await sleep(25);
+        assert.equal(auxiliaryPage.isClosed(), true, `Auxiliary Electron page did not close: ${auxiliaryPage.url()}`);
+    };
+    const runAuxiliaryWindowScenario = async ({ fragment, open, closeSelector, label }) => {
+        await open();
+        let auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        await auxiliaryPage.type('#messageInput', `${label}-success`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await auxiliaryPage.waitForFunction(() => (
+            !document.querySelector('#messageInput')?.disabled
+            && [...document.querySelectorAll('.message-item.assistant .md-content')]
+                .some(node => /fixture\s+stream\s+complete/.test(node.textContent || ''))
+        ), { timeout });
+        await auxiliaryPage.click(closeSelector);
+        await waitForAuxiliaryClose(auxiliaryPage);
+
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        const holdKey = `${label}-close-${Date.now()}`;
+        await auxiliaryPage.type('#messageInput', `sequence-hold-${holdKey}`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await fixture.waitPending(holdKey);
+        await auxiliaryPage.click(closeSelector);
+        fixture.release(holdKey);
+        await waitForAuxiliaryClose(auxiliaryPage);
+    };
     await sendStandalone('standalone-success');
     await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已发送', { timeout });
     await page.waitForFunction(() => {
@@ -916,6 +968,27 @@ try {
         window.topTabManager.closeView('app:standalone-chat-compose');
     });
     await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat'), { timeout });
+    await runAuxiliaryWindowScenario({
+        fragment: 'Voicechatmodules/voicechat.html',
+        open: () => page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]),
+        closeSelector: '#close-btn-voicechat',
+        label: 'voice',
+    });
+    await runAuxiliaryWindowScenario({
+        fragment: 'rust_assistant_engine/ui/assistant.html',
+        open: () => page.evaluate(() => window.chatAPI.assistantAction('open')),
+        closeSelector: '#close-btn-assistant',
+        label: 'assistant',
+    });
+    const auxiliaryHistories = await Promise.all((await findFilesNamed(path.join(appData, 'UserData'), 'history.json'))
+        .filter(file => file.includes('voicechat_') || file.includes(`${path.sep}assistant_chat${path.sep}`))
+        .map(async file => ({ file, history: JSON.parse(await fs.readFile(file, 'utf8')) })));
+    assert.equal(auxiliaryHistories.length >= 2, true, 'Voice and Rust Assistant must each commit a real auxiliary history');
+    for (const { file, history } of auxiliaryHistories) {
+        assert.equal(history.some(message => message?.isThinking), false, `Auxiliary close persisted a thinking placeholder: ${file}`);
+        assert.equal(history.some(message => /fixture\s+stream\s+complete/.test(message?.content || '')), true,
+            `Auxiliary success terminal was not durably saved: ${file}`);
+    }
     await warmRendererLifecycleBaseline();
     await driver.sendFault('fail');
     await resetFixtureConversationState();
