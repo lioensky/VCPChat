@@ -109,7 +109,11 @@ const report = {
     ],
 };
 const rendererSource = source('renderer.js');
-assert.doesNotMatch(rendererSource, /case ['"](?:agent_thinking|start|data|end|error)['"]:/, 'renderer must not retain the pre-coordinator stream terminal switch');
+const streamHandlerStart = rendererSource.indexOf('chatAPI.onVCPStreamEvent');
+const streamHandlerEnd = rendererSource.indexOf('chatAPI.onVCPGroupTopicUpdated', streamHandlerStart);
+const streamHandlerSource = rendererSource.slice(streamHandlerStart, streamHandlerEnd < 0 ? undefined : streamHandlerEnd);
+assert.doesNotMatch(streamHandlerSource, /messageRenderer\.appendStreamChunk\(messageId/, 'renderer must not retain direct stream chunk dispatch');
+assert.doesNotMatch(streamHandlerSource, /messageRenderer\.finalizeStreamedMessage\(\s*messageId/, 'renderer must not retain direct stream terminal dispatch');
 assert.match(rendererSource, /mainChatAdapter\?\.acceptStreamEvent\(eventData\)/, 'main window must route VCP events through MainChatSurfaceAdapter');
 const reportPath = path.join(root, 'docs/chat-kernel-consumer-report.json');
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);

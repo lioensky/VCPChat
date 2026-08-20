@@ -1,5 +1,5 @@
 {
-  "phase": "D0",
+  "phase": "D6",
   "productionFiles": [
     "renderer.js",
     "modules/event-listeners.js",
@@ -8,7 +8,15 @@
     "modules/renderer/streamManager.js",
     "modules/renderer/messageContextMenu.js",
     "modules/renderer/middleClickHandler.js",
-    "Flowlockmodules/flowlock-integration.js"
+    "Flowlockmodules/flowlock-integration.js",
+    "Voicechatmodules/voicechat.js",
+    "rust_assistant_engine/ui/assistant.js",
+    "modules/mainChatCommands.js",
+    "modules/settingsManager.js",
+    "modules/global-settings-manager.js",
+    "modules/renderer/contentProcessor.js",
+    "modules/ui-system/interactive-chat-app.js",
+    "modules/ui-system/standalone-chat-app.js"
   ],
   "testFiles": [
     "tests/chat-context.test.mjs",
@@ -60,6 +68,18 @@
         {
           "file": "Flowlockmodules/flowlock-integration.js",
           "occurrences": 2
+        },
+        {
+          "file": "modules/mainChatCommands.js",
+          "occurrences": 2
+        },
+        {
+          "file": "modules/renderer/contentProcessor.js",
+          "occurrences": 4
+        },
+        {
+          "file": "modules/ui-system/interactive-chat-app.js",
+          "occurrences": 1
         }
       ],
       "tests": [
@@ -97,6 +117,34 @@
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
+          "occurrences": 1
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "occurrences": 18
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "occurrences": 14
+        },
+        {
+          "file": "modules/settingsManager.js",
+          "occurrences": 5
+        },
+        {
+          "file": "modules/global-settings-manager.js",
+          "occurrences": 4
+        },
+        {
+          "file": "modules/renderer/contentProcessor.js",
+          "occurrences": 1
+        },
+        {
+          "file": "modules/ui-system/interactive-chat-app.js",
+          "occurrences": 1
+        },
+        {
+          "file": "modules/ui-system/standalone-chat-app.js",
           "occurrences": 1
         }
       ],
@@ -155,7 +203,10 @@
     "modules/chat/chatSurfaceSlots.js",
     "modules/chat/chatThemePlugin.js",
     "modules/chat/chatPluginManifest.js",
-    "modules/chat/streamSession.js"
+    "modules/chat/streamSession.js",
+    "modules/chat/streamCoordinator.js",
+    "modules/chat/streamConsumerRegistry.js",
+    "modules/chat/vcpStreamBridge.js"
   ],
   "pureKernelFiles": [
     "modules/chat/chatContext.js",
@@ -169,7 +220,10 @@
     "modules/chat/chatSurfaceSlots.js",
     "modules/chat/chatThemePlugin.js",
     "modules/chat/chatPluginManifest.js",
-    "modules/chat/streamSession.js"
+    "modules/chat/streamSession.js",
+    "modules/chat/streamCoordinator.js",
+    "modules/chat/streamConsumerRegistry.js",
+    "modules/chat/vcpStreamBridge.js"
   ],
   "ownershipSignals": {
     "renderer.js": {
@@ -208,9 +262,9 @@
       "windowReferences": 12,
       "documentReferences": 9,
       "electronReferences": 20,
-      "timers": 15,
+      "timers": 14,
       "listeners": 2,
-      "mutableMaps": 17
+      "mutableMaps": 16
     },
     "modules/renderer/messageContextMenu.js": {
       "windowReferences": 9,
@@ -235,11 +289,76 @@
       "timers": 0,
       "listeners": 4,
       "mutableMaps": 0
+    },
+    "Voicechatmodules/voicechat.js": {
+      "windowReferences": 45,
+      "documentReferences": 26,
+      "electronReferences": 25,
+      "timers": 8,
+      "listeners": 13,
+      "mutableMaps": 0
+    },
+    "rust_assistant_engine/ui/assistant.js": {
+      "windowReferences": 40,
+      "documentReferences": 22,
+      "electronReferences": 20,
+      "timers": 1,
+      "listeners": 7,
+      "mutableMaps": 0
+    },
+    "modules/mainChatCommands.js": {
+      "windowReferences": 25,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/settingsManager.js": {
+      "windowReferences": 37,
+      "documentReferences": 109,
+      "electronReferences": 50,
+      "timers": 11,
+      "listeners": 39,
+      "mutableMaps": 1
+    },
+    "modules/global-settings-manager.js": {
+      "windowReferences": 18,
+      "documentReferences": 80,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/renderer/contentProcessor.js": {
+      "windowReferences": 17,
+      "documentReferences": 22,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/interactive-chat-app.js": {
+      "windowReferences": 7,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/standalone-chat-app.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
     }
   },
   "invariants": [
     "pure kernel files have no document/window/electronAPI dependency",
     "production and test consumers are reported separately",
-    "legacy facade removal requires a later zero-production-consumer proof"
+    "legacy facade removal requires a later zero-production-consumer proof",
+    "main-window start/data/end/error events have one coordinator authority"
   ]
 }
