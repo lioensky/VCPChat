@@ -2921,7 +2921,8 @@ function enhanceAudioPlayers(container) {
         };
         const onPlayControl = () => {
             if (audio.paused || audio.ended) {
-                document.querySelectorAll('audio.vcp-audio-native').forEach((otherAudio) => {
+                const audioRoot = mainRendererReferences?.chatMessagesDiv || audio.ownerDocument;
+                audioRoot?.querySelectorAll?.('audio.vcp-audio-native').forEach((otherAudio) => {
                     if (otherAudio !== audio && !otherAudio.paused) otherAudio.pause();
                 });
                 audio.play().catch(() => player.classList.add('has-error'));
