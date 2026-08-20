@@ -3,6 +3,7 @@ import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersiste
 import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
 import { createSurfaceConversation } from './modules/chat/surfaceConversation.js';
 import { createMessageRenderer } from './modules/messageRenderer.js';
+import { applyUserMessageLayoutState } from './modules/renderer/domBuilder.js';
 import { createStreamProjection } from './modules/renderer/streamManager.js';
 
 const streamManager = createStreamProjection();
@@ -2100,11 +2101,8 @@ function syncUserChatBubbleControls() {
 }
 
 function applyUserChatBubbleUiState(settings = globalSettings) {
-    const applyLayoutState = window.domBuilder?.applyUserMessageLayoutState;
-    if (typeof applyLayoutState !== 'function') return;
-
     document.querySelectorAll('.message-item.user').forEach((messageItem) => {
-        applyLayoutState(messageItem, settings);
+        applyUserMessageLayoutState(messageItem, settings);
     });
 }
 

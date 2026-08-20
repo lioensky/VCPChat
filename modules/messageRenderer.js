@@ -3224,7 +3224,12 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         message.id = `msg_${message.timestamp}_${Math.random().toString(36).substring(2, 9)}`;
     }
 
-    const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
+    const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(
+        message,
+        globalSettings,
+        currentSelectedItem,
+        { document: mainRendererReferences.document, window: mainRendererReferences.window }
+    );
     messageItem.dataset.vcpInitialLoad = isInitialLoad ? 'true' : 'false';
 
     // --- NEW: Scoped CSS Implementation ---

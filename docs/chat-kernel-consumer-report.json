@@ -579,7 +579,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 10,
+          "line": 11,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "js",
@@ -587,7 +587,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 269,
+          "line": 270,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -595,7 +595,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 270,
+          "line": 271,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -603,7 +603,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 445,
+          "line": 446,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -611,7 +611,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 500,
+          "line": 501,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -619,7 +619,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 516,
+          "line": 517,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayTopicTimestampBubble",
@@ -627,7 +627,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 558,
+          "line": 559,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "processFilesData",
@@ -635,7 +635,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 559,
+          "line": 560,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "addAttachmentsToMessage",
@@ -643,7 +643,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 560,
+          "line": 561,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeAttachmentFromMessage",
@@ -651,7 +651,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 561,
+          "line": 562,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncNextUiEmptyStateWithMessages",
@@ -659,7 +659,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 562,
+          "line": 563,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -667,7 +667,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 807,
+          "line": 808,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleTopicDeletion",
@@ -675,7 +675,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 814,
+          "line": 815,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -683,7 +683,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 827,
+          "line": 828,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "init",
@@ -691,7 +691,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 941,
+          "line": 942,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -699,7 +699,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 965,
+          "line": 966,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "restoreLastOpenState",
@@ -707,7 +707,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1116,
+          "line": 1117,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -715,7 +715,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1151,
+          "line": 1152,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -723,7 +723,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1192,
+          "line": 1193,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -731,7 +731,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1193,
+          "line": 1194,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -739,7 +739,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2655,
+          "line": 2653,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -747,7 +747,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2656,
+          "line": 2654,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -755,7 +755,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2660,
+          "line": 2658,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -1713,7 +1713,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 594,
+          "line": 595,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "disposeRootResources",
@@ -1721,7 +1721,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 595,
+          "line": 596,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "disposeRendererResources",
@@ -1729,7 +1729,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 618,
+          "line": 619,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setContextMenuDependencies",
@@ -1737,7 +1737,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 720,
+          "line": 721,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderFullMessage",
@@ -1745,7 +1745,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 728,
+          "line": 729,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderFullMessage",
@@ -1753,7 +1753,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 739,
+          "line": 740,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -1761,7 +1761,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1645,
+          "line": 1646,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setUserAvatar",
@@ -1769,7 +1769,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1646,
+          "line": 1647,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "setUserAvatarColor",
@@ -1870,7 +1870,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3307,
+          "line": 3312,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -1878,7 +1878,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3308,
+          "line": 3313,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -1886,7 +1886,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3594,
+          "line": 3599,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -1894,7 +1894,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3598,
+          "line": 3603,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1902,7 +1902,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3603,
+          "line": 3608,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "appendStreamChunk",
@@ -1910,7 +1910,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3607,
+          "line": 3612,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "projectStreamTerminal",
@@ -1918,7 +1918,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4152,
+          "line": 4157,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1926,7 +1926,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4153,
+          "line": 4158,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1950,7 +1950,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 6,
+          "line": 7,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "js",
@@ -1958,7 +1958,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 12,
+          "line": 13,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "getDiagnostics",
@@ -4675,8 +4675,8 @@
       "mutableMaps": 0
     },
     "modules/messageRenderer.js": {
-      "windowReferences": 13,
-      "documentReferences": 40,
+      "windowReferences": 15,
+      "documentReferences": 42,
       "electronReferences": 17,
       "timers": 8,
       "listeners": 7,
@@ -4747,8 +4747,8 @@
       "mutableMaps": 1
     },
     "modules/renderer/domBuilder.js": {
-      "windowReferences": 2,
-      "documentReferences": 7,
+      "windowReferences": 1,
+      "documentReferences": 3,
       "electronReferences": 0,
       "timers": 0,
       "listeners": 0,
@@ -5531,7 +5531,7 @@
       "mutableMaps": 0
     },
     "renderer.js": {
-      "windowReferences": 161,
+      "windowReferences": 160,
       "documentReferences": 184,
       "electronReferences": 13,
       "timers": 2,
