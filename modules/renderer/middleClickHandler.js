@@ -189,9 +189,9 @@ function canPerformMiddleClickAction(message, messageItem) {
 
     // 检查消息是否在streamManager中被标记为已完成
     let isStreamManagerFinalized = false;
-    if (window.streamManager && typeof window.streamManager.isMessageInitialized === 'function') {
+    if (callbacks.streamManager && typeof callbacks.streamManager.isMessageInitialized === 'function') {
         // 如果消息不在streamManager中跟踪，说明已经完成
-        isStreamManagerFinalized = !window.streamManager.isMessageInitialized(messageId);
+        isStreamManagerFinalized = !callbacks.streamManager.isMessageInitialized(messageId);
     }
 
     // 检查消息是否有完成理由（表示已完成）
