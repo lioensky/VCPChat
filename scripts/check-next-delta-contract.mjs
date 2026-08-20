@@ -206,6 +206,12 @@ assert.match(read('modules/chat/chatOperation.js'), /cancelRequested[\s\S]*if \(
     'interactive surface cancellation must be idempotent for repeated user actions');
 assert.doesNotMatch(read('modules/renderer/streamManager.js'), /historySaveQueue|historySaveChains|saveHistoryForContext|debouncedSaveHistory/,
     'StreamManager must not retain a second durable queue or repository write policy');
+assert.match(read('modules/renderer/desktopPushConsumer.js'), /export function createDesktopPushConsumer[\s\S]*unsubscribe[\s\S]*cleanupMessage[\s\S]*dispose/,
+    'Desktop push must have an explicit subscription, per-message cleanup and lifecycle owner');
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /const desktopPushStates = new Map|onDesktopStatus\(/,
+    'StreamManager must not retain Desktop push state or a hidden Desktop status subscription');
+assert.match(read('modules/renderer/streamManager.js'), /createDesktopPushConsumer[\s\S]*desktopPushConsumer\?\.processToken[\s\S]*desktopPushConsumer\?\.dispose/,
+    'StreamManager may only consume Desktop push through its explicit owned capability');
 assert.doesNotMatch(read('modules/renderer/streamManager.js'), /persistProjectedStreamTerminal|finalizeStreamedMessage/,
     'StreamManager must not expose a second durable terminal facade');
 assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /persistTerminal: projected => services\.historyPersistence\.commit/,
@@ -263,6 +269,10 @@ assert.doesNotMatch(interactiveChatSource, /__vcpCancelActiveResponse|vcp-chat-s
     'independent chat must not cancel or settle through main-window global stream state');
 assert.doesNotMatch(interactiveChatSource, /from ['"]\.\.\/messageRenderer\.js|from ['"]\.\.\/chatManager\.js|window\.__vcpChat/,
     'independent chat must consume injected mount capabilities rather than renderer singletons or window providers');
+assert.match(interactiveChatSource, /createRenderer\([\s\S]*rendererOwner\.renderer[\s\S]*rendererOwner\.dispose\(\)/,
+    'independent chat must create and dispose its own MessageRenderer owner');
+assert.doesNotMatch(interactiveChatSource, /context\.chat\?\.renderer/,
+    'independent chat must not borrow the main-window renderer instance');
 assert.match(interactiveChatSource, /onOperation[\s\S]*operation\?\.cancel/,
     'independent chat must cancel the exact operation returned by its production send path');
 assert.doesNotMatch(read('modules/renderer/windowStreamRuntime.js'), /messageRenderer/,
@@ -270,11 +280,21 @@ assert.doesNotMatch(read('modules/renderer/windowStreamRuntime.js'), /messageRen
 const standaloneChatSource = read('modules/ui-system/standalone-chat-app.js');
 assert.doesNotMatch(standaloneChatSource, /from ['"]\.\.\/messageRenderer\.js|window\.__vcp(?:Chat|Presentation)/,
     'read-only chat must consume injected mount capabilities rather than renderer singletons or window providers');
+assert.match(standaloneChatSource, /createRenderer\([\s\S]*rendererOwner\.renderer[\s\S]*rendererOwner\.dispose\(\)/,
+    'read-only chat must create and dispose its own MessageRenderer owner');
+assert.doesNotMatch(standaloneChatSource, /context\.chat\?\.renderer/,
+    'read-only chat must not borrow the main-window renderer instance');
 const nextShellSource = read('modules/ui-system/next-shell/next-shell-controller.js');
 assert.match(nextShellSource, /chat: chatCapabilities/,
     'Next Shell must pass the chat capability closure to internal application consumers');
 assert.match(nextShellSource, /function provideChatCapabilities[\s\S]*repository: capabilities\.repository/,
     'Next Shell must accept the real chat capability provider from the composition root');
+assert.match(nextShellSource, /getSnapshot: capabilities\.getSnapshot[\s\S]*createRenderer: capabilities\.createRenderer/,
+    'Next Shell must expose state reads and renderer creation as narrow capabilities');
+assert.doesNotMatch(nextShellSource, /renderer: capabilities\.renderer/,
+    'Next Shell must not propagate the main-window renderer instance to child Surfaces');
+assert.match(read('renderer.js'), /function createOwnedInternalChatRenderer[\s\S]*initializeStreamProjection: false[\s\S]*exposeGlobalCommands: false/,
+    'internal applications must receive renderer-owned providers without reinitializing the main stream singleton or globals');
 assert.doesNotMatch(read('renderer.js'), /window\.__vcp(?:ChatContext|ChatRepository|PresentationState)\s*=/,
     'the renderer composition root must not publish chat services as ambient window providers');
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,

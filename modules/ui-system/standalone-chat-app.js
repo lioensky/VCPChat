@@ -8,16 +8,18 @@ import { createChatPluginLoader } from '../chat/chatPluginManifest.js';
 
 function mountStandaloneChat(container, context = {}) {
     const repository = context.chat?.repository;
-    const chatContext = context.chat?.context;
-    const renderer = context.chat?.renderer;
+    const chatSnapshot = context.chat?.getSnapshot?.() || null;
+    const createRenderer = context.chat?.createRenderer;
     const scope = context.scope?.child?.('next:standalone-chat') || null;
     container.innerHTML = `<section class="vcp-standalone-chat" aria-label="聊天历史查看器"><header><h1>聊天历史</h1><p class="vcp-standalone-chat__status">只读查看</p><button type="button" class="vcp-standalone-chat__focus">聚焦内容</button></header><div class="vcp-standalone-chat__messages" tabindex="-1" aria-label="聊天消息"></div></section>`;
     const root = container.querySelector('.vcp-standalone-chat__messages');
     const focusButton = container.querySelector('.vcp-standalone-chat__focus');
-    if (!repository || !renderer) {
+    if (!repository || typeof createRenderer !== 'function') {
         container.querySelector('.vcp-standalone-chat__status').textContent = '当前没有可查看的话题';
         return async () => { scope?.dispose?.('standalone-chat-empty'); container.replaceChildren(); };
     }
+    const rendererOwner = createRenderer({ root, mode: 'readonly' });
+    const renderer = rendererOwner.renderer;
     const slots = createChatSurfaceSlots();
     const presentationState = createChatPresentationState({ ...(context.chat?.presentation?.getSnapshot?.() || {}), activeSurface: 'standalone' });
     const skin = createPresentationSkin({ id: 'readonly-badge', tokens: { accent: 'var(--vcp-accent-color)' }, render: (host, state, tokens) => {
@@ -39,12 +41,12 @@ function mountStandaloneChat(container, context = {}) {
         applyTheme(root, themePlugin);
         mountSkin(skinHost, skin);
     });
-    const surface = createReadOnlyChatSurface({ root, renderer, repository, focusTarget: root, slots, presentationState, disposeRenderer: () => renderer.disposeRootResources?.(root) });
+    const surface = createReadOnlyChatSurface({ root, renderer, repository, focusTarget: root, slots, presentationState, disposeRenderer: () => rendererOwner.dispose() });
     surface.mountSlot('header', container.querySelector('.vcp-standalone-chat > header'), { canSend: false });
     const onFocus = () => surface.focus();
     focusButton.addEventListener('click', onFocus);
-    const load = chatContext?.selectedItem?.id && chatContext.topicId
-        ? surface.loadHistory(chatContext.selectedItem.id, chatContext.selectedItem.type, chatContext.topicId, { initialBatch: 5, batchSize: 10, batchDelay: 80 })
+    const load = chatSnapshot?.selectedItem?.id && chatSnapshot.topicId
+        ? surface.loadHistory(chatSnapshot.selectedItem.id, chatSnapshot.selectedItem.type, chatSnapshot.topicId, { initialBatch: 5, batchSize: 10, batchDelay: 80 })
         : Promise.resolve({ history: [], stale: false });
     load.then(result => {
         if (!result.stale) container.querySelector('.vcp-standalone-chat__status').textContent = `${result.history.length} 条消息`;

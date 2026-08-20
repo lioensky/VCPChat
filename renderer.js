@@ -333,6 +333,59 @@ let mainChatSurface = null;
 let mainChatAdapter = null;
 let releaseNextUiChatCapabilities = null;
 
+function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null } = {}) {
+    if (!root?.querySelector) throw new TypeError('Internal chat renderer requires a Surface root');
+    let localHistory = [];
+    let localSelection = currentSelectedItem ? { ...currentSelectedItem } : { id: null, type: null };
+    let localTopicId = currentTopicId;
+    let localSettings = globalSettings;
+    let disposed = false;
+    const renderer = createMessageRenderer({
+        streamManager,
+        initializeStreamProjection: false,
+        enableContextMenu: false,
+        enableMiddleClick: false,
+        exposeGlobalCommands: false,
+    });
+    const surfaceFeedback = Object.freeze({
+        ...uiHelperFunctions,
+        scrollToBottom() {
+            const scrollRoot = root.closest('.chat-messages-container') || root;
+            scrollRoot.scrollTop = scrollRoot.scrollHeight;
+        },
+    });
+    renderer.initializeMessageRenderer({
+        chatRepository,
+        historyMutationAuthority,
+        currentChatHistoryRef: { get: () => localHistory, set: value => { localHistory = Array.isArray(value) ? value : []; } },
+        currentSelectedItemRef: { get: () => localSelection, set: value => { localSelection = value; } },
+        currentTopicIdRef: { get: () => localTopicId, set: value => { localTopicId = value; } },
+        globalSettingsRef: { get: () => localSettings, set: value => { localSettings = value; } },
+        chatMessagesDiv: root,
+        electronAPI: chatAPI,
+        markedInstance,
+        uiHelper: surfaceFeedback,
+        interruptHandler: null,
+        messageCommands: { handleSendMessage },
+        summarizeTopicFromMessages: async () => '',
+        handleCreateBranch: async () => false,
+    });
+    return Object.freeze({
+        renderer,
+        mode,
+        async dispose() {
+            if (disposed) return;
+            disposed = true;
+            await renderer.disposeRootResources(root);
+            renderer.disposeRendererResources();
+            localHistory = [];
+            localSelection = null;
+            localTopicId = null;
+            localSettings = null;
+        },
+    });
+}
+
 const startupThemeGate = new StartupThemeGate({
     document,
     applyTheme: applyInitialThemeClass,
@@ -537,8 +590,11 @@ const startupThemeGate = new StartupThemeGate({
         releaseNextUiChatCapabilities?.();
         releaseNextUiChatCapabilities = window.VCPNextShellController?.provideChatCapabilities?.({
             repository: chatRepository,
-            context: chatContext,
-            renderer: messageRenderer,
+            getSnapshot: () => Object.freeze({
+                selectedItem: currentSelectedItem ? { ...currentSelectedItem } : null,
+                topicId: currentTopicId,
+            }),
+            createRenderer: createOwnedInternalChatRenderer,
             manager: chatManager,
             presentation: presentationState,
         }) || null;

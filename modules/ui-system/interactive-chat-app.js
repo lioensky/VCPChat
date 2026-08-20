@@ -4,8 +4,8 @@ import { createChatOperations } from '../chat/chatOperation.js';
 
 function mountInteractiveChat(container, context = {}) {
     const repository = context.chat?.repository;
-    const renderer = context.chat?.renderer;
-    const chatContext = context.chat?.context;
+    const chatSnapshot = context.chat?.getSnapshot?.() || null;
+    const createRenderer = context.chat?.createRenderer;
     const chatManager = context.chat?.manager;
     const scope = context.scope?.child?.('next:interactive-chat') || null;
     container.innerHTML = `<section class="vcp-standalone-chat vcp-interactive-chat" aria-label="独立聊天"><header><div><h1>独立聊天</h1><p class="vcp-standalone-chat__status">当前话题</p></div></header><div class="vcp-standalone-chat__messages" tabindex="-1" aria-label="聊天消息"></div><form class="vcp-interactive-chat__composer"><textarea aria-label="消息内容" rows="2"></textarea><button type="submit">发送</button><button type="button" data-action="cancel">取消</button><p role="status" aria-live="polite"></p></form></section>`;
@@ -16,10 +16,17 @@ function mountInteractiveChat(container, context = {}) {
     let activeOperation = null;
     let operationReady = Promise.resolve(null);
     let publishOperation = null;
-    if (!repository || !renderer || !chatContext || !chatManager) {
+    let submitInteractiveContent = null;
+    if (!repository || typeof createRenderer !== 'function' || !chatSnapshot || !chatManager) {
         container.querySelector('[role="status"]').textContent = '聊天能力尚未就绪';
         return async () => { scope?.dispose?.('interactive-chat-unavailable'); container.replaceChildren(); };
     }
+    const rendererOwner = createRenderer({
+        root,
+        mode: 'interactive',
+        handleSendMessage: text => submitInteractiveContent?.(text),
+    });
+    const renderer = rendererOwner.renderer;
     const operations = createChatOperations({
         send: async request => {
             operationReady = new Promise(resolve => { publishOperation = resolve; });
@@ -44,7 +51,7 @@ function mountInteractiveChat(container, context = {}) {
             return operation?.cancel?.('interactive-user-cancel') || false;
         }
     });
-    const surface = createChatSurface({ root, renderer, repository, focusTarget: input, mode: 'interactive', operations, disposeRenderer: () => renderer.disposeRootResources?.(root) });
+    const surface = createChatSurface({ root, renderer, repository, focusTarget: input, mode: 'interactive', operations, disposeRenderer: () => rendererOwner.dispose() });
     const onSubmit = async event => {
         event.preventDefault();
         const content = input.value.trim();
@@ -70,17 +77,21 @@ function mountInteractiveChat(container, context = {}) {
             input.focus();
         }
     };
+    submitInteractiveContent = text => {
+        input.value = String(text || '');
+        form.requestSubmit();
+    };
     const onCancel = async () => {
         const cancelled = await surface.cancelMessage();
         if (cancelled) status.textContent = '已取消';
     };
     form.addEventListener('submit', onSubmit);
     form.querySelector('[data-action="cancel"]').addEventListener('click', onCancel);
-    const load = chatContext?.selectedItem?.id && chatContext.topicId
-        ? surface.loadHistory(chatContext.selectedItem.id, chatContext.selectedItem.type, chatContext.topicId, { initialBatch: 5, batchSize: 10, batchDelay: 80 })
+    const load = chatSnapshot.selectedItem?.id && chatSnapshot.topicId
+        ? surface.loadHistory(chatSnapshot.selectedItem.id, chatSnapshot.selectedItem.type, chatSnapshot.topicId, { initialBatch: 5, batchSize: 10, batchDelay: 80 })
         : Promise.resolve({ stale: false, history: [] });
     load.catch(error => { status.textContent = `加载失败：${error.message}`; });
-    return async () => { form.removeEventListener('submit', onSubmit); form.querySelector('[data-action="cancel"]').removeEventListener('click', onCancel); await surface.dispose(); scope?.dispose?.('interactive-chat-unmounted'); container.replaceChildren(); };
+    return async () => { submitInteractiveContent = null; form.removeEventListener('submit', onSubmit); form.querySelector('[data-action="cancel"]').removeEventListener('click', onCancel); await surface.dispose(); scope?.dispose?.('interactive-chat-unmounted'); container.replaceChildren(); };
 }
 
 register({ id: 'standalone-chat-compose', title: '独立聊天', icon: 'message-circle', kind: 'internal', mount: mountInteractiveChat });

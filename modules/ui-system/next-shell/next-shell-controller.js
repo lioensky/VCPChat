@@ -735,14 +735,14 @@
     }
 
     function provideChatCapabilities(capabilities) {
-        if (!capabilities || !capabilities.repository || !capabilities.context
-            || !capabilities.renderer || !capabilities.manager) {
-            throw new TypeError('Next UI chat capabilities require repository, context, renderer and manager.');
+        if (!capabilities || !capabilities.repository || typeof capabilities.getSnapshot !== 'function'
+            || typeof capabilities.createRenderer !== 'function' || !capabilities.manager) {
+            throw new TypeError('Next UI chat capabilities require repository, state snapshot, renderer factory and manager.');
         }
         chatCapabilities = Object.freeze({
             repository: capabilities.repository,
-            context: capabilities.context,
-            renderer: capabilities.renderer,
+            getSnapshot: capabilities.getSnapshot,
+            createRenderer: capabilities.createRenderer,
             manager: capabilities.manager,
             presentation: capabilities.presentation || null,
         });

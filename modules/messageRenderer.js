@@ -29,6 +29,12 @@ import { createMiddleClickHandler } from './renderer/middleClickHandler.js';
 // modules/messageRenderer.js
 
 export function createMessageRenderer(options = {}) {
+const features = Object.freeze({
+    contextMenu: options.enableContextMenu !== false,
+    middleClick: options.enableMiddleClick !== false,
+    streamProjection: options.initializeStreamProjection !== false,
+    globalCommands: options.exposeGlobalCommands !== false,
+});
 const visibilityOptimizer = options.visibilityOptimizer || createVisibilityOptimizer();
 const streamManager = options.streamManager || defaultStreamManager;
 const emoticonUrlFixer = options.emoticonUrlFixer || createEmoticonUrlFixer();
@@ -2505,7 +2511,7 @@ function initializeMessageRenderer(refs) {
     });
 
     // Delegated context menu
-    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'contextmenu', (e) => {
+    if (features.contextMenu) ownRendererListener(mainRendererReferences.chatMessagesDiv, 'contextmenu', (e) => {
         const messageItem = e.target.closest('.message-item');
         if (!messageItem) return;
 
@@ -2520,7 +2526,7 @@ function initializeMessageRenderer(refs) {
     });
 
     // Delegated middle mouse button click
-    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'mousedown', (e) => {
+    if (features.middleClick) ownRendererListener(mainRendererReferences.chatMessagesDiv, 'mousedown', (e) => {
         if (e.button !== 1) return; // 只处理中键
 
         const messageItem = e.target.closest('.message-item');
@@ -2554,7 +2560,7 @@ function initializeMessageRenderer(refs) {
         contentProcessor.processRenderedContent(contentDiv, globalSettings);
     };
 
-    contextMenu.initializeContextMenu(mainRendererReferences, {
+    if (features.contextMenu) contextMenu.initializeContextMenu(mainRendererReferences, {
         removeMessageById: removeMessageById,
         renderMessage: renderMessage,
         discardStreamingMessage: streamManager.discardStreamingMessage,
@@ -2568,12 +2574,12 @@ function initializeMessageRenderer(refs) {
         extractSpeakableTextFromContentElement: extractSpeakableTextFromContentElement,
     });
 
-    if (typeof contextMenu.toggleEditMode === 'function') {
+    if (features.contextMenu && features.globalCommands && typeof contextMenu.toggleEditMode === 'function') {
         window.toggleEditMode = contextMenu.toggleEditMode;
         window.messageContextMenu = contextMenu;
     }
 
-    streamManager.initStreamManager({
+    if (features.streamProjection) streamManager.initStreamManager({
         chatRepository: mainRendererReferences.chatRepository,
         chatDomRenderer: mainRendererReferences.chatDomRenderer,
         globalSettingsRef: mainRendererReferences.globalSettingsRef,
@@ -2611,7 +2617,7 @@ function initializeMessageRenderer(refs) {
         DIARY_RENDER_DEBOUNCE_DELAY: DIARY_RENDER_DEBOUNCE_DELAY,
     });
 
-    middleClickHandler.initialize(mainRendererReferences, {
+    if (features.middleClick) middleClickHandler.initialize(mainRendererReferences, {
         removeMessageById: removeMessageById,
         streamManager,
     });
