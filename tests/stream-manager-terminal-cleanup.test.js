@@ -173,3 +173,35 @@ test('background initialization failure releases every runtime owner', async () 
         dom.window.close();
     }
 });
+
+test('StreamProjection honors an owned view authority and history capability after navigation', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    let currentView = 'visible-topic';
+    let history = [];
+    let writes = 0;
+    const projection = createStreamProjection();
+    projection.initStreamManager(createDependencies(dom, {
+        currentChatHistoryRef: { get: () => history, set: value => { writes += 1; history = [...value]; } },
+        historyAuthority: { get: () => history, replace: value => { writes += 1; history = [...value]; } },
+        viewAuthority: { isCurrent: context => context?.topicId === currentView },
+        renderMessage: async message => {
+            const node = dom.window.document.createElement('article');
+            node.className = 'message-item';
+            node.dataset.messageId = message.id;
+            node.innerHTML = '<div class="md-content"></div>';
+            dom.window.document.getElementById('chat').appendChild(node);
+            return node;
+        },
+    }));
+
+    const item = { id: 'background', agentId: 'visible-agent', topicId: 'visible-topic', content: '' };
+    await projection.startStreamingMessage(item);
+    currentView = 'other-topic';
+    await projection.projectStreamTerminal('background', 'completed', { agentId: 'visible-agent', topicId: 'visible-topic' }, { fullResponse: 'late terminal' });
+
+    assert.equal(writes, 1, 'history authority should receive the initialization snapshot once');
+    assert.deepEqual(history.find(message => message.id === 'background')?.content, '');
+    await projection.dispose();
+    dom.window.close();
+});
