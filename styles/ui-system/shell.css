@@ -99,6 +99,23 @@
         --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
     }
 
+    /* The icon adapter replaces .vcp-ui-icon with a block-level SVG. Keep
+       the tab's icon and title in one flex row after that replacement. */
+    html .vcp-ui-scope .next-ui-tab-label > .vcp-ui-scope {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        min-width: 0;
+        width: 100%;
+    }
+
+    html .vcp-ui-scope .next-ui-tab-label > .vcp-ui-scope > :last-child {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     html .vcp-ui-scope .next-ui-launchpad-inner {
         width: min(1080px, calc(100% - var(--vcp-ui-space-8)));
         padding: var(--vcp-ui-space-7) 0 var(--vcp-ui-space-8);
