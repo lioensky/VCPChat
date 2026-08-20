@@ -4,19 +4,21 @@ import { createVcpStreamBridge } from '../chat/vcpStreamBridge.js';
 import { createMainChatStreamConsumer } from './mainChatStreamConsumer.js';
 
 function createStreamCapabilities(root, services) {
-    const required = ['streamProjection', 'messageRenderer', 'getSelection', 'getTopicId'];
+    const required = ['streamProjection', 'historyPersistence', 'messageRenderer', 'getSelection', 'getTopicId'];
     for (const name of required) {
         if (!services?.[name]) throw new TypeError(`MainChatSurfaceAdapter requires stream service: ${name}`);
     }
     const ownerDocument = root.ownerDocument;
+    const reportError = services.reportError || console.error;
     return Object.freeze({
         start: message => services.streamProjection.startStreamingMessage(message),
         append: (messageId, chunk, context) => services.streamProjection.appendStreamChunk(messageId, chunk, context),
         projectTerminal: (messageId, finishReason, context, payload) => (
             services.streamProjection.projectStreamTerminal(messageId, finishReason, context, payload)
         ),
-        persistTerminal: projected => services.streamProjection.persistProjectedStreamTerminal(projected),
+        persistTerminal: projected => services.historyPersistence.commit(projected),
         dispatchTerminal: detail => services.dispatchTerminal?.(detail),
+        reportError,
         async afterPersist({ terminal, finalized, context, messageId }) {
             const finalizedContext = finalized?.context || context;
             const finalizedContent = finalized?.content || terminal.fullResponse || '';
@@ -25,14 +27,19 @@ function createStreamCapabilities(root, services) {
                 && selected
                 && (finalizedContext.groupId ? finalizedContext.groupId === selected.id : finalizedContext.agentId === selected.id)
                 && finalizedContext.topicId === services.getTopicId();
+            const effects = [];
             if (terminal.kind === 'completed' && finalizedContext && !finalizedContext.isGroupMessage && relevant) {
-                await services.chatManager?.attemptTopicSummarizationIfNeeded?.();
+                effects.push(Promise.resolve().then(() => services.chatManager?.attemptTopicSummarizationIfNeeded?.()));
             }
-            await services.flowlockManager?.handleFinalizedMessage?.({
+            effects.push(Promise.resolve().then(() => services.flowlockManager?.handleFinalizedMessage?.({
                 type: terminal.kind === 'failed' ? 'error' : 'end', messageId,
                 context: finalizedContext, content: finalizedContent,
                 finishReason: finalized?.finishReason || terminal.finishReason || terminal.kind,
                 error: terminal.error || null,
+            })));
+            const results = await Promise.allSettled(effects);
+            results.forEach(result => {
+                if (result.status === 'rejected') reportError('[MainChatSurfaceAdapter] post-commit side effect failed', result.reason);
             });
         },
         renderError({ event, context }) {
@@ -93,11 +100,21 @@ export function createMainChatSurfaceAdapter({
         }),
     });
     let disposed = false;
+    const registerStreamRoute = (messageId, route) => {
+        const release = streamRoutes.register(messageId, route);
+        const ownedRelease = () => release();
+        ownedRelease.retract = () => {
+            release.retract();
+            return bridge.disposeOperation(messageId, 'surface-route-retracted');
+        };
+        return ownedRelease;
+    };
     return Object.freeze({
         surface,
         domRenderer: surface.renderer,
-        streamRoutes: Object.freeze({ register: (...args) => streamRoutes.register(...args) }),
+        streamRoutes: Object.freeze({ register: registerStreamRoute }),
         acceptStreamEvent(event) { return disposed ? false : bridge.accept(event); },
+        cancelStream(messageId, reason) { return disposed ? Promise.resolve(null) : bridge.cancelOperation(messageId, reason); },
         async dispose() {
             if (disposed) return;
             disposed = true;

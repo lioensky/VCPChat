@@ -4,6 +4,7 @@ import { createMainChatStreamConsumer } from './mainChatStreamConsumer.js';
 /** Owns the VCP stream bridge and projection capabilities for an auxiliary window. */
 export function createWindowStreamRuntime({
     streamProjection,
+    historyPersistence,
     messageRenderer,
     root,
     getSelection,
@@ -12,9 +13,10 @@ export function createWindowStreamRuntime({
     getMessageContext = () => ({}),
     dispatchTerminal,
     afterPersist,
+    onSettled,
     reportError,
 } = {}) {
-    if (!streamProjection || !messageRenderer || !root || typeof contextFilter !== 'function') {
+    if (!streamProjection || !historyPersistence || !messageRenderer || !root || typeof contextFilter !== 'function') {
         throw new TypeError('window stream runtime requires projection, renderer and context filter');
     }
     const bridge = createVcpStreamBridge({
@@ -27,9 +29,11 @@ export function createWindowStreamRuntime({
             start: message => streamProjection.startStreamingMessage(message),
             append: (messageId, chunk, context) => streamProjection.appendStreamChunk(messageId, chunk, context),
             projectTerminal: (messageId, finishReason, context, payload) => streamProjection.projectStreamTerminal(messageId, finishReason, context, payload),
-            persistTerminal: projected => streamProjection.persistProjectedStreamTerminal(projected),
+            persistTerminal: projected => historyPersistence.commit(projected),
             dispatchTerminal,
+            reportError,
             async afterPersist(value) { await afterPersist?.(value); },
+            onSettled(value) { onSettled?.(value); },
             renderError: ({ event, context }) => {
                 if (!contextFilter(context)) return;
                 const error = event.outcome?.transport?.error?.message

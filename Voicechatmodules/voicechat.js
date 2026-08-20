@@ -1,6 +1,9 @@
 // Voicechatmodules/voicechat.js
 import { createMemoryChatRepository } from '../modules/chat/memoryChatRepository.js';
+import { createChatHistoryPersistence } from '../modules/chat/chatHistoryPersistence.js';
 import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
+import { messageRenderer } from '../modules/messageRenderer.js';
+import { streamManager } from '../modules/renderer/streamManager.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
@@ -130,6 +133,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             check();
         });
+    }
+
+    function restoreComposerAfterStream() {
+        activeStreamingMessageId = null;
+        messageInput.disabled = false;
+        sendMessageBtn.disabled = false;
+        messageInput.focus();
     }
 
     async function saveVoiceChatToHistory() {
@@ -270,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function initializeRenderer() {
-        if (window.messageRenderer) {
+        if (messageRenderer) {
             const chatHistoryRef = {
                 get: () => currentChatHistory,
                 set: (newHistory) => { currentChatHistory = newHistory; }
@@ -293,11 +303,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 get: () => getVoiceTopicId(),
                 set: () => {}
             };
-            window.messageRenderer.initializeMessageRenderer({
-                chatRepository: createMemoryChatRepository({
-                    read: () => currentChatHistory,
-                    write: history => { currentChatHistory = history; },
-                }),
+            const chatRepository = createMemoryChatRepository({
+                read: () => currentChatHistory,
+                write: history => { currentChatHistory = history; },
+            });
+            const historyPersistence = createChatHistoryPersistence(chatRepository);
+            messageRenderer.initializeMessageRenderer({
+                chatRepository,
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,
@@ -311,8 +323,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             streamRuntime = createWindowStreamRuntime({
                 root: chatMessagesDiv,
-                streamProjection: window.streamManager,
-                messageRenderer: window.messageRenderer,
+                streamProjection: streamManager,
+                historyPersistence,
+                messageRenderer,
                 getSelection: () => ({ id: agentId, type: 'agent' }),
                 getTopicId: getVoiceTopicId,
                 getMessageContext: () => ({
@@ -321,17 +334,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }),
                 contextFilter: context => !!context && context.topicId === getVoiceTopicId() && context.agentId === agentId,
                 dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
-                afterPersist: ({ finalized }) => {
+                afterPersist: ({ terminal, finalized }) => {
+                    if (terminal.kind !== 'completed') return;
                     if (finalized?.messageId) setTimeout(() => extractTextAndPlayTTS(finalized.messageId, 0), 100);
-                    activeStreamingMessageId = null;
-                    messageInput.disabled = false;
-                    sendMessageBtn.disabled = false;
-                    messageInput.focus();
                 },
+                onSettled: restoreComposerAfterStream,
             });
             console.log('[VoiceChat] Shared messageRenderer initialized.');
         } else {
-            console.error('[VoiceChat] window.messageRenderer is not available.');
+            console.error('[VoiceChat] shared message renderer provider is not available.');
         }
     }
 
@@ -355,10 +366,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const sendMessage = async (messageContent) => {
         clearTimeout(speechRecognitionTimeout); // Stop any pending auto-send
-        if (!messageContent.trim() || !agentConfig || !window.messageRenderer) return;
+        if (!messageContent.trim() || !agentConfig || !messageRenderer) return;
 
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
-        await window.messageRenderer.renderMessage(userMessage);
+        await messageRenderer.renderMessage(userMessage);
         currentChatHistory.push(userMessage);
 
         messageInput.value = '';
@@ -377,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name: agentConfig.name,
             avatarUrl: agentConfig.avatarUrl
         };
-        await window.messageRenderer.renderMessage(assistantMessagePlaceholder);
+        await messageRenderer.renderMessage(assistantMessagePlaceholder);
 
         const context = {
             agentId: agentId,
@@ -415,20 +426,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
-            if (streamRuntime) {
-                streamRuntime.accept({
+            const accepted = streamRuntime?.accept({
                     type: 'error', messageId: thinkingMessageId, error: error.message,
                     context: { agentId, topicId: getVoiceTopicId() },
                 });
-                const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
-                if (messageItemContent) {
-                    messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
-                }
-            }
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.focus();
+            if (!accepted) restoreComposerAfterStream();
         }
     };
 
@@ -447,8 +449,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (messageElement) {
             const contentElement = messageElement.querySelector('.md-content');
-            if (contentElement && window.messageRenderer?.extractSpeakableTextFromContentElement) {
-                textToSpeak = window.messageRenderer.extractSpeakableTextFromContentElement(contentElement);
+            if (contentElement && messageRenderer?.extractSpeakableTextFromContentElement) {
+                textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);
             } else if (contentElement) {
                 const contentClone = contentElement.cloneNode(true);
                 contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script').forEach(el => el.remove());
@@ -485,8 +487,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log(`[VoiceChat] 找到备用匹配元素: ${idAttr}`);
                         const contentElement = item.querySelector('.md-content');
                         if (contentElement) {
-                            const backupText = window.messageRenderer?.extractSpeakableTextFromContentElement
-                                ? window.messageRenderer.extractSpeakableTextFromContentElement(contentElement)
+                            const backupText = messageRenderer?.extractSpeakableTextFromContentElement
+                                ? messageRenderer.extractSpeakableTextFromContentElement(contentElement)
                                 : (contentElement.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
                             if (backupText.trim().length > 0) {
                                 console.log(`[VoiceChat] 使用备用元素提取到文本长度: ${backupText.trim().length}`);

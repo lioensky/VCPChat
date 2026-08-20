@@ -19,8 +19,12 @@ test('stream consumer routes are exact-owner scoped and absent after release', (
 test('stream consumer registry rejects registration after owner dispose', () => {
     const registry = createStreamConsumerRegistry();
     registry.register('m2', { kind: 'main-chat' });
+    const release = registry.register('captured', { append() {} });
+    const captured = registry.claim('captured');
     registry.dispose();
     assert.equal(registry.claim('m2'), null);
+    assert.equal(captured.suppressed, true);
+    release();
     assert.throws(() => registry.register('late', {}), /disposed/);
 });
 

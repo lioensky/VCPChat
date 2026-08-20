@@ -25,7 +25,7 @@ export function createStreamConsumerRegistry() {
                     finally { if (routes.get(messageId)?.token === token) routes.delete(messageId); }
                 },
             });
-            routes.set(messageId, { token, route: ownedRoute });
+            routes.set(messageId, { token, route: ownedRoute, lease });
             const release = () => {
                 if (routes.get(messageId)?.token !== token) return;
                 lease.active = false;
@@ -42,6 +42,7 @@ export function createStreamConsumerRegistry() {
         },
         dispose() {
             disposed = true;
+            routes.forEach(entry => { entry.lease.active = false; });
             routes.clear();
         },
     });

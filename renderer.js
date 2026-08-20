@@ -1,4 +1,5 @@
 import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
+import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
 
 // --- Globals ---
 let globalSettings = {
@@ -214,16 +215,6 @@ async function interruptActiveResponseFromSendButton() {
     if (!activeMessage) return false;
 
     const isGroupMessage = activeMessage.isGroupMessage === true || currentSelectedItem?.type === 'group';
-    const messageContext = {
-        agentId: activeMessage.agentId || (isGroupMessage ? null : currentSelectedItem?.id),
-        groupId: activeMessage.groupId || (isGroupMessage ? currentSelectedItem?.id : null),
-        topicId: currentTopicId,
-        isGroupMessage,
-        agentName: activeMessage.name || currentSelectedItem?.name || currentSelectedItem?.id,
-        avatarUrl: activeMessage.avatarUrl || currentSelectedItem?.avatarUrl,
-        avatarColor: activeMessage.avatarColor || currentSelectedItem?.config?.avatarCalculatedColor
-    };
-
     let result = { success: false, error: '无法发送中止请求。' };
     if (isGroupMessage) {
         if (chatAPI && typeof chatAPI.interruptGroupRequest === 'function') {
@@ -244,13 +235,14 @@ async function interruptActiveResponseFromSendButton() {
     }
 
     // 只有后端中止请求失败时才本地兜底收尾，避免消息永久停留在流式状态。
-    if (window.messageRenderer && typeof window.messageRenderer.finalizeStreamedMessage === 'function') {
-        await window.messageRenderer.finalizeStreamedMessage(
-            activeMessage.id,
-            'cancelled_by_user',
-            messageContext,
-            { error: result.error || '无法发送中止请求，已在本地停止流式消息。' }
-        );
+    const localOutcome = await mainChatAdapter?.cancelStream?.(
+        activeMessage.id,
+        result.error || 'interrupt-request-failed'
+    );
+    if (!localOutcome) {
+        window.streamManager?.discardStreamingMessage?.(activeMessage.id);
+        currentChatHistory = currentChatHistory.filter(message => message?.id !== activeMessage.id);
+        window.messageRenderer?.removeMessageById?.(activeMessage.id, false);
     }
 
     updateSendButtonState();
@@ -474,6 +466,7 @@ const startupThemeGate = new StartupThemeGate({
     if (window.messageRenderer) {
         interruptHandler.initialize(chatAPI);
 
+        const historyPersistence = createChatHistoryPersistence(chatRepository);
         const renderDependencies = {
             chatRepository,
             currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
@@ -511,6 +504,7 @@ const startupThemeGate = new StartupThemeGate({
             renderDependencies,
             streamServices: {
                 streamProjection: window.streamManager,
+                historyPersistence,
                 messageRenderer: window.messageRenderer,
                 chatManager: window.chatManager,
                 flowlockManager: window.flowlockManager,
@@ -529,6 +523,8 @@ const startupThemeGate = new StartupThemeGate({
         // Pass the new function to the context menu
         window.messageRenderer.setContextMenuDependencies({
             showForwardModal: showForwardModal,
+            acceptStreamEvent: event => mainChatAdapter?.acceptStreamEvent(event),
+            cancelStream: (messageId, reason) => mainChatAdapter?.cancelStream(messageId, reason),
         });
 
     } else {

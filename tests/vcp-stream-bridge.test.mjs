@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVcpStreamBridge } from '../modules/chat/vcpStreamBridge.js';
+import { createMainChatStreamConsumer } from '../modules/renderer/mainChatStreamConsumer.js';
 
 const waitUntil = async predicate => {
     for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -66,6 +67,65 @@ test('VCP bridge dispose aborts an externally-driven operation and reaches quies
     assert.deepEqual(seen, ['started'], 'dispose detaches the consumer before queued projection work can publish');
 });
 
+test('one operation can be disposed without a producer terminal and rejects every late event', async () => {
+    const seen = [];
+    let consumerDisposals = 0;
+    const bridge = createVcpStreamBridge({
+        createConsumer: () => ({
+            prepare: event => seen.push(`prepare:${event.type}`),
+            consume: event => seen.push(`event:${event.type}`),
+            persist() { assert.fail('a retracted operation must not persist'); },
+            dispose() { consumerDisposals += 1; },
+        }),
+    });
+    assert.equal(bridge.accept({ type: 'data', messageId: 'owned', context: { agentId: 'a', topicId: 't' }, chunk: 'partial' }), true);
+    await waitUntil(() => seen.includes('event:chunk'));
+    const outcome = await bridge.disposeOperation('owned');
+    assert.equal(outcome.kind, 'discarded');
+    assert.equal(consumerDisposals, 1);
+    assert.equal(bridge.accept({ type: 'end', messageId: 'owned', context: { agentId: 'a', topicId: 't' } }), false);
+    assert.equal(bridge.accept({ type: 'data', messageId: 'owned', context: { agentId: 'a', topicId: 't' }, chunk: 'late' }), false);
+    await bridge.dispose();
+});
+
+test('retiring before the first producer event prevents operation creation and stream resurrection', async () => {
+    let consumersCreated = 0;
+    const bridge = createVcpStreamBridge({
+        createConsumer: () => {
+            consumersCreated += 1;
+            return {};
+        },
+    });
+    assert.equal(await bridge.disposeOperation('before-first-event'), false);
+    assert.equal(bridge.accept({ type: 'data', messageId: 'before-first-event', context: { agentId: 'a', topicId: 't' }, chunk: 'late' }), false);
+    assert.equal(bridge.accept({ type: 'end', messageId: 'before-first-event', context: { agentId: 'a', topicId: 't' } }), false);
+    assert.equal(consumersCreated, 0);
+
+    assert.equal(await bridge.cancelOperation('cancel-before-first-event'), null);
+    assert.equal(bridge.accept({ type: 'start', messageId: 'cancel-before-first-event', context: { agentId: 'a', topicId: 't' } }), false);
+    assert.equal(consumersCreated, 0);
+    await bridge.dispose();
+});
+
+test('local cancellation drains accepted chunks and persists one cancelled terminal', async () => {
+    const seen = [];
+    const bridge = createVcpStreamBridge({
+        createConsumer: () => ({
+            prepare: event => seen.push(`prepare:${event.type}`),
+            consume: event => seen.push(`event:${event.type}`),
+            persist: value => { seen.push(`persist:${value.terminal.kind}`); },
+        }),
+    });
+    bridge.accept({ type: 'data', messageId: 'cancel-local', context: { agentId: 'a', topicId: 't' }, chunk: 'partial' });
+    const outcome = await bridge.cancelOperation('cancel-local', 'backend-interrupt-failed');
+    assert.equal(outcome.kind, 'cancelled');
+    assert.deepEqual(seen, [
+        'event:started', 'prepare:data', 'event:chunk', 'persist:cancelled', 'event:cancelled',
+    ]);
+    assert.equal(bridge.accept({ type: 'end', messageId: 'cancel-local', context: { agentId: 'a', topicId: 't' } }), false);
+    await bridge.dispose();
+});
+
 test('VCP bridge serializes deferred prepare before immediate chunk and terminal', async () => {
     const seen = [];
     let releasePrepare;
@@ -91,5 +151,71 @@ test('VCP bridge serializes deferred prepare before immediate chunk and terminal
         'event:started', 'prepare-start:data', 'prepare-end:data', 'event:chunk',
         'prepare-start:end', 'prepare-end:end', 'persist:completed', 'event:completed',
     ]);
+    await bridge.dispose();
+});
+
+test('missing terminal projection becomes one persistence failure instead of a completed no-op', async () => {
+    const terminals = [];
+    const bridge = createVcpStreamBridge({
+        reportError: () => {},
+        createConsumer: event => {
+            const consumer = createMainChatStreamConsumer(event, {
+                start() {},
+                append() {},
+                async projectTerminal() { return null; },
+                async persistTerminal() { assert.fail('a missing projection must not be committed'); },
+                renderError() {},
+                dispatchTerminal() {},
+                getSurfaceGeneration: () => 0,
+            });
+            return Object.freeze({
+                ...consumer,
+                consume(streamEvent) {
+                    if (['completed', 'failed', 'cancelled', 'discarded'].includes(streamEvent.type)) terminals.push(streamEvent);
+                    consumer.consume(streamEvent);
+                },
+            });
+        },
+    });
+    bridge.accept({ type: 'end', messageId: 'missing', context: { agentId: 'a', topicId: 't' } });
+    await waitUntil(() => terminals.length === 1);
+    assert.equal(terminals[0].type, 'failed');
+    assert.equal(terminals[0].outcome.phase, 'persistence');
+    await bridge.dispose();
+});
+
+test('post-commit side effect failure is reported without changing the durable completed outcome', async () => {
+    const terminals = [];
+    const reports = [];
+    let committed = false;
+    const bridge = createVcpStreamBridge({
+        reportError: (...args) => reports.push(args),
+        createConsumer: event => {
+            const consumer = createMainChatStreamConsumer(event, {
+                start() {},
+                append() {},
+                async projectTerminal() {
+                    return { messageId: 'post-commit', context: event.context, history: [], finishReason: 'completed' };
+                },
+                async persistTerminal(value) { committed = true; return value; },
+                async afterPersist() { throw new Error('summary failed'); },
+                reportError: (...args) => reports.push(args),
+                getSurfaceGeneration: () => 0,
+            });
+            return Object.freeze({
+                ...consumer,
+                consume(streamEvent) {
+                    if (['completed', 'failed', 'cancelled', 'discarded'].includes(streamEvent.type)) terminals.push(streamEvent);
+                    consumer.consume(streamEvent);
+                },
+            });
+        },
+    });
+    bridge.accept({ type: 'end', messageId: 'post-commit', context: { agentId: 'a', topicId: 't' } });
+    await waitUntil(() => terminals.length === 1);
+    assert.equal(committed, true);
+    assert.equal(terminals[0].type, 'completed');
+    assert.equal(terminals[0].outcome.persistence.status, 'saved');
+    assert.equal(reports.some(([, error]) => error?.message === 'summary failed'), true);
     await bridge.dispose();
 });

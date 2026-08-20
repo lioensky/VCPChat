@@ -8,7 +8,7 @@ const streamingChunkQueues = new Map(); // messageId -> array of original chunk 
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
 const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, stableRenderedCutoff, stableBlocks, stableBlockSeq, lastTailText, lastParagraphBoundary }
-let activeStreamingMessageId = null; // Track the currently active streaming message
+const activeStreamingMessages = new Map(); // messageId -> owned conversation context
 const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
@@ -362,100 +362,6 @@ async function getHistoryForContext(context) {
     }
     
     return null;
-}
-
-// 🟢 历史保存防抖
-const historySaveQueue = new Map(); // context signature -> {context, history, timerId}
-const historySaveChains = new Map(); // context signature -> serialized durable save
-const HISTORY_SAVE_DEBOUNCE = 1000; // 1秒防抖
-
-async function debouncedSaveHistory(context, history) {
-    if (!context || context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        return; // 跳过临时聊天
-    }
-    
-    const signature = `${context.groupId || context.agentId}-${context.topicId}`;
-    
-    // 清除之前的定时器
-    const existing = historySaveQueue.get(signature);
-    if (existing?.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    
-    // 设置新的防抖定时器
-    const timerId = setTimeout(async () => {
-        const queuedData = historySaveQueue.get(signature);
-        if (queuedData) {
-            historySaveQueue.delete(signature);
-            try {
-                await saveHistoryForContext(queuedData.context, queuedData.history);
-            } catch (error) {
-                console.error('[StreamManager] Debounced history save failed:', error);
-            }
-        }
-    }, HISTORY_SAVE_DEBOUNCE);
-    
-    // 使用最新的 history 克隆以避免引用问题
-    historySaveQueue.set(signature, { context, history: [...history], timerId });
-}
-
-async function flushHistorySave(context) {
-    if (!context || context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) return;
-    const signature = `${context.groupId || context.agentId}-${context.topicId}`;
-    const queuedData = historySaveQueue.get(signature);
-    if (!queuedData) return;
-    clearTimeout(queuedData.timerId);
-    historySaveQueue.delete(signature);
-    await saveHistoryForContext(queuedData.context, queuedData.history);
-}
-
-async function saveHistoryForContext(context, history) {
-    const { electronAPI, chatRepository } = refs;
-    if (!context || context.isGroupMessage) {
-        // For group messages, the main process (groupchat.js) is the single source of truth for history.
-        // The renderer avoids saving to prevent race conditions and overwriting the correct history.
-        return;
-    }
-    
-    const { agentId, topicId } = context;
-    
-    if (!agentId || !topicId) return;
-    
-    const signature = `${agentId}-${topicId}`;
-    const historyToSave = history.filter(msg => !msg.isThinking && !msg.isPendingStream);
-    const previous = historySaveChains.get(signature) || Promise.resolve();
-    const current = previous.catch(() => {}).then(async () => {
-        let mergedHistory = historyToSave;
-        // Reverse-completing streams can otherwise overwrite a newer durable
-        // response with an older in-memory snapshot. Merge against the latest
-        // repository state while serializing writes for this topic.
-        try {
-            const durable = chatRepository
-                ? await chatRepository.getHistory(agentId, 'agent', topicId)
-                : allowLegacyHistoryFallback ? await electronAPI.getChatHistory(agentId, topicId) : null;
-            if (Array.isArray(durable)) {
-                const byId = new Map(durable.map(message => [message.id || `${message.role}:${message.timestamp}:${message.content}`, message]));
-                for (const message of historyToSave) {
-                    const key = message.id || `${message.role}:${message.timestamp}:${message.content}`;
-                    byId.set(key, message);
-                }
-                mergedHistory = [...byId.values()];
-            }
-        } catch (error) {
-            console.warn('[StreamManager] Could not merge durable history before save:', error);
-        }
-        if (chatRepository) {
-            await chatRepository.saveHistory(agentId, 'agent', topicId, mergedHistory);
-        } else if (allowLegacyHistoryFallback) {
-            await electronAPI.saveChatHistory(agentId, topicId, mergedHistory);
-        } else {
-            throw new Error('ChatRepository is required for stream history');
-        }
-    });
-    historySaveChains.set(signature, current);
-    try { await current; } finally {
-        if (historySaveChains.get(signature) === current) historySaveChains.delete(signature);
-    }
 }
 
 /**
@@ -1737,7 +1643,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         messageInitializationStatus.set(messageId, 'pending');
     }
     
-    activeStreamingMessageId = messageId;
+    activeStreamingMessages.set(messageId, context);
     
     const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(context);
@@ -1838,11 +1744,6 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         // Update in-memory reference for current view
         currentChatHistoryRef.set([...historyForThisMessage]);
         window.updateSendButtonState?.();
-    }
-    
-    // 🟢 使用防抖保存
-    if (context.topicId !== 'assistant_chat' && !context.topicId.startsWith('voicechat_')) {
-        debouncedSaveHistory(context, historyForThisMessage);
     }
     
     // Initialization is complete, message is ready to process chunks.
@@ -2257,8 +2158,7 @@ export function appendStreamChunk(messageId, chunkData, context) {
 
 /**
  * Applies the terminal message model and DOM projection without writing durable history.
- * The StreamCoordinator owns the production commit point; legacy callers use the
- * finalizeStreamedMessage wrapper below until their consumers are migrated.
+ * The StreamCoordinator owns the production commit point.
  */
 export async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
     let initStatusAtFinalize = messageInitializationStatus.get(messageId);
@@ -2274,14 +2174,13 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     }
     if (!initStatusAtFinalize) {
         console.warn(`[StreamManager] Finalization ignored because message initialization is absent: ${messageId}`);
+        discardStreamingMessage(messageId);
         return null;
     }
 
     // With the global render loop, we no longer need to manually drain the queue here or clear timers.
     // The loop will continue to process chunks until the queue is empty and the message is finalized, then clean itself up.
-    if (activeStreamingMessageId === messageId) {
-        activeStreamingMessageId = null;
-    }
+    activeStreamingMessages.delete(messageId);
     
     // 🟢 清理节流定时器
     const scrollTimer = scrollThrottleTimers.get(messageId);
@@ -2500,26 +2399,6 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     };
 }
 
-/** The durable commit provider used by the coordinator-owned main stream path. */
-export async function persistProjectedStreamTerminal(projected) {
-    if (!projected?.context || !Array.isArray(projected.history)) return projected || null;
-    if (projected.context.topicId !== 'assistant_chat') {
-        await saveHistoryForContext(projected.context, projected.history);
-    }
-    return {
-        messageId: projected.messageId,
-        context: projected.context,
-        content: projected.content,
-        finishReason: projected.finishReason,
-    };
-}
-
-/** Compatibility entry point for consumers not yet routed through StreamCoordinator. */
-export async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    const projected = await projectStreamTerminal(messageId, finishReason, context, finalPayload);
-    return persistProjectedStreamTerminal(projected);
-}
-
 export function discardStreamingMessage(messageId) {
     const scrollTimer = scrollThrottleTimers.get(messageId);
     if (scrollTimer) clearTimeout(scrollTimer);
@@ -2540,7 +2419,7 @@ export function discardStreamingMessage(messageId) {
     messageRootMap.delete(messageId);
     viewContextCache.delete(messageId);
     cleanupDesktopPushState(messageId);
-    if (activeStreamingMessageId === messageId) activeStreamingMessageId = null;
+    activeStreamingMessages.delete(messageId);
     window.updateSendButtonState?.();
 }
 
@@ -2559,16 +2438,6 @@ export async function cleanupTransientState() {
         desktopPushStates.clear();
     
     
-        const queuedHistory = [...historySaveQueue.values()];
-        for (const queued of queuedHistory) {
-            if (queued?.timerId) {
-                clearTimeout(queued.timerId);
-            }
-        }
-        historySaveQueue.clear();
-        await Promise.allSettled(queuedHistory.map(queued => saveHistoryForContext(queued.context, queued.history)));
-        await Promise.allSettled([...historySaveChains.values()]);
-    
         streamingChunkQueues.clear();
         streamingTimers.clear();
         pendingDirectRenderMessages.clear();
@@ -2584,16 +2453,32 @@ export async function cleanupTransientState() {
         messageRootMap.clear();
         viewContextCache.clear();
     
-        activeStreamingMessageId = null;
+        activeStreamingMessages.clear();
         currentViewSignature = null;
         globalRenderLoopRunning = false;
     
         console.debug('[StreamManager] Transient state cleared');
     }
 
+export function getActiveStreamingMessageId() {
+    const active = [...activeStreamingMessages.entries()];
+    for (let index = active.length - 1; index >= 0; index -= 1) {
+        const [messageId, context] = active[index];
+        if (isMessageForCurrentView(context)) return messageId;
+    }
+    return null;
+}
+
+export function getActiveStreamingContext() {
+    const messageId = getActiveStreamingMessageId();
+    return messageId ? activeStreamingMessages.get(messageId) || null : null;
+}
+
 export function getStreamDiagnostics() {
+    const activeMessageId = getActiveStreamingMessageId();
     return Object.freeze({
-        activeMessageId: activeStreamingMessageId,
+        activeMessageId,
+        activeMessageIds: Object.freeze([...activeStreamingMessages.keys()]),
         initialization: messageInitializationStatus.size,
         activeInitializations: [...messageInitializationStatus.values()]
             .filter(status => status === 'pending' || status === 'ready').length,
@@ -2605,31 +2490,29 @@ export function getStreamDiagnostics() {
         chunkQueues: streamingChunkQueues.size,
         renderTimers: streamingTimers.size,
         delayedCleanupTimers: 0,
-        historySaveQueue: historySaveQueue.size,
         desktopPushStates: desktopPushStates.size,
     });
 }
 
 // Expose to global scope for classic scripts
-window.streamManager = {
+export const streamManager = {
     initStreamManager,
     cleanupTransientState,
     startStreamingMessage,
     appendStreamChunk,
     projectStreamTerminal,
-    persistProjectedStreamTerminal,
-    finalizeStreamedMessage,
     discardStreamingMessage,
     cleanupTransientState,
     getDiagnostics: getStreamDiagnostics,
     isMessageActive,
-    getActiveStreamingMessageId: () => activeStreamingMessageId,
-    getActiveStreamingContext: () => {
-        if (!activeStreamingMessageId) return null;
-        return messageContextMap.get(activeStreamingMessageId) || null;
-    },
+    getActiveStreamingMessageId,
+    getActiveStreamingContext,
     isMessageInitialized: (messageId) => {
         // Check if message is being tracked by streamManager
         return messageInitializationStatus.has(messageId);
     }
 };
+
+// Compatibility alias for legacy Classic consumers; module consumers use the
+// explicit provider export and do not depend on ambient window state.
+window.streamManager = streamManager;

@@ -133,6 +133,11 @@ assert.match(read('renderer.js'), /searchManager\.init\([\s\S]*?chatRepository,/
     'SearchManager must receive the shared ChatRepository at its production entry');
 assert.match(read('modules/messageRenderer.js'), /streamManager\.initStreamManager\([\s\S]*?chatRepository:/,
     'StreamManager must receive the shared ChatRepository at its production entry');
+const historyPersistenceSource = read('modules/chat/chatHistoryPersistence.js');
+assert.match(historyPersistenceSource, /createChatHistoryPersistence[\s\S]*repository\.getHistory[\s\S]*repository\.saveHistory/,
+    'ChatHistoryPersistence must own the durable stream read/merge/write policy');
+assert.doesNotMatch(historyPersistenceSource, /\b(?:window|document|electronAPI)\b/,
+    'ChatHistoryPersistence must remain independent from DOM and Electron');
 assert.match(read('modules/chat/chatDomRenderer.js'), /createChatDomRenderer/,
     'ChatDomRenderer must define the explicit root/teardown adapter');
 assert.match(read('modules/chat/contentRuntime.js'), /createRenderModel/,
@@ -157,10 +162,26 @@ assert.match(read('modules/renderer/contentProcessor.js'), /scheduleOwnedTimeout
     'content processor delayed work must be owned by the message root and cleared on teardown');
 assert.match(read('modules/chat/chatOperation.js'), /cancelRequested[\s\S]*if \(cancelRequested\) return true/,
     'interactive surface cancellation must be idempotent for repeated user actions');
-assert.match(read('modules/renderer/streamManager.js'), /projectStreamTerminal[\s\S]*persistProjectedStreamTerminal[\s\S]*await saveHistoryForContext/,
-    'stream terminal persistence must expose an explicit awaited durable commit provider');
-assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /persistTerminal: projected => services\.streamProjection\.persistProjectedStreamTerminal/,
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /historySaveQueue|historySaveChains|saveHistoryForContext|debouncedSaveHistory/,
+    'StreamManager must not retain a second durable queue or repository write policy');
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /persistProjectedStreamTerminal|finalizeStreamedMessage/,
+    'StreamManager must not expose a second durable terminal facade');
+assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /persistTerminal: projected => services\.historyPersistence\.commit/,
     'MainChatSurfaceAdapter must own the production durable commit capability');
+assert.match(read('renderer.js'), /createChatHistoryPersistence\(chatRepository\)[\s\S]*historyPersistence,/,
+    'the main renderer must compose the durable provider with its real repository');
+assert.match(read('modules/chat/vcpStreamBridge.js'), /disposeOperation[\s\S]*handle\.dispose[\s\S]*operation\.chain/,
+    'message-scoped Surface retraction must reach bridge quiescence without a producer terminal');
+assert.match(read('modules/chat/vcpStreamBridge.js'), /MAX_RETIRED_SESSIONS[\s\S]*retireSession[\s\S]*retiredSessions\.size/,
+    'late-event tombstones must be bounded for a long-lived main window');
+assert.match(read('modules/chat/streamConsumerRegistry.js'), /dispose\(\)[\s\S]*lease\.active = false[\s\S]*routes\.clear/,
+    'registry disposal must revoke routes already captured by stream consumers');
+assert.match(read('modules/renderer/mainChatStreamConsumer.js'), /persistTerminal\(projected\)[\s\S]*catch \(sideEffectError\)[\s\S]*post-commit side effect failed/,
+    'post-commit side effects must not rewrite a successful durable outcome');
+assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /contextMenuDependencies\.(?:startStreamingMessage|finalizeStreamedMessage)/,
+    'regeneration and context-menu cancellation must use the coordinator-owned bridge');
+assert.match(read('renderer.js'), /mainChatAdapter\?\.cancelStream/,
+    'main send-button cancellation fallback must use the coordinator-owned operation');
 assert.match(read('renderer.js'), /createMainChatSurfaceAdapter\([\s\S]*?createChatOperations/,
     'main chat must be owned by a real MainChatSurfaceAdapter');
 assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /createChatSurface\([\s\S]*?mode: 'interactive'/,

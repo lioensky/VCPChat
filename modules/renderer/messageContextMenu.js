@@ -3,6 +3,15 @@
 let mainRefs = {};
 let contextMenuDependencies = {};
 
+async function cancelOwnedStream(messageId, reason) {
+    const outcome = await contextMenuDependencies.cancelStream?.(messageId, reason);
+    if (!outcome) {
+        contextMenuDependencies.discardStreamingMessage?.(messageId);
+        await contextMenuDependencies.removeMessageById?.(messageId, true);
+    }
+    return outcome;
+}
+
 /**
  * Initializes the context menu module with necessary references and dependencies.
  * @param {object} refs - Core references (electronAPI, uiHelper, etc.).
@@ -78,9 +87,7 @@ function showContextMenu(event, messageItem, message) {
                     } else {
                         uiHelper.showToastNotification(`群聊中止失败: ${result.error}`, "error");
                         // 作为后备，在前端直接停止渲染
-                        if (contextMenuDependencies.finalizeStreamedMessage) {
-                            contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
-                        }
+                        await cancelOwnedStream(activeMessageId, result.error || 'group-interrupt-failed');
                     }
                 } else {
                     console.error("[ContextMenu] electronAPI.interruptGroupRequest is not available.");
@@ -98,9 +105,7 @@ function showContextMenu(event, messageItem, message) {
                         uiHelper.showToastNotification(`中止失败: ${result.error}`, "error");
                         
                         // 中止失败时手动finalize消息
-                        if (contextMenuDependencies.finalizeStreamedMessage) {
-                            contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
-                        }
+                        await cancelOwnedStream(activeMessageId, result.error || 'agent-interrupt-failed');
                         
                         // Flowlock 不在此处直接恢复。中止/错误后的重试由对应 Agent Session
                         // 基于 messageId/context 的最终事件统一调度，避免读取其他 Agent 的输入框。
@@ -108,9 +113,7 @@ function showContextMenu(event, messageItem, message) {
                 } else {
                     console.error("[ContextMenu] Interrupt handler not available. Manually cancelling.");
                     uiHelper.showToastNotification("无法发送中止信号，已在本地取消。", "warning");
-                    if (contextMenuDependencies.finalizeStreamedMessage) {
-                        contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
-                    }
+                    await cancelOwnedStream(activeMessageId, 'interrupt-handler-unavailable');
                 }
             }
         };
@@ -659,6 +662,8 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
     const globalSettingsVal = mainRefs.globalSettingsRef.get();
+    let streamingRequested = false;
+    let streamContext = null;
 
     if (!currentSelectedItemVal.id || currentSelectedItemVal.type !== 'agent' || !currentTopicIdVal || !originalAssistantMessage || originalAssistantMessage.role !== 'assistant') {
         uiHelper.showToastNotification("只能为 Agent 的回复进行重新生成。", "warning");
@@ -985,16 +990,13 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
         
-        // 【关键修复】如果使用流式输出，先调用 startStreamingMessage
-        if (modelConfigForVCP.stream) {
-            contextMenuDependencies.startStreamingMessage({ ...regenerationThinkingMessage, content: "" });
-        }
-
         const context = {
             agentId: currentSelectedItemVal.id,
             topicId: currentTopicIdVal,
             isGroupMessage: false
         };
+        streamingRequested = modelConfigForVCP.stream;
+        streamContext = context;
         
         const vcpResult = await electronAPI.sendToVCP(
             globalSettingsVal.vcpServerUrl,
@@ -1010,7 +1012,12 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             // 如果流启动失败，vcpResult 会包含错误信息
             if (vcpResult.streamError || !vcpResult.streamingStarted) {
                 let detailedError = vcpResult.error || '未能启动流';
-                contextMenuDependencies.finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `VCP 流错误 (重新生成): ${detailedError}`);
+                contextMenuDependencies.acceptStreamEvent?.({
+                    type: 'error',
+                    messageId: regenerationThinkingMessage.id,
+                    error: `VCP 流错误 (重新生成): ${detailedError}`,
+                    context,
+                });
             }
         } else {
             // 非流式处理逻辑 - 参考 chatManager.js 的健壮实现
@@ -1064,8 +1071,26 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         }
 
     } catch (error) {
-        contextMenuDependencies.finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `客户端错误 (重新生成): ${error.message}`);
-        if (currentSelectedItemVal.id && currentTopicIdVal && mainRefs.chatRepository) await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, currentChatHistoryArray);
+        if (streamingRequested && streamContext) {
+            contextMenuDependencies.acceptStreamEvent?.({
+                type: 'error',
+                messageId: regenerationThinkingMessage.id,
+                error: `客户端错误 (重新生成): ${error.message}`,
+                context: streamContext,
+            });
+        } else {
+            const failedHistory = currentChatHistoryArray.filter(message => message.id !== regenerationThinkingMessage.id);
+            mainRefs.currentChatHistoryRef.set(failedHistory);
+            contextMenuDependencies.removeMessageById(regenerationThinkingMessage.id, false);
+            contextMenuDependencies.renderMessage({
+                role: 'system',
+                content: `客户端错误 (重新生成): ${error.message}`,
+                timestamp: Date.now(),
+            });
+            if (currentSelectedItemVal.id && currentTopicIdVal && mainRefs.chatRepository) {
+                await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, failedHistory);
+            }
+        }
         uiHelper.scrollToBottom();
     }
 }

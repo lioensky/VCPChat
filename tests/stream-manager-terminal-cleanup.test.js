@@ -28,7 +28,7 @@ test('stream initialization discards owned state on background history and rende
 });
 
 test('stream finalization discards owned state on every unrecoverable lookup failure', () => {
-    const body = functionBody('projectStreamTerminal', 'export async function persistProjectedStreamTerminal');
+    const body = functionBody('projectStreamTerminal', 'export function discardStreamingMessage');
     for (const marker of [
         'No context available for message',
         'Could not load history for finalization',
@@ -38,7 +38,7 @@ test('stream finalization discards owned state on every unrecoverable lookup fai
         const markerIndex = body.indexOf(marker);
         assert.notEqual(markerIndex, -1, `missing terminal branch: ${marker}`);
         const terminalWindow = body.slice(markerIndex, markerIndex + 420);
-        assert.match(terminalWindow, /discardStreamingMessage\(messageId\);[\s\S]*?return;/, `${marker} does not release stream state`);
+        assert.match(terminalWindow, /discardStreamingMessage\(messageId\);[\s\S]*?return(?: null)?;/, `${marker} does not release stream state`);
     }
 });
 
@@ -64,6 +64,7 @@ test('discardStreamingMessage releases every strong stream owner', () => {
         assert.match(body, new RegExp(`${owner}\\.delete\\(messageId\\)`), `${owner} is not released`);
     }
     assert.match(body, /cleanupDesktopPushState\(messageId\)/);
+    assert.match(body, /activeStreamingMessages\.delete\(messageId\)/);
     assert.match(body, /updateSendButtonState/);
 });
 
@@ -114,8 +115,11 @@ test('a runtime background-history failure releases every stream owner', async (
         content: '',
     });
 
-    assert.deepEqual({ ...api.getDiagnostics() }, {
+    const diagnostics = { ...api.getDiagnostics() };
+    diagnostics.activeMessageIds = Array.from(diagnostics.activeMessageIds);
+    assert.deepEqual(diagnostics, {
         activeMessageId: null,
+        activeMessageIds: [],
         initialization: 0,
         activeInitializations: 0,
         contexts: 0,
@@ -126,7 +130,6 @@ test('a runtime background-history failure releases every stream owner', async (
         chunkQueues: 0,
         renderTimers: 0,
         delayedCleanupTimers: 0,
-        historySaveQueue: 0,
         desktopPushStates: 0,
     });
     dom.window.close();

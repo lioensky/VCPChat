@@ -4,12 +4,12 @@
     "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
-    "sha256": "0f9274f5fe8232a5e35671561da1e412b07248c1d93c797aebc3d9b0d0675336",
-    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
+    "sha256": "c9b6d2d2ac93545ce2c168562726fd5969c22327893eb09714069e267d6e6414",
+    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure, coordinator-owned terminal entry points, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "8b6dc7a4b30175957ba6902e779f8decc92b36c4edd2d5ff06524e3300e3c5e3",
-    "reason": "shared stream DOM adapter with coordinator-owned projection, per-message Surface root ownership, awaited initialization and durable commit, serialized history merge, immediate terminal cache release, and ContentRuntime render-model consumption"
+    "sha256": "301877a59ed7fb402c28b76971317d7b0a4aebf71a0825e444626984815e5d6f",
+    "reason": "shared stream DOM projection adapter with per-message Surface root ownership, awaited initialization, context-keyed active operations, no durable commit facade, immediate terminal cache release, and ContentRuntime render-model consumption"
   },
   "modules/topicListManager.js": {
     "sha256": "6f93242d843253f672f2afe1af2b6567781b0925c8292fbdda5bf53f490418be",

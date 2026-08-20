@@ -2539,9 +2539,8 @@ function initializeMessageRenderer(refs) {
 
     contextMenu.initializeContextMenu(mainRendererReferences, {
         removeMessageById: removeMessageById,
-        finalizeStreamedMessage: finalizeStreamedMessage,
         renderMessage: renderMessage,
-        startStreamingMessage: startStreamingMessage,
+        discardStreamingMessage: streamManager.discardStreamingMessage,
         setContentAndProcessImages: setContentAndProcessImages,
         processRenderedContent: wrappedProcessRenderedContent,
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
@@ -3593,44 +3592,6 @@ function appendStreamChunk(messageId, chunkData, context) {
 }
 
 /**
- * 从完整的消息内容中提取桌面推送块，一次性推送到桌面画布
- * 仅作为兜底机制：当流式推送不可用时（如桌面窗口在流式过程中不存在），
- * 在finalize时补充推送。如果流式推送已经成功处理过，这里不会重复推送。
- */
-function extractAndPushDesktopBlocks(content) {
-    // 此函数已被流式推送（processDesktopPushToken + setInterval）取代
-    // 仅在非流式场景（如历史消息重新渲染）中作为兜底
-    // 流式场景下，streamManager已经在token流中完成了推送，不需要重复
-    //
-    // 判断依据：如果桌面画布已存在挂件，说明流式推送已成功，跳过兜底
-    // 目前简单处理：完全禁用兜底推送，因为流式推送已经工作
-    // 未来可以加更智能的去重逻辑（基于widgetId映射）
-}
-
-async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    // 完整最终渲染现在由 streamManager 单次完成：
-    // 1) prepareFinalTextForRender() 在 streamManager 内对完整文本应用前端正则与深度；
-    // 2) parseFull() 只执行一次完整管线；
-    // 3) mermaid 也只在该最终渲染路径中执行一次。
-    // 必须透传最终落盘结果，Flowlock 等消息级状态机需要解析完整原始文本。
-    const finalizedMessage = await streamManager.finalizeStreamedMessage(
-        messageId,
-        finishReason,
-        context,
-        finalPayload
-    );
-
-    const finalMessage = mainRendererReferences.currentChatHistoryRef.get().find(m => m.id === messageId);
-    if (finalMessage) {
-        extractAndPushDesktopBlocks(finalMessage.content);
-    }
-
-    return finalizedMessage;
-}
-
-
-
-/**
  * Renders a full, non-streamed message, replacing a 'thinking' placeholder.
  * @param {string} messageId - The ID of the message to update.
  * @param {string} fullContent - The full HTML or text content of the message.
@@ -4131,7 +4092,7 @@ function refreshLayoutDependentState() {
     });
 }
 
-window.messageRenderer = {
+export const messageRenderer = {
     initializeMessageRenderer,
     setCurrentSelectedItem, // Keep for renderer.js to call
     setCurrentTopicId,      // Keep for renderer.js to call
@@ -4146,7 +4107,6 @@ window.messageRenderer = {
     startStreamingMessage,
     discardStreamingMessage,
     appendStreamChunk,
-    finalizeStreamedMessage,
     renderFullMessage,
     clearChat,
     removeMessageById,
@@ -4157,7 +4117,7 @@ window.messageRenderer = {
     disposeRendererListeners,
     disposeRendererResources,
     disposeRootResources,
-    createDomRenderer: (root = mainRendererReferences.chatMessagesDiv) => createChatDomRenderer({ root, renderer: window.messageRenderer }),
+    createDomRenderer: (root = mainRendererReferences.chatMessagesDiv) => createChatDomRenderer({ root, renderer: messageRenderer }),
     getRenderHtmlCacheStats: () => ({
         entries: renderHtmlCache.size,
         bytes: renderHtmlCacheBytes,
@@ -4209,3 +4169,7 @@ window.messageRenderer = {
         }
     }
 };
+
+// Compatibility alias for the remaining Classic entry points. New module consumers
+// must import the explicit provider above instead of reading ambient window state.
+window.messageRenderer = messageRenderer;

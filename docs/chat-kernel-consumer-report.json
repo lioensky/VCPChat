@@ -21,6 +21,7 @@
   "testFiles": [
     "tests/chat-context.test.mjs",
     "tests/chat-dom-renderer.test.mjs",
+    "tests/chat-history-persistence.test.mjs",
     "tests/chat-manager-selection-race.test.js",
     "tests/chat-operation.test.mjs",
     "tests/chat-plugin-manifest.test.mjs",
@@ -95,7 +96,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 26
+          "occurrences": 24
         },
         {
           "file": "modules/event-listeners.js",
@@ -107,7 +108,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "occurrences": 5
+          "occurrences": 7
         },
         {
           "file": "modules/renderer/streamManager.js",
@@ -157,7 +158,7 @@
         },
         {
           "file": "tests/window-stream-runtime.test.mjs",
-          "occurrences": 1
+          "occurrences": 2
         }
       ]
     },
@@ -165,7 +166,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 4
+          "occurrences": 5
         },
         {
           "file": "modules/chatManager.js",
@@ -173,11 +174,11 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "occurrences": 18
+          "occurrences": 15
         },
         {
           "file": "modules/renderer/streamManager.js",
-          "occurrences": 3
+          "occurrences": 5
         },
         {
           "file": "modules/renderer/middleClickHandler.js",
@@ -189,11 +190,11 @@
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "occurrences": 1
+          "occurrences": 3
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "occurrences": 1
+          "occurrences": 3
         }
       ],
       "tests": [
@@ -241,7 +242,7 @@
   ],
   "ownershipSignals": {
     "renderer.js": {
-      "windowReferences": 208,
+      "windowReferences": 207,
       "documentReferences": 184,
       "electronReferences": 12,
       "timers": 2,
@@ -268,17 +269,17 @@
       "windowReferences": 54,
       "documentReferences": 42,
       "electronReferences": 17,
-      "timers": 16,
+      "timers": 15,
       "listeners": 7,
       "mutableMaps": 6
     },
     "modules/renderer/streamManager.js": {
-      "windowReferences": 12,
+      "windowReferences": 13,
       "documentReferences": 9,
-      "electronReferences": 20,
-      "timers": 13,
+      "electronReferences": 17,
+      "timers": 12,
       "listeners": 2,
-      "mutableMaps": 17
+      "mutableMaps": 15
     },
     "modules/renderer/messageContextMenu.js": {
       "windowReferences": 9,
@@ -305,16 +306,16 @@
       "mutableMaps": 0
     },
     "Voicechatmodules/voicechat.js": {
-      "windowReferences": 41,
-      "documentReferences": 25,
+      "windowReferences": 29,
+      "documentReferences": 24,
       "electronReferences": 25,
       "timers": 8,
       "listeners": 13,
       "mutableMaps": 0
     },
     "rust_assistant_engine/ui/assistant.js": {
-      "windowReferences": 36,
-      "documentReferences": 21,
+      "windowReferences": 28,
+      "documentReferences": 20,
       "electronReferences": 20,
       "timers": 1,
       "listeners": 7,

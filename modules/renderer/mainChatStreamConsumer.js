@@ -50,6 +50,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 error: event.outcome?.transport?.error || event.outcome?.persistence?.error || null,
             });
             if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
+            capabilities.onSettled?.({ event, finalized, context, messageId });
         },
         async persist(value) {
             if (projection?.suppressed) return null;
@@ -65,8 +66,13 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 terminal.context || context,
                 { fullResponse, error },
             );
+            if (!projected) throw new Error(`Stream terminal projection failed: ${messageId}`);
             const finalized = await capabilities.persistTerminal(projected);
-            await capabilities.afterPersist?.({ terminal, finalized, context, messageId });
+            try {
+                await capabilities.afterPersist?.({ terminal, finalized, context, messageId });
+            } catch (sideEffectError) {
+                capabilities.reportError?.('[MainChatStreamConsumer] post-commit side effect failed', sideEffectError);
+            }
             return finalized;
         },
         dispose() { projection?.release?.(); },
