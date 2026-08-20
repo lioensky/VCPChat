@@ -56,7 +56,12 @@ VCPChat 当前同时承担两种分发需求：
 - M1：`npm run doctor` 提供只读环境检查，`--deep` 使用当前 Electron embedded Node 实际加载 native modules；
 - M2：`npm run start:managed` 默认执行 deep Doctor，取得启动锁、派生项目内 Electron、等待匹配 operation ID/PID 的 renderer ready，并在失败时写入脱敏诊断；
 - M2：现有 `npm start`、VBS/BAT、插件 Loader、用户数据协议和主窗口功能保持不变；
-- M3 仍未开始：当前实现不会自动运行 npm、electron-rebuild、Cargo 或 Git 更新。
+- M3：`repair:managed` 已提供 manifest 驱动的显式修复计划、`npm ci`、定向 Electron rebuild、可选 Rust/vendor 阶段、取消、超时、journal、失败 episode 预算和成功指纹；默认只展示计划，未传 `--apply --yes` 不修改环境；
+- M4：`vcpchat-bootstrap`、NDJSON progress protocol 和独立 recovery/launcher 编排已加入；原有 `npm start`、所有 BAT/VBS 和既有桌面入口保持原样，未改为调用新入口；
+- M5：runtime closure manifest、electron-builder afterPack hook、打包闭包 verifier 和隔离 packed smoke 已加入；真实签名包/各平台产物仍待外部 runner；
+- M6：独立 Electron recovery UI、最小 preload、安全启动、重试、日志和退出已加入；尚未接管普通用户安装器；
+- M7：独立版本目录 staging、manifest 校验、current 指针、更新锁和 rollback core 已加入；下载签名、旧进程协调和 ready 后自动回滚仍待下一轮接线；
+- M8：本地 evidence collector 和跨平台测试矩阵文档已加入；由于当前约束不提交 workflow，CI runner、签名包、Windows/人工 soak 均明确标记为外部证据缺口。
 
 当前命令：
 
@@ -572,9 +577,9 @@ publish-fingerprint
 
 验收：故障注入覆盖网络失败、npm 退出、rebuild 失败、Cargo 失败、取消和启动器崩溃；下一次运行能识别并恢复。
 
-### M4：统一现有脚本入口
+### M4：独立托管入口与进度协议（不改现有脚本）
 
-在 Managed Launcher 稳定后，让以下入口调用同一个核心：
+M4 不再改造或替换以下旧入口：
 
 - `start.bat`；
 - `start debug.bat`；
@@ -583,9 +588,9 @@ publish-fingerprint
 - `start-desktop.vbs`；
 - `start-rag-observer.vbs`。
 
-保留现有文件名作为用户兼容入口，删除各自独立的 `npx electron` 和固定 sleep 逻辑。Splash 只消费 bootstrap progress，不拥有 ready 事实。
+新增 `scripts/vcpchat-bootstrap.mjs` 作为独立命令面，提供 `doctor`、`launch`、`repair`、`recovery-ui`、`runtime`、`update` 和 `evidence` 子命令。它们共享 Bootstrap Core 和结构化 NDJSON 进度协议；旧入口仍按上游原样运行。这样开发者可以逐步采用托管入口，普通用户和原有脚本不被隐式改变。
 
-验收：每个入口的参数、无控制台体验和第二实例行为保持，底层不再复制启动逻辑。
+验收：新入口可独立运行、旧入口文件内容不变、两套入口不会共享错误的 ready/lock 所有权。
 
 ### M5：打包运行时闭包
 

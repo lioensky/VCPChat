@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { resolveStateRoot, createOperationId, readReadyRecord, removeReadyRecord } = require('../modules/bootstrap/launch-protocol');
+const { promoteVersionWithHealthCheck, rollbackVersion, acquireUpdateLock } = require('../modules/bootstrap/update-manager');
+
+function parseArguments(argv) {
+    const options = { apply: false, yes: false, source: null, manifest: null, rollback: false, json: false };
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === '--apply') options.apply = true;
+        else if (arg === '--yes') options.yes = true;
+        else if (arg === '--rollback') options.rollback = true;
+        else if (arg === '--json') options.json = true;
+        else if (arg === '--source') options.source = argv[++index] || null;
+        else if (arg === '--manifest') options.manifest = argv[++index] || null;
+        else throw new Error(`未知 update 参数：${arg}`);
+    }
+    return options;
+}
+
+async function verifyCandidateReady({ current, manifest, stateRoot, timeoutMs = 60_000 }) {
+    const relativeExecutable = manifest.launch?.executable;
+    if (!relativeExecutable || path.isAbsolute(relativeExecutable) || relativeExecutable.split(/[\\/]/).includes('..')) {
+        return { ok: false, code: 'E_UPDATE_MANIFEST_INVALID', message: '更新清单缺少安全的 launch.executable。' };
+    }
+    const executable = path.join(current.directory, relativeExecutable);
+    if (!fs.existsSync(executable)) return { ok: false, code: 'E_UPDATE_INTEGRITY_FAILED', message: '候选版本 executable 不存在。' };
+    const operationId = createOperationId('update-health');
+    const child = spawn(executable, manifest.launch.args || [], {
+        cwd: path.dirname(executable),
+        env: {
+            ...process.env,
+            VCPCHAT_STATE_DIR: stateRoot,
+            VCPCHAT_BOOTSTRAP_OPERATION_ID: operationId,
+            VCPCHAT_BUILD_ID: manifest.buildId || '',
+        },
+        stdio: 'ignore',
+        windowsHide: true,
+    });
+    let spawnError = null;
+    child.once('error', error => { spawnError = error; });
+    const deadline = Date.now() + timeoutMs;
+    try {
+        while (Date.now() < deadline) {
+            const { record } = readReadyRecord({ stateRoot, operationId });
+            if (record?.operationId === operationId && record.pid === child.pid && record.checks?.renderer === 'ready') {
+                return { ok: true, record };
+            }
+            if (spawnError) return { ok: false, code: 'E_ELECTRON_SPAWN', message: spawnError.message };
+            if (child.exitCode !== null) return { ok: false, code: 'E_ELECTRON_CRASH_BEFORE_READY', message: `候选版本在 ready 前退出（${child.exitCode}）。` };
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return { ok: false, code: 'E_STARTUP_TIMEOUT', message: '候选版本未在时限内发布 ready。' };
+    } finally {
+        try { child.kill(); } catch { /* best effort */ }
+        removeReadyRecord({ stateRoot, operationId });
+    }
+}
+
+export async function run(argv = process.argv.slice(2), io = process) {
+    const options = parseArguments(argv);
+    const stateRoot = resolveStateRoot();
+    if (!options.apply) {
+        io.stdout.write('VCPChat 更新入口仅接受本地 staging source；默认只读，不会拉取或覆盖任何版本。\n');
+        io.stdout.write(options.rollback ? '计划：验证并回滚到 current.previous。\n' : '计划：校验 manifest → staging → 验证 → 原子切换 → ready 失败时回滚。\n');
+        return 0;
+    }
+    if (!options.yes) { io.stderr.write('执行更新需要 --apply --yes。\n'); return 2; }
+    const lock = acquireUpdateLock(stateRoot);
+    try {
+        if (options.rollback) {
+            const result = rollbackVersion({ stateRoot });
+            io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+            return 0;
+        }
+        if (!options.source || !options.manifest) throw new Error('--source 和 --manifest 是必需的。');
+        const sourceRoot = path.resolve(options.source);
+        const manifest = JSON.parse(fs.readFileSync(path.resolve(options.manifest), 'utf8'));
+        const result = await promoteVersionWithHealthCheck({
+            stateRoot,
+            sourceRoot,
+            manifest,
+            healthCheck: current => verifyCandidateReady({ current, manifest, stateRoot }),
+        });
+        io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return 0;
+    } finally { lock.release(); }
+}
+
+if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+    run().then(code => { process.exitCode = code; }).catch(error => { process.stderr.write(`${error.stack || error.message}\n`); process.exitCode = 1; });
+}
+
+export { parseArguments, verifyCandidateReady };

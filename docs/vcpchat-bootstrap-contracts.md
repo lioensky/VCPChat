@@ -89,3 +89,13 @@ Managed Launcher 只有在以下条件同时成立时返回成功：
 6. ready 等待期间进程没有提前退出。
 
 超时、提前退出和 spawn 失败都生成诊断并返回非零退出码；它们不会自动升级为依赖重装。
+
+## M3–M8 独立入口边界
+
+- `npm run repair:managed` 与 `npm run bootstrap -- repair` 默认只读；只有用户显式传入 `--apply --yes` 才能修改依赖或构建产物。
+- 修复、更新和恢复 UI 使用 `managed-*` operation lock；不会取得或删除旧启动脚本、NativeSplash 或主应用自己的 ready marker。
+- `npm start`、`start.bat`、`start debug.bat`、所有 VBS 入口和既有桌面启动路径不调用 Bootstrap，也不被 Bootstrap 改写。
+- M4 的进度帧是独立 NDJSON 协议；renderer 只能读取结构化状态，不能获得包管理器 shell 权限。
+- M5 runtime closure 在打包 `afterPack` 阶段生成；M6 recovery UI 使用独立 preload/context isolation，不加载主应用插件或用户数据业务模块。
+- M7 更新只操作 Bootstrap state root 下的版本目录与 `current.json`，用户聊天、助手、插件和设置目录不在更新目标内。
+- M8 的 Windows、签名包和人工 soak 没有真实 runner 证据时必须显示为待验。
