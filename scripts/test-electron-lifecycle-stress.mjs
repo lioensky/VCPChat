@@ -209,6 +209,17 @@ async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
         page.metrics(),
         browserCdp.send('SystemInfo.getProcessInfo'),
         page.evaluate(() => ({
+            connectedElements: (() => {
+                let count = 0;
+                const visit = root => {
+                    for (const element of root.querySelectorAll('*')) {
+                        count += 1;
+                        if (element.shadowRoot) visit(element.shadowRoot);
+                    }
+                };
+                visit(document);
+                return count;
+            })(),
             enhancedSettingsControls: window.VCPUISettingsBridge?.enhancedCount || 0,
             promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
             lifecycle: window.VCPLifecycle?.diagnostics?.summary?.() || null,
@@ -346,6 +357,8 @@ function assertNoSustainedLeak(baseline, checkpoints) {
         `renderer heap retained too much memory: ${formatBytes(baseline.heapUsed)} -> ${formatBytes(final.heapUsed)}`);
     assert.ok(final.listeners <= baseline.listeners + listenerAllowance,
         `event listeners accumulated: ${baseline.listeners} -> ${final.listeners}`);
+    assert.equal(final.documents, baseline.documents,
+        `renderer documents accumulated: ${baseline.documents} -> ${final.documents}`);
     assert.ok(final.pages <= baseline.pages, `WebContents/pages leaked: ${baseline.pages} -> ${final.pages}`);
     assert.ok(final.processes <= baseline.processes, `Electron processes leaked: ${baseline.processes} -> ${final.processes}`);
     assert.ok(final.rendererProcesses <= baseline.rendererProcesses,
@@ -354,6 +367,8 @@ function assertNoSustainedLeak(baseline, checkpoints) {
         `VCPUI settings controllers accumulated: ${baseline.enhancedSettingsControls} -> ${final.enhancedSettingsControls}`);
     assert.equal(final.promptNodes, baseline.promptNodes,
         `prompt editor DOM accumulated: ${baseline.promptNodes} -> ${final.promptNodes}`);
+    assert.equal(final.connectedElements, baseline.connectedElements,
+        `connected document/shadow DOM accumulated: ${baseline.connectedElements} -> ${final.connectedElements}`);
     assert.ok(final.detachedVcpIcons <= baseline.detachedVcpIcons,
         `detached VCP icon hosts accumulated: ${baseline.detachedVcpIcons} -> ${final.detachedVcpIcons}`);
     assert.ok(final.detachedOptions <= baseline.detachedOptions,
@@ -893,6 +908,7 @@ try {
         checkpoint: point.label,
         heap: formatBytes(point.heapUsed),
         nodes: point.nodes,
+        connected: point.connectedElements,
         listeners: point.listeners,
         pages: point.pages,
         processes: point.processes,
