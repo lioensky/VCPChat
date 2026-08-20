@@ -400,7 +400,14 @@ function setupFlowlockShortcuts() {
  */
 function initializeFlowlockIntegration(dependencies = {}) {
     try {
-        chatManagerProvider = dependencies.chatManager || null;
+        const provider = dependencies.chatManager;
+        if (!provider || typeof provider.loadChatHistory !== 'function' || provider.isReady?.() === false) {
+            throw new TypeError('Flowlock integration requires a ready ChatManager provider.');
+        }
+        if (chatManagerProvider && chatManagerProvider !== provider) {
+            throw new Error('Flowlock ChatManager provider is already registered.');
+        }
+        chatManagerProvider = provider;
         initializeFlowlock();
         setupFlowlockInteractions();
         setupFlowlockShortcuts();

@@ -218,6 +218,8 @@ for (const sourceFile of [
 }
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,
     'message edit persistence must use ChatRepository rather than renderer IPC fallbacks');
+assert.match(read('Flowlockmodules/flowlock-integration.js'), /requires a ready ChatManager provider/,
+    'Flowlock must fail fast when its production history consumer is absent or not ready');
 
 const contributionSource = read('modules/ui-system/contribution-registry.js');
 assert.doesNotMatch(contributionSource, /new ContributionRegistry\(['"](?:menu|setting)['"]\)|\bmenus\b|\bsettings\b/,
