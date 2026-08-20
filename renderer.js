@@ -1,4 +1,3 @@
-import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
 import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
 import { createSurfaceConversation } from './modules/chat/surfaceConversation.js';
@@ -318,7 +317,7 @@ import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/s
 import { setupEventListeners } from './modules/event-listeners.js';
 import { createChatContext } from './modules/chat/chatContext.js';
 import { createChatRepository } from './modules/chat/chatRepository.js';
-import { createChatOperations } from './modules/chat/chatOperation.js';
+import { createMainChatComposition } from './modules/renderer/mainChatComposition.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
 // First production seam for the Chat Kernel migration. Legacy refs remain
@@ -596,57 +595,38 @@ const startupThemeGate = new StartupThemeGate({
             },
             handleCreateBranch: selectedMessage => chatManager?.handleCreateBranch(selectedMessage),
         };
-        mainChatAdapter = createMainChatSurfaceAdapter({
+        const mainComposition = createMainChatComposition({
             root: chatMessagesDiv,
-            renderer: messageRenderer,
-            repository: chatRepository,
-            focusTarget: messageInput,
-            operations: createChatOperations({
-                send: request => chatManager?.sendMessage?.(request),
-                cancel: () => interruptActiveResponseFromSendButton()
-            }),
+            messageInput,
+            messageRenderer,
+            streamProjection: streamManager,
+            chatRepository,
+            historyPersistence,
             presentationState,
             renderDependencies,
-            streamServices: {
-                streamProjection: streamManager,
-                historyPersistence,
-                messageRenderer,
-                chatManager,
-                flowlockManager: window.flowlockManager,
-                getSelection: () => currentSelectedItem,
-                getTopicId: () => currentTopicId,
-                dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
-            },
-            disposeRenderer: async () => {
-                await messageRenderer.disposeRootResources(chatMessagesDiv);
-                messageRenderer.disposeRendererResources();
-                await streamManager?.dispose?.();
-            },
-            ownerWindow: window,
-            onDispose: async () => {
+            chatManager,
+            flowlockManager: window.flowlockManager,
+            currentSelection: () => currentSelectedItem,
+            currentTopicId: () => currentTopicId,
+            chatWindow: window,
+            interrupt: interruptActiveResponseFromSendButton,
+            dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+            showForwardModal,
+            provideCapabilities: window.VCPNextShellController?.provideChatCapabilities,
+            capabilitySnapshot: () => Object.freeze({
+                selectedItem: currentSelectedItem ? { ...currentSelectedItem } : null,
+                topicId: currentTopicId,
+            }),
+            createInternalRenderer: createOwnedInternalChatRenderer,
+            disposeCapabilities: async () => {
                 releaseNextUiChatCapabilities?.();
                 releaseNextUiChatCapabilities = null;
             },
         });
+        mainChatAdapter = mainComposition.adapter;
         mainChatSurface = mainChatAdapter.surface;
         mainChatDomRenderer = mainChatAdapter.domRenderer;
-        releaseNextUiChatCapabilities?.();
-        releaseNextUiChatCapabilities = window.VCPNextShellController?.provideChatCapabilities?.({
-            repository: chatRepository,
-            getSnapshot: () => Object.freeze({
-                selectedItem: currentSelectedItem ? { ...currentSelectedItem } : null,
-                topicId: currentTopicId,
-            }),
-            createRenderer: createOwnedInternalChatRenderer,
-            manager: chatManager,
-            presentation: presentationState,
-        }) || null;
-        // Pass the new function to the context menu
-        messageRenderer.setContextMenuDependencies({
-            showForwardModal: showForwardModal,
-            acceptStreamEvent: event => mainChatAdapter?.acceptStreamEvent(event),
-            cancelStream: (messageId, reason) => mainChatAdapter?.cancelStream(messageId, reason),
-        });
+        releaseNextUiChatCapabilities = mainComposition.releaseCapabilities;
 
     } else {
         console.error('[RENDERER_INIT] messageRenderer module not found!');
