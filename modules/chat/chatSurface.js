@@ -40,8 +40,11 @@ export function createChatSurface({ root, renderer, repository, focusTarget = nu
             if (disposed) return;
             disposed = true;
             operationToken += 1;
-            await domRenderer.dispose();
+            // The operation owns its terminal/cancellation promise. Drain it
+            // before retracting the renderer route so terminal persistence and
+            // projection cannot race an already-destroyed Surface root.
             await operations?.dispose?.();
+            await domRenderer.dispose();
             mountedSlotDisposers.splice(0).reverse().forEach(disposeSlot => disposeSlot());
             delete root.dataset.chatSurface;
             root.removeAttribute('aria-live');
