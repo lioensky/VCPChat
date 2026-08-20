@@ -23,6 +23,7 @@ const ICON_SIZE: u32 = 96; // Resized icon dimension
 const ANIMATION_DURATION_SECS: f32 = 2.8; // Pseudo-load duration (Speed increased by 2x)
 const FONT_SIZE: f32 = 24.0;
 const TEXT_TO_RENDER: &str = "VChat正在启动中！~";
+const FRAME_INTERVAL: Duration = Duration::from_millis(16); // 约 60 FPS，避免无上限忙轮询
 
 // 缓动函数：ease_out_quad(t) = t * (2 - t)
 fn ease_out_quad(t: f32) -> f32 {
@@ -87,18 +88,36 @@ fn main() {
             thread::sleep(Duration::from_millis(200));
         }
         let _ = event_loop_proxy.send_event(());
-        });
-    
-        // --- 4. Load Font ---
-        let font_bytes = include_bytes!("蒙纳简漫画体.ttf");
-        let font = Font::from_bytes(font_bytes as &[u8], FontSettings::default()).expect("Failed to load font");
-    
-        // --- 5. Run the Event Loop ---
-        let start_time = Instant::now();
+    });
+
+    // --- 4. Load Font and cache glyphs ---
+    // 字形只栅格化一次，避免动画每帧重复分配 Pixmap 和生成位图。
+    let font_bytes = include_bytes!("蒙纳简漫画体.ttf");
+    let font = Font::from_bytes(font_bytes as &[u8], FontSettings::default()).expect("Failed to load font");
+    let glyphs: Vec<_> = TEXT_TO_RENDER
+        .chars()
+        .map(|character| {
+            let (metrics, bitmap) = font.rasterize(character, FONT_SIZE);
+            let pixmap = if metrics.width > 0 && metrics.height > 0 {
+                let mut pixmap = Pixmap::new(metrics.width as u32, metrics.height as u32).unwrap();
+                for (pixel, &alpha) in pixmap.pixels_mut().iter_mut().zip(bitmap.iter()) {
+                    *pixel = Color::from_rgba8(224, 224, 224, alpha)
+                        .premultiply()
+                        .to_color_u8();
+                }
+                Some(pixmap)
+            } else {
+                None
+            };
+            (metrics, pixmap)
+        })
+        .collect();
+
+    // --- 5. Run the Event Loop ---
+    let start_time = Instant::now();
+    let mut next_frame_at = Instant::now();
     let window_clone = Arc::clone(&window);
     event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll); // Use Poll for continuous animation
-
         match event {
             Event::WindowEvent { window_id, event } if window_id == window_clone.id() => match event {
                 WindowEvent::RedrawRequested => {
@@ -118,39 +137,51 @@ fn main() {
                     canvas.fill_rect(bg_rect, &bg_paint, Transform::identity(), None);
 
 
-                    // Draw icon
-                    let icon_x = 20.0;
-                    let icon_y = (height as f32 - ICON_SIZE as f32) / 2.0;
-                    canvas.draw_pixmap(0, 0, icon_pixmap.as_ref(), &PixmapPaint::default(), Transform::from_translate(icon_x, icon_y), None);
-
-                    // Draw animated text
                     let elapsed_secs = start_time.elapsed().as_secs_f32();
+
+                    // Draw floating sparkles behind the icon
+                    let sparkle_colors = [
+                        (255, 215, 0, 185),
+                        (255, 154, 205, 165),
+                        (125, 211, 252, 175),
+                    ];
+                    for i in 0..6 {
+                        let phase = elapsed_secs * (1.1 + i as f32 * 0.08) + i as f32 * 1.7;
+                        let sparkle_x = 15.0 + (phase * 0.8).sin() * 7.0 + (i % 3) as f32 * 42.0;
+                        let sparkle_y = 14.0 + (phase * 1.3).cos() * 8.0 + (i / 3) as f32 * 84.0;
+                        let sparkle_size = 2.0 + (phase.sin() * 0.5 + 0.5) * 2.0;
+                        let mut sparkle_paint = Paint::default();
+                        let color = sparkle_colors[i % sparkle_colors.len()];
+                        sparkle_paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+                        if let Some(rect) = Rect::from_xywh(sparkle_x, sparkle_y, sparkle_size, sparkle_size) {
+                            canvas.fill_rect(rect, &sparkle_paint, Transform::identity(), None);
+                        }
+                    }
+
+                    // Draw a gently bouncing icon
+                    let icon_x = 20.0;
+                    let icon_y = (height as f32 - ICON_SIZE as f32) / 2.0
+                        + (elapsed_secs * 2.8).sin() * 2.5;
+                    canvas.draw_pixmap(
+                        0,
+                        0,
+                        icon_pixmap.as_ref(),
+                        &PixmapPaint::default(),
+                        Transform::from_translate(icon_x, icon_y),
+                        None,
+                    );
+
+                    // Draw cached text glyphs with a soft travelling wave
                     let mut text_x = icon_x + ICON_SIZE as f32 + 20.0;
                     let text_y = height as f32 / 2.0 - 10.0;
 
-                    for (i, character) in TEXT_TO_RENDER.chars().enumerate() {
-                        let y_offset = (elapsed_secs * 10.0 + i as f32).sin() * 2.0; // Jitter effect
-                        let (metrics, bitmap) = font.rasterize(character, FONT_SIZE);
-                        
-                        if metrics.width > 0 && metrics.height > 0 {
-                            let mut char_pixmap = Pixmap::new(metrics.width as u32, metrics.height as u32).unwrap();
-                            let mut paint = Paint::default();
-                            paint.set_color_rgba8(224, 224, 224, 255); // Light grey text
-    
-                            let pixels = char_pixmap.pixels_mut();
-                            for (j, &alpha) in bitmap.iter().enumerate() {
-                                let x = j % metrics.width;
-                                let y = j / metrics.width;
-                                let index = y * metrics.width + x;
-                                if let Some(p) = pixels.get_mut(index) {
-                                    *p = Color::from_rgba8(224, 224, 224, alpha).premultiply().to_color_u8();
-                                }
-                            }
-                            
+                    for (i, (metrics, glyph_pixmap)) in glyphs.iter().enumerate() {
+                        let y_offset = (elapsed_secs * 4.5 + i as f32 * 0.65).sin() * 2.0;
+                        if let Some(glyph_pixmap) = glyph_pixmap {
                             canvas.draw_pixmap(
                                 (text_x + metrics.xmin as f32) as i32,
                                 (text_y - metrics.height as f32 + metrics.ymin as f32 + y_offset) as i32,
-                                char_pixmap.as_ref(),
+                                glyph_pixmap.as_ref(),
                                 &PixmapPaint::default(),
                                 Transform::identity(),
                                 None,
@@ -178,6 +209,20 @@ fn main() {
                     bar_paint.set_color_rgba8(255, 215, 0, 255); // VCP Cyber Gold
                     canvas.fill_rect(bar_rect, &bar_paint, Transform::identity(), None);
 
+                    // Three playful loading dots run just above the progress bar.
+                    for i in 0..3 {
+                        let phase = elapsed_secs * 5.0 - i as f32 * 0.7;
+                        let lift = (phase.sin() * 0.5 + 0.5) * 3.0;
+                        let dot_size = 3.0;
+                        let dot_x = progress_x + progress_width - 30.0 + i as f32 * 9.0;
+                        let dot_y = progress_y - 9.0 - lift;
+                        let mut dot_paint = Paint::default();
+                        dot_paint.set_color_rgba8(255, 215, 0, (150.0 + lift * 30.0) as u8);
+                        if let Some(dot_rect) = Rect::from_xywh(dot_x, dot_y, dot_size, dot_size) {
+                            canvas.fill_rect(dot_rect, &dot_paint, Transform::identity(), None);
+                        }
+                    }
+
                     // Copy canvas to buffer, converting RGBA to BGRA for softbuffer
                     for (i, pixel) in buffer.iter_mut().enumerate() {
                         let x = (i % width as usize) as u32;
@@ -200,7 +245,12 @@ fn main() {
             },
             Event::UserEvent(()) => elwt.exit(),
             Event::AboutToWait => {
-                window_clone.request_redraw();
+                let now = Instant::now();
+                if now >= next_frame_at {
+                    window_clone.request_redraw();
+                    next_frame_at = now + FRAME_INTERVAL;
+                }
+                elwt.set_control_flow(ControlFlow::WaitUntil(next_frame_at));
             }
             _ => {}
         }
