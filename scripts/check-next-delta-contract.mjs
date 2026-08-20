@@ -165,6 +165,10 @@ assert.match(read('modules/messageRenderer.js'), /vcpAudioCleanup[\s\S]*listener
     'audio controls must remove listeners and release media sources on root teardown');
 assert.match(read('modules/messageRenderer.js'), /disposeRootResources[\s\S]*cleanupMessageDomResources/,
     'independent ChatSurface roots must have an explicit resource disposer');
+assert.match(read('modules/messageRenderer.js'), /createRenderSessionAuthority[\s\S]*invalidateRenderSession\(root\)/,
+    'message rendering must revoke progressive work per owning Surface root');
+assert.doesNotMatch(read('modules/messageRenderer.js'), /let activeRenderSessionId\s*=/,
+    'message rendering must not retain a module-wide scalar render generation');
 assert.match(read('modules/renderer/animation.js'), /cleanupAnimationsInContent[\s\S]*renderer\.dispose\(\)/,
     'animation cleanup must dispose Three.js renderers');
 assert.match(read('modules/renderer/animation.js'), /_vcpMutationObserver[\s\S]*disconnect/,

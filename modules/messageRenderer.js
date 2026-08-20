@@ -39,6 +39,7 @@ import { createContentRuntime } from './chat/contentRuntime.js';
 import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
 import { createChatDomRenderer } from './chat/chatDomRenderer.js';
 import { createRenderDependencies } from './renderer/renderDependencies.js';
+import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.js';
 import {
     TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
     TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
@@ -2227,6 +2228,7 @@ function disposeRendererResources() {
 }
 function disposeRootResources(root) {
     if (!root?.querySelectorAll) return;
+    invalidateRenderSession(root);
     root.querySelectorAll('.message-item').forEach(item => cleanupMessageDomResources(item, item.dataset?.messageId || null));
     root.replaceChildren();
 }
@@ -2235,19 +2237,20 @@ function ownRendererListener(target, type, handler, options) {
     rendererListenerDisposers.push(() => target.removeEventListener(type, handler, options));
 }
 
-let activeRenderSessionId = 0;
+const renderSessionAuthority = createRenderSessionAuthority({
+    resolveDefaultRoot: () => mainRendererReferences?.chatMessagesDiv || null,
+});
 
-function invalidateRenderSession() {
-    activeRenderSessionId += 1;
-    return activeRenderSessionId;
+function invalidateRenderSession(root = null) {
+    return renderSessionAuthority.invalidate(root);
 }
 
-function getActiveRenderSessionId() {
-    return activeRenderSessionId;
+function getActiveRenderSessionId(root = null) {
+    return renderSessionAuthority.capture(root);
 }
 
-function isRenderSessionActive(sessionId) {
-    return sessionId === activeRenderSessionId;
+function isRenderSessionActive(session) {
+    return renderSessionAuthority.isActive(session);
 }
 
 function escapeCssAttributeValue(value) {
@@ -2347,7 +2350,7 @@ function removeMessageById(messageId, saveHistory = false) {
 }
 
 function clearChat() {
-    invalidateRenderSession();
+    invalidateRenderSession(mainRendererReferences.chatMessagesDiv);
 
     // 清空聊天通常意味着用户希望释放当前渲染上下文占用；HTML 字符串缓存不持有 DOM，但这里主动释放更保守。
     clearRenderHtmlCache();
@@ -3169,7 +3172,8 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     delete contentDiv.dataset.vcpHeavyPending;
 }
 
-async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
+async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = null, renderContext = {}) {
+    renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
     if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) {
         return null;
     }
@@ -3813,7 +3817,7 @@ function prepareUserMessageText(text) {
  * @param {number} options.batchDelay - Delay between batches in ms (default: 100)
  */
 async function renderHistory(history, options = {}) {
-    const renderSessionId = invalidateRenderSession();
+    const renderSessionId = invalidateRenderSession(options.root || mainRendererReferences.chatMessagesDiv);
 
     const {
         initialBatch = 5,
@@ -3893,7 +3897,8 @@ function processDeferredMessageElement(el, renderSessionId, renderContext = {}) 
     delete el._vcp_renderSessionId;
 }
 
-async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
+async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = null, renderContext = {}) {
+    renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
     if (!isRenderSessionActive(renderSessionId)) return;
 
     const fragment = document.createDocumentFragment();
@@ -3950,7 +3955,8 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
 /**
  * 智能批量渲染：使用 requestIdleCallback 在浏览器空闲时渲染
  */
-async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
+async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId = null, renderContext = {}) {
+    renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
     const totalBatches = Math.ceil(olderMessages.length / batchSize);
 
     for (let i = totalBatches - 1; i >= 0; i--) {
@@ -4025,7 +4031,8 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
  * 原始的历史渲染方法（用于少量消息的情况）
  * @param {Array<Message>} history 聊天历史
  */
-async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
+async function renderHistoryLegacy(history, renderSessionId = null, renderContext = {}) {
+    renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
     if (!isRenderSessionActive(renderSessionId)) return;
 
     const fragment = document.createDocumentFragment();
