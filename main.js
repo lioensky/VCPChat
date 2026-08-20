@@ -19,6 +19,7 @@ const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const { spawn } = require('child_process'); // For executing local python
 const { Worker } = require('worker_threads');
+const bootstrapLaunchProtocol = require('./modules/bootstrap/launch-protocol');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
 const groupChat = require('./Groupmodules/groupchat'); // Import the group chat module
 const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window IPC handlers
@@ -269,6 +270,48 @@ let mainRendererCrashTimes = [];
 let mainRendererRecoveryTimer = null;
 let mainRendererStableTimer = null;
 let mainRendererFailurePromptOpen = false;
+const managedBootstrapOperationId = process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID?.trim() || null;
+const managedBootstrapStateRoot = process.env.VCPCHAT_STATE_DIR?.trim() || null;
+let managedBootstrapReadyPublished = false;
+
+function publishManagedBootstrapReady(checks) {
+    if (!managedBootstrapOperationId || !managedBootstrapStateRoot || managedBootstrapReadyPublished) return false;
+    try {
+        bootstrapLaunchProtocol.writeReadyRecord({
+            stateRoot: managedBootstrapStateRoot,
+            operationId: managedBootstrapOperationId,
+            buildId: process.env.VCPCHAT_BUILD_ID?.trim() || null,
+            checks,
+        });
+        managedBootstrapReadyPublished = true;
+        console.log(`[Main] Published managed bootstrap ready for ${managedBootstrapOperationId}.`);
+        return true;
+    } catch (error) {
+        console.warn('[Main] Failed to publish managed bootstrap ready:', error.message);
+        return false;
+    }
+}
+
+async function publishManagedBootstrapReadyAfterRenderer() {
+    if (!managedBootstrapOperationId || managedBootstrapReadyPublished || !mainWindow || mainWindow.isDestroyed()) return;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline && mainWindow && !mainWindow.isDestroyed()) {
+        try {
+            const ready = await mainWindow.webContents.executeJavaScript(
+                "document.documentElement.dataset.vcpRendererReady === 'true' && window.__vcpRendererReady === true",
+                true
+            );
+            if (ready) {
+                publishManagedBootstrapReady({ mainWindow: 'ready', preload: 'ready', renderer: 'ready' });
+                return;
+            }
+        } catch (error) {
+            if (mainWindow?.webContents?.isDestroyed()) return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.warn('[Main] Renderer did not reach managed bootstrap readiness before the publication deadline.');
+}
 
 function clearMainRendererRecoveryTimers() {
     if (mainRendererRecoveryTimer) clearTimeout(mainRendererRecoveryTimer);
@@ -278,6 +321,7 @@ function clearMainRendererRecoveryTimers() {
 }
 
 function markMainRendererStable() {
+    void publishManagedBootstrapReadyAfterRenderer();
     if (mainRendererStableTimer) clearTimeout(mainRendererStableTimer);
     mainRendererStableTimer = setTimeout(() => {
         mainRendererCrashTimes = [];
@@ -763,6 +807,7 @@ if (!gotTheLock) {
             console.warn('[Main] Failed to create .vcp_ready in second instance:', err.message);
         }
     }
+    publishManagedBootstrapReady({ mainWindow: 'delegated', preload: 'existing-instance', renderer: 'existing-instance' });
     app.quit();
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
@@ -909,6 +954,7 @@ if (!gotTheLock) {
             createTray();
 
             await ragHandlers.openRagObserverWindow();
+            publishManagedBootstrapReady({ mainWindow: 'ready', preload: 'ready', renderer: 'ready', surface: 'rag-observer' });
             return;
         }
 
