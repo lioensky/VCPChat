@@ -1,15 +1,15 @@
 {
   "modules/chatManager.js": {
-    "sha256": "8048c87d700241f4dfd4f1e89059fc32697cd4599e6dc127be95a60922b1a380",
-    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup and send capability for non-streaming/button paths, durable history authority, and no direct IPC fallback"
+    "sha256": "73c3e9642f8e0934537b93145207f43dfe54d58d77704f256c6492e718f4e5f3",
+    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback"
   },
   "modules/messageRenderer.js": {
-    "sha256": "782dbac8779c3cc1faeedda9da68286e1ac6f4519ed38ed8c781e4b9c7fe79ad",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
+    "sha256": "81b5bba599f6645e39a6005c773e761d9d3f2289474dbefece513d1792679ea5",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection, explicit Surface operation-state notification, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
   },
   "modules/renderer/streamManager.js": {
-      "sha256": "e885be11f041a779c9c55e1f4535b739d684742a432b89b9f4c43a874d32553c",
-    "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, injected view authority, owned animation-frame scheduling and pending operation disposal, no exported singleton or hidden root side channel, no direct durable commit or global send-button facade, ContentRuntime render models, and owned Desktop push subscription/timer consumer"
+      "sha256": "518502b835ec5cd7330b504716e3fa4297e2b99ed60429abdec7b3a348572b42",
+    "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer"
   },
   "modules/topicListManager.js": {
     "sha256": "ee31c578ad3fd6e8af5cb3788a56572b5bdd26d63f7be684c6bcf0eec6b510e1",

@@ -131,8 +131,12 @@ assert.match(read('renderer.js'), /topicListManager\.init\([\s\S]*?chatRepositor
     'TopicListManager must receive the shared ChatRepository at its production entry');
 assert.match(read('renderer.js'), /searchManager\.init\([\s\S]*?chatRepository,/,
     'SearchManager must receive the shared ChatRepository at its production entry');
-assert.match(read('modules/messageRenderer.js'), /streamManager\.initStreamManager\([\s\S]*?chatRepository:/,
-    'StreamManager must receive the shared ChatRepository at its production entry');
+assert.match(read('renderer.js'), /createStreamTransientHistory\([\s\S]*?repository: chatRepository/,
+    'the composition root must provide transient stream history from the shared ChatRepository');
+assert.match(read('modules/messageRenderer.js'), /transientStreamHistory: mainRendererReferences\.transientStreamHistory/,
+    'MessageRenderer must pass through the injected transient-history provider');
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /chatRepository/,
+    'StreamProjection must not retain direct repository authority');
 const historyPersistenceSource = read('modules/chat/chatHistoryPersistence.js');
 assert.match(historyPersistenceSource, /createHistoryPersistence[\s\S]*repository\.getHistory[\s\S]*repository\.saveHistory/,
     'ChatHistoryPersistence must own the durable stream read/merge/write policy');
@@ -243,6 +247,10 @@ assert.match(read('renderer.js'), /mainChatAdapter\?\.cancelStream/,
 const rendererStreamHandler = read('renderer.js');
 assert.match(rendererStreamHandler, /createNonStreamingEventConsumer/,
     'non-streaming VCP events must have an explicit consumer');
+assert.match(rendererStreamHandler, /createMainChatEventBridge/,
+    'main VCP event subscription must be owned by an explicit event bridge');
+assert.match(rendererStreamHandler, /mainChatEventBridge\?\.dispose/,
+    'main VCP event subscription must be disposed with the main Surface');
 assert.doesNotMatch(rendererStreamHandler, /messageRenderer\.renderFullMessage\(/,
     'renderer must not retain a non-streaming terminal fallback');
 assert.doesNotMatch(rendererStreamHandler, /messageRenderer\.removeMessageById\(/,
@@ -278,7 +286,7 @@ assert.match(read('modules/ui-system/interactive-chat-app.js'), /id: 'standalone
     'interactive chat must have a registered internal-app consumer');
 for (const sourceFile of [
     'modules/chatManager.js', 'modules/messageRenderer.js',
-    'modules/renderer/messageContextMenu.js', 'modules/renderer/streamManager.js',
+    'modules/renderer/messageContextMenu.js',
     'modules/topicListManager.js', 'modules/searchManager.js'
 ]) {
     assert.match(read(sourceFile), /chatRepository|historyMutationAuthority/,

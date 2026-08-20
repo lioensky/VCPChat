@@ -16,11 +16,11 @@ test('non-streaming consumer projects only already-persisted current-surface eve
         messageRenderer,
         viewAuthority: { isCurrent: context => context?.topicId === 'current' },
     });
-    assert.equal(consumer.consume({ type: 'full_response', messageId: 'm1', fullResponse: 'ok', context: { topicId: 'background' } }), false);
-    assert.equal(consumer.consume({ type: 'full_response', messageId: 'm1', fullResponse: 'ok', context: { topicId: 'current' } }), true);
-    assert.equal(consumer.consume({ type: 'remove_message', messageId: 'm1', context: { topicId: 'current' } }), true);
+    assert.equal(await consumer.consume({ type: 'full_response', messageId: 'm1', fullResponse: 'ok', context: { topicId: 'background' } }), true);
+    assert.equal(await consumer.consume({ type: 'full_response', messageId: 'm1', fullResponse: 'ok', context: { topicId: 'current' } }), true);
+    assert.equal(await consumer.consume({ type: 'remove_message', messageId: 'm1', context: { topicId: 'current' } }), true);
     assert.deepEqual(calls.map(call => call[0]), ['full', 'remove']);
     assert.equal(calls[1][2], false);
     consumer.dispose();
-    assert.equal(consumer.consume({ type: 'remove_message', messageId: 'm2', context: { topicId: 'current' } }), false);
+    assert.equal(await consumer.consume({ type: 'remove_message', messageId: 'm2', context: { topicId: 'current' } }), false);
 });

@@ -15,6 +15,7 @@ const valid = () => {
     electronAPI: {},
     chatRepository: { saveHistory() {} },
     historyMutationAuthority: { replace() {} },
+    transientStreamHistory: { prepare() {}, finalize() {} },
     markedInstance: { parse: value => value },
     uiHelper: { scrollToBottom() {} },
     summarizeTopicFromMessages() {},
@@ -42,7 +43,7 @@ function inputDomCleanup(dependencies) {
 }
 
 test('RenderDependencies fails fast for absent root, state, transport and parser powers', () => {
-    for (const key of ['chatMessagesDiv', 'currentChatHistoryRef', 'electronAPI', 'markedInstance', 'historyMutationAuthority']) {
+    for (const key of ['chatMessagesDiv', 'currentChatHistoryRef', 'electronAPI', 'markedInstance', 'historyMutationAuthority', 'transientStreamHistory']) {
         const input = valid();
         delete input[key];
         assert.throws(() => createRenderDependencies(input), /RenderDependencies requires/, key);

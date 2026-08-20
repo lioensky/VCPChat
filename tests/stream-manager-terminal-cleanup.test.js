@@ -14,12 +14,14 @@ test.after(() => {
 
 const loadFactory = async () => {
     const module = await import('../modules/renderer/streamManager.js');
+    const historyModule = await import('../modules/chat/streamTransientHistory.js');
+    createDependencies.historyFactory = historyModule.createStreamTransientHistory;
     return module.createStreamProjection;
 };
 
 function createDependencies(dom, overrides = {}) {
     const root = dom.window.document.getElementById('chat');
-    return {
+    const dependencies = {
         chatRepository: {
             getHistory: async () => [],
             saveHistory: async () => ({ success: true }),
@@ -28,7 +30,7 @@ function createDependencies(dom, overrides = {}) {
         currentSelectedItemRef: { get: () => ({ id: 'visible-agent', type: 'agent' }) },
         currentTopicIdRef: { get: () => 'visible-topic' },
         currentChatHistoryRef: { get: () => [], set() {} },
-        historyAuthority: { get: () => [], replace() {} },
+        viewAuthority: { isCurrent: context => context?.agentId === 'visible-agent' && context?.topicId === 'visible-topic' },
         globalSettingsRef: { get: () => ({ enableSmoothStreaming: false }) },
         chatMessagesDiv: root,
         renderMessage: () => null,
@@ -36,6 +38,14 @@ function createDependencies(dom, overrides = {}) {
         electronAPI: { onDesktopStatus: () => () => {} },
         ...overrides,
     };
+    dependencies.transientStreamHistory ||= createDependencies.historyFactory({
+        repository: dependencies.chatRepository,
+        currentHistory: {
+            get: () => dependencies.currentChatHistoryRef.get(),
+            replace: history => dependencies.currentChatHistoryRef.set(history),
+        },
+    });
+    return dependencies;
 }
 
 function normalizeDiagnostics(projection) {
@@ -114,6 +124,19 @@ test('disposed StreamProjection rejects initialization and ignores every late st
     dom.window.close();
 });
 
+test('StreamProjection fails fast when transient history or view authority is missing', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>');
+    const dependencies = createDependencies(dom);
+    delete dependencies.transientStreamHistory;
+    assert.throws(() => createStreamProjection().initStreamManager(dependencies), /explicit transient history capability/);
+
+    const withHistory = createDependencies(dom);
+    delete withHistory.viewAuthority;
+    assert.throws(() => createStreamProjection().initStreamManager(withHistory), /explicit view authority/);
+    dom.window.close();
+});
+
 test('owned StreamProjection completes terminal DOM projection without a cross-root side channel', async () => {
     const createStreamProjection = await loadFactory();
     const dom = new JSDOM('<!doctype html><div id="chat"><article class="message-item" data-message-id="owned"><div class="md-content"></div></article></div>', { url: 'https://vcpchat.local/' });
@@ -184,7 +207,6 @@ test('StreamProjection honors an owned view authority and history capability aft
     const projection = createStreamProjection();
     projection.initStreamManager(createDependencies(dom, {
         currentChatHistoryRef: { get: () => history, set: value => { writes += 1; history = [...value]; } },
-        historyAuthority: { get: () => history, replace: value => { writes += 1; history = [...value]; } },
         viewAuthority: { isCurrent: context => context?.topicId === currentView },
         renderMessage: async message => {
             const node = dom.window.document.createElement('article');

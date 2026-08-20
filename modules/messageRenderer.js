@@ -565,7 +565,9 @@ function enhanceMermaidDiagram(mermaidElement) {
 
     mermaidElement.dataset.vcpMermaidEnhanced = 'true';
 
-    const wrapper = document.createElement('div');
+    const ownerDocument = mermaidElement.ownerDocument;
+    if (!ownerDocument) return;
+    const wrapper = ownerDocument.createElement('div');
     wrapper.className = 'mermaid-viewer';
     wrapper.dataset.scale = '1';
     wrapper.dataset.translateX = '0';
@@ -577,7 +579,7 @@ function enhanceMermaidDiagram(mermaidElement) {
     };
     wrapper._vcpDisposers = disposers;
 
-    const toolbar = document.createElement('div');
+    const toolbar = ownerDocument.createElement('div');
     toolbar.className = 'mermaid-viewer-toolbar';
     toolbar.innerHTML = `
         <button type="button" class="mermaid-viewer-btn" data-mermaid-action="zoom-out" title="缩小">−</button>
@@ -586,11 +588,11 @@ function enhanceMermaidDiagram(mermaidElement) {
         <button type="button" class="mermaid-viewer-btn" data-mermaid-action="fit" title="适应宽度">适应</button>
     `;
 
-    const viewport = document.createElement('div');
+    const viewport = ownerDocument.createElement('div');
     viewport.className = 'mermaid-viewer-viewport';
     viewport.title = '滚轮缩放，按住鼠标左键拖拽平移，双击重置';
 
-    const canvas = document.createElement('div');
+    const canvas = ownerDocument.createElement('div');
     canvas.className = 'mermaid-viewer-canvas';
 
     svg.removeAttribute('style');
@@ -2320,8 +2322,9 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
         }
         if (contentDiv._vcpPretextIdleHandle) {
             const { kind, id } = contentDiv._vcpPretextIdleHandle;
-            if (kind === 'idle' && typeof window.cancelIdleCallback === 'function') {
-                window.cancelIdleCallback(id);
+            const ownerWindow = contentDiv.ownerDocument?.defaultView;
+            if (kind === 'idle' && typeof ownerWindow?.cancelIdleCallback === 'function') {
+                ownerWindow.cancelIdleCallback(id);
             } else if (kind === 'timer') {
                 clearTimeout(id);
             }
@@ -2587,16 +2590,12 @@ function initializeMessageRenderer(refs) {
     });
 
     if (features.streamProjection) streamManager.initStreamManager({
-        chatRepository: mainRendererReferences.chatRepository,
         chatDomRenderer: mainRendererReferences.chatDomRenderer,
         globalSettingsRef: mainRendererReferences.globalSettingsRef,
         currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
         currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
         currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
-        historyAuthority: {
-            get: () => mainRendererReferences.currentChatHistoryRef.get(),
-            replace: history => mainRendererReferences.currentChatHistoryRef.set(history)
-        },
+        transientStreamHistory: mainRendererReferences.transientStreamHistory,
         viewAuthority: {
             isCurrent: context => {
                 const selected = mainRendererReferences.currentSelectedItemRef.get();
@@ -2612,7 +2611,7 @@ function initializeMessageRenderer(refs) {
         renderMermaidDiagrams: renderMermaidDiagrams,
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
-        onStreamStateChanged: mainRendererReferences.messageCommands.updateSendButtonState,
+        notifySurfaceOperationStateChanged: mainRendererReferences.messageCommands.updateSendButtonState,
         morphdom: mainRendererReferences.morphdom,
         renderMessage: renderMessage,
         showContextMenu: contextMenu.showContextMenu,
@@ -2781,8 +2780,8 @@ function getAudioDisplayName(audio) {
     }
 }
 
-function createAudioControlButton(className, label, iconMarkup) {
-    const button = document.createElement('button');
+function createAudioControlButton(ownerDocument, className, label, iconMarkup) {
+    const button = ownerDocument.createElement('button');
     button.type = 'button';
     button.className = `vcp-audio-button ${className}`;
     button.setAttribute('aria-label', label);
@@ -2793,6 +2792,8 @@ function createAudioControlButton(className, label, iconMarkup) {
 
 function enhanceAudioPlayers(container) {
     if (!container) return;
+    const ownerDocument = container.ownerDocument;
+    if (!ownerDocument) return;
 
     const playIcon = `
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2819,27 +2820,27 @@ function enhanceAudioPlayers(container) {
         audio.dataset.vcpAudioEnhanced = 'true';
         audio.classList.add('vcp-audio-native');
 
-        const player = document.createElement('div');
+        const player = ownerDocument.createElement('div');
         player.className = 'vcp-audio-player';
         player.setAttribute('role', 'group');
         player.setAttribute('aria-label', `音频播放器：${getAudioDisplayName(audio)}`);
 
-        const playButton = createAudioControlButton('vcp-audio-play', '播放', playIcon);
-        const content = document.createElement('div');
+        const playButton = createAudioControlButton(ownerDocument, 'vcp-audio-play', '播放', playIcon);
+        const content = ownerDocument.createElement('div');
         content.className = 'vcp-audio-content';
 
-        const header = document.createElement('div');
+        const header = ownerDocument.createElement('div');
         header.className = 'vcp-audio-header';
-        const title = document.createElement('span');
+        const title = ownerDocument.createElement('span');
         title.className = 'vcp-audio-title';
         title.textContent = getAudioDisplayName(audio);
         title.title = title.textContent;
-        const time = document.createElement('span');
+        const time = ownerDocument.createElement('span');
         time.className = 'vcp-audio-time';
         time.textContent = '0:00 / 0:00';
         header.append(title, time);
 
-        const progress = document.createElement('input');
+        const progress = ownerDocument.createElement('input');
         progress.type = 'range';
         progress.className = 'vcp-audio-range vcp-audio-progress';
         progress.min = '0';
@@ -2848,10 +2849,10 @@ function enhanceAudioPlayers(container) {
         progress.value = '0';
         progress.setAttribute('aria-label', '播放进度');
 
-        const actions = document.createElement('div');
+        const actions = ownerDocument.createElement('div');
         actions.className = 'vcp-audio-actions';
-        const muteButton = createAudioControlButton('vcp-audio-mute', '静音', volumeIcon);
-        const volume = document.createElement('input');
+        const muteButton = createAudioControlButton(ownerDocument, 'vcp-audio-mute', '静音', volumeIcon);
+        const volume = ownerDocument.createElement('input');
         volume.type = 'range';
         volume.className = 'vcp-audio-range vcp-audio-volume';
         volume.min = '0';
@@ -2860,7 +2861,7 @@ function enhanceAudioPlayers(container) {
         volume.value = String(audio.volume);
         volume.setAttribute('aria-label', '音量');
 
-        const download = document.createElement('a');
+        const download = ownerDocument.createElement('a');
         download.className = 'vcp-audio-button vcp-audio-download';
         download.href = audio.currentSrc || audio.getAttribute('src') || audio.querySelector('source')?.src || '#';
         download.download = title.textContent;
@@ -3023,22 +3024,24 @@ function getAttachmentFileVisualDescriptor(name = '', type = '') {
 async function renderAttachments(message, contentDiv) {
     const { electronAPI } = mainRendererReferences;
     if (message.attachments && message.attachments.length > 0) {
-        const attachmentsContainer = document.createElement('div');
+        const ownerDocument = contentDiv?.ownerDocument || mainRendererReferences.document;
+        if (!ownerDocument) throw new TypeError('MessageRenderer attachment projection requires an owning document');
+        const attachmentsContainer = ownerDocument.createElement('div');
         attachmentsContainer.classList.add('message-attachments');
         message.attachments.forEach((att, index) => {
-            const wrapper = document.createElement('div');
+            const wrapper = ownerDocument.createElement('div');
             wrapper.classList.add('message-attachment-wrapper');
 
             let attachmentElement;
             if (att.type.startsWith('image/')) {
-                attachmentElement = document.createElement('img');
+                attachmentElement = ownerDocument.createElement('img');
                 attachmentElement.src = att.src;
                 attachmentElement.alt = `附件图片: ${att.name}`;
                 attachmentElement.title = `点击在新窗口预览: ${att.name}`;
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
                 const onImageClick = (e) => {
                     e.stopPropagation();
-                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+                    const currentTheme = ownerDocument.body?.classList.contains('light-theme') ? 'light' : 'dark';
                     electronAPI.openImageViewer({ src: att.src, title: att.name, theme: currentTheme });
                 };
                 const onImageContextMenu = (e) => {
@@ -3052,17 +3055,17 @@ async function renderAttachments(message, contentDiv) {
                     attachmentElement.removeEventListener('contextmenu', onImageContextMenu);
                 };
             } else if (att.type.startsWith('audio/')) {
-                attachmentElement = document.createElement('audio');
+                attachmentElement = ownerDocument.createElement('audio');
                 attachmentElement.src = att.src;
                 attachmentElement.controls = true;
                 attachmentElement.dataset.audioTitle = att.name || '音频附件';
             } else if (att.type.startsWith('video/')) {
-                attachmentElement = document.createElement('video');
+                attachmentElement = ownerDocument.createElement('video');
                 attachmentElement.src = att.src;
                 attachmentElement.controls = true;
                 attachmentElement.style.maxWidth = '300px';
             } else {
-                attachmentElement = document.createElement('a');
+                attachmentElement = ownerDocument.createElement('a');
                 attachmentElement.href = att.src;
                 const fileVisual = getAttachmentFileVisualDescriptor(att.name, att.type);
                 const isPythonAttachment = /\.py$/i.test((att.name || '').trim())
@@ -3106,10 +3109,10 @@ async function renderAttachments(message, contentDiv) {
                 };
                 attachmentElement.addEventListener('click', onFileClick);
                 attachmentElement._vcpAttachmentCleanup = () => attachmentElement.removeEventListener('click', onFileClick);
-                const iconSpan = document.createElement('span');
+                const iconSpan = ownerDocument.createElement('span');
                 iconSpan.className = 'message-attachment-file-icon';
                 iconSpan.innerHTML = fileVisual.iconMarkup;
-                const nameSpan = document.createElement('span');
+                const nameSpan = ownerDocument.createElement('span');
                 nameSpan.className = 'message-attachment-file-name';
                 nameSpan.textContent = att.name;
                 attachmentElement.appendChild(iconSpan);
@@ -3118,7 +3121,7 @@ async function renderAttachments(message, contentDiv) {
             if (attachmentElement) {
                 wrapper.appendChild(attachmentElement);
                 // 添加删除按钮
-                const removeBtn = document.createElement('div');
+                const removeBtn = ownerDocument.createElement('div');
                 removeBtn.className = 'message-attachment-remove-btn';
                 removeBtn.innerHTML = '&times;';
                 removeBtn.title = '移除此附件';
@@ -3701,7 +3704,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
     // Update timestamp display if it was missing
     const nameTimeBlock = messageItem.querySelector('.name-time-block');
     if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
-        const timestampDiv = document.createElement('div');
+        const timestampDiv = messageItem.ownerDocument.createElement('div');
         timestampDiv.classList.add('message-timestamp');
         const messageFromHistory = currentChatHistoryArray.find(m => m.id === messageId);
         timestampDiv.textContent = formatMessageTimestamp(messageFromHistory?.timestamp || Date.now());
@@ -3764,18 +3767,20 @@ function scheduleMessagePretextEstimate(messageId, text, container) {
     const contentDiv = container?.closest?.('.md-content') || container?.querySelector?.('.md-content') || null;
     if (contentDiv?._vcpPretextIdleHandle) {
         const previous = contentDiv._vcpPretextIdleHandle;
-        if (previous.kind === 'idle' && typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(previous.id);
+        const ownerWindow = contentDiv.ownerDocument?.defaultView;
+        if (previous.kind === 'idle' && typeof ownerWindow?.cancelIdleCallback === 'function') ownerWindow.cancelIdleCallback(previous.id);
         else if (previous.kind === 'timer') clearTimeout(previous.id);
     }
     const wrappedRun = () => {
         if (contentDiv) delete contentDiv._vcpPretextIdleHandle;
         run();
     };
-    if (typeof window.requestIdleCallback === 'function') {
-        const id = window.requestIdleCallback(wrappedRun, { timeout: 300 });
+    const ownerWindow = contentDiv?.ownerDocument?.defaultView;
+    if (typeof ownerWindow?.requestIdleCallback === 'function') {
+        const id = ownerWindow.requestIdleCallback(wrappedRun, { timeout: 300 });
         if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'idle', id };
     } else {
-        const id = setTimeout(wrappedRun, 0);
+        const id = ownerWindow?.setTimeout?.(wrappedRun, 0) || setTimeout(wrappedRun, 0);
         if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'timer', id };
     }
 }
@@ -3962,7 +3967,8 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
     renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
     if (!isRenderSessionActive(renderSessionId)) return;
 
-    const fragment = document.createDocumentFragment();
+    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
+    const fragment = renderRoot.ownerDocument.createDocumentFragment();
     const messageElements = [];
 
     // 使用 Promise.allSettled 避免单个失败影响整体
@@ -3985,7 +3991,6 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
     messageElements.forEach(el => fragment.appendChild(el));
 
     // 使用 owner-managed animation frame，Surface teardown 会取消并等待它。
-    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
     return renderTaskOwner.animationFrame(renderRoot, () => {
             if (!isRenderSessionActive(renderSessionId)) return;
 
@@ -4024,7 +4029,8 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         const batch = olderMessages.slice(startIndex, endIndex);
 
         // 创建批次 fragment
-        const batchFragment = document.createDocumentFragment();
+        const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
+        const batchFragment = renderRoot.ownerDocument.createDocumentFragment();
         const elementsForProcessing = [];
 
         for (const msg of batch) {
@@ -4038,7 +4044,6 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         }
 
         // 🟢 owner-managed idle work，当前 root revoke/dispose 时会被取消。
-        const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
         await renderTaskOwner.idle(renderRoot, () => {
                 if (!isRenderSessionActive(renderSessionId)) return;
 
@@ -4078,7 +4083,8 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
     renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
     if (!isRenderSessionActive(renderSessionId)) return;
 
-    const fragment = document.createDocumentFragment();
+    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
+    const fragment = renderRoot.ownerDocument.createDocumentFragment();
     const allMessageElements = [];
 
     // Phase 1: Create all message elements in memory without appending to DOM
@@ -4096,7 +4102,6 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
     // Phase 2: Append all created elements at once using a DocumentFragment
     allMessageElements.forEach(el => fragment.appendChild(el));
 
-    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
     return renderTaskOwner.animationFrame(renderRoot, () => {
             if (!isRenderSessionActive(renderSessionId)) return;
 

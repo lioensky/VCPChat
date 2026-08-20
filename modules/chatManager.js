@@ -51,6 +51,9 @@ export const chatManager = (() => {
     
     // Functions from main renderer
     let mainRendererFunctions = {};
+    // Narrow capability supplied by the owning Surface. ChatManager must not
+    // discover the main-window send button through the ambient window object.
+    let notifySendStateChanged = () => {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
     let lastAssistantSuspendAt = 0;
     let activeHistoryLoadToken = 0;
@@ -396,6 +399,11 @@ export const chatManager = (() => {
         
         // Main Renderer Functions
         mainRendererFunctions = config.mainRendererFunctions;
+        notifySendStateChanged = typeof config.notifySendStateChanged === 'function'
+            ? config.notifySendStateChanged
+            : (typeof mainRendererFunctions?.updateSendButtonState === 'function'
+                ? mainRendererFunctions.updateSendButtonState
+                : () => {});
 
         // Listen for Canvas events
         if (electronAPI) {
@@ -600,7 +608,7 @@ export const chatManager = (() => {
         currentTopicIdRef.set(null); // Reset topic
         currentChatHistoryRef.set([]);
         chatContext?.setHistory([]);
-        window.updateSendButtonState?.();
+        notifySendStateChanged();
 
         document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
             item.classList.remove('active-topic-glowing');
@@ -889,7 +897,7 @@ export const chatManager = (() => {
 
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
-        window.updateSendButtonState?.();
+        notifySendStateChanged();
     
     
         document.querySelectorAll('.topic-list .topic-item').forEach(item => {
@@ -959,7 +967,7 @@ export const chatManager = (() => {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (historyResult && historyResult.length > 0) {
             currentChatHistoryRef.set(historyResult);
-            window.updateSendButtonState?.();
+            notifySendStateChanged();
             if (messageRenderer) {
                 // 使用优化的分批渲染策略
                 const renderOptions = {
@@ -976,7 +984,7 @@ export const chatManager = (() => {
     
         } else if (historyResult) { // History is empty
             currentChatHistoryRef.set([]);
-            window.updateSendButtonState?.();
+            notifySendStateChanged();
             const activeItem = currentSelectedItemRef.get();
             if (
                 activeItem?.id === itemId
@@ -1282,7 +1290,7 @@ export const chatManager = (() => {
         const currentSelectedItem = sendSelectedItemRef.get();
         const currentTopicId = sendTopicIdRef.get();
         const globalSettings = globalSettingsRef.get();
-        const notifySendState = request?.conversation ? () => {} : () => window.updateSendButtonState?.();
+        const notifySendState = request?.conversation ? () => {} : notifySendStateChanged;
         const sendContext = {
             agentId: currentSelectedItem.id,
             itemType: currentSelectedItem.type || 'agent',
@@ -1991,7 +1999,7 @@ export const chatManager = (() => {
                 if (!isCreationCurrent() || watcherLease?.stale || watcherLease?.success === false) return;
                 currentTopicIdRef.set(result.topicId);
                 currentChatHistoryRef.set([]);
-                window.updateSendButtonState?.();
+                notifySendStateChanged();
 
                 if (messageRenderer) {
                     messageRenderer.setCurrentTopicId(result.topicId);

@@ -24,6 +24,9 @@ export function createRenderDependencies(input = {}) {
     if (!input.historyMutationAuthority || typeof input.historyMutationAuthority.replace !== 'function') {
         throw new TypeError('RenderDependencies requires a history mutation authority');
     }
+    if (!input.transientStreamHistory || typeof input.transientStreamHistory.prepare !== 'function' || typeof input.transientStreamHistory.finalize !== 'function') {
+        throw new TypeError('RenderDependencies requires a transient stream history provider');
+    }
     if (!input.markedInstance || typeof input.markedInstance.parse !== 'function') {
         throw new TypeError('RenderDependencies requires a Markdown parser capability');
     }
@@ -59,6 +62,7 @@ export function createRenderDependencies(input = {}) {
         transport: input.electronAPI,
         repository: input.chatRepository,
         historyMutations: input.historyMutationAuthority,
+        transientStreamHistory: input.transientStreamHistory,
         markdown: input.markedInstance,
         feedback: input.uiHelper,
         commands,
@@ -80,6 +84,7 @@ export function createRenderDependencies(input = {}) {
         electronAPI: input.electronAPI,
         chatRepository: input.chatRepository,
         historyMutationAuthority: input.historyMutationAuthority,
+        transientStreamHistory: input.transientStreamHistory,
         markedInstance: input.markedInstance,
         uiHelper: input.uiHelper,
         summarizeTopicFromMessages: commands.summarizeTopic,

@@ -178,11 +178,6 @@ const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达
 const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
 const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
 const messageInitializationWaiters = new Map(); // messageId -> resolvers awaiting ready/discarded
-// Renderer-owned pending entries are deliberately not persisted. They carry
-// enough ordering metadata to finalize a stream after its source topic has
-// moved to the background without leaving crash-residue in history.json.
-const pendingHistoryEntries = new Map(); // messageId -> pending assistant message
-
 // --- 新增：消息上下文映射 ---
 const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId, isGroupMessage}
 
@@ -261,8 +256,13 @@ function cancelScheduledAnimationFrames() {
 function initStreamManager(dependencies) {
     if (disposed) throw new Error('StreamProjection is disposed');
     refs = dependencies;
-    if (!dependencies.chatRepository) throw new Error('StreamManager requires ChatRepository');
-    if (!dependencies.historyAuthority || typeof dependencies.historyAuthority.get !== 'function' || typeof dependencies.historyAuthority.replace !== 'function') {
+    if (!dependencies?.chatMessagesDiv?.querySelector) {
+        throw new TypeError('StreamProjection requires an owning Surface root');
+    }
+    if (typeof dependencies?.viewAuthority?.isCurrent !== 'function') {
+        throw new TypeError('StreamProjection requires an explicit view authority');
+    }
+    if (!dependencies.transientStreamHistory || typeof dependencies.transientStreamHistory.prepare !== 'function' || typeof dependencies.transientStreamHistory.finalize !== 'function') {
         throw new TypeError('StreamProjection requires an explicit transient history capability');
     }
 
@@ -372,47 +372,7 @@ function getCurrentViewSignature() {
  */
 function isMessageForCurrentView(context) {
     if (!context) return false;
-    if (refs.viewAuthority && typeof refs.viewAuthority.isCurrent === 'function') {
-        return refs.viewAuthority.isCurrent(context) === true;
-    }
-    
-    const newSignature = getCurrentViewSignature();
-    
-    // 如果视图切换了，清空缓存
-    if (currentViewSignature !== newSignature) {
-        currentViewSignature = newSignature;
-        viewContextCache.clear();
-    }
-    
-    const currentSelectedItem = refs.currentSelectedItemRef.get();
-    const currentTopicId = refs.currentTopicIdRef.get();
-    
-    if (!currentSelectedItem || !currentTopicId) return false;
-    
-    const itemId = context.groupId || context.agentId;
-    return itemId === currentSelectedItem.id && context.topicId === currentTopicId;
-}
-
-async function getHistoryForContext(context) {
-    const { chatRepository } = refs;
-    if (!context) return null;
-    
-    const { agentId, groupId, topicId, isGroupMessage } = context;
-    const itemId = groupId || agentId;
-    
-    if (!itemId || !topicId) return null;
-    
-    try {
-        const historyResult = await chatRepository.getHistory(itemId, isGroupMessage ? 'group' : 'agent', topicId);
-        
-        if (historyResult && !historyResult.error) {
-            return historyResult;
-        }
-    } catch (e) {
-        console.error(`[StreamManager] Failed to get history for context`, context, e);
-    }
-    
-    return null;
+    return refs.viewAuthority.isCurrent(context) === true;
 }
 
 /**
@@ -423,16 +383,6 @@ function applyStreamingPreprocessors(text) {
     if (!text) return '';
     if (!contentRuntime) return text;
     return contentRuntime.createRenderModel({ content: text, role: 'assistant' }, { mode: PIPELINE_MODES.STREAM_FAST }).text;
-}
-
-function getOwnedHistory() {
-    return refs.historyAuthority.get();
-}
-
-function setOwnedHistory(history) {
-    const snapshot = Array.isArray(history) ? [...history] : [];
-    refs.historyAuthority.replace(snapshot);
-    return snapshot;
 }
 
 function parseStreamTail(text) {
@@ -1704,28 +1654,18 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     
     activeStreamingMessages.set(messageId, context);
     
-    const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
+    const { chatMessagesDiv, electronAPI, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(context);
     const shouldProjectToDom = isForCurrentView;
     // 🟢 缓存视图检查结果
     viewContextCache.set(messageId, shouldProjectToDom);
     
-    // Get the correct history for this message's context
-    let historyForThisMessage;
-    // For assistant chat, always use a temporary in-memory history
-    if (context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        historyForThisMessage = getOwnedHistory();
-    } else if (isForCurrentView) {
-        // For current view, use in-memory history
-        historyForThisMessage = getOwnedHistory();
-    } else {
-        // For background chats, load from disk
-        historyForThisMessage = await getHistoryForContext(context);
-        if (!historyForThisMessage) {
-            console.error(`[StreamManager] Could not load history for background message ${messageId}`, context);
-            discardStreamingMessage(messageId);
-            return null;
-        }
+    try {
+        await refs.transientStreamHistory.prepare(message, context, { visible: isForCurrentView });
+    } catch (error) {
+        console.error(`[StreamManager] Could not prepare transient history for ${messageId}`, context, error);
+        discardStreamingMessage(messageId);
+        return null;
     }
     
     // Only manipulate DOM for current view
@@ -1777,32 +1717,8 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         accumulatedStreamText.set(messageId, newText);
     }
     
-    // Prepare placeholder for history
-    const placeholderForHistory = {
-        ...message,
-        content: shouldSkipGroupThinkingSeed ? '' : (message.content || ''),
-        isThinking: false,
-        isPendingStream: true,
-        timestamp: message.timestamp || Date.now(),
-        isGroupMessage: context.isGroupMessage,
-        name: context.agentName,
-        agentId: context.agentId
-    };
-    pendingHistoryEntries.set(messageId, { ...placeholderForHistory });
-    
-    // Update the appropriate history
-    const historyIndex = historyForThisMessage.findIndex(m => m.id === message.id);
-    if (historyIndex === -1) {
-        historyForThisMessage.push(placeholderForHistory);
-    } else {
-        historyForThisMessage[historyIndex] = { ...historyForThisMessage[historyIndex], ...placeholderForHistory };
-    }
-    
-    // Save the history
     if (isForCurrentView) {
-        // Update in-memory reference for current view
-        setOwnedHistory(historyForThisMessage);
-        refs.onStreamStateChanged?.();
+        refs.notifySurfaceOperationStateChanged?.();
     }
     
     // Initialization is complete, message is ready to process chunks.
@@ -2080,35 +1996,6 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     const isForCurrentView = isMessageForCurrentView(storedContext);
     const shouldProjectToDom = isForCurrentView;
     
-    // Get the correct history
-    let historyForThisMessage;
-    const currentViewHistory = getOwnedHistory();
-    const currentViewOwnsPendingMessage = isForCurrentView
-        && Array.isArray(currentViewHistory)
-        && currentViewHistory.some(message => message?.id === messageId);
-    // The thinking placeholder is committed to renderer memory before the
-    // request starts, but intentionally is not written to disk. When a fast
-    // stream finishes, disk can therefore lag behind and not contain the
-    // message yet. Prefer the owned in-memory transaction for the current
-    // view; background topics still read their own persisted history.
-    if (
-        currentViewOwnsPendingMessage
-        || storedContext.topicId === 'assistant_chat'
-        || storedContext.topicId?.startsWith('voicechat_')
-    ) {
-        historyForThisMessage = currentViewHistory;
-    } else {
-        // For all other chats, always fetch the latest history from the source of truth
-        // to avoid race conditions with the UI state (currentChatHistoryRef).
-        historyForThisMessage = await getHistoryForContext(storedContext);
-        if (!historyForThisMessage) {
-            console.error(`[StreamManager] Could not load history for finalization`, storedContext);
-            discardStreamingMessage(messageId);
-            return;
-        }
-    }
-    
-    // Find and update the message
     const accumulatedText = accumulatedStreamText.get(messageId) || "";
     const payloadFullResponse = typeof finalPayload?.fullResponse === 'string' ? finalPayload.fullResponse : "";
     const payloadError = typeof finalPayload?.error === 'string' ? finalPayload.error.trim() : "";
@@ -2130,26 +2017,21 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
             finalFullText = "";
         }
     }
-    let messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
-
-    // A background stream can finish before its debounced history save. The
-    // pending entry lives in renderer memory rather than on disk; reconstruct
-    // it at the position owned by its user message before applying the final
-    // response. This also preserves conversational order when two streams
-    // finish in reverse order.
-    if (messageIndex === -1) {
-        const pendingEntry = pendingHistoryEntries.get(messageId);
-        if (pendingEntry) {
-            const replyIndex = pendingEntry.replyToMessageId
-                ? historyForThisMessage.findIndex(message => message.id === pendingEntry.replyToMessageId)
-                : -1;
-            const insertionIndex = replyIndex >= 0 ? replyIndex + 1 : historyForThisMessage.length;
-            historyForThisMessage.splice(insertionIndex, 0, { ...pendingEntry });
-            messageIndex = insertionIndex;
-        }
+    let transientModel;
+    try {
+        transientModel = await refs.transientStreamHistory.finalize({
+            messageId,
+            context: storedContext,
+            content: finalFullText,
+            finishReason,
+            visible: isForCurrentView,
+        });
+    } catch (error) {
+        console.error(`[StreamManager] Could not finalize transient history for ${messageId}`, storedContext, error);
+        discardStreamingMessage(messageId);
+        return null;
     }
-    
-    if (messageIndex === -1) {
+    if (!transientModel) {
         // If it's an assistant chat and the message is not found,
         // it's likely the window was reset. Ignore gracefully.
         if (storedContext && storedContext.topicId === 'assistant_chat') {
@@ -2162,20 +2044,10 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
         return;
     }
     
-    const message = historyForThisMessage[messageIndex];
-    message.content = finalFullText;
-    message.finishReason = finishReason;
-    message.isThinking = false;
-    delete message.isPendingStream;
-    if (message.isGroupMessage && storedContext) {
-        message.name = storedContext.agentName || message.name;
-        message.agentId = storedContext.agentId || message.agentId;
-    }
+    const { message, history: historyForThisMessage } = transientModel;
     
     // Update UI if it's the current view
     if (shouldProjectToDom) {
-        if (isForCurrentView) setOwnedHistory(historyForThisMessage);
-
         const messageItem = messageDomCache.get(messageId)?.messageItem
             || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
@@ -2246,7 +2118,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     pendingDirectRenderMessages.delete(messageId);
     accumulatedStreamText.delete(messageId);
     streamSegmentStates.delete(messageId);
-    pendingHistoryEntries.delete(messageId);
+    refs.transientStreamHistory.discard?.(messageId);
     cleanupDesktopPushState(messageId);
 
     // Finalization can start in a background topic and finish after the user
@@ -2254,14 +2126,13 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     // shared send button stuck in interrupt mode even though all stream state
     // is already gone. The updater derives state from the *current* chat, so
     // it is safe and necessary to run after cleanup for every finalization.
-    refs.onStreamStateChanged?.();
+    refs.notifySurfaceOperationStateChanged?.();
 
     // Terminal means ownership has ended; no delayed cache lease survives `done`.
     messageDomCache.delete(messageId);
     messageInitializationStatus.delete(messageId);
     preBufferedChunks.delete(messageId);
     messageContextMap.delete(messageId);
-    pendingHistoryEntries.delete(messageId);
     viewContextCache.delete(messageId);
 
     // 调用方（例如 Flowlock）需要基于真正落盘的完整文本解析最终控制协议。
@@ -2290,12 +2161,12 @@ function discardStreamingMessage(messageId) {
     const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
     messageInitializationWaiters.delete(messageId);
     initializationWaiters.forEach(resolve => resolve(false));
-    pendingHistoryEntries.delete(messageId);
+    refs.transientStreamHistory.discard?.(messageId);
     messageContextMap.delete(messageId);
     viewContextCache.delete(messageId);
     cleanupDesktopPushState(messageId);
     activeStreamingMessages.delete(messageId);
-    refs.onStreamStateChanged?.();
+    refs.notifySurfaceOperationStateChanged?.();
 }
 
 async function dispose() {
@@ -2329,7 +2200,7 @@ async function dispose() {
         messageInitializationStatus.clear();
         for (const waiters of messageInitializationWaiters.values()) waiters.forEach(resolve => resolve(false));
         messageInitializationWaiters.clear();
-        pendingHistoryEntries.clear();
+        refs.transientStreamHistory.dispose?.();
         messageContextMap.clear();
         viewContextCache.clear();
     
@@ -2364,7 +2235,7 @@ function getStreamDiagnostics() {
         activeInitializations: [...messageInitializationStatus.values()]
             .filter(status => status === 'pending' || status === 'ready').length,
         contexts: messageContextMap.size,
-        pendingHistory: pendingHistoryEntries.size,
+        pendingHistory: refs.transientStreamHistory?.pendingCount || 0,
         prebuffered: preBufferedChunks.size,
         pendingFinalizations: messageInitializationWaiters.size,
         chunkQueues: streamingChunkQueues.size,

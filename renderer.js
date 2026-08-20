@@ -1,9 +1,11 @@
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
 import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
 import { createSurfaceConversation } from './modules/chat/surfaceConversation.js';
+import { createStreamTransientHistory } from './modules/chat/streamTransientHistory.js';
 import { createMessageRenderer } from './modules/messageRenderer.js';
 import { applyUserMessageLayoutState } from './modules/renderer/domBuilder.js';
 import { createStreamProjection } from './modules/renderer/streamManager.js';
+import { createMainChatEventBridge } from './modules/renderer/mainChatEventBridge.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -271,7 +273,6 @@ async function handleSendButtonAction() {
     }
 }
 
-window.updateSendButtonState = updateSendButtonState;
 window.handleSendButtonAction = handleSendButtonAction;
 window.__vcpCancelActiveResponse = interruptActiveResponseFromSendButton;
 updateSendButtonState();
@@ -335,6 +336,7 @@ let mainChatDomRenderer = null;
 let mainChatSurface = null;
 let mainChatAdapter = null;
 let nonStreamingEventConsumer = null;
+let mainChatEventBridge = null;
 let releaseNextUiChatCapabilities = null;
 
 function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
@@ -346,6 +348,13 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
     let localSettings = globalSettings;
     let disposed = false;
     const streamProjection = createStreamProjection();
+    const transientStreamHistory = createStreamTransientHistory({
+        repository: chatRepository,
+        currentHistory: {
+            get: () => conversationCapability.historyRef.get(),
+            replace: history => conversationCapability.historyRef.set(history),
+        },
+    });
     const surfacePretextPrefix = `surface-${conversationCapability.id || Date.now().toString(36)}`;
     const createSurfacePretextBridge = (bridge) => {
         if (!bridge) return null;
@@ -380,10 +389,7 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         currentChatHistoryRef: conversationCapability.historyRef,
         currentSelectedItemRef: conversationCapability.selectedItemRef,
         currentTopicIdRef: conversationCapability.topicIdRef,
-        historyAuthority: {
-            get: () => conversationCapability.historyRef.get(),
-            replace: history => conversationCapability.historyRef.set(history)
-        },
+        transientStreamHistory,
         viewAuthority: {
             isCurrent: context => {
                 const selected = conversationCapability.selectedItemRef.get();
@@ -561,10 +567,16 @@ const startupThemeGate = new StartupThemeGate({
         interruptHandler.initialize(chatAPI);
 
         const historyPersistence = createChatHistoryPersistence(chatRepository);
+        const mainHistoryRef = { get: () => currentChatHistory, set: (val) => currentChatHistory = val };
+        const transientStreamHistory = createStreamTransientHistory({
+            repository: chatRepository,
+            currentHistory: { get: mainHistoryRef.get, replace: mainHistoryRef.set },
+        });
         const renderDependencies = {
             chatRepository,
             historyMutationAuthority,
-            currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
+            currentChatHistoryRef: mainHistoryRef,
+            transientStreamHistory,
             currentSelectedItemRef: {
                 get: () => currentSelectedItem,
                 set: (val) => { currentSelectedItem = val; window.currentSelectedItem = val; }
@@ -621,6 +633,8 @@ const startupThemeGate = new StartupThemeGate({
             }),
             createInternalRenderer: createOwnedInternalChatRenderer,
             disposeCapabilities: async () => {
+                mainChatEventBridge?.dispose?.();
+                mainChatEventBridge = null;
                 nonStreamingEventConsumer?.dispose();
                 nonStreamingEventConsumer = null;
                 releaseNextUiChatCapabilities?.();
@@ -695,55 +709,10 @@ const startupThemeGate = new StartupThemeGate({
         }
     });
 
-    // Unified listener for all VCP stream events (agent and group)
-    chatAPI.onVCPStreamEvent(async (eventData) => {
-        if (!messageRenderer) {
-            console.error("onVCPStreamEvent: messageRenderer not available.");
-            return;
-        }
-
-        const { type, messageId, context, fullResponse } = eventData;
-
-        if (!messageId) {
-            console.error("onVCPStreamEvent: Received event without a messageId. Cannot process.", eventData);
-            return;
-        }
-
-        if (mainChatAdapter?.acceptStreamEvent(eventData)) return;
-        if (nonStreamingEventConsumer?.consume(eventData)) return;
-
-        // Group non-streaming responses and redo removals are explicit business
-        // events, not a second stream terminal path. They are consumed by the
-        // main Surface adapter only when their captured conversation is active.
-        if (type === 'full_response' || type === 'remove_message') {
-            await mainChatAdapter?.consumeNonStreamingEvent?.(eventData);
-            return;
-        }
-
-        // --- Asynchronous Logic: Update data model regardless of UI state ---
-        // This is where you would update a global or context-specific data store
-        // For now, we pass the context to the messageRenderer which handles the history array.
-
-        // --- UI Logic: Only render if the message's context matches the current view ---
-        // Directly use the global variables `currentSelectedItem` and `currentTopicId` from the renderer's scope.
-        // The `...Ref` objects are not defined in this scope.
-        const isRelevantToCurrentView = context &&
-            currentSelectedItem && // Ensure currentSelectedItem is not null
-            (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id) &&
-            context.topicId === currentTopicId;
-
-        // console.log(`[onVCPStreamEvent] Received event type '${type}' for msg ${messageId}. Relevant to current view: ${isRelevantToCurrentView}`, context);
-
-        // Data model updates should ALWAYS happen, regardless of the current view.
-        // UI updates (creating new DOM elements) should only happen if the view is relevant.
-        switch (type) {
-            case 'no_ai_response':
-                 console.log(`[onVCPStreamEvent] No AI response needed for messageId: ${messageId}. Message: ${eventData.message}`);
-                break;
-
-            default:
-                console.warn(`[onVCPStreamEvent] Received unhandled event type: '${type}'`, eventData);
-        }
+    mainChatEventBridge = createMainChatEventBridge({
+        chatAPI,
+        acceptStreamEvent: eventData => mainChatAdapter?.acceptStreamEvent(eventData) === true,
+        consumeNonStreamingEvent: eventData => nonStreamingEventConsumer?.consume(eventData),
     });
 
     // Listener for group topic title updates
@@ -872,7 +841,8 @@ const startupThemeGate = new StartupThemeGate({
                 displaySettingsForItem: () => window.settingsManager.displaySettingsForItem(),
                 updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
                 // This is no longer needed as chatManager will call messageRenderer's summarizer
-            }
+            },
+            notifySendStateChanged: updateSendButtonState
         });
         window.MainChatCommands?.setChatManagerProvider?.(chatManager);
     } else {

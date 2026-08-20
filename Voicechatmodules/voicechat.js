@@ -6,6 +6,7 @@ import { createChatRepository } from '../modules/chat/chatRepository.js';
 import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
 import { createMessageRenderer } from '../modules/messageRenderer.js';
 import { createStreamProjection } from '../modules/renderer/streamManager.js';
+import { createStreamTransientHistory } from '../modules/chat/streamTransientHistory.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -289,6 +290,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 write: history => { currentChatHistory = history; },
             });
             const historyPersistence = createTransientChatHistoryPersistence(chatRepository);
+            const transientStreamHistory = createStreamTransientHistory({
+                repository: chatRepository,
+                currentHistory: { get: () => chatHistoryRef.get(), replace: history => chatHistoryRef.set(history) },
+            });
             historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
             messageRenderer.initializeMessageRenderer({
                 chatRepository,
@@ -296,6 +301,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,
+                transientStreamHistory,
+                viewAuthority: { isCurrent: context => context?.agentId === agentId && context?.topicId === getVoiceTopicId() },
                 globalSettingsRef: globalSettingsRef,
                 chatMessagesDiv: chatMessagesDiv,
                 electronAPI: window.electronAPI,

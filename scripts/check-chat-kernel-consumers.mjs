@@ -145,6 +145,7 @@ const kernelFiles = [
     'modules/chat/chatPluginManifest.js',
     'modules/chat/streamSession.js',
     'modules/chat/streamCoordinator.js',
+    'modules/chat/streamTransientHistory.js',
     'modules/chat/streamConsumerRegistry.js',
     'modules/chat/vcpStreamBridge.js',
 ];
@@ -199,6 +200,10 @@ const report = {
 };
 const rendererSource = source('renderer.js');
 const messageRendererSource = source('modules/messageRenderer.js');
+const mainChatEventBridgeSource = source('modules/renderer/mainChatEventBridge.js');
+const nonStreamingEventConsumerSource = source('modules/renderer/nonStreamingEventConsumer.js');
+const contentProcessorSource = source('modules/renderer/contentProcessor.js');
+const chatManagerSource = source('modules/chatManager.js');
 assert.match(messageRendererSource, /export function createMessageRenderer\(options = \{\}\) \{[\s\S]*const surfaceId = String\(/,
     'MessageRenderer must create a stable per-instance Surface namespace');
 assert.match(messageRendererSource, /const ownedStyleElements = new Set\(\)/,
@@ -211,6 +216,30 @@ const streamHandlerSource = rendererSource.slice(streamHandlerStart, streamHandl
 assert.doesNotMatch(streamHandlerSource, /messageRenderer\.appendStreamChunk\(messageId/, 'renderer must not retain direct stream chunk dispatch');
 assert.doesNotMatch(streamHandlerSource, /messageRenderer\.finalizeStreamedMessage\(\s*messageId/, 'renderer must not retain direct stream terminal dispatch');
 assert.match(rendererSource, /mainChatAdapter\?\.acceptStreamEvent\(eventData\)/, 'main window must route VCP events through MainChatSurfaceAdapter');
+// These assertions require production composition evidence; test-only imports cannot satisfy them.
+assert.match(rendererSource, /createMainChatEventBridge/, 'renderer must construct the main chat event bridge');
+assert.match(mainChatEventBridgeSource, /chatAPI\.onVCPStreamEvent/, 'event bridge must consume the preload producer');
+assert.match(mainChatEventBridgeSource, /subscription\?\.dispose|subscription\(\)/, 'event bridge must retain a producer disposer');
+assert.match(rendererSource, /createNonStreamingEventConsumer/, 'renderer must construct the non-streaming event consumer');
+assert.match(nonStreamingEventConsumerSource, /renderFullMessageProjection/, 'non-streaming consumer must project durable full responses');
+assert.match(nonStreamingEventConsumerSource, /renderTarget\.removeMessage/, 'non-streaming consumer must remove through its owning Surface');
+assert.match(contentProcessorSource, /mainRefs\.messageCommands\?\.handleSendMessage/, 'content processor must use an injected Surface send capability');
+assert.doesNotMatch(contentProcessorSource, /getElementById\(['"]messageInput['"]\)/, 'content processor must not discover the main input by global DOM id');
+assert.match(chatManagerSource, /renderTarget\?\.removeMessage(?:ById)?/, 'ChatManager must remove placeholders through the initiating render target');
+assert.doesNotMatch(chatManagerSource, /window\.updateSendButtonState/, 'ChatManager must use the injected send-state capability');
+assert.match(messageRendererSource, /vcp-\$\{surfaceId\}-chat-\$\{message\.id\}/, 'message styles must be namespaced by Surface and message');
+assert.match(messageRendererSource, /audioRoot\?\.querySelectorAll\?\.\(['"]audio\.vcp-audio-native['"]\)/, 'audio playback isolation must be scoped to the owning Surface root');
+assert.doesNotMatch(source('modules/renderer/streamManager.js'), /onStreamStateChanged/, 'stream projection must not retain the legacy generic state callback');
+assert.match(source('modules/renderer/streamManager.js'), /notifySurfaceOperationStateChanged/, 'stream projection state notification must be an explicit Surface capability');
+assert.match(source('modules/renderer/streamManager.js'), /transientStreamHistory/, 'stream projection history must be delegated to the transient history provider');
+assert.doesNotMatch(source('modules/renderer/streamManager.js'), /refs\.historyAuthority/, 'stream projection must not use an ambiguous durable-history authority name');
+assert.match(rendererSource, /createStreamTransientHistory[\s\S]*transientStreamHistory,/, 'main and internal composition must construct and inject transient history providers');
+assert.match(source('Voicechatmodules/voicechat.js'), /createStreamTransientHistory[\s\S]*transientStreamHistory,[\s\S]*viewAuthority/, 'Voice Surface must own its transient history and view authority');
+assert.match(source('rust_assistant_engine/ui/assistant.js'), /createStreamTransientHistory[\s\S]*transientStreamHistory,[\s\S]*viewAuthority/, 'Rust assistant Surface must own its transient history and view authority');
+assert.doesNotMatch(messageRendererSource, /createStreamTransientHistory/, 'MessageRenderer must consume rather than secretly construct the transient history provider');
+assert.match(source('modules/renderer/streamManager.js'), /requires an owning Surface root/, 'stream projection must fail fast without an owning root');
+assert.match(source('modules/renderer/streamManager.js'), /requires an explicit view authority/, 'stream projection must fail fast without a view authority');
+assert.doesNotMatch(source('modules/renderer/streamManager.js'), /if \(refs\.viewAuthority &&/, 'stream projection must not silently fall back to global selection state');
 const reportPath = path.join(root, 'docs/chat-kernel-consumer-report.json');
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 console.log(`Chat Kernel consumer baseline passed (${productionFiles.length} production files, ${testFiles.length} test files, ${kernelFiles.length} kernel files).`);
