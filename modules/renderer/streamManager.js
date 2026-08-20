@@ -3,49 +3,15 @@ import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 import { createContentRuntime } from '../chat/contentRuntime.js';
 import { createDesktopPushConsumer } from './desktopPushConsumer.js';
+import { createStreamProjectionRuntime } from './streamProjectionRuntime.js';
 
 /** Creates one DOM stream projection owner for one renderer Surface. */
 export function createStreamProjection() {
-// Runtime state is operation-scoped.  DOM identity remains messageId, while
-// producer retries are isolated by streamOperationId.  The small map adapter
-// keeps the legacy internal call sites readable without exposing operation
-// state as a global store.
-const messageRuntimeKeys = new Map();
-const runtimeStateKey = messageId => messageRuntimeKeys.get(String(messageId)) || String(messageId);
-const createRuntimeStateMap = () => {
-    const store = new Map();
-    return {
-        get: key => store.get(runtimeStateKey(key)),
-        has: key => store.has(runtimeStateKey(key)),
-        set(key, value) { store.set(runtimeStateKey(key), value); return this; },
-        delete: key => store.delete(runtimeStateKey(key)),
-        clear: () => store.clear(),
-        get size() { return store.size; },
-        keys: () => [...store.keys()].map(key => String(key).split('::').pop())[Symbol.iterator](),
-        values: () => store.values(),
-        entries: () => [...store.entries()].map(([key, value]) => [String(key).split('::').pop(), value])[Symbol.iterator](),
-        forEach: callback => store.forEach((value, key) => callback(value, String(key).split('::').pop(), store)),
-        [Symbol.iterator]() { return this.entries(); },
-        displayKeys: () => [...store.keys()].map(key => String(key).split('::').pop()),
-    };
-};
-const createRuntimeStateSet = () => {
-    const store = new Set();
-    return {
-        add(key) { store.add(runtimeStateKey(key)); return this; },
-        has: key => store.has(runtimeStateKey(key)),
-        delete: key => store.delete(runtimeStateKey(key)),
-        clear: () => store.clear(),
-        get size() { return store.size; },
-    };
-};
-// --- Stream State ---
-const streamingChunkQueues = createRuntimeStateMap();
-const streamingTimers = createRuntimeStateMap();
-const accumulatedStreamText = createRuntimeStateMap();
-const streamSegmentStates = createRuntimeStateMap();
-const activeStreamingMessages = createRuntimeStateMap();
-const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
+const runtime = createStreamProjectionRuntime();
+const {
+    messageRuntimeKeys, streamingChunkQueues, streamingTimers, accumulatedStreamText,
+    streamSegmentStates, activeStreamingMessages, elementContentLengthCache,
+} = runtime;
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
 
@@ -195,24 +161,15 @@ function preserveDynamicStreamState(fromEl, toEl) {
     }
 }
 
-// --- DOM Cache ---
-const messageDomCache = createRuntimeStateMap();
-
-const scrollThrottleTimers = createRuntimeStateMap();
+// --- Surface-owned runtime projections ---
+const {
+    messageDomCache, scrollThrottleTimers, viewContextCache,
+    pendingDirectRenderMessages, preBufferedChunks, messageInitializationStatus,
+    messageInitializationWaiters, messageContextMap,
+} = runtime;
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
-const viewContextCache = createRuntimeStateMap();
 let currentViewSignature = null; // 当前视图的签名
 let globalRenderLoopRunning = false;
-const pendingDirectRenderMessages = createRuntimeStateSet();
-
-// 记录延迟清理定时器，方便切换话题时统一清除
-
-// --- 新增：预缓冲系统 ---
-const preBufferedChunks = createRuntimeStateMap();
-const messageInitializationStatus = createRuntimeStateMap();
-const messageInitializationWaiters = createRuntimeStateMap();
-// --- 新增：消息上下文映射 ---
-const messageContextMap = createRuntimeStateMap();
 
 // --- Local Reference Store ---
 let refs = {};

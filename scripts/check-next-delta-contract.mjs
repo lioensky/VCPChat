@@ -77,6 +77,10 @@ assert.doesNotMatch(rendererSource, /const chatMessagesDiv = document\.getElemen
     'renderer must not recreate canonical chat DOM bindings outside the composition adapter');
 assert.match(read('modules/renderer/mainChatDomBindings.js'), /export function createMainChatDomBindings\(document\)[\s\S]*Object\.freeze\(bindings\)/,
     'MainChatDomBindings must expose an immutable, document-owned capability closure');
+assert.match(read('modules/renderer/streamProjectionRuntime.js'), /export function createStreamProjectionRuntime\(\)[\s\S]*return \{[\s\S]*messageRuntimeKeys/,
+    'StreamProjection mutable maps must be created by an explicit Surface-owned runtime provider');
+assert.doesNotMatch(read('modules/renderer/streamProjectionRuntime.js'), /\b(?:window|document|electronAPI)\b/,
+    'StreamProjectionRuntime must remain independent from DOM and Electron');
 for (const file of ['renderer.js', 'Flowlockmodules/flowlock-integration.js', 'Flowlockmodules/flowlock.js', 'VCPDistributedServer/Plugin/VChatAutoTTS/plugin.js']) {
     assert.doesNotMatch(read(file), /window\.(?:currentSelectedItem|currentTopicId)\b/,
         `${file} must consume the read-only VCPMainChatState capability instead of mutable selection globals`);
