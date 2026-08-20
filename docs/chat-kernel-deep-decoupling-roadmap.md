@@ -1,6 +1,6 @@
 # VCPChat Chat Kernel 深度解耦路线
 
-> 状态：D0–D2 已建立协议、测试基线、协调器和独立 durable history provider；Bridge 现在携带 producer `streamOperationId`，同一可见消息的 retry 与迟到事件按 operation identity 隔离。D3–D5 仍仅完成部分入口接入和能力闭包；D6 已完成三个旧全局 facade 的生产迁移、零引用门禁和真实创建入口证据，但 renderer legacy methods 及 StreamManager DOM/history 投影仍未完成收口；D7 未完成。未满足全部退出条件前不得宣称 renderer 已完成解耦。
+> 状态：D0、D1 已完成；D2、D3 已具备真实协调器、operation identity、主聊天/独立 Surface/辅助窗口消费者和 Electron 终态证据，但 StreamManager 仍持有共享 DOM 投影状态，因此尚未 exit-ready。D4、D5 只完成能力闭包与 MainChatSurfaceAdapter 的部分迁移。D6 已删除三个旧全局 facade 与全部 legacy history IPC fallback；其他 renderer legacy methods 仍待收口。D7 未完成。未满足全部退出条件前不得宣称 renderer 已完成解耦。
 > 规范依据：`C:\VCP\vchat-develop\deepseek-harness\AGENTS.md`、`docs/event-producer-consumer.zh.md`、`docs/defensive-patterns.zh.md` 和 `.agents/skills/dsh-code-review/SKILL.md`。
 
 ## 目标
@@ -82,13 +82,14 @@ D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一
 
 ## D3–D5 当前施工（部分迁移，尚未 exit-ready）
 
-- 主窗口 preload 事件进入 `VcpStreamBridge → StreamCoordinator → MainChatStreamConsumer`，旧 `renderer.js` 的 start/data/end/error switch 已删除；VoiceChat 和 Rust Assistant 已接入辅助窗口 runtime，Flowlock streaming 由主窗口 bridge 消费。重新生成和本地中止兜底也进入同一 Bridge operation，不再直接启动或 finalize StreamManager。独立交互 Surface 继续共用主窗口 transport，但拥有独立 root 和可撤销 route lease；route retract 会 dispose 对应 Bridge operation、等待已排队事件停稳并拒绝迟到事件。它尚未拥有独立 transport coordinator。
+- 主窗口 preload 事件进入 `VcpStreamBridge → StreamCoordinator → MainChatStreamConsumer`，旧 `renderer.js` 的 start/data/end/error switch 已删除；VoiceChat 和 Rust Assistant 已接入辅助窗口 runtime，Flowlock streaming 由主窗口 bridge 消费。重新生成和本地中止兜底也进入同一 Bridge operation，不再直接启动或 finalize StreamManager。独立交互 Surface 继续共用主窗口 transport，但拥有独立 root、operation-specific `done/cancel` 和可撤销 route lease；主窗口切换话题不会撤销独立 root 的投影权，独立取消也不会中止并发的主窗口请求。它尚未拥有独立 transport coordinator。
 - `RenderDependencies` 取代带静默默认值的可变引用袋；root、state refs、repository、transport、Markdown、feedback 和 commands 必须在 mount 时完整提供并冻结。但 `messageRenderer` 内部仍读取 `window`、`document`、Electron 和主窗口 singleton，D4 只是建立迁移闭包，不是完成纯化。辅助窗口现在显式提供短会话 `MemoryChatRepository`，不再依赖缺失 repository 的静默 fallback。
 - `MainChatSurfaceAdapter` 已组合主聊天 Surface、stream route、bridge、capability provider 与 teardown；终态副作用和错误 DOM 已从 `renderer.js` closure 移入 adapter。`renderer.js` 仍保留大量主题、设置、Electron 和 ChatManager wiring，D5 尚未完成。
 
-最近验证：`test:chat-kernel` 58/58、`test:ui-system` 80/80、Electron UI apps 24/24、主聊天 24 步、生命周期压力 3 次预热加 20 次循环均通过。此前一次生命周期运行在 renderer crash recovery 期间超时，复跑完整通过；该偶发环境信号仍保留在 D7 的稳定性审查中，不视为退出证据。
-- VoiceChat 与 Rust Assistant 的流终态先提交到显式的 transient session repository；窗口关闭会取消并等待真实 stream operation Promise，再由 `ChatHistoryMutationAuthority` 把完整会话写入新建的 durable topic。该设计不把内存提交描述为 durable，也不使用轮询 settlement facade；窗口在最终 topic 创建前异常退出仍可能丢失短会话，这是 D7 soak 与产品恢复策略需要继续评估的已知限制。
+最近验证：`test:chat-kernel` 80/80、`test:ui-system` 81/81、Electron UI apps 24/24、主聊天 24 步、生命周期压力 3 次预热加 20 次循环均通过。主聊天真实序列另覆盖独立 Surface 在主话题切换后的持续投影、主/独立并发隔离取消、Flowlock 非流式唯一 durable terminal、VoiceChat/Rust Assistant 成功终态、pending close cancellation、无 thinking 残留和最终新话题持久化。此前一次生命周期运行在 renderer crash recovery 期间超时，复跑完整通过；该偶发环境信号仍保留在 D7 的稳定性审查中，不视为退出证据。
+- VoiceChat 与 Rust Assistant 的流终态先提交到显式的 transient session repository；窗口关闭会取消并等待真实 stream operation Promise，再由同一窗口 owner 持有的 `ChatHistoryMutationAuthority` 把完整会话写入新建的 durable topic。真实 Electron 测试曾发现局部作用域 authority 导致“创建空话题后静默丢历史”，现已修复并对成功内容、thinking 清理和 durable 文件做断言。窗口在最终 topic 创建前进程异常退出仍可能丢失短会话，这是 D7 soak 与产品恢复策略需要继续评估的已知限制。
 - `window.chatManager`、`window.messageRenderer`、`window.streamManager` 已无生产引用并完成删除。consumer gate 自动扫描全部生产 `.js/.mjs/.html`，新增文件若重新读取这些全局会确定性失败；仍保留的 renderer legacy methods 必须逐项提供生产消费者证据。
+- ChatManager、TopicListManager、SearchManager 与 StreamManager 已删除 `allowLegacyHistoryFallback`；生产和测试都必须显式注入 `ChatRepository`，不存在绕回 preload `save/getChatHistory` 的隐藏后门。Flowlock 非流式保存同样通过共享 mutation authority，门禁禁止重新引入直接 history IPC。
 
 ## Stream Session 目标接口
 
