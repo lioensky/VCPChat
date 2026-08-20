@@ -161,6 +161,29 @@ test('H1 parser keeps launcher flags separate from Electron arguments', () => {
     assert.throws(() => parseManagedEntryArguments(['--yes']), /只能与 --repair/);
 });
 
+test('H6 managed launcher sequence is diagnose → plan → repair → recheck → launch', async () => {
+    const sequence = [];
+    let doctorCount = 0;
+    const io = { stdout: { write() {} }, stderr: { write() {} } };
+    const result = await runVcpchat({
+        argv: ['--repair', '--yes'],
+        projectRoot: '/tmp/vcpchat-h6-sequence',
+        io,
+        doctor: () => {
+            sequence.push('doctor');
+            doctorCount += 1;
+            return doctorCount === 1
+                ? { ok: false, summary: { fail: 1 }, checks: [{ id: 'dependencies', status: 'fail', code: 'E_DEPENDENCY_MISSING' }] }
+                : { ok: true, summary: { pass: 1 }, checks: [] };
+        },
+        planFactory: () => { sequence.push('plan'); return { episode: { id: 'sequence' }, attempts: 0, budgetRemaining: 1, stages: [] }; },
+        repair: async () => { sequence.push('repair'); },
+        launch: async () => { sequence.push('launch'); return 0; },
+    });
+    assert.equal(result, 0);
+    assert.deepEqual(sequence, ['doctor', 'plan', 'repair', 'doctor', 'launch']);
+});
+
 test('M2 ready waiter accepts only matching operation and child PID', async () => {
     const root = tempDir('vcpchat-bootstrap-ready-');
     const operationId = 'launch-test';
