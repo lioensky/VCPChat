@@ -243,3 +243,28 @@ test('StreamProjection rejects chunks and terminals from a different producer op
     await projection.dispose();
     dom.window.close();
 });
+
+test('StreamProjection retires prior runtime state before same-message retry', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    const projection = createStreamProjection();
+    projection.initStreamManager(createDependencies(dom, {
+        renderMessage: async message => {
+            const node = dom.window.document.createElement('article');
+            node.className = 'message-item';
+            node.dataset.messageId = message.id;
+            node.innerHTML = '<div class="md-content"></div>';
+            dom.window.document.getElementById('chat').append(node);
+            return node;
+        },
+    }));
+    const first = { id: 'retry-message', agentId: 'visible-agent', topicId: 'visible-topic', content: '', streamOperationId: 'op-a' };
+    const second = { ...first, streamOperationId: 'op-b' };
+    await projection.startStreamingMessage(first);
+    projection.appendStreamChunk(first.id, { content: 'old' }, first, 'op-a');
+    await projection.startStreamingMessage(second);
+    assert.equal(projection.getDiagnostics().activeMessageIds.length, 1);
+    assert.equal(projection.getDiagnostics().prebuffered, 0);
+    await projection.dispose();
+    dom.window.close();
+});

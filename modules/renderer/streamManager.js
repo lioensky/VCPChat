@@ -6,12 +6,45 @@ import { createDesktopPushConsumer } from './desktopPushConsumer.js';
 
 /** Creates one DOM stream projection owner for one renderer Surface. */
 export function createStreamProjection() {
+// Runtime state is operation-scoped.  DOM identity remains messageId, while
+// producer retries are isolated by streamOperationId.  The small map adapter
+// keeps the legacy internal call sites readable without exposing operation
+// state as a global store.
+const messageRuntimeKeys = new Map();
+const runtimeStateKey = messageId => messageRuntimeKeys.get(String(messageId)) || String(messageId);
+const createRuntimeStateMap = () => {
+    const store = new Map();
+    return {
+        get: key => store.get(runtimeStateKey(key)),
+        has: key => store.has(runtimeStateKey(key)),
+        set(key, value) { store.set(runtimeStateKey(key), value); return this; },
+        delete: key => store.delete(runtimeStateKey(key)),
+        clear: () => store.clear(),
+        get size() { return store.size; },
+        keys: () => [...store.keys()].map(key => String(key).split('::').pop())[Symbol.iterator](),
+        values: () => store.values(),
+        entries: () => [...store.entries()].map(([key, value]) => [String(key).split('::').pop(), value])[Symbol.iterator](),
+        forEach: callback => store.forEach((value, key) => callback(value, String(key).split('::').pop(), store)),
+        [Symbol.iterator]() { return this.entries(); },
+        displayKeys: () => [...store.keys()].map(key => String(key).split('::').pop()),
+    };
+};
+const createRuntimeStateSet = () => {
+    const store = new Set();
+    return {
+        add(key) { store.add(runtimeStateKey(key)); return this; },
+        has: key => store.has(runtimeStateKey(key)),
+        delete: key => store.delete(runtimeStateKey(key)),
+        clear: () => store.clear(),
+        get size() { return store.size; },
+    };
+};
 // --- Stream State ---
-const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
-const streamingTimers = new Map();      // messageId -> intervalId
-const accumulatedStreamText = new Map(); // messageId -> string
-const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, stableRenderedCutoff, stableBlocks, stableBlockSeq, lastTailText, lastParagraphBoundary }
-const activeStreamingMessages = new Map(); // messageId -> owned conversation context
+const streamingChunkQueues = createRuntimeStateMap();
+const streamingTimers = createRuntimeStateMap();
+const accumulatedStreamText = createRuntimeStateMap();
+const streamSegmentStates = createRuntimeStateMap();
+const activeStreamingMessages = createRuntimeStateMap();
 const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
@@ -163,23 +196,23 @@ function preserveDynamicStreamState(fromEl, toEl) {
 }
 
 // --- DOM Cache ---
-const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
+const messageDomCache = createRuntimeStateMap();
 
-const scrollThrottleTimers = new Map(); // messageId -> timerId
+const scrollThrottleTimers = createRuntimeStateMap();
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
-const viewContextCache = new Map(); // messageId -> boolean (是否为当前视图)
+const viewContextCache = createRuntimeStateMap();
 let currentViewSignature = null; // 当前视图的签名
 let globalRenderLoopRunning = false;
-const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达只置脏，由全局 rAF 合帧渲染
+const pendingDirectRenderMessages = createRuntimeStateSet();
 
 // 记录延迟清理定时器，方便切换话题时统一清除
 
 // --- 新增：预缓冲系统 ---
-const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
-const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
-const messageInitializationWaiters = new Map(); // messageId -> resolvers awaiting ready/discarded
+const preBufferedChunks = createRuntimeStateMap();
+const messageInitializationStatus = createRuntimeStateMap();
+const messageInitializationWaiters = createRuntimeStateMap();
 // --- 新增：消息上下文映射 ---
-const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId, isGroupMessage}
+const messageContextMap = createRuntimeStateMap();
 
 // --- Local Reference Store ---
 let refs = {};
@@ -1617,6 +1650,15 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
 async function startStreamingMessage(message, passedMessageItem = null) {
     if (disposed) return null;
     const messageId = message.id;
+    const streamOperationId = message.streamOperationId || message.context?.streamOperationId || null;
+    const previousRuntimeKey = messageRuntimeKeys.get(String(messageId));
+    const nextRuntimeKey = streamOperationId ? `${streamOperationId}::${messageId}` : String(messageId);
+    if (previousRuntimeKey && previousRuntimeKey !== nextRuntimeKey) {
+        // Keep the old key active while discardStreamingMessage clears every
+        // operation-owned map; only then publish the retry's new owner key.
+        discardStreamingMessage(messageId);
+    }
+    messageRuntimeKeys.set(String(messageId), nextRuntimeKey);
     
     // 🟢 修复：如果消息已在处理中，且 isThinking 状态没变，直接返回现有状态
     const currentStatus = messageInitializationStatus.get(messageId);
@@ -1637,7 +1679,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         agentName: message.name || message.context?.agentName,
         avatarUrl: message.avatarUrl || message.context?.avatarUrl,
         avatarColor: message.avatarColor || message.context?.avatarColor,
-        streamOperationId: message.streamOperationId || message.context?.streamOperationId || null,
+        streamOperationId,
     };
     
     // Validate context
@@ -2140,6 +2182,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     preBufferedChunks.delete(messageId);
     messageContextMap.delete(messageId);
     viewContextCache.delete(messageId);
+    messageRuntimeKeys.delete(String(messageId));
 
     // 调用方（例如 Flowlock）需要基于真正落盘的完整文本解析最终控制协议。
     return {
@@ -2172,6 +2215,7 @@ function discardStreamingMessage(messageId) {
     viewContextCache.delete(messageId);
     cleanupDesktopPushState(messageId);
     activeStreamingMessages.delete(messageId);
+    messageRuntimeKeys.delete(String(messageId));
     refs.notifySurfaceOperationStateChanged?.();
 }
 
@@ -2211,6 +2255,7 @@ async function dispose() {
         viewContextCache.clear();
     
         activeStreamingMessages.clear();
+        messageRuntimeKeys.clear();
         currentViewSignature = null;
         globalRenderLoopRunning = false;
         await Promise.allSettled([...pendingAsyncOperations]);
@@ -2236,7 +2281,7 @@ function getStreamDiagnostics() {
     const activeMessageId = getActiveStreamingMessageId();
     return Object.freeze({
         activeMessageId,
-        activeMessageIds: Object.freeze([...activeStreamingMessages.keys()]),
+        activeMessageIds: Object.freeze(activeStreamingMessages.displayKeys()),
         initialization: messageInitializationStatus.size,
         activeInitializations: [...messageInitializationStatus.values()]
             .filter(status => status === 'pending' || status === 'ready').length,
