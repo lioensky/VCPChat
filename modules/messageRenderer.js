@@ -2444,6 +2444,9 @@ function initializeMessageRenderer(refs) {
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
         chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+         document: mainRendererReferences.document || mainRendererReferences.chatMessagesDiv?.ownerDocument,
+         window: mainRendererReferences.window || mainRendererReferences.chatMessagesDiv?.ownerDocument?.defaultView,
+         hljs: mainRendererReferences.hljs,
     });
 
     // Start the emoticon fixer initialization, but don't wait for it here.
