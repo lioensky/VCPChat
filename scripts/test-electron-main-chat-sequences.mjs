@@ -1061,6 +1061,18 @@ try {
         waitForAuxiliaryPage('Voicechatmodules/voicechat.html'),
         waitForAuxiliaryPage('rust_assistant_engine/ui/assistant.html'),
     ]);
+    // The input is enabled before the preload data callback finishes in the
+    // auxiliary windows. Wait for each window's real agent binding before
+    // sending, otherwise the context filter quite correctly rejects events.
+    await concurrentAssistantPage.waitForFunction(() => {
+        const avatar = document.querySelector('#agentAvatar');
+        return Boolean(avatar?.getAttribute('src'))
+            && document.querySelector('#currentChatAgentName')?.textContent !== '划词助手';
+    }, { timeout });
+    await concurrentVoicePage.waitForFunction(() => (
+        document.querySelector('#currentChatAgentName')?.textContent
+        && document.querySelector('#currentChatAgentName')?.textContent !== '语音聊天'
+    ), { timeout });
     await Promise.all([
         (async () => {
             await concurrentVoicePage.type('#messageInput', 'voice-concurrent');
