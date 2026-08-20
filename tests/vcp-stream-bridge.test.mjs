@@ -154,6 +154,26 @@ test('VCP bridge serializes deferred prepare before immediate chunk and terminal
     await bridge.dispose();
 });
 
+test('projection failure silences already queued events and cannot commit a partial terminal', async () => {
+    const seen = [];
+    // Fail the first projection before queuing an end event synchronously.
+    const failingBridge = createVcpStreamBridge({
+        reportError: () => {},
+        createConsumer: event => createMainChatStreamConsumer(event, {
+            start: async () => { throw new Error('controlled projection failure'); },
+            append: () => {},
+            projectTerminal: async () => { seen.push('unexpected-project-terminal'); return { id: event.messageId }; },
+            persistTerminal: async () => { seen.push('unexpected-persist-terminal'); },
+        }),
+    });
+    failingBridge.accept({ type: 'data', messageId: 'projection-failure', context: { agentId: 'a', topicId: 't' }, chunk: 'x' });
+    failingBridge.accept({ type: 'end', messageId: 'projection-failure', context: { agentId: 'a', topicId: 't' } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(seen.includes('unexpected-project-terminal'), false);
+    assert.equal(seen.includes('unexpected-persist-terminal'), false);
+    await failingBridge.dispose();
+});
+
 test('missing terminal projection becomes one persistence failure instead of a completed no-op', async () => {
     const terminals = [];
     const bridge = createVcpStreamBridge({

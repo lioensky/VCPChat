@@ -55,6 +55,9 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
         async persist(value) {
             if (projection?.suppressed) return null;
             const terminal = value.terminal || {};
+            if (terminal.phase === 'projection') {
+                throw terminal.error || new Error(`Stream projection failed: ${messageId}`);
+            }
             let fullResponse = terminal.fullResponse || value.snapshot?.text || '';
             const error = terminal.error?.message || terminal.error || '';
             if (terminal.kind === 'failed' && fullResponse.trim()) {

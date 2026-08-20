@@ -123,14 +123,16 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
                     const terminal = event.type === 'end'
                         ? { kind: event.finish_reason || 'completed', fullResponse: event.fullResponse, context: event.context }
                         : { kind: 'failed', error: event.error, fullResponse: event.fullResponse || event.accumulatedResponse, context: event.context };
-                    operation.controls.terminal(terminal);
                     operation.accepting = false;
+                    operation.projecting = false;
+                    operation.controls.terminal(terminal);
                     operation.resolve(terminal);
                 }
             }).catch(error => {
                 operation.accepting = false;
+                operation.projecting = false;
                 reportError('[VcpStreamBridge] event projection failed', error);
-                const terminal = { kind: 'failed', error };
+                const terminal = { kind: 'failed', phase: 'projection', error };
                 operation.controls.terminal(terminal);
                 operation.resolve(terminal);
             });
