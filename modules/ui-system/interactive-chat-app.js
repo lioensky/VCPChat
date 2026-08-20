@@ -1,10 +1,11 @@
 import { register } from './next-ui-apps.js';
 import { createChatSurface } from '../chat/chatSurface.js';
 import { createChatOperations } from '../chat/chatOperation.js';
+import { messageRenderer } from '../messageRenderer.js';
 
 function mountInteractiveChat(container, context = {}) {
     const repository = window.__vcpChatRepository;
-    const renderer = window.messageRenderer;
+    const renderer = messageRenderer;
     const chatContext = window.__vcpChatContext;
     const scope = context.scope?.child?.('next:interactive-chat') || null;
     container.innerHTML = `<section class="vcp-standalone-chat vcp-interactive-chat" aria-label="独立聊天"><header><div><h1>独立聊天</h1><p class="vcp-standalone-chat__status">当前话题</p></div></header><div class="vcp-standalone-chat__messages" tabindex="-1" aria-label="聊天消息"></div><form class="vcp-interactive-chat__composer"><textarea aria-label="消息内容" rows="2"></textarea><button type="submit">发送</button><button type="button" data-action="cancel">取消</button><p role="status" aria-live="polite"></p></form></section>`;

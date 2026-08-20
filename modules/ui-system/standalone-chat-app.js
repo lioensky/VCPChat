@@ -5,11 +5,12 @@ import { createChatPresentationState } from '../chat/chatPresentationState.js';
 import { createPresentationSkin } from '../chat/chatPresentationSkin.js';
 import { createChatThemePlugin } from '../chat/chatThemePlugin.js';
 import { createChatPluginLoader } from '../chat/chatPluginManifest.js';
+import { messageRenderer } from '../messageRenderer.js';
 
 function mountStandaloneChat(container, context = {}) {
     const repository = window.__vcpChatRepository;
     const chatContext = window.__vcpChatContext;
-    const renderer = window.messageRenderer;
+    const renderer = messageRenderer;
     const scope = context.scope?.child?.('next:standalone-chat') || null;
     container.innerHTML = `<section class="vcp-standalone-chat" aria-label="聊天历史查看器"><header><h1>聊天历史</h1><p class="vcp-standalone-chat__status">只读查看</p><button type="button" class="vcp-standalone-chat__focus">聚焦内容</button></header><div class="vcp-standalone-chat__messages" tabindex="-1" aria-label="聊天消息"></div></section>`;
     const root = container.querySelector('.vcp-standalone-chat__messages');

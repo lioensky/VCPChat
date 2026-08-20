@@ -75,7 +75,7 @@ test('a runtime background-history failure releases every stream owner', async (
     });
     const executableSource = source
         .replace(/^import .*;$/gm, '')
-        .replace(/\bexport\s+(?=(?:async\s+)?function\b)/g, '');
+        .replace(/\bexport\s+(?=(?:async\s+)?function\b|const\b)/g, '');
     dom.window.formatMessageTimestamp = () => 'now';
     dom.window.PIPELINE_MODES = { STREAM_FAST: 'stream-fast' };
     dom.window.createContentPipeline = () => ({ process: text => ({ text }) });
