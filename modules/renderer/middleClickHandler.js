@@ -638,8 +638,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
 
         case 'forward':
             // 转发消息 - 执行与右键菜单完全相同的功能
-            if (typeof window.showForwardModal === 'function') {
-                window.showForwardModal(message);
+            if (typeof callbacks.showForwardModal === 'function') {
+                callbacks.showForwardModal(message);
                 uiHelper.showToastNotification("已打开转发对话框", "success");
             } else {
                 uiHelper.showToastNotification("转发功能暂时不可用", "warning");
@@ -650,8 +650,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
             // 朗读气泡
             if (message.role === 'assistant') {
                 // Ensure audio context is activated
-                if (typeof window.ensureAudioContext === 'function') {
-                    window.ensureAudioContext();
+                if (typeof callbacks.ensureAudioContext === 'function') {
+                    callbacks.ensureAudioContext();
                 }
 
                 const agentId = message.agentId || currentSelectedItemVal.id;

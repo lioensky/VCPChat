@@ -2592,6 +2592,8 @@ function initializeMessageRenderer(refs) {
         preprocessFullContent: preprocessFullContent,
         renderAttachments: renderAttachments,
         interruptHandler: mainRendererReferences.interruptHandler,
+        showForwardModal: mainRendererReferences.showForwardModal,
+        ensureAudioContext: mainRendererReferences.ensureAudioContext,
         updateMessageContent: updateMessageContent, // 🟢 新增：传递 updateMessageContent
         extractSpeakableTextFromContentElement: extractSpeakableTextFromContentElement,
     });
@@ -2647,6 +2649,8 @@ function initializeMessageRenderer(refs) {
         streamManager,
         toggleEditMode: contextMenu.toggleEditMode,
         handleRegenerateResponse: contextMenu.handleRegenerateResponse,
+        showForwardModal: mainRendererReferences.showForwardModal,
+        ensureAudioContext: mainRendererReferences.ensureAudioContext,
     });
 
     // --- 用户气泡文件拖拽支持 ---

@@ -235,8 +235,8 @@ function showContextMenu(event, messageItem, message) {
             readAloudOption.innerHTML = `<i class="fas fa-volume-up"></i> 朗读气泡`;
             readAloudOption.onclick = async () => {
                 // **关键修复：在发送请求前，确保音频上下文已激活**
-                if (typeof ownerWindow.ensureAudioContext === 'function') {
-                    ownerWindow.ensureAudioContext();
+                if (typeof contextMenuDependencies.ensureAudioContext === 'function') {
+                    contextMenuDependencies.ensureAudioContext();
                 }
 
                 const agentId = message.agentId || currentSelectedItemVal.id;
