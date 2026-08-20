@@ -31,7 +31,7 @@ export function setupEventListeners(deps) {
         // Modules and helper functions
         uiHelperFunctions, chatManager, messageRenderer, historyMutationAuthority, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
-        addNetworkPathInput
+        addNetworkPathInput, sendButtonAction
     } = deps;
 
     const setupAutoHideScrollbar = (container, hideDelayMs = 700) => {
@@ -419,8 +419,8 @@ export function setupEventListeners(deps) {
     }
 
     sendMessageBtn.addEventListener('click', async () => {
-        if (typeof window.handleSendButtonAction === 'function') {
-            await window.handleSendButtonAction();
+        if (typeof sendButtonAction === 'function') {
+            await sendButtonAction();
             return;
         }
         chatManager.handleSendMessage();

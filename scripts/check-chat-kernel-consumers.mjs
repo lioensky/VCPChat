@@ -227,6 +227,7 @@ assert.match(contentProcessorSource, /mainRefs\.messageCommands\?\.handleSendMes
 assert.doesNotMatch(contentProcessorSource, /getElementById\(['"]messageInput['"]\)/, 'content processor must not discover the main input by global DOM id');
 assert.match(chatManagerSource, /renderTarget\?\.removeMessage(?:ById)?/, 'ChatManager must remove placeholders through the initiating render target');
 assert.doesNotMatch(chatManagerSource, /window\.updateSendButtonState/, 'ChatManager must use the injected send-state capability');
+assert.doesNotMatch(source('modules/event-listeners.js'), /window\.handleSendButtonAction|window\.__vcpCancelActiveResponse/, 'event listeners must use the injected send-button capability');
 assert.match(messageRendererSource, /vcp-\$\{surfaceId\}-chat-\$\{message\.id\}/, 'message styles must be namespaced by Surface and message');
 assert.match(messageRendererSource, /audioRoot\?\.querySelectorAll\?\.\(['"]audio\.vcp-audio-native['"]\)/, 'audio playback isolation must be scoped to the owning Surface root');
 assert.doesNotMatch(source('modules/renderer/streamManager.js'), /onStreamStateChanged/, 'stream projection must not retain the legacy generic state callback');

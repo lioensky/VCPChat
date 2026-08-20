@@ -273,8 +273,6 @@ async function handleSendButtonAction() {
     }
 }
 
-window.handleSendButtonAction = handleSendButtonAction;
-window.__vcpCancelActiveResponse = interruptActiveResponseFromSendButton;
 updateSendButtonState();
 
 const leftSidebar = document.querySelector('.sidebar');
@@ -1004,7 +1002,8 @@ const startupThemeGate = new StartupThemeGate({
             setCroppedFile: uiHelperFunctions.setCroppedFile,
             updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
             filterAgentList: uiHelperFunctions.filterAgentList,
-            addNetworkPathInput: uiHelperFunctions.addNetworkPathInput
+            addNetworkPathInput: uiHelperFunctions.addNetworkPathInput,
+            sendButtonAction: handleSendButtonAction
         });
 
         // A visible DOM shell is not enough to call the desktop interactive:
