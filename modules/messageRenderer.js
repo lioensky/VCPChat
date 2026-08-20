@@ -1352,7 +1352,9 @@ function processAndInjectScopedCss(content, scopeId) {
     if (cssContent.length > 0) {
         try {
             const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
-            const styleSelector = `style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`;
+            // Scope IDs are generated per message, but include the surface namespace
+            // in the lookup as a hard boundary when two renderers share a document.
+            const styleSelector = `style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"][data-vcp-surface-id="${escapeCssAttributeValue(surfaceId)}"]`;
             const ownerDocument = mainRendererReferences?.document || mainRendererReferences?.chatMessagesDiv?.ownerDocument;
             if (!ownerDocument?.head) throw new Error('MessageRenderer has no owning document head');
             let styleElement = [...ownedStyleElements].find((element) => element.matches?.(styleSelector));
@@ -2306,8 +2308,9 @@ function cleanupScopedStylesForMessage(messageItem, messageId = null) {
     const scopeId = messageItem?.id;
     const chatScopeId = messageItem?.getAttribute?.('data-chat-scope') || (messageId ? `vcp-${surfaceId}-chat-${messageId}` : null);
     for (const styleElement of ownedStyleElements) {
-        if ((scopeId && styleElement.getAttribute('data-vcp-scope-id') === scopeId)
-            || (chatScopeId && styleElement.getAttribute('data-chat-scope-id') === chatScopeId)) {
+        if ((styleElement.getAttribute('data-vcp-surface-id') === surfaceId)
+            && ((scopeId && styleElement.getAttribute('data-vcp-scope-id') === scopeId)
+                || (chatScopeId && styleElement.getAttribute('data-chat-scope-id') === chatScopeId))) {
             styleElement.remove();
             ownedStyleElements.delete(styleElement);
         }
