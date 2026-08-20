@@ -713,7 +713,9 @@ function enhanceMermaidDiagram(mermaidElement) {
         resetView();
     });
 
-    wrapper._vcpFitRaf = requestAnimationFrame(() => {
+    const ownerWindow = ownerDocument.defaultView;
+    const requestFrame = ownerWindow?.requestAnimationFrame?.bind(ownerWindow) || ((callback) => ownerWindow?.setTimeout?.(() => callback(Date.now()), 0));
+    wrapper._vcpFitRaf = requestFrame?.(() => {
         delete wrapper._vcpFitRaf;
         if (wrapper.isConnected) fitToWidth();
     });
@@ -725,7 +727,9 @@ function cleanupMermaidViewers(contentDiv) {
             try { dispose(); } catch { /* listener already removed */ }
         });
         if (wrapper._vcpFitRaf) {
-            if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(wrapper._vcpFitRaf);
+            const ownerWindow = wrapper.ownerDocument?.defaultView;
+            if (typeof ownerWindow?.cancelAnimationFrame === 'function') ownerWindow.cancelAnimationFrame(wrapper._vcpFitRaf);
+            else ownerWindow?.clearTimeout?.(wrapper._vcpFitRaf);
             delete wrapper._vcpFitRaf;
         }
         const viewport = wrapper.querySelector('.mermaid-viewer-viewport');
@@ -2772,7 +2776,8 @@ function getAudioDisplayName(audio) {
     if (!source) return '音频';
 
     try {
-        const url = new URL(source, window.location.href);
+        const ownerWindow = audio.ownerDocument?.defaultView;
+        const url = new URL(source, ownerWindow?.location?.href || 'about:blank');
         const fileName = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '');
         return fileName || '音频';
     } catch (error) {
@@ -2895,21 +2900,23 @@ function enhanceAudioPlayers(container) {
         let progressAnimationFrame = null;
         const stopSmoothProgress = () => {
             if (progressAnimationFrame !== null) {
-                cancelAnimationFrame(progressAnimationFrame);
+                ownerDocument.defaultView?.cancelAnimationFrame?.(progressAnimationFrame);
                 progressAnimationFrame = null;
             }
         };
         const animateSmoothProgress = () => {
             updateProgress();
             if (!audio.paused && !audio.ended && player.isConnected) {
-                progressAnimationFrame = requestAnimationFrame(animateSmoothProgress);
+                progressAnimationFrame = ownerDocument.defaultView?.requestAnimationFrame?.(animateSmoothProgress)
+                    ?? ownerDocument.defaultView?.setTimeout?.(() => animateSmoothProgress(Date.now()), 0);
             } else {
                 progressAnimationFrame = null;
             }
         };
         const startSmoothProgress = () => {
             if (progressAnimationFrame === null) {
-                progressAnimationFrame = requestAnimationFrame(animateSmoothProgress);
+                progressAnimationFrame = ownerDocument.defaultView?.requestAnimationFrame?.(animateSmoothProgress)
+                    ?? ownerDocument.defaultView?.setTimeout?.(() => animateSmoothProgress(Date.now()), 0);
             }
         };
 
@@ -3198,8 +3205,13 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     if (!isStillValid()) return;
 
     if (deferHighlights) {
-        if (contentDiv._vcpDeferredHighlightTimer) clearTimeout(contentDiv._vcpDeferredHighlightTimer);
-        contentDiv._vcpDeferredHighlightTimer = setTimeout(() => {
+        if (contentDiv._vcpDeferredHighlightTimer) {
+            const ownerWindow = contentDiv.ownerDocument?.defaultView;
+            ownerWindow?.clearTimeout?.(contentDiv._vcpDeferredHighlightTimer);
+            contentDiv._vcpDeferredHighlightTimer = null;
+        }
+        const ownerWindow = contentDiv.ownerDocument?.defaultView;
+        contentDiv._vcpDeferredHighlightTimer = ownerWindow?.setTimeout?.(() => {
             delete contentDiv._vcpDeferredHighlightTimer;
             if (isStillValid()) {
                 contentProcessor.highlightAllPatternsInMessage(contentDiv);
@@ -4070,7 +4082,9 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         // 动态调整延迟：如果批次小，减少延迟
         if (i > 0 && batchDelay > 0) {
             const actualDelay = batch.length < batchSize / 2 ? batchDelay / 2 : batchDelay;
-            await new Promise(resolve => setTimeout(resolve, actualDelay));
+            const ownerWindow = renderRoot.ownerDocument?.defaultView;
+            if (typeof ownerWindow?.setTimeout !== 'function') return;
+            await new Promise(resolve => ownerWindow.setTimeout(resolve, actualDelay));
         }
     }
 }
