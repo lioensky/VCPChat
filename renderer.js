@@ -102,61 +102,28 @@ let isTtsPlaying = false; // 新增：TTS播放状态标志
 let currentPlayingMsgId = null; // 新增：跟踪当前播放的msgId以控制UI
 let currentTtsSessionId = -1; // 新增：会话ID，用于处理异步时序问题
 
-// --- DOM Elements ---
-const itemListUl = document.getElementById('agentList'); // Renamed from agentListUl to itemListUl
-const currentChatNameH3 = document.getElementById('currentChatAgentName'); // Will show Agent or Group name
-const chatMessagesDiv = document.getElementById('chatMessages');
-const messageInput = document.getElementById('messageInput');
-const sendMessageBtn = document.getElementById('sendMessageBtn');
-const attachFileBtn = document.getElementById('attachFileBtn');
-const emoticonTriggerBtn = document.getElementById('emoticonTriggerBtn');
-const quickNewTopicBtn = document.getElementById('quickNewTopicBtn');
-const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
-const chatInputCard = document.querySelector('.chat-input-card');
-
-const globalSettingsBtn = document.getElementById('globalSettingsBtn');
+// --- Main-window composition bindings ---
+const {
+    itemListUl, currentChatNameH3, chatMessagesDiv, messageInput, sendMessageBtn,
+    attachFileBtn, emoticonTriggerBtn, quickNewTopicBtn, attachmentPreviewArea,
+    chatInputCard, globalSettingsBtn, itemSettingsContainerTitle,
+    selectedItemNameForSettingsSpan, agentSettingsContainer, agentSettingsForm,
+    editingAgentIdInput, agentNameInput, agentAvatarInput, agentAvatarPreview,
+    agentSystemPromptTextarea, agentModelInput, agentTemperatureInput,
+    agentContextTokenLimitInput, agentMaxOutputTokensInput, groupSettingsContainer,
+    selectItemPromptForSettings, deleteItemBtn, currentItemActionBtn,
+    clearCurrentChatBtn, toggleNotificationsBtn, notificationsSidebar,
+    vcpLogConnectionStatusDiv, notificationsListUl, sidebarTabButtons,
+    sidebarTabContents, tabContentTopics, tabContentSettings, topicSearchInput,
+    leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight,
+    agentSearchInput, notificationTitleElement, digitalClockElement,
+    dateDisplayElement, toggleAssistantBtn, toggleSidebarModeBtn, openModelSelectBtn,
+} = createMainChatDomBindings(document);
 // 模态框及其内部元素现在延迟加载，不再在顶层缓存引用
 let globalSettingsForm = null;
 let userAvatarInput = null;
 let userAvatarPreview = null;
-
-const itemSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); // Will be itemSettingsContainerTitle
-const selectedItemNameForSettingsSpan = document.getElementById('selectedAgentNameForSettings'); // Will show Agent or Group name
-
-// Agent specific settings elements (will be hidden if a group is selected)
-const agentSettingsContainer = document.getElementById('agentSettingsContainer');
-const agentSettingsForm = document.getElementById('agentSettingsForm');
-const editingAgentIdInput = document.getElementById('editingAgentId');
-const agentNameInput = document.getElementById('agentNameInput');
-const agentAvatarInput = document.getElementById('agentAvatarInput');
-const agentAvatarPreview = document.getElementById('agentAvatarPreview');
-const agentSystemPromptTextarea = document.getElementById('agentSystemPrompt');
-const agentModelInput = document.getElementById('agentModel');
-const agentTemperatureInput = document.getElementById('agentTemperature');
-const agentContextTokenLimitInput = document.getElementById('agentContextTokenLimit');
-const agentMaxOutputTokensInput = document.getElementById('agentMaxOutputTokens');
-
-// Group specific settings elements (placeholder, grouprenderer.js will populate)
-const groupSettingsContainer = document.getElementById('groupSettingsContainer'); // This should be the div renderer creates
-
-const selectItemPromptForSettings = document.getElementById('selectAgentPromptForSettings'); // Will be "Select an item..."
 console.log('[Renderer EARLY CHECK] selectItemPromptForSettings element:', selectItemPromptForSettings); // 添加日志
-const deleteItemBtn = document.getElementById('deleteAgentBtn'); // Will be deleteItemBtn for agent or group
-
-const currentItemActionBtn = document.getElementById('currentAgentSettingsBtn'); // Text will change (e.g. "New Topic" / "New Group Topic")
-const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
-const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn');
-
-const notificationsSidebar = document.getElementById('notificationsSidebar');
-const vcpLogConnectionStatusDiv = document.getElementById('vcpLogConnectionStatus');
-const notificationsListUl = document.getElementById('notificationsList');
-
-const sidebarTabButtons = document.querySelectorAll('.sidebar-tab-button');
-const sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
-const tabContentTopics = document.getElementById('tabContentTopics');
-const tabContentSettings = document.getElementById('tabContentSettings');
-
-const topicSearchInput = document.getElementById('topicSearchInput'); // Should be in tabContentTopics
 const DEFAULT_SEND_BUTTON_HTML = sendMessageBtn?.innerHTML || '';
 const INTERRUPT_SEND_BUTTON_HTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -276,29 +243,15 @@ async function handleSendButtonAction() {
 
 updateSendButtonState();
 
-const leftSidebar = document.querySelector('.sidebar');
-const rightNotificationsSidebar = document.getElementById('notificationsSidebar');
-const resizerLeft = document.getElementById('resizerLeft');
-const resizerRight = document.getElementById('resizerRight');
-
-const agentSearchInput = document.getElementById('agentSearchInput');
-
 // Cropped file state is now managed within modules/ui-helpers.js
-
-const notificationTitleElement = document.getElementById('notificationTitle');
-const digitalClockElement = document.getElementById('digitalClock');
-const dateDisplayElement = document.getElementById('dateDisplay');
 let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的引用
 
 // Assistant settings elements
-const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New button
-const toggleSidebarModeBtn = document.getElementById('toggleSidebarModeBtn');
 // 模态框内部元素延迟加载
 let assistantAgentContainer = null;
 let assistantAgentSelect = null;
 
 // Model selection elements
-const openModelSelectBtn = document.getElementById('openModelSelectBtn');
 let modelSelectModal = null;
 let modelList = null;
 let modelSearchInput = null;
@@ -318,6 +271,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
 import { createChatContext } from './modules/chat/chatContext.js';
 import { createChatRepository } from './modules/chat/chatRepository.js';
 import { createMainChatComposition } from './modules/renderer/mainChatComposition.js';
+import { createMainChatDomBindings } from './modules/renderer/mainChatDomBindings.js';
 import { createNonStreamingEventConsumer } from './modules/renderer/nonStreamingEventConsumer.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
@@ -1258,7 +1212,6 @@ const startupThemeGate = new StartupThemeGate({
                             // For now, just log the source
                             console.log(`[Renderer] Prompter source: ${promptSource}`);
                             // Placeholder: treat promptSource as the actual prompt for now
-                            const messageInput = document.getElementById('messageInput');
                             if (messageInput) {
                                 const currentValue = messageInput.value;
                                 messageInput.value = currentValue + (currentValue ? ' ' : '') + `[来自: ${promptSource}]`;
@@ -1276,7 +1229,6 @@ const startupThemeGate = new StartupThemeGate({
                     case 'clear':
                         // Clear all content in input box
                         {
-                            const messageInput = document.getElementById('messageInput');
                             if (messageInput) {
                                 messageInput.value = '';
                                 console.log('[Renderer] Input box cleared');
@@ -1293,7 +1245,6 @@ const startupThemeGate = new StartupThemeGate({
                         {
                             const { target } = commandData;
                             if (target) {
-                                const messageInput = document.getElementById('messageInput');
                                 if (messageInput) {
                                     const currentValue = messageInput.value;
                                     // Remove all occurrences of target text
@@ -1315,7 +1266,6 @@ const startupThemeGate = new StartupThemeGate({
                         {
                             const { oldText, newText } = commandData;
                             if (oldText && newText !== undefined) {
-                                const messageInput = document.getElementById('messageInput');
                                 if (messageInput) {
                                     const currentValue = messageInput.value;
                                     // Replace first occurrence only (diff-style)
@@ -1340,7 +1290,6 @@ const startupThemeGate = new StartupThemeGate({
                     case 'get':
                         // Get current input box content and return it
                         {
-                            const messageInput = document.getElementById('messageInput');
                             if (messageInput) {
                                 const content = messageInput.value;
                                 console.log(`[Renderer] Retrieved input box content: "${content}"`);

@@ -67,6 +67,12 @@ for (const file of mainRuntimeFiles) {
 }
 
 const rendererSource = read('renderer.js');
+assert.match(rendererSource, /createMainChatDomBindings\(document\)/,
+    'renderer composition must resolve its fixed main-window DOM through one explicit adapter');
+assert.doesNotMatch(rendererSource, /const chatMessagesDiv = document\.getElementById|const messageInput = document\.getElementById|const sendMessageBtn = document\.getElementById/,
+    'renderer must not recreate canonical chat DOM bindings outside the composition adapter');
+assert.match(read('modules/renderer/mainChatDomBindings.js'), /export function createMainChatDomBindings\(document\)[\s\S]*Object\.freeze\(bindings\)/,
+    'MainChatDomBindings must expose an immutable, document-owned capability closure');
 const globalSettingsSource = read('modules/global-settings-manager.js');
 const appearanceStudioSource = read('modules/ui-system/appearance-studio.js');
 for (const [file, source] of [
