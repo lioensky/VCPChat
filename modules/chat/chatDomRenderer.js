@@ -21,7 +21,7 @@ export function createChatDomRenderer({ root, renderer, disposeRenderer = null }
         renderMessage(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); const options = args[4] || {}; args[4] = { ...options, root }; return track(renderer.renderMessage(...args)); },
         renderBatch(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); const options = args[3] || {}; args[3] = { ...options, root }; return track(renderer.renderMessageBatch(...args)); },
         renderHistory(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); const options = args[1] || {}; args[1] = { ...options, root }; return track(renderer.renderHistory(...args)); },
-        updateStreaming(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); return track(renderer.updateMessageContent?.(...args)); },
+        updateStreaming(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); return track(renderer.updateMessageContent?.(...args, root)); },
         startStreaming(...args) {
             if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed'));
             return track(renderer.startStreamingMessage?.(...args));
@@ -36,7 +36,8 @@ export function createChatDomRenderer({ root, renderer, disposeRenderer = null }
             return track(renderer.projectStreamTerminal?.(...args));
         },
         discardStreaming(...args) { if (disposed) return; return renderer.discardStreamingMessage?.(...args); },
-        removeMessage(...args) { assertActive(); return track(renderer.removeMessageById(...args)); },
+        removeMessage(...args) { assertActive(); return track(renderer.removeMessageById(...args, root)); },
+        clear() { assertActive(); return track(renderer.clearChat?.(root)); },
         async dispose({ clear = false } = {}) {
             if (disposed) return;
             disposed = true;

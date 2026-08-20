@@ -1345,13 +1345,17 @@ function processAndInjectScopedCss(content, scopeId) {
         try {
             const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
             const styleSelector = `style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`;
-            let styleElement = document.head.querySelector(styleSelector);
+            const ownerDocument = mainRendererReferences?.document || mainRendererReferences?.chatMessagesDiv?.ownerDocument;
+            if (!ownerDocument?.head) throw new Error('MessageRenderer has no owning document head');
+            let styleElement = [...ownedStyleElements].find((element) => element.matches?.(styleSelector));
 
             if (!styleElement) {
-                styleElement = document.createElement('style');
+                styleElement = ownerDocument.createElement('style');
                 styleElement.type = 'text/css';
                 styleElement.setAttribute('data-vcp-scope-id', scopeId);
-                document.head.appendChild(styleElement);
+                styleElement.setAttribute('data-vcp-surface-id', surfaceId);
+                ownerDocument.head.appendChild(styleElement);
+                ownedStyleElements.add(styleElement);
             }
 
             // 流式渲染会多次经过此函数：复用节点并原子替换文本，
@@ -2244,6 +2248,10 @@ function disposeRendererResources() {
     contextMenu.dispose?.();
     imageHandler.dispose?.();
     visibilityOptimizer.destroyVisibilityOptimizer?.();
+    for (const styleElement of ownedStyleElements) {
+        styleElement.remove();
+    }
+    ownedStyleElements.clear();
 }
 async function disposeRootResources(root) {
     if (!root?.querySelectorAll) return;
@@ -2278,24 +2286,23 @@ function isRenderSessionActive(session) {
 
 function escapeCssAttributeValue(value) {
     const str = String(value);
-    if (window.CSS && typeof window.CSS.escape === 'function') {
-        return window.CSS.escape(str);
+    const ownerWindow = mainRendererReferences?.window || mainRendererReferences?.chatMessagesDiv?.ownerDocument?.defaultView;
+    if (ownerWindow?.CSS && typeof ownerWindow.CSS.escape === 'function') {
+        return ownerWindow.CSS.escape(str);
     }
     return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function cleanupScopedStylesForMessage(messageItem, messageId = null) {
     if (!messageItem && !messageId) return;
-    const ownerDocument = messageItem?.ownerDocument || mainRendererReferences?.chatMessagesDiv?.ownerDocument || document;
-
     const scopeId = messageItem?.id;
-    if (scopeId) {
-        ownerDocument.querySelectorAll(`style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`).forEach(el => el.remove());
-    }
-
-    const chatScopeId = messageItem?.getAttribute?.('data-chat-scope') || (messageId ? `vcp-chat-${messageId}` : null);
-    if (chatScopeId) {
-        ownerDocument.querySelectorAll(`style[data-chat-scope-id="${escapeCssAttributeValue(chatScopeId)}"]`).forEach(el => el.remove());
+    const chatScopeId = messageItem?.getAttribute?.('data-chat-scope') || (messageId ? `vcp-${surfaceId}-chat-${messageId}` : null);
+    for (const styleElement of ownedStyleElements) {
+        if ((scopeId && styleElement.getAttribute('data-vcp-scope-id') === scopeId)
+            || (chatScopeId && styleElement.getAttribute('data-chat-scope-id') === chatScopeId)) {
+            styleElement.remove();
+            ownedStyleElements.delete(styleElement);
+        }
     }
 }
 
@@ -2343,8 +2350,8 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
     visibilityOptimizer.unobserveMessage(messageItem);
 }
 
-function removeMessageById(messageId, saveHistory = false) {
-    const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+function removeMessageById(messageId, saveHistory = false, root = mainRendererReferences.chatMessagesDiv) {
+    const item = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
     if (item) {
         // --- NEW: Cleanup dynamic content before removing from DOM ---
         cleanupMessageDomResources(item, messageId);
@@ -2378,8 +2385,8 @@ function removeMessageById(messageId, saveHistory = false) {
     }
 }
 
-function clearChat() {
-    invalidateRenderSession(mainRendererReferences.chatMessagesDiv);
+function clearChat(root = mainRendererReferences.chatMessagesDiv) {
+    invalidateRenderSession(root);
 
     // 清空聊天通常意味着用户希望释放当前渲染上下文占用；HTML 字符串缓存不持有 DOM，但这里主动释放更保守。
     clearRenderHtmlCache();
@@ -2389,14 +2396,14 @@ function clearChat() {
     toolResultFullContentMap.clear();
     toolResultContentIdCounter = 0;
 
-    if (mainRendererReferences.chatMessagesDiv) {
+    if (root) {
         // --- NEW: Cleanup all messages before clearing the container ---
-        const allMessages = mainRendererReferences.chatMessagesDiv.querySelectorAll('.message-item');
+        const allMessages = root.querySelectorAll('.message-item');
         allMessages.forEach(item => {
             cleanupMessageDomResources(item, item.dataset?.messageId || null);
         });
 
-        mainRendererReferences.chatMessagesDiv.innerHTML = '';
+        root.innerHTML = '';
     }
     mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
     mainRendererReferences.messageCommands.updateSendButtonState?.();
@@ -3546,24 +3553,28 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 console.debug(`[DEBUG] Applying chat CSS to message ${message.id}:`, chatCss);
 
                 // 为此消息创建唯一的scope ID
-                const chatScopeId = `vcp-chat-${message.id}`;
+                const chatScopeId = `vcp-${surfaceId}-chat-${message.id}`;
                 messageItem.setAttribute('data-chat-scope', chatScopeId);
 
                 // 检查是否已存在相同的style标签
-                let existingStyle = document.head.querySelector(`style[data-chat-scope-id="${chatScopeId}"]`);
+                const ownerDocument = mainRendererReferences?.document || messageItem.ownerDocument;
+                let existingStyle = [...ownedStyleElements].find((element) => element.getAttribute('data-chat-scope-id') === chatScopeId);
                 if (existingStyle) {
                     existingStyle.remove();
+                    ownedStyleElements.delete(existingStyle);
                 }
 
                 // 创建scoped CSS（为当前消息添加作用域）
                 const scopedChatCss = `[data-chat-scope="${chatScopeId}"] ${chatCss}`;
 
                 // 注入到<head>
-                const styleElement = document.createElement('style');
+                const styleElement = ownerDocument.createElement('style');
                 styleElement.type = 'text/css';
                 styleElement.setAttribute('data-chat-scope-id', chatScopeId);
+                styleElement.setAttribute('data-vcp-surface-id', surfaceId);
                 styleElement.textContent = scopedChatCss;
-                document.head.appendChild(styleElement);
+                ownerDocument.head.appendChild(styleElement);
+                ownedStyleElements.add(styleElement);
             }
         }
     }
@@ -4131,9 +4142,8 @@ const messageRenderer = {
         bytes: renderHtmlCacheBytes,
         ...renderHtmlCacheStats
     }),
-    updateMessageUI: async (messageId, updatedMessage) => {
-        const { chatMessagesDiv } = mainRendererReferences;
-        const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    updateMessageUI: async (messageId, updatedMessage, root = mainRendererReferences.chatMessagesDiv) => {
+        const existingMessageDom = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
         if (!existingMessageDom) return;
         const newMessageDom = await renderMessage(updatedMessage, true, false);
         if (newMessageDom) {
@@ -4148,9 +4158,9 @@ const messageRenderer = {
             }
         }
     },
-    isMessageInitialized: (messageId) => {
+    isMessageInitialized: (messageId, root = mainRendererReferences.chatMessagesDiv) => {
         // Check if message exists in DOM or is being tracked by streamManager
-        const messageInDom = mainRendererReferences.chatMessagesDiv?.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        const messageInDom = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
         if (messageInDom) return true;
 
         // Also check if streamManager is tracking this message
