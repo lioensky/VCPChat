@@ -75,6 +75,15 @@
         background: color-mix(in srgb, var(--next-text) 8%, transparent);
     }
 
+    /* Avatar-only mode is a persistent layout state, not a selected control
+       surface. Keep the brand button visually neutral after the mode switch,
+       even while the pointer or keyboard focus remains on it. */
+    html .vcp-ui-scope #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active,
+    html .vcp-ui-scope #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover,
+    html .vcp-ui-scope #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible {
+        background: transparent;
+    }
+
     html .vcp-ui-scope .next-ui-window-button {
         color: var(--next-muted);
     }
