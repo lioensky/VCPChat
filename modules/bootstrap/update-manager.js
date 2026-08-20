@@ -14,9 +14,32 @@ function updateRoot(stateRoot) { return path.join(stateRoot, 'versions'); }
 function pointerPath(stateRoot) { return path.join(updateRoot(stateRoot), 'current.json'); }
 function readJson(filePath, fallback = null) { try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return fallback; } }
 
+function findSymbolicLink(root) {
+    if (!fs.existsSync(root)) return null;
+    const stat = fs.lstatSync(root);
+    if (stat.isSymbolicLink()) return root;
+    if (!stat.isDirectory()) return null;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        const candidate = path.join(root, entry.name);
+        if (entry.isSymbolicLink()) return candidate;
+        if (entry.isDirectory()) {
+            const nested = findSymbolicLink(candidate);
+            if (nested) return nested;
+        }
+    }
+    return null;
+}
+
 function validateUpdateManifest({ sourceRoot, manifest } = {}) {
     if (!manifest || manifest.schemaVersion !== UPDATE_SCHEMA_VERSION || !manifest.version || !manifest.files?.length) {
         const error = new Error('更新清单缺少版本、schema 或文件校验列表。'); error.code = 'E_UPDATE_MANIFEST_INVALID'; throw error;
+    }
+    const sourceLink = findSymbolicLink(sourceRoot);
+    if (sourceLink) {
+        const error = new Error(`更新 source 含有不允许的符号链接：${sourceLink}`);
+        error.code = 'E_UPDATE_INTEGRITY_FAILED';
+        error.failures = [{ path: sourceLink, reason: 'symbolic-link' }];
+        throw error;
     }
     if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(manifest.version)
         || (manifest.buildId != null && !/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(manifest.buildId))) {

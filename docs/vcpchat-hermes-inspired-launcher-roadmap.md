@@ -80,7 +80,9 @@ VCPChat 后续必须为 macOS、Windows、Linux 保持独立的进程启动/终�
 - M7：本地 trusted staging、current 指针、健康检查和 rollback。
 - M8：发布证据矩阵与外部平台证据缺口记录。
 
-当前 `start:managed` 主要执行 M1 + M2，即“诊断后托管启动”。它还不是 Hermes 风格的完整一键修复入口；M3 修复仍需要显式调用，这是有意的安全策略。
+当前 `start:managed` 主要执行 M1 + M2，即“诊断后托管启动”。本轮新增的 `npm run vcpchat` 已接通 H1 CLI 状态机：诊断通过即启动，阻塞时展示 typed repair plan，只有 `--repair --yes` 才会修改依赖，修复后重新 Doctor 再启动。它仍不是 Hermes 的独立图形安装器；H2 负责把这套状态机接入独立启动器 UI。
+
+H1 同时加入了按项目路径隔离的 state root、完成 marker、深度 Doctor 快路径和 SIGINT/SIGTERM 修复取消。marker 只代表当前 package/package-lock、Node 主版本、Electron 版本和平台架构组合已通过本机 Doctor，不代表跨平台安装包已验证。
 
 ## 分阶段开发路线
 
@@ -160,4 +162,3 @@ npm run vcpchat
 3. 把现有 doctor、repair planner、progress protocol、recovery UI 接到 H1 入口。
 4. 为 H1 增加重复启动、取消、repair 失败和 renderer reload 测试。
 5. 再进入 H2 UI 和 H4 跨平台 handoff，不提前改原有入口。
-

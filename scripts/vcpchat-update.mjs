@@ -7,11 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { resolveStateRoot, createOperationId, readReadyRecord, removeReadyRecord } = require('../modules/bootstrap/launch-protocol');
+const { resolveProjectStateRoot, createOperationId, readReadyRecord, removeReadyRecord } = require('../modules/bootstrap/launch-protocol');
+const { resolveContainedPath } = require('../modules/bootstrap/runtime-closure');
+const { terminateProcess } = require('../modules/bootstrap/process-runner');
 const { promoteVersionWithHealthCheck, rollbackVersion, acquireUpdateLock } = require('../modules/bootstrap/update-manager');
 
 function parseArguments(argv) {
-    const options = { apply: false, yes: false, source: null, manifest: null, rollback: false, json: false };
+    const options = { apply: false, yes: false, source: null, manifest: null, rollback: false, json: false, projectRoot: null };
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
         if (arg === '--apply') options.apply = true;
@@ -20,6 +22,7 @@ function parseArguments(argv) {
         else if (arg === '--json') options.json = true;
         else if (arg === '--source') options.source = argv[++index] || null;
         else if (arg === '--manifest') options.manifest = argv[++index] || null;
+        else if (arg === '--project-root') options.projectRoot = argv[++index] || null;
         else throw new Error(`未知 update 参数：${arg}`);
     }
     return options;
@@ -30,7 +33,10 @@ async function verifyCandidateReady({ current, manifest, stateRoot, timeoutMs = 
     if (!relativeExecutable || path.isAbsolute(relativeExecutable) || relativeExecutable.split(/[\\/]/).includes('..')) {
         return { ok: false, code: 'E_UPDATE_MANIFEST_INVALID', message: '更新清单缺少安全的 launch.executable。' };
     }
-    const executable = path.join(current.directory, relativeExecutable);
+    let executable;
+    try { executable = resolveContainedPath(current.directory, relativeExecutable); } catch (error) {
+        return { ok: false, code: 'E_UPDATE_MANIFEST_INVALID', message: error.message };
+    }
     if (!fs.existsSync(executable)) return { ok: false, code: 'E_UPDATE_INTEGRITY_FAILED', message: '候选版本 executable 不存在。' };
     const operationId = createOperationId('update-health');
     const child = spawn(executable, manifest.launch.args || [], {
@@ -59,14 +65,35 @@ async function verifyCandidateReady({ current, manifest, stateRoot, timeoutMs = 
         }
         return { ok: false, code: 'E_STARTUP_TIMEOUT', message: '候选版本未在时限内发布 ready。' };
     } finally {
-        try { child.kill(); } catch { /* best effort */ }
+        terminateProcess(child);
+        await new Promise(resolve => {
+            if (child.exitCode !== null || child.signalCode !== null) return resolve();
+            const timer = setTimeout(resolve, 2_000);
+            timer.unref?.();
+            child.once('exit', () => { clearTimeout(timer); resolve(); });
+        });
         removeReadyRecord({ stateRoot, operationId });
     }
 }
 
+function liveReadyRecords(stateRoot) {
+    const records = [];
+    for (const name of fs.existsSync(stateRoot) ? fs.readdirSync(stateRoot) : []) {
+        if (!name.startsWith('ready-') || !name.endsWith('.json')) continue;
+        try {
+            const record = JSON.parse(fs.readFileSync(path.join(stateRoot, name), 'utf8'));
+            if (record?.pid > 0) {
+                try { process.kill(record.pid, 0); records.push(record); } catch { /* stale */ }
+            }
+        } catch { /* malformed records are ignored and cleaned by operation owner */ }
+    }
+    return records;
+}
+
 export async function run(argv = process.argv.slice(2), io = process) {
     const options = parseArguments(argv);
-    const stateRoot = resolveStateRoot();
+    const projectRoot = path.resolve(options.projectRoot || path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+    const stateRoot = resolveProjectStateRoot({ projectRoot });
     if (!options.apply) {
         io.stdout.write('VCPChat 更新入口仅接受本地 staging source；默认只读，不会拉取或覆盖任何版本。\n');
         io.stdout.write(options.rollback ? '计划：验证并回滚到 current.previous。\n' : '计划：校验 manifest → staging → 验证 → 原子切换 → ready 失败时回滚。\n');
@@ -75,6 +102,12 @@ export async function run(argv = process.argv.slice(2), io = process) {
     if (!options.yes) { io.stderr.write('执行更新需要 --apply --yes。\n'); return 2; }
     const lock = acquireUpdateLock(stateRoot);
     try {
+        const running = liveReadyRecords(stateRoot);
+        if (running.length) {
+            const error = new Error(`VCPChat 仍在运行（pid ${running[0].pid}）；请先正常退出主应用再更新。`);
+            error.code = 'E_UPDATE_APP_RUNNING';
+            throw error;
+        }
         if (options.rollback) {
             const result = rollbackVersion({ stateRoot });
             io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -98,4 +131,4 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
     run().then(code => { process.exitCode = code; }).catch(error => { process.stderr.write(`${error.stack || error.message}\n`); process.exitCode = 1; });
 }
 
-export { parseArguments, verifyCandidateReady };
+export { parseArguments, verifyCandidateReady, liveReadyRecords };

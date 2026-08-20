@@ -40,7 +40,7 @@ function resolveElectronBinary(projectRoot) {
     }
 }
 
-function probeNativeModules({ projectRoot, electronBinary, nativeModules = NATIVE_MODULES, spawn = spawnSync }) {
+function probeNativeModules({ projectRoot, electronBinary, nativeModules = NATIVE_MODULES, spawn = spawnSync, env = process.env }) {
     if (!electronBinary) {
         return { ok: false, error: 'Electron binary is unavailable.', missing: nativeModules };
     }
@@ -53,7 +53,7 @@ function probeNativeModules({ projectRoot, electronBinary, nativeModules = NATIV
     ].join('\n');
     const result = spawn(electronBinary, ['-e', source], {
         cwd: projectRoot,
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
         encoding: 'utf8',
         timeout: 15_000,
         windowsHide: true,
@@ -193,7 +193,7 @@ function collectDoctorReport({
         if (!electronBinary || !fs.existsSync(electronBinary)) {
             checks.push(check('native-abi', CHECK_STATUS.SKIP, 'Electron binary 缺失，未重复执行原生模块 ABI probe。'));
         } else {
-            const result = probeNativeModules({ projectRoot: root, electronBinary, spawn });
+            const result = probeNativeModules({ projectRoot: root, electronBinary, spawn, env });
             checks.push(result.ok
                 ? check('native-abi', CHECK_STATUS.PASS, '原生模块可在当前 Electron Node ABI 中加载。')
                 : check('native-abi', CHECK_STATUS.FAIL, '原生模块无法在当前 Electron Node ABI 中加载。', {

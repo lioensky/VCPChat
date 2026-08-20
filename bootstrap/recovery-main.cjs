@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const projectRoot = path.resolve(process.env.VCPCHAT_PROJECT_ROOT || path.join(__dirname, '..'));
+const { terminateProcess } = require(path.join(projectRoot, 'modules', 'bootstrap', 'process-runner'));
 let windowRef;
 let operation;
 
@@ -23,6 +24,7 @@ function runScript(name, args = []) {
             env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', VCPCHAT_PROJECT_ROOT: projectRoot },
             stdio: ['ignore', 'pipe', 'pipe'],
             windowsHide: true,
+            detached: process.platform !== 'win32',
         });
         operation = child;
         let stdout = '';
@@ -80,7 +82,7 @@ ipcMain.handle('bootstrap:launch', async (_event, safe = false) => {
 });
 ipcMain.handle('bootstrap:cancel', () => {
     if (!operation) return false;
-    try { operation.kill('SIGTERM'); } catch { /* best effort */ }
+    terminateProcess(operation);
     return true;
 });
 ipcMain.handle('bootstrap:logs', () => {
@@ -98,4 +100,7 @@ ipcMain.handle('bootstrap:open-log', async (_event, target) => {
 ipcMain.handle('bootstrap:quit', () => { app.quit(); return true; });
 
 app.whenReady().then(createWindow);
+app.on('before-quit', () => {
+    if (operation) terminateProcess(operation);
+});
 app.on('window-all-closed', () => app.quit());

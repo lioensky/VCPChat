@@ -116,6 +116,14 @@ test('M7 update manifests reject path aliases, malformed entries, and uncovered 
     assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { ...base, launch: { executable: 'missing' } } }), /更新运行时校验失败/);
 });
 
+test('M7 update staging rejects unlisted symlinks in the source tree', () => {
+    if (process.platform === 'win32') return;
+    const root = tempDir(); const target = path.join(root, 'real.js'); const link = path.join(root, 'linked.js');
+    fs.writeFileSync(target, 'one'); fs.symlinkSync(target, link);
+    const digest = require('node:crypto').createHash('sha256').update('one').digest('hex');
+    assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { schemaVersion: 1, version: '1', files: [{ path: 'real.js', sha256: digest }] } }), /符号链接/);
+});
+
 test('M8 evidence explicitly records external platform proof instead of claiming it', () => {
     const evidence = collectEvidence();
     assert.ok(Array.isArray(evidence.externalEvidenceRequired));

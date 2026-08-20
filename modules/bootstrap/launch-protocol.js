@@ -50,6 +50,13 @@ function resolveStateRoot({ env = process.env, platform = process.platform, home
     return path.join(env.XDG_STATE_HOME || path.join(homeDirectory, '.local', 'state'), 'vcpchat', 'bootstrap');
 }
 
+function resolveProjectStateRoot({ projectRoot, env = process.env, platform = process.platform, homeDirectory = os.homedir() } = {}) {
+    if (!projectRoot) return resolveStateRoot({ env, platform, homeDirectory });
+    const base = resolveStateRoot({ env: { ...env, VCPCHAT_STATE_DIR: '' }, platform, homeDirectory });
+    const identity = crypto.createHash('sha256').update(path.resolve(projectRoot)).digest('hex').slice(0, 16);
+    return path.join(path.dirname(base), `${path.basename(base)}-${identity}`);
+}
+
 function ensureStateRoot(options = {}) {
     const root = resolveStateRoot(options);
     fs.mkdirSync(root, { recursive: true });
@@ -208,6 +215,7 @@ module.exports = {
     DEFAULT_LOCK_MAX_AGE_MS,
     createOperationId,
     resolveStateRoot,
+    resolveProjectStateRoot,
     ensureStateRoot,
     lockPath,
     inspectOperationLock,

@@ -7,6 +7,7 @@
     "start": "electron .",
     "doctor": "node scripts/vcpchat-doctor.mjs",
     "start:managed": "node scripts/vcpchat-dev-launcher.mjs",
+    "vcpchat": "node scripts/vcpchat.mjs",
     "bootstrap": "node scripts/vcpchat-bootstrap.mjs",
     "repair:managed": "node scripts/vcpchat-repair.mjs",
     "start:recovery": "node scripts/vcpchat-recovery-ui.mjs",
