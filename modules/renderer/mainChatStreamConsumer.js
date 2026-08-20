@@ -39,9 +39,13 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             }
         },
         consume(event) {
-            if (projection?.suppressed) return;
+            const terminal = terminalTypes.has(event.type);
+            if (projection?.suppressed) {
+                if (terminal) projection.settle?.({ event, finalized: event.outcome?.persistence?.value, context, messageId });
+                return;
+            }
             if (event.type === 'chunk') (projection?.append || capabilities.append)(messageId, event.text, context);
-            if (!terminalTypes.has(event.type)) return;
+            if (!terminal) return;
             const finalized = event.outcome?.persistence?.value;
             capabilities.dispatchTerminal?.({
                 type: event.outcome?.transport?.kind === 'failed' ? 'error' : event.type,
@@ -50,6 +54,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 error: event.outcome?.transport?.error || event.outcome?.persistence?.error || null,
             });
             if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
+            projection?.settle?.({ event, finalized, context, messageId });
             capabilities.onSettled?.({ event, finalized, context, messageId });
         },
         async persist(value) {

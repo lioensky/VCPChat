@@ -15,6 +15,7 @@ export function createStreamConsumerRegistry() {
                 get suppressed() { return !lease.active || route.suppressed === true; },
                 start(...args) { if (lease.active) return route.start?.(...args); },
                 append(...args) { if (lease.active) return route.append?.(...args); },
+                settle(...args) { return route.settle?.(...args); },
                 release(...args) {
                     if (!lease.active) {
                         if (routes.get(messageId)?.token === token) routes.delete(messageId);

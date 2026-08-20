@@ -1145,6 +1145,11 @@ function getCachedMessageDom(messageId) {
     return cached;
 }
 
+function ownsIndependentSurfaceRoot(messageId) {
+    const root = messageRootMap.get(messageId);
+    return !!root && root !== refs.chatMessagesDiv;
+}
+
 /**
  * Sets up onload and onerror handlers for an emoticon image to fix its URL on error
  * and prevent flickering by controlling its visibility.
@@ -1332,7 +1337,7 @@ function renderStreamFrame(messageId) {
     // 如果没有缓存（可能是旧消息），回退到实时检查
     if (isForCurrentView === undefined) {
         const context = messageContextMap.get(messageId);
-        isForCurrentView = isMessageForCurrentView(context);
+        isForCurrentView = ownsIndependentSurfaceRoot(messageId) || isMessageForCurrentView(context);
         viewContextCache.set(messageId, isForCurrentView);
     }
     
@@ -1585,7 +1590,7 @@ function processAndRenderSmoothChunk(messageId) {
     
     // Scroll if the message is in the current view.
     const context = messageContextMap.get(messageId);
-    if (isMessageForCurrentView(context)) {
+    if (ownsIndependentSurfaceRoot(messageId) || isMessageForCurrentView(context)) {
         throttledScrollToBottom(messageId);
     }
 }
@@ -1641,8 +1646,9 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     
     const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(context);
+    const shouldProjectToDom = isForCurrentView || ownsIndependentSurfaceRoot(messageId);
     // 🟢 缓存视图检查结果
-    viewContextCache.set(messageId, isForCurrentView);
+    viewContextCache.set(messageId, shouldProjectToDom);
     
     // Get the correct history for this message's context
     let historyForThisMessage;
@@ -1664,7 +1670,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     
     // Only manipulate DOM for current view
     let messageItem = null;
-    if (isForCurrentView) {
+    if (shouldProjectToDom) {
         const messageRoot = messageRootMap.get(messageId) || chatMessagesDiv;
         messageItem = passedMessageItem || messageRoot.querySelector(`.message-item[data-message-id="${message.id}"]`);
         if (!messageItem) {
@@ -1760,7 +1766,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     messageInitializationWaiters.delete(messageId);
     initializationWaiters.forEach(resolve => resolve(true));
     
-    if (isForCurrentView) {
+    if (shouldProjectToDom) {
         // 如果从思考转为非思考，立即触发一次渲染以清理占位符
         if (!message.isThinking && isCurrentlyThinking) {
             renderStreamFrame(messageId);
@@ -2195,6 +2201,7 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     
     const { chatMessagesDiv, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(storedContext);
+    const shouldProjectToDom = isForCurrentView || ownsIndependentSurfaceRoot(messageId);
     
     // Get the correct history
     let historyForThisMessage;
@@ -2289,8 +2296,8 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     }
     
     // Update UI if it's the current view
-    if (isForCurrentView) {
-        refs.currentChatHistoryRef.set([...historyForThisMessage]);
+    if (shouldProjectToDom) {
+        if (isForCurrentView) refs.currentChatHistoryRef.set([...historyForThisMessage]);
 
         const messageRoot = messageRootMap.get(messageId) || chatMessagesDiv;
         const messageItem = messageDomCache.get(messageId)?.messageItem

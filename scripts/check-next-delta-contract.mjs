@@ -227,6 +227,11 @@ for (const sourceFile of [
     assert.match(read(sourceFile), /chatRepository|historyMutationAuthority/,
         `${sourceFile} must consume the shared ChatRepository or history mutation authority boundary`);
 }
+const interactiveChatSource = read('modules/ui-system/interactive-chat-app.js');
+assert.doesNotMatch(interactiveChatSource, /__vcpCancelActiveResponse|vcp-chat-stream-terminal/,
+    'independent chat must not cancel or settle through main-window global stream state');
+assert.match(interactiveChatSource, /onOperation[\s\S]*operation\?\.cancel/,
+    'independent chat must cancel the exact operation returned by its production send path');
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,
     'message edit persistence must use ChatRepository rather than renderer IPC fallbacks');
 assert.match(read('Flowlockmodules/flowlock-integration.js'), /requires a ready ChatManager provider/,

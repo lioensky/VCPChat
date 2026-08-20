@@ -33,6 +33,7 @@ test('MainChatSurfaceAdapter owns renderer, stream routes and quiescent teardown
     assert.equal(initialized.chatDomRenderer, adapter.domRenderer);
     const release = adapter.streamRoutes.register('m1', { kind: 'main-chat' });
     assert.equal(typeof release.retract, 'function');
+    assert.equal(typeof release.cancel, 'function');
     release();
     await adapter.dispose();
     assert.equal(rendererDisposed, true);

@@ -42,3 +42,19 @@ test('owner retraction leaves a one-terminal tombstone for late stream events', 
     tombstone.release();
     assert.equal(registry.claim('late'), null);
 });
+
+test('a retracted route loses DOM authority but can still settle its operation promise', () => {
+    const registry = createStreamConsumerRegistry();
+    const settlements = [];
+    const release = registry.register('owned', {
+        append: () => assert.fail('retracted projection must stay silent'),
+        settle: value => settlements.push(value),
+    });
+    const route = registry.claim('owned');
+    release.retract();
+    route.append('late');
+    route.settle({ type: 'discarded' });
+    assert.deepEqual(settlements, [{ type: 'discarded' }]);
+    route.release();
+    assert.equal(registry.claim('owned'), null);
+});

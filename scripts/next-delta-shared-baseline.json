@@ -1,15 +1,15 @@
 {
   "modules/chatManager.js": {
-    "sha256": "69db6d72f4c00ff271be07b38441960b1150eb968796d1385f5df0c6217f1938",
-    "reason": "upstream chat core plus reviewed ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, explicit durable history mutation authority, independent renderer seam, and mandatory repository access without a direct IPC fallback"
+    "sha256": "631f0afc4a289c9997aa59b3ff1c07dac851b07c3fdc444f46c31336a8bbef3f",
+    "reason": "upstream chat core plus reviewed ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing with operation-specific settlement and cancellation, explicit durable history mutation authority, independent renderer seam, and mandatory repository access without a direct IPC fallback"
   },
   "modules/messageRenderer.js": {
     "sha256": "d92b5e7f4a34509418393e9c16266e7fdaf5ac758a5310a00e82ed6d72b4fb12",
     "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, coordinator-owned terminal entry points, explicit ESM provider with the unconsumed window facade removed, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, DOM-free transforms, and removal of stale direct repository persistence code"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "f1d6b890b8d904f60a6de671016fcebc7b5c18738f5e33b9498403e196cebb93",
-    "reason": "shared stream DOM projection adapter with explicit ESM provider and the unconsumed window facade removed, mandatory repository access without direct IPC fallback, per-message Surface root ownership, awaited initialization, context-keyed active operations, no durable commit facade, immediate terminal cache release, and ContentRuntime render-model consumption"
+    "sha256": "5efdcf57ea7aceb760ff17c02ccd6b75e9bef2025baf3ec2612cfa043a15632d",
+    "reason": "shared stream DOM projection adapter with explicit ESM provider and the unconsumed window facade removed, mandatory repository access without direct IPC fallback, independent per-message Surface root projection across main-topic changes, awaited initialization, context-keyed active operations, no durable commit facade, immediate terminal cache release, and ContentRuntime render-model consumption"
   },
   "modules/topicListManager.js": {
     "sha256": "ee31c578ad3fd6e8af5cb3788a56572b5bdd26d63f7be684c6bcf0eec6b510e1",

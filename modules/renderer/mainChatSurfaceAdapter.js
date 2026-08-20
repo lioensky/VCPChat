@@ -104,9 +104,16 @@ export function createMainChatSurfaceAdapter({
         const release = streamRoutes.register(messageId, route);
         const ownedRelease = () => release();
         ownedRelease.retract = () => {
+            streamRoutes.claim(messageId)?.settle?.({
+                event: Object.freeze({ type: 'discarded', messageId, reason: 'surface-route-retracted' }),
+                finalized: null,
+                context: null,
+                messageId,
+            });
             release.retract();
             return bridge.disposeOperation(messageId, 'surface-route-retracted');
         };
+        ownedRelease.cancel = reason => bridge.cancelOperation(messageId, reason || 'surface-operation-cancelled');
         return ownedRelease;
     };
     return Object.freeze({

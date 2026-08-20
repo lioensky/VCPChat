@@ -10,6 +10,7 @@ export const chatManager = (() => {
     let topicListManager;
     let groupRenderer;
     let streamProjection;
+    let interruptCapability;
 
     // References to state in renderer.js
     let currentSelectedItemRef;
@@ -367,6 +368,7 @@ export const chatManager = (() => {
         topicListManager = config.modules.topicListManager;
         groupRenderer = config.modules.groupRenderer;
         streamProjection = config.modules.streamManager || null;
+        interruptCapability = config.modules.interruptHandler || null;
 
         // State References
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
@@ -1468,6 +1470,10 @@ export const chatManager = (() => {
 
         let thinkingMessageItem = null;
         let releaseStreamConsumerRoute = null;
+        let settleOwnedStreamOperation = null;
+        const ownedStreamTerminal = request?.awaitTerminal
+            ? new Promise(resolve => { settleOwnedStreamOperation = resolve; })
+            : null;
         if (renderTarget && isSendContextCurrent()) {
             thinkingMessageItem = await renderTarget.renderMessage(thinkingMessage);
             if (!isSendContextCurrent()) {
@@ -1785,6 +1791,7 @@ export const chatManager = (() => {
                     releaseStreamConsumerRoute = streamConsumerRegistry?.register?.(thinkingMessage.id, {
                         kind: request?.domRenderer ? 'independent-surface' : 'main-chat',
                         start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),
+                        settle: result => settleOwnedStreamOperation?.(result),
                         release: () => {
                             releaseStreamConsumerRoute?.();
                             releaseStreamConsumerRoute = null;
@@ -1793,6 +1800,15 @@ export const chatManager = (() => {
                     if (request?.domRenderer?.own && releaseStreamConsumerRoute?.retract) {
                         request.domRenderer.own(() => releaseStreamConsumerRoute?.retract?.());
                     }
+                    request?.onOperation?.(Object.freeze({
+                        messageId: thinkingMessage.id,
+                        done: ownedStreamTerminal,
+                        async cancel(reason) {
+                            try { await interruptCapability?.interrupt?.(thinkingMessage.id); }
+                            catch (error) { console.warn('[ChatManager] Surface interrupt request failed; cancelling locally:', error); }
+                            return releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
+                        },
+                    }));
                 }
             }
 
@@ -1888,6 +1904,10 @@ export const chatManager = (() => {
                         renderTarget.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
                     }
                     if (request?.propagateError) throw new Error('请求流式回复失败，收到非流式响应或错误');
+                }
+                if (request?.awaitTerminal && ownedStreamTerminal) {
+                    const terminal = await ownedStreamTerminal;
+                    return Object.freeze({ messageId: thinkingMessage.id, terminal });
                 }
             }
         } catch (error) {
