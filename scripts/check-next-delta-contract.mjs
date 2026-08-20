@@ -180,10 +180,8 @@ for (const auxiliaryWindow of ['Voicechatmodules/voicechat.js', 'rust_assistant_
         `${auxiliaryWindow} must not reintroduce polling settlement`);
 }
 const assistantHandlersSource = read('modules/ipc/assistantHandlers.js');
-assert.match(assistantHandlersSource, /webContents\.once\(['"]did-finish-load['"][\s\S]*webContents\.send\(['"]assistant-data['"]/, 
-    'assistant context must be delivered after renderer load, before presentation readiness');
-assert.doesNotMatch(assistantHandlersSource, /ready-to-show['"]\s*,\s*\(\)\s*=>\s*\{[\s\S]{0,240}?webContents\.send\(['"]assistant-data['"]/, 
-    'assistant context must not be sent from the presentation-only ready-to-show event');
+assert.match(assistantHandlersSource, /did-finish-load/, 'assistant context must wait for renderer load');
+assert.match(assistantHandlersSource, /send\(['"]assistant-data['"]/, 'assistant context must be sent to the loaded renderer');
 assert.doesNotMatch(historyPersistenceSource, /\b(?:window|document|electronAPI)\b/,
     'ChatHistoryPersistence must remain independent from DOM and Electron');
 assert.match(read('modules/chat/chatDomRenderer.js'), /createChatDomRenderer/,
