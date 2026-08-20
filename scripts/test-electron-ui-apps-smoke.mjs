@@ -1293,6 +1293,54 @@ try {
         delete window.__nextDeltaOriginalCommands;
         delete window.__nextDeltaResolveCreate;
     });
+    const productionCreationName = `Electron Provider Agent ${Date.now()}`;
+    await page.evaluate(() => document.getElementById('nextUiCreateItemBtn')?.click());
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    await page.evaluate(nameValue => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        const input = host?.querySelector('wa-input, input');
+        if (input) {
+            input.value = nameValue;
+            input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
+        host?.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }, productionCreationName);
+    await page.waitForFunction(expectedName => (
+        !document.querySelector('.next-ui-create-dialog-host')
+        && window.currentSelectedItem?.name === expectedName
+        && window.currentSelectedItem?.type === 'agent'
+    ), { timeout: timeoutMs }, productionCreationName);
+    const productionCreation = await page.evaluate(async expectedName => {
+        const selected = window.currentSelectedItem;
+        const listEntry = selected?.id
+            ? document.querySelector(`#agentList [data-item-id="${CSS.escape(selected.id)}"][data-item-type="agent"]`)
+            : null;
+        const provider = (await import('./modules/chatManager.js')).chatManager;
+        return {
+            id: selected?.id || '',
+            name: selected?.name || '',
+            providerReady: provider.isReady(),
+            listEntry: Boolean(listEntry),
+            noGlobal: !('chatManager' in window),
+        };
+    }, productionCreationName);
+    assert.equal(productionCreation.name, productionCreationName);
+    assert.equal(productionCreation.providerReady, true);
+    assert.equal(productionCreation.listEntry, true);
+    assert.equal(productionCreation.noGlobal, true);
+    assert.ok(productionCreation.id, 'production creation did not return a durable Agent identity');
+    await page.evaluate(async agentId => {
+        await window.chatAPI.deleteAgent(agentId);
+        await window.itemListManager.loadItems();
+    }, productionCreation.id);
+    await page.evaluate(async () => {
+        const config = await window.chatAPI.getAgentConfig('SmokeAgent');
+        await (await import('./modules/chatManager.js')).chatManager.selectItem(
+            'SmokeAgent', 'agent', config?.name || 'SmokeAgent', config?.avatarUrl || null, config
+        );
+        window.uiManager?.switchToTab?.('settings');
+    });
+    await page.waitForFunction(() => document.getElementById('editingAgentId')?.value === 'SmokeAgent', { timeout: timeoutMs });
     // A terminal component-load failure is an application-integrity error.
     // It must report the failure without mounting a visually divergent UI.
     await page.evaluate(() => {

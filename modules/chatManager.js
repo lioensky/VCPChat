@@ -352,6 +352,7 @@ export const chatManager = (() => {
      * @param {object} config - The configuration object.
      */
     function init(config) {
+        initialized = false;
         chatContext = config.chatContext || null;
         chatRepository = config.chatRepository || null;
         streamConsumerRegistry = config.streamConsumerRegistry || null;
@@ -395,14 +396,13 @@ export const chatManager = (() => {
         // Main Renderer Functions
         mainRendererFunctions = config.mainRendererFunctions;
 
-        console.log('[ChatManager] Initialized successfully.');
-        initialized = true;
-
         // Listen for Canvas events
         if (electronAPI) {
             electronAPI.onCanvasContentUpdate(handleCanvasContentUpdate);
             electronAPI.onCanvasWindowClosed(handleCanvasWindowClosed);
         }
+        initialized = true;
+        console.log('[ChatManager] Initialized successfully.');
     }
 
     /**

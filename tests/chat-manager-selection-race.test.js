@@ -10,7 +10,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function createFixture() {
+function createFixture(options = {}) {
     const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body>
         <main class="main-content"><div class="chat-messages-container"><div id="chatMessages"></div></div>
             <div id="nextUiEmptyState" aria-hidden="true"></div>
@@ -76,7 +76,9 @@ function createFixture() {
         },
     };
     const electronAPI = {
-        onCanvasContentUpdate() {},
+        onCanvasContentUpdate() {
+            if (options.failCanvasRegistration) throw new Error('controlled canvas listener failure');
+        },
         onCanvasWindowClosed() {},
         watcherStop: async () => {},
         watcherStart: async (_path, itemId, requestedTopicId) => {
@@ -139,7 +141,9 @@ function createFixture() {
             return { success: true };
         },
     };
-    window.chatManager.init({
+    let initError = null;
+    try {
+        window.chatManager.init({
         allowLegacyHistoryFallback: true,
         electronAPI,
         uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
@@ -172,11 +176,15 @@ function createFixture() {
             attachFileBtn: window.document.getElementById('attachFileBtn'),
         },
         mainRendererFunctions: { displaySettingsForItem() {}, updateAttachmentPreview() {} },
-    });
+        });
+    } catch (error) {
+        initError = error;
+    }
     return {
         dom,
         window,
         chatManager: window.chatManager,
+        initError,
         topicRequests,
         createTopicRequests,
         watcherRequests,
@@ -218,6 +226,12 @@ function createFixture() {
         }),
     };
 }
+
+test('ChatManager publishes readiness only after synchronous listener setup completes', () => {
+    const fixture = createFixture({ failCanvasRegistration: true });
+    assert.match(fixture.initError?.message || '', /controlled canvas listener failure/);
+    assert.equal(fixture.chatManager.isReady(), false);
+});
 
 test('a late assistant selection cannot overwrite the newer assistant topic and history', async () => {
     const fixture = createFixture();

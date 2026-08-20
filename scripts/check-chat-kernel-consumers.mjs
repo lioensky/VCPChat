@@ -104,6 +104,34 @@ for (const file of testFiles) {
 for (const [name, evidence] of references) {
     assert.ok(evidence.production.length > 0, `${name} must retain at least one real production member consumer`);
     assert.equal(evidence.production.some(item => item.file === providerFiles[name]), false, `${name} provider definition cannot self-certify as a consumer`);
+    assert.equal(
+        evidence.production.filter(item => item.access === 'compatibility-global').length,
+        0,
+        `${name} must have zero production compatibility-global consumers after facade retirement`
+    );
+}
+
+const productionSourceFiles = [];
+const collectProductionFiles = (directory, relative = '') => {
+    if (!fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === 'vendor' || entry.name === 'docs' || entry.name === 'tests') continue;
+        const absolute = path.join(directory, entry.name);
+        const rel = path.join(relative, entry.name).replaceAll(path.sep, '/');
+        if (entry.isDirectory()) collectProductionFiles(absolute, rel);
+        else if (/\.(?:js|mjs|html)$/.test(entry.name)) productionSourceFiles.push(rel);
+    }
+};
+collectProductionFiles(root);
+for (const file of productionSourceFiles) {
+    const text = source(file);
+    for (const name of Object.keys(providerFiles)) {
+        assert.doesNotMatch(
+            withoutComments(text).join('\n'),
+            new RegExp(`\\bwindow\\.${name}\\s*(?:\\?\\.)?\\s*[A-Za-z_$][\\w$]*`),
+            `${file} must not reintroduce window.${name} compatibility access`
+        );
+    }
 }
 
 const kernelFiles = [
