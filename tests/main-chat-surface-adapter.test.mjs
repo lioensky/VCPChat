@@ -40,3 +40,32 @@ test('MainChatSurfaceAdapter owns renderer, stream routes and quiescent teardown
     assert.equal(root.hasAttribute('data-chat-surface'), false);
     assert.throws(() => adapter.streamRoutes.register('late', {}), /disposed/);
 });
+
+test('MainChatSurfaceAdapter owns the window unload receipt and releases it on dispose', async () => {
+    const dom = new JSDOM('<main><div id="root"></div><textarea></textarea>');
+    const root = dom.window.document.getElementById('root');
+    let disposed = 0;
+    const renderer = { initializeMessageRenderer() {}, renderHistory() {}, renderMessage() {} };
+    const adapter = createMainChatSurfaceAdapter({
+        root,
+        renderer,
+        repository: { getHistory: async () => [], saveHistory() {} },
+        focusTarget: dom.window.document.querySelector('textarea'),
+        operations: { dispose: async () => {} },
+        renderDependencies: {},
+        streamServices: {
+            streamProjection: { startStreamingMessage() {}, appendStreamChunk() {}, projectStreamTerminal() {} },
+            historyPersistence: { commit() {} },
+            messageRenderer: renderer,
+            getSelection: () => null,
+            getTopicId: () => null,
+        },
+        disposeRenderer: async () => { disposed += 1; },
+        ownerWindow: dom.window,
+    });
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(disposed, 1);
+    await adapter.dispose();
+    dom.window.close();
+});

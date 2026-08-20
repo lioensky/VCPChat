@@ -622,6 +622,11 @@ const startupThemeGate = new StartupThemeGate({
                 messageRenderer.disposeRendererResources();
                 await streamManager?.dispose?.();
             },
+            ownerWindow: window,
+            onDispose: async () => {
+                releaseNextUiChatCapabilities?.();
+                releaseNextUiChatCapabilities = null;
+            },
         });
         mainChatSurface = mainChatAdapter.surface;
         mainChatDomRenderer = mainChatAdapter.domRenderer;
@@ -636,11 +641,6 @@ const startupThemeGate = new StartupThemeGate({
             manager: chatManager,
             presentation: presentationState,
         }) || null;
-        window.addEventListener('beforeunload', () => {
-            releaseNextUiChatCapabilities?.();
-            releaseNextUiChatCapabilities = null;
-            void mainChatAdapter?.dispose();
-        }, { once: true });
         // Pass the new function to the context menu
         messageRenderer.setContextMenuDependencies({
             showForwardModal: showForwardModal,

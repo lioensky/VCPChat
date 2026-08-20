@@ -78,6 +78,8 @@ export function createMainChatSurfaceAdapter({
     renderDependencies,
     streamServices,
     disposeRenderer,
+    ownerWindow = root?.ownerDocument?.defaultView,
+    onDispose = null,
 }) {
     if (!root || !renderer || !repository) throw new TypeError('MainChatSurfaceAdapter requires root, renderer and repository');
     const streamRoutes = createStreamConsumerRegistry();
@@ -100,6 +102,8 @@ export function createMainChatSurfaceAdapter({
         }),
     });
     let disposed = false;
+    const unloadHandler = () => { void api.dispose(); };
+    ownerWindow?.addEventListener?.('beforeunload', unloadHandler, { once: true });
     const registerStreamRoute = (messageId, route) => {
         const release = streamRoutes.register(messageId, route);
         const ownedRelease = () => release();
@@ -116,7 +120,7 @@ export function createMainChatSurfaceAdapter({
         ownedRelease.cancel = reason => bridge.cancelOperation(messageId, reason || 'surface-operation-cancelled');
         return ownedRelease;
     };
-    return Object.freeze({
+    const api = Object.freeze({
         surface,
         domRenderer: surface.renderer,
         streamRoutes: Object.freeze({ register: registerStreamRoute }),
@@ -125,9 +129,12 @@ export function createMainChatSurfaceAdapter({
         async dispose() {
             if (disposed) return;
             disposed = true;
+            ownerWindow?.removeEventListener?.('beforeunload', unloadHandler);
             streamRoutes.dispose();
             await bridge.dispose();
             await surface.dispose();
+            await onDispose?.();
         },
     });
+    return api;
 }
