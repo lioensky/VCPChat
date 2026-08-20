@@ -1846,7 +1846,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2585,
+          "line": 2588,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1854,7 +1854,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2596,
+          "line": 2599,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "attachStreamProjection",
@@ -1862,7 +1862,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3347,
+          "line": 3350,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -1870,7 +1870,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3348,
+          "line": 3351,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -1878,7 +1878,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3638,
+          "line": 3641,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -1886,7 +1886,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3642,
+          "line": 3645,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1894,7 +1894,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3647,
+          "line": 3650,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "appendStreamChunk",
@@ -1902,7 +1902,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3651,
+          "line": 3654,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "projectStreamTerminal",
@@ -1910,7 +1910,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4205,
+          "line": 4208,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1918,7 +1918,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4206,
+          "line": 4209,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -4678,7 +4678,7 @@
     },
     "modules/messageRenderer.js": {
       "windowReferences": 6,
-      "documentReferences": 12,
+      "documentReferences": 13,
       "electronReferences": 17,
       "timers": 13,
       "listeners": 7,
