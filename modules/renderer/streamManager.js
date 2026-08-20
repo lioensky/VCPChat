@@ -1637,6 +1637,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         agentName: message.name || message.context?.agentName,
         avatarUrl: message.avatarUrl || message.context?.avatarUrl,
         avatarColor: message.avatarColor || message.context?.avatarColor,
+        streamOperationId: message.streamOperationId || message.context?.streamOperationId || null,
     };
     
     // Validate context
@@ -1732,7 +1733,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     if (bufferedChunks && bufferedChunks.length > 0 && messageInitializationStatus.get(messageId) === 'ready') {
         console.debug(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
         for (const chunkData of bufferedChunks) {
-            appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
+            appendStreamChunk(messageId, chunkData.chunk, chunkData.context, chunkData.streamOperationId);
         }
         preBufferedChunks.delete(messageId);
     }
@@ -1864,7 +1865,7 @@ function cleanupDesktopPushState(messageId) {
     desktopPushConsumer?.cleanupMessage(messageId);
 }
 
-function appendStreamChunk(messageId, chunkData, context) {
+function appendStreamChunk(messageId, chunkData, context, streamOperationId = null) {
     if (disposed) return false;
     const initStatus = messageInitializationStatus.get(messageId);
     
@@ -1875,7 +1876,7 @@ function appendStreamChunk(messageId, chunkData, context) {
             console.debug(`[StreamManager] Started pre-buffering for message ${messageId}`);
         }
         const buffer = preBufferedChunks.get(messageId);
-        buffer.push({ chunk: chunkData, context });
+        buffer.push({ chunk: chunkData, context, streamOperationId });
         
         // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
         if (buffer.length > 1000) {
@@ -1891,6 +1892,8 @@ function appendStreamChunk(messageId, chunkData, context) {
         return;
     }
     
+    const activeContext = messageContextMap.get(messageId);
+    if (streamOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== streamOperationId) return false;
     // Extract text from chunk
     // 如果检测到 JSON 解析错误，直接过滤掉，不显示给用户
     if (chunkData?.error === 'json_parse_error') {
@@ -1954,6 +1957,9 @@ function appendStreamChunk(messageId, chunkData, context) {
  */
 async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
     if (disposed) return null;
+    const expectedOperationId = finalPayload?.streamOperationId || context?.streamOperationId || null;
+    const activeContext = messageContextMap.get(messageId);
+    if (expectedOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== expectedOperationId) return null;
     let initStatusAtFinalize = messageInitializationStatus.get(messageId);
     if (initStatusAtFinalize === 'pending') {
         console.warn(`[StreamManager] Finalization is waiting for message initialization: ${messageId}`);

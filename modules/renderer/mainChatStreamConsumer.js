@@ -18,12 +18,14 @@ const buildMessage = event => {
         groupId: context.groupId,
         topicId: context.topicId,
         context,
+        streamOperationId: event.streamOperationId || event.operationId || null,
     };
 };
 
 /** Main-window projection of stream facts. All powers are explicit capabilities. */
 export function createMainChatStreamConsumer(initialEvent, capabilities) {
     const { messageId } = initialEvent;
+    const operationId = initialEvent.streamOperationId || initialEvent.operationId || messageId;
     let context = initialEvent.context || {};
     let preparedType = null;
     const projection = capabilities.resolveProjection?.(messageId) || null;
@@ -35,7 +37,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             context = { ...context, ...(event.context || {}) };
             if (preparedType === null) {
                 preparedType = event.type;
-                await (projection?.start || capabilities.start)(buildMessage({ ...event, context }));
+                await (projection?.start || capabilities.start)(buildMessage({ ...event, context, streamOperationId: operationId }));
             }
         },
         consume(event) {
@@ -44,7 +46,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 if (terminal) projection.settle?.({ event, finalized: event.outcome?.persistence?.value, context, messageId });
                 return;
             }
-            if (event.type === 'chunk') (projection?.append || capabilities.append)(messageId, event.text, context);
+            if (event.type === 'chunk') (projection?.append || capabilities.append)(messageId, event.text, context, operationId);
             if (!terminal) return;
             const finalized = event.outcome?.persistence?.value;
             capabilities.dispatchTerminal?.({
@@ -54,7 +56,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 error: event.outcome?.transport?.error || event.outcome?.persistence?.error || null,
             });
             if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
-            projection?.settle?.({ event, finalized, context, messageId });
+            projection?.settle?.({ event, finalized, context, messageId, streamOperationId: operationId });
             capabilities.onSettled?.({ event, finalized, context, messageId });
         },
         async persist(value) {
@@ -73,7 +75,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 messageId,
                 terminal.kind === 'completed' ? (terminal.finishReason || 'completed') : terminal.kind,
                 terminal.context || context,
-                { fullResponse, error },
+                { fullResponse, error, streamOperationId: operationId },
             );
             if (!projected) throw new Error(`Stream terminal projection failed: ${messageId}`);
             const finalized = await capabilities.persistTerminal(projected);

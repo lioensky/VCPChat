@@ -12,7 +12,7 @@ function createStreamCapabilities(root, services) {
     const reportError = services.reportError || console.error;
     return Object.freeze({
         start: message => services.streamProjection.startStreamingMessage(message),
-        append: (messageId, chunk, context) => services.streamProjection.appendStreamChunk(messageId, chunk, context),
+        append: (messageId, chunk, context, operationId) => services.streamProjection.appendStreamChunk(messageId, chunk, context, operationId),
         projectTerminal: (messageId, finishReason, context, payload) => (
             services.streamProjection.projectStreamTerminal(messageId, finishReason, context, payload)
         ),

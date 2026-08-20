@@ -233,6 +233,7 @@ assert.match(messageRendererSource, /audioRoot\?\.querySelectorAll\?\.\(['"]audi
 assert.doesNotMatch(source('modules/renderer/streamManager.js'), /onStreamStateChanged/, 'stream projection must not retain the legacy generic state callback');
 assert.match(source('modules/renderer/streamManager.js'), /notifySurfaceOperationStateChanged/, 'stream projection state notification must be an explicit Surface capability');
 assert.match(source('modules/renderer/streamManager.js'), /transientStreamHistory/, 'stream projection history must be delegated to the transient history provider');
+assert.match(source('modules/renderer/streamManager.js'), /streamOperationId/, 'stream projection must carry producer operation identity into its Surface runtime');
 assert.doesNotMatch(source('modules/renderer/streamManager.js'), /refs\.historyAuthority/, 'stream projection must not use an ambiguous durable-history authority name');
 assert.match(rendererSource, /createStreamTransientHistory[\s\S]*transientStreamHistory,/, 'main and internal composition must construct and inject transient history providers');
 assert.match(source('Voicechatmodules/voicechat.js'), /createStreamTransientHistory[\s\S]*transientStreamHistory,[\s\S]*viewAuthority/, 'Voice Surface must own its transient history and view authority');
