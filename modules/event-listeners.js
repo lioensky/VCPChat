@@ -29,7 +29,7 @@ export function setupEventListeners(deps) {
         refs,
 
         // Modules and helper functions
-        uiHelperFunctions, chatManager, messageRenderer, itemListManager, settingsManager, uiManager, topicListManager,
+        uiHelperFunctions, chatManager, messageRenderer, historyMutationAuthority, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
         addNetworkPathInput
     } = deps;
@@ -339,7 +339,10 @@ export function setupEventListeners(deps) {
                     if (historyForSave && !historyForSave.error) {
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
                         finalHistory.push(assistantMessage);
-                        await chatAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                        await historyMutationAuthority.replace({
+                            itemId: context.agentId, itemType: 'agent', topicId: context.topicId,
+                            category: 'flowlock-non-stream-terminal',
+                        }, finalHistory);
 
                         if (isForActiveChat) {
                             currentChatHistory.length = 0;
@@ -360,7 +363,10 @@ export function setupEventListeners(deps) {
             messageRenderer?.removeMessageById(thinkingMessage.id);
             messageRenderer?.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
             if (currentSelectedItem.id && currentTopicId) {
-                await chatAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
+                await historyMutationAuthority.replace({
+                    itemId: currentSelectedItem.id, itemType: currentSelectedItem.type, topicId: currentTopicId,
+                    category: 'flowlock-failure-cleanup',
+                }, currentChatHistory.filter(msg => !msg.isThinking));
             }
         }
     }

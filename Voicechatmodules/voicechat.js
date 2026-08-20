@@ -2,6 +2,7 @@
 import { createMemoryChatRepository } from '../modules/chat/memoryChatRepository.js';
 import { createChatHistoryPersistence } from '../modules/chat/chatHistoryPersistence.js';
 import { createChatHistoryMutationAuthority } from '../modules/chat/chatHistoryMutationAuthority.js';
+import { createChatRepository } from '../modules/chat/chatRepository.js';
 import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
 import { messageRenderer } from '../modules/messageRenderer.js';
 import { streamManager } from '../modules/renderer/streamManager.js';
@@ -160,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
 
-                await window.electronAPI.saveChatHistory(agentId, newTopicId, persistedHistory);
+                await historyMutationAuthority.replace({ itemId: agentId, itemType: 'agent', topicId: newTopicId, category: 'voice-session-close' }, persistedHistory);
                 console.log(`[VoiceChat] History saved to new topic: ${newTopicId}`);
 
                 if (window.summarizeTopicFromMessages) {
@@ -309,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 write: history => { currentChatHistory = history; },
             });
             const historyPersistence = createChatHistoryPersistence(chatRepository);
-            const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: chatRepository });
+            const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
             messageRenderer.initializeMessageRenderer({
                 chatRepository,
                 historyMutationAuthority,

@@ -944,6 +944,7 @@ const startupThemeGate = new StartupThemeGate({
             uiHelperFunctions,
             chatManager,
             messageRenderer,
+            historyMutationAuthority,
             itemListManager: window.itemListManager,
             settingsManager: window.settingsManager,
             uiManager: window.uiManager,
