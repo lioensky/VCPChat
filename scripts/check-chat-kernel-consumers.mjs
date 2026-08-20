@@ -7,24 +7,32 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const exists = relative => fs.existsSync(path.join(root, relative));
 
-const productionFiles = [
-    'renderer.js',
-    'modules/event-listeners.js',
-    'modules/chatManager.js',
-    'modules/messageRenderer.js',
-    'modules/renderer/streamManager.js',
-    'modules/renderer/messageContextMenu.js',
-    'modules/renderer/middleClickHandler.js',
-    'Flowlockmodules/flowlock-integration.js',
-    'Voicechatmodules/voicechat.js',
-    'rust_assistant_engine/ui/assistant.js',
-    'modules/mainChatCommands.js',
-    'modules/settingsManager.js',
-    'modules/global-settings-manager.js',
-    'modules/renderer/contentProcessor.js',
-    'modules/ui-system/interactive-chat-app.js',
-    'modules/ui-system/standalone-chat-app.js',
-];
+const ignoredProductionDirectoryNames = new Set([
+    '.git',
+    'docs',
+    'node_modules',
+    'screenshots',
+    'scripts',
+    'tests',
+    'vendor',
+]);
+const ignoredProductionDirectoryPaths = new Set(['audio_engine/AppData']);
+const productionFiles = [];
+const collectProductionFiles = (directory, relative = '') => {
+    if (!fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const rel = path.join(relative, entry.name).replaceAll(path.sep, '/');
+        if (entry.isDirectory()) {
+            if (!ignoredProductionDirectoryNames.has(entry.name) && !ignoredProductionDirectoryPaths.has(rel)) {
+                collectProductionFiles(path.join(directory, entry.name), rel);
+            }
+        } else if (/\.(?:js|mjs|html)$/.test(entry.name)) {
+            productionFiles.push(rel);
+        }
+    }
+};
+collectProductionFiles(root);
+productionFiles.sort();
 const testFiles = fs.readdirSync(path.join(root, 'tests'))
     .filter(file => /chat|stream|main-chat|lifecycle/i.test(file))
     .map(file => `tests/${file}`);
@@ -111,19 +119,7 @@ for (const [name, evidence] of references) {
     );
 }
 
-const productionSourceFiles = [];
-const collectProductionFiles = (directory, relative = '') => {
-    if (!fs.existsSync(directory)) return;
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-        if (entry.name === 'node_modules' || entry.name === 'vendor' || entry.name === 'docs' || entry.name === 'tests') continue;
-        const absolute = path.join(directory, entry.name);
-        const rel = path.join(relative, entry.name).replaceAll(path.sep, '/');
-        if (entry.isDirectory()) collectProductionFiles(absolute, rel);
-        else if (/\.(?:js|mjs|html)$/.test(entry.name)) productionSourceFiles.push(rel);
-    }
-};
-collectProductionFiles(root);
-for (const file of productionSourceFiles) {
+for (const file of productionFiles) {
     const text = source(file);
     for (const name of Object.keys(providerFiles)) {
         assert.doesNotMatch(
@@ -172,6 +168,8 @@ for (const file of pureKernelFiles) {
 
 const report = {
     phase: 'D6',
+    ignoredProductionDirectoryNames: [...ignoredProductionDirectoryNames],
+    ignoredProductionDirectoryPaths: [...ignoredProductionDirectoryPaths],
     productionFiles,
     testFiles,
     references: Object.fromEntries(references),
@@ -193,6 +191,7 @@ const report = {
         'pure kernel files have no document/window/electronAPI dependency',
         'production and test consumers are reported separately',
         'provider definitions, exports and compatibility assignments cannot self-certify as consumers',
+        'production consumers and compatibility globals are discovered across all repository production sources',
         'each consumer evidence item records a source line, member access and production surface',
         'legacy facade removal requires a later zero-production-consumer proof',
         'main-window start/data/end/error events have one coordinator authority',

@@ -1,22 +1,458 @@
 {
   "phase": "D6",
+  "ignoredProductionDirectoryNames": [
+    ".git",
+    "docs",
+    "node_modules",
+    "screenshots",
+    "scripts",
+    "tests",
+    "vendor"
+  ],
+  "ignoredProductionDirectoryPaths": [
+    "audio_engine/AppData"
+  ],
   "productionFiles": [
-    "renderer.js",
-    "modules/event-listeners.js",
+    "Agenttaskmodules/task.html",
+    "Agenttaskmodules/task.js",
+    "AppData/LoomApps/example-mobile/inject.js",
+    "Canvasmodules/canvas.html",
+    "Canvasmodules/canvas.js",
+    "Desktopmodules/api/desktopMetrics.js",
+    "Desktopmodules/api/ipcBridge.js",
+    "Desktopmodules/api/vcpProxy.js",
+    "Desktopmodules/builtinWidgets/appTrayWidget.js",
+    "Desktopmodules/builtinWidgets/musicWidget.js",
+    "Desktopmodules/builtinWidgets/newsWidget.js",
+    "Desktopmodules/builtinWidgets/performanceMonitorWidget.js",
+    "Desktopmodules/builtinWidgets/systemMonitorWidget.js",
+    "Desktopmodules/builtinWidgets/translateWidget.js",
+    "Desktopmodules/builtinWidgets/vchatApps.js",
+    "Desktopmodules/builtinWidgets/weatherWidget.js",
+    "Desktopmodules/core/dragSystem.js",
+    "Desktopmodules/core/performanceManager.js",
+    "Desktopmodules/core/state.js",
+    "Desktopmodules/core/statusIndicator.js",
+    "Desktopmodules/core/styleAutomation.js",
+    "Desktopmodules/core/theme.js",
+    "Desktopmodules/core/visibilityFreezer.js",
+    "Desktopmodules/core/wallpaperManager.js",
+    "Desktopmodules/core/widgetManager.js",
+    "Desktopmodules/core/zIndexManager.js",
+    "Desktopmodules/debug/debugTools.js",
+    "Desktopmodules/desktop.html",
+    "Desktopmodules/desktop.js",
+    "Desktopmodules/favorites/favoritesManager.js",
+    "Desktopmodules/favorites/thumbnail.js",
+    "Desktopmodules/ui/contextMenu.js",
+    "Desktopmodules/ui/dock.js",
+    "Desktopmodules/ui/globalSettings.js",
+    "Desktopmodules/ui/iconPicker.js",
+    "Desktopmodules/ui/saveModal.js",
+    "Desktopmodules/ui/sidebar.js",
+    "Dicemodules/dice.html",
+    "Dicemodules/dice.js",
+    "Flowlockmodules/flowlock-integration.js",
+    "Flowlockmodules/flowlock-protocol.js",
+    "Flowlockmodules/flowlock.js",
+    "Forummodules/forum.html",
+    "Forummodules/forum.js",
+    "Groupmodules/groupSettingsMarkup.js",
+    "Groupmodules/groupchat.js",
+    "Groupmodules/grouprenderer.js",
+    "Groupmodules/modes/baseChatMode.js",
+    "Groupmodules/modes/inviteOnlyMode.js",
+    "Groupmodules/modes/natureRandomMode.js",
+    "Groupmodules/modes/sequentialMode.js",
+    "Groupmodules/topicTitleManager.js",
+    "Logmodules/log.html",
+    "Logmodules/log.js",
+    "Loommodules/device-menu.html",
+    "Loommodules/manager.html",
+    "Loommodules/shell.html",
+    "Memomodules/memo-graph.js",
+    "Memomodules/memo-workbench.js",
+    "Memomodules/memo.html",
+    "Memomodules/memo.js",
+    "Musicmodules/music-effects.js",
+    "Musicmodules/music-lyrics.js",
+    "Musicmodules/music-output.js",
+    "Musicmodules/music-player.js",
+    "Musicmodules/music-sidebar.js",
+    "Musicmodules/music-ui.js",
+    "Musicmodules/music-utils.js",
+    "Musicmodules/music-visualizer.js",
+    "Musicmodules/music-webdav.js",
+    "Musicmodules/music.html",
+    "Musicmodules/music.js",
+    "Musicmodules/socket.io.min.js",
+    "Notemodules/notemini.html",
+    "Notemodules/notemini.js",
+    "Notemodules/notes.html",
+    "Notemodules/notes.js",
+    "PluginManagerModules/plugin-manager.html",
+    "PluginManagerModules/plugin-manager.js",
+    "Promptmodules/modular-prompt-module.js",
+    "Promptmodules/original-prompt-module.js",
+    "Promptmodules/preset-prompt-module.js",
+    "Promptmodules/prompt-manager.js",
+    "RAGmodules/RAG_Observer.html",
+    "RAGmodules/RAG_Overlay.html",
+    "RAGmodules/rag-observer-config.js",
+    "ScriptoriumModules/font-font-test.html",
+    "ScriptoriumModules/scriptorium-agent-port.js",
+    "ScriptoriumModules/scriptorium-async.js",
+    "ScriptoriumModules/scriptorium-deck-adapter.js",
+    "ScriptoriumModules/scriptorium-deck-editor.js",
+    "ScriptoriumModules/scriptorium-deck-export.js",
+    "ScriptoriumModules/scriptorium-deck-renderer.js",
+    "ScriptoriumModules/scriptorium-document-store.js",
+    "ScriptoriumModules/scriptorium-dom-selection.js",
+    "ScriptoriumModules/scriptorium-edit-history.js",
+    "ScriptoriumModules/scriptorium-export-resources.js",
+    "ScriptoriumModules/scriptorium-export.js",
+    "ScriptoriumModules/scriptorium-find.js",
+    "ScriptoriumModules/scriptorium-flow-adapter.js",
+    "ScriptoriumModules/scriptorium-flow-editor.js",
+    "ScriptoriumModules/scriptorium-flow-export.js",
+    "ScriptoriumModules/scriptorium-flow-renderer.js",
+    "ScriptoriumModules/scriptorium-formatting.js",
+    "ScriptoriumModules/scriptorium-input-sync.js",
+    "ScriptoriumModules/scriptorium-library.js",
+    "ScriptoriumModules/scriptorium-lineage-store.js",
+    "ScriptoriumModules/scriptorium-lineage-ui.js",
+    "ScriptoriumModules/scriptorium-media.js",
+    "ScriptoriumModules/scriptorium-navigation.js",
+    "ScriptoriumModules/scriptorium-network-fonts.js",
+    "ScriptoriumModules/scriptorium-objects.js",
+    "ScriptoriumModules/scriptorium-pagination.js",
+    "ScriptoriumModules/scriptorium-pr-diff.js",
+    "ScriptoriumModules/scriptorium-pretext-bridge.js",
+    "ScriptoriumModules/scriptorium-programmable-content.js",
+    "ScriptoriumModules/scriptorium-render-coordinator.js",
+    "ScriptoriumModules/scriptorium-render-primitives.js",
+    "ScriptoriumModules/scriptorium-rendered-text.js",
+    "ScriptoriumModules/scriptorium-runtime.js",
+    "ScriptoriumModules/scriptorium-runtime.origin.js",
+    "ScriptoriumModules/scriptorium-session.js",
+    "ScriptoriumModules/scriptorium-settings.js",
+    "ScriptoriumModules/scriptorium-shell.js",
+    "ScriptoriumModules/scriptorium-source-editor.js",
+    "ScriptoriumModules/scriptorium-style-ui.js",
+    "ScriptoriumModules/scriptorium-svg-assets.js",
+    "ScriptoriumModules/scriptorium-visibility.js",
+    "ScriptoriumModules/scriptorium.html",
+    "ScriptoriumModules/scriptorium.js",
+    "ScriptoriumModules/vdoc-container.js",
+    "ScriptoriumModules/vdoc-core.js",
+    "ScriptoriumModules/vdoc-hybrid-compiler.js",
+    "ScriptoriumModules/vdoc-style-library.js",
+    "ScriptoriumModules/vdoc-svg-asset-library.js",
+    "Tavernmodules/tavern-manager.js",
+    "Themesmodules/themes.html",
+    "Themesmodules/themes.js",
+    "Translatormodules/translator.html",
+    "Translatormodules/translator.js",
+    "VCPDistributedServer/Plugin.js",
+    "VCPDistributedServer/Plugin/ChatRoomViewer/ChatRoomViewer.js",
+    "VCPDistributedServer/Plugin/DeepMemo/DeepMemo.js",
+    "VCPDistributedServer/Plugin/DeepMemo/DeepMemoService.js",
+    "VCPDistributedServer/Plugin/DesktopRemote/desktop-remote.js",
+    "VCPDistributedServer/Plugin/DistImageServer/image-server.js",
+    "VCPDistributedServer/Plugin/FileOperator/CodeValidator.js",
+    "VCPDistributedServer/Plugin/FileOperator/FileOperator.js",
+    "VCPDistributedServer/Plugin/LoomController/LoomControllerService.js",
+    "VCPDistributedServer/Plugin/MusicController/music-controller.js",
+    "VCPDistributedServer/Plugin/OldPowerShellExecutor/PowerShellExecutor.js",
+    "VCPDistributedServer/Plugin/PTYShellExecutor/PTYShellExecutor.impl.js",
+    "VCPDistributedServer/Plugin/PTYShellExecutor/PTYShellExecutor.js",
+    "VCPDistributedServer/Plugin/PTYShellExecutor/PluginErrorReporter.js",
+    "VCPDistributedServer/Plugin/PTYShellExecutor/gui/ShellViewer.html",
+    "VCPDistributedServer/Plugin/PTYShellExecutor/gui/ShellViewer.js",
+    "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js",
+    "VCPDistributedServer/Plugin/PluginSourceViewer/PluginSourceViewer.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.html",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js",
+    "VCPDistributedServer/Plugin/PowerShellExecutor/test_security_check.js",
+    "VCPDistributedServer/Plugin/PromptSponsor/prompt-sponsor.js",
+    "VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService.js",
+    "VCPDistributedServer/Plugin/TopicMemo/TopicMemo.js",
+    "VCPDistributedServer/Plugin/TopicSponsor/topicsponsor.js",
+    "VCPDistributedServer/Plugin/VCPEverything/local-search-controller.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/config/defaults.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/db.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/hash.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/idempotency.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/logger.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/agent.dto.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/group.dto.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/index.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/topic.dto.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/error-contract.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/index.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/protocol.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/central.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/diff.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/entity.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/message.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/projection.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/transport/ndjson.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/transport/routes.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/transport/websocket.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/utils/lock.js",
+    "VCPDistributedServer/Plugin/VCPMobileSync/utils/mime.js",
+    "VCPDistributedServer/Plugin/VCPSuperDice/example.js",
+    "VCPDistributedServer/Plugin/VCPSuperDice/superdice.js",
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/inventory.js",
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/locate.js",
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/media-server.js",
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/we-api-shim.js",
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/we-wallpaper-service.js",
+    "VCPDistributedServer/Plugin/VCPWEWallpaperUI/plugin.js",
+    "VCPDistributedServer/Plugin/VChatAutoTTS/plugin.js",
+    "VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.js",
+    "VCPDistributedServer/Plugin/WindowSensor/sensor-wrapper.js",
+    "VCPDistributedServer/VCPDistributedServer.js",
+    "VCPDistributedServer/frontend-plugin-loader.js",
+    "VCPHumanToolBox/ComfyUImodules/ComfyUILoader.js",
+    "VCPHumanToolBox/ComfyUImodules/ComfyUI_StateManager.js",
+    "VCPHumanToolBox/ComfyUImodules/ComfyUI_UIManager.js",
+    "VCPHumanToolBox/ComfyUImodules/PathResolver.js",
+    "VCPHumanToolBox/ComfyUImodules/comfyUIConfig.js",
+    "VCPHumanToolBox/ComfyUImodules/comfyui-ipc.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditorLoader.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditorLoader_Simplified.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_CanvasManager_JSPlumb.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_Config.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ConnectionManager.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ConnectionManager_Simplified.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ExecutionEngine.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor_Integration.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager_URLRenderer_Patch.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_PluginDialog.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_PluginManager.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_StateManager.js",
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_UIManager.js",
+    "VCPHumanToolBox/WorkflowEditormodules/ai/AiClientFactory.js",
+    "VCPHumanToolBox/WorkflowEditormodules/ai/HttpAiClient.js",
+    "VCPHumanToolBox/WorkflowEditormodules/jsplumb.min.js",
+    "VCPHumanToolBox/index.html",
+    "VCPHumanToolBox/main.js",
+    "VCPHumanToolBox/preload.js",
+    "VCPHumanToolBox/renderer.js",
+    "VCPHumanToolBox/renderer_modules/config.js",
+    "VCPHumanToolBox/renderer_modules/tool-manager.js",
+    "VCPHumanToolBox/renderer_modules/ui/canvas-editor.js",
+    "VCPHumanToolBox/renderer_modules/ui/canvas-handler.js",
+    "VCPHumanToolBox/renderer_modules/ui/dynamic-image-handler.js",
+    "VCP文坊超级引擎-四重动画实证.html",
+    "VchatManager/consistency-checker.js",
+    "VchatManager/index.html",
+    "VchatManager/main.js",
+    "VchatManager/preload.js",
+    "VchatManager/script.js",
+    "Voicechatmodules/recognizer.html",
+    "Voicechatmodules/voicechat.html",
+    "Voicechatmodules/voicechat.js",
+    "WebIndexTTS2/public/app.js",
+    "WebIndexTTS2/public/index.html",
+    "WebIndexTTS2/server.js",
+    "main.html",
+    "main.js",
+    "migration/migrateAvatars.js",
+    "modules/SovitsTTS.js",
+    "modules/assistant/assistant-rust-adapter.js",
+    "modules/chat/chatContext.js",
+    "modules/chat/chatDomRenderer.js",
+    "modules/chat/chatHistoryMutationAuthority.js",
+    "modules/chat/chatHistoryPersistence.js",
+    "modules/chat/chatOperation.js",
+    "modules/chat/chatPluginManifest.js",
+    "modules/chat/chatPresentationSkin.js",
+    "modules/chat/chatPresentationState.js",
+    "modules/chat/chatRepository.js",
+    "modules/chat/chatSurface.js",
+    "modules/chat/chatSurfaceSlots.js",
+    "modules/chat/chatThemePlugin.js",
+    "modules/chat/contentModes.js",
+    "modules/chat/contentRuntime.js",
+    "modules/chat/contentTransforms.js",
+    "modules/chat/memoryChatRepository.js",
+    "modules/chat/streamConsumerRegistry.js",
+    "modules/chat/streamCoordinator.js",
+    "modules/chat/streamSession.js",
+    "modules/chat/vcpStreamBridge.js",
     "modules/chatManager.js",
+    "modules/contextSanitizer.js",
+    "modules/emoticonManager.js",
+    "modules/event-listeners.js",
+    "modules/fileManager.js",
+    "modules/filterManager.js",
+    "modules/global-settings-manager.js",
+    "modules/image-viewer.html",
+    "modules/image-viewer.js",
+    "modules/inputEnhancer.js",
+    "modules/interruptHandler.js",
+    "modules/ipc/agentHandlers.js",
+    "modules/ipc/assistantHandlers.js",
+    "modules/ipc/canvasHandlers.js",
+    "modules/ipc/chatHandlers.js",
+    "modules/ipc/deepWikiHandlers.js",
+    "modules/ipc/desktopHandlers.js",
+    "modules/ipc/desktopMetrics.js",
+    "modules/ipc/desktopRemoteHandlers.js",
+    "modules/ipc/diceHandlers.js",
+    "modules/ipc/docxHandlers.js",
+    "modules/ipc/emoticonHandlers.js",
+    "modules/ipc/fileDialogHandlers.js",
+    "modules/ipc/forumHandlers.js",
+    "modules/ipc/groupChatHandlers.js",
+    "modules/ipc/ipcContracts.js",
+    "modules/ipc/libreHardwareMonitorBridge.js",
+    "modules/ipc/memoHandlers.js",
+    "modules/ipc/musicHandlers.js",
+    "modules/ipc/notesHandlers.js",
+    "modules/ipc/promptHandlers.js",
+    "modules/ipc/ragHandlers.js",
+    "modules/ipc/regexHandlers.js",
+    "modules/ipc/settingsHandlers.js",
+    "modules/ipc/sovitsHandlers.js",
+    "modules/ipc/tavernHandlers.js",
+    "modules/ipc/themeHandlers.js",
+    "modules/ipc/translatorHandlers.js",
+    "modules/ipc/voiceHandlers.js",
+    "modules/ipc/windowHandlers.js",
+    "modules/itemListManager.js",
+    "modules/loom/VCPLoomManager.js",
+    "modules/loom/webcore/adapter-contract.js",
+    "modules/loom/webcore/chrome-adapter.js",
+    "modules/loom/webcore/electron-adapter.js",
+    "modules/loom/webcore/index.js",
+    "modules/loom/webcore/web-agent-page-core.js",
+    "modules/loom/webcore/web-agent-page-runtime-core.js",
+    "modules/loom/webcore/web-agent-protocol.js",
+    "modules/loom/webcore/web-agent-runtime-core.js",
+    "modules/lyricFetcher.js",
+    "modules/mainChatCommands.js",
     "modules/messageRenderer.js",
-    "modules/renderer/streamManager.js",
+    "modules/modelUsageTracker.js",
+    "modules/musicScannerWorker.js",
+    "modules/notificationRenderer.js",
+    "modules/renderer/animation.js",
+    "modules/renderer/colorUtils.js",
+    "modules/renderer/contentPipeline.js",
+    "modules/renderer/contentProcessor.js",
+    "modules/renderer/domBuilder.js",
+    "modules/renderer/emoticonUrlFixer.js",
+    "modules/renderer/enhancedColorUtils.js",
+    "modules/renderer/imageHandler.js",
+    "modules/renderer/mainChatStreamConsumer.js",
+    "modules/renderer/mainChatSurfaceAdapter.js",
     "modules/renderer/messageContextMenu.js",
     "modules/renderer/middleClickHandler.js",
-    "Flowlockmodules/flowlock-integration.js",
-    "Voicechatmodules/voicechat.js",
-    "rust_assistant_engine/ui/assistant.js",
-    "modules/mainChatCommands.js",
+    "modules/renderer/pretext-bridge.js",
+    "modules/renderer/pretext.bundle.js",
+    "modules/renderer/pretext.esm.js",
+    "modules/renderer/renderDependencies.js",
+    "modules/renderer/streamManager.js",
+    "modules/renderer/toolRequestScanner.js",
+    "modules/renderer/visibilityOptimizer.js",
+    "modules/renderer/windowStreamRuntime.js",
+    "modules/searchManager.js",
+    "modules/services/chatDataService/client.js",
+    "modules/services/chatDataService/index.js",
+    "modules/services/chatDataService/lifecycle.js",
+    "modules/services/deepWikiService.js",
+    "modules/services/embeddedAppSessionManager.js",
+    "modules/services/historyWatcherLeaseManager.js",
+    "modules/services/networkNotesCacheStore.js",
+    "modules/services/preloadPaths.js",
+    "modules/services/scriptoriumAgentControlService.js",
+    "modules/services/scriptoriumFontCacheService.js",
+    "modules/services/scriptoriumImportService.js",
+    "modules/services/scriptoriumPptxImportService.js",
+    "modules/services/senderTaskRegistry.js",
+    "modules/services/windowAppIds.js",
+    "modules/services/windowService.js",
+    "modules/services/windowStateService.js",
     "modules/settingsManager.js",
-    "modules/global-settings-manager.js",
-    "modules/renderer/contentProcessor.js",
+    "modules/shared/embeddedAppAllowlist.js",
+    "modules/speechRecognizer.js",
+    "modules/tavernRulesEngine.js",
+    "modules/text-viewer.html",
+    "modules/text-viewer.js",
+    "modules/topTabManager.js",
+    "modules/topicListManager.js",
+    "modules/topicSummarizer.js",
+    "modules/trayManager.js",
+    "modules/ui-helpers.js",
+    "modules/ui-system/appearance-engine.js",
+    "modules/ui-system/appearance-studio.js",
+    "modules/ui-system/ask-nova-modal.js",
+    "modules/ui-system/avatar-picker.js",
+    "modules/ui-system/component-manifest.js",
+    "modules/ui-system/component-showcase.js",
+    "modules/ui-system/contribution-registry.js",
     "modules/ui-system/interactive-chat-app.js",
-    "modules/ui-system/standalone-chat-app.js"
+    "modules/ui-system/lifecycle-inspector.js",
+    "modules/ui-system/lifecycle-scope.js",
+    "modules/ui-system/lucide-adapter.js",
+    "modules/ui-system/next-shell/account-menu-controller.js",
+    "modules/ui-system/next-shell/app-tab-host.js",
+    "modules/ui-system/next-shell/assistant-search-controller.js",
+    "modules/ui-system/next-shell/creation-controller.js",
+    "modules/ui-system/next-shell/embedded-app-controller.js",
+    "modules/ui-system/next-shell/launchpad-controller.js",
+    "modules/ui-system/next-shell/next-shell-controller.js",
+    "modules/ui-system/next-shell/notification-menu-controller.js",
+    "modules/ui-system/next-shell/overlay-coordinator.js",
+    "modules/ui-system/next-ui-apps.js",
+    "modules/ui-system/performance-recorder.js",
+    "modules/ui-system/settings-bridge.js",
+    "modules/ui-system/settlement.js",
+    "modules/ui-system/sidebar-resizer.js",
+    "modules/ui-system/standalone-chat-app.js",
+    "modules/ui-system/startup-theme-gate.js",
+    "modules/ui-system/state-channel.js",
+    "modules/ui-system/surface-controller.js",
+    "modules/ui-system/task-handle.js",
+    "modules/ui-system/ui-surface-policy.js",
+    "modules/ui-system/vcp-main-ui-runtime.js",
+    "modules/ui-system/vcp-ui.js",
+    "modules/ui-system/webawesome-adapter.js",
+    "modules/ui-system/webawesome-comparison.js",
+    "modules/ui-system/webawesome-runtime-manifest.js",
+    "modules/uiManager.js",
+    "modules/utils/agentConfigManager.js",
+    "modules/utils/appSettingsManager.js",
+    "modules/vcpClient.js",
+    "modules/weatherService.js",
+    "modules/webdavManager.js",
+    "preload.js",
+    "preloads/chat.js",
+    "preloads/desktop.js",
+    "preloads/docx.js",
+    "preloads/loom-page.js",
+    "preloads/loom.js",
+    "preloads/shared/apiFactory.js",
+    "preloads/shared/catalog.js",
+    "preloads/shared/roles.js",
+    "preloads/utility.js",
+    "renderer.js",
+    "rust_assistant_engine/ui/assistant-bar.html",
+    "rust_assistant_engine/ui/assistant-bar.js",
+    "rust_assistant_engine/ui/assistant.html",
+    "rust_assistant_engine/ui/assistant.js",
+    "rust_chat_data_service/build-runtime.js",
+    "splash.html",
+    "test.html"
   ],
   "testFiles": [
     "tests/chat-context.test.mjs",
@@ -49,6 +485,102 @@
   "references": {
     "chatManager": {
       "production": [
+        {
+          "file": "modules/event-listeners.js",
+          "line": 351,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "attemptTopicSummarizationIfNeeded",
+          "snippet": "await chatManager.attemptTopicSummarizationIfNeeded();"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 426,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "chatManager.handleSendMessage();"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 441,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "chatManager.handleSendMessage();"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1015,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "await chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1095,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "if (chatManager && chatManager.selectTopic) {"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1096,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "await chatManager.selectTopic(result.topicId);"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1649,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "if (chatManager && chatManager.createNewTopicForItem) {"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1650,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);"
+        },
+        {
+          "file": "modules/searchManager.js",
+          "line": 576,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "await this.chatManager.selectItem(itemId, itemType, itemName, itemAvatar, itemConfig);"
+        },
+        {
+          "file": "modules/searchManager.js",
+          "line": 578,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "await this.chatManager.selectTopic(topicId);"
+        },
+        {
+          "file": "modules/ui-system/interactive-chat-app.js",
+          "line": 5,
+          "surface": "internal-app",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { chatManager } from '../chatManager.js';"
+        },
+        {
+          "file": "modules/ui-system/interactive-chat-app.js",
+          "line": 21,
+          "surface": "internal-app",
+          "access": "explicit-provider",
+          "member": "sendMessage",
+          "snippet": "send: request => chatManager.sendMessage(request),"
+        },
         {
           "file": "renderer.js",
           "line": 6,
@@ -179,7 +711,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1035,
+          "line": 1036,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "displayNoItemSelected",
@@ -187,7 +719,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1070,
+          "line": 1071,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -195,7 +727,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1111,
+          "line": 1112,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -203,7 +735,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 1112,
+          "line": 1113,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "syncHistoryFromFile",
@@ -211,7 +743,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2574,
+          "line": 2575,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -219,7 +751,7 @@
         },
         {
           "file": "renderer.js",
-          "line": 2575,
+          "line": 2576,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
@@ -227,91 +759,11 @@
         },
         {
           "file": "renderer.js",
-          "line": 2579,
+          "line": 2580,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleForwardMessage",
           "snippet": "console.error('chatManager.handleForwardMessage is not defined');"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 348,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "attemptTopicSummarizationIfNeeded",
-          "snippet": "await chatManager.attemptTopicSummarizationIfNeeded();"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 420,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "handleSendMessage",
-          "snippet": "chatManager.handleSendMessage();"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 435,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "handleSendMessage",
-          "snippet": "chatManager.handleSendMessage();"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1009,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "createNewTopicForItem",
-          "snippet": "await chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1089,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "selectTopic",
-          "snippet": "if (chatManager && chatManager.selectTopic) {"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1090,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "selectTopic",
-          "snippet": "await chatManager.selectTopic(result.topicId);"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1643,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "createNewTopicForItem",
-          "snippet": "if (chatManager && chatManager.createNewTopicForItem) {"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1644,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "createNewTopicForItem",
-          "snippet": "chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);"
-        },
-        {
-          "file": "modules/ui-system/interactive-chat-app.js",
-          "line": 5,
-          "surface": "internal-app",
-          "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { chatManager } from '../chatManager.js';"
-        },
-        {
-          "file": "modules/ui-system/interactive-chat-app.js",
-          "line": 21,
-          "surface": "internal-app",
-          "access": "explicit-provider",
-          "member": "sendMessage",
-          "snippet": "send: request => chatManager.sendMessage(request),"
         }
       ],
       "tests": [
@@ -592,76 +1044,268 @@
     "messageRenderer": {
       "production": [
         {
-          "file": "renderer.js",
-          "line": 4,
-          "surface": "main-window",
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 342,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { messageRenderer } from './modules/messageRenderer.js';"
+          "member": "setCurrentSelectedItem",
+          "snippet": "messageRenderer.setCurrentSelectedItem(currentSelectedItemRef.get());"
         },
         {
-          "file": "renderer.js",
-          "line": 531,
-          "surface": "main-window",
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 343,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
-          "member": "disposeRendererResources",
-          "snippet": "messageRenderer.disposeRendererResources();"
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(null);"
         },
         {
-          "file": "renderer.js",
-          "line": 539,
-          "surface": "main-window",
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 344,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
-          "member": "setContextMenuDependencies",
-          "snippet": "messageRenderer.setContextMenuDependencies({"
+          "member": "setCurrentItemAvatar",
+          "snippet": "messageRenderer.setCurrentItemAvatar(groupAvatarUrl); // Use group avatar - CORRECTED FUNCTION NAME"
         },
         {
-          "file": "renderer.js",
-          "line": 641,
-          "surface": "main-window",
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 345,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
-          "member": "renderFullMessage",
-          "snippet": "messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);"
+          "member": "setCurrentItemAvatarColor",
+          "snippet": "messageRenderer.setCurrentItemAvatarColor(groupConfig?.avatarCalculatedColor || null); // CORRECTED FUNCTION NAME"
         },
         {
-          "file": "renderer.js",
-          "line": 649,
-          "surface": "main-window",
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 369,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
-          "member": "renderFullMessage",
-          "snippet": "messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);"
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(topicToLoadId);"
         },
         {
-          "file": "renderer.js",
-          "line": 660,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "removeMessageById",
-          "snippet": "messageRenderer.removeMessageById(messageId, false); // false: don't save history again"
-        },
-        {
-          "file": "renderer.js",
-          "line": 1564,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "setUserAvatar",
-          "snippet": "messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);"
-        },
-        {
-          "file": "renderer.js",
-          "line": 1565,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "setUserAvatarColor",
-          "snippet": "messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 323,
-          "surface": "main-window",
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 373,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
-          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });"
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 379,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 382,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 388,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `选择群组时出错: ${e.message}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 833,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatar",
+          "snippet": "messageRenderer.setCurrentItemAvatar(result.agentGroup.avatarUrl);"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 834,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatarColor",
+          "snippet": "messageRenderer.setCurrentItemAvatarColor(result.agentGroup.avatarCalculatedColor); // Update avatar color"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 909,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "clearChat",
+          "snippet": "if (messageRenderer) messageRenderer.clearChat();"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 916,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatar",
+          "snippet": "messageRenderer.setCurrentItemAvatar(null);"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 917,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatarColor",
+          "snippet": "messageRenderer.setCurrentItemAvatarColor(null);"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1030,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(topicId);"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1075,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(null);"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1076,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "clearChat",
+          "snippet": "messageRenderer.clearChat();"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1251,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage(userMessageForUI); // Render user's own message in UI"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1304,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "clearChat",
+          "snippet": "messageRenderer.clearChat();"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1310,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: errorMsg, timestamp: Date.now() });"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1314,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1318,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1323,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `加载群聊记录失败: ${history.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1326,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "history.forEach(msg => messageRenderer.renderMessage(msg, true)); // Render silently"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1329,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "Groupmodules/grouprenderer.js",
+          "line": 1330,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `加载群聊记录时出错: ${error.message}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.html",
+          "line": 9,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "css",
+          "snippet": "<link rel=\"stylesheet\" href=\"../styles/messageRenderer.css\">"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 7,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from '../modules/messageRenderer.js';"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 314,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "initializeMessageRenderer",
+          "snippet": "messageRenderer.initializeMessageRenderer({"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 376,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(userMessage);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 395,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(assistantMessagePlaceholder);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 457,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "extractSpeakableTextFromContentElement",
+          "snippet": "textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 495,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "extractSpeakableTextFromContentElement",
+          "snippet": "? messageRenderer.extractSpeakableTextFromContentElement(contentElement)"
         },
         {
           "file": "modules/chatManager.js",
@@ -1008,84 +1652,20 @@
           "snippet": "messageRenderer.renderMessage(newMsg, true); // Update UI (true = don't modify history ref inside)"
         },
         {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 6,
-          "surface": "voice-chat",
-          "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { messageRenderer } from '../modules/messageRenderer.js';"
-        },
-        {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 313,
-          "surface": "voice-chat",
-          "access": "explicit-provider",
-          "member": "initializeMessageRenderer",
-          "snippet": "messageRenderer.initializeMessageRenderer({"
-        },
-        {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 375,
-          "surface": "voice-chat",
+          "file": "modules/event-listeners.js",
+          "line": 323,
+          "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderMessage",
-          "snippet": "await messageRenderer.renderMessage(userMessage);"
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });"
         },
         {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 394,
-          "surface": "voice-chat",
+          "file": "modules/renderer/mainChatSurfaceAdapter.js",
+          "line": 64,
+          "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
-          "snippet": "await messageRenderer.renderMessage(assistantMessagePlaceholder);"
-        },
-        {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 456,
-          "surface": "voice-chat",
-          "access": "explicit-provider",
-          "member": "extractSpeakableTextFromContentElement",
-          "snippet": "textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);"
-        },
-        {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 494,
-          "surface": "voice-chat",
-          "access": "explicit-provider",
-          "member": "extractSpeakableTextFromContentElement",
-          "snippet": "? messageRenderer.extractSpeakableTextFromContentElement(contentElement)"
-        },
-        {
-          "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 6,
-          "surface": "rust-assistant",
-          "access": "explicit-provider",
-          "member": "js",
-          "snippet": "import { messageRenderer } from '../../modules/messageRenderer.js';"
-        },
-        {
-          "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 237,
-          "surface": "rust-assistant",
-          "access": "explicit-provider",
-          "member": "initializeMessageRenderer",
-          "snippet": "messageRenderer.initializeMessageRenderer({"
-        },
-        {
-          "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 361,
-          "surface": "rust-assistant",
-          "access": "explicit-provider",
-          "member": "renderMessage",
-          "snippet": "await messageRenderer.renderMessage(userMessage, false);"
-        },
-        {
-          "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 384,
-          "surface": "rust-assistant",
-          "access": "explicit-provider",
-          "member": "renderMessage",
-          "snippet": "await messageRenderer.renderMessage(assistantMessagePlaceholder, false);"
+          "snippet": "services.messageRenderer.renderMessage({ role: 'system', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });"
         },
         {
           "file": "modules/settingsManager.js",
@@ -1112,6 +1692,14 @@
           "snippet": "messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);"
         },
         {
+          "file": "modules/text-viewer.html",
+          "line": 9,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "css",
+          "snippet": "<link rel=\"stylesheet\" href=\"../styles/messageRenderer.css\">"
+        },
+        {
           "file": "modules/ui-system/interactive-chat-app.js",
           "line": 4,
           "surface": "internal-app",
@@ -1126,6 +1714,110 @@
           "access": "explicit-provider",
           "member": "js",
           "snippet": "import { messageRenderer } from '../messageRenderer.js';"
+        },
+        {
+          "file": "renderer.js",
+          "line": 4,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from './modules/messageRenderer.js';"
+        },
+        {
+          "file": "renderer.js",
+          "line": 531,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "disposeRendererResources",
+          "snippet": "messageRenderer.disposeRendererResources();"
+        },
+        {
+          "file": "renderer.js",
+          "line": 539,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "setContextMenuDependencies",
+          "snippet": "messageRenderer.setContextMenuDependencies({"
+        },
+        {
+          "file": "renderer.js",
+          "line": 641,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "renderFullMessage",
+          "snippet": "messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 649,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "renderFullMessage",
+          "snippet": "messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 660,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "messageRenderer.removeMessageById(messageId, false); // false: don't save history again"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1565,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "setUserAvatar",
+          "snippet": "messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1566,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "setUserAvatarColor",
+          "snippet": "messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.html",
+          "line": 17,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "css",
+          "snippet": "<link rel=\"stylesheet\" href=\"../../styles/messageRenderer.css\">"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 7,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from '../../modules/messageRenderer.js';"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 238,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "initializeMessageRenderer",
+          "snippet": "messageRenderer.initializeMessageRenderer({"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 362,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(userMessage, false);"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 385,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(assistantMessagePlaceholder, false);"
         }
       ],
       "tests": []
@@ -1133,20 +1825,12 @@
     "streamManager": {
       "production": [
         {
-          "file": "renderer.js",
-          "line": 5,
-          "surface": "main-window",
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 8,
+          "surface": "voice-chat",
           "access": "explicit-provider",
           "member": "js",
-          "snippet": "import { streamManager } from './modules/renderer/streamManager.js';"
-        },
-        {
-          "file": "renderer.js",
-          "line": 8,
-          "surface": "main-window",
-          "access": "explicit-provider",
-          "member": "getDiagnostics",
-          "snippet": "window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());"
+          "snippet": "import { streamManager } from '../modules/renderer/streamManager.js';"
         },
         {
           "file": "modules/messageRenderer.js",
@@ -1190,7 +1874,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3583,
+          "line": 3568,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -1198,7 +1882,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3587,
+          "line": 3572,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -1206,7 +1890,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3592,
+          "line": 3577,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "appendStreamChunk",
@@ -1214,7 +1898,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4155,
+          "line": 4140,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1222,7 +1906,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4156,
+          "line": 4141,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -1245,16 +1929,32 @@
           "snippet": "isStreamManagerFinalized = !callbacks.streamManager.isMessageInitialized(messageId);"
         },
         {
-          "file": "Voicechatmodules/voicechat.js",
-          "line": 7,
-          "surface": "voice-chat",
+          "file": "renderer.js",
+          "line": 5,
+          "surface": "main-window",
           "access": "explicit-provider",
           "member": "js",
-          "snippet": "import { streamManager } from '../modules/renderer/streamManager.js';"
+          "snippet": "import { streamManager } from './modules/renderer/streamManager.js';"
+        },
+        {
+          "file": "renderer.js",
+          "line": 8,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "getDiagnostics",
+          "snippet": "window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.html",
+          "line": 53,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "<script type=\"module\" src=\"../../modules/renderer/streamManager.js\"></script>"
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "line": 7,
+          "line": 8,
           "surface": "rust-assistant",
           "access": "explicit-provider",
           "member": "js",
@@ -1314,12 +2014,2236 @@
     "modules/chat/vcpStreamBridge.js"
   ],
   "ownershipSignals": {
-    "renderer.js": {
-      "windowReferences": 157,
-      "documentReferences": 184,
-      "electronReferences": 12,
+    "Agenttaskmodules/task.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Agenttaskmodules/task.js": {
+      "windowReferences": 20,
+      "documentReferences": 48,
+      "electronReferences": 1,
+      "timers": 6,
+      "listeners": 18,
+      "mutableMaps": 1
+    },
+    "AppData/LoomApps/example-mobile/inject.js": {
+      "windowReferences": 0,
+      "documentReferences": 37,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Canvasmodules/canvas.html": {
+      "windowReferences": 6,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Canvasmodules/canvas.js": {
+      "windowReferences": 8,
+      "documentReferences": 51,
+      "electronReferences": 1,
       "timers": 2,
-      "listeners": 28,
+      "listeners": 35,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/api/desktopMetrics.js": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/api/ipcBridge.js": {
+      "windowReferences": 34,
+      "documentReferences": 1,
+      "electronReferences": 1,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/api/vcpProxy.js": {
+      "windowReferences": 7,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/appTrayWidget.js": {
+      "windowReferences": 7,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 7,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/musicWidget.js": {
+      "windowReferences": 5,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/newsWidget.js": {
+      "windowReferences": 9,
+      "documentReferences": 5,
+      "electronReferences": 1,
+      "timers": 3,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/performanceMonitorWidget.js": {
+      "windowReferences": 6,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/systemMonitorWidget.js": {
+      "windowReferences": 19,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/translateWidget.js": {
+      "windowReferences": 4,
+      "documentReferences": 13,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 6,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/vchatApps.js": {
+      "windowReferences": 36,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/builtinWidgets/weatherWidget.js": {
+      "windowReferences": 5,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/dragSystem.js": {
+      "windowReferences": 8,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/performanceManager.js": {
+      "windowReferences": 9,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Desktopmodules/core/state.js": {
+      "windowReferences": 6,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Desktopmodules/core/statusIndicator.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/styleAutomation.js": {
+      "windowReferences": 7,
+      "documentReferences": 6,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Desktopmodules/core/theme.js": {
+      "windowReferences": 6,
+      "documentReferences": 6,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/visibilityFreezer.js": {
+      "windowReferences": 7,
+      "documentReferences": 9,
+      "electronReferences": 1,
+      "timers": 2,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/wallpaperManager.js": {
+      "windowReferences": 12,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 5,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/widgetManager.js": {
+      "windowReferences": 25,
+      "documentReferences": 15,
+      "electronReferences": 1,
+      "timers": 14,
+      "listeners": 7,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/core/zIndexManager.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/debug/debugTools.js": {
+      "windowReferences": 38,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/desktop.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/desktop.js": {
+      "windowReferences": 8,
+      "documentReferences": 8,
+      "electronReferences": 1,
+      "timers": 3,
+      "listeners": 8,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/favorites/favoritesManager.js": {
+      "windowReferences": 6,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/favorites/thumbnail.js": {
+      "windowReferences": 6,
+      "documentReferences": 1,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/ui/contextMenu.js": {
+      "windowReferences": 54,
+      "documentReferences": 10,
+      "electronReferences": 1,
+      "timers": 11,
+      "listeners": 11,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/ui/dock.js": {
+      "windowReferences": 50,
+      "documentReferences": 62,
+      "electronReferences": 1,
+      "timers": 14,
+      "listeners": 51,
+      "mutableMaps": 1
+    },
+    "Desktopmodules/ui/globalSettings.js": {
+      "windowReferences": 28,
+      "documentReferences": 78,
+      "electronReferences": 1,
+      "timers": 3,
+      "listeners": 18,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/ui/iconPicker.js": {
+      "windowReferences": 5,
+      "documentReferences": 9,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 7,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/ui/saveModal.js": {
+      "windowReferences": 6,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "Desktopmodules/ui/sidebar.js": {
+      "windowReferences": 42,
+      "documentReferences": 45,
+      "electronReferences": 1,
+      "timers": 11,
+      "listeners": 31,
+      "mutableMaps": 0
+    },
+    "Dicemodules/dice.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Dicemodules/dice.js": {
+      "windowReferences": 2,
+      "documentReferences": 4,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "Flowlockmodules/flowlock-integration.js": {
+      "windowReferences": 43,
+      "documentReferences": 2,
+      "electronReferences": 5,
+      "timers": 0,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "Flowlockmodules/flowlock-protocol.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Flowlockmodules/flowlock.js": {
+      "windowReferences": 7,
+      "documentReferences": 6,
+      "electronReferences": 9,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "Forummodules/forum.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Forummodules/forum.js": {
+      "windowReferences": 14,
+      "documentReferences": 71,
+      "electronReferences": 1,
+      "timers": 6,
+      "listeners": 39,
+      "mutableMaps": 4
+    },
+    "Groupmodules/groupSettingsMarkup.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Groupmodules/groupchat.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Groupmodules/grouprenderer.js": {
+      "windowReferences": 5,
+      "documentReferences": 48,
+      "electronReferences": 23,
+      "timers": 0,
+      "listeners": 11,
+      "mutableMaps": 1
+    },
+    "Groupmodules/modes/baseChatMode.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Groupmodules/modes/inviteOnlyMode.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Groupmodules/modes/natureRandomMode.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Groupmodules/modes/sequentialMode.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Groupmodules/topicTitleManager.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Logmodules/log.html": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Logmodules/log.js": {
+      "windowReferences": 4,
+      "documentReferences": 32,
+      "electronReferences": 1,
+      "timers": 5,
+      "listeners": 18,
+      "mutableMaps": 0
+    },
+    "Loommodules/device-menu.html": {
+      "windowReferences": 1,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "Loommodules/manager.html": {
+      "windowReferences": 15,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 14,
+      "mutableMaps": 0
+    },
+    "Loommodules/shell.html": {
+      "windowReferences": 1,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 13,
+      "mutableMaps": 0
+    },
+    "Memomodules/memo-graph.js": {
+      "windowReferences": 12,
+      "documentReferences": 31,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Memomodules/memo-workbench.js": {
+      "windowReferences": 3,
+      "documentReferences": 19,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "Memomodules/memo.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Memomodules/memo.js": {
+      "windowReferences": 29,
+      "documentReferences": 115,
+      "electronReferences": 1,
+      "timers": 5,
+      "listeners": 10,
+      "mutableMaps": 1
+    },
+    "Musicmodules/music-effects.js": {
+      "windowReferences": 0,
+      "documentReferences": 6,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-lyrics.js": {
+      "windowReferences": 0,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Musicmodules/music-output.js": {
+      "windowReferences": 0,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-player.js": {
+      "windowReferences": 0,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-sidebar.js": {
+      "windowReferences": 4,
+      "documentReferences": 11,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 6,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-ui.js": {
+      "windowReferences": 2,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-utils.js": {
+      "windowReferences": 2,
+      "documentReferences": 2,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-visualizer.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music-webdav.js": {
+      "windowReferences": 0,
+      "documentReferences": 16,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 15,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music.html": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Musicmodules/music.js": {
+      "windowReferences": 5,
+      "documentReferences": 118,
+      "electronReferences": 1,
+      "timers": 2,
+      "listeners": 8,
+      "mutableMaps": 1
+    },
+    "Musicmodules/socket.io.min.js": {
+      "windowReferences": 2,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Notemodules/notemini.html": {
+      "windowReferences": 3,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Notemodules/notemini.js": {
+      "windowReferences": 3,
+      "documentReferences": 8,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 7,
+      "mutableMaps": 0
+    },
+    "Notemodules/notes.html": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Notemodules/notes.js": {
+      "windowReferences": 46,
+      "documentReferences": 95,
+      "electronReferences": 1,
+      "timers": 13,
+      "listeners": 62,
+      "mutableMaps": 1
+    },
+    "PluginManagerModules/plugin-manager.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "PluginManagerModules/plugin-manager.js": {
+      "windowReferences": 6,
+      "documentReferences": 30,
+      "electronReferences": 1,
+      "timers": 2,
+      "listeners": 19,
+      "mutableMaps": 1
+    },
+    "Promptmodules/modular-prompt-module.js": {
+      "windowReferences": 2,
+      "documentReferences": 55,
+      "electronReferences": 5,
+      "timers": 5,
+      "listeners": 29,
+      "mutableMaps": 0
+    },
+    "Promptmodules/original-prompt-module.js": {
+      "windowReferences": 1,
+      "documentReferences": 1,
+      "electronReferences": 3,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Promptmodules/preset-prompt-module.js": {
+      "windowReferences": 4,
+      "documentReferences": 16,
+      "electronReferences": 7,
+      "timers": 4,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Promptmodules/prompt-manager.js": {
+      "windowReferences": 10,
+      "documentReferences": 5,
+      "electronReferences": 14,
+      "timers": 1,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "RAGmodules/RAG_Observer.html": {
+      "windowReferences": 73,
+      "documentReferences": 28,
+      "electronReferences": 33,
+      "timers": 11,
+      "listeners": 4,
+      "mutableMaps": 2
+    },
+    "RAGmodules/RAG_Overlay.html": {
+      "windowReferences": 16,
+      "documentReferences": 22,
+      "electronReferences": 12,
+      "timers": 0,
+      "listeners": 12,
+      "mutableMaps": 4
+    },
+    "RAGmodules/rag-observer-config.js": {
+      "windowReferences": 23,
+      "documentReferences": 12,
+      "electronReferences": 11,
+      "timers": 3,
+      "listeners": 8,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/font-font-test.html": {
+      "windowReferences": 0,
+      "documentReferences": 12,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-agent-port.js": {
+      "windowReferences": 8,
+      "documentReferences": 11,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "ScriptoriumModules/scriptorium-async.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "ScriptoriumModules/scriptorium-deck-adapter.js": {
+      "windowReferences": 1,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-deck-editor.js": {
+      "windowReferences": 5,
+      "documentReferences": 19,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 9,
+      "mutableMaps": 5
+    },
+    "ScriptoriumModules/scriptorium-deck-export.js": {
+      "windowReferences": 22,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 16,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-deck-renderer.js": {
+      "windowReferences": 2,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-document-store.js": {
+      "windowReferences": 1,
+      "documentReferences": 23,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 5
+    },
+    "ScriptoriumModules/scriptorium-dom-selection.js": {
+      "windowReferences": 2,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-edit-history.js": {
+      "windowReferences": 6,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-export-resources.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-export.js": {
+      "windowReferences": 1,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-find.js": {
+      "windowReferences": 4,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 6,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-flow-adapter.js": {
+      "windowReferences": 1,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-flow-editor.js": {
+      "windowReferences": 24,
+      "documentReferences": 21,
+      "electronReferences": 0,
+      "timers": 9,
+      "listeners": 15,
+      "mutableMaps": 4
+    },
+    "ScriptoriumModules/scriptorium-flow-export.js": {
+      "windowReferences": 1,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-flow-renderer.js": {
+      "windowReferences": 8,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-formatting.js": {
+      "windowReferences": 7,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 9,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-input-sync.js": {
+      "windowReferences": 8,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-library.js": {
+      "windowReferences": 2,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-lineage-store.js": {
+      "windowReferences": 1,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-lineage-ui.js": {
+      "windowReferences": 4,
+      "documentReferences": 22,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 20,
+      "mutableMaps": 2
+    },
+    "ScriptoriumModules/scriptorium-media.js": {
+      "windowReferences": 4,
+      "documentReferences": 12,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 6,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-navigation.js": {
+      "windowReferences": 1,
+      "documentReferences": 12,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 5,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-network-fonts.js": {
+      "windowReferences": 1,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-objects.js": {
+      "windowReferences": 3,
+      "documentReferences": 19,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 12,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-pagination.js": {
+      "windowReferences": 1,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-pr-diff.js": {
+      "windowReferences": 1,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-pretext-bridge.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "ScriptoriumModules/scriptorium-programmable-content.js": {
+      "windowReferences": 4,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-render-coordinator.js": {
+      "windowReferences": 2,
+      "documentReferences": 6,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-render-primitives.js": {
+      "windowReferences": 6,
+      "documentReferences": 11,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-rendered-text.js": {
+      "windowReferences": 1,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 5,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-runtime.js": {
+      "windowReferences": 18,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 18,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "ScriptoriumModules/scriptorium-runtime.origin.js": {
+      "windowReferences": 19,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 21,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-session.js": {
+      "windowReferences": 2,
+      "documentReferences": 28,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-settings.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-shell.js": {
+      "windowReferences": 9,
+      "documentReferences": 18,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 13,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-source-editor.js": {
+      "windowReferences": 14,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-style-ui.js": {
+      "windowReferences": 1,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 10,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-svg-assets.js": {
+      "windowReferences": 6,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 20,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-visibility.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium.html": {
+      "windowReferences": 3,
+      "documentReferences": 17,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium.js": {
+      "windowReferences": 91,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/vdoc-container.js": {
+      "windowReferences": 1,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "ScriptoriumModules/vdoc-core.js": {
+      "windowReferences": 1,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/vdoc-hybrid-compiler.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/vdoc-style-library.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "ScriptoriumModules/vdoc-svg-asset-library.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "Tavernmodules/tavern-manager.js": {
+      "windowReferences": 25,
+      "documentReferences": 12,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 13,
+      "mutableMaps": 1
+    },
+    "Themesmodules/themes.html": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Themesmodules/themes.js": {
+      "windowReferences": 5,
+      "documentReferences": 21,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 6,
+      "mutableMaps": 0
+    },
+    "Translatormodules/translator.html": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Translatormodules/translator.js": {
+      "windowReferences": 3,
+      "documentReferences": 24,
+      "electronReferences": 1,
+      "timers": 4,
+      "listeners": 12,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 7
+    },
+    "VCPDistributedServer/Plugin/ChatRoomViewer/ChatRoomViewer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/DeepMemo/DeepMemo.js": {
+      "windowReferences": 0,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/DeepMemo/DeepMemoService.js": {
+      "windowReferences": 15,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/DesktopRemote/desktop-remote.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/DistImageServer/image-server.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/FileOperator/CodeValidator.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/FileOperator/FileOperator.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/LoomController/LoomControllerService.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/MusicController/music-controller.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/OldPowerShellExecutor/PowerShellExecutor.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PTYShellExecutor/PTYShellExecutor.impl.js": {
+      "windowReferences": 3,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 8,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/PTYShellExecutor/PTYShellExecutor.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PTYShellExecutor/PluginErrorReporter.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PTYShellExecutor/gui/ShellViewer.html": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PTYShellExecutor/gui/ShellViewer.js": {
+      "windowReferences": 27,
+      "documentReferences": 20,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 9,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PTYShellExecutor/gui/preload.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PluginSourceViewer/PluginSourceViewer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.html": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/gui/PowerShellViewer.js": {
+      "windowReferences": 31,
+      "documentReferences": 11,
+      "electronReferences": 28,
+      "timers": 2,
+      "listeners": 12,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/gui/preload.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 2,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PowerShellExecutor/test_security_check.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/PromptSponsor/prompt-sponsor.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/TopicMemo/TopicMemo.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/TopicSponsor/topicsponsor.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPEverything/local-search-controller.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/config/defaults.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/db.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/hash.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/idempotency.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/core/logger.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/agent.dto.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/group.dto.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/dto/topic.dto.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/error-contract.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/protocol.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/central.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/diff.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/entity.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/message.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/sync/projection.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/transport/ndjson.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/transport/routes.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/transport/websocket.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/utils/lock.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VCPMobileSync/utils/mime.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPSuperDice/example.js": {
+      "windowReferences": 0,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPSuperDice/superdice.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/inventory.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/locate.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/media-server.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/lib/we-api-shim.js": {
+      "windowReferences": 13,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPWEWallpaper/we-wallpaper-service.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VCPWEWallpaperUI/plugin.js": {
+      "windowReferences": 4,
+      "documentReferences": 19,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 22,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/VChatAutoTTS/plugin.js": {
+      "windowReferences": 6,
+      "documentReferences": 9,
+      "electronReferences": 1,
+      "timers": 2,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.js": {
+      "windowReferences": 5,
+      "documentReferences": 15,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 13,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/WindowSensor/sensor-wrapper.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/VCPDistributedServer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/frontend-plugin-loader.js": {
+      "windowReferences": 3,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 1
+    },
+    "VCPHumanToolBox/ComfyUImodules/ComfyUILoader.js": {
+      "windowReferences": 7,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/ComfyUImodules/ComfyUI_StateManager.js": {
+      "windowReferences": 7,
+      "documentReferences": 0,
+      "electronReferences": 6,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/ComfyUImodules/ComfyUI_UIManager.js": {
+      "windowReferences": 15,
+      "documentReferences": 15,
+      "electronReferences": 6,
+      "timers": 3,
+      "listeners": 1,
+      "mutableMaps": 1
+    },
+    "VCPHumanToolBox/ComfyUImodules/PathResolver.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/ComfyUImodules/comfyUIConfig.js": {
+      "windowReferences": 13,
+      "documentReferences": 3,
+      "electronReferences": 10,
+      "timers": 2,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/ComfyUImodules/comfyui-ipc.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditorLoader.js": {
+      "windowReferences": 36,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditorLoader_Simplified.js": {
+      "windowReferences": 28,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.js": {
+      "windowReferences": 1,
+      "documentReferences": 30,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 10,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_CanvasManager_JSPlumb.js": {
+      "windowReferences": 9,
+      "documentReferences": 36,
+      "electronReferences": 0,
+      "timers": 22,
+      "listeners": 25,
+      "mutableMaps": 2
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_Config.js": {
+      "windowReferences": 9,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ConnectionManager.js": {
+      "windowReferences": 1,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ConnectionManager_Simplified.js": {
+      "windowReferences": 2,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_ExecutionEngine.js": {
+      "windowReferences": 17,
+      "documentReferences": 13,
+      "electronReferences": 1,
+      "timers": 5,
+      "listeners": 2,
+      "mutableMaps": 7
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager.js": {
+      "windowReferences": 34,
+      "documentReferences": 20,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 6,
+      "mutableMaps": 2
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor.js": {
+      "windowReferences": 2,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor_Integration.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_NodeManager_URLRenderer_Patch.js": {
+      "windowReferences": 24,
+      "documentReferences": 24,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 15,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_PluginDialog.js": {
+      "windowReferences": 17,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_PluginManager.js": {
+      "windowReferences": 5,
+      "documentReferences": 14,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_StateManager.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 7
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/WorkflowEditor_UIManager.js": {
+      "windowReferences": 36,
+      "documentReferences": 76,
+      "electronReferences": 0,
+      "timers": 14,
+      "listeners": 33,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/ai/AiClientFactory.js": {
+      "windowReferences": 8,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/ai/HttpAiClient.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/WorkflowEditormodules/jsplumb.min.js": {
+      "windowReferences": 52,
+      "documentReferences": 36,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/index.html": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/main.js": {
+      "windowReferences": 10,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/preload.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 2,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/renderer.js": {
+      "windowReferences": 39,
+      "documentReferences": 123,
+      "electronReferences": 7,
+      "timers": 7,
+      "listeners": 36,
+      "mutableMaps": 1
+    },
+    "VCPHumanToolBox/renderer_modules/config.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/renderer_modules/tool-manager.js": {
+      "windowReferences": 9,
+      "documentReferences": 40,
+      "electronReferences": 3,
+      "timers": 1,
+      "listeners": 27,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/renderer_modules/ui/canvas-editor.js": {
+      "windowReferences": 1,
+      "documentReferences": 45,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 30,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/renderer_modules/ui/canvas-handler.js": {
+      "windowReferences": 0,
+      "documentReferences": 14,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 10,
+      "mutableMaps": 0
+    },
+    "VCPHumanToolBox/renderer_modules/ui/dynamic-image-handler.js": {
+      "windowReferences": 0,
+      "documentReferences": 15,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 10,
+      "mutableMaps": 0
+    },
+    "VCP文坊超级引擎-四重动画实证.html": {
+      "windowReferences": 26,
+      "documentReferences": 23,
+      "electronReferences": 0,
+      "timers": 26,
+      "listeners": 3,
+      "mutableMaps": 1
+    },
+    "VchatManager/consistency-checker.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VchatManager/index.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VchatManager/main.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VchatManager/preload.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VchatManager/script.js": {
+      "windowReferences": 15,
+      "documentReferences": 64,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 24,
+      "mutableMaps": 0
+    },
+    "Voicechatmodules/recognizer.html": {
+      "windowReferences": 11,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Voicechatmodules/voicechat.html": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Voicechatmodules/voicechat.js": {
+      "windowReferences": 29,
+      "documentReferences": 24,
+      "electronReferences": 25,
+      "timers": 8,
+      "listeners": 13,
+      "mutableMaps": 0
+    },
+    "WebIndexTTS2/public/app.js": {
+      "windowReferences": 0,
+      "documentReferences": 32,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 10,
+      "mutableMaps": 0
+    },
+    "WebIndexTTS2/public/index.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "WebIndexTTS2/server.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "main.html": {
+      "windowReferences": 4,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "main.js": {
+      "windowReferences": 27,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 12,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "migration/migrateAvatars.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/SovitsTTS.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/assistant/assistant-rust-adapter.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatContext.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatDomRenderer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatHistoryMutationAuthority.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/chat/chatHistoryPersistence.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatOperation.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatPluginManifest.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "modules/chat/chatPresentationSkin.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatPresentationState.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatRepository.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 5,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatSurface.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatSurfaceSlots.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/chat/chatThemePlugin.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/contentModes.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/contentRuntime.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/contentTransforms.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/memoryChatRepository.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/streamConsumerRegistry.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/chat/streamCoordinator.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 4
+    },
+    "modules/chat/streamSession.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/vcpStreamBridge.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 3
+    },
+    "modules/chatManager.js": {
+      "windowReferences": 25,
+      "documentReferences": 14,
+      "electronReferences": 49,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/contextSanitizer.js": {
+      "windowReferences": 1,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/emoticonManager.js": {
+      "windowReferences": 4,
+      "documentReferences": 6,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 2,
       "mutableMaps": 0
     },
     "modules/event-listeners.js": {
@@ -1330,13 +4254,389 @@
       "listeners": 70,
       "mutableMaps": 0
     },
-    "modules/chatManager.js": {
-      "windowReferences": 25,
-      "documentReferences": 14,
-      "electronReferences": 49,
+    "modules/fileManager.js": {
+      "windowReferences": 0,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/filterManager.js": {
+      "windowReferences": 3,
+      "documentReferences": 73,
+      "electronReferences": 5,
+      "timers": 0,
+      "listeners": 11,
+      "mutableMaps": 0
+    },
+    "modules/global-settings-manager.js": {
+      "windowReferences": 14,
+      "documentReferences": 80,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/image-viewer.html": {
+      "windowReferences": 7,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/image-viewer.js": {
+      "windowReferences": 12,
+      "documentReferences": 50,
+      "electronReferences": 1,
+      "timers": 6,
+      "listeners": 38,
+      "mutableMaps": 0
+    },
+    "modules/inputEnhancer.js": {
+      "windowReferences": 4,
+      "documentReferences": 3,
+      "electronReferences": 4,
+      "timers": 0,
+      "listeners": 8,
+      "mutableMaps": 0
+    },
+    "modules/interruptHandler.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 6,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/agentHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ipc/assistantHandlers.js": {
+      "windowReferences": 6,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 5,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/canvasHandlers.js": {
+      "windowReferences": 6,
+      "documentReferences": 0,
+      "electronReferences": 0,
       "timers": 1,
       "listeners": 0,
-      "mutableMaps": 4
+      "mutableMaps": 1
+    },
+    "modules/ipc/chatHandlers.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "modules/ipc/deepWikiHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ipc/desktopHandlers.js": {
+      "windowReferences": 23,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ipc/desktopMetrics.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 6
+    },
+    "modules/ipc/desktopRemoteHandlers.js": {
+      "windowReferences": 11,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "modules/ipc/diceHandlers.js": {
+      "windowReferences": 8,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/docxHandlers.js": {
+      "windowReferences": 1,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "modules/ipc/emoticonHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/fileDialogHandlers.js": {
+      "windowReferences": 3,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/forumHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/groupChatHandlers.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/ipcContracts.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ipc/libreHardwareMonitorBridge.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ipc/memoHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/musicHandlers.js": {
+      "windowReferences": 15,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/notesHandlers.js": {
+      "windowReferences": 5,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/promptHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/ragHandlers.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/regexHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/settingsHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/sovitsHandlers.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/tavernHandlers.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/themeHandlers.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/translatorHandlers.js": {
+      "windowReferences": 3,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/voiceHandlers.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ipc/windowHandlers.js": {
+      "windowReferences": 20,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/itemListManager.js": {
+      "windowReferences": 15,
+      "documentReferences": 19,
+      "electronReferences": 23,
+      "timers": 4,
+      "listeners": 5,
+      "mutableMaps": 2
+    },
+    "modules/loom/VCPLoomManager.js": {
+      "windowReferences": 71,
+      "documentReferences": 12,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 8
+    },
+    "modules/loom/webcore/adapter-contract.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/loom/webcore/chrome-adapter.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "modules/loom/webcore/electron-adapter.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/loom/webcore/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/loom/webcore/web-agent-page-core.js": {
+      "windowReferences": 3,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/loom/webcore/web-agent-page-runtime-core.js": {
+      "windowReferences": 4,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 0,
+      "mutableMaps": 6
+    },
+    "modules/loom/webcore/web-agent-protocol.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/loom/webcore/web-agent-runtime-core.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/lyricFetcher.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/mainChatCommands.js": {
+      "windowReferences": 23,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
     },
     "modules/messageRenderer.js": {
       "windowReferences": 40,
@@ -1346,13 +4646,109 @@
       "listeners": 7,
       "mutableMaps": 6
     },
-    "modules/renderer/streamManager.js": {
-      "windowReferences": 11,
-      "documentReferences": 9,
-      "electronReferences": 17,
-      "timers": 12,
+    "modules/modelUsageTracker.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/musicScannerWorker.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/notificationRenderer.js": {
+      "windowReferences": 9,
+      "documentReferences": 20,
+      "electronReferences": 1,
+      "timers": 9,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "modules/renderer/animation.js": {
+      "windowReferences": 52,
+      "documentReferences": 29,
+      "electronReferences": 0,
+      "timers": 19,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/renderer/colorUtils.js": {
+      "windowReferences": 1,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/renderer/contentPipeline.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/renderer/contentProcessor.js": {
+      "windowReferences": 14,
+      "documentReferences": 22,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 4,
+      "mutableMaps": 0
+    },
+    "modules/renderer/domBuilder.js": {
+      "windowReferences": 2,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/renderer/emoticonUrlFixer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 3,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/renderer/enhancedColorUtils.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/renderer/imageHandler.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 5,
+      "timers": 0,
       "listeners": 2,
-      "mutableMaps": 15
+      "mutableMaps": 0
+    },
+    "modules/renderer/mainChatStreamConsumer.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/renderer/mainChatSurfaceAdapter.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
     },
     "modules/renderer/messageContextMenu.js": {
       "windowReferences": 9,
@@ -1370,33 +4766,201 @@
       "listeners": 8,
       "mutableMaps": 2
     },
-    "Flowlockmodules/flowlock-integration.js": {
-      "windowReferences": 43,
-      "documentReferences": 2,
+    "modules/renderer/pretext-bridge.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/renderer/pretext.bundle.js": {
+      "windowReferences": 0,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/renderer/pretext.esm.js": {
+      "windowReferences": 0,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/renderer/renderDependencies.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
       "electronReferences": 5,
       "timers": 0,
-      "listeners": 4,
+      "listeners": 0,
       "mutableMaps": 0
     },
-    "Voicechatmodules/voicechat.js": {
-      "windowReferences": 29,
-      "documentReferences": 24,
-      "electronReferences": 25,
-      "timers": 8,
-      "listeners": 13,
-      "mutableMaps": 0
+    "modules/renderer/streamManager.js": {
+      "windowReferences": 11,
+      "documentReferences": 9,
+      "electronReferences": 17,
+      "timers": 12,
+      "listeners": 2,
+      "mutableMaps": 15
     },
-    "rust_assistant_engine/ui/assistant.js": {
-      "windowReferences": 28,
-      "documentReferences": 20,
-      "electronReferences": 20,
-      "timers": 1,
-      "listeners": 7,
-      "mutableMaps": 0
-    },
-    "modules/mainChatCommands.js": {
-      "windowReferences": 23,
+    "modules/renderer/toolRequestScanner.js": {
+      "windowReferences": 0,
       "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/renderer/visibilityOptimizer.js": {
+      "windowReferences": 7,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 9,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/renderer/windowStreamRuntime.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/searchManager.js": {
+      "windowReferences": 1,
+      "documentReferences": 28,
+      "electronReferences": 9,
+      "timers": 4,
+      "listeners": 8,
+      "mutableMaps": 0
+    },
+    "modules/services/chatDataService/client.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "modules/services/chatDataService/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/chatDataService/lifecycle.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/deepWikiService.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/embeddedAppSessionManager.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 1,
+      "mutableMaps": 2
+    },
+    "modules/services/historyWatcherLeaseManager.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/networkNotesCacheStore.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "modules/services/preloadPaths.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/scriptoriumAgentControlService.js": {
+      "windowReferences": 2,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/scriptoriumFontCacheService.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/services/scriptoriumImportService.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "modules/services/scriptoriumPptxImportService.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/services/senderTaskRegistry.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "modules/services/windowAppIds.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/services/windowService.js": {
+      "windowReferences": 9,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/services/windowStateService.js": {
+      "windowReferences": 2,
+      "documentReferences": 1,
       "electronReferences": 1,
       "timers": 0,
       "listeners": 0,
@@ -1410,21 +4974,141 @@
       "listeners": 39,
       "mutableMaps": 1
     },
-    "modules/global-settings-manager.js": {
-      "windowReferences": 14,
-      "documentReferences": 80,
+    "modules/shared/embeddedAppAllowlist.js": {
+      "windowReferences": 11,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/speechRecognizer.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/tavernRulesEngine.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/text-viewer.html": {
+      "windowReferences": 7,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/text-viewer.js": {
+      "windowReferences": 46,
+      "documentReferences": 72,
+      "electronReferences": 2,
+      "timers": 5,
+      "listeners": 31,
+      "mutableMaps": 2
+    },
+    "modules/topTabManager.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/topicListManager.js": {
+      "windowReferences": 18,
+      "documentReferences": 57,
+      "electronReferences": 27,
+      "timers": 2,
+      "listeners": 19,
+      "mutableMaps": 0
+    },
+    "modules/topicSummarizer.js": {
+      "windowReferences": 3,
+      "documentReferences": 0,
       "electronReferences": 1,
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
     },
-    "modules/renderer/contentProcessor.js": {
-      "windowReferences": 14,
+    "modules/trayManager.js": {
+      "windowReferences": 33,
       "documentReferences": 22,
+      "electronReferences": 4,
+      "timers": 3,
+      "listeners": 6,
+      "mutableMaps": 0
+    },
+    "modules/ui-helpers.js": {
+      "windowReferences": 7,
+      "documentReferences": 52,
       "electronReferences": 0,
-      "timers": 4,
+      "timers": 8,
+      "listeners": 10,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/appearance-engine.js": {
+      "windowReferences": 4,
+      "documentReferences": 20,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/appearance-studio.js": {
+      "windowReferences": 49,
+      "documentReferences": 56,
+      "electronReferences": 1,
+      "timers": 3,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/ask-nova-modal.js": {
+      "windowReferences": 20,
+      "documentReferences": 7,
+      "electronReferences": 1,
+      "timers": 3,
       "listeners": 4,
       "mutableMaps": 0
+    },
+    "modules/ui-system/avatar-picker.js": {
+      "windowReferences": 1,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/component-manifest.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/component-showcase.js": {
+      "windowReferences": 1,
+      "documentReferences": 33,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/contribution-registry.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
     },
     "modules/ui-system/interactive-chat-app.js": {
       "windowReferences": 5,
@@ -1434,6 +5118,142 @@
       "listeners": 3,
       "mutableMaps": 0
     },
+    "modules/ui-system/lifecycle-inspector.js": {
+      "windowReferences": 2,
+      "documentReferences": 1,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/lifecycle-scope.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 1,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/lucide-adapter.js": {
+      "windowReferences": 4,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/account-menu-controller.js": {
+      "windowReferences": 7,
+      "documentReferences": 12,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/app-tab-host.js": {
+      "windowReferences": 0,
+      "documentReferences": 17,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/next-shell/assistant-search-controller.js": {
+      "windowReferences": 0,
+      "documentReferences": 11,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/creation-controller.js": {
+      "windowReferences": 13,
+      "documentReferences": 9,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/embedded-app-controller.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/launchpad-controller.js": {
+      "windowReferences": 1,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/next-shell-controller.js": {
+      "windowReferences": 61,
+      "documentReferences": 30,
+      "electronReferences": 2,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/next-shell/notification-menu-controller.js": {
+      "windowReferences": 10,
+      "documentReferences": 11,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/overlay-coordinator.js": {
+      "windowReferences": 0,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/next-ui-apps.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/performance-recorder.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/settings-bridge.js": {
+      "windowReferences": 7,
+      "documentReferences": 28,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 5,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/settlement.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/sidebar-resizer.js": {
+      "windowReferences": 1,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 5,
+      "mutableMaps": 0
+    },
     "modules/ui-system/standalone-chat-app.js": {
       "windowReferences": 3,
       "documentReferences": 0,
@@ -1441,12 +5261,285 @@
       "timers": 0,
       "listeners": 1,
       "mutableMaps": 0
+    },
+    "modules/ui-system/startup-theme-gate.js": {
+      "windowReferences": 0,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/state-channel.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/surface-controller.js": {
+      "windowReferences": 8,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/task-handle.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/ui-surface-policy.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/vcp-main-ui-runtime.js": {
+      "windowReferences": 4,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/vcp-ui.js": {
+      "windowReferences": 16,
+      "documentReferences": 126,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 18,
+      "mutableMaps": 4
+    },
+    "modules/ui-system/webawesome-adapter.js": {
+      "windowReferences": 4,
+      "documentReferences": 10,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
+    "modules/ui-system/webawesome-comparison.js": {
+      "windowReferences": 0,
+      "documentReferences": 7,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "modules/ui-system/webawesome-runtime-manifest.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/uiManager.js": {
+      "windowReferences": 24,
+      "documentReferences": 12,
+      "electronReferences": 16,
+      "timers": 4,
+      "listeners": 13,
+      "mutableMaps": 0
+    },
+    "modules/utils/agentConfigManager.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 5
+    },
+    "modules/utils/appSettingsManager.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/vcpClient.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/weatherService.js": {
+      "windowReferences": 5,
+      "documentReferences": 11,
+      "electronReferences": 1,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/webdavManager.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preload.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/chat.js": {
+      "windowReferences": 23,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/desktop.js": {
+      "windowReferences": 23,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/docx.js": {
+      "windowReferences": 8,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/loom-page.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/loom.js": {
+      "windowReferences": 3,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/shared/apiFactory.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/shared/catalog.js": {
+      "windowReferences": 24,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/shared/roles.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "preloads/utility.js": {
+      "windowReferences": 27,
+      "documentReferences": 9,
+      "electronReferences": 1,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "renderer.js": {
+      "windowReferences": 157,
+      "documentReferences": 184,
+      "electronReferences": 12,
+      "timers": 2,
+      "listeners": 28,
+      "mutableMaps": 0
+    },
+    "rust_assistant_engine/ui/assistant-bar.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "rust_assistant_engine/ui/assistant-bar.js": {
+      "windowReferences": 4,
+      "documentReferences": 8,
+      "electronReferences": 4,
+      "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "rust_assistant_engine/ui/assistant.html": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "rust_assistant_engine/ui/assistant.js": {
+      "windowReferences": 28,
+      "documentReferences": 20,
+      "electronReferences": 20,
+      "timers": 1,
+      "listeners": 7,
+      "mutableMaps": 0
+    },
+    "rust_chat_data_service/build-runtime.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "splash.html": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "test.html": {
+      "windowReferences": 2,
+      "documentReferences": 14,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 5,
+      "mutableMaps": 0
     }
   },
   "invariants": [
     "pure kernel files have no document/window/electronAPI dependency",
     "production and test consumers are reported separately",
     "provider definitions, exports and compatibility assignments cannot self-certify as consumers",
+    "production consumers and compatibility globals are discovered across all repository production sources",
     "each consumer evidence item records a source line, member access and production surface",
     "legacy facade removal requires a later zero-production-consumer proof",
     "main-window start/data/end/error events have one coordinator authority"
