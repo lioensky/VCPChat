@@ -2,6 +2,7 @@ import { register } from './next-ui-apps.js';
 import { createChatSurface } from '../chat/chatSurface.js';
 import { createChatOperations } from '../chat/chatOperation.js';
 import { messageRenderer } from '../messageRenderer.js';
+import { chatManager } from '../chatManager.js';
 
 function mountInteractiveChat(container, context = {}) {
     const repository = window.__vcpChatRepository;
@@ -17,7 +18,7 @@ function mountInteractiveChat(container, context = {}) {
         if (event.detail?.type === 'error') status.textContent = `发送失败：${event.detail.error || '流式连接中断'}`;
     };
     const operations = createChatOperations({
-        send: request => window.chatManager.sendMessage(request),
+        send: request => chatManager.sendMessage(request),
         cancel: () => window.__vcpCancelActiveResponse?.()
     });
     const surface = createChatSurface({ root, renderer, repository, focusTarget: input, mode: 'interactive', operations, disposeRenderer: () => renderer.disposeRootResources?.(root) });

@@ -1,7 +1,7 @@
 {
   "modules/chatManager.js": {
-    "sha256": "321fec7e7fca764a5238fb398b3abdf2ab2c0208c2c872b99178fbb89d82946c",
-    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
+    "sha256": "a540ed74c768dd52b556ffaa816011111f5e826f303d54bc8f83fbb46064882e",
+    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, explicit ESM provider export, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
     "sha256": "358b7c4bdcc04677c9d7b603be2d57cf1c3c9652328c486ec30fc3a77ccac010",

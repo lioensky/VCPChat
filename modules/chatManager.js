@@ -1,6 +1,6 @@
 // modules/chatManager.js
 
-window.chatManager = (() => {
+export const chatManager = (() => {
     // --- Private Variables ---
     let electronAPI;
     let uiHelper;
@@ -9,6 +9,7 @@ window.chatManager = (() => {
     let itemListManager;
     let topicListManager;
     let groupRenderer;
+    let streamProjection;
 
     // References to state in renderer.js
     let currentSelectedItemRef;
@@ -364,6 +365,7 @@ window.chatManager = (() => {
         itemListManager = config.modules.itemListManager;
         topicListManager = config.modules.topicListManager;
         groupRenderer = config.modules.groupRenderer;
+        streamProjection = config.modules.streamManager || null;
 
         // State References
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
@@ -2177,7 +2179,7 @@ window.chatManager = (() => {
 
         const oldHistoryMap = new Map(oldHistory.map(msg => [msg.id, msg]));
         const newHistoryMap = new Map(newHistory.map(msg => [msg.id, msg]));
-        const activeStreamingId = window.streamManager ? window.streamManager.getActiveStreamingMessageId() : null;
+        const activeStreamingId = streamProjection?.getActiveStreamingMessageId?.() || null;
 
         // --- Perform UI and Memory updates ---
 
@@ -2264,4 +2266,8 @@ window.chatManager = (() => {
         syncHistoryFromFile, // Expose the new function
     };
 })();
+
+// Compatibility alias for the remaining Classic scripts. Module consumers use
+// the explicit provider export so this alias can be retired consumer by consumer.
+window.chatManager = chatManager;
 

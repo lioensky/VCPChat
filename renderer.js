@@ -2,6 +2,7 @@ import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurface
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
 import { messageRenderer } from './modules/messageRenderer.js';
 import { streamManager } from './modules/renderer/streamManager.js';
+import { chatManager } from './modules/chatManager.js';
 
 // --- Globals ---
 let globalSettings = {
@@ -258,8 +259,8 @@ async function handleSendButtonAction() {
         return;
     }
 
-    if (window.chatManager && typeof window.chatManager.handleSendMessage === 'function') {
-        await window.chatManager.handleSendMessage();
+    if (chatManager && typeof chatManager.handleSendMessage === 'function') {
+        await chatManager.handleSendMessage();
     }
 }
 
@@ -377,8 +378,8 @@ const startupThemeGate = new StartupThemeGate({
             mainRendererFunctions: {
                 selectItem: (itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) => {
                     // Delayed binding - chatManager will be available when this is called
-                    if (window.chatManager) {
-                        return window.chatManager.selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig);
+                    if (chatManager) {
+                        return chatManager.selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig);
                     } else {
                         console.error('[ItemListManager] chatManager not available for selectItem');
                     }
@@ -432,8 +433,8 @@ const startupThemeGate = new StartupThemeGate({
             mainRendererFunctions: { // Pass shared functions with delayed binding
                 loadItems: () => window.itemListManager ? window.itemListManager.loadItems() : console.error('[GroupRenderer] itemListManager not available'),
                 selectItem: (itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) => {
-                    if (window.chatManager) {
-                        return window.chatManager.selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig);
+                    if (chatManager) {
+                        return chatManager.selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig);
                     } else {
                         console.error('[GroupRenderer] chatManager not available for selectItem');
                     }
@@ -448,8 +449,8 @@ const startupThemeGate = new StartupThemeGate({
                 getCroppedFile: uiHelperFunctions.getCroppedFile,
                 setCurrentChatHistory: (history) => currentChatHistory = history,
                 displayTopicTimestampBubble: (itemId, itemType, topicId) => {
-                    if (window.chatManager) {
-                        return window.chatManager.displayTopicTimestampBubble(itemId, itemType, topicId);
+                    if (chatManager) {
+                        return chatManager.displayTopicTimestampBubble(itemId, itemType, topicId);
                     } else {
                         console.error('[GroupRenderer] chatManager not available for displayTopicTimestampBubble');
                     }
@@ -491,7 +492,7 @@ const startupThemeGate = new StartupThemeGate({
                 console.error('[MessageRenderer] summarizeTopicFromMessages function not found on window scope.');
                 return `关于 "${messages.find(m => m.role === 'user')?.content.substring(0, 15) || '...'}" (备用)`;
             },
-            handleCreateBranch: selectedMessage => window.chatManager?.handleCreateBranch(selectedMessage),
+            handleCreateBranch: selectedMessage => chatManager?.handleCreateBranch(selectedMessage),
         };
         mainChatAdapter = createMainChatSurfaceAdapter({
             root: chatMessagesDiv,
@@ -499,7 +500,7 @@ const startupThemeGate = new StartupThemeGate({
             repository: chatRepository,
             focusTarget: messageInput,
             operations: createChatOperations({
-                send: request => window.chatManager?.sendMessage?.(request),
+                send: request => chatManager?.sendMessage?.(request),
                 cancel: () => interruptActiveResponseFromSendButton()
             }),
             presentationState,
@@ -508,7 +509,7 @@ const startupThemeGate = new StartupThemeGate({
                 streamProjection: streamManager,
                 historyPersistence,
                 messageRenderer,
-                chatManager: window.chatManager,
+                chatManager,
                 flowlockManager: window.flowlockManager,
                 getSelection: () => currentSelectedItem,
                 getTopicId: () => currentTopicId,
@@ -711,15 +712,15 @@ const startupThemeGate = new StartupThemeGate({
                     }
                 },
                 handleTopicDeletion: (remainingTopics, deletionContext) => {
-                    if (window.chatManager) {
-                        return window.chatManager.handleTopicDeletion(remainingTopics, deletionContext);
+                    if (chatManager) {
+                        return chatManager.handleTopicDeletion(remainingTopics, deletionContext);
                     } else {
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
                 },
                 selectTopic: (topicId) => {
-                    if (window.chatManager) {
-                        return window.chatManager.selectTopic(topicId);
+                    if (chatManager) {
+                        return chatManager.selectTopic(topicId);
                     } else {
                         console.error('[TopicListManager] chatManager not available for selectTopic');
                     }
@@ -731,8 +732,8 @@ const startupThemeGate = new StartupThemeGate({
     }
 
     // Initialize ChatManager
-    if (window.chatManager) {
-        window.chatManager.init({
+    if (chatManager) {
+        chatManager.init({
             chatContext,
             chatRepository,
             streamConsumerRegistry: mainChatAdapter?.streamRoutes,
@@ -746,6 +747,7 @@ const startupThemeGate = new StartupThemeGate({
                 itemListManager: window.itemListManager,
                 topicListManager: window.topicListManager,
                 groupRenderer: window.GroupRenderer,
+                streamManager,
             },
             refs: {
                 currentSelectedItemRef: {
@@ -844,7 +846,7 @@ const startupThemeGate = new StartupThemeGate({
                 getCroppedFile: uiHelperFunctions.getCroppedFile,
                 updateChatHeader: (text) => { if (currentChatNameH3) currentChatNameH3.textContent = text; },
                 onItemDeleted: async () => {
-                    window.chatManager.displayNoItemSelected();
+                    chatManager.displayNoItemSelected();
                     await window.itemListManager.loadItems();
                 }
             }
@@ -868,7 +870,7 @@ const startupThemeGate = new StartupThemeGate({
             startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败，已使用系统主题' });
         }
         await window.itemListManager.loadItems(); // Load both agents and groups
-        await window.chatManager.restoreLastOpenState(globalSettings);
+        await chatManager.restoreLastOpenState(globalSettings);
 
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
@@ -928,7 +930,7 @@ const startupThemeGate = new StartupThemeGate({
                 currentChatHistory: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
             },
             uiHelperFunctions,
-            chatManager: window.chatManager,
+            chatManager,
             itemListManager: window.itemListManager,
             settingsManager: window.settingsManager,
             uiManager: window.uiManager,
@@ -1017,7 +1019,7 @@ const startupThemeGate = new StartupThemeGate({
 
         // Set default view if no item is selected
         if (!currentSelectedItem.id) {
-            window.chatManager.displayNoItemSelected();
+            chatManager.displayNoItemSelected();
         }
  
         // Initialize Search Manager
@@ -1031,7 +1033,7 @@ const startupThemeGate = new StartupThemeGate({
                     currentTopicIdRef: { get: () => currentTopicId },
                 },
                 modules: {
-                    chatManager: window.chatManager,
+                    chatManager,
                 }
             });
         } else {
@@ -1043,7 +1045,7 @@ const startupThemeGate = new StartupThemeGate({
 
         chatAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
 
-        if (window.__vcpPendingTopicSelection && window.chatManager) {
+        if (window.__vcpPendingTopicSelection && chatManager) {
             const pending = window.__vcpPendingTopicSelection;
             window.__vcpPendingTopicSelection = null;
             const matchesCurrentItem =
@@ -1052,7 +1054,7 @@ const startupThemeGate = new StartupThemeGate({
                 currentSelectedItem.type === pending.itemType;
 
             if (matchesCurrentItem) {
-                Promise.resolve(window.chatManager.selectTopic(pending.topicId)).catch((error) => {
+                Promise.resolve(chatManager.selectTopic(pending.topicId)).catch((error) => {
                     console.error('[Renderer] Failed to replay pending topic selection:', error);
                 });
             }
@@ -1093,8 +1095,8 @@ const startupThemeGate = new StartupThemeGate({
         if (currentSelectedItem && currentSelectedItem.id === agentId && currentTopicId === topicId) {
             console.log('[Renderer] Active chat history was modified externally. Syncing...');
             uiHelperFunctions.showToastNotification("聊天记录已同步。", "info");
-            if (window.chatManager && typeof window.chatManager.syncHistoryFromFile === 'function') {
-                window.chatManager.syncHistoryFromFile(agentId, currentSelectedItem.type, topicId);
+            if (chatManager && typeof chatManager.syncHistoryFromFile === 'function') {
+                chatManager.syncHistoryFromFile(agentId, currentSelectedItem.type, topicId);
             }
         }
     });
@@ -2556,8 +2558,8 @@ async function handleConfirmForward() {
     // This is a simplified send. We might need a more robust solution
     // that re-uses the logic from chatManager.handleSendMessage
     // For now, let's create a new function in chatManager for this.
-    if (window.chatManager && typeof window.chatManager.handleForwardMessage === 'function') {
-        window.chatManager.handleForwardMessage(selectedForwardTarget, forwardedContent, attachments);
+    if (chatManager && typeof chatManager.handleForwardMessage === 'function') {
+        chatManager.handleForwardMessage(selectedForwardTarget, forwardedContent, attachments);
         uiHelperFunctions.showToastNotification(`消息已转发给 ${selectedForwardTarget.name}`, 'success');
     } else {
         uiHelperFunctions.showToastNotification('转发功能尚未完全实现。', 'error');

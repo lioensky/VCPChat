@@ -23,7 +23,7 @@ function createFixture() {
         <ul class="topic-list" id="topicList"></ul>
     </body></html>`, { runScripts: 'outside-only', url: 'https://vcpchat.local/' });
     const { window } = dom;
-    window.eval(fs.readFileSync('modules/chatManager.js', 'utf8'));
+    window.eval(fs.readFileSync('modules/chatManager.js', 'utf8').replace(/\bexport\s+(?=const\s+chatManager\b)/, ''));
 
     let selected = { id: null, type: null, name: null, avatarUrl: null, config: null };
     let topicId = null;

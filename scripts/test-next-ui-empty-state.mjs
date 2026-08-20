@@ -18,7 +18,7 @@ const dom = new JSDOM(`<!doctype html><html><body>
 
 const { window } = dom;
 window.console = console;
-window.eval(fs.readFileSync(path.join(root, 'modules', 'chatManager.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'modules', 'chatManager.js'), 'utf8').replace(/\bexport\s+(?=const\s+chatManager\b)/, ''));
 
 const watcherStop = new Promise(() => {});
 const selectedItem = { value: { id: null, type: null } };

@@ -50,7 +50,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 45
+          "occurrences": 44
         },
         {
           "file": "modules/event-listeners.js",
@@ -58,7 +58,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "occurrences": 2
+          "occurrences": 4
         },
         {
           "file": "modules/messageRenderer.js",
@@ -82,13 +82,13 @@
         },
         {
           "file": "modules/ui-system/interactive-chat-app.js",
-          "occurrences": 1
+          "occurrences": 3
         }
       ],
       "tests": [
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "occurrences": 35
+          "occurrences": 36
         }
       ]
     },
@@ -140,11 +140,11 @@
         },
         {
           "file": "modules/ui-system/interactive-chat-app.js",
-          "occurrences": 1
+          "occurrences": 3
         },
         {
           "file": "modules/ui-system/standalone-chat-app.js",
-          "occurrences": 1
+          "occurrences": 3
         }
       ],
       "tests": [
@@ -166,11 +166,11 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 7
+          "occurrences": 8
         },
         {
           "file": "modules/chatManager.js",
-          "occurrences": 2
+          "occurrences": 1
         },
         {
           "file": "modules/messageRenderer.js",
@@ -242,7 +242,7 @@
   ],
   "ownershipSignals": {
     "renderer.js": {
-      "windowReferences": 186,
+      "windowReferences": 155,
       "documentReferences": 184,
       "electronReferences": 12,
       "timers": 2,
@@ -258,7 +258,7 @@
       "mutableMaps": 0
     },
     "modules/chatManager.js": {
-      "windowReferences": 28,
+      "windowReferences": 26,
       "documentReferences": 14,
       "electronReferences": 49,
       "timers": 1,
@@ -354,7 +354,7 @@
       "mutableMaps": 0
     },
     "modules/ui-system/interactive-chat-app.js": {
-      "windowReferences": 7,
+      "windowReferences": 5,
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
@@ -362,7 +362,7 @@
       "mutableMaps": 0
     },
     "modules/ui-system/standalone-chat-app.js": {
-      "windowReferences": 4,
+      "windowReferences": 3,
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
