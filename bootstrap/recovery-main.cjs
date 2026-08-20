@@ -66,7 +66,10 @@ function createWindow() {
         const smokePath = process.env.VCPCHAT_RECOVERY_SMOKE_PATH;
         if (!smokePath) return;
         fs.writeFileSync(smokePath, `${JSON.stringify({ loaded: true, preload: true })}\n`, 'utf8');
-        setTimeout(() => app.quit(), 50);
+        // Give the initial doctor request enough time to settle before the
+        // smoke harness closes the window; otherwise the child is reported as
+        // an unexplained null exit even though the UI loaded successfully.
+        setTimeout(() => app.quit(), 2_000);
     });
     windowRef.once('ready-to-show', () => windowRef.show());
     windowRef.on('closed', () => { windowRef = null; });
