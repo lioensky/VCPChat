@@ -220,6 +220,14 @@ assert.match(read('renderer.js'), /createChatHistoryPersistence\(chatRepository\
     'the main renderer must compose the durable provider with its real repository');
 assert.match(read('modules/chat/vcpStreamBridge.js'), /disposeOperation[\s\S]*handle\.dispose[\s\S]*operation\.chain/,
     'message-scoped Surface retraction must reach bridge quiescence without a producer terminal');
+assert.match(read('modules/chat/surfaceConversation.js'), /createSurfaceConversation[\s\S]*selectedItemRef[\s\S]*topicIdRef[\s\S]*historyRef[\s\S]*dispose/,
+    'internal chat Surfaces must own fixed conversation identity, local history and disposal authority');
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /(?<![A-Za-z_$])(document|window)\s*[.\[]/,
+    'StreamProjection must consume its owning DOM realm through injected capabilities');
+assert.match(read('renderer.js'), /createSurfaceConversation[\s\S]*conversationCapability/,
+    'internal Surface renderers must receive an explicit conversation capability');
+assert.match(read('modules/ui-system/interactive-chat-app.js'), /conversation: rendererOwner\.conversation[\s\S]*awaitTerminal: true/,
+    'interactive chat must send through its own conversation authority and real terminal operation');
 assert.match(read('modules/chat/vcpStreamBridge.js'), /MAX_RETIRED_SESSIONS[\s\S]*retireSession[\s\S]*retiredSessions\.size/,
     'late-event tombstones must be bounded for a long-lived main window');
 assert.match(read('modules/chat/streamConsumerRegistry.js'), /dispose\(\)[\s\S]*lease\.active = false[\s\S]*routes\.clear/,
