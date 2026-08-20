@@ -15,6 +15,33 @@ function updateRoot(stateRoot) { return path.join(stateRoot, 'versions'); }
 function pointerPath(stateRoot) { return path.join(updateRoot(stateRoot), 'current.json'); }
 function readJson(filePath, fallback = null) { try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return fallback; } }
 
+function canonicalize(value, omitTopLevelSignature = false) {
+    if (Array.isArray(value)) return `[${value.map(item => canonicalize(item, false)).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).filter(key => !(omitTopLevelSignature && key === 'signature')).sort().map(key => `${JSON.stringify(key)}:${canonicalize(value[key], false)}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function validateUpdateSignature({ manifest, publicKey = null } = {}) {
+    if (!manifest?.signature) return { ok: true, signed: false };
+    if (!publicKey || typeof publicKey !== 'string') {
+        const error = new Error('更新清单包含签名，但未提供公钥。'); error.code = 'E_UPDATE_SIGNATURE_INVALID'; throw error;
+    }
+    const signature = manifest.signature;
+    if (signature.algorithm !== 'RSA-SHA256' || typeof signature.value !== 'string' || !signature.value) {
+        const error = new Error('更新清单签名算法或内容无效。'); error.code = 'E_UPDATE_SIGNATURE_INVALID'; throw error;
+    }
+    let valid = false;
+    try {
+        valid = crypto.verify('RSA-SHA256', Buffer.from(canonicalize(manifest, true)), publicKey, Buffer.from(signature.value, 'base64'));
+    } catch { valid = false; }
+    if (!valid) {
+        const error = new Error('更新清单签名验证失败。'); error.code = 'E_UPDATE_SIGNATURE_INVALID'; throw error;
+    }
+    return { ok: true, signed: true, algorithm: signature.algorithm };
+}
+
 function findSymbolicLink(root) {
     if (!fs.existsSync(root)) return null;
     const stat = fs.lstatSync(root);
@@ -31,7 +58,7 @@ function findSymbolicLink(root) {
     return null;
 }
 
-function validateUpdateManifest({ sourceRoot, manifest } = {}) {
+function validateUpdateManifest({ sourceRoot, manifest, publicKey = null } = {}) {
     if (!manifest || manifest.schemaVersion !== UPDATE_SCHEMA_VERSION || !manifest.version || !manifest.files?.length) {
         const error = new Error('更新清单缺少版本、schema 或文件校验列表。'); error.code = 'E_UPDATE_MANIFEST_INVALID'; throw error;
     }
@@ -46,6 +73,7 @@ function validateUpdateManifest({ sourceRoot, manifest } = {}) {
         || (manifest.buildId != null && !/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(manifest.buildId))) {
         const error = new Error('更新版本或 build ID 不是安全的目录标识。'); error.code = 'E_UPDATE_MANIFEST_INVALID'; throw error;
     }
+    validateUpdateSignature({ manifest, publicKey });
     const failures = [];
     const seen = new Set();
     for (const entry of manifest.files) {
@@ -99,10 +127,10 @@ function copyTree(sourceRoot, destinationRoot) {
 
 function activeVersion(stateRoot) { return readJson(pointerPath(stateRoot), null); }
 
-function switchVersion({ stateRoot, sourceRoot, manifest, verify = verifyDirectoryAgainstManifest } = {}) {
+function switchVersion({ stateRoot, sourceRoot, manifest, publicKey = null, verify = verifyDirectoryAgainstManifest } = {}) {
     const root = updateRoot(stateRoot);
     fs.mkdirSync(root, { recursive: true });
-    validateUpdateManifest({ sourceRoot, manifest });
+    validateUpdateManifest({ sourceRoot, manifest, publicKey });
     checkStagingCapacity({ stateRoot: root, manifest });
     const versionRoot = path.join(root, `${manifest.version}-${manifest.buildId || Date.now()}`);
     if (fs.existsSync(versionRoot)) throw Object.assign(new Error('目标版本目录已存在。'), { code: 'E_UPDATE_MANIFEST_INVALID' });
@@ -136,9 +164,9 @@ function rollbackVersion({ stateRoot, failedVersion = null } = {}) {
     return next;
 }
 
-async function promoteVersionWithHealthCheck({ stateRoot, sourceRoot, manifest, verify, healthCheck } = {}) {
+async function promoteVersionWithHealthCheck({ stateRoot, sourceRoot, manifest, publicKey = null, verify, healthCheck } = {}) {
     if (typeof healthCheck !== 'function') throw new TypeError('healthCheck is required');
-    const switched = switchVersion({ stateRoot, sourceRoot, manifest, verify });
+    const switched = switchVersion({ stateRoot, sourceRoot, manifest, publicKey, verify });
     try {
         const health = await healthCheck(switched.current);
         if (!health?.ok) {
@@ -174,6 +202,8 @@ module.exports = {
     readJson,
     activeVersion,
     validateUpdateManifest,
+    canonicalize,
+    validateUpdateSignature,
     checkStagingCapacity,
     switchVersion,
     rollbackVersion,

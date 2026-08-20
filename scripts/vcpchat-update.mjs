@@ -14,7 +14,7 @@ const { managedSpawnOptions } = require('../modules/bootstrap/platform-process')
 const { promoteVersionWithHealthCheck, rollbackVersion, acquireUpdateLock } = require('../modules/bootstrap/update-manager');
 
 function parseArguments(argv) {
-    const options = { apply: false, yes: false, source: null, manifest: null, rollback: false, json: false, projectRoot: null };
+    const options = { apply: false, yes: false, source: null, manifest: null, publicKey: null, rollback: false, json: false, projectRoot: null };
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
         if (arg === '--apply') options.apply = true;
@@ -23,6 +23,7 @@ function parseArguments(argv) {
         else if (arg === '--json') options.json = true;
         else if (arg === '--source') options.source = argv[++index] || null;
         else if (arg === '--manifest') options.manifest = argv[++index] || null;
+        else if (arg === '--public-key') options.publicKey = argv[++index] || null;
         else if (arg === '--project-root') options.projectRoot = argv[++index] || null;
         else throw new Error(`未知 update 参数：${arg}`);
     }
@@ -119,10 +120,12 @@ export async function run(argv = process.argv.slice(2), io = process) {
         if (!options.source || !options.manifest) throw new Error('--source 和 --manifest 是必需的。');
         const sourceRoot = path.resolve(options.source);
         const manifest = JSON.parse(fs.readFileSync(path.resolve(options.manifest), 'utf8'));
+        const publicKey = options.publicKey || process.env.VCPCHAT_UPDATE_PUBLIC_KEY || null;
         const result = await promoteVersionWithHealthCheck({
             stateRoot,
             sourceRoot,
             manifest,
+            publicKey,
             healthCheck: current => verifyCandidateReady({ current, manifest, stateRoot }),
         });
         io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

@@ -12,7 +12,7 @@ const { runProcess } = require('../modules/bootstrap/process-runner');
 const { managedSpawnOptions, terminationPlan, terminateManagedProcess } = require('../modules/bootstrap/platform-process');
 const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require('../modules/bootstrap/progress-protocol');
 const { createRuntimeClosureManifest, validateRuntimePolicy, verifyDirectoryAgainstManifest } = require('../modules/bootstrap/runtime-closure');
-const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest, checkStagingCapacity } = require('../modules/bootstrap/update-manager');
+const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest, checkStagingCapacity, canonicalize, validateUpdateSignature } = require('../modules/bootstrap/update-manager');
 const { liveReadyRecords } = await import('../scripts/vcpchat-update.mjs');
 const { collectEvidence } = await import('../scripts/vcpchat-release-evidence.mjs');
 
@@ -152,6 +152,21 @@ test('M7 update staging rejects insufficient disk capacity before copying', () =
         reserveBytes: 1,
         statfs: () => ({ bavail: 1, bsize: 10 }),
     }), error => error.code === 'E_UPDATE_DISK_SPACE');
+});
+
+test('H5 signed manifests require the matching public key and cover nested launch fields', () => {
+    const crypto = require('node:crypto');
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const manifest = { schemaVersion: 1, version: '1', files: [{ path: 'main.js', size: 3, sha256: 'x' }], launch: { executable: 'main.js', args: ['--safe'] } };
+    manifest.signature = {
+        algorithm: 'RSA-SHA256',
+        value: crypto.sign('RSA-SHA256', Buffer.from(canonicalize(manifest, true)), privateKey).toString('base64'),
+    };
+    const pem = publicKey.export({ type: 'spki', format: 'pem' });
+    assert.equal(validateUpdateSignature({ manifest, publicKey: pem }).signed, true);
+    assert.throws(() => validateUpdateSignature({ manifest }), error => error.code === 'E_UPDATE_SIGNATURE_INVALID');
+    manifest.launch.args = ['--tampered'];
+    assert.throws(() => validateUpdateSignature({ manifest, publicKey: pem }), error => error.code === 'E_UPDATE_SIGNATURE_INVALID');
 });
 
 test('M7 update gate detects a live VCPChat ready process before staging', () => {
