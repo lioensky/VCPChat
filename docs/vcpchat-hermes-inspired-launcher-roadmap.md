@@ -176,5 +176,6 @@ npm run vcpchat
 - `npm run pack:check`：Web Awesome runtime 闭包与仓库 vendor tree 通过。
 - Bootstrap：26 项通过，覆盖 repair consent、marker、项目隔离、取消、更新 manifest、symlink、rollback 和运行实例门禁。
 - 更新安全回归：staging 前磁盘空间预检、候选进程组终止/等待、ready 记录时间窗口和 PID 存活检查均已加入。
+- 平台进程边界：`modules/bootstrap/platform-process.js` 统一 Windows `taskkill /T` 与 POSIX 进程组 detached 策略，开发启动、恢复、更新和修复 runner 共用同一契约，并有 Windows/POSIX 模拟测试。
 
 以下仍是发布外部证据而非本机已完成事实：Windows PowerShell/NSIS/中文长路径、macOS 签名与公证、Linux AppImage、断网/睡眠恢复和 30–60 分钟人工 soak。磁盘空间逻辑已有单元测试，但尚未在真实磁盘耗尽环境演练。签名网络下载和用户数据 migration 事务仍属于生产更新器后续范围。
