@@ -157,8 +157,10 @@ assert.match(read('modules/renderer/contentProcessor.js'), /scheduleOwnedTimeout
     'content processor delayed work must be owned by the message root and cleared on teardown');
 assert.match(read('modules/chat/chatOperation.js'), /cancelRequested[\s\S]*if \(cancelRequested\) return true/,
     'interactive surface cancellation must be idempotent for repeated user actions');
-assert.match(read('modules/renderer/streamManager.js'), /flushHistorySave[\s\S]*await flushHistorySave\(storedContext\)/,
-    'stream terminal persistence must await the real history save instead of relying on debounce timing');
+assert.match(read('modules/renderer/streamManager.js'), /projectStreamTerminal[\s\S]*persistProjectedStreamTerminal[\s\S]*await saveHistoryForContext/,
+    'stream terminal persistence must expose an explicit awaited durable commit provider');
+assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /persistTerminal: projected => services\.streamProjection\.persistProjectedStreamTerminal/,
+    'MainChatSurfaceAdapter must own the production durable commit capability');
 assert.match(read('renderer.js'), /createMainChatSurfaceAdapter\([\s\S]*?createChatOperations/,
     'main chat must be owned by a real MainChatSurfaceAdapter');
 assert.match(read('modules/renderer/mainChatSurfaceAdapter.js'), /createChatSurface\([\s\S]*?mode: 'interactive'/,

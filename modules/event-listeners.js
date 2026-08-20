@@ -227,10 +227,6 @@ export function setupEventListeners(deps) {
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
 
-        let thinkingMessageItem = null;
-        if (window.messageRenderer) {
-            thinkingMessageItem = await window.messageRenderer.renderMessage(thinkingMessage);
-        }
         currentChatHistory.push(thinkingMessage);
 
         try {
@@ -294,13 +290,6 @@ export function setupEventListeners(deps) {
                 ...(agentConfig?.contextTokenLimit && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit) }),
                 stream: useStreaming
             };
-
-            if (useStreaming) {
-                if (window.messageRenderer) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    await window.messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
-                }
-            }
 
             const context = {
                 agentId: currentSelectedItem.id,
@@ -424,7 +413,7 @@ export function setupEventListeners(deps) {
     }
 
     sendMessageBtn.addEventListener('click', async () => {
-        if (typeof window.handleSendButtonAction === 'function' && sendMessageBtn?.dataset.mode === 'interrupt') {
+        if (typeof window.handleSendButtonAction === 'function') {
             await window.handleSendButtonAction();
             return;
         }

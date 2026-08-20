@@ -165,7 +165,8 @@ function getInterruptibleMessageForCurrentChat() {
 
             const messageItem = chatMessagesDiv?.querySelector(`.message-item[data-message-id="${message.id}"]`);
             const isStreaming = Boolean(messageItem?.classList.contains('streaming'));
-            if (message.isThinking === true || isStreaming) {
+            const hasMountedPlaceholder = Boolean(messageItem?.isConnected && message.isThinking === true);
+            if (hasMountedPlaceholder || isStreaming) {
                 return { ...message, isStreaming };
             }
         }
@@ -333,61 +334,6 @@ window.__vcpChatRepository = chatRepository;
 let mainChatDomRenderer = null;
 let mainChatSurface = null;
 let mainChatAdapter = null;
-
-function createMainChatStreamCapabilities() {
-    return {
-        start: message => {
-            const start = window.streamManager?.startStreamingMessage
-                || window.messageRenderer?.startStreamingMessage;
-            return start?.(message);
-        },
-        append: (messageId, chunk, context) => window.messageRenderer.appendStreamChunk(messageId, chunk, context),
-        finalize: (messageId, finishReason, context, payload) => (
-            window.messageRenderer.finalizeStreamedMessage(messageId, finishReason, context, payload)
-        ),
-        dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
-        async afterPersist({ terminal, finalized, context, messageId }) {
-            const finalizedContext = finalized?.context || context;
-            const finalizedContent = finalized?.content || terminal.fullResponse || '';
-            const relevant = finalizedContext
-                && currentSelectedItem
-                && (finalizedContext.groupId
-                    ? finalizedContext.groupId === currentSelectedItem.id
-                    : finalizedContext.agentId === currentSelectedItem.id)
-                && finalizedContext.topicId === currentTopicId;
-            if (terminal.kind === 'completed' && finalizedContext && !finalizedContext.isGroupMessage && relevant) {
-                await window.chatManager.attemptTopicSummarizationIfNeeded();
-            }
-            await window.flowlockManager?.handleFinalizedMessage({
-                type: terminal.kind === 'failed' ? 'error' : 'end', messageId,
-                context: finalizedContext, content: finalizedContent,
-                finishReason: finalized?.finishReason || terminal.finishReason || terminal.kind,
-                error: terminal.error || null,
-            });
-        },
-        renderError({ event, context }) {
-            const relevant = context && currentSelectedItem
-                && (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id)
-                && context.topicId === currentTopicId;
-            if (!relevant) return;
-            const error = event.outcome?.transport?.error?.message
-                || event.outcome?.transport?.error
-                || event.outcome?.persistence?.error?.message
-                || '未知连接错误';
-            const errorContent = document.querySelector(`.message-item[data-message-id="${event.messageId}"] .md-content`);
-            if (errorContent) {
-                const paragraph = document.createElement('p');
-                const strong = document.createElement('strong');
-                strong.style.color = 'red';
-                strong.textContent = `流错误: ${error}`;
-                paragraph.appendChild(strong);
-                errorContent.appendChild(paragraph);
-            } else {
-                window.messageRenderer.renderMessage({ role: 'system', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });
-            }
-        },
-    };
-}
 
 const startupThemeGate = new StartupThemeGate({
     document,
@@ -563,7 +509,15 @@ const startupThemeGate = new StartupThemeGate({
             }),
             presentationState,
             renderDependencies,
-            streamCapabilities: createMainChatStreamCapabilities(),
+            streamServices: {
+                streamProjection: window.streamManager,
+                messageRenderer: window.messageRenderer,
+                chatManager: window.chatManager,
+                flowlockManager: window.flowlockManager,
+                getSelection: () => currentSelectedItem,
+                getTopicId: () => currentTopicId,
+                dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+            },
             disposeRenderer: async () => {
                 window.messageRenderer.disposeRendererResources();
                 await window.streamManager?.cleanupTransientState?.();

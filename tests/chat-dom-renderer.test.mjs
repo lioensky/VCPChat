@@ -46,3 +46,23 @@ test('ChatDomRenderer passes its root as render context', async () => {
     assert.equal(receivedRoot, root);
     await adapter.dispose();
 });
+
+test('ChatDomRenderer binds streaming projection to the owning Surface root', async () => {
+    const root = new JSDOM('<div></div>').window.document.querySelector('div');
+    let receivedMessage;
+    const adapter = createChatDomRenderer({ root, renderer: {
+        startStreamingMessage: async message => { receivedMessage = message; },
+    } });
+    await adapter.startStreaming({ id: 'stream-1' });
+    assert.equal(receivedMessage.__surfaceRoot, root);
+    await adapter.dispose();
+});
+
+test('ChatDomRenderer retracts owned routes before waiting for render work', async () => {
+    const root = new JSDOM('<div></div>').window.document.querySelector('div');
+    const calls = [];
+    const adapter = createChatDomRenderer({ root, renderer: {} });
+    adapter.own(() => calls.push('retract'));
+    await adapter.dispose();
+    assert.deepEqual(calls, ['retract']);
+});

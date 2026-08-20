@@ -34,20 +34,22 @@
     "tests/lifecycle-scope.test.js",
     "tests/main-chat-sequence-model.test.js",
     "tests/main-chat-surface-adapter.test.mjs",
+    "tests/memory-chat-repository.test.mjs",
     "tests/mobile-sync-streaming.test.js",
     "tests/stream-consumer-registry.test.mjs",
     "tests/stream-coordinator.test.mjs",
     "tests/stream-manager-terminal-cleanup.test.js",
     "tests/stream-session.test.mjs",
     "tests/topic-list-mode-lifecycle.test.js",
-    "tests/vcp-stream-bridge.test.mjs"
+    "tests/vcp-stream-bridge.test.mjs",
+    "tests/window-stream-runtime.test.mjs"
   ],
   "references": {
     "chatManager": {
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 44
+          "occurrences": 45
         },
         {
           "file": "modules/event-listeners.js",
@@ -93,15 +95,15 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 28
+          "occurrences": 26
         },
         {
           "file": "modules/event-listeners.js",
-          "occurrences": 14
+          "occurrences": 10
         },
         {
           "file": "modules/chatManager.js",
-          "occurrences": 85
+          "occurrences": 84
         },
         {
           "file": "modules/messageRenderer.js",
@@ -116,16 +118,12 @@
           "occurrences": 1
         },
         {
-          "file": "Flowlockmodules/flowlock-integration.js",
-          "occurrences": 1
-        },
-        {
           "file": "Voicechatmodules/voicechat.js",
-          "occurrences": 18
+          "occurrences": 13
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "occurrences": 14
+          "occurrences": 9
         },
         {
           "file": "modules/settingsManager.js",
@@ -152,6 +150,14 @@
         {
           "file": "tests/chat-manager-selection-race.test.js",
           "occurrences": 2
+        },
+        {
+          "file": "tests/main-chat-surface-adapter.test.mjs",
+          "occurrences": 1
+        },
+        {
+          "file": "tests/window-stream-runtime.test.mjs",
+          "occurrences": 1
         }
       ]
     },
@@ -179,7 +185,15 @@
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "occurrences": 3
+          "occurrences": 1
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "occurrences": 1
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "occurrences": 1
         }
       ],
       "tests": [
@@ -227,18 +241,18 @@
   ],
   "ownershipSignals": {
     "renderer.js": {
-      "windowReferences": 211,
-      "documentReferences": 187,
+      "windowReferences": 208,
+      "documentReferences": 184,
       "electronReferences": 12,
       "timers": 2,
       "listeners": 28,
       "mutableMaps": 0
     },
     "modules/event-listeners.js": {
-      "windowReferences": 42,
+      "windowReferences": 38,
       "documentReferences": 95,
       "electronReferences": 8,
-      "timers": 6,
+      "timers": 5,
       "listeners": 70,
       "mutableMaps": 0
     },
@@ -246,7 +260,7 @@
       "windowReferences": 28,
       "documentReferences": 14,
       "electronReferences": 49,
-      "timers": 2,
+      "timers": 1,
       "listeners": 0,
       "mutableMaps": 4
     },
@@ -262,9 +276,9 @@
       "windowReferences": 12,
       "documentReferences": 9,
       "electronReferences": 20,
-      "timers": 14,
+      "timers": 13,
       "listeners": 2,
-      "mutableMaps": 16
+      "mutableMaps": 17
     },
     "modules/renderer/messageContextMenu.js": {
       "windowReferences": 9,
@@ -283,7 +297,7 @@
       "mutableMaps": 2
     },
     "Flowlockmodules/flowlock-integration.js": {
-      "windowReferences": 47,
+      "windowReferences": 45,
       "documentReferences": 2,
       "electronReferences": 5,
       "timers": 0,
@@ -291,16 +305,16 @@
       "mutableMaps": 0
     },
     "Voicechatmodules/voicechat.js": {
-      "windowReferences": 45,
-      "documentReferences": 26,
+      "windowReferences": 41,
+      "documentReferences": 25,
       "electronReferences": 25,
       "timers": 8,
       "listeners": 13,
       "mutableMaps": 0
     },
     "rust_assistant_engine/ui/assistant.js": {
-      "windowReferences": 40,
-      "documentReferences": 22,
+      "windowReferences": 36,
+      "documentReferences": 21,
       "electronReferences": 20,
       "timers": 1,
       "listeners": 7,

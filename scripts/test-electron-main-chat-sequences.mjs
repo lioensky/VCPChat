@@ -592,7 +592,20 @@ try {
             }, kind);
             const requestDeadline = Date.now() + 5_000;
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
-            assert.ok(fixture.requests.length > before, `${kind} request did not reach the controlled VCP fixture`);
+            if (fixture.requests.length === before) {
+                const state = await page.evaluate(() => ({
+                    selected: window.currentSelectedItem?.id || null,
+                    topicId: window.currentTopicId || null,
+                    inputDisabled: document.getElementById('messageInput')?.disabled,
+                    sendDisabled: document.getElementById('sendMessageBtn')?.disabled,
+                    sendMode: document.getElementById('sendMessageBtn')?.dataset.mode,
+                    activeStream: window.streamManager?.getActiveStreamingMessageId?.() || null,
+                    pending: (window.currentChatHistory || []).filter(message => message?.isThinking || message?.isPendingStream).map(message => message.id),
+                    streamingDom: [...document.querySelectorAll('#chatMessages .message-item.streaming')].map(node => node.dataset.messageId),
+                    recentAssistant: (window.currentChatHistory || []).filter(message => message?.role === 'assistant').slice(-3).map(message => ({ id: message.id, thinking: message.isThinking, pending: message.isPendingStream })),
+                }));
+                assert.fail(`${kind} request did not reach the controlled VCP fixture: ${JSON.stringify(state)}`);
+            }
             await page.waitForFunction(() => (
                 document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt'
                 && document.querySelectorAll('.message-item.streaming').length === 0

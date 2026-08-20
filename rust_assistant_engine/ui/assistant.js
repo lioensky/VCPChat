@@ -1,4 +1,6 @@
 // Assistantmodules/assistant.js
+import { createMemoryChatRepository } from '../../modules/chat/memoryChatRepository.js';
+import { createWindowStreamRuntime } from '../../modules/renderer/windowStreamRuntime.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
@@ -16,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChatHistory = [];
     let attachedFiles = [];
     let activeStreamingMessageId = null;
+    let streamRuntime = null;
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
 
     const scrollToBottom = () => {
@@ -42,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('[Assistant] Error saving history on close:', error);
         } finally {
+            await streamRuntime?.dispose();
             window.close();
         }
     });
@@ -213,6 +217,10 @@ window.electronAPI.onAssistantData(async (data) => {
             };
 
             window.messageRenderer.initializeMessageRenderer({
+                chatRepository: createMemoryChatRepository({
+                    read: () => currentChatHistory,
+                    write: history => { currentChatHistory = history; },
+                }),
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,
@@ -224,6 +232,26 @@ window.electronAPI.onAssistantData(async (data) => {
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {}, // Stub
                 interruptHandler: interruptHandler // Provide the interrupt handler
+            });
+            streamRuntime = createWindowStreamRuntime({
+                root: chatMessagesDiv,
+                streamProjection: window.streamManager,
+                messageRenderer: window.messageRenderer,
+                getSelection: () => ({ id: agentId, type: 'agent' }),
+                getTopicId: getAssistantTopicId,
+                getMessageContext: () => ({
+                    agentId, topicId: getAssistantTopicId(), agentName: agentConfig?.name,
+                    avatarUrl: agentConfig?.avatarUrl, avatarColor: agentConfig?.avatarCalculatedColor,
+                }),
+                contextFilter: context => !!context && context.topicId === getAssistantTopicId() && context.agentId === agentId,
+                dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+                afterPersist: () => {
+                    activeStreamingMessageId = null;
+                    messageInput.disabled = false;
+                    sendMessageBtn.disabled = false;
+                    if (attachFileBtn) attachFileBtn.disabled = false;
+                    messageInput.focus();
+                },
             });
             console.log('[Assistant] Shared messageRenderer initialized.');
         } else {
@@ -417,9 +445,11 @@ window.electronAPI.onAssistantData(async (data) => {
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
-            if (window.messageRenderer) {
-                // Finalize without context to prevent history saving, then update UI
-                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error');
+            if (streamRuntime) {
+                streamRuntime.accept({
+                    type: 'error', messageId: thinkingMessageId, error: error.message,
+                    context: { agentId, topicId: getAssistantTopicId() },
+                });
                 const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
                 if (messageItemContent) {
                     messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
@@ -433,48 +463,10 @@ window.electronAPI.onAssistantData(async (data) => {
         }
     };
 
-    const activeStreams = new Set();
     // Listen to the new, unified stream event
     window.electronAPI.onVCPStreamEvent((eventData) => {
-        if (!window.messageRenderer || !isEventForCurrentAssistantSession(eventData)) return;
-
-        const { messageId, type, chunk, error, context } = eventData;
-
-        // The 'start' event is implicit. The first 'data' chunk will trigger startStreamingMessage.
-        if (!activeStreams.has(messageId) && type === 'data') {
-            window.messageRenderer.startStreamingMessage({
-                id: messageId,
-                role: 'assistant',
-                name: agentConfig.name,
-                avatarUrl: agentConfig.avatarUrl,
-                context: context, // Pass context
-            });
-            activeStreams.add(messageId);
-        }
-
-        if (type === 'data') {
-            window.messageRenderer.appendStreamChunk(messageId, chunk, context);
-        } else if (type === 'end') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context);
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            if (attachFileBtn) attachFileBtn.disabled = false;
-            messageInput.focus();
-        } else if (type === 'error') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
-            const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
-            if (messageItemContent) {
-                messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;
-            }
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            if (attachFileBtn) attachFileBtn.disabled = false;
-            messageInput.focus();
-        }
+        if (!streamRuntime || !isEventForCurrentAssistantSession(eventData)) return;
+        streamRuntime.accept(eventData);
     });
 
     if (attachFileBtn) {

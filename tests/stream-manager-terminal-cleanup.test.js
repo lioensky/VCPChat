@@ -28,7 +28,7 @@ test('stream initialization discards owned state on background history and rende
 });
 
 test('stream finalization discards owned state on every unrecoverable lookup failure', () => {
-    const body = functionBody('finalizeStreamedMessage', 'export function discardStreamingMessage');
+    const body = functionBody('projectStreamTerminal', 'export async function persistProjectedStreamTerminal');
     for (const marker of [
         'No context available for message',
         'Could not load history for finalization',
@@ -55,9 +55,10 @@ test('discardStreamingMessage releases every strong stream owner', () => {
         'messageDomCache',
         'preBufferedChunks',
         'messageInitializationStatus',
-        'pendingFinalizationEvents',
+        'messageInitializationWaiters',
         'pendingHistoryEntries',
         'messageContextMap',
+        'messageRootMap',
         'viewContextCache',
     ]) {
         assert.match(body, new RegExp(`${owner}\\.delete\\(messageId\\)`), `${owner} is not released`);
@@ -118,6 +119,7 @@ test('a runtime background-history failure releases every stream owner', async (
         initialization: 0,
         activeInitializations: 0,
         contexts: 0,
+        roots: 0,
         pendingHistory: 0,
         prebuffered: 0,
         pendingFinalizations: 0,

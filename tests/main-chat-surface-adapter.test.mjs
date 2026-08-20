@@ -19,8 +19,13 @@ test('MainChatSurfaceAdapter owns renderer, stream routes and quiescent teardown
         focusTarget: dom.window.document.querySelector('textarea'),
         operations: { dispose: async () => {} },
         renderDependencies: {},
-        streamCapabilities: {
-            start() {}, append() {}, finalize() {},
+        streamServices: {
+            streamProjection: {
+                startStreamingMessage() {}, appendStreamChunk() {}, projectStreamTerminal() {}, persistProjectedStreamTerminal() {},
+            },
+            messageRenderer: renderer,
+            getSelection: () => null,
+            getTopicId: () => null,
         },
         disposeRenderer: async () => { rendererDisposed = true; },
     });

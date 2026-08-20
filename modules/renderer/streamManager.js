@@ -171,6 +171,7 @@ function preserveDynamicStreamState(fromEl, toEl) {
 
 // --- DOM Cache ---
 const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
+const messageRootMap = new Map(); // messageId -> owning Surface root
 
 const scrollThrottleTimers = new Map(); // messageId -> timerId
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
@@ -184,7 +185,7 @@ const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达
 // --- 新增：预缓冲系统 ---
 const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
 const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
-const pendingFinalizationEvents = new Map(); // messageId -> { finishReason, context, finalPayload }
+const messageInitializationWaiters = new Map(); // messageId -> resolvers awaiting ready/discarded
 // Renderer-owned pending entries are deliberately not persisted. They carry
 // enough ordering metadata to finalize a stream after its source topic has
 // moved to the background without leaving crash-residue in history.json.
@@ -385,8 +386,12 @@ async function debouncedSaveHistory(context, history) {
     const timerId = setTimeout(async () => {
         const queuedData = historySaveQueue.get(signature);
         if (queuedData) {
-            await saveHistoryForContext(queuedData.context, queuedData.history);
             historySaveQueue.delete(signature);
+            try {
+                await saveHistoryForContext(queuedData.context, queuedData.history);
+            } catch (error) {
+                console.error('[StreamManager] Debounced history save failed:', error);
+            }
         }
     }, HISTORY_SAVE_DEBOUNCE);
     
@@ -446,8 +451,6 @@ async function saveHistoryForContext(context, history) {
         } else {
             throw new Error('ChatRepository is required for stream history');
         }
-    }).catch(e => {
-        console.error(`[StreamManager] Failed to save history for context`, context, e);
     });
     historySaveChains.set(signature, current);
     try { await current; } finally {
@@ -1228,8 +1231,8 @@ function getCachedMessageDom(messageId) {
     }
     
     // 重新查询并缓存
-    const { chatMessagesDiv } = refs;
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    const root = messageRootMap.get(messageId) || refs.chatMessagesDiv;
+    const messageItem = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
     
     if (!messageItem) return null;
     
@@ -1638,7 +1641,9 @@ function throttledScrollToBottom(messageId) {
         return; // 节流期间，跳过
     }
     
-    refs.uiHelper.scrollToBottom();
+    const root = messageRootMap.get(messageId);
+    if (root && root !== refs.chatMessagesDiv) root.scrollTop = root.scrollHeight;
+    else refs.uiHelper.scrollToBottom();
     
     const timerId = setTimeout(() => {
         scrollThrottleTimers.delete(messageId);
@@ -1696,6 +1701,7 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
 
 export async function startStreamingMessage(message, passedMessageItem = null) {
     const messageId = message.id;
+    if (message.__surfaceRoot?.querySelector) messageRootMap.set(messageId, message.__surfaceRoot);
     
     // 🟢 修复：如果消息已在处理中，且 isThinking 状态没变，直接返回现有状态
     const currentStatus = messageInitializationStatus.get(messageId);
@@ -1759,7 +1765,8 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     // Only manipulate DOM for current view
     let messageItem = null;
     if (isForCurrentView) {
-        messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
+        const messageRoot = messageRootMap.get(messageId) || chatMessagesDiv;
+        messageItem = passedMessageItem || messageRoot.querySelector(`.message-item[data-message-id="${message.id}"]`);
         if (!messageItem) {
             const placeholderMessage = { 
                 ...message, 
@@ -1854,26 +1861,18 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         preBufferedChunks.delete(messageId);
     }
     
-    const deferredFinalization = pendingFinalizationEvents.get(messageId);
-    if (deferredFinalization) {
-        pendingFinalizationEvents.delete(messageId);
-        console.warn(`[StreamManager] Replaying deferred finalization for message ${messageId}.`);
-        setTimeout(() => {
-            finalizeStreamedMessage(
-                messageId,
-                deferredFinalization.finishReason,
-                deferredFinalization.context,
-                deferredFinalization.finalPayload
-            );
-        }, 0);
-    }
+    const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
+    messageInitializationWaiters.delete(messageId);
+    initializationWaiters.forEach(resolve => resolve(true));
     
     if (isForCurrentView) {
         // 如果从思考转为非思考，立即触发一次渲染以清理占位符
         if (!message.isThinking && isCurrentlyThinking) {
             renderStreamFrame(messageId);
         }
-        uiHelper.scrollToBottom();
+        const messageRoot = messageRootMap.get(messageId);
+        if (messageRoot && messageRoot !== chatMessagesDiv) messageRoot.scrollTop = messageRoot.scrollHeight;
+        else uiHelper.scrollToBottom();
     }
     
     return messageItem;
@@ -2256,12 +2255,26 @@ export function appendStreamChunk(messageId, chunkData, context) {
     }
 }
 
-export async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    const initStatusAtFinalize = messageInitializationStatus.get(messageId);
-    if (!initStatusAtFinalize || initStatusAtFinalize === 'pending') {
-        console.warn(`[StreamManager] Finalization arrived before message initialization completed for ${messageId}. Deferring. status=${initStatusAtFinalize || 'missing'}`);
-        pendingFinalizationEvents.set(messageId, { finishReason, context, finalPayload });
-        return;
+/**
+ * Applies the terminal message model and DOM projection without writing durable history.
+ * The StreamCoordinator owns the production commit point; legacy callers use the
+ * finalizeStreamedMessage wrapper below until their consumers are migrated.
+ */
+export async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+    let initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    if (initStatusAtFinalize === 'pending') {
+        console.warn(`[StreamManager] Finalization is waiting for message initialization: ${messageId}`);
+        const initialized = await new Promise(resolve => {
+            const waiters = messageInitializationWaiters.get(messageId) || [];
+            waiters.push(resolve);
+            messageInitializationWaiters.set(messageId, waiters);
+        });
+        if (!initialized) return null;
+        initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    }
+    if (!initStatusAtFinalize) {
+        console.warn(`[StreamManager] Finalization ignored because message initialization is absent: ${messageId}`);
+        return null;
     }
 
     // With the global render loop, we no longer need to manually drain the queue here or clear timers.
@@ -2386,8 +2399,9 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     if (isForCurrentView) {
         refs.currentChatHistoryRef.set([...historyForThisMessage]);
 
+        const messageRoot = messageRootMap.get(messageId) || chatMessagesDiv;
         const messageItem = messageDomCache.get(messageId)?.messageItem
-            || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+            || messageRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
 
@@ -2446,15 +2460,10 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                 nameTimeBlock.appendChild(timestampDiv);
             }
 
-            uiHelper.scrollToBottom();
+            if (messageRoot !== chatMessagesDiv) messageRoot.scrollTop = messageRoot.scrollHeight;
+            else uiHelper.scrollToBottom();
         }
 
-    }
-    
-    // 🟢 使用防抖保存
-    if (storedContext.topicId !== 'assistant_chat') {
-        debouncedSaveHistory(storedContext, historyForThisMessage);
-        await flushHistorySave(storedContext);
     }
     
     // Cleanup
@@ -2477,6 +2486,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     messageInitializationStatus.delete(messageId);
     preBufferedChunks.delete(messageId);
     messageContextMap.delete(messageId);
+    messageRootMap.delete(messageId);
     pendingHistoryEntries.delete(messageId);
     viewContextCache.delete(messageId);
 
@@ -2485,8 +2495,29 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         messageId,
         context: storedContext,
         content: finalFullText,
-        finishReason
+        finishReason,
+        history: historyForThisMessage,
     };
+}
+
+/** The durable commit provider used by the coordinator-owned main stream path. */
+export async function persistProjectedStreamTerminal(projected) {
+    if (!projected?.context || !Array.isArray(projected.history)) return projected || null;
+    if (projected.context.topicId !== 'assistant_chat') {
+        await saveHistoryForContext(projected.context, projected.history);
+    }
+    return {
+        messageId: projected.messageId,
+        context: projected.context,
+        content: projected.content,
+        finishReason: projected.finishReason,
+    };
+}
+
+/** Compatibility entry point for consumers not yet routed through StreamCoordinator. */
+export async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
+    const projected = await projectStreamTerminal(messageId, finishReason, context, finalPayload);
+    return persistProjectedStreamTerminal(projected);
 }
 
 export function discardStreamingMessage(messageId) {
@@ -2501,16 +2532,19 @@ export function discardStreamingMessage(messageId) {
     messageDomCache.delete(messageId);
     preBufferedChunks.delete(messageId);
     messageInitializationStatus.delete(messageId);
-    pendingFinalizationEvents.delete(messageId);
+    const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
+    messageInitializationWaiters.delete(messageId);
+    initializationWaiters.forEach(resolve => resolve(false));
     pendingHistoryEntries.delete(messageId);
     messageContextMap.delete(messageId);
+    messageRootMap.delete(messageId);
     viewContextCache.delete(messageId);
     cleanupDesktopPushState(messageId);
     if (activeStreamingMessageId === messageId) activeStreamingMessageId = null;
     window.updateSendButtonState?.();
 }
 
-export function cleanupTransientState() {
+export async function cleanupTransientState() {
         // 清理所有流式消息相关状态
         for (const timerId of scrollThrottleTimers.values()) {
             clearTimeout(timerId);
@@ -2525,12 +2559,15 @@ export function cleanupTransientState() {
         desktopPushStates.clear();
     
     
-        for (const timerId of historySaveQueue.values()) {
-            if (timerId?.timerId) {
-                clearTimeout(timerId.timerId);
+        const queuedHistory = [...historySaveQueue.values()];
+        for (const queued of queuedHistory) {
+            if (queued?.timerId) {
+                clearTimeout(queued.timerId);
             }
         }
         historySaveQueue.clear();
+        await Promise.allSettled(queuedHistory.map(queued => saveHistoryForContext(queued.context, queued.history)));
+        await Promise.allSettled([...historySaveChains.values()]);
     
         streamingChunkQueues.clear();
         streamingTimers.clear();
@@ -2540,9 +2577,11 @@ export function cleanupTransientState() {
         messageDomCache.clear();
         preBufferedChunks.clear();
         messageInitializationStatus.clear();
-        pendingFinalizationEvents.clear();
+        for (const waiters of messageInitializationWaiters.values()) waiters.forEach(resolve => resolve(false));
+        messageInitializationWaiters.clear();
         pendingHistoryEntries.clear();
         messageContextMap.clear();
+        messageRootMap.clear();
         viewContextCache.clear();
     
         activeStreamingMessageId = null;
@@ -2559,9 +2598,10 @@ export function getStreamDiagnostics() {
         activeInitializations: [...messageInitializationStatus.values()]
             .filter(status => status === 'pending' || status === 'ready').length,
         contexts: messageContextMap.size,
+        roots: messageRootMap.size,
         pendingHistory: pendingHistoryEntries.size,
         prebuffered: preBufferedChunks.size,
-        pendingFinalizations: pendingFinalizationEvents.size,
+        pendingFinalizations: messageInitializationWaiters.size,
         chunkQueues: streamingChunkQueues.size,
         renderTimers: streamingTimers.size,
         delayedCleanupTimers: 0,
@@ -2576,6 +2616,8 @@ window.streamManager = {
     cleanupTransientState,
     startStreamingMessage,
     appendStreamChunk,
+    projectStreamTerminal,
+    persistProjectedStreamTerminal,
     finalizeStreamedMessage,
     discardStreamingMessage,
     cleanupTransientState,

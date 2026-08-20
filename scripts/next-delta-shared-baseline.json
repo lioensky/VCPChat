@@ -1,15 +1,15 @@
 {
   "modules/chatManager.js": {
-    "sha256": "261f9ff3fdc278247d7d9540f9e63183da4699ce9e0eb5d6e2103bb626b7923a",
-    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, message-scoped stream consumer routing, independent renderer seam, and production fail-fast repository requirement"
+    "sha256": "321fec7e7fca764a5238fb398b3abdf2ab2c0208c2c872b99178fbb89d82946c",
+    "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
     "sha256": "0f9274f5fe8232a5e35671561da1e412b07248c1d93c797aebc3d9b0d0675336",
     "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "2f8daf0cf9fd5f979cbb7120449e097236ab0423c11e3902f6032718961cfeec",
-    "reason": "shared stream DOM adapter with reviewed coordinator terminal ownership, serialized durable history merge, immediate terminal cache release, explicit repository requirement, and ContentRuntime render-model consumption"
+    "sha256": "8b6dc7a4b30175957ba6902e779f8decc92b36c4edd2d5ff06524e3300e3c5e3",
+    "reason": "shared stream DOM adapter with coordinator-owned projection, per-message Surface root ownership, awaited initialization and durable commit, serialized history merge, immediate terminal cache release, and ContentRuntime render-model consumption"
   },
   "modules/topicListManager.js": {
     "sha256": "6f93242d843253f672f2afe1af2b6567781b0925c8292fbdda5bf53f490418be",

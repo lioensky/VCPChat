@@ -225,23 +225,10 @@ async function continueWritingForContext(params) {
         avatarColor: agentConfig?.avatarCalculatedColor
     };
 
-    // 流式消息必须在发送请求前初始化，无论它当前是否可见。
-    // streamManager 自己负责“当前视图渲染 / 后台只写历史”的分流。
-    if (useStreaming) {
-        const streamStarter = window.streamManager?.startStreamingMessage
-            || window.messageRenderer?.startStreamingMessage;
-        if (typeof streamStarter !== 'function') {
-            throw new Error('流式消息管理器未就绪');
-        }
-
-        await streamStarter({
-            ...thinkingMessage,
-            content: '',
-            agentId,
-            topicId,
-            context
-        });
-    } else {
+    // Streaming lifecycle is now started by the VCP stream bridge when the
+    // producer publishes its first owned event. This prevents Flowlock from
+    // creating a second terminal state machine for the same message.
+    if (!useStreaming) {
         let historyWithThinking = await chatAPI.getChatHistory(agentId, topicId);
         if (!historyWithThinking || historyWithThinking.error) {
             historyWithThinking = [];

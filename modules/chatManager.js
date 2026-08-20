@@ -1787,9 +1787,9 @@ window.chatManager = (() => {
                             releaseStreamConsumerRoute = null;
                         },
                     });
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    // Pass the created DOM element directly to avoid race conditions with querySelector
-                    await (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, { ...thinkingMessage, content: "" }, thinkingMessageItem);
+                    if (request?.domRenderer?.own && releaseStreamConsumerRoute?.retract) {
+                        request.domRenderer.own(() => releaseStreamConsumerRoute?.retract?.());
+                    }
                 }
             }
 

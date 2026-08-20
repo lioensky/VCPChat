@@ -32,14 +32,15 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
         surfaceGeneration: capabilities.getSurfaceGeneration?.(),
         normalizeChunk: normalizeStreamChunk,
         async prepare(event) {
-            context = event.context || context;
-            if ((event.type === 'agent_thinking' || event.type === 'start') && preparedType !== event.type) {
+            context = { ...context, ...(event.context || {}) };
+            if ((event.type === 'agent_thinking' || event.type === 'start' || event.type === 'data') && preparedType === null) {
                 preparedType = event.type;
-                await (projection?.start || capabilities.start)(buildMessage(event));
+                await (projection?.start || capabilities.start)(buildMessage({ ...event, context }));
             }
         },
         consume(event) {
-            if (event.type === 'chunk') capabilities.append(messageId, event.text, context);
+            if (projection?.suppressed) return;
+            if (event.type === 'chunk') (projection?.append || capabilities.append)(messageId, event.text, context);
             if (!terminalTypes.has(event.type)) return;
             const finalized = event.outcome?.persistence?.value;
             capabilities.dispatchTerminal?.({
@@ -51,18 +52,20 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
         },
         async persist(value) {
+            if (projection?.suppressed) return null;
             const terminal = value.terminal || {};
             let fullResponse = terminal.fullResponse || value.snapshot?.text || '';
             const error = terminal.error?.message || terminal.error || '';
             if (terminal.kind === 'failed' && fullResponse.trim()) {
                 fullResponse += `\n\n> [!WARNING]\n> **流式响应中断**: ${error || '未知连接错误'}。已保存已接收的部分内容。`;
             }
-            const finalized = await capabilities.finalize(
+            const projected = await capabilities.projectTerminal(
                 messageId,
                 terminal.kind === 'completed' ? (terminal.finishReason || 'completed') : terminal.kind,
                 terminal.context || context,
                 { fullResponse, error },
             );
+            const finalized = await capabilities.persistTerminal(projected);
             await capabilities.afterPersist?.({ terminal, finalized, context, messageId });
             return finalized;
         },

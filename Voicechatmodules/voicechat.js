@@ -1,4 +1,6 @@
 // Voicechatmodules/voicechat.js
+import { createMemoryChatRepository } from '../modules/chat/memoryChatRepository.js';
+import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
@@ -52,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let globalSettings = {};
     let currentChatHistory = [];
     let activeStreamingMessageId = null;
+    let streamRuntime = null;
     let inputMode = 'text'; // 'text' or 'voice'
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
     let speechRecognitionTimeout = null;
@@ -76,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await saveVoiceChatToHistory();
         } finally {
+            await streamRuntime?.dispose();
             window.close();
         }
     });
@@ -290,6 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 set: () => {}
             };
             window.messageRenderer.initializeMessageRenderer({
+                chatRepository: createMemoryChatRepository({
+                    read: () => currentChatHistory,
+                    write: history => { currentChatHistory = history; },
+                }),
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,
@@ -300,6 +308,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 uiHelper: uiHelperFunctions, // Pass the local helper
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {} // Stub
+            });
+            streamRuntime = createWindowStreamRuntime({
+                root: chatMessagesDiv,
+                streamProjection: window.streamManager,
+                messageRenderer: window.messageRenderer,
+                getSelection: () => ({ id: agentId, type: 'agent' }),
+                getTopicId: getVoiceTopicId,
+                getMessageContext: () => ({
+                    agentId, topicId: getVoiceTopicId(), agentName: agentConfig?.name,
+                    avatarUrl: agentConfig?.avatarUrl, avatarColor: agentConfig?.avatarCalculatedColor,
+                }),
+                contextFilter: context => !!context && context.topicId === getVoiceTopicId() && context.agentId === agentId,
+                dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+                afterPersist: ({ finalized }) => {
+                    if (finalized?.messageId) setTimeout(() => extractTextAndPlayTTS(finalized.messageId, 0), 100);
+                    activeStreamingMessageId = null;
+                    messageInput.disabled = false;
+                    sendMessageBtn.disabled = false;
+                    messageInput.focus();
+                },
             });
             console.log('[VoiceChat] Shared messageRenderer initialized.');
         } else {
@@ -387,8 +415,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
-            if (window.messageRenderer) {
-                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error');
+            if (streamRuntime) {
+                streamRuntime.accept({
+                    type: 'error', messageId: thinkingMessageId, error: error.message,
+                    context: { agentId, topicId: getVoiceTopicId() },
+                });
                 const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
                 if (messageItemContent) {
                     messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
@@ -401,56 +432,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const activeStreams = new Set();
     window.electronAPI.onVCPStreamEvent((eventData) => {
-        if (!window.messageRenderer || !isEventForCurrentVoiceSession(eventData)) return;
-
-        const { messageId, type, chunk, error, context } = eventData;
-
-        if (!activeStreams.has(messageId) && type === 'data') {
-            window.messageRenderer.startStreamingMessage({
-                id: messageId,
-                role: 'assistant',
-                name: agentConfig.name,
-                avatarUrl: agentConfig.avatarUrl,
-                context: context,
-            });
-            activeStreams.add(messageId);
-        }
-
-        if (type === 'data') {
-            window.messageRenderer.appendStreamChunk(messageId, chunk, context);
-        } else if (type === 'end') {
-            console.log(`[VoiceChat] 收到流结束事件，messageId: ${messageId}`);
-            console.log(`[VoiceChat] 当前activeStreamingMessageId: ${activeStreamingMessageId}`);
-            console.log(`[VoiceChat] agentConfig状态: ${!!agentConfig}, TTS语音: ${agentConfig?.ttsVoicePrimary || '未设置'}`);
-
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context).then(() => {
-                console.log(`[VoiceChat] finalizeStreamedMessage完成，准备TTS`);
-
-                // 添加延迟以确保DOM完全渲染
-                setTimeout(() => {
-                    extractTextAndPlayTTS(messageId, 0);
-                }, 100);
-            });
-
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.focus();
-        } else if (type === 'error') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
-            const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
-            if (messageItemContent) {
-                messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;
-            }
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.focus();
-        }
+        if (!streamRuntime || !isEventForCurrentVoiceSession(eventData)) return;
+        streamRuntime.accept(eventData);
     });
     
     // 新增：智能文本提取和TTS触发函数，包含重试机制

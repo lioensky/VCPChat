@@ -7,6 +7,7 @@ export function createChatDomRenderer({ root, renderer, disposeRenderer = null }
     if (!renderer) throw new TypeError('ChatDomRenderer requires a renderer adapter');
     let disposed = false;
     const pending = new Set();
+    const ownedDisposers = [];
     const assertActive = () => { if (disposed) throw new Error('ChatDomRenderer is disposed'); };
     const track = (operation) => {
         const promise = Promise.resolve(operation);
@@ -16,16 +17,22 @@ export function createChatDomRenderer({ root, renderer, disposeRenderer = null }
     };
     return {
         get root() { return root; },
+        own(disposer) { assertActive(); if (typeof disposer !== 'function') throw new TypeError('ChatDomRenderer owner requires a disposer'); ownedDisposers.push(disposer); },
         renderMessage(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); const options = args[4] || {}; args[4] = { ...options, root }; return track(renderer.renderMessage(...args)); },
         renderBatch(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); const options = args[3] || {}; args[3] = { ...options, root }; return track(renderer.renderMessageBatch(...args)); },
         renderHistory(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); const options = args[1] || {}; args[1] = { ...options, root }; return track(renderer.renderHistory(...args)); },
         updateStreaming(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); return track(renderer.updateMessageContent?.(...args)); },
-        startStreaming(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); return track(renderer.startStreamingMessage?.(...args)); },
+        startStreaming(...args) {
+            if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed'));
+            if (args[0] && typeof args[0] === 'object') args[0] = { ...args[0], __surfaceRoot: root };
+            return track(renderer.startStreamingMessage?.(...args));
+        },
         discardStreaming(...args) { if (disposed) return; return renderer.discardStreamingMessage?.(...args); },
         removeMessage(...args) { assertActive(); return track(renderer.removeMessageById(...args)); },
         async dispose({ clear = false } = {}) {
             if (disposed) return;
             disposed = true;
+            ownedDisposers.splice(0).reverse().forEach(disposeOwned => disposeOwned());
             await Promise.allSettled([...pending]);
             await disposeRenderer?.();
             if (clear) root.replaceChildren();
