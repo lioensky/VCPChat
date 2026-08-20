@@ -5,9 +5,10 @@ import { createChatHistoryMutationAuthority } from '../../modules/chat/chatHisto
 import { createChatRepository } from '../../modules/chat/chatRepository.js';
 import { createWindowStreamRuntime } from '../../modules/renderer/windowStreamRuntime.js';
 import { createMessageRenderer } from '../../modules/messageRenderer.js';
+import { createStreamProjection } from '../../modules/renderer/streamManager.js';
 
-const messageRenderer = createMessageRenderer();
-import { streamManager } from '../../modules/renderer/streamManager.js';
+const streamManager = createStreamProjection();
+const messageRenderer = createMessageRenderer({ streamManager });
 
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
@@ -58,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('[Assistant] Error saving history on close:', error);
         } finally {
             await streamRuntime?.dispose();
+            await streamManager.dispose();
             await messageRenderer.disposeRootResources(chatMessagesDiv);
             messageRenderer.disposeRendererResources();
             await historyMutationAuthority?.dispose();

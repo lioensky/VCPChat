@@ -1,9 +1,11 @@
 import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
 import { createChatHistoryPersistence } from './modules/chat/chatHistoryPersistence.js';
 import { createChatHistoryMutationAuthority } from './modules/chat/chatHistoryMutationAuthority.js';
+import { createSurfaceConversation } from './modules/chat/surfaceConversation.js';
 import { createMessageRenderer } from './modules/messageRenderer.js';
-import { streamManager } from './modules/renderer/streamManager.js';
+import { createStreamProjection } from './modules/renderer/streamManager.js';
 
+const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
 import { chatManager } from './modules/chatManager.js';
 
@@ -333,16 +335,18 @@ let mainChatSurface = null;
 let mainChatAdapter = null;
 let releaseNextUiChatCapabilities = null;
 
-function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null } = {}) {
+function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
     if (!root?.querySelector) throw new TypeError('Internal chat renderer requires a Surface root');
-    let localHistory = [];
-    let localSelection = currentSelectedItem ? { ...currentSelectedItem } : { id: null, type: null };
-    let localTopicId = currentTopicId;
+    const conversationCapability = createSurfaceConversation({
+        selectedItem: conversation?.selectedItem || currentSelectedItem,
+        topicId: conversation?.topicId ?? currentTopicId,
+    });
     let localSettings = globalSettings;
     let disposed = false;
+    const streamProjection = createStreamProjection();
     const renderer = createMessageRenderer({
-        streamManager,
-        initializeStreamProjection: false,
+        streamManager: streamProjection,
+        initializeStreamProjection: mode === 'interactive',
         enableContextMenu: false,
         enableMiddleClick: false,
         exposeGlobalCommands: false,
@@ -357,9 +361,9 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
     renderer.initializeMessageRenderer({
         chatRepository,
         historyMutationAuthority,
-        currentChatHistoryRef: { get: () => localHistory, set: value => { localHistory = Array.isArray(value) ? value : []; } },
-        currentSelectedItemRef: { get: () => localSelection, set: value => { localSelection = value; } },
-        currentTopicIdRef: { get: () => localTopicId, set: value => { localTopicId = value; } },
+        currentChatHistoryRef: conversationCapability.historyRef,
+        currentSelectedItemRef: conversationCapability.selectedItemRef,
+        currentTopicIdRef: conversationCapability.topicIdRef,
         globalSettingsRef: { get: () => localSettings, set: value => { localSettings = value; } },
         chatMessagesDiv: root,
         electronAPI: chatAPI,
@@ -373,14 +377,14 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
     return Object.freeze({
         renderer,
         mode,
+        conversation: conversationCapability,
         async dispose() {
             if (disposed) return;
             disposed = true;
+            await streamProjection.dispose();
             await renderer.disposeRootResources(root);
             renderer.disposeRendererResources();
-            localHistory = [];
-            localSelection = null;
-            localTopicId = null;
+            conversationCapability.dispose();
             localSettings = null;
         },
     });
@@ -550,6 +554,7 @@ const startupThemeGate = new StartupThemeGate({
                 removeAttachmentFromMessage: (...args) => chatManager.removeAttachmentFromMessage(...args),
                 syncNextUiEmptyStateWithMessages: (...args) => chatManager.syncNextUiEmptyStateWithMessages(...args),
                 handleSendMessage: (...args) => chatManager.handleSendMessage(...args),
+                updateSendButtonState,
             },
             summarizeTopicFromMessages: (messages, agentName) => {
                 if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);
@@ -582,7 +587,7 @@ const startupThemeGate = new StartupThemeGate({
             disposeRenderer: async () => {
                 await messageRenderer.disposeRootResources(chatMessagesDiv);
                 messageRenderer.disposeRendererResources();
-                await streamManager?.cleanupTransientState?.();
+                await streamManager?.dispose?.();
             },
         });
         mainChatSurface = mainChatAdapter.surface;

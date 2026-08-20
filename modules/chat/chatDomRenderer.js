@@ -24,8 +24,16 @@ export function createChatDomRenderer({ root, renderer, disposeRenderer = null }
         updateStreaming(...args) { if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed')); return track(renderer.updateMessageContent?.(...args)); },
         startStreaming(...args) {
             if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed'));
-            if (args[0] && typeof args[0] === 'object') args[0] = { ...args[0], __surfaceRoot: root };
             return track(renderer.startStreamingMessage?.(...args));
+        },
+        appendStreaming(...args) {
+            if (disposed) return false;
+            renderer.appendStreamChunk?.(...args);
+            return true;
+        },
+        projectStreamTerminal(...args) {
+            if (disposed) return Promise.reject(new Error('ChatDomRenderer is disposed'));
+            return track(renderer.projectStreamTerminal?.(...args));
         },
         discardStreaming(...args) { if (disposed) return; return renderer.discardStreamingMessage?.(...args); },
         removeMessage(...args) { assertActive(); return track(renderer.removeMessageById(...args)); },

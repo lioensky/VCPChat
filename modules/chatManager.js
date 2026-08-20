@@ -1276,9 +1276,13 @@ export const chatManager = (() => {
         const input = request?.input || messageInput;
         let content = typeof request?.content === 'string' ? request.content : input.value; // Use let as it might be modified
         const attachedFiles = Array.isArray(request?.attachments) ? request.attachments : attachedFilesRef.get();
-        const currentSelectedItem = currentSelectedItemRef.get();
-        const currentTopicId = currentTopicIdRef.get();
+        const sendSelectedItemRef = request?.conversation?.selectedItemRef || currentSelectedItemRef;
+        const sendTopicIdRef = request?.conversation?.topicIdRef || currentTopicIdRef;
+        const sendHistoryRef = request?.conversation?.historyRef || currentChatHistoryRef;
+        const currentSelectedItem = sendSelectedItemRef.get();
+        const currentTopicId = sendTopicIdRef.get();
         const globalSettings = globalSettingsRef.get();
+        const notifySendState = request?.conversation ? () => {} : () => window.updateSendButtonState?.();
         const sendContext = {
             agentId: currentSelectedItem.id,
             itemType: currentSelectedItem.type || 'agent',
@@ -1289,10 +1293,11 @@ export const chatManager = (() => {
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
         const isSendContextCurrent = () => {
-            const activeItem = currentSelectedItemRef.get();
+            if (request?.conversation && request.conversation.isActive?.() === false) return false;
+            const activeItem = sendSelectedItemRef.get();
             return activeItem?.id === sendContext.agentId
                 && activeItem?.type === sendContext.itemType
-                && currentTopicIdRef.get() === sendContext.topicId;
+                && sendTopicIdRef.get() === sendContext.topicId;
         };
 
         if (!content && attachedFiles.length === 0) return;
@@ -1378,9 +1383,9 @@ export const chatManager = (() => {
             attachments: uiAttachments
         };
         
-        const optimisticHistory = [...currentChatHistoryRef.get(), userMessage];
+        const optimisticHistory = [...sendHistoryRef.get(), userMessage];
         if (isSendContextCurrent()) {
-            currentChatHistoryRef.set(optimisticHistory);
+            sendHistoryRef.set(optimisticHistory);
         }
         let userMessageItem = null;
         if (renderTarget) {
@@ -1402,11 +1407,11 @@ export const chatManager = (() => {
             // persistence fails, retract the optimistic projection and leave
             // the initiating input/attachments available for retry.
             if (isSendContextCurrent()) {
-                currentChatHistoryRef.set(
-                    currentChatHistoryRef.get().filter(message => message?.id !== userMessage.id)
+                sendHistoryRef.set(
+                    sendHistoryRef.get().filter(message => message?.id !== userMessage.id)
                 );
                 userMessageItem?.remove?.();
-                window.updateSendButtonState?.();
+                notifySendState();
                 uiHelper.showToastNotification(`发送失败，草稿已保留: ${error.message}`, 'error');
             }
             console.error('[ChatManager] Failed to persist outgoing message:', error);
@@ -1482,12 +1487,12 @@ export const chatManager = (() => {
             }
         }
         if (isSendContextCurrent()) {
-            currentChatHistoryRef.set(insertAfterMessage(
-                currentChatHistoryRef.get(),
+            sendHistoryRef.set(insertAfterMessage(
+                sendHistoryRef.get(),
                 userMessage.id,
                 thinkingMessage
             ));
-            window.updateSendButtonState?.();
+            notifySendState();
         }
         const removeThinkingFromSource = async () => {
             releaseStreamConsumerRoute?.();
@@ -1504,21 +1509,21 @@ export const chatManager = (() => {
                     }
                 }
                 if (isSendContextCurrent()) {
-                    currentChatHistoryRef.set(
-                        currentChatHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
+                    sendHistoryRef.set(
+                        sendHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
                     );
                     messageRenderer?.removeMessageById?.(thinkingMessage.id);
-                    window.updateSendButtonState?.();
+                    notifySendState();
                 }
                 return cleanedHistory;
             } catch (cleanupError) {
                 console.error('[ChatManager] Failed to clean owned thinking message:', cleanupError);
                 if (isSendContextCurrent()) {
-                    currentChatHistoryRef.set(
-                        currentChatHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
+                    sendHistoryRef.set(
+                        sendHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
                     );
                     messageRenderer?.removeMessageById?.(thinkingMessage.id);
-                    window.updateSendButtonState?.();
+                    notifySendState();
                 }
                 return null;
             }
@@ -1791,6 +1796,10 @@ export const chatManager = (() => {
                     releaseStreamConsumerRoute = streamConsumerRegistry?.register?.(thinkingMessage.id, {
                         kind: request?.domRenderer ? 'independent-surface' : 'main-chat',
                         start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),
+                        ...(request?.domRenderer ? {
+                            append: (messageId, chunk, streamContext) => request.domRenderer.appendStreaming(messageId, chunk, streamContext),
+                            projectTerminal: (messageId, finishReason, streamContext, payload) => request.domRenderer.projectStreamTerminal(messageId, finishReason, streamContext, payload),
+                        } : {}),
                         settle: result => settleOwnedStreamOperation?.(result),
                         release: () => {
                             releaseStreamConsumerRoute?.();
@@ -1827,8 +1836,8 @@ export const chatManager = (() => {
             if (!useStreaming) {
                 const response = vcpResponse?.response ?? vcpResponse;
                 const responseContext = vcpResponse?.context ?? context;
-                const activeSelectedItem = currentSelectedItemRef.get();
-                const activeTopicId = currentTopicIdRef.get();
+                const activeSelectedItem = sendSelectedItemRef.get();
+                const activeTopicId = sendTopicIdRef.get();
 
                 // Determine if the response is for the currently active chat
                 const isForActiveChat = responseContext && responseContext.agentId === activeSelectedItem.id && responseContext.topicId === activeTopicId;
@@ -1873,10 +1882,10 @@ export const chatManager = (() => {
 
                         if (isForActiveChat) {
                             // If it's the active chat, also update the UI and in-memory state
-                            currentChatHistoryRef.set(finalHistory);
-                            window.updateSendButtonState?.();
+                            sendHistoryRef.set(finalHistory);
+                            notifySendState();
                             if (renderTarget) renderTarget.renderMessage(assistantMessage);
-                            await attemptTopicSummarizationIfNeeded();
+                            if (!request?.conversation) await attemptTopicSummarizationIfNeeded();
                         } else {
                             console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${responseContext.agentId}, Topic ${responseContext.topicId}`);
                         }

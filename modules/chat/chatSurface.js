@@ -4,7 +4,7 @@ import { createChatDomRenderer } from './chatDomRenderer.js';
  * Lifecycle owner for a chat presentation surface. The first consumer is the
  * main chat; the same contract can later host a standalone read-only view.
  */
-export function createChatSurface({ root, renderer, repository, focusTarget = null, mode = 'readonly', slots = null, operations = null, presentationState = null, disposeRenderer = null }) {
+export function createChatSurface({ root, renderer, repository, focusTarget = null, mode = 'readonly', slots = null, operations = null, presentationState = null, disposeRenderer = null, conversation = null }) {
     if (!root) throw new TypeError('ChatSurface requires a root element');
     const domRenderer = createChatDomRenderer({ root, renderer, disposeRenderer });
     let disposed = false;
@@ -23,6 +23,7 @@ export function createChatSurface({ root, renderer, repository, focusTarget = nu
             const token = ++operationToken;
             const history = await repository.getHistory(itemId, itemType, topicId);
             if (disposed || token !== operationToken) return { stale: true };
+            conversation?.replaceHistory?.(history);
             await domRenderer.renderHistory(history, options);
             return { history, stale: false };
         },

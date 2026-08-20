@@ -3,7 +3,6 @@ import { createImageHandler } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
-import * as defaultStreamManager from './renderer/streamManager.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 import { createContentRuntime } from './chat/contentRuntime.js';
@@ -36,7 +35,8 @@ const features = Object.freeze({
     globalCommands: options.exposeGlobalCommands !== false,
 });
 const visibilityOptimizer = options.visibilityOptimizer || createVisibilityOptimizer();
-const streamManager = options.streamManager || defaultStreamManager;
+const streamManager = options.streamManager;
+if (!streamManager) throw new TypeError('MessageRenderer requires an owned StreamProjection');
 const emoticonUrlFixer = options.emoticonUrlFixer || createEmoticonUrlFixer();
 const contentProcessor = options.contentProcessor || createContentProcessor();
 const contextMenu = options.contextMenu || createMessageContextMenu();
@@ -2593,6 +2593,7 @@ function initializeMessageRenderer(refs) {
         renderMermaidDiagrams: renderMermaidDiagrams,
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
+        onStreamStateChanged: mainRendererReferences.messageCommands.updateSendButtonState,
         morphdom: window.morphdom,
         renderMessage: renderMessage,
         showContextMenu: contextMenu.showContextMenu,
@@ -3601,6 +3602,10 @@ function appendStreamChunk(messageId, chunkData, context) {
     streamManager.appendStreamChunk(messageId, chunkData, context);
 }
 
+function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+    return streamManager.projectStreamTerminal(messageId, finishReason, context, finalPayload);
+}
+
 /**
  * Renders a full, non-streamed message, replacing a 'thinking' placeholder.
  * @param {string} messageId - The ID of the message to update.
@@ -4103,6 +4108,7 @@ const messageRenderer = {
     startStreamingMessage,
     discardStreamingMessage,
     appendStreamChunk,
+    projectStreamTerminal,
     renderFullMessage,
     clearChat,
     removeMessageById,

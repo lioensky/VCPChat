@@ -293,8 +293,8 @@ assert.match(nextShellSource, /getSnapshot: capabilities\.getSnapshot[\s\S]*crea
     'Next Shell must expose state reads and renderer creation as narrow capabilities');
 assert.doesNotMatch(nextShellSource, /renderer: capabilities\.renderer/,
     'Next Shell must not propagate the main-window renderer instance to child Surfaces');
-assert.match(read('renderer.js'), /function createOwnedInternalChatRenderer[\s\S]*initializeStreamProjection: false[\s\S]*exposeGlobalCommands: false/,
-    'internal applications must receive renderer-owned providers without reinitializing the main stream singleton or globals');
+assert.match(read('renderer.js'), /function createOwnedInternalChatRenderer[\s\S]*const streamProjection = createStreamProjection\(\)[\s\S]*streamManager: streamProjection[\s\S]*initializeStreamProjection: mode === 'interactive'[\s\S]*exposeGlobalCommands: false[\s\S]*await streamProjection\.dispose\(\)/,
+    'internal applications must own and dispose their projection; readonly Surfaces must not initialize it while interactive Surfaces may consume it');
 assert.doesNotMatch(read('renderer.js'), /window\.__vcp(?:ChatContext|ChatRepository|PresentationState)\s*=/,
     'the renderer composition root must not publish chat services as ambient window providers');
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,

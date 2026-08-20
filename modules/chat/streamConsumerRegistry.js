@@ -14,7 +14,12 @@ export function createStreamConsumerRegistry() {
             const ownedRoute = Object.freeze({
                 get suppressed() { return !lease.active || route.suppressed === true; },
                 start(...args) { if (lease.active) return route.start?.(...args); },
-                append(...args) { if (lease.active) return route.append?.(...args); },
+                ...(typeof route.append === 'function' ? {
+                    append(...args) { if (lease.active) return route.append(...args); },
+                } : {}),
+                ...(typeof route.projectTerminal === 'function' ? {
+                    projectTerminal(...args) { if (lease.active) return route.projectTerminal(...args); },
+                } : {}),
                 settle(...args) { return route.settle?.(...args); },
                 release(...args) {
                     if (!lease.active) {

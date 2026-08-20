@@ -47,14 +47,14 @@ test('ChatDomRenderer passes its root as render context', async () => {
     await adapter.dispose();
 });
 
-test('ChatDomRenderer binds streaming projection to the owning Surface root', async () => {
+test('ChatDomRenderer forwards streaming messages without a hidden root side channel', async () => {
     const root = new JSDOM('<div></div>').window.document.querySelector('div');
     let receivedMessage;
     const adapter = createChatDomRenderer({ root, renderer: {
         startStreamingMessage: async message => { receivedMessage = message; },
     } });
     await adapter.startStreaming({ id: 'stream-1' });
-    assert.equal(receivedMessage.__surfaceRoot, root);
+    assert.deepEqual(receivedMessage, { id: 'stream-1' });
     await adapter.dispose();
 });
 

@@ -1,15 +1,15 @@
 {
   "modules/chatManager.js": {
-    "sha256": "631f0afc4a289c9997aa59b3ff1c07dac851b07c3fdc444f46c31336a8bbef3f",
-    "reason": "upstream chat core plus reviewed ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing with operation-specific settlement and cancellation, explicit durable history mutation authority, independent renderer seam, and mandatory repository access without a direct IPC fallback"
+    "sha256": "a6aad9557cd16f73da6705d8b8d259238f2f35894c14fcaf6255eaa756ec30f1",
+    "reason": "upstream chat core plus reviewed ESM provider export with no production window facade, exact message-scoped Surface routing, operation-specific settlement and cancellation, explicit durable history mutation authority, independent conversation capability consumption that does not reread main-window selection or history, and mandatory repository access without a direct IPC fallback"
   },
   "modules/messageRenderer.js": {
-    "sha256": "b90981cbca8ce4ce13e4afb91b51a4e810cba7c4592a83269b2e932ffc3015a6",
-    "reason": "upstream message semantics plus reviewed Surface-owned renderer factory state, frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, coordinator-owned terminal entry points, no shared exported renderer instance, per-root render generation, owned scheduler quiescence and resource/media/style cleanup, renderer-owned content, image, emoticon, context-menu, middle-click and visibility providers, exact-owner realm animation routing, explicit delayed-listener-timer teardown, child-Surface feature isolation that prevents stream singleton reinitialization or global command publication, DOM-free transforms, and removal of stale direct repository persistence code"
+    "sha256": "5b3722ca3a1bd5b91ec840776574b542d6a0d07d6ff1e09267626d71ed956ae8",
+    "reason": "upstream message semantics plus reviewed Surface-owned renderer factory state, frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, an injected per-Surface StreamProjection, coordinator-owned terminal entry points, no shared exported renderer instance, per-root render generation, owned scheduler quiescence and resource/media/style cleanup, renderer-owned content, image, emoticon, context-menu, middle-click and visibility providers, explicit delayed-listener-timer teardown, child-Surface feature isolation and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "38962ceecc305542a8bd84e3c748203ac323c1549b11ad4e47808f141b3aca24",
-    "reason": "shared stream DOM projection adapter with explicit ESM provider and the unconsumed window facade removed, mandatory repository access without direct IPC fallback, independent per-message Surface root projection across main-topic changes, awaited initialization, context-keyed active operations, no durable commit facade, immediate terminal cache release, ContentRuntime render-model consumption, and Desktop push delegated to an explicit subscription/timer owner with per-message cleanup and late-callback revocation"
+    "sha256": "c57a5e453acdc6d712de6e3875324673b26a17c6e8196102cd0926a95f5706ab",
+    "reason": "per-Surface stream DOM projection factory with no exported singleton, hidden root side channel, direct durable commit facade or global send-button mutation; each owner receives one explicit root, state and side-effect capability set, disposes its unload listener and transient state to quiescence, consumes ContentRuntime render models, and delegates Desktop push to an owned subscription/timer consumer"
   },
   "modules/topicListManager.js": {
     "sha256": "ee31c578ad3fd6e8af5cb3788a56572b5bdd26d63f7be684c6bcf0eec6b510e1",

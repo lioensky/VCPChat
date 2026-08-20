@@ -4,6 +4,8 @@ import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 import { createContentRuntime } from '../chat/contentRuntime.js';
 import { createDesktopPushConsumer } from './desktopPushConsumer.js';
 
+/** Creates one DOM stream projection owner for one renderer Surface. */
+export function createStreamProjection() {
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
 const streamingTimers = new Map();      // messageId -> intervalId
@@ -162,7 +164,6 @@ function preserveDynamicStreamState(fromEl, toEl) {
 
 // --- DOM Cache ---
 const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
-const messageRootMap = new Map(); // messageId -> owning Surface root
 
 const scrollThrottleTimers = new Map(); // messageId -> timerId
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
@@ -190,7 +191,9 @@ let refs = {};
 let contentPipeline = null;
 let contentRuntime = null;
 let transientCleanupRegistered = false;
+let transientCleanupWindow = null;
 let desktopPushConsumer = null;
+let disposed = false;
 
 // --- Pre-compiled Regular Expressions for Performance ---
 
@@ -198,14 +201,16 @@ let desktopPushConsumer = null;
  * Initializes the Stream Manager with necessary dependencies from the main renderer.
  * @param {object} dependencies - An object containing all required functions and references.
  */
-export function initStreamManager(dependencies) {
+function initStreamManager(dependencies) {
+    if (disposed) throw new Error('StreamProjection is disposed');
     refs = dependencies;
     if (!dependencies.chatRepository) throw new Error('StreamManager requires ChatRepository');
 
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
     if (!transientCleanupRegistered) {
-        window.addEventListener('beforeunload', cleanupTransientState);
+        transientCleanupWindow = dependencies.chatMessagesDiv?.ownerDocument?.defaultView || window;
+        transientCleanupWindow.addEventListener('beforeunload', dispose);
         transientCleanupRegistered = true;
     }
 
@@ -281,7 +286,7 @@ function messageIsFinalized(messageId) {
  * 判断请求是否仍处于等待首块或流式处理中。
  * 该 Map 是跨 Agent/话题异步请求的运行态真源，不能只依赖单一的 activeStreamingMessageId。
  */
-export function isMessageActive(messageId) {
+function isMessageActive(messageId) {
     const initStatus = messageInitializationStatus.get(messageId);
     return initStatus === 'pending' || initStatus === 'ready';
 }
@@ -1119,8 +1124,7 @@ function getCachedMessageDom(messageId) {
     }
     
     // 重新查询并缓存
-    const root = messageRootMap.get(messageId) || refs.chatMessagesDiv;
-    const messageItem = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
+    const messageItem = refs.chatMessagesDiv?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
     
     if (!messageItem) return null;
     
@@ -1131,11 +1135,6 @@ function getCachedMessageDom(messageId) {
     messageDomCache.set(messageId, cached);
     
     return cached;
-}
-
-function ownsIndependentSurfaceRoot(messageId) {
-    const root = messageRootMap.get(messageId);
-    return !!root && root !== refs.chatMessagesDiv;
 }
 
 /**
@@ -1325,7 +1324,7 @@ function renderStreamFrame(messageId) {
     // 如果没有缓存（可能是旧消息），回退到实时检查
     if (isForCurrentView === undefined) {
         const context = messageContextMap.get(messageId);
-        isForCurrentView = ownsIndependentSurfaceRoot(messageId) || isMessageForCurrentView(context);
+        isForCurrentView = isMessageForCurrentView(context);
         viewContextCache.set(messageId, isForCurrentView);
     }
     
@@ -1534,9 +1533,7 @@ function throttledScrollToBottom(messageId) {
         return; // 节流期间，跳过
     }
     
-    const root = messageRootMap.get(messageId);
-    if (root && root !== refs.chatMessagesDiv) root.scrollTop = root.scrollHeight;
-    else refs.uiHelper.scrollToBottom();
+    refs.uiHelper.scrollToBottom();
     
     const timerId = setTimeout(() => {
         scrollThrottleTimers.delete(messageId);
@@ -1578,7 +1575,7 @@ function processAndRenderSmoothChunk(messageId) {
     
     // Scroll if the message is in the current view.
     const context = messageContextMap.get(messageId);
-    if (ownsIndependentSurfaceRoot(messageId) || isMessageForCurrentView(context)) {
+    if (isMessageForCurrentView(context)) {
         throttledScrollToBottom(messageId);
     }
 }
@@ -1592,9 +1589,9 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
     }
 }
 
-export async function startStreamingMessage(message, passedMessageItem = null) {
+async function startStreamingMessage(message, passedMessageItem = null) {
+    if (disposed) return null;
     const messageId = message.id;
-    if (message.__surfaceRoot?.querySelector) messageRootMap.set(messageId, message.__surfaceRoot);
     
     // 🟢 修复：如果消息已在处理中，且 isThinking 状态没变，直接返回现有状态
     const currentStatus = messageInitializationStatus.get(messageId);
@@ -1634,7 +1631,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     
     const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(context);
-    const shouldProjectToDom = isForCurrentView || ownsIndependentSurfaceRoot(messageId);
+    const shouldProjectToDom = isForCurrentView;
     // 🟢 缓存视图检查结果
     viewContextCache.set(messageId, shouldProjectToDom);
     
@@ -1659,8 +1656,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     // Only manipulate DOM for current view
     let messageItem = null;
     if (shouldProjectToDom) {
-        const messageRoot = messageRootMap.get(messageId) || chatMessagesDiv;
-        messageItem = passedMessageItem || messageRoot.querySelector(`.message-item[data-message-id="${message.id}"]`);
+        messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
         if (!messageItem) {
             const placeholderMessage = { 
                 ...message, 
@@ -1731,7 +1727,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     if (isForCurrentView) {
         // Update in-memory reference for current view
         currentChatHistoryRef.set([...historyForThisMessage]);
-        window.updateSendButtonState?.();
+        refs.onStreamStateChanged?.();
     }
     
     // Initialization is complete, message is ready to process chunks.
@@ -1759,9 +1755,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         if (!message.isThinking && isCurrentlyThinking) {
             renderStreamFrame(messageId);
         }
-        const messageRoot = messageRootMap.get(messageId);
-        if (messageRoot && messageRoot !== chatMessagesDiv) messageRoot.scrollTop = messageRoot.scrollHeight;
-        else uiHelper.scrollToBottom();
+        uiHelper.scrollToBottom();
     }
     
     return messageItem;
@@ -1879,7 +1873,8 @@ function cleanupDesktopPushState(messageId) {
     desktopPushConsumer?.cleanupMessage(messageId);
 }
 
-export function appendStreamChunk(messageId, chunkData, context) {
+function appendStreamChunk(messageId, chunkData, context) {
+    if (disposed) return false;
     const initStatus = messageInitializationStatus.get(messageId);
     
     if (!initStatus || initStatus === 'pending') {
@@ -1966,7 +1961,8 @@ export function appendStreamChunk(messageId, chunkData, context) {
  * Applies the terminal message model and DOM projection without writing durable history.
  * The StreamCoordinator owns the production commit point.
  */
-export async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+    if (disposed) return null;
     let initStatusAtFinalize = messageInitializationStatus.get(messageId);
     if (initStatusAtFinalize === 'pending') {
         console.warn(`[StreamManager] Finalization is waiting for message initialization: ${messageId}`);
@@ -2007,7 +2003,7 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     
     const { chatMessagesDiv, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(storedContext);
-    const shouldProjectToDom = isForCurrentView || ownsIndependentSurfaceRoot(messageId);
+    const shouldProjectToDom = isForCurrentView;
     
     // Get the correct history
     let historyForThisMessage;
@@ -2105,9 +2101,8 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     if (shouldProjectToDom) {
         if (isForCurrentView) refs.currentChatHistoryRef.set([...historyForThisMessage]);
 
-        const messageRoot = messageRootMap.get(messageId) || chatMessagesDiv;
         const messageItem = messageDomCache.get(messageId)?.messageItem
-            || messageRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
+            || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
 
@@ -2166,8 +2161,7 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
                 nameTimeBlock.appendChild(timestampDiv);
             }
 
-            if (messageRoot !== chatMessagesDiv) messageRoot.scrollTop = messageRoot.scrollHeight;
-            else uiHelper.scrollToBottom();
+            uiHelper.scrollToBottom();
         }
 
     }
@@ -2185,14 +2179,13 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     // shared send button stuck in interrupt mode even though all stream state
     // is already gone. The updater derives state from the *current* chat, so
     // it is safe and necessary to run after cleanup for every finalization.
-    window.updateSendButtonState?.();
+    refs.onStreamStateChanged?.();
 
     // Terminal means ownership has ended; no delayed cache lease survives `done`.
     messageDomCache.delete(messageId);
     messageInitializationStatus.delete(messageId);
     preBufferedChunks.delete(messageId);
     messageContextMap.delete(messageId);
-    messageRootMap.delete(messageId);
     pendingHistoryEntries.delete(messageId);
     viewContextCache.delete(messageId);
 
@@ -2206,7 +2199,8 @@ export async function projectStreamTerminal(messageId, finishReason, context, fi
     };
 }
 
-export function discardStreamingMessage(messageId) {
+function discardStreamingMessage(messageId) {
+    if (disposed) return false;
     const scrollTimer = scrollThrottleTimers.get(messageId);
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollThrottleTimers.delete(messageId);
@@ -2223,14 +2217,20 @@ export function discardStreamingMessage(messageId) {
     initializationWaiters.forEach(resolve => resolve(false));
     pendingHistoryEntries.delete(messageId);
     messageContextMap.delete(messageId);
-    messageRootMap.delete(messageId);
     viewContextCache.delete(messageId);
     cleanupDesktopPushState(messageId);
     activeStreamingMessages.delete(messageId);
-    window.updateSendButtonState?.();
+    refs.onStreamStateChanged?.();
 }
 
-export async function cleanupTransientState() {
+async function dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (transientCleanupRegistered) {
+            transientCleanupWindow?.removeEventListener('beforeunload', dispose);
+            transientCleanupRegistered = false;
+            transientCleanupWindow = null;
+        }
         // 清理所有流式消息相关状态
         for (const timerId of scrollThrottleTimers.values()) {
             clearTimeout(timerId);
@@ -2253,7 +2253,6 @@ export async function cleanupTransientState() {
         messageInitializationWaiters.clear();
         pendingHistoryEntries.clear();
         messageContextMap.clear();
-        messageRootMap.clear();
         viewContextCache.clear();
     
         activeStreamingMessages.clear();
@@ -2263,7 +2262,7 @@ export async function cleanupTransientState() {
         console.debug('[StreamManager] Transient state cleared');
     }
 
-export function getActiveStreamingMessageId() {
+function getActiveStreamingMessageId() {
     const active = [...activeStreamingMessages.entries()];
     for (let index = active.length - 1; index >= 0; index -= 1) {
         const [messageId, context] = active[index];
@@ -2272,12 +2271,12 @@ export function getActiveStreamingMessageId() {
     return null;
 }
 
-export function getActiveStreamingContext() {
+function getActiveStreamingContext() {
     const messageId = getActiveStreamingMessageId();
     return messageId ? activeStreamingMessages.get(messageId) || null : null;
 }
 
-export function getStreamDiagnostics() {
+function getStreamDiagnostics() {
     const activeMessageId = getActiveStreamingMessageId();
     return Object.freeze({
         activeMessageId,
@@ -2286,7 +2285,6 @@ export function getStreamDiagnostics() {
         activeInitializations: [...messageInitializationStatus.values()]
             .filter(status => status === 'pending' || status === 'ready').length,
         contexts: messageContextMap.size,
-        roots: messageRootMap.size,
         pendingHistory: pendingHistoryEntries.size,
         prebuffered: preBufferedChunks.size,
         pendingFinalizations: messageInitializationWaiters.size,
@@ -2297,14 +2295,13 @@ export function getStreamDiagnostics() {
     });
 }
 
-export const streamManager = {
+return Object.freeze({
     initStreamManager,
-    cleanupTransientState,
+    dispose,
     startStreamingMessage,
     appendStreamChunk,
     projectStreamTerminal,
     discardStreamingMessage,
-    cleanupTransientState,
     getDiagnostics: getStreamDiagnostics,
     isMessageActive,
     getActiveStreamingMessageId,
@@ -2313,4 +2310,5 @@ export const streamManager = {
         // Check if message is being tracked by streamManager
         return messageInitializationStatus.has(messageId);
     }
-};
+});
+}

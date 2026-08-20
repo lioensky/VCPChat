@@ -18,7 +18,7 @@ function mountStandaloneChat(container, context = {}) {
         container.querySelector('.vcp-standalone-chat__status').textContent = '当前没有可查看的话题';
         return async () => { scope?.dispose?.('standalone-chat-empty'); container.replaceChildren(); };
     }
-    const rendererOwner = createRenderer({ root, mode: 'readonly' });
+    const rendererOwner = createRenderer({ root, mode: 'readonly', conversation: chatSnapshot });
     const renderer = rendererOwner.renderer;
     const slots = createChatSurfaceSlots();
     const presentationState = createChatPresentationState({ ...(context.chat?.presentation?.getSnapshot?.() || {}), activeSurface: 'standalone' });
@@ -41,7 +41,7 @@ function mountStandaloneChat(container, context = {}) {
         applyTheme(root, themePlugin);
         mountSkin(skinHost, skin);
     });
-    const surface = createReadOnlyChatSurface({ root, renderer, repository, focusTarget: root, slots, presentationState, disposeRenderer: () => rendererOwner.dispose() });
+    const surface = createReadOnlyChatSurface({ root, renderer, repository, focusTarget: root, slots, presentationState, disposeRenderer: () => rendererOwner.dispose(), conversation: rendererOwner.conversation });
     surface.mountSlot('header', container.querySelector('.vcp-standalone-chat > header'), { canSend: false });
     const onFocus = () => surface.focus();
     focusButton.addEventListener('click', onFocus);

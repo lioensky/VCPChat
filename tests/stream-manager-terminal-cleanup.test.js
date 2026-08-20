@@ -2,144 +2,174 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const { JSDOM } = require('jsdom');
 
-const source = fs.readFileSync('modules/renderer/streamManager.js', 'utf8');
+const originalWindow = global.window;
+const bootstrapDom = new JSDOM('<!doctype html>');
+global.window = bootstrapDom.window;
+test.after(() => {
+    global.window = originalWindow;
+    bootstrapDom.window.close();
+});
 
-function functionBody(name, nextExport) {
-    const start = source.indexOf(`export async function ${name}`);
-    const end = source.indexOf(nextExport, start);
-    assert.notEqual(start, -1, `${name} export is missing`);
-    assert.notEqual(end, -1, `${name} boundary is missing`);
-    return source.slice(start, end);
+const loadFactory = async () => {
+    const module = await import('../modules/renderer/streamManager.js');
+    return module.createStreamProjection;
+};
+
+function createDependencies(dom, overrides = {}) {
+    const root = dom.window.document.getElementById('chat');
+    return {
+        chatRepository: {
+            getHistory: async () => [],
+            saveHistory: async () => ({ success: true }),
+            ...overrides.chatRepository,
+        },
+        currentSelectedItemRef: { get: () => ({ id: 'visible-agent', type: 'agent' }) },
+        currentTopicIdRef: { get: () => 'visible-topic' },
+        currentChatHistoryRef: { get: () => [], set() {} },
+        globalSettingsRef: { get: () => ({ enableSmoothStreaming: false }) },
+        chatMessagesDiv: root,
+        renderMessage: () => null,
+        uiHelper: { scrollToBottom() {} },
+        electronAPI: { onDesktopStatus: () => () => {} },
+        ...overrides,
+    };
 }
 
-test('stream initialization discards owned state on background history and render failures', () => {
-    const body = functionBody('startStreamingMessage', 'export function appendStreamChunk');
-    assert.match(
-        body,
-        /Could not load history for background message[\s\S]*?discardStreamingMessage\(messageId\);[\s\S]*?return null;/,
-    );
-    assert.match(
-        body,
-        /Failed to render message item[\s\S]*?discardStreamingMessage\(messageId\);[\s\S]*?return null;/,
-    );
-});
-
-test('stream finalization discards owned state on every unrecoverable lookup failure', () => {
-    const body = functionBody('projectStreamTerminal', 'export function discardStreamingMessage');
-    for (const marker of [
-        'No context available for message',
-        'Could not load history for finalization',
-        'not found in assistant history',
-        'not found in history',
-    ]) {
-        const markerIndex = body.indexOf(marker);
-        assert.notEqual(markerIndex, -1, `missing terminal branch: ${marker}`);
-        const terminalWindow = body.slice(markerIndex, markerIndex + 420);
-        assert.match(terminalWindow, /discardStreamingMessage\(messageId\);[\s\S]*?return(?: null)?;/, `${marker} does not release stream state`);
-    }
-});
-
-test('discardStreamingMessage releases every strong stream owner', () => {
-    const start = source.indexOf('export function discardStreamingMessage');
-    const end = source.indexOf('export function cleanupTransientState', start);
-    const body = source.slice(start, end);
-    for (const owner of [
-        'streamingChunkQueues',
-        'streamingTimers',
-        'pendingDirectRenderMessages',
-        'accumulatedStreamText',
-        'streamSegmentStates',
-        'messageDomCache',
-        'preBufferedChunks',
-        'messageInitializationStatus',
-        'messageInitializationWaiters',
-        'pendingHistoryEntries',
-        'messageContextMap',
-        'messageRootMap',
-        'viewContextCache',
-    ]) {
-        assert.match(body, new RegExp(`${owner}\\.delete\\(messageId\\)`), `${owner} is not released`);
-    }
-    assert.match(body, /cleanupDesktopPushState\(messageId\)/);
-    assert.match(body, /activeStreamingMessages\.delete\(messageId\)/);
-    assert.match(body, /updateSendButtonState/);
-});
-
-test('a runtime background-history failure releases every stream owner', async () => {
-    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
-        runScripts: 'outside-only',
-        url: 'https://vcpchat.local/',
-    });
-    const executableSource = source
-        .replace(/^import .*;$/gm, '')
-        .replace(/\bexport\s+(?=(?:async\s+)?function\b|const\b)/g, '');
-    dom.window.formatMessageTimestamp = () => 'now';
-    dom.window.PIPELINE_MODES = { STREAM_FAST: 'stream-fast' };
-    dom.window.createContentPipeline = () => ({ process: text => ({ text }) });
-    dom.window.createDesktopPushConsumer = () => ({
-        start() {},
-        processToken: (_messageId, text) => text,
-        cleanupMessage() {},
-        dispose() {},
-        getStateCount: () => 0,
-    });
-    dom.window.updateSendButtonState = () => {};
-    dom.window.eval(`
-        const formatMessageTimestamp = window.formatMessageTimestamp;
-        const PIPELINE_MODES = window.PIPELINE_MODES;
-        const createContentPipeline = window.createContentPipeline;
-        const createDesktopPushConsumer = window.createDesktopPushConsumer;
-        ${executableSource}
-        window.__testStreamManager = streamManager;
-    `);
-
-    const history = [];
-    const selected = { id: 'visible-agent', type: 'agent' };
-    const api = dom.window.__testStreamManager;
-    api.initStreamManager({
-        chatRepository: {
-            getHistory: async () => { throw new Error('controlled history failure'); },
-            saveHistory: async () => ({ success: true }),
-        },
-        currentSelectedItemRef: { get: () => selected },
-        currentTopicIdRef: { get: () => 'visible-topic' },
-        currentChatHistoryRef: { get: () => history, set() {} },
-        globalSettingsRef: { get: () => ({ enableSmoothStreaming: false }) },
-        chatMessagesDiv: dom.window.document.getElementById('chat'),
-        renderMessage: () => null,
-        uiHelper: {},
-    });
-
-    api.appendStreamChunk('background-message', { content: 'buffered-before-init' }, {
-        agentId: 'background-agent',
-        topicId: 'background-topic',
-    });
-    await api.startStreamingMessage({
-        id: 'background-message',
-        agentId: 'background-agent',
-        topicId: 'background-topic',
-        content: '',
-    });
-
-    const diagnostics = { ...api.getDiagnostics() };
+function normalizeDiagnostics(projection) {
+    const diagnostics = { ...projection.getDiagnostics() };
     diagnostics.activeMessageIds = Array.from(diagnostics.activeMessageIds);
-    assert.deepEqual(diagnostics, {
-        activeMessageId: null,
-        activeMessageIds: [],
-        initialization: 0,
-        activeInitializations: 0,
-        contexts: 0,
-        roots: 0,
-        pendingHistory: 0,
-        prebuffered: 0,
-        pendingFinalizations: 0,
-        chunkQueues: 0,
-        renderTimers: 0,
-        delayedCleanupTimers: 0,
-        desktopPushStates: 0,
-    });
+    return diagnostics;
+}
+
+const emptyDiagnostics = {
+    activeMessageId: null,
+    activeMessageIds: [],
+    initialization: 0,
+    activeInitializations: 0,
+    contexts: 0,
+    pendingHistory: 0,
+    prebuffered: 0,
+    pendingFinalizations: 0,
+    chunkQueues: 0,
+    renderTimers: 0,
+    delayedCleanupTimers: 0,
+    desktopPushStates: 0,
+};
+
+test('two StreamProjection owners isolate identical message identities and teardown listeners', async () => {
+    const createStreamProjection = await loadFactory();
+    const domA = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://a.vcpchat.local/' });
+    const domB = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://b.vcpchat.local/' });
+    const listenerCounts = new Map([[domA.window, { add: 0, remove: 0 }], [domB.window, { add: 0, remove: 0 }]]);
+    for (const target of [domA.window, domB.window]) {
+        const originalAdd = target.addEventListener.bind(target);
+        const originalRemove = target.removeEventListener.bind(target);
+        target.addEventListener = (type, listener, options) => {
+            if (type === 'beforeunload') listenerCounts.get(target).add += 1;
+            return originalAdd(type, listener, options);
+        };
+        target.removeEventListener = (type, listener, options) => {
+            if (type === 'beforeunload') listenerCounts.get(target).remove += 1;
+            return originalRemove(type, listener, options);
+        };
+    }
+
+    const projectionA = createStreamProjection();
+    const projectionB = createStreamProjection();
+    projectionA.initStreamManager(createDependencies(domA));
+    projectionB.initStreamManager(createDependencies(domB));
+    projectionA.appendStreamChunk('same-message', { content: 'A' }, { agentId: 'a', topicId: 'topic-a' });
+    projectionB.appendStreamChunk('same-message', { content: 'B' }, { agentId: 'b', topicId: 'topic-b' });
+
+    assert.equal(projectionA.getDiagnostics().prebuffered, 1);
+    assert.equal(projectionB.getDiagnostics().prebuffered, 1);
+    await projectionA.dispose();
+    assert.deepEqual(normalizeDiagnostics(projectionA), emptyDiagnostics);
+    assert.equal(projectionB.getDiagnostics().prebuffered, 1, 'disposing A must not clear B runtime');
+    await projectionB.dispose();
+    assert.deepEqual(listenerCounts.get(domA.window), { add: 1, remove: 1 });
+    assert.deepEqual(listenerCounts.get(domB.window), { add: 1, remove: 1 });
+    domA.window.close();
+    domB.window.close();
+});
+
+test('disposed StreamProjection rejects initialization and ignores every late stream event', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    const projection = createStreamProjection();
+    const dependencies = createDependencies(dom);
+    projection.initStreamManager(dependencies);
+    await projection.dispose();
+
+    assert.equal(projection.appendStreamChunk('late', { content: 'late' }, { agentId: 'a', topicId: 't' }), false);
+    assert.equal(await projection.startStreamingMessage({ id: 'late', agentId: 'a', topicId: 't' }), null);
+    assert.equal(await projection.projectStreamTerminal('late', 'stop', { agentId: 'a', topicId: 't' }), null);
+    assert.equal(projection.discardStreamingMessage('late'), false);
+    assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
+    assert.throws(() => projection.initStreamManager(dependencies), /disposed/);
+    await projection.dispose();
     dom.window.close();
+});
+
+test('owned StreamProjection completes terminal DOM projection without a cross-root side channel', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"><article class="message-item" data-message-id="owned"><div class="md-content"></div></article></div>', { url: 'https://vcpchat.local/' });
+    const history = [];
+    let scrollCount = 0;
+    const projection = createStreamProjection();
+    projection.initStreamManager(createDependencies(dom, {
+        currentChatHistoryRef: { get: () => history, set: value => { history.splice(0, history.length, ...value); } },
+        uiHelper: { scrollToBottom() { scrollCount += 1; } },
+        prepareFinalTextForRender: (_messageId, text, role) => ({ text, role, depth: 0 }),
+        renderPostProcessedHtml: async (content, html) => { content.textContent = html; },
+    }));
+
+    const messageItem = dom.window.document.querySelector('.message-item');
+    await projection.startStreamingMessage({ id: 'owned', agentId: 'visible-agent', topicId: 'visible-topic', content: '' }, messageItem);
+    const projected = await projection.projectStreamTerminal(
+        'owned',
+        'completed',
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        { fullResponse: 'fixture terminal' },
+    );
+
+    assert.equal(projected?.content, 'fixture terminal');
+    assert.equal(messageItem.classList.contains('streaming'), false);
+    assert.match(messageItem.querySelector('.md-content').textContent, /fixture terminal/);
+    assert.ok(scrollCount >= 2, 'start and terminal projection should scroll only their owned root capability');
+    assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('background initialization failure releases every runtime owner', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    const previousWindow = global.window;
+    global.window = dom.window;
+    dom.window.updateSendButtonState = () => {};
+    try {
+        const projection = createStreamProjection();
+        projection.initStreamManager(createDependencies(dom, {
+            chatRepository: { getHistory: async () => { throw new Error('controlled history failure'); } },
+        }));
+        projection.appendStreamChunk('background-message', { content: 'buffered-before-init' }, {
+            agentId: 'background-agent',
+            topicId: 'background-topic',
+        });
+        await projection.startStreamingMessage({
+            id: 'background-message',
+            agentId: 'background-agent',
+            topicId: 'background-topic',
+            content: '',
+        });
+
+        assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
+        await projection.dispose();
+    } finally {
+        global.window = previousWindow;
+        dom.window.close();
+    }
 });

@@ -24,6 +24,7 @@ function mountInteractiveChat(container, context = {}) {
     const rendererOwner = createRenderer({
         root,
         mode: 'interactive',
+        conversation: chatSnapshot,
         handleSendMessage: text => submitInteractiveContent?.(text),
     });
     const renderer = rendererOwner.renderer;
@@ -33,6 +34,7 @@ function mountInteractiveChat(container, context = {}) {
             try {
                 return await chatManager.sendMessage({
                     ...request,
+                    conversation: rendererOwner.conversation,
                     awaitTerminal: true,
                     onOperation(operation) {
                         activeOperation = operation;
@@ -51,7 +53,7 @@ function mountInteractiveChat(container, context = {}) {
             return operation?.cancel?.('interactive-user-cancel') || false;
         }
     });
-    const surface = createChatSurface({ root, renderer, repository, focusTarget: input, mode: 'interactive', operations, disposeRenderer: () => rendererOwner.dispose() });
+    const surface = createChatSurface({ root, renderer, repository, focusTarget: input, mode: 'interactive', operations, disposeRenderer: () => rendererOwner.dispose(), conversation: rendererOwner.conversation });
     const onSubmit = async event => {
         event.preventDefault();
         const content = input.value.trim();

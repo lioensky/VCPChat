@@ -68,7 +68,8 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             if (terminal.kind === 'failed' && fullResponse.trim()) {
                 fullResponse += `\n\n> [!WARNING]\n> **流式响应中断**: ${error || '未知连接错误'}。已保存已接收的部分内容。`;
             }
-            const projected = await capabilities.projectTerminal(
+            const projectTerminal = projection?.projectTerminal || capabilities.projectTerminal;
+            const projected = await projectTerminal(
                 messageId,
                 terminal.kind === 'completed' ? (terminal.finishReason || 'completed') : terminal.kind,
                 terminal.context || context,
