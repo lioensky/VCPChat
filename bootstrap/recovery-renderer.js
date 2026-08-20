@@ -42,8 +42,8 @@
     const setOperation = active => { operationActive = active; cancelButton.hidden = !active; repairButton.disabled = active; safeButton.disabled = active; launchButton.disabled = active; };
     const releaseOutput = window.vcpBootstrap.onOutput(detail => write(detail.text));
     repairButton.onclick = async () => { setOperation(true); write('\n开始受控修复…\n'); try { await window.vcpBootstrap.repair([]); } catch (error) { write(`${error.message}\n`); } finally { setOperation(false); await refresh(); } };
-    safeButton.onclick = async () => { setOperation(true); write('\n尝试最小启动…\n'); try { await window.vcpBootstrap.launch(true); } catch (error) { write(`${error.message}\n`); setOperation(false); } };
-    launchButton.onclick = async () => { setOperation(true); try { await window.vcpBootstrap.launch(false); } catch (error) { write(`${error.message}\n`); setOperation(false); } };
+    safeButton.onclick = async () => { setOperation(true); write('\n尝试最小启动…\n'); try { await window.vcpBootstrap.launch(true); await window.vcpBootstrap.quit(); } catch (error) { write(`${error.message}\n`); setOperation(false); } };
+    launchButton.onclick = async () => { setOperation(true); try { await window.vcpBootstrap.launch(false); await window.vcpBootstrap.quit(); } catch (error) { write(`${error.message}\n`); setOperation(false); } };
     cancelButton.onclick = async () => { if (operationActive) { cancelButton.disabled = true; await window.vcpBootstrap.cancel(); write('\n已请求取消当前操作。\n'); } };
     document.querySelector('#logs').onclick = async () => { const entries = await window.vcpBootstrap.logs(); write(`${entries.map(entry => entry.path).join('\n') || '暂无诊断文件'}\n`); if (entries[0]) await window.vcpBootstrap.openLog(entries[0].path); };
     document.querySelector('#quit').onclick = () => window.vcpBootstrap.quit();

@@ -23,6 +23,7 @@ function parseArguments(argv) {
     const options = {
         projectRoot: null,
         readyTimeoutMs: DEFAULT_READY_TIMEOUT_MS,
+        handoff: false,
         deepDoctor: true,
         appArgs: [],
     };
@@ -40,6 +41,8 @@ function parseArguments(argv) {
             if (!Number.isFinite(options.readyTimeoutMs) || options.readyTimeoutMs <= 0) {
                 throw new Error('--ready-timeout-ms 必须是正数。');
             }
+        } else if (argument === '--handoff') {
+            options.handoff = true;
         } else if (argument === '--deep-doctor') {
             options.deepDoctor = true;
         } else if (argument === '--shallow-doctor') {
@@ -212,6 +215,7 @@ export async function runManagedLauncher({
         lock = null;
         io.stdout.write(`VCPChat 已启动（operation ${operationId}）。\n`);
         removeReadyRecord({ stateRoot, operationId });
+        if (options.handoff) return 0;
         if (child.exitCode === null && child.signalCode === null) {
             await new Promise(resolve => child.once('exit', resolve));
         }

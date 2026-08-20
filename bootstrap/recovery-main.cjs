@@ -85,7 +85,7 @@ ipcMain.handle('bootstrap:plan', async () => {
 });
 ipcMain.handle('bootstrap:repair', async (_event, args = []) => runScript('vcpchat-repair.mjs', ['--apply', '--yes', ...args]));
 ipcMain.handle('bootstrap:launch', async (_event, safe = false) => {
-    return runScript('vcpchat-dev-launcher.mjs', safe ? ['--project-root', projectRoot, '--', '--disable-gpu'] : ['--project-root', projectRoot]);
+    return runScript('vcpchat.mjs', safe ? ['--project-root', projectRoot, '--handoff', '--', '--disable-gpu'] : ['--project-root', projectRoot, '--handoff']);
 });
 ipcMain.handle('bootstrap:cancel', () => {
     if (!operation) return false;

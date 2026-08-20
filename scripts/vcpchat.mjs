@@ -30,6 +30,7 @@ function parseArguments(argv) {
         deepDoctor: true,
         projectRoot: null,
         readyTimeoutMs: null,
+        handoff: false,
         appArgs: [],
     };
     let passThrough = false;
@@ -47,6 +48,7 @@ function parseArguments(argv) {
         else if (argument === '--shallow-doctor') options.deepDoctor = false;
         else if (argument === '--project-root') options.projectRoot = argv[++index] || null;
         else if (argument === '--ready-timeout-ms') options.readyTimeoutMs = Number(argv[++index]);
+        else if (argument === '--handoff') options.handoff = true;
         else throw new Error(`未知参数：${argument}`);
     }
     if (options.readyTimeoutMs != null && (!Number.isFinite(options.readyTimeoutMs) || options.readyTimeoutMs <= 0)) {
@@ -108,6 +110,7 @@ export async function runVcpchat({
         write(io, options, { type: 'doctor-passed', summary: report.summary });
         const launchArgs = [];
         if (options.readyTimeoutMs != null) launchArgs.push('--ready-timeout-ms', String(options.readyTimeoutMs));
+        if (options.handoff) launchArgs.push('--handoff');
         if (options.projectRoot) launchArgs.push('--project-root', root);
         launchArgs.push(...options.appArgs);
         return launch({ argv: launchArgs, projectRoot: root, env: managedEnv, io });
@@ -155,6 +158,7 @@ export async function runVcpchat({
     writeMarker({ stateRoot, projectRoot: root });
     const launchArgs = [];
     if (options.readyTimeoutMs != null) launchArgs.push('--ready-timeout-ms', String(options.readyTimeoutMs));
+    if (options.handoff) launchArgs.push('--handoff');
     if (options.projectRoot) launchArgs.push('--project-root', root);
     launchArgs.push(...options.appArgs);
     return launch({ argv: launchArgs, projectRoot: root, env: managedEnv, io });

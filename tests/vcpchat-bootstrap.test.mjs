@@ -100,6 +100,7 @@ test('M2 argument parser separates launcher options from Electron arguments', ()
     ]), {
         projectRoot: null,
         readyTimeoutMs: 5000,
+        handoff: false,
         deepDoctor: true,
         appArgs: ['--desktop-only', '--trace-warnings'],
     });
@@ -156,6 +157,7 @@ test('H1 parser keeps launcher flags separate from Electron arguments', () => {
         deepDoctor: true,
         projectRoot: '/tmp/x',
         readyTimeoutMs: null,
+        handoff: false,
         appArgs: ['--desktop-only'],
     });
     assert.throws(() => parseManagedEntryArguments(['--yes']), /只能与 --repair/);

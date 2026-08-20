@@ -178,5 +178,6 @@ npm run vcpchat
 - Bootstrap/platform boundary：32 项通过，覆盖 Windows/POSIX 终止契约、中文/空格/长路径 profile、macOS bundle helper 排除以及 Windows/Linux bundle layout 解析；这些是跨平台模拟证据，不替代真实 runner。
 - 更新安全回归：staging 前磁盘空间预检、候选进程组终止/等待、ready 记录时间窗口和 PID 存活检查均已加入。
 - 平台进程边界：`modules/bootstrap/platform-process.js` 统一 Windows `taskkill /T` 与 POSIX 进程组 detached 策略，开发启动、恢复、更新和修复 runner 共用同一契约，并有 Windows/POSIX 模拟测试。
+- Installer handoff：Recovery UI 通过显式 `--handoff` 等待主应用发布 ready，成功后退出安装器；默认 `npm run vcpchat` 仍会持有前台会话，既有入口行为不变。
 
 以下仍是发布外部证据而非本机已完成事实：Windows PowerShell/NSIS/中文长路径、macOS 签名与公证、Linux AppImage、断网/睡眠恢复和 30–60 分钟人工 soak。磁盘空间逻辑已有单元测试，但尚未在真实磁盘耗尽环境演练。签名网络下载和用户数据 migration 事务仍属于生产更新器后续范围。
