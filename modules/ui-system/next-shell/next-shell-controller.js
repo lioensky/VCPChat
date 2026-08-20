@@ -558,6 +558,126 @@
         });
     }
 
+    function mountNativeTooltipBridge(scope) {
+        if (!scope) return;
+        const converted = new Map();
+        const isExcluded = element => element.closest?.('#nextUiInternalAppHost, #vchatAppTray');
+        const convert = element => {
+            if (!(element instanceof Element) || isExcluded(element) || !element.hasAttribute('title')) return;
+            const title = element.getAttribute('title')?.trim();
+            if (!title) return;
+            const existing = converted.get(element);
+            if (existing) {
+                existing.title = title;
+                element.dataset.tooltip = title;
+                element.removeAttribute('title');
+                return;
+            }
+            const originalDataTooltip = element.getAttribute('data-tooltip');
+            const originalAriaLabel = element.getAttribute('aria-label');
+            const addedAriaLabel = !originalAriaLabel && element.matches('button, a, input, select, textarea, [role]');
+            converted.set(element, { title, originalDataTooltip, originalAriaLabel, addedAriaLabel });
+            element.dataset.tooltip = title;
+            element.removeAttribute('title');
+            if (addedAriaLabel) element.setAttribute('aria-label', title);
+        };
+        const scan = root => {
+            if (root instanceof Element) convert(root);
+            root?.querySelectorAll?.('[title]').forEach(convert);
+        };
+        scan(document.body);
+        const observer = new MutationObserver(records => {
+            records.forEach(record => {
+                if (record.type === 'attributes') scan(record.target);
+                record.addedNodes.forEach(node => scan(node));
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
+
+        const host = document.createElement('div');
+        host.className = 'next-ui-tooltip-layer vcp-ui-scope';
+        host.hidden = true;
+        host.setAttribute('aria-hidden', 'true');
+        const bubble = document.createElement('div');
+        bubble.className = 'next-ui-tooltip-bubble';
+        bubble.setAttribute('role', 'tooltip');
+        host.append(bubble);
+        document.body.append(host);
+        let activeTarget = null;
+        let showTimer = null;
+        const hide = () => {
+            if (showTimer) clearTimeout(showTimer);
+            showTimer = null;
+            activeTarget = null;
+            host.hidden = true;
+        };
+        const position = () => {
+            if (!activeTarget || host.hidden) return;
+            const rect = activeTarget.getBoundingClientRect();
+            const bubbleRect = bubble.getBoundingClientRect();
+            const gap = 8;
+            const margin = 8;
+            let placement = activeTarget.dataset.tooltipPlacement;
+            if (placement !== 'bottom' && placement !== 'top') placement = rect.top < bubbleRect.height + gap + margin ? 'bottom' : 'top';
+            let left = rect.left + rect.width / 2;
+            left = Math.max(margin + bubbleRect.width / 2, Math.min(window.innerWidth - margin - bubbleRect.width / 2, left));
+            let top = placement === 'bottom' ? rect.bottom + gap : rect.top - bubbleRect.height - gap;
+            if (placement === 'top' && top < margin) {
+                placement = 'bottom';
+                top = rect.bottom + gap;
+            }
+            host.dataset.placement = placement;
+            host.style.left = `${left}px`;
+            host.style.top = `${Math.max(margin, top)}px`;
+        };
+        const show = target => {
+            if (!target?.isConnected || isExcluded(target)) return;
+            activeTarget = target;
+            bubble.textContent = target.dataset.tooltip || '';
+            host.hidden = false;
+            requestAnimationFrame(position);
+        };
+        const targetFor = event => event.target?.closest?.('[data-tooltip]');
+        const onPointerOver = event => {
+            const target = targetFor(event);
+            if (!target || isExcluded(target) || (event.relatedTarget && target.contains(event.relatedTarget))) return;
+            if (showTimer) clearTimeout(showTimer);
+            showTimer = setTimeout(() => show(target), 120);
+        };
+        const onPointerOut = event => {
+            const target = targetFor(event);
+            if (target && event.relatedTarget && target.contains(event.relatedTarget)) return;
+            hide();
+        };
+        const onFocusIn = event => {
+            const target = targetFor(event);
+            if (target && !isExcluded(target)) showTimer = setTimeout(() => show(target), 120);
+        };
+        const onFocusOut = () => hide();
+        scope.listen(document, 'mouseover', onPointerOver, undefined, 'tooltip-pointer-over');
+        scope.listen(document, 'mouseout', onPointerOut, undefined, 'tooltip-pointer-out');
+        scope.listen(document, 'focusin', onFocusIn, undefined, 'tooltip-focus-in');
+        scope.listen(document, 'focusout', onFocusOut, undefined, 'tooltip-focus-out');
+        scope.listen(window, 'scroll', hide, true, 'tooltip-scroll');
+        scope.listen(window, 'resize', hide, undefined, 'tooltip-resize');
+        scope.own(() => {
+            hide();
+            host.remove();
+            observer.disconnect();
+            converted.forEach(({ title, originalDataTooltip, originalAriaLabel, addedAriaLabel }, element) => {
+                if (!element.isConnected) return;
+                element.setAttribute('title', title);
+                if (originalDataTooltip === null) delete element.dataset.tooltip;
+                else element.setAttribute('data-tooltip', originalDataTooltip);
+                if (addedAriaLabel) {
+                    if (originalAriaLabel === null) element.removeAttribute('aria-label');
+                    else element.setAttribute('aria-label', originalAriaLabel);
+                }
+            });
+            converted.clear();
+        }, 'next:native-tooltip-bridge', 'observer');
+    }
+
     function mount() {
         if (mounted) return;
         if (teardownPromise) return teardownPromise.then(() => mount());
@@ -676,6 +796,7 @@
             ),
         });
         creationController.mount(mountScope);
+        mountNativeTooltipBridge(mountScope);
         syncDensity();
         observeSidebarWidth();
         setupEmbeddedAppState();

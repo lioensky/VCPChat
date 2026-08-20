@@ -116,6 +116,69 @@
         white-space: nowrap;
     }
 
+    /* Main-window tooltip portal. The bubble is appended to body by the
+       controller so overflow-hidden navigation containers cannot clip it. */
+    html .vcp-ui-scope.next-ui-tooltip-layer {
+        position: fixed;
+        z-index: calc(var(--vcp-ui-z-dropdown) + 20);
+        pointer-events: none;
+        transform: translateX(-50%);
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer[hidden] {
+        display: none;
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer .next-ui-tooltip-bubble {
+        position: relative;
+        width: max-content;
+        max-width: min(240px, calc(100vw - 16px));
+        padding: var(--vcp-ui-space-1) var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-4);
+        box-shadow: var(--vcp-ui-shadow-md);
+        font: 500 var(--vcp-ui-font-caption) / var(--vcp-ui-line-compact) var(--vcp-ui-font-family);
+        text-align: center;
+        white-space: normal;
+        animation: next-ui-tooltip-in var(--vcp-ui-transition-fast) both;
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer .next-ui-tooltip-bubble::after {
+        position: absolute;
+        left: 50%;
+        width: 7px;
+        height: 7px;
+        border-right: 1px solid var(--vcp-ui-border);
+        border-bottom: 1px solid var(--vcp-ui-border);
+        content: "";
+        background: var(--vcp-ui-bg-4);
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="bottom"] .next-ui-tooltip-bubble::after {
+        top: -4px;
+        transform: translateX(-50%) rotate(225deg);
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="top"] .next-ui-tooltip-bubble::after {
+        bottom: -4px;
+        transform: translateX(-50%) rotate(45deg);
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="bottom"] .next-ui-tooltip-bubble {
+        transform-origin: top center;
+    }
+
+    html .vcp-ui-scope.next-ui-tooltip-layer[data-placement="top"] .next-ui-tooltip-bubble {
+        transform-origin: bottom center;
+    }
+
+    @keyframes next-ui-tooltip-in {
+        from { opacity: 0; transform: translateY(3px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
     html .vcp-ui-scope .next-ui-launchpad-inner {
         width: min(1080px, calc(100% - var(--vcp-ui-space-8)));
         padding: var(--vcp-ui-space-7) 0 var(--vcp-ui-space-8);
