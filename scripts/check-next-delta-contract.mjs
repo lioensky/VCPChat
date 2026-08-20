@@ -69,10 +69,18 @@ for (const file of mainRuntimeFiles) {
 const rendererSource = read('renderer.js');
 assert.match(rendererSource, /createMainChatDomBindings\(document\)/,
     'renderer composition must resolve its fixed main-window DOM through one explicit adapter');
+assert.match(rendererSource, /createTopicSelectionReadiness\(\)/,
+    'renderer composition must own the topic-selection readiness capability');
+assert.doesNotMatch(rendererSource, /__vcpRendererReady|__vcpPendingTopicSelection/,
+    'renderer must not publish topic readiness through ambient window fields');
 assert.doesNotMatch(rendererSource, /const chatMessagesDiv = document\.getElementById|const messageInput = document\.getElementById|const sendMessageBtn = document\.getElementById/,
     'renderer must not recreate canonical chat DOM bindings outside the composition adapter');
 assert.match(read('modules/renderer/mainChatDomBindings.js'), /export function createMainChatDomBindings\(document\)[\s\S]*Object\.freeze\(bindings\)/,
     'MainChatDomBindings must expose an immutable, document-owned capability closure');
+assert.match(read('modules/topicListManager.js'), /topicSelectionReadiness\.isReady\(\)[\s\S]*topicSelectionReadiness\.defer/,
+    'TopicListManager must consume the injected readiness capability');
+assert.doesNotMatch(read('modules/topicListManager.js'), /__vcpRendererReady|__vcpPendingTopicSelection/,
+    'TopicListManager must not read or write ambient renderer readiness fields');
 const globalSettingsSource = read('modules/global-settings-manager.js');
 const appearanceStudioSource = read('modules/ui-system/appearance-studio.js');
 for (const [file, source] of [
@@ -159,6 +167,11 @@ for (const auxiliaryWindow of ['Voicechatmodules/voicechat.js', 'rust_assistant_
     assert.doesNotMatch(auxiliarySource, /waitForActiveStreamToSettle|Timed out while waiting stream to settle/,
         `${auxiliaryWindow} must not reintroduce polling settlement`);
 }
+const assistantHandlersSource = read('modules/ipc/assistantHandlers.js');
+assert.match(assistantHandlersSource, /webContents\.once\(['"]did-finish-load['"][\s\S]*webContents\.send\(['"]assistant-data['"]/, 
+    'assistant context must be delivered after renderer load, before presentation readiness');
+assert.doesNotMatch(assistantHandlersSource, /ready-to-show['"]\s*,\s*\(\)\s*=>\s*\{[\s\S]{0,240}?webContents\.send\(['"]assistant-data['"]/, 
+    'assistant context must not be sent from the presentation-only ready-to-show event');
 assert.doesNotMatch(historyPersistenceSource, /\b(?:window|document|electronAPI)\b/,
     'ChatHistoryPersistence must remain independent from DOM and Electron');
 assert.match(read('modules/chat/chatDomRenderer.js'), /createChatDomRenderer/,

@@ -7,6 +7,7 @@ window.topicListManager = (() => {
     let chatRepository;
     let currentSelectedItemRef;
     let currentTopicIdRef;
+    let topicSelectionReadiness;
     let uiHelper;
     let mainRendererFunctions;
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
@@ -33,7 +34,7 @@ window.topicListManager = (() => {
             console.error('[TopicListManager] Missing required DOM element: topicListContainer.');
             return;
         }
-        if (!config.electronAPI || !config.refs || !config.uiHelper || !config.mainRendererFunctions) {
+        if (!config.electronAPI || !config.refs || !config.uiHelper || !config.mainRendererFunctions || !config.topicSelectionReadiness) {
             console.error('[TopicListManager] Missing required configuration parameters.');
             return;
         }
@@ -44,6 +45,7 @@ window.topicListManager = (() => {
         if (!chatRepository) throw new Error('TopicListManager requires ChatRepository');
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
         currentTopicIdRef = config.refs.currentTopicIdRef;
+        topicSelectionReadiness = config.topicSelectionReadiness;
         uiHelper = config.uiHelper;
         mainRendererFunctions = config.mainRendererFunctions;
 
@@ -392,12 +394,12 @@ window.topicListManager = (() => {
                 return;
             }
 
-            if (window.__vcpRendererReady === false) {
-                window.__vcpPendingTopicSelection = {
+            if (!topicSelectionReadiness.isReady()) {
+                topicSelectionReadiness.defer({
                     itemId: currentSelectedItem.id,
                     itemType: currentSelectedItem.type,
                     topicId: topic.id,
-                };
+                });
                 if (uiHelper && uiHelper.showToastNotification) {
                     uiHelper.showToastNotification('正在初始化界面，稍后自动打开该话题', 'info');
                 }
