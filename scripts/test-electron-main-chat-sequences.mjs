@@ -823,6 +823,11 @@ try {
         await page.waitForFunction(expectedId => window.currentSelectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
         const activeTopic = await page.evaluate(() => window.currentTopicId);
         if (activeTopic !== topicId) {
+            // Selecting an item starts the asynchronous topic-list load. Do
+            // not issue the imperative selectTopic command until its real DOM
+            // consumer exists; otherwise a reset immediately after a reload
+            // can select a topic before the list manager has mounted it.
+            await page.waitForSelector(`[data-topic-id="${topicId}"]`, { timeout: 8_000 });
             await page.evaluate(async expectedTopicId => (await import('./modules/chatManager.js')).chatManager.selectTopic(expectedTopicId), topicId);
         }
         await waitState(itemId, topicId);
