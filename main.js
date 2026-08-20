@@ -1,5 +1,29 @@
 // main.js - Electron 主窗口
 
+// Bootstrap-only fatal evidence. The monitor does not consume the exception,
+// so Electron keeps its existing crash behavior while managed/packed launches
+// receive a machine-readable cause instead of a silent ready timeout.
+if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR) {
+    process.on('uncaughtExceptionMonitor', (error, origin) => {
+        try {
+            const bootstrapFs = require('fs');
+            const bootstrapPath = require('path');
+            const diagnostics = bootstrapPath.join(process.env.VCPCHAT_STATE_DIR, 'diagnostics');
+            bootstrapFs.mkdirSync(diagnostics, { recursive: true });
+            const safeOperationId = process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID.replace(/[^a-z0-9_-]/gi, '-');
+            bootstrapFs.writeFileSync(bootstrapPath.join(diagnostics, `fatal-${safeOperationId}.json`), `${JSON.stringify({
+                schemaVersion: 1,
+                operationId: process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID,
+                origin,
+                name: error?.name || 'Error',
+                message: error?.message || String(error),
+                stack: error?.stack || null,
+                at: new Date().toISOString(),
+            }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+        } catch { /* the original fatal error remains authoritative */ }
+    });
+}
+
 // --- 模块加载性能诊断 ---
 const originalRequire = require;
 require = function (id) {
@@ -228,6 +252,9 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
+const NATIVE_SPLASH_READY_FILE = app.isPackaged
+    ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
+    : path.join(__dirname, '.vcp_ready');
 
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
@@ -398,7 +425,9 @@ function startAudioEngine() {
 
         // Use the Rust audio server binary (moved to audio_engine directory)
         const binaryName = process.platform === 'win32' ? 'audio_server.exe' : 'audio_server';
-        const rustBinaryPath = path.join(__dirname, 'audio_engine', binaryName);
+        const rustBinaryPath = app.isPackaged
+            ? path.join(process.resourcesPath, 'app.asar.unpacked', 'audio_engine', binaryName)
+            : path.join(__dirname, 'audio_engine', binaryName);
         console.log(`[Main] Starting Rust Audio Engine from: ${rustBinaryPath}`);
 
         // Check if the binary exists
@@ -666,7 +695,7 @@ function createWindow({ deferLoad = false } = {}) {
 
 function loadMainWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
-        const readyFile = path.join(__dirname, '.vcp_ready');
+        const readyFile = NATIVE_SPLASH_READY_FILE;
         fs.ensureFileSync(readyFile);
 
         setTimeout(() => {
@@ -798,7 +827,7 @@ if (!gotTheLock) {
     const isInternalLaunch = process.argv.includes('--desktop-only') || process.argv.includes('--rag-observer-only');
 
     if (!isInternalLaunch) {
-        const readyFile = path.join(__dirname, '.vcp_ready');
+        const readyFile = NATIVE_SPLASH_READY_FILE;
         try {
             fs.ensureFileSync(readyFile);
             console.log('[Main] Second instance signaled NativeSplash to close.');
@@ -813,7 +842,7 @@ if (!gotTheLock) {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
         // 当第一实例被第二实例唤醒时，延迟 1.5 秒清理可能由第二实例创建的信号文件。
         // 1.5 秒足够 Rust 闪屏端（200ms轮询）检测并退出，且能 100% 避免冷启动信号残留。
-        const readyFile = path.join(__dirname, '.vcp_ready');
+        const readyFile = NATIVE_SPLASH_READY_FILE;
         setTimeout(() => {
             try {
                 if (fs.existsSync(readyFile)) {
@@ -1340,7 +1369,12 @@ if (!gotTheLock) {
             documentHandlers: docxHandlers,
             logger: console,
         });
-        desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+        desktopHandlers.initialize({
+            mainWindow,
+            openChildWindows,
+            settingsManager: appSettingsManager,
+            APP_DATA_ROOT_IN_PROJECT,
+        });
         await embeddedAppSessions?.closeAll();
         embeddedAppTasks?.dispose('main-window-reinitialized');
         embeddedAppTasks = new SenderTaskRegistry({ label: 'embedded-app-tasks' });
@@ -1616,7 +1650,7 @@ if (!gotTheLock) {
 
     app.on('will-quit', () => {
         // 0. Clean up the ready signal file for the native splash screen
-        const readyFile = path.join(__dirname, '.vcp_ready');
+        const readyFile = NATIVE_SPLASH_READY_FILE;
         if (fs.existsSync(readyFile)) {
             fs.unlinkSync(readyFile);
         }

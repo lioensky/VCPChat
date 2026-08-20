@@ -7,6 +7,13 @@
     "start": "electron .",
     "doctor": "node scripts/vcpchat-doctor.mjs",
     "start:managed": "node scripts/vcpchat-dev-launcher.mjs",
+    "bootstrap": "node scripts/vcpchat-bootstrap.mjs",
+    "repair:managed": "node scripts/vcpchat-repair.mjs",
+    "start:recovery": "node scripts/vcpchat-recovery-ui.mjs",
+    "verify:runtime-closure": "node scripts/vcpchat-runtime-closure.mjs --json",
+    "test:packed-install": "node scripts/vcpchat-packed-smoke.mjs",
+    "update:managed": "node scripts/vcpchat-update.mjs",
+    "evidence:managed": "node scripts/vcpchat-release-evidence.mjs",
     "start:desktop": "electron . --desktop-only",
     "start:rag-observer": "electron . --rag-observer-only",
     "build": "node rust_chat_data_service/build-runtime.js",
@@ -26,7 +33,7 @@
     "vendor:webawesome:report": "node scripts/build-webawesome-runtime.mjs",
     "vendor:webawesome:check": "node scripts/build-webawesome-runtime.mjs --check vendor/webawesome-runtime",
     "test:ui-system": "node scripts/test-ui-system.mjs && node --test tests/performance-recorder.test.js tests/embedded-app-security.test.js tests/overlay-coordinator.test.js tests/embedded-app-controller.test.js tests/app-tab-host.test.js tests/assistant-search-controller.test.js tests/account-menu-controller.test.js tests/escape-dispatcher.test.js tests/notification-menu-controller.test.js tests/launchpad-controller.test.js tests/creation-controller.test.js tests/global-settings-save.test.mjs tests/task-handle.test.js tests/sender-task-registry.test.js tests/contribution-registry.test.js tests/state-channel.test.js tests/state-authority.test.js tests/settlement.test.js tests/surface-controller.test.js tests/lifecycle-inspector.test.js tests/main-chat-sequence-model.test.js tests/chat-manager-selection-race.test.js tests/history-watcher-lease-manager.test.js tests/message-edit-watcher-failure.test.js tests/stream-manager-terminal-cleanup.test.js tests/theme-handlers.test.js",
-    "test:bootstrap": "node --test tests/vcpchat-bootstrap.test.mjs",
+    "test:bootstrap": "node --test tests/vcpchat-bootstrap.test.mjs tests/vcpchat-managed-bootstrap-m3-m8.test.mjs",
     "test:next-ui-empty-state": "node scripts/test-next-ui-empty-state.mjs",
     "test:ui-motion-contract": "node scripts/test-ui-motion-contract.mjs",
     "check:ui-system": "npm run guard:design-subtraction && npm run guard:classic-parity && npm run guard:classic-retirement && npm run guard:next-delta && npm run guard:ui-interaction && npm run guard:ui-async-state && npm run guard:ui-task-journeys && npm run guard:theme-provenance && npm run test:ui-motion-contract && node --check modules/ui-system/lifecycle-scope.js && node --check VCPDistributedServer/frontend-plugin-loader.js && node --check modules/ui-system/component-manifest.js && node --check modules/ui-system/vcp-ui.js && node --check modules/ui-system/webawesome-runtime-manifest.js && node --check modules/ui-system/webawesome-adapter.js && node --check modules/ui-system/appearance-engine.js && node --check modules/ui-system/appearance-studio.js && node --check modules/ui-system/next-ui-apps.js && node --check modules/ui-system/component-showcase.js && node --check modules/ui-system/webawesome-comparison.js && node --check modules/topTabManager.js && npm run lint:ui-system && npm run guard:ui-system && npm run check:ui-applications && npm run test:ui-system && npm run test:appearance-engine && npm run test:appearance-studio && node scripts/test-next-ui-tab-lifecycle.mjs && node scripts/test-webawesome-adapter.mjs && node --test tests/lifecycle-scope.test.js tests/next-ui-registries.test.mjs tests/topic-list-mode-lifecycle.test.js && npm run test:bootstrap",
@@ -120,7 +127,10 @@
     "appId": "com.vcp.chatdesktop",
     "productName": "VCP聊天客户端",
     "asarUnpack": [
-      "modules/services/chatDataService/bin/**/*"
+      "modules/services/chatDataService/bin/**/*",
+      "audio_engine/**/*",
+      "rust_assistant_engine/runtime/**/*",
+      "VCPDistributedServer/Plugin/**/*"
     ],
     "files": [
       "main.js",
@@ -128,6 +138,8 @@
       "preloads/**/*",
       "renderer.js",
       "main.html",
+      "bootstrap/**/*",
+      "audio_engine/**/*",
       "image-viewer.html",
       "text-viewer.html",
       "style.css",
@@ -140,7 +152,13 @@
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",
       "assets/",
       "modules/**/*",
+      "Groupmodules/**/*",
+      "Flowlockmodules/**/*",
+      "Promptmodules/**/*",
       "ScriptoriumModules/**/*",
+      "Tavernmodules/**/*",
+      "rust_assistant_engine/ui/**/*",
+      "rust_assistant_engine/runtime/**/*",
       "Notemodules/**/*",
       "Translatormodules/**/*",
       "vendor/**/*",
@@ -149,6 +167,7 @@
     "directories": {
       "buildResources": "assets"
     },
+    "afterPack": "scripts/electron-builder-bootstrap-hooks.cjs",
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.icns"

@@ -249,8 +249,11 @@ class RustAssistantAdapter {
     resolveArtifactExecutablePath(binaryName) {
         const runtimeDirs = [
             path.join(this.projectRoot, 'rust_assistant_engine', 'runtime'),
+            process.resourcesPath
+                ? path.join(process.resourcesPath, 'app.asar.unpacked', 'rust_assistant_engine', 'runtime')
+                : null,
             path.join(this.projectRoot, 'assistant_engine')
-        ].filter(dir => fs.existsSync(dir));
+        ].filter(dir => dir && fs.existsSync(dir));
 
         if (!runtimeDirs.length) {
             return null;
@@ -273,6 +276,11 @@ class RustAssistantAdapter {
 
                 candidates.push(path.join(runtimeDir, exactDir, suffixedBinaryName));
                 candidates.push(path.join(runtimeDir, exactDir, 'dist', suffixedBinaryName));
+                try {
+                    candidates.push(...fs.readdirSync(path.join(runtimeDir, exactDir))
+                        .filter(name => name.startsWith('assistant_core_server-'))
+                        .map(name => path.join(runtimeDir, exactDir, name)));
+                } catch { /* exact runtime directory may be absent */ }
 
                 if (platformLabel === 'macOS') {
                     const universalDir = 'assistant_core_server-macOS-Universal';
