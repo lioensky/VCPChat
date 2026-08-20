@@ -1007,6 +1007,28 @@ try {
         window.topTabManager.closeView('app:standalone-chat-compose');
     });
     await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat'), { timeout });
+    const flowlockAgentConfigPath = path.join(appData, 'Agents', identities[0], 'config.json');
+    const flowlockAgentConfig = JSON.parse(await fs.readFile(flowlockAgentConfigPath, 'utf8'));
+    await fs.writeFile(flowlockAgentConfigPath, JSON.stringify({ ...flowlockAgentConfig, streamOutput: false }), 'utf8');
+    const flowlockMessageId = `flowlock-electron-${Date.now()}`;
+    const flowlockRequestCount = fixture.requests.length;
+    await page.evaluate(async ({ agentId, topicId, messageId }) => {
+        await window.flowlockManager.continueWritingForContext({
+            agentId,
+            topicId,
+            messageId,
+            prompt: 'Flowlock Electron terminal evidence',
+        });
+    }, { agentId: identities[0], topicId: topics[identities[0]][0], messageId: flowlockMessageId });
+    assert.equal(fixture.requests.length, flowlockRequestCount + 1, 'Flowlock non-stream request did not reach the real VCP fixture');
+    assert.equal(fixture.requests.at(-1)?.stream, false, 'Flowlock terminal evidence must exercise the non-stream producer path');
+    const flowlockHistoryPath = path.join(appData, 'UserData', identities[0], 'topics', topics[identities[0]][0], 'history.json');
+    const flowlockHistory = JSON.parse(await fs.readFile(flowlockHistoryPath, 'utf8'));
+    assert.equal(flowlockHistory.some(message => message?.id === flowlockMessageId || message?.isThinking), false,
+        'Flowlock terminal commit retained its thinking placeholder');
+    assert.equal(flowlockHistory.filter(message => message?.content === 'fixture response').length, 1,
+        'Flowlock non-stream completion must commit exactly one assistant terminal');
+    await fs.writeFile(flowlockAgentConfigPath, JSON.stringify(flowlockAgentConfig), 'utf8');
     await runAuxiliaryWindowScenario({
         fragment: 'Voicechatmodules/voicechat.html',
         open: () => page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]),
