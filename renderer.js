@@ -554,6 +554,8 @@ const startupThemeGate = new StartupThemeGate({
         pretextBridge: window.pretextBridge,
             flowlockProtocol: window.flowlockProtocol,
             uiHelper: uiHelperFunctions,
+            showForwardModal,
+            ensureAudioContext: initAudioContext,
             interruptHandler,
             messageCommands: {
                 processFilesData: (...args) => chatManager.processFilesData(...args),
