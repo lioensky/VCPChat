@@ -6,6 +6,7 @@ import { createMessageRenderer } from './modules/messageRenderer.js';
 import { applyUserMessageLayoutState } from './modules/renderer/domBuilder.js';
 import { createStreamProjection } from './modules/renderer/streamManager.js';
 import { createMainChatEventBridge } from './modules/renderer/mainChatEventBridge.js';
+import { createOwnedPreloadSubscription } from './modules/renderer/ownedPreloadSubscription.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -335,6 +336,7 @@ let mainChatSurface = null;
 let mainChatAdapter = null;
 let nonStreamingEventConsumer = null;
 let mainChatEventBridge = null;
+const ownedRendererSubscriptions = new Set();
 let releaseNextUiChatCapabilities = null;
 
 function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
@@ -631,6 +633,8 @@ const startupThemeGate = new StartupThemeGate({
             }),
             createInternalRenderer: createOwnedInternalChatRenderer,
             disposeCapabilities: async () => {
+                for (const subscription of ownedRendererSubscriptions) subscription.dispose();
+                ownedRendererSubscriptions.clear();
                 mainChatEventBridge?.dispose?.();
                 mainChatEventBridge = null;
                 nonStreamingEventConsumer?.dispose();
@@ -669,7 +673,9 @@ const startupThemeGate = new StartupThemeGate({
     }
 
     if (chatAPI?.onLoomShareTextToInput) {
-        chatAPI.onLoomShareTextToInput((sharedText) => {
+        ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
+            subscribe: chatAPI.onLoomShareTextToInput,
+            consume: (sharedText) => {
             if (!messageInput || typeof sharedText !== 'string' || !sharedText) return;
             const start = Number.isInteger(messageInput.selectionStart)
                 ? messageInput.selectionStart
@@ -683,15 +689,21 @@ const startupThemeGate = new StartupThemeGate({
             messageInput.dispatchEvent(new Event('input', { bubbles: true }));
             messageInput.focus();
             uiHelperFunctions?.showToastNotification?.('Loom 页面文本已加入输入框。', 'success');
-        });
+            },
+        }));
     }
 
-    chatAPI.onVCPLogStatus((statusUpdate) => {
+    if (chatAPI?.onVCPLogStatus) ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
+        subscribe: chatAPI.onVCPLogStatus,
+        consume: (statusUpdate) => {
         if (window.notificationRenderer) {
             window.notificationRenderer.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv);
         }
-    });
-    chatAPI.onVCPLogMessage((logData) => {
+        },
+    }));
+    if (chatAPI?.onVCPLogMessage) ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
+        subscribe: chatAPI.onVCPLogMessage,
+        consume: (logData) => {
         if (window.notificationRenderer) {
             const computedStyle = getComputedStyle(document.body);
             const themeColors = {
@@ -705,7 +717,8 @@ const startupThemeGate = new StartupThemeGate({
             // 修复：只传递一个 logData 参数，第二个参数显式传递 null，以匹配 preload 定义
             window.notificationRenderer.renderVCPLogNotification(logData, null, notificationsListUl, themeColors);
         }
-    });
+        },
+    }));
 
     mainChatEventBridge = createMainChatEventBridge({
         chatAPI,
