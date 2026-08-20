@@ -69,3 +69,41 @@ test('MainChatSurfaceAdapter owns the window unload receipt and releases it on d
     await adapter.dispose();
     dom.window.close();
 });
+
+test('main Surface send state follows the real stream terminal consumer', async () => {
+    const dom = new JSDOM('<main><div id="root"></div><textarea></textarea>');
+    const root = dom.window.document.getElementById('root');
+    const renderer = { initializeMessageRenderer() {}, renderHistory() {}, renderMessage() {} };
+    let settled;
+    const terminalSettled = new Promise(resolve => { settled = resolve; });
+    const adapter = createMainChatSurfaceAdapter({
+        root,
+        renderer,
+        repository: { getHistory: async () => [], saveHistory() {} },
+        focusTarget: dom.window.document.querySelector('textarea'),
+        operations: { dispose: async () => {} },
+        renderDependencies: {},
+        streamServices: {
+            streamProjection: {
+                startStreamingMessage() {},
+                appendStreamChunk() {},
+                projectStreamTerminal: async (messageId, finishReason, context, payload) => ({
+                    messageId, finishReason, context, content: payload.fullResponse, history: [],
+                }),
+            },
+            historyPersistence: { commit: projected => projected },
+            messageRenderer: renderer,
+            getSelection: () => ({ id: 'agent-a' }),
+            getTopicId: () => 'topic-a',
+            notifySendStateChanged: settled,
+        },
+        disposeRenderer: async () => {},
+    });
+    const context = { agentId: 'agent-a', topicId: 'topic-a' };
+    assert.equal(adapter.acceptStreamEvent({ type: 'start', messageId: 'm1', streamOperationId: 'op1', context }), true);
+    assert.equal(adapter.acceptStreamEvent({ type: 'end', messageId: 'm1', streamOperationId: 'op1', context, fullResponse: 'done', finish_reason: 'completed' }), true);
+    const outcome = await terminalSettled;
+    assert.equal(outcome.event.type, 'completed');
+    await adapter.dispose();
+    dom.window.close();
+});

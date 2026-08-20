@@ -625,6 +625,7 @@ const startupThemeGate = new StartupThemeGate({
             chatWindow: window,
             interrupt: interruptActiveResponseFromSendButton,
             dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+            notifySendStateChanged: updateSendButtonState,
             showForwardModal,
             provideCapabilities: window.VCPNextShellController?.provideChatCapabilities,
             capabilitySnapshot: () => Object.freeze({

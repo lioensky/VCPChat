@@ -18,6 +18,9 @@ function createStreamCapabilities(root, services) {
         ),
         persistTerminal: projected => services.historyPersistence.commit(projected),
         dispatchTerminal: detail => services.dispatchTerminal?.(detail),
+        onSettled(value) {
+            services.notifySendStateChanged?.(value);
+        },
         reportError,
         async afterPersist({ terminal, finalized, context, messageId }) {
             const finalizedContext = finalized?.context || context;

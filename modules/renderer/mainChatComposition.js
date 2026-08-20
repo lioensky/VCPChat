@@ -21,6 +21,7 @@ export function createMainChatComposition({
     currentTopicId,
     chatWindow,
     dispatchTerminal,
+    notifySendStateChanged,
     interrupt,
     showForwardModal,
     provideCapabilities,
@@ -48,6 +49,7 @@ export function createMainChatComposition({
             getSelection: currentSelection,
             getTopicId: currentTopicId,
             dispatchTerminal,
+            notifySendStateChanged,
         },
         disposeRenderer: async () => {
             await messageRenderer.disposeRootResources(root);
