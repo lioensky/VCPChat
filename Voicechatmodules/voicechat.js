@@ -300,6 +300,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 chatMessagesDiv: chatMessagesDiv,
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
+                morphdom: window.morphdom,
+                pretextBridge: window.pretextBridge,
+                flowlockProtocol: window.flowlockProtocol,
                 uiHelper: uiHelperFunctions, // Pass the local helper
                 messageCommands: { handleSendMessage: text => sendMessage(text) },
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),

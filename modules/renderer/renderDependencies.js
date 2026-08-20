@@ -48,7 +48,11 @@ export function createRenderDependencies(input = {}) {
         removeAttachmentFromMessage: providedMessageCommands.removeAttachmentFromMessage || null,
         syncNextUiEmptyStateWithMessages: providedMessageCommands.syncNextUiEmptyStateWithMessages || null,
         handleSendMessage: providedMessageCommands.handleSendMessage || null,
+        updateSendButtonState: providedMessageCommands.updateSendButtonState || null,
     });
+    const ownerDocument = root.ownerDocument;
+    const ownerWindow = ownerDocument?.defaultView;
+    if (!ownerDocument || !ownerWindow) throw new TypeError('RenderDependencies requires a live DOM realm');
     const closure = {
         root,
         state,
@@ -61,6 +65,11 @@ export function createRenderDependencies(input = {}) {
         messageCommands,
         interrupt: input.interruptHandler || null,
         chatDomRenderer: input.chatDomRenderer || null,
+        document: ownerDocument,
+        realm: ownerWindow,
+        morphdom: input.morphdom || null,
+        pretextBridge: input.pretextBridge || null,
+        flowlockProtocol: input.flowlockProtocol || null,
 
         // Flat aliases are temporary D4 migration adapters, not public globals.
         chatMessagesDiv: root,
@@ -77,6 +86,11 @@ export function createRenderDependencies(input = {}) {
         handleCreateBranch: commands.createBranch,
         interruptHandler: input.interruptHandler || null,
         messageCommands,
+        document: ownerDocument,
+        realm: ownerWindow,
+        morphdom: input.morphdom || null,
+        pretextBridge: input.pretextBridge || null,
+        flowlockProtocol: input.flowlockProtocol || null,
     };
     return Object.freeze(closure);
 }

@@ -739,13 +739,13 @@ function getCompiledRegex(rule) {
         return null;
     }
 
-    if (window.uiHelperFunctions?.getCompiledRegex) {
-        const compiled = window.uiHelperFunctions.getCompiledRegex(rule.findPattern);
+    if (mainRendererReferences?.uiHelper?.getCompiledRegex) {
+        const compiled = mainRendererReferences.uiHelper.getCompiledRegex(rule.findPattern);
         return compiled?.regex || null;
     }
 
-    if (window.uiHelperFunctions?.regexFromString) {
-        return window.uiHelperFunctions.regexFromString(rule.findPattern);
+    if (mainRendererReferences?.uiHelper?.regexFromString) {
+        return mainRendererReferences.uiHelper.regexFromString(rule.findPattern);
     }
 
     const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
@@ -2337,8 +2337,8 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
 
     cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null);
     const ownedMessageId = messageId || messageItem.dataset?.messageId || null;
-    if (ownedMessageId && window.pretextBridge?.evict) {
-        window.pretextBridge.evict(ownedMessageId);
+    if (ownedMessageId && mainRendererReferences?.pretextBridge?.evict) {
+        mainRendererReferences.pretextBridge.evict(ownedMessageId);
     }
     visibilityOptimizer.unobserveMessage(messageItem);
 }
@@ -2349,8 +2349,8 @@ function removeMessageById(messageId, saveHistory = false) {
         // --- NEW: Cleanup dynamic content before removing from DOM ---
         cleanupMessageDomResources(item, messageId);
         // [Pretext集成] 释放高度缓存，防止内存泄漏
-        if (window.pretextBridge && window.pretextBridge.evict) {
-            window.pretextBridge.evict(messageId);
+        if (mainRendererReferences.pretextBridge?.evict) {
+            mainRendererReferences.pretextBridge.evict(messageId);
         }
         item.remove();
     }
@@ -2361,7 +2361,7 @@ function removeMessageById(messageId, saveHistory = false) {
     if (index > -1) {
         currentChatHistoryArray.splice(index, 1);
         mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
-        window.updateSendButtonState?.();
+        mainRendererReferences.messageCommands.updateSendButtonState?.();
 
         if (saveHistory) {
             const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
@@ -2399,7 +2399,7 @@ function clearChat() {
         mainRendererReferences.chatMessagesDiv.innerHTML = '';
     }
     mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
-    window.updateSendButtonState?.();
+    mainRendererReferences.messageCommands.updateSendButtonState?.();
 }
 
 
@@ -2419,10 +2419,10 @@ function initializeMessageRenderer(refs) {
             transformSpecialBlocks(text, codeBlockMap, thoughtChainMap),
         ensureHtmlFenced,
         transformFlowlockBlocks: (text) => {
-            if (!window.flowlockProtocol || typeof window.flowlockProtocol.transformForRender !== 'function') {
+            if (!mainRendererReferences.flowlockProtocol || typeof mainRendererReferences.flowlockProtocol.transformForRender !== 'function') {
                 return text;
             }
-            return window.flowlockProtocol.transformForRender(text);
+            return mainRendererReferences.flowlockProtocol.transformForRender(text);
         },
         transformMermaidPlaceholders: createMermaidPlaceholderTransform({ escapeHtml }),
         getToolResultRegex: () => TOOL_RESULT_REGEX,
@@ -2594,7 +2594,7 @@ function initializeMessageRenderer(refs) {
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
         onStreamStateChanged: mainRendererReferences.messageCommands.updateSendButtonState,
-        morphdom: window.morphdom,
+        morphdom: mainRendererReferences.morphdom,
         renderMessage: renderMessage,
         showContextMenu: contextMenu.showContextMenu,
         setContentAndProcessImages: imageHandler.setContentAndProcessImages,
@@ -2684,8 +2684,8 @@ function initializeMessageRenderer(refs) {
                 } else if (processedFiles.length > 0) {
                     const firstError = processedFiles.find(f => f.error)?.error;
                     console.error(`[MessageRenderer] All files failed to process: ${firstError}`);
-                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                        window.uiHelperFunctions.showToastNotification(`读取文件失败: ${firstError}`, 'error');
+                    if (mainRendererReferences.uiHelper?.showToastNotification) {
+                        mainRendererReferences.uiHelper.showToastNotification(`读取文件失败: ${firstError}`, 'error');
                     }
                 }
             } else {
@@ -2984,7 +2984,7 @@ function enhanceAudioPlayers(container) {
 }
 
 function getAttachmentFileVisualDescriptor(name = '', type = '') {
-    const resolver = window.uiHelperFunctions?.resolveAttachmentFileVisual;
+    const resolver = mainRendererReferences.uiHelper?.resolveAttachmentFileVisual;
     if (typeof resolver === 'function') {
         return resolver(name, type);
     }
@@ -3072,11 +3072,11 @@ async function renderAttachments(message, contentDiv) {
                             if (!result?.success) {
                                 const errorMessage = result?.error || '安全文本编辑器接口不可用';
                                 console.error('[MessageRenderer] Failed to open Python attachment safely:', errorMessage);
-                                window.uiHelperFunctions?.showToastNotification?.(`无法用记事本打开 Python 附件: ${errorMessage}`, 'error');
+                                mainRendererReferences.uiHelper?.showToastNotification?.(`无法用记事本打开 Python 附件: ${errorMessage}`, 'error');
                             }
                         } catch (error) {
                             console.error('[MessageRenderer] Failed to open Python attachment safely:', error);
-                            window.uiHelperFunctions?.showToastNotification?.(`无法用记事本打开 Python 附件: ${error.message}`, 'error');
+                                mainRendererReferences.uiHelper?.showToastNotification?.(`无法用记事本打开 Python 附件: ${error.message}`, 'error');
                         }
                     } else if (electronAPI.sendOpenExternalLink) {
                         electronAPI.sendOpenExternalLink(att.src);
@@ -3658,7 +3658,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     }
 
     messageItem.classList.remove('thinking', 'streaming');
-    window.updateSendButtonState?.();
+    mainRendererReferences.messageCommands.updateSendButtonState?.();
 
     const contentDiv = messageItem.querySelector('.md-content');
     if (!contentDiv) {
@@ -3718,12 +3718,12 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
 }
 
 function scheduleMessagePretextEstimate(messageId, text, container) {
-    if (!window.pretextBridge || !window.pretextBridge.isReady() || !messageId || !text) return;
+    if (!mainRendererReferences.pretextBridge || !mainRendererReferences.pretextBridge.isReady() || !messageId || !text) return;
 
     const run = () => {
         try {
             const containerWidth = container ? container.clientWidth : 800;
-            window.pretextBridge.estimateHeight(messageId, text, 'body', containerWidth);
+        mainRendererReferences.pretextBridge.estimateHeight(messageId, text, 'body', containerWidth);
         } catch (e) {
             // Pretext 失败不影响正常渲染
         }

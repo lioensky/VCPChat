@@ -229,7 +229,7 @@
         try {
             disposer = app.mount(container, context) || null;
         } catch (error) {
-            console.error(`[NextUiApps] Failed to mount ${app.id}:`, error);
+            console.error(`[NextUiApps] Failed to mount ${app.id}:`, error?.stack || error?.message || error);
             container.textContent = `应用加载失败：${error.message}`;
         }
         if (viewScope) {

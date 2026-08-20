@@ -1302,18 +1302,29 @@ export const chatManager = (() => {
 
         if (!content && attachedFiles.length === 0) return;
         if (!currentSelectedItem.id || !currentTopicId) {
-            uiHelper.showToastNotification('请先选择一个项目和话题。', 'error');
+            const error = new Error('请先选择一个项目和话题。');
+            if (!request?.conversation) uiHelper.showToastNotification(error.message, 'error');
+            if (request?.propagateError) throw error;
             return;
         }
         if (!globalSettings.vcpServerUrl) {
-            uiHelper.showToastNotification('请先在全局设置中配置 VCP 服务器 URL。', 'error');
-            uiHelper.openModal('globalSettingsModal');
+            const error = new Error('请先在全局设置中配置 VCP 服务器 URL。');
+            if (!request?.conversation) {
+                uiHelper.showToastNotification(error.message, 'error');
+                uiHelper.openModal('globalSettingsModal');
+            }
+            if (request?.propagateError) throw error;
             return;
         }
 
-        setNextUiEmptyStateActive(false);
+        if (!request?.conversation) setNextUiEmptyStateActive(false);
 
         if (currentSelectedItem.type === 'group') {
+            if (request?.conversation) {
+                const error = new Error('独立群聊尚未接入 Surface-owned 群组 operation');
+                if (request.propagateError) throw error;
+                return;
+            }
             if (groupRenderer && typeof groupRenderer.handleSendGroupMessage === 'function') {
                 groupRenderer.handleSendGroupMessage(
                     currentSelectedItem.id,
@@ -1412,9 +1423,10 @@ export const chatManager = (() => {
                 );
                 userMessageItem?.remove?.();
                 notifySendState();
-                uiHelper.showToastNotification(`发送失败，草稿已保留: ${error.message}`, 'error');
+                if (!request?.conversation) uiHelper.showToastNotification(`发送失败，草稿已保留: ${error.message}`, 'error');
             }
             console.error('[ChatManager] Failed to persist outgoing message:', error);
+            if (request?.propagateError) throw error;
             return;
         }
 
@@ -1512,7 +1524,8 @@ export const chatManager = (() => {
                     sendHistoryRef.set(
                         sendHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
                     );
-                    messageRenderer?.removeMessageById?.(thinkingMessage.id);
+                    if (typeof renderTarget?.removeMessage === 'function') await renderTarget.removeMessage(thinkingMessage.id);
+                    else await renderTarget?.removeMessageById?.(thinkingMessage.id);
                     notifySendState();
                 }
                 return cleanedHistory;
@@ -1522,7 +1535,8 @@ export const chatManager = (() => {
                     sendHistoryRef.set(
                         sendHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
                     );
-                    messageRenderer?.removeMessageById?.(thinkingMessage.id);
+                    if (typeof renderTarget?.removeMessage === 'function') await renderTarget.removeMessage(thinkingMessage.id);
+                    else await renderTarget?.removeMessageById?.(thinkingMessage.id);
                     notifySendState();
                 }
                 return null;
