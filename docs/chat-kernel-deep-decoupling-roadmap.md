@@ -1,6 +1,6 @@
 # VCPChat Chat Kernel 深度解耦路线
 
-> 状态：D0–D2 已完成纯边界与可重复证据，D3–D7 施工中；未满足全部退出条件前不得宣称 renderer 已完成解耦。
+> 状态：D0–D5 已完成可重复边界与主窗口生产接入，D6–D7 施工中；未满足全部退出条件前不得宣称 renderer 已完成解耦。
 > 规范依据：`C:\VCP\vchat-develop\deepseek-harness\AGENTS.md`、`docs/event-producer-consumer.zh.md`、`docs/defensive-patterns.zh.md` 和 `.agents/skills/dsh-code-review/SKILL.md`。
 
 ## 目标
@@ -79,6 +79,13 @@ D0 的可重复基线由 `npm run guard:chat-kernel-consumers` 生成到 `docs/c
 `modules/chat/streamSession.js` 已建立纯协议层，只负责 session identity、chunk 顺序、四种终态归一化、单终态仲裁和 subscriber 隔离；不读取 DOM、Electron、history 或 desktop push。`modules/chat/streamCoordinator.js` 已建立 owner-scoped 协调层：Coordinator 私有 lease 决定提交权，同一 topic 的不同 message 可并发，同一 message retry 会撤销旧 attempt；per-conversation persistence queue、AbortController、owned cleanup 与 `done`/`dispose()` 均等待真实 Promise，不提供全局 registry、Store 或 `whenIdle()`。
 
 D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一次。持久化失败不会先发布 completed 再补发 failed，而是形成唯一 `failed` outcome，并保留原 transport outcome 作为只读证据。D3 将把该闭合 handle 接入主聊天与独立 Surface；旧 `streamManager` 在完成生产迁移前仍是过渡 adapter，不能提前删除。
+
+## D3–D5 当前施工
+
+- 主窗口 preload 事件已经统一进入 `VcpStreamBridge → StreamCoordinator → MainChatStreamConsumer`，旧 `renderer.js` 的 start/data/end/error switch 已删除；独立交互 Surface 通过 message-scoped route 获得自己的 DOM projection owner。
+- `RenderDependencies` 取代带静默默认值的可变引用袋；root、state refs、repository、transport、Markdown、feedback 和 commands 必须在 mount 时完整提供并冻结。
+- `MainChatSurfaceAdapter` 已成为主聊天 Surface、stream route、bridge 与 teardown 的 composition owner；`renderer.js` 仍保留其他主窗口模块 wiring，D6 继续迁移可删除的 legacy facade。
+- `window.chatManager`、`window.messageRenderer`、`window.streamManager` 目前仍被 VoiceChat、Rust Assistant、Flowlock、设置与旧模块真实消费。它们属于经 consumer report 证明的过渡兼容入口，不能在生产引用归零前删除。
 
 ## Stream Session 目标接口
 

@@ -16,6 +16,14 @@ const productionFiles = [
     'modules/renderer/messageContextMenu.js',
     'modules/renderer/middleClickHandler.js',
     'Flowlockmodules/flowlock-integration.js',
+    'Voicechatmodules/voicechat.js',
+    'rust_assistant_engine/ui/assistant.js',
+    'modules/mainChatCommands.js',
+    'modules/settingsManager.js',
+    'modules/global-settings-manager.js',
+    'modules/renderer/contentProcessor.js',
+    'modules/ui-system/interactive-chat-app.js',
+    'modules/ui-system/standalone-chat-app.js',
 ];
 const testFiles = fs.readdirSync(path.join(root, 'tests'))
     .filter(file => /chat|stream|main-chat|lifecycle/i.test(file))
@@ -53,6 +61,9 @@ const kernelFiles = [
     'modules/chat/chatThemePlugin.js',
     'modules/chat/chatPluginManifest.js',
     'modules/chat/streamSession.js',
+    'modules/chat/streamCoordinator.js',
+    'modules/chat/streamConsumerRegistry.js',
+    'modules/chat/vcpStreamBridge.js',
 ];
 // ChatRepository is the intentional transport adapter; the pure-runtime rule
 // applies to the domain, content, renderer and plugin contracts around it.
@@ -73,7 +84,7 @@ for (const file of pureKernelFiles) {
 }
 
 const report = {
-    phase: 'D0',
+    phase: 'D6',
     productionFiles,
     testFiles,
     references: Object.fromEntries(references),
@@ -91,11 +102,15 @@ const report = {
         }];
     })),
     invariants: [
-    'pure kernel files have no document/window/electronAPI dependency',
+        'pure kernel files have no document/window/electronAPI dependency',
         'production and test consumers are reported separately',
         'legacy facade removal requires a later zero-production-consumer proof',
+        'main-window start/data/end/error events have one coordinator authority',
     ],
 };
+const rendererSource = source('renderer.js');
+assert.doesNotMatch(rendererSource, /case ['"](?:agent_thinking|start|data|end|error)['"]:/, 'renderer must not retain the pre-coordinator stream terminal switch');
+assert.match(rendererSource, /mainChatAdapter\?\.acceptStreamEvent\(eventData\)/, 'main window must route VCP events through MainChatSurfaceAdapter');
 const reportPath = path.join(root, 'docs/chat-kernel-consumer-report.json');
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 console.log(`Chat Kernel consumer baseline passed (${productionFiles.length} production files, ${testFiles.length} test files, ${kernelFiles.length} kernel files).`);

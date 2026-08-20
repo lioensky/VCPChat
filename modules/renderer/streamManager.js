@@ -180,7 +180,6 @@ let globalRenderLoopRunning = false;
 const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达只置脏，由全局 rAF 合帧渲染
 
 // 记录延迟清理定时器，方便切换话题时统一清除
-const delayedCleanupTimers = new Map(); // messageId -> timerId
 
 // --- 新增：预缓冲系统 ---
 const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
@@ -2473,21 +2472,13 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     // it is safe and necessary to run after cleanup for every finalization.
     window.updateSendButtonState?.();
 
-    // Delayed cleanup
-    const existingCleanupTimer = delayedCleanupTimers.get(messageId);
-    if (existingCleanupTimer) {
-        clearTimeout(existingCleanupTimer);
-    }
-    const cleanupTimerId = setTimeout(() => {
-        messageDomCache.delete(messageId);
-        messageInitializationStatus.delete(messageId);
-        preBufferedChunks.delete(messageId);
-        messageContextMap.delete(messageId);
-        pendingHistoryEntries.delete(messageId);
-        viewContextCache.delete(messageId);
-        delayedCleanupTimers.delete(messageId);
-    }, 5000);
-    delayedCleanupTimers.set(messageId, cleanupTimerId);
+    // Terminal means ownership has ended; no delayed cache lease survives `done`.
+    messageDomCache.delete(messageId);
+    messageInitializationStatus.delete(messageId);
+    preBufferedChunks.delete(messageId);
+    messageContextMap.delete(messageId);
+    pendingHistoryEntries.delete(messageId);
+    viewContextCache.delete(messageId);
 
     // 调用方（例如 Flowlock）需要基于真正落盘的完整文本解析最终控制协议。
     return {
@@ -2502,9 +2493,6 @@ export function discardStreamingMessage(messageId) {
     const scrollTimer = scrollThrottleTimers.get(messageId);
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollThrottleTimers.delete(messageId);
-    const cleanupTimer = delayedCleanupTimers.get(messageId);
-    if (cleanupTimer) clearTimeout(cleanupTimer);
-    delayedCleanupTimers.delete(messageId);
     streamingChunkQueues.delete(messageId);
     streamingTimers.delete(messageId);
     pendingDirectRenderMessages.delete(messageId);
@@ -2536,10 +2524,6 @@ export function cleanupTransientState() {
         }
         desktopPushStates.clear();
     
-        for (const timerId of delayedCleanupTimers.values()) {
-            clearTimeout(timerId);
-        }
-        delayedCleanupTimers.clear();
     
         for (const timerId of historySaveQueue.values()) {
             if (timerId?.timerId) {
@@ -2580,7 +2564,7 @@ export function getStreamDiagnostics() {
         pendingFinalizations: pendingFinalizationEvents.size,
         chunkQueues: streamingChunkQueues.size,
         renderTimers: streamingTimers.size,
-        delayedCleanupTimers: delayedCleanupTimers.size,
+        delayedCleanupTimers: 0,
         historySaveQueue: historySaveQueue.size,
         desktopPushStates: desktopPushStates.size,
     });
