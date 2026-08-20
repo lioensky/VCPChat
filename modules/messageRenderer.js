@@ -38,6 +38,7 @@ import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipelin
 import { createContentRuntime } from './chat/contentRuntime.js';
 import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
 import { createChatDomRenderer } from './chat/chatDomRenderer.js';
+import { createRenderDependencies } from './renderer/renderDependencies.js';
 import {
     TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
     TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
@@ -2211,26 +2212,7 @@ function fixEmoticonUrlsInMarkdown(text) {
  */
 
 
-let mainRendererReferences = {
-    currentChatHistoryRef: { get: () => [], set: () => { } }, // Ref to array
-    currentSelectedItemRef: { get: () => ({ id: null, type: null, name: null, avatarUrl: null, config: null }), set: () => { } }, // Ref to object
-    currentTopicIdRef: { get: () => null, set: () => { } }, // Ref to string/null
-    globalSettingsRef: { get: () => ({ userName: '用户', userAvatarUrl: 'assets/default_user_avatar.png', userAvatarCalculatedColor: null }), set: () => { } }, // Ref to object
-
-    chatMessagesDiv: null,
-    electronAPI: null,
-    chatRepository: null,
-    markedInstance: null,
-    uiHelper: {
-        scrollToBottom: () => { },
-        openModal: () => { },
-        autoResizeTextarea: () => { },
-        // ... other uiHelper functions ...
-    },
-    summarizeTopicFromMessages: async () => "",
-    handleCreateBranch: () => { },
-    // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
-};
+let mainRendererReferences = null;
 
 
 let contentPipeline = null;
@@ -2400,7 +2382,7 @@ function clearChat() {
 
 function initializeMessageRenderer(refs) {
     disposeRendererListeners();
-    Object.assign(mainRendererReferences, refs);
+    mainRendererReferences = createRenderDependencies(refs);
 
     contentPipeline = createContentPipeline({
         escapeHtml,
