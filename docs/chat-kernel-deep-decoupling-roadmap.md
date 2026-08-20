@@ -94,6 +94,8 @@ D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一
 
 D6 最新增量已移除主聊天 selection 与 topic-readiness 的无界全局 facade：`VCPMainChatState` 是 composition root 创建的只读 consumer，`TopicSelectionReadiness` 由 TopicListManager 显式注入；辅助 Voice/Rust 并发场景已覆盖 context binding、独立 terminal 和分别关闭。D5/D7 仍以完整 renderer composition 收口和人工 soak 为退出条件。
 
+后续 legacy 审计已确认并处理一批真实消费者：Middle-click 与 Context-menu 的转发/音频入口现在由 Surface capability 注入，不再反向读取 `window.showForwardModal` 或 `window.ensureAudioContext`；其余 presentation/filter 入口仍保留并在 consumer report 中记录生产消费者。Lifecycle stress 当前已通过 3 warmup + 40 cycles；60-cycle 尝试仍出现 CDP `Runtime.callFunctionOn` 超时，不能外推为完整人工 soak。
+
 第一版只保留真实消费者需要的最小接口，不做通用 Store：
 
 ```js
