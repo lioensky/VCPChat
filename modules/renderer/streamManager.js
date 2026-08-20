@@ -402,6 +402,20 @@ function applyStreamingPreprocessors(text) {
     return contentRuntime.createRenderModel({ content: text, role: 'assistant' }, { mode: PIPELINE_MODES.STREAM_FAST }).text;
 }
 
+function getOwnedHistory() {
+    return refs.historyAuthority?.get?.() || refs.currentChatHistoryRef.get();
+}
+
+function setOwnedHistory(history) {
+    const snapshot = Array.isArray(history) ? [...history] : [];
+    if (refs.historyAuthority?.replace) {
+        refs.historyAuthority.replace(snapshot);
+    } else {
+        refs.currentChatHistoryRef.set(snapshot);
+    }
+    return snapshot;
+}
+
 function parseStreamTail(text) {
     if (typeof refs.parseTail === 'function') {
         return refs.parseTail(text);
@@ -1681,10 +1695,10 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     let historyForThisMessage;
     // For assistant chat, always use a temporary in-memory history
     if (context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        historyForThisMessage = currentChatHistoryRef.get();
+        historyForThisMessage = getOwnedHistory();
     } else if (isForCurrentView) {
         // For current view, use in-memory history
-        historyForThisMessage = currentChatHistoryRef.get();
+        historyForThisMessage = getOwnedHistory();
     } else {
         // For background chats, load from disk
         historyForThisMessage = await getHistoryForContext(context);
@@ -1768,7 +1782,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     // Save the history
     if (isForCurrentView) {
         // Update in-memory reference for current view
-        currentChatHistoryRef.set([...historyForThisMessage]);
+        setOwnedHistory(historyForThisMessage);
         refs.onStreamStateChanged?.();
     }
     
@@ -2049,7 +2063,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     
     // Get the correct history
     let historyForThisMessage;
-    const currentViewHistory = refs.currentChatHistoryRef.get();
+    const currentViewHistory = getOwnedHistory();
     const currentViewOwnsPendingMessage = isForCurrentView
         && Array.isArray(currentViewHistory)
         && currentViewHistory.some(message => message?.id === messageId);
@@ -2141,7 +2155,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     
     // Update UI if it's the current view
     if (shouldProjectToDom) {
-        if (isForCurrentView) refs.currentChatHistoryRef.set([...historyForThisMessage]);
+        if (isForCurrentView) setOwnedHistory(historyForThisMessage);
 
         const messageItem = messageDomCache.get(messageId)?.messageItem
             || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);

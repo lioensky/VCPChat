@@ -379,6 +379,10 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         currentChatHistoryRef: conversationCapability.historyRef,
         currentSelectedItemRef: conversationCapability.selectedItemRef,
         currentTopicIdRef: conversationCapability.topicIdRef,
+        historyAuthority: {
+            get: () => conversationCapability.historyRef.get(),
+            replace: history => conversationCapability.historyRef.set(history)
+        },
         viewAuthority: {
             isCurrent: context => {
                 const selected = conversationCapability.selectedItemRef.get();

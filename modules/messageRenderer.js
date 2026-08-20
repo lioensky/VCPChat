@@ -2593,6 +2593,10 @@ function initializeMessageRenderer(refs) {
         currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
         currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
         currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
+        historyAuthority: {
+            get: () => mainRendererReferences.currentChatHistoryRef.get(),
+            replace: history => mainRendererReferences.currentChatHistoryRef.set(history)
+        },
         viewAuthority: {
             isCurrent: context => {
                 const selected = mainRendererReferences.currentSelectedItemRef.get();
