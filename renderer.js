@@ -204,6 +204,7 @@ function updateSendButtonState() {
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
     sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
     sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
+    sendMessageBtn.setAttribute('aria-busy', String(nextMode === 'interrupt'));
 }
 
 async function interruptActiveResponseFromSendButton() {
@@ -1769,6 +1770,9 @@ function restoreChatPresentationScrollAnchor(anchor) {
     scrollContainer.scrollTop += currentOffset - anchor.viewportOffset;
 }
 
+let chatPresentationSaveGeneration = 0;
+let chatPresentationSaveChain = Promise.resolve();
+
 function syncChatPresentationModeControls(mode = globalSettings.chatPresentationMode) {
     const normalizedMode = normalizeChatPresentationMode(mode);
     const modeControl = document.querySelector(
@@ -1801,9 +1805,12 @@ function setupChatPresentationQuickSwitcher() {
         const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
         const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
 
-        const setOpen = (open) => {
+        const setOpen = (open, { restoreFocus = false } = {}) => {
             switcher.classList.toggle('is-open', open);
             trigger?.setAttribute('aria-expanded', String(open));
+            switcher.setAttribute('aria-hidden', String(!open));
+            switcher.inert = !open;
+            if (!open && restoreFocus) trigger?.focus();
         };
 
         const selectMode = async (option) => {
@@ -1835,15 +1842,14 @@ function setupChatPresentationQuickSwitcher() {
                 if (event.key !== 'Escape' || !switcher.classList.contains('is-open')) return;
                 event.preventDefault();
                 event.stopPropagation();
-                setOpen(false);
-                trigger.focus();
+                setOpen(false, { restoreFocus: true });
             });
         }
 
         options.forEach((option) => {
             option.addEventListener('click', async () => {
                 await selectMode(option);
-                if (usesExplicitState) setOpen(false);
+                if (usesExplicitState) setOpen(false, { restoreFocus: true });
             });
             option.addEventListener('keydown', (event) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -1871,6 +1877,7 @@ function setupChatPresentationQuickSwitcher() {
         });
 
         switcher.dataset.bound = 'true';
+        setOpen(false);
     });
     syncChatPresentationModeControls(globalSettings.chatPresentationMode);
 }
@@ -1884,6 +1891,7 @@ async function applyChatPresentationMode(mode, options = {}) {
     } = options;
     const normalizedMode = normalizeChatPresentationMode(mode);
     const previousMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
+    const generation = persist ? ++chatPresentationSaveGeneration : chatPresentationSaveGeneration;
     const anchor = preserveScroll ? captureChatPresentationScrollAnchor() : null;
 
     document.body?.classList.remove(...CHAT_PRESENTATION_MODE_CLASSES);
@@ -1910,7 +1918,10 @@ async function applyChatPresentationMode(mode, options = {}) {
     }
 
     try {
-        const result = await chatAPI.saveSettings({ chatPresentationMode: normalizedMode });
+        chatPresentationSaveChain = chatPresentationSaveChain
+            .catch(() => undefined)
+            .then(() => chatAPI.saveSettings({ chatPresentationMode: normalizedMode }));
+        const result = await chatPresentationSaveChain;
         if (!result?.success) {
             throw new Error(result?.error || '设置保存失败');
         }
@@ -1919,13 +1930,17 @@ async function applyChatPresentationMode(mode, options = {}) {
         }
         return { success: true, mode: normalizedMode, source };
     } catch (error) {
-        await applyChatPresentationMode(previousMode, {
-            persist: false,
-            preserveScroll: true,
-            notify: false,
-            source: 'rollback'
-        });
-        uiHelperFunctions?.showToastNotification?.(`聊天显示模式保存失败：${error.message}`, 'error');
+        if (generation === chatPresentationSaveGeneration) {
+            await applyChatPresentationMode(previousMode, {
+                persist: false,
+                preserveScroll: true,
+                notify: false,
+                source: 'rollback'
+            });
+        }
+        if (generation === chatPresentationSaveGeneration) {
+            uiHelperFunctions?.showToastNotification?.(`聊天显示模式保存失败：${error.message}`, 'error');
+        }
         return { success: false, mode: previousMode, error };
     }
 }

@@ -99,10 +99,10 @@ assert.match(creationSource, /await webAwesome\.loadComponents\(\)[\s\S]*?REQUIR
     'creation must await its own Web Awesome dependency before choosing a Surface kernel');
 assert.doesNotMatch(creationSource, /SurfaceController \?|buildControls\(\(name, options\) => ui\.create/,
     'creation must not retain a direct no-Surface construction path');
-assert.doesNotMatch(creationSource, /is-native-fallback|using native fallback/,
-    'canonical creation must not mount a second native UI when Web Awesome fails');
-assert.match(creationSource, /surface\.kernel !== 'web-awesome'[\s\S]*?surface\.dispose\('create-kernel-unavailable'\)[\s\S]*?showUnavailable/,
-    'canonical creation must reject a non-Web-Awesome Surface explicitly');
+assert.match(creationSource, /kernelPreference:\s*webAwesomeReady \? 'web-awesome' : 'native'/,
+    'canonical creation must choose one explicit kernel before mounting');
+assert.match(creationSource, /Web Awesome creation kernel unavailable; using native kernel/,
+    'canonical creation must retain a native fallback when Web Awesome fails');
 assert.match(creationSource, /modal\.update\(\{ dismissible: false, closeOnBackdrop: false \}\)/,
     'durable Agent/group creation must lock user dismissal at its commit boundary');
 assert.match(creationSource, /modal\.update\(\{ dismissible: true, closeOnBackdrop: true \}\)/,

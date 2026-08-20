@@ -1,0 +1,47 @@
+# UI 交互与可访问性缺口
+
+> 这是 A0 事实基线，不是完成声明。每一项只有在生产代码、真实入口和行为测试同时更新后才能移到已解决。
+
+## P0：先阻止错误终态
+
+- 统一检查 Modal、Popover、Select 的 Escape 优先级，确保子对话框不会关闭其下方设置或应用 Surface。
+- 为所有高频异步操作记录 loading、成功、失败、取消和 dispose 后迟到结果；重点是设置保存、创建助手/群组、Ask Nova、内嵌应用打开和聊天发送。
+- 验证应用托盘、通知菜单、账户菜单和 Launchpad 的关闭后焦点恢复及隐藏内容不可聚焦。
+
+## P1：交互合同
+
+- 补齐图标按钮的动作级 `aria-label`、`aria-expanded`、`aria-pressed` 和 `aria-controls` 动态同步。
+- 建立真实键盘路径：Tab、Enter/Space、Arrow、Home/End、Escape、ContextMenu/Shift+F10；测试必须从 Electron 真实页面进入。
+- Select 代理与 native fallback 需要共享 value、change、required、multiple、reset、focus 和销毁终态。
+
+当前 A1 证据：`npm run guard:ui-interaction` 已接入 `check:ui-system`，验证清单中的生产入口、ARIA 控件目标和静态隐藏焦点内容；动态 App Tab 已支持 Arrow/Home/End，账户菜单已支持 roving focus，单元测试覆盖这些路径；真实 Electron 键盘矩阵仍需在后续交付证据中完成。
+
+当前 A2 证据：`OverlayCoordinator` 的 modal lease 已记录 root/generation，旧 Surface 的迟到关闭事件不会释放重开后的新 lease；`tests/overlay-coordinator.test.js` 覆盖该故障注入。Select、创建、设置和 Ask Nova 的完整真实 Electron overlay 矩阵仍未完成。
+
+当前 A3 证据：创建 Surface 已在生产代码中用 generation、dialog Scope 和 task ownership 拒绝关闭后的迟到结果；`tests/creation-controller.test.js` 已覆盖提交失败恢复和 dispose 后迟到成功不发布反馈。设置保存、Ask Nova、聊天流式和应用打开仍需补齐统一状态矩阵与真实 Electron 证据。
+
+当前 A4 证据：`test:ui-motion-contract` 已接入 `check:ui-system`，检查高频 Surface 存在 reduced-motion 规则且不会保留非零动画时长；它不替代 Electron 的 reduced-motion、DPI、GPU 和 WA/native fallback 矩阵，后者仍是未完成证据。
+
+创建 Surface 的 fallback 已修复：Web Awesome 加载失败或组件缺失时，`CreationController` 现在明确选择 `SurfaceController` 的 native kernel，仍复用同一字段、校验、提交命令、overlay lease 和 teardown；组件渲染中途失败仍原子销毁并提示错误。单元测试覆盖终端 kernel 失败和部分构建失败，真实 Electron 的 native/WA 视觉与键盘等价性仍待补。
+
+当前 A3 状态矩阵：`scripts/ui-async-state-matrix.json` 和 `guard:ui-async-state` 已把创建、设置、Ask Nova、聊天流和内嵌应用统一要求为 idle/loading/success/failure/cancelled/late-result-after-dispose 六类终态，并绑定生产源文件和测试入口；门禁证明覆盖清单完整，不宣称每条终态的真实 Electron 证据已经完成。
+
+当前 A5 任务矩阵：`scripts/ui-task-journey-matrix.json` 和 `guard:ui-task-journeys` 已登记启动主题、通知、创建、设置、Ask Nova、内嵌应用和聊天流七条真实入口任务；它只验证入口与证据绑定，实际 Electron 世界状态和跨平台视觉基线仍需后续执行。
+
+当前真实证据：`npm run test:electron-ui-apps` 通过 22/22，覆盖 canonical 主界面、设置、创建、托盘、Ask Nova 和上游 Classic 子页面，并在真实 renderer 中执行 deviceScaleFactor 1/1.25/1.5、reduced-motion 和横向溢出检查；`npm run test:electron-main-chat-sequences` 通过 24 actions；`npm run test:electron-lifecycle-stress` 通过 3 次预热 + 20 次测量，listener 874、Scope 8、资源 162、进程 5、detached root/icon/option 为 0；`npm run pack:check` 通过 101 个 Web Awesome closure 文件。它们证明 macOS 当前树的自动证据，不替代 Windows/DPI/GPU、打包实际启动和 30–60 分钟人工 soak。
+
+A6 证据入口 `npm run check:ui-harness-evidence` 已按当前主机顺序执行交互、异步状态、任务旅程、motion、Electron UI、主聊天序列、生命周期压力和 Web Awesome closure；脚本明确把 Windows、打包后启动和人工 soak 保留为外部证据，不把本地自动通过扩大解释为发布完成。
+
+## P2：视觉和平台证据
+
+- 主题源与生成产物的一致性需要机器门禁；禁止主题层通过 `!important` 改写组件 owner 的结构语义。
+- 为 reduced-motion、100/125/150% DPI、Windows/macOS、透明材质、字体加载和 Web Awesome fallback 建立可重复证据。
+- 为主聊天启动首帧、快速滚动、设置、创建、托盘、Ask Nova 和内嵌 App 建立带主题/DPI/窗口元数据的视觉基线。
+
+主题来源门禁已新增：`guard:theme-provenance` 要求运行时 `styles/themes.css` 与 `styles/themes/` 中恰好一个源文件逐字节一致；当前工作区若存在用户独立的自定义 `styles/themes.css`，该门禁会有意失败，不能通过提交用户文件来掩盖来源漂移。
+
+## 明确非目标
+
+- 不重新引入 Classic/Next 双主窗口 presentation。
+- 不改动态壁纸插件或前端插件 Loader 生命周期。
+- 不把 Web Awesome、VCPUI 或本清单升级成业务状态 Store；清单是审计输入，不是运行时配置。

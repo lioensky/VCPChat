@@ -79,13 +79,13 @@
                         <path d="M9 3v18"></path>
                     </svg>
                 </button>
-                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" aria-selected="true">
+                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" role="tab" aria-controls="nextUiMainPanel" aria-selected="true" tabindex="0">
                     <span>VCPChat</span>
                 </button>
             </div>
             <div id="nextUiDynamicTabs" class="next-ui-dynamic-tabs" role="tablist" aria-label="已打开应用"></div>
             <button id="nextUiAddTabBtn" class="next-ui-add-tab" type="button" title="打开应用" aria-label="打开应用"
-                aria-selected="false" aria-expanded="false" aria-controls="nextUiLaunchpad">
+                aria-expanded="false" aria-controls="nextUiLaunchpad">
                 <span class="vcp-ui-icon" aria-hidden="true">add</span>
             </button>
         </nav>
@@ -130,7 +130,7 @@
             </button>
         </div>
     </header>
-    <section id="nextUiLaunchpad" class="next-ui-launchpad vcp-ui-scope" data-density="comfortable" aria-hidden="true">
+    <section id="nextUiLaunchpad" class="next-ui-launchpad vcp-ui-scope" data-density="comfortable" role="region" aria-label="应用启动台" aria-hidden="true">
         <div class="next-ui-launchpad-inner">
             <div class="next-ui-empty-brand next-ui-launchpad-brand" role="img" aria-label="VCPChat">
                 <svg class="next-ui-empty-brand-svg" viewBox="0 0 900 190" aria-hidden="true">
@@ -706,20 +706,20 @@
             </div>
             <div class="next-ui-account-dock">
                 <div id="nextUiAccountMenu" class="next-ui-account-menu" role="menu" aria-label="界面快捷设置" hidden>
-                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem">
                         <span class="vcp-ui-icon" aria-hidden="true">tune</span>
                         <span class="next-ui-account-menu-label">外观与布局</span>
                         <span id="nextUiAccountAppearanceStudioValue" class="next-ui-account-menu-value">自定义</span>
                         <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
                     </button>
-                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="打开主题管理器">
                         <span class="vcp-ui-icon" aria-hidden="true">palette</span>
                         <span class="next-ui-account-menu-label">主题管理器</span>
                         <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
                     </button>
-                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="切换深色或浅色模式">
                         <span id="nextUiAccountThemeIcon" class="vcp-ui-icon" aria-hidden="true">dark_mode</span>
                         <span id="nextUiAccountThemeLabel" class="next-ui-account-menu-label">切换为深色模式</span>
@@ -731,14 +731,14 @@
                     <span id="nextUiAccountName">用户</span>
                     <span class="vcp-ui-icon next-ui-account-expand-icon" aria-hidden="true">expand_less</span>
                 </button>
-                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" type="button"
+                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" role="menuitem" type="button"
                     title="全局设置" aria-label="全局设置">
                     <span class="vcp-ui-icon" aria-hidden="true">settings</span>
                 </button>
             </div>
         </aside>
         <div class="resizer" id="resizerLeft"></div>
-        <section id="nextUiMainPanel" class="next-ui-main-panel">
+        <section id="nextUiMainPanel" class="next-ui-main-panel" role="tabpanel" aria-labelledby="nextUiHomeTab">
           <main class="main-content">
             <header class="chat-header vcp-ui-scope">
                 <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
@@ -2528,6 +2528,7 @@
     <script src="modules/mainChatCommands.js"></script>
     <script src="modules/ui-system/next-shell/overlay-coordinator.js"></script>
     <script src="modules/ui-system/next-shell/embedded-app-controller.js"></script>
+    <script src="modules/ui-system/next-shell/escape-dispatcher.js"></script>
     <script src="modules/ui-system/next-shell/app-tab-host.js"></script>
     <script src="modules/ui-system/next-shell/assistant-search-controller.js"></script>
     <script src="modules/ui-system/next-shell/account-menu-controller.js"></script>

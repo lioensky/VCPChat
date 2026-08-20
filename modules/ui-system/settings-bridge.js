@@ -218,6 +218,7 @@ function mountSettingsShell(root) {
 
     const renderList = () => {
         const items = visibleItems().map(item => ({
+            value: item.value,
             icon: item.icon,
             label: item.label,
             selected: item.value === state.active,
@@ -228,7 +229,46 @@ function mountSettingsShell(root) {
             state.list = window.VCPUI.create('List', { items });
             state.listRelease = ensurePresentationScope()?.own(() => state.list?.destroy(), 'settings-navigation-list', 'ui-registration') || null;
             state.listHost.replaceChildren(state.list.element);
+            state.list.element.setAttribute('role', 'tablist');
+            state.list.element.setAttribute('aria-label', '全局设置分类');
+            state.list.element.setAttribute('aria-orientation', 'vertical');
+            const onKeyDown = event => {
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                const rows = [...state.list.element.querySelectorAll('.vcp-ui-list-item[role="tab"]')];
+                const current = rows.indexOf(document.activeElement);
+                if (current < 0) return;
+                event.preventDefault();
+                const next = event.key === 'Home' ? 0
+                    : event.key === 'End' ? rows.length - 1
+                        : (current + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+                const row = rows[next];
+                if (!row) return;
+                activateSection(row.dataset.section);
+                [...state.list.element.querySelectorAll('.vcp-ui-list-item[role="tab"]')]
+                    .find(candidate => candidate.dataset.section === row.dataset.section)?.focus();
+            };
+            if (ensurePresentationScope()) presentationScope.listen(state.list.element, 'keydown', onKeyDown, undefined, 'settings-navigation-keyboard');
+            else state.list.element.addEventListener('keydown', onKeyDown);
         }
+        const rows = [...state.list.element.querySelectorAll('.vcp-ui-list-item')];
+        rows.forEach(row => {
+            const value = row.dataset.section || row.dataset.value;
+            const item = state.meta.find(candidate => candidate.value === value);
+            if (!item) return;
+            row.dataset.section = item.value;
+            row.setAttribute('role', 'tab');
+            row.id = `vcpSettingsTab-${item.value}`;
+            row.setAttribute('aria-selected', String(item.value === state.active));
+            row.tabIndex = item.value === state.active ? 0 : -1;
+            row.setAttribute('aria-controls', `section-${item.value}`);
+        });
+        state.meta.forEach(item => {
+            const section = root.querySelector(`#section-${item.value}`);
+            if (!section) return;
+            section.setAttribute('role', 'tabpanel');
+            section.setAttribute('aria-labelledby', `vcpSettingsTab-${item.value}`);
+            section.setAttribute('aria-hidden', String(item.value !== state.active));
+        });
     };
 
     const activateSection = (value) => {
@@ -380,6 +420,12 @@ function teardown() {
         state.originalNavNodes
             .filter(node => node.nodeType === 1 && node.matches('.settings-nav-item'))
             .forEach(node => node.classList.toggle('active', node.dataset.section === activeSection));
+        state.meta.forEach(item => {
+            const section = root.querySelector(`#section-${item.value}`);
+            section?.removeAttribute('role');
+            section?.removeAttribute('aria-labelledby');
+            section?.removeAttribute('aria-hidden');
+        });
         state.listHost.replaceChildren(...state.originalNavNodes);
         shellState.delete(root);
         document.dispatchEvent(new CustomEvent('vcp-settings-navigation-restored', {

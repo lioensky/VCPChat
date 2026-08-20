@@ -504,6 +504,70 @@ try {
     assert.equal(initialThemeState.visibility, 'visible', `startup body remains hidden after renderer readiness: ${JSON.stringify(initialThemeState)}`);
     assert.equal(initialThemeState.startupStatusHidden, true, `startup initialization error status is visible on a healthy boot: ${JSON.stringify(initialThemeState)}`);
 
+    // A4 platform-independent evidence: exercise the real renderer at the
+    // common Windows scale factors and reduced-motion preference. The page
+    // must remain visible, the canonical shell must retain a usable width,
+    // and no interaction may depend on an animation-end callback.
+    for (const deviceScaleFactor of [1, 1.25, 1.5]) {
+        await page.setViewport({ width: 1280, height: 820, deviceScaleFactor });
+        const scaleState = await page.evaluate(() => {
+            const shell = document.getElementById('nextUiMainPanel');
+            const body = document.body;
+            const rect = shell?.getBoundingClientRect();
+            return {
+                dpr: window.devicePixelRatio,
+                visible: getComputedStyle(body).visibility === 'visible',
+                shellWidth: rect?.width || 0,
+                overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+            };
+        });
+        assert.ok(Math.abs(scaleState.dpr - deviceScaleFactor) < 0.01,
+            `deviceScaleFactor ${deviceScaleFactor} was not applied (reported ${scaleState.dpr}): ${JSON.stringify(scaleState)}`);
+        assert.equal(scaleState.visible, true, `body hidden at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
+        assert.ok(scaleState.shellWidth > 500, `canonical shell collapsed at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
+        assert.equal(scaleState.overflowX, false, `horizontal overflow at deviceScaleFactor ${deviceScaleFactor}: ${JSON.stringify(scaleState)}`);
+    }
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    const reducedMotionState = await page.evaluate(() => ({
+        media: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        launchpad: getComputedStyle(document.getElementById('nextUiLaunchpad')).animationDuration,
+        bodyVisible: getComputedStyle(document.body).visibility === 'visible',
+    }));
+    assert.equal(reducedMotionState.media, true, `reduced-motion preference was not applied: ${JSON.stringify(reducedMotionState)}`);
+    assert.equal(reducedMotionState.bodyVisible, true, `reduced-motion boot is not visible: ${JSON.stringify(reducedMotionState)}`);
+    const reducedLaunchpad = await page.evaluate(async () => {
+        window.topTabManager?.openLaunchpad?.();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const root = document.getElementById('nextUiLaunchpad');
+        const style = root ? getComputedStyle(root) : null;
+        const opened = root?.getAttribute('aria-hidden') === 'false'
+            && style?.visibility === 'visible';
+        window.topTabManager?.setView?.('home');
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        return {
+            opened,
+            transition: style?.transitionDuration || '',
+            animation: style?.animationDuration || '',
+            closed: root?.getAttribute('aria-hidden') === 'true',
+        };
+    });
+    assert.equal(reducedLaunchpad.opened, true, `reduced-motion Launchpad did not reach visible state: ${JSON.stringify(reducedLaunchpad)}`);
+    assert.match(reducedLaunchpad.transition, /0|1ms/, `reduced-motion Launchpad retains a long transition: ${JSON.stringify(reducedLaunchpad)}`);
+    assert.match(reducedLaunchpad.animation, /0|1ms/, `reduced-motion Launchpad retains a long animation: ${JSON.stringify(reducedLaunchpad)}`);
+    assert.equal(reducedLaunchpad.closed, true, `reduced-motion Launchpad did not reach closed state: ${JSON.stringify(reducedLaunchpad)}`);
+    await page.setViewport({ width: 900, height: 600, deviceScaleFactor: 1 });
+    const minimumWindowState = await page.evaluate(() => ({
+        visible: getComputedStyle(document.body).visibility === 'visible',
+        overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        overflowY: document.documentElement.scrollHeight > document.documentElement.clientHeight + 1,
+        shellWidth: document.getElementById('nextUiMainPanel')?.getBoundingClientRect().width || 0,
+    }));
+    assert.equal(minimumWindowState.visible, true, `minimum window body is not visible: ${JSON.stringify(minimumWindowState)}`);
+    assert.equal(minimumWindowState.overflowX, false, `minimum window has horizontal overflow: ${JSON.stringify(minimumWindowState)}`);
+    assert.ok(minimumWindowState.shellWidth > 500, `minimum window canonical shell collapsed: ${JSON.stringify(minimumWindowState)}`);
+    await page.emulateMediaFeatures([]);
+    await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
+
     // 1. Web Awesome runtime must not be fetched nor registered at boot.
     const bootWaState = await page.evaluate(() => ({
         waButton: typeof customElements !== 'undefined' ? customElements.get('wa-button') : null,
@@ -670,6 +734,7 @@ try {
         const opened = drawer?.classList.contains('active') === true
             && getComputedStyle(drawer).visibility === 'visible'
             && drawer.getAttribute('aria-hidden') === 'false'
+            && drawer.inert === false
             && moreButton.getAttribute('aria-expanded') === 'true';
         moreButton?.click();
         const closing = drawer?.classList.contains('is-closing') === true
@@ -677,6 +742,7 @@ try {
             && getComputedStyle(drawer).visibility === 'visible'
             && getComputedStyle(drawer.closest('.notifications-sidebar')).overflow === 'visible';
         const closed = drawer?.getAttribute('aria-hidden') === 'true'
+            && drawer?.inert === true
             && moreButton?.getAttribute('aria-expanded') === 'false';
         await new Promise(resolve => setTimeout(resolve, 360));
         const exitSettled = drawer?.classList.contains('is-closing') === false
@@ -748,6 +814,20 @@ try {
         window.uiManager.applyTheme('light');
         await tick();
         const lightThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
+        const initialWaThemeState = {
+            waThemeOwners: Number(document.querySelector('link[data-webawesome-runtime-theme]')?.dataset.ownerCount || 0),
+            themeLinkCount: document.querySelectorAll('link[data-webawesome-runtime-theme]').length,
+        };
+        for (let index = 0; index < 20; index += 1) {
+            window.uiManager.applyTheme(index % 2 === 0 ? 'dark' : 'light');
+            await tick();
+        }
+        const rapidThemeState = {
+            bodyTheme: document.body.classList.contains('dark-theme') ? 'dark' : document.body.classList.contains('light-theme') ? 'light' : 'none',
+            waThemeOwners: Number(document.querySelector('link[data-webawesome-runtime-theme]')?.dataset.ownerCount || 0),
+            themeLinkCount: document.querySelectorAll('link[data-webawesome-runtime-theme]').length,
+            initialWaThemeState,
+        };
         window.uiManager.applyTheme(originalTheme);
         await tick();
 
@@ -827,6 +907,7 @@ try {
             presentationClosedByEscape,
             darkThemeActionLabel,
             lightThemeActionLabel,
+            rapidThemeState,
             firstFocus,
             arrowFocus,
             closedByEscape,
@@ -850,6 +931,11 @@ try {
     assert.equal(parityControls.presentationClosedByEscape, true, `presentation popup did not close on Escape: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.darkThemeActionLabel, '切换为浅色模式', `dark theme action state is stale: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.lightThemeActionLabel, '切换为深色模式', `light theme action state is stale: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rapidThemeState.bodyTheme, 'light', `rapid theme switching left stale body state: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rapidThemeState.waThemeOwners, parityControls.rapidThemeState.initialWaThemeState.waThemeOwners,
+        `rapid theme switching changed WA theme ownership: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rapidThemeState.themeLinkCount, parityControls.rapidThemeState.initialWaThemeState.themeLinkCount,
+        `rapid theme switching changed WA theme link count: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.firstFocus, 'nextUiNotificationForum', `notification menu initial focus is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.arrowFocus, 'nextUiNotificationMemo', `notification menu arrow navigation is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.closedByEscape, true, `notification menu did not close on Escape: ${JSON.stringify(parityControls)}`);
@@ -900,6 +986,13 @@ try {
     assert.equal(narrowDock.iconsVisible, true, `narrow notification dock icons are clipped: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.buttonOverflow, false, `narrow notification dock buttons overflow: ${JSON.stringify(narrowDock)}`);
     await page.$eval('#appTrayPinnedApps > .capsule-button', button => button.focus());
+    // Programmatic focus is intentionally not :focus-visible in Chromium.
+    // Move away and back with real keyboard input so this assertion exercises
+    // the shipped keyboard modality rather than forcing a pseudo-state.
+    await page.keyboard.press('Tab');
+    await page.keyboard.down('Shift');
+    await page.keyboard.press('Tab');
+    await page.keyboard.up('Shift');
     await new Promise(resolve => setTimeout(resolve, 220));
     const dockTooltip = await page.$eval('#appTrayPinnedApps > .capsule-button', button => ({
         label: button.getAttribute('aria-label'),
@@ -1255,8 +1348,8 @@ try {
         delete window.__nextDeltaOriginalCommands;
         delete window.__nextDeltaResolveCreate;
     });
-    // A terminal component-load failure is an application-integrity error.
-    // It must report the failure without mounting a visually divergent UI.
+    // A terminal component-load failure must keep the same creation task
+    // usable through the native kernel; it must not create a second form.
     await page.evaluate(() => {
         window.__nextDeltaOriginalWebAwesome = window.VCPWebAwesome;
         window.VCPWebAwesome = Object.freeze({
@@ -1268,10 +1361,19 @@ try {
         });
         document.getElementById('nextUiCreateItemBtn')?.click();
     });
-    await page.waitForFunction(() => [...document.querySelectorAll('.vcp-ui-toast')]
-        .some(item => item.textContent.includes('创建界面组件加载失败')), { timeout: timeoutMs });
-    assert.equal(await page.evaluate(() => Boolean(document.querySelector('.next-ui-create-dialog-host'))), false,
-        'failed WA creation mounted a native substitute');
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host')), { timeout: timeoutMs });
+    const fallbackCreation = await page.evaluate(() => ({
+        host: Boolean(document.querySelector('.next-ui-create-dialog-host')),
+        nativeInputs: document.querySelectorAll('.next-ui-create-dialog-host input, .next-ui-create-dialog-host select, .next-ui-create-dialog-host textarea').length,
+        webAwesomeInputs: document.querySelectorAll('.next-ui-create-dialog-host wa-input, .next-ui-create-dialog-host wa-select').length,
+        formCount: document.querySelectorAll('.next-ui-create-dialog-host form').length,
+    }));
+    assert.equal(fallbackCreation.host, true, `failed WA creation did not retain a surface: ${JSON.stringify(fallbackCreation)}`);
+    assert.equal(fallbackCreation.formCount, 1, `fallback creation created duplicate forms: ${JSON.stringify(fallbackCreation)}`);
+    assert.ok(fallbackCreation.nativeInputs > 0, `fallback creation did not use native controls: ${JSON.stringify(fallbackCreation)}`);
+    assert.equal(fallbackCreation.webAwesomeInputs, 0, `fallback creation mounted Web Awesome controls: ${JSON.stringify(fallbackCreation)}`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
     await page.evaluate(() => {
         window.VCPWebAwesome = window.__nextDeltaOriginalWebAwesome;
         delete window.__nextDeltaOriginalWebAwesome;

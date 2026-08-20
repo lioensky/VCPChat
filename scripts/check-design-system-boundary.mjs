@@ -9,7 +9,7 @@ const root = process.cwd();
 // local `upstream/main` ref may be older still. Both make accepted product
 // changes look like design-system violations. Environment overrides remain
 // available when a PR intentionally audits against a newly reviewed snapshot.
-const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'b5931a69d0815a1dfd60c079093ed5518a73dc77';
+const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || '3da77f004936808483dbf773e0a2e7b3a5d1eadc';
 const upstreamRef = process.env.VCP_UPSTREAM_REF || sourceRef;
 const failures = [];
 
@@ -52,6 +52,10 @@ const allowedSourceDifferences = new Set([
     'docs/ui-engineering-standard.md',
     'docs/ui-system.md',
     'docs/ui-applications-webawesome-migration-plan.md',
+    'docs/deepseek-harness-ui-ux-research.md',
+    'docs/ui-interaction-accessibility-gaps.md',
+    'docs/ui-interaction-accessibility-roadmap.md',
+    'docs/ui-harness-external-evidence-checklist.md',
     'docs/ui-system-qa-matrix.md',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',
@@ -107,10 +111,21 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/next-shell/app-tab-host.js',
     'modules/ui-system/next-shell/assistant-search-controller.js',
     'modules/ui-system/next-shell/account-menu-controller.js',
+    'modules/ui-system/next-shell/escape-dispatcher.js',
     'modules/ui-system/next-shell/launchpad-controller.js',
     'modules/ui-system/next-shell/creation-controller.js',
     'modules/ui-system/next-shell/next-shell-controller.js',
     'modules/ui-system/next-ui-apps.js',
+    'scripts/check-theme-provenance.mjs',
+    'scripts/check-ui-async-state-matrix.mjs',
+    'scripts/check-ui-harness-evidence.mjs',
+    'scripts/check-ui-interaction-inventory.mjs',
+    'scripts/check-ui-task-journeys.mjs',
+    'scripts/test-electron-ui-apps-smoke.mjs',
+    'scripts/test-ui-motion-contract.mjs',
+    'scripts/ui-async-state-matrix.json',
+    'scripts/ui-interaction-inventory.json',
+    'scripts/ui-task-journey-matrix.json',
     'modules/ui-system/appearance-engine.js',
     'modules/ui-system/appearance-studio.js',
     'modules/ui-system/ask-nova-modal.js',
@@ -186,6 +201,8 @@ const allowedSourceDifferences = new Set([
     'tests/app-tab-host.test.js',
     'tests/assistant-search-controller.test.js',
     'tests/account-menu-controller.test.js',
+    'tests/escape-dispatcher.test.js',
+    'tests/notification-menu-controller.test.js',
     'tests/launchpad-controller.test.js',
     'tests/creation-controller.test.js',
     'tests/global-settings-save.test.mjs',
@@ -207,6 +224,7 @@ const allowedSourceDifferences = new Set([
     'styles/notifications.css',
     'styles/animations.css',
     'styles/layout.css',
+    'styles/chat.css',
     'styles/compact-sidebar.css',
     'styles/components.css',
     'styles/settings.css',

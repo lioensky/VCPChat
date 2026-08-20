@@ -102,6 +102,8 @@ window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/embedd
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/app-tab-host.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/assistant-search-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/account-menu-controller.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/escape-dispatcher.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/notification-menu-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/launchpad-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/creation-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/next-shell-controller.js'), 'utf8'));
@@ -122,8 +124,9 @@ assert.ok(
     'a stale close event must not remove a session that Main still reports as open',
 );
 const restoredTab = window.document.querySelector('#nextUiDynamicTabs [role="tab"]');
-assert.equal(restoredTab?.tagName, 'DIV', 'dynamic tab hosts must not be nested buttons');
-assert.equal(restoredTab?.querySelector('.next-ui-tab-close')?.tagName, 'BUTTON', 'tab close must remain a native button');
+assert.equal(restoredTab?.tagName, 'BUTTON', 'dynamic tab action must be a native button');
+assert.equal(restoredTab?.parentElement?.tagName, 'DIV', 'tab action must live in a non-interactive wrapper');
+assert.equal(restoredTab?.parentElement?.querySelector('.next-ui-tab-close')?.tagName, 'BUTTON', 'tab close must remain a native button sibling');
 assert.equal(restoredTab?.getAttribute('aria-selected'), 'true');
 assert.equal(restoredTab?.tabIndex, 0);
 const activationsBeforeKeyboard = activates;

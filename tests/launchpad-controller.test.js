@@ -23,7 +23,16 @@ test('launchpad renders shared catalogs and preserves embedded/window actions', 
     assert.equal(buttons.length, 3);
     buttons.forEach(button => button.click());
     assert.deepEqual(opened, ['embedded:notes', 'window:theme', 'internal:showcase']);
+    buttons[0].focus();
+    buttons[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(dom.window.document.activeElement, buttons[2]);
+    buttons[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    assert.equal(dom.window.document.activeElement, buttons[0]);
     controller.render();
     assert.equal(dom.window.document.querySelectorAll('.next-ui-app-item').length, 3);
+    const rerendered = [...dom.window.document.querySelectorAll('.next-ui-app-item')];
+    rerendered[0].focus();
+    rerendered[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(dom.window.document.activeElement, rerendered[1]);
     controller.dispose();
 });
