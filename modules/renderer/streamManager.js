@@ -195,6 +195,7 @@ let transientCleanupWindow = null;
 let desktopPushConsumer = null;
 let disposed = false;
 const pendingAsyncOperations = new Set();
+const scheduledAnimationFrames = new Set();
 
 function trackAsyncOperation(operation) {
     const promise = Promise.resolve(operation);
@@ -205,6 +206,31 @@ function trackAsyncOperation(operation) {
 
 const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
 const ownerWindow = () => refs.window || ownerDocument()?.defaultView || null;
+
+function scheduleAnimationFrame(callback) {
+    if (disposed) return null;
+    const environment = ownerWindow();
+    if (!environment) return null;
+    const entry = { handle: null };
+    const invoke = timestamp => {
+        scheduledAnimationFrames.delete(entry);
+        if (!disposed) callback(timestamp);
+    };
+    if (typeof environment.requestAnimationFrame === 'function') {
+        entry.handle = environment.requestAnimationFrame(invoke);
+        entry.cancel = () => environment.cancelAnimationFrame?.(entry.handle);
+    } else {
+        entry.handle = environment.setTimeout(() => invoke(Date.now()), 0);
+        entry.cancel = () => environment.clearTimeout?.(entry.handle);
+    }
+    scheduledAnimationFrames.add(entry);
+    return entry.handle;
+}
+
+function cancelScheduledAnimationFrames() {
+    for (const entry of scheduledAnimationFrames) entry.cancel?.();
+    scheduledAnimationFrames.clear();
+}
 
 // --- Pre-compiled Regular Expressions for Performance ---
 
@@ -1463,7 +1489,7 @@ function renderStreamFrame(messageId) {
                 
                 // 🟢 保留输入焦点
                 if (fromEl === ownerDocument()?.activeElement) {
-                    requestAnimationFrame(() => toEl.focus());
+                    scheduleAnimationFrame(() => toEl.focus());
                 }
                 
                 // 🟢 简化图片逻辑：只保留状态，不再做 URL 对比
@@ -1803,7 +1829,7 @@ function startGlobalRenderLoop() {
         }
         const elapsed = currentTime - lastFrameTime;
         if (elapsed < FRAME_INTERVAL) {
-            requestAnimationFrame(renderLoop);
+            scheduleAnimationFrame(renderLoop);
             return;
         }
 
@@ -1829,10 +1855,10 @@ function startGlobalRenderLoop() {
             }
         }
 
-        requestAnimationFrame(renderLoop);
+        scheduleAnimationFrame(renderLoop);
     }
 
-    requestAnimationFrame(renderLoop);
+    scheduleAnimationFrame(renderLoop);
 }
 
 /**
@@ -2247,6 +2273,7 @@ async function dispose() {
             transientCleanupRegistered = false;
             transientCleanupWindow = null;
         }
+        cancelScheduledAnimationFrames();
         // 清理所有流式消息相关状态
         for (const timerId of scrollThrottleTimers.values()) {
             clearTimeout(timerId);

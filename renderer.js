@@ -345,6 +345,17 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
     let localSettings = globalSettings;
     let disposed = false;
     const streamProjection = createStreamProjection();
+    const surfacePretextPrefix = `surface-${conversationCapability.id || Date.now().toString(36)}`;
+    const createSurfacePretextBridge = (bridge) => {
+        if (!bridge) return null;
+        const key = id => `${surfacePretextPrefix}:${id}`;
+        return Object.freeze({
+            isReady: () => bridge.isReady?.() === true,
+            estimateHeight: (id, ...args) => bridge.estimateHeight?.(key(id), ...args),
+            evict: id => bridge.evict?.(key(id)),
+        });
+    };
+    const surfacePretextBridge = createSurfacePretextBridge(window.pretextBridge);
     const renderer = createMessageRenderer({
         streamManager: streamProjection,
         initializeStreamProjection: mode === 'interactive',
@@ -353,7 +364,10 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         exposeGlobalCommands: false,
     });
     const surfaceFeedback = Object.freeze({
-        ...uiHelperFunctions,
+        resolveAttachmentFileVisual: uiHelperFunctions.resolveAttachmentFileVisual,
+        getCompiledRegex: uiHelperFunctions.getCompiledRegex,
+        regexFromString: uiHelperFunctions.regexFromString,
+        showToastNotification: uiHelperFunctions.showToastNotification,
         scrollToBottom() {
             const scrollRoot = root.closest('.chat-messages-container') || root;
             scrollRoot.scrollTop = scrollRoot.scrollHeight;
@@ -378,7 +392,7 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         electronAPI: chatAPI,
         markedInstance,
         morphdom: window.morphdom,
-        pretextBridge: window.pretextBridge,
+            pretextBridge: surfacePretextBridge,
         flowlockProtocol: window.flowlockProtocol,
         uiHelper: surfaceFeedback,
         interruptHandler: null,
@@ -559,7 +573,7 @@ const startupThemeGate = new StartupThemeGate({
             electronAPI: chatAPI,
             markedInstance,
             morphdom: window.morphdom,
-            pretextBridge: window.pretextBridge,
+        pretextBridge: window.pretextBridge,
             flowlockProtocol: window.flowlockProtocol,
             uiHelper: uiHelperFunctions,
             interruptHandler,
