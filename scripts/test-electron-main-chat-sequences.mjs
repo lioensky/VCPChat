@@ -920,6 +920,45 @@ try {
         const root = document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages');
         return Boolean(root?.querySelector('.message-item') && root.textContent.includes('fixture'));
     }, { timeout });
+    // The independent Surface owns its projection after registration. Changing
+    // the main-window conversation must not revoke its DOM or terminal rights.
+    const independentSwitchKey = `independent-switch-${Date.now()}`;
+    await sendStandalone(`sequence-hold-${independentSwitchKey}`);
+    await fixture.waitPending(independentSwitchKey);
+    await driver.selectTopic(topics[identities[0]][1]);
+    fixture.release(independentSwitchKey);
+    await page.waitForFunction(expected => {
+        const surface = document.querySelector('.vcp-interactive-chat');
+        return surface?.querySelector('[role="status"]')?.textContent === '已发送'
+            && (surface.querySelector('.vcp-standalone-chat__messages')?.textContent || '').includes(expected);
+    }, { timeout }, independentSwitchKey);
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    await driver.selectTopic(topics[identities[0]][0]);
+
+    // Main and independent operations may coexist on different topics. The
+    // independent cancel control must cancel only its captured operation.
+    const isolatedIndependentKey = `isolated-independent-${Date.now()}`;
+    await sendStandalone(`sequence-hold-${isolatedIndependentKey}`);
+    await fixture.waitPending(isolatedIndependentKey);
+    await driver.selectTopic(topics[identities[0]][1]);
+    const isolatedMainKey = `isolated-main-${Date.now()}`;
+    await page.evaluate(holdKey => {
+        const input = document.getElementById('messageInput');
+        input.value = `sequence-hold-${holdKey}`;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('sendMessageBtn').click();
+    }, isolatedMainKey);
+    await fixture.waitPending(isolatedMainKey);
+    await page.click('.vcp-interactive-chat__composer [data-action="cancel"]');
+    if (fixture.pending.has(isolatedIndependentKey)) fixture.release(isolatedIndependentKey);
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已取消', { timeout });
+    assert.equal(fixture.pending.has(isolatedMainKey), true, 'independent cancel aborted the main-window request');
+    assert.equal(await page.$eval('#sendMessageBtn', button => button.dataset.mode), 'interrupt',
+        'independent cancel cleared the main-window operation state');
+    fixture.release(isolatedMainKey);
+    await waitForStreamQuiescence();
+    await driver.selectTopic(topics[identities[0]][0]);
+
     await sendStandalone('sequence-fail');
     await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent?.includes('发送失败'), { timeout });
     await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
@@ -980,10 +1019,17 @@ try {
         closeSelector: '#close-btn-assistant',
         label: 'assistant',
     });
-    const auxiliaryHistories = await Promise.all((await findFilesNamed(path.join(appData, 'UserData'), 'history.json'))
-        .filter(file => file.includes('voicechat_') || file.includes(`${path.sep}assistant_chat${path.sep}`))
+    const allHistoryFiles = await findFilesNamed(path.join(appData, 'UserData'), 'history.json');
+    const parsedHistories = await Promise.all(allHistoryFiles
         .map(async file => ({ file, history: JSON.parse(await fs.readFile(file, 'utf8')) })));
-    assert.equal(auxiliaryHistories.length >= 2, true, 'Voice and Rust Assistant must each commit a real auxiliary history');
+    const auxiliaryHistories = parsedHistories.filter(({ history }) => history.some(message => (
+        message?.content === 'voice-success' || message?.content === 'assistant-success'
+    )));
+    const durableAuxiliaryLabels = new Set(auxiliaryHistories.flatMap(({ history }) => history
+        .map(message => message?.content)
+        .filter(content => content === 'voice-success' || content === 'assistant-success')));
+    assert.deepEqual([...durableAuxiliaryLabels].sort(), ['assistant-success', 'voice-success'],
+        `Voice and Rust Assistant must each commit a real auxiliary history; histories=${JSON.stringify(parsedHistories.map(({ file, history }) => ({ file, messages: history.map(message => ({ role: message?.role, content: message?.content, thinking: message?.isThinking })) })))}; console=${JSON.stringify(consoleMessages.filter(message => message.type === 'error').slice(-20))}`);
     for (const { file, history } of auxiliaryHistories) {
         assert.equal(history.some(message => message?.isThinking), false, `Auxiliary close persisted a thinking placeholder: ${file}`);
         assert.equal(history.some(message => /fixture\s+stream\s+complete/.test(message?.content || '')), true,
