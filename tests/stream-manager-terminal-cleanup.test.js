@@ -79,11 +79,19 @@ test('a runtime background-history failure releases every stream owner', async (
     dom.window.formatMessageTimestamp = () => 'now';
     dom.window.PIPELINE_MODES = { STREAM_FAST: 'stream-fast' };
     dom.window.createContentPipeline = () => ({ process: text => ({ text }) });
+    dom.window.createDesktopPushConsumer = () => ({
+        start() {},
+        processToken: (_messageId, text) => text,
+        cleanupMessage() {},
+        dispose() {},
+        getStateCount: () => 0,
+    });
     dom.window.updateSendButtonState = () => {};
     dom.window.eval(`
         const formatMessageTimestamp = window.formatMessageTimestamp;
         const PIPELINE_MODES = window.PIPELINE_MODES;
         const createContentPipeline = window.createContentPipeline;
+        const createDesktopPushConsumer = window.createDesktopPushConsumer;
         ${executableSource}
         window.__testStreamManager = streamManager;
     `);

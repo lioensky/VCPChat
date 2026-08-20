@@ -2,6 +2,7 @@
 import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 import { createContentRuntime } from '../chat/contentRuntime.js';
+import { createDesktopPushConsumer } from './desktopPushConsumer.js';
 
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
@@ -12,15 +13,6 @@ const activeStreamingMessages = new Map(); // messageId -> owned conversation co
 const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
-
-// --- VCPdesktop 流式推送状态 ---
-const desktopPushStates = new Map(); // messageId -> { active, widgetId, buffer, tagBuffer, created, pushTimer, lastPushedLength, lastTokenTime, validated }
-const DESKTOP_PUSH_START_TAG = '<<<[DESKTOP_PUSH]>>>';
-const DESKTOP_PUSH_END_TAG = '<<<[DESKTOP_PUSH_END]>>>';
-const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌面画布
-const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
-const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', '<style', 'target:','<!--'];
-let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -198,6 +190,7 @@ let refs = {};
 let contentPipeline = null;
 let contentRuntime = null;
 let transientCleanupRegistered = false;
+let desktopPushConsumer = null;
 
 // --- Pre-compiled Regular Expressions for Performance ---
 
@@ -268,14 +261,9 @@ export function initStreamManager(dependencies) {
         console.warn('[StreamManager] `morphdom` not provided. Streaming rendering will fall back to inefficient innerHTML updates.');
     }
 
-    // 监听桌面窗口状态，缓存到本地标志位
-    // 这样在流式推送时就不需要每个token都做IPC查询
-    if (refs.electronAPI?.onDesktopStatus) {
-        refs.electronAPI.onDesktopStatus((data) => {
-            desktopWindowAvailable = !!data.connected;
-            console.log(`[StreamManager] Desktop window availability changed: ${desktopWindowAvailable}`);
-        });
-    }
+    desktopPushConsumer?.dispose();
+    desktopPushConsumer = createDesktopPushConsumer({ electronAPI: refs.electronAPI });
+    desktopPushConsumer.start();
 }
 
 function shouldEnableSmoothStreaming() {
@@ -1883,194 +1871,12 @@ function intelligentChunkSplit(text) {
  * 3. 在逐字符级别做工具结果块检测会与推送标签检测产生字符竞争bug
  */
 function processDesktopPushToken(messageId, textToAppend) {
-    let state = desktopPushStates.get(messageId);
-    if (!state) {
-        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, lastTokenTime: null, backtickContext: false };
-        desktopPushStates.set(messageId, state);
-    }
-
-    const electronAPI = refs.electronAPI;
-    const canPush = desktopWindowAvailable && electronAPI?.desktopPush;
-
-    let remainingText = textToAppend;
-    let outputText = '';
-
-    for (let i = 0; i < remainingText.length; i++) {
-        const char = remainingText[i];
-
-        if (!state.active) {
-            state.tagBuffer += char;
-
-            if (DESKTOP_PUSH_START_TAG.startsWith(state.tagBuffer)) {
-                if (state.tagBuffer === DESKTOP_PUSH_START_TAG) {
-                    // 🟢 加固：检查开始标签前是否有反引号包裹
-                    // 检查 outputText 末尾是否刚输出了一个反引号
-                    const precedingChar = outputText.length > 0 ? outputText[outputText.length - 1] : '';
-                    if (precedingChar === '`') {
-                        // 被反引号包裹，不视为推送标签，直接输出原文
-                        state.backtickContext = true;
-                        outputText += state.tagBuffer;
-                        state.tagBuffer = '';
-                        continue;
-                    }
-                    
-                    // 匹配到开始标签，进入active状态但延迟创建挂件
-                    state.active = true;
-                    state.backtickContext = false;
-                    state.widgetId = 'dw-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
-                    state.buffer = '';
-                    state.created = false;
-                    state.validated = false; // 二级验证：等待内容前缀确认
-                    state.tagBuffer = '';
-                    state.lastPushedLength = 0;
-                }
-            } else {
-                outputText += state.tagBuffer;
-                state.tagBuffer = '';
-            }
-        } else {
-            // 在推送块内
-            state.tagBuffer += char;
-
-            if (DESKTOP_PUSH_END_TAG.startsWith(state.tagBuffer)) {
-                if (state.tagBuffer === DESKTOP_PUSH_END_TAG) {
-                    // 结束标签
-                    if (state.pushTimer) { clearInterval(state.pushTimer); state.pushTimer = null; }
-
-                    if (canPush && state.created) {
-                        if (state.isReplaceMode) {
-                            // 替换模式：解析 target/replace 的「始ESCAPE」「末ESCAPE」或旧版「始」「末」
-                            const targetMatch = state.buffer.match(/target:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
-                            const replaceMatch = state.buffer.match(/replace:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
-                            
-                            if (targetMatch && replaceMatch) {
-                                const targetSelector = (targetMatch[1] || targetMatch[2] || '').trim();
-                                const replaceContent = (replaceMatch[1] || replaceMatch[2] || '').trim();
-                                electronAPI.desktopPush({
-                                    action: 'replace',
-                                    targetSelector: targetSelector,
-                                    content: replaceContent
-                                });
-                                console.log(`[DesktopPush] Replace: "${targetSelector}" → ${replaceContent.substring(0, 50)}...`);
-                            } else {
-                                console.warn(`[DesktopPush] Replace mode but couldn't parse target/replace fields from buffer:`, state.buffer.substring(0, 100));
-                            }
-                        } else {
-                            // 创建模式：最终推送 + finalize
-                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                            console.log(`[DesktopPush] Widget finalized: ${state.widgetId}`);
-                        }
-                    }
-
-                    state.active = false; state.tagBuffer = ''; state.buffer = '';
-                    state.widgetId = null; state.created = false; state.validated = false;
-                    state.isReplaceMode = false; state.lastPushedLength = 0;
-                }
-            } else {
-                // 不是结束标签，内容追加到buffer
-                state.buffer += state.tagBuffer;
-                state.tagBuffer = '';
-
-                // 🟢 性能优化：仅更新时间戳，超时检查由 pushTimer interval 负责
-                // 这样每个 token 只需一次赋值操作，避免频繁 clearTimeout/setTimeout
-                state.lastTokenTime = Date.now();
-
-                // 二级验证：buffer积累到一定量后检查前缀是否合法
-                // 只在前30个有效字符内做验证，避免延迟过大
-                if (!state.validated && state.buffer.trim().length >= 5) {
-                    const trimmedBuffer = state.buffer.trim().toLowerCase();
-                    const isValid = DESKTOP_PUSH_VALID_PREFIXES.some(prefix => trimmedBuffer.startsWith(prefix));
-                    
-                    if (isValid) {
-                        state.validated = true;
-                        
-                        // 判断是否为替换模式（target:「始」...「末」开头）
-                        const isReplaceMode = trimmedBuffer.startsWith('target:');
-                        state.isReplaceMode = isReplaceMode;
-                        
-                        if (isReplaceMode) {
-                            console.log(`[DesktopPush] Replace mode detected, waiting for target and replace fields...`);
-                            state.created = true; // 标记为已处理，但不创建新挂件
-                            // 替换模式不需要定时推送，等到结束标签时一次性解析并替换
-                        } else {
-                            console.log(`[DesktopPush] Content validated with prefix: ${trimmedBuffer.substring(0, 15)}...`);
-                            
-                            // 创建模式：验证通过后才创建挂件
-                            if (canPush) {
-                                electronAPI.desktopPush({
-                                    action: 'create', widgetId: state.widgetId,
-                                    options: { x: 200, y: 150, width: 400, height: 300 }
-                                });
-                                state.created = true;
-                                
-                                // 启动定时推送 + 内置空闲超时检测
-                                state.lastTokenTime = Date.now();
-                                state.pushTimer = setInterval(() => {
-                                    // 推送新内容
-                                    if (state.buffer.length > state.lastPushedLength) {
-                                        electronAPI.desktopPush({
-                                            action: 'append', widgetId: state.widgetId, content: state.buffer
-                                        });
-                                        state.lastPushedLength = state.buffer.length;
-                                    }
-                                    
-                                    // 🟢 空闲超时检测：如果距离上次token超过150秒，自动finalize
-                                    // 不需要单独的setTimeout，复用已有的interval，零额外开销
-                                    if (state.lastTokenTime && (Date.now() - state.lastTokenTime > DESKTOP_PUSH_TIMEOUT_MS)) {
-                                        console.warn(`[DesktopPush] Widget ${state.widgetId} idle timeout (no new tokens for ${DESKTOP_PUSH_TIMEOUT_MS / 1000}s), auto-finalizing`);
-                                        clearInterval(state.pushTimer); state.pushTimer = null;
-                                        if (state.created && !state.isReplaceMode && electronAPI?.desktopPush) {
-                                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                                        }
-                                        state.active = false; state.tagBuffer = ''; state.buffer = '';
-                                        state.widgetId = null; state.created = false; state.validated = false;
-                                        state.isReplaceMode = false; state.lastPushedLength = 0; state.lastTokenTime = null;
-                                    }
-                                }, DESKTOP_PUSH_THROTTLE_MS);
-                            }
-                        }
-
-                        // 🟢 替换模式也需要空闲超时保护
-                        // 替换模式没有 pushTimer，需要单独的超时机制
-                        if (state.isReplaceMode && canPush) {
-                            state.lastTokenTime = Date.now();
-                            // 替换模式用一个轻量级的检查 interval
-                            state.pushTimer = setInterval(() => {
-                                if (state.lastTokenTime && (Date.now() - state.lastTokenTime > DESKTOP_PUSH_TIMEOUT_MS)) {
-                                    console.warn(`[DesktopPush] Replace mode idle timeout, discarding`);
-                                    clearInterval(state.pushTimer); state.pushTimer = null;
-                                    state.active = false; state.tagBuffer = ''; state.buffer = '';
-                                    state.widgetId = null; state.created = false; state.validated = false;
-                                    state.isReplaceMode = false; state.lastPushedLength = 0; state.lastTokenTime = null;
-                                }
-                            }, 5000); // 替换模式检查频率低一些：5秒一次
-                        }
-                    } else if (state.buffer.trim().length >= 30) {
-                        // 验证失败：30字符内未匹配到合法前缀，丢弃该推送块
-                        console.warn(`[DesktopPush] Invalid content prefix, discarding push block: "${trimmedBuffer.substring(0, 30)}..."`);
-                        state.active = false; state.tagBuffer = ''; state.buffer = '';
-                        state.widgetId = null; state.created = false; state.validated = false; state.lastPushedLength = 0;
-                    }
-                    // 5-30字符之间继续等待更多内容
-                }
-            }
-        }
-    }
-
-    return outputText;
+    return desktopPushConsumer?.processToken(messageId, textToAppend) ?? textToAppend;
 }
-/**
- * 清理消息的桌面推送状态
- */
+
+/** Releases the Desktop canvas state owned by one stream message. */
 function cleanupDesktopPushState(messageId) {
-    const state = desktopPushStates.get(messageId);
-    if (state?.pushTimer) {
-        clearInterval(state.pushTimer);
-        state.pushTimer = null;
-    }
-    desktopPushStates.delete(messageId);
+    desktopPushConsumer?.cleanupMessage(messageId);
 }
 
 export function appendStreamChunk(messageId, chunkData, context) {
@@ -2431,12 +2237,8 @@ export async function cleanupTransientState() {
         }
         scrollThrottleTimers.clear();
     
-        for (const state of desktopPushStates.values()) {
-            if (state?.pushTimer) {
-                clearInterval(state.pushTimer);
-            }
-        }
-        desktopPushStates.clear();
+        desktopPushConsumer?.dispose();
+        desktopPushConsumer = null;
     
     
         streamingChunkQueues.clear();
@@ -2491,7 +2293,7 @@ export function getStreamDiagnostics() {
         chunkQueues: streamingChunkQueues.size,
         renderTimers: streamingTimers.size,
         delayedCleanupTimers: 0,
-        desktopPushStates: desktopPushStates.size,
+        desktopPushStates: desktopPushConsumer?.getStateCount() || 0,
     });
 }
 
