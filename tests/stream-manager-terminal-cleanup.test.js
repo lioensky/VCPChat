@@ -89,8 +89,8 @@ test('two StreamProjection owners isolate identical message identities and teard
 
     const projectionA = createStreamProjection();
     const projectionB = createStreamProjection();
-    projectionA.initStreamManager(createDependencies(domA));
-    projectionB.initStreamManager(createDependencies(domB));
+    projectionA.attachStreamProjection(createDependencies(domA));
+    projectionB.attachStreamProjection(createDependencies(domB));
     projectionA.appendStreamChunk('same-message', { content: 'A' }, { agentId: 'a', topicId: 'topic-a' });
     projectionB.appendStreamChunk('same-message', { content: 'B' }, { agentId: 'b', topicId: 'topic-b' });
 
@@ -111,7 +111,7 @@ test('disposed StreamProjection rejects initialization and ignores every late st
     const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
     const projection = createStreamProjection();
     const dependencies = createDependencies(dom);
-    projection.initStreamManager(dependencies);
+    projection.attachStreamProjection(dependencies);
     await projection.dispose();
 
     assert.equal(projection.appendStreamChunk('late', { content: 'late' }, { agentId: 'a', topicId: 't' }), false);
@@ -119,7 +119,7 @@ test('disposed StreamProjection rejects initialization and ignores every late st
     assert.equal(await projection.projectStreamTerminal('late', 'stop', { agentId: 'a', topicId: 't' }), null);
     assert.equal(projection.discardStreamingMessage('late'), false);
     assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
-    assert.throws(() => projection.initStreamManager(dependencies), /disposed/);
+    assert.throws(() => projection.attachStreamProjection(dependencies), /disposed/);
     await projection.dispose();
     dom.window.close();
 });
@@ -129,11 +129,11 @@ test('StreamProjection fails fast when transient history or view authority is mi
     const dom = new JSDOM('<!doctype html><div id="chat"></div>');
     const dependencies = createDependencies(dom);
     delete dependencies.transientStreamHistory;
-    assert.throws(() => createStreamProjection().initStreamManager(dependencies), /explicit transient history capability/);
+    assert.throws(() => createStreamProjection().attachStreamProjection(dependencies), /explicit transient history capability/);
 
     const withHistory = createDependencies(dom);
     delete withHistory.viewAuthority;
-    assert.throws(() => createStreamProjection().initStreamManager(withHistory), /explicit view authority/);
+    assert.throws(() => createStreamProjection().attachStreamProjection(withHistory), /explicit view authority/);
     dom.window.close();
 });
 
@@ -143,7 +143,7 @@ test('owned StreamProjection completes terminal DOM projection without a cross-r
     const history = [];
     let scrollCount = 0;
     const projection = createStreamProjection();
-    projection.initStreamManager(createDependencies(dom, {
+    projection.attachStreamProjection(createDependencies(dom, {
         currentChatHistoryRef: { get: () => history, set: value => { history.splice(0, history.length, ...value); } },
         uiHelper: { scrollToBottom() { scrollCount += 1; } },
         prepareFinalTextForRender: (_messageId, text, role) => ({ text, role, depth: 0 }),
@@ -176,7 +176,7 @@ test('background initialization failure releases every runtime owner', async () 
     dom.window.updateSendButtonState = () => {};
     try {
         const projection = createStreamProjection();
-        projection.initStreamManager(createDependencies(dom, {
+        projection.attachStreamProjection(createDependencies(dom, {
             chatRepository: { getHistory: async () => { throw new Error('controlled history failure'); } },
         }));
         projection.appendStreamChunk('background-message', { content: 'buffered-before-init' }, {
@@ -205,7 +205,7 @@ test('StreamProjection honors an owned view authority and history capability aft
     let history = [];
     let writes = 0;
     const projection = createStreamProjection();
-    projection.initStreamManager(createDependencies(dom, {
+    projection.attachStreamProjection(createDependencies(dom, {
         currentChatHistoryRef: { get: () => history, set: value => { writes += 1; history = [...value]; } },
         viewAuthority: { isCurrent: context => context?.topicId === currentView },
         renderMessage: async message => {
@@ -233,7 +233,7 @@ test('StreamProjection rejects chunks and terminals from a different producer op
     const createStreamProjection = await loadFactory();
     const dom = new JSDOM('<!doctype html><div id="chat"><article class="message-item" data-message-id="operation"><div class="md-content"></div></article></div>', { url: 'https://vcpchat.local/' });
     const projection = createStreamProjection();
-    projection.initStreamManager(createDependencies(dom, {
+    projection.attachStreamProjection(createDependencies(dom, {
         renderPostProcessedHtml: async (content, html) => { content.textContent = html; },
     }));
     const item = dom.window.document.querySelector('.message-item');
@@ -248,7 +248,7 @@ test('StreamProjection retires prior runtime state before same-message retry', a
     const createStreamProjection = await loadFactory();
     const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
     const projection = createStreamProjection();
-    projection.initStreamManager(createDependencies(dom, {
+    projection.attachStreamProjection(createDependencies(dom, {
         renderMessage: async message => {
             const node = dom.window.document.createElement('article');
             node.className = 'message-item';

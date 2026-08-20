@@ -26,6 +26,8 @@ for (const retiredFile of [
 assert.equal(document.documentElement.dataset.uiMode, 'next', 'main.html must declare the canonical presentation');
 assert.doesNotMatch(read('preloads/shared/catalog.js'), /onUiModeUpdated|ui-mode-updated/,
     'preload must not expose a presentation subscription without a sender and consumer');
+assert.doesNotMatch(read('modules/renderer/streamManager.js'), /\binitStreamManager\b/,
+    'StreamProjection must not retain the retired initStreamManager compatibility facade');
 
 const canonicalIds = [
     'nextUiTopbar', 'nextUiAddTabBtn', 'nextUiCreateItemBtn',

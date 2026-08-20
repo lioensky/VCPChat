@@ -4,12 +4,12 @@
     "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists; selection intent persisted before watcher/history work for renderer recovery"
   },
   "modules/messageRenderer.js": {
-    "sha256": "6274b631ff71c0b2b86d88f44012b9670cf9773e35343077ae47f68fb2df0a4e",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection, explicit Surface operation-state notification, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
+    "sha256": "0e7fb14113a316ea791075ca17cedb36cb7f4a585b96292a0c9cd9806945066b",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection attachment API, explicit Surface operation-state notification, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "50893d3ad7597954c6f91de118dca2b09d9d4398b2ef1b5e5bebc9988bdc8338",
-    "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, and display-id projection index"
+    "sha256": "62d1338b1c63a92c0f2a2e09b9f040b19b4159f7c51479f4a1c02e5a5e65af0d",
+    "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, attachStreamProjection lifecycle API, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, and display-id projection index"
   },
   "modules/topicListManager.js": {
     "sha256": "4641eee164db74fd85ea72db58c7112971be74fcf36d45a3cc70905628d8c973",
