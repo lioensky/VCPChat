@@ -12,6 +12,7 @@ const { runProcess } = require('../modules/bootstrap/process-runner');
 const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require('../modules/bootstrap/progress-protocol');
 const { createRuntimeClosureManifest, validateRuntimePolicy, verifyDirectoryAgainstManifest } = require('../modules/bootstrap/runtime-closure');
 const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest } = require('../modules/bootstrap/update-manager');
+const { liveReadyRecords } = await import('../scripts/vcpchat-update.mjs');
 const { collectEvidence } = await import('../scripts/vcpchat-release-evidence.mjs');
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'vcpchat-m3-m8-')); }
@@ -122,6 +123,12 @@ test('M7 update staging rejects unlisted symlinks in the source tree', () => {
     fs.writeFileSync(target, 'one'); fs.symlinkSync(target, link);
     const digest = require('node:crypto').createHash('sha256').update('one').digest('hex');
     assert.throws(() => validateUpdateManifest({ sourceRoot: root, manifest: { schemaVersion: 1, version: '1', files: [{ path: 'real.js', sha256: digest }] } }), /符号链接/);
+});
+
+test('M7 update gate detects a live VCPChat ready process before staging', () => {
+    const state = tempDir();
+    fs.writeFileSync(path.join(state, 'ready-live.json'), JSON.stringify({ operationId: 'live', pid: process.pid, readyAt: new Date().toISOString() }));
+    assert.equal(liveReadyRecords(state).length, 1);
 });
 
 test('M8 evidence explicitly records external platform proof instead of claiming it', () => {
