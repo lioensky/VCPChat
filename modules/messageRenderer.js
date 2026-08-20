@@ -1,10 +1,10 @@
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
-import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
+import { createImageHandler } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
-import * as defaultVisibilityOptimizer from './renderer/visibilityOptimizer.js';
+import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import * as defaultStreamManager from './renderer/streamManager.js';
-import * as defaultEmoticonUrlFixer from './renderer/emoticonUrlFixer.js';
+import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 import { createContentRuntime } from './chat/contentRuntime.js';
 import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
@@ -20,21 +20,22 @@ import {
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
 
-import * as defaultContentProcessor from './renderer/contentProcessor.js';
-import * as defaultContextMenu from './renderer/messageContextMenu.js';
+import { createContentProcessor } from './renderer/contentProcessor.js';
+import { createMessageContextMenu } from './renderer/messageContextMenu.js';
 
 
-import * as defaultMiddleClickHandler from './renderer/middleClickHandler.js';
+import { createMiddleClickHandler } from './renderer/middleClickHandler.js';
 
 // modules/messageRenderer.js
 
 export function createMessageRenderer(options = {}) {
-const visibilityOptimizer = options.visibilityOptimizer || defaultVisibilityOptimizer;
+const visibilityOptimizer = options.visibilityOptimizer || createVisibilityOptimizer();
 const streamManager = options.streamManager || defaultStreamManager;
-const emoticonUrlFixer = options.emoticonUrlFixer || defaultEmoticonUrlFixer;
-const contentProcessor = options.contentProcessor || defaultContentProcessor;
-const contextMenu = options.contextMenu || defaultContextMenu;
-const middleClickHandler = options.middleClickHandler || defaultMiddleClickHandler;
+const emoticonUrlFixer = options.emoticonUrlFixer || createEmoticonUrlFixer();
+const contentProcessor = options.contentProcessor || createContentProcessor();
+const contextMenu = options.contextMenu || createMessageContextMenu();
+const middleClickHandler = options.middleClickHandler || createMiddleClickHandler();
+const imageHandler = options.imageHandler || createImageHandler({ fixUrl: emoticonUrlFixer.fixEmoticonUrl });
 const colorExtractionPromises = new Map();
 
 async function getDominantAvatarColorCached(url) {
@@ -2232,6 +2233,10 @@ function disposeRendererListeners() {
 }
 function disposeRendererResources() {
     disposeRendererListeners();
+    contentProcessor.dispose?.();
+    middleClickHandler.dispose?.();
+    contextMenu.dispose?.();
+    imageHandler.dispose?.();
     visibilityOptimizer.destroyVisibilityOptimizer?.();
 }
 async function disposeRootResources(root) {
@@ -2293,6 +2298,7 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
 
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
+        imageHandler.cleanupContent?.(contentDiv);
         if (contentDiv._vcpDeferredHighlightTimer) {
             clearTimeout(contentDiv._vcpDeferredHighlightTimer);
             delete contentDiv._vcpDeferredHighlightTimer;
@@ -2428,7 +2434,7 @@ function initializeMessageRenderer(refs) {
             processStream: (text, options = {}) => contentPipeline.process(text, { ...options, mode: PIPELINE_MODES.STREAM_FAST })
         };
 
-    initializeImageHandler({
+    imageHandler.initialize({
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
         chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
@@ -2552,7 +2558,7 @@ function initializeMessageRenderer(refs) {
         removeMessageById: removeMessageById,
         renderMessage: renderMessage,
         discardStreamingMessage: streamManager.discardStreamingMessage,
-        setContentAndProcessImages: setContentAndProcessImages,
+        setContentAndProcessImages: imageHandler.setContentAndProcessImages,
         processRenderedContent: wrappedProcessRenderedContent,
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
@@ -2584,7 +2590,7 @@ function initializeMessageRenderer(refs) {
         morphdom: window.morphdom,
         renderMessage: renderMessage,
         showContextMenu: contextMenu.showContextMenu,
-        setContentAndProcessImages: setContentAndProcessImages,
+        setContentAndProcessImages: imageHandler.setContentAndProcessImages,
         processRenderedContent: wrappedProcessRenderedContent,
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
@@ -2597,7 +2603,7 @@ function initializeMessageRenderer(refs) {
         deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks, // 🟢 传递新函数
         processStartEndMarkers: contentProcessor.processStartEndMarkers, // 🟢 传递安全处理函数
         ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
-        processAnimationsInContent: processAnimationsInContent,
+        processAnimationsInContent: contentDiv => processAnimationsInContent(contentDiv, visibilityOptimizer),
         renderPostProcessedHtml: renderPostProcessedHtml,
         emoticonUrlFixer: emoticonUrlFixer, // 🟢 Pass emoticon fixer for live updates
         enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
@@ -3129,7 +3135,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器与动画/WebGL 资源。
         contentProcessor.cleanupPreviewsInContent(contentDiv);
         cleanupAnimationsInContent(contentDiv);
-        setContentAndProcessImages(contentDiv, rawHtml, messageId);
+        imageHandler.setContentAndProcessImages(contentDiv, rawHtml, messageId);
     }
 
     if (!isStillValid()) return;
@@ -3171,7 +3177,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         contentProcessor.highlightAllPatternsInMessage(contentDiv);
     }
 
-    processAnimationsInContent(contentDiv);
+    processAnimationsInContent(contentDiv, visibilityOptimizer);
     if (messageItem) {
         messageItem.dataset.vcpHeavyActivated = 'true';
         delete messageItem.dataset.vcpHeavyPending;

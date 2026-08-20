@@ -223,6 +223,7 @@ window.electronAPI.onAssistantData(async (data) => {
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
                 uiHelper: window.uiHelperFunctions,
+                messageCommands: { handleSendMessage: text => sendMessage(text) },
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {}, // Stub
                 interruptHandler: interruptHandler // Provide the interrupt handler

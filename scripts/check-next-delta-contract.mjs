@@ -173,6 +173,29 @@ assert.match(read('modules/messageRenderer.js'), /export function createMessageR
     'message rendering must be created by an explicit Surface-owned factory');
 assert.doesNotMatch(read('modules/messageRenderer.js'), /export const messageRenderer\s*=/,
     'message rendering must not expose a shared mutable singleton instance');
+for (const [file, factory] of [
+    ['modules/renderer/imageHandler.js', 'createImageHandler'],
+    ['modules/renderer/emoticonUrlFixer.js', 'createEmoticonUrlFixer'],
+    ['modules/renderer/contentProcessor.js', 'createContentProcessor'],
+    ['modules/renderer/messageContextMenu.js', 'createMessageContextMenu'],
+    ['modules/renderer/middleClickHandler.js', 'createMiddleClickHandler'],
+    ['modules/renderer/visibilityOptimizer.js', 'createVisibilityOptimizer'],
+]) {
+    assert.match(read(file), new RegExp(`export function ${factory}\\(`),
+        `${file} must expose a renderer-owned provider factory`);
+}
+for (const factory of ['createImageHandler', 'createVisibilityOptimizer', 'createEmoticonUrlFixer', 'createContentProcessor', 'createMessageContextMenu', 'createMiddleClickHandler']) {
+    assert.match(read('modules/messageRenderer.js'), new RegExp(`${factory}\\(`),
+        `each MessageRenderer must construct its own ${factory} provider`);
+}
+assert.doesNotMatch(read('modules/renderer/imageHandler.js'), /export (?:const|let|var) (?:imageHandlerRefs|ownedContentListeners)/,
+    'image interaction ownership must not be exported as mutable module state');
+assert.doesNotMatch(read('modules/renderer/emoticonUrlFixer.js'), /export (?:const|let|var) (?:emoticonLibrary|initializationPromise)/,
+    'emoticon catalog ownership must not be exported as mutable module state');
+assert.match(read('modules/renderer/visibilityOptimizer.js'), /visibilityOwnerByMessage\.get\(messageItem\)\?\.captureWebAnimation/,
+    'the realm animation interceptor may route only through the exact message owner');
+assert.match(read('modules/renderer/visibilityOptimizer.js'), /scanTimers[\s\S]*unobserveMessage[\s\S]*scanTimer\.window\.clearTimeout\(scanTimer\.id\)/,
+    'visibility teardown must cancel delayed per-message scans');
 assert.match(read('modules/renderer/animation.js'), /cleanupAnimationsInContent[\s\S]*renderer\.dispose\(\)/,
     'animation cleanup must dispose Three.js renderers');
 assert.match(read('modules/renderer/animation.js'), /_vcpMutationObserver[\s\S]*disconnect/,

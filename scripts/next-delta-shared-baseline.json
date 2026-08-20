@@ -4,8 +4,8 @@
     "reason": "upstream chat core plus reviewed ready ESM provider export with no production window facade, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing with operation-specific settlement and cancellation, explicit durable history mutation authority, independent renderer seam, and mandatory repository access without a direct IPC fallback"
   },
   "modules/messageRenderer.js": {
-    "sha256": "e2f313d1d7357a4a1963fc8d19aea3e294f4bfafef67f2dec667c3e7f0f4eece",
-    "reason": "upstream message semantics plus reviewed Surface-owned renderer factory state, frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, coordinator-owned terminal entry points, no shared exported renderer instance, per-root render generation, owned scheduler quiescence and resource/media/style cleanup, explicit Mermaid and attachment listener disposal, DOM-free transforms, and removal of stale direct repository persistence code"
+    "sha256": "894061031db75693e064ee3e3ed62bc9a8f6ca14e253260d21a8eefbe4318635",
+    "reason": "upstream message semantics plus reviewed Surface-owned renderer factory state, frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, coordinator-owned terminal entry points, no shared exported renderer instance, per-root render generation, owned scheduler quiescence and resource/media/style cleanup, renderer-owned content, image, emoticon, context-menu, middle-click and visibility providers, exact-owner realm animation routing, explicit delayed-listener-timer teardown, DOM-free transforms, and removal of stale direct repository persistence code"
   },
   "modules/renderer/streamManager.js": {
     "sha256": "5efdcf57ea7aceb760ff17c02ccd6b75e9bef2025baf3ec2612cfa043a15632d",

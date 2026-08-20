@@ -1,5 +1,7 @@
 // modules/renderer/emoticonUrlFixer.js
 
+/** Creates one emoticon catalog owner for one renderer or viewer. */
+export function createEmoticonUrlFixer() {
 let emoticonLibrary = [];
 let isInitialized = false;
 let electronAPI;
@@ -192,4 +194,5 @@ function fixEmoticonUrl(originalSrc) {
     return originalSrc;
 }
 
-export { initialize, fixEmoticonUrl };
+    return Object.freeze({ initialize, fixEmoticonUrl });
+}

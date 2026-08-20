@@ -1,5 +1,44 @@
 // modules/renderer/visibilityOptimizer.js
 
+const visibilityOwnerByMessage = new WeakMap();
+const animateInterceptorByPrototype = new WeakMap();
+
+function acquireElementAnimateInterceptor(elementPrototype) {
+    if (!elementPrototype || typeof elementPrototype.animate !== 'function') return () => {};
+
+    let realmState = animateInterceptorByPrototype.get(elementPrototype);
+    if (!realmState) {
+        const originalAnimate = elementPrototype.animate;
+        realmState = { originalAnimate, users: 0 };
+        animateInterceptorByPrototype.set(elementPrototype, realmState);
+        elementPrototype.animate = function (keyframes, options) {
+            const animation = originalAnimate.call(this, keyframes, options);
+            const messageItem = this.closest?.('.message-item');
+            visibilityOwnerByMessage.get(messageItem)?.captureWebAnimation(messageItem, animation);
+            return animation;
+        };
+    }
+    realmState.users += 1;
+
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        realmState.users = Math.max(0, realmState.users - 1);
+        if (realmState.users === 0) {
+            if (elementPrototype.animate !== realmState.originalAnimate) {
+                elementPrototype.animate = realmState.originalAnimate;
+            }
+            animateInterceptorByPrototype.delete(elementPrototype);
+        }
+    };
+}
+
+/** Creates one visibility and animation scheduler owner for one renderer. */
+export function createVisibilityOptimizer() {
+let publicApi = null;
+let releaseElementAnimateInterceptor = null;
+
 /**
  * 🎬 视界优化器 - 只暂停"会动的东西"
  * 
@@ -14,13 +53,13 @@
 
 // 存储每个消息的动画状态
 const messageAnimationStates = new WeakMap();
+const observedMessages = new Set();
+const scanTimers = new Map();
 
 // 全局 Observer 实例
 let visibilityObserver = null;
 let chatContainerRef = null;
-
-// 原始方法备份
-let originalElementAnimate = null;
+let ownerWindow = null;
 
 // 配置
 const CONFIG = {
@@ -38,15 +77,17 @@ let batchTimer = null;
 /**
  * 初始化可见性优化器
  */
-export function initializeVisibilityOptimizer(chatContainer) {
-    chatContainerRef = chatContainer;
-
+function initializeVisibilityOptimizer(chatContainer) {
     if (visibilityObserver) {
+        [...observedMessages].forEach(unobserveMessage);
         visibilityObserver.disconnect();
     }
 
-    // 🔑 关键：注入全局拦截器
-    injectGlobalInterceptors();
+    chatContainerRef = chatContainer;
+    ownerWindow = chatContainer?.ownerDocument?.defaultView || window;
+
+    releaseElementAnimateInterceptor?.();
+    releaseElementAnimateInterceptor = acquireElementAnimateInterceptor(ownerWindow?.Element?.prototype);
 
     visibilityObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
@@ -77,39 +118,14 @@ export function initializeVisibilityOptimizer(chatContainer) {
 /**
  * 💉 注入全局拦截器
  */
-function injectGlobalInterceptors() {
-    // 拦截 Web Animations API
-    if (!originalElementAnimate && typeof Element.prototype.animate === 'function') {
-        originalElementAnimate = Element.prototype.animate;
-
-        Element.prototype.animate = function (keyframes, options) {
-            const animation = originalElementAnimate.call(this, keyframes, options);
-
-            // 找到所属的消息气泡
-            const messageItem = this.closest('.message-item');
-            if (messageItem) {
-                const state = messageAnimationStates.get(messageItem);
-                if (state) {
-                    if (!state.webAnimations.includes(animation)) {
-                        state.webAnimations.push(animation);
-                    }
-
-                    // 如果当前气泡已暂停，立即暂停新动画
-                    if (state.isPaused) {
-                        // 延迟一帧确保动画初始化完成
-                        requestAnimationFrame(() => {
-                            if (state.isPaused && animation.playState === 'running') {
-                                animation.pause();
-                            }
-                        });
-                    }
-                }
-            }
-
-            return animation;
-        };
-
-        console.debug('[VisibilityOptimizer] Element.animate interceptor installed');
+function captureWebAnimation(messageItem, animation) {
+    const state = messageAnimationStates.get(messageItem);
+    if (!state) return;
+    if (!state.webAnimations.includes(animation)) state.webAnimations.push(animation);
+    if (state.isPaused) {
+        requestAnimationFrame(() => {
+            if (state.isPaused && animation.playState === 'running') animation.pause();
+        });
     }
 }
 
@@ -135,8 +151,10 @@ function scheduleBatchProcess() {
 /**
  * 观察单个消息
  */
-export function observeMessage(messageItem) {
+function observeMessage(messageItem) {
     if (!visibilityObserver || !messageItem) return;
+    visibilityOwnerByMessage.set(messageItem, publicApi);
+    observedMessages.add(messageItem);
 
     // 初始化状态存储
     if (!messageAnimationStates.has(messageItem)) {
@@ -195,10 +213,16 @@ export function observeMessage(messageItem) {
     rememberMessageHeight(messageItem);
 
     // 🔑 延迟扫描，确保脚本已执行完毕
-    setTimeout(() => {
+    const messageWindow = messageItem.ownerDocument?.defaultView || ownerWindow || window;
+    const existingScanTimer = scanTimers.get(messageItem);
+    if (existingScanTimer) existingScanTimer.window.clearTimeout(existingScanTimer.id);
+    const scanTimer = messageWindow.setTimeout(() => {
+        scanTimers.delete(messageItem);
+        if (!observedMessages.has(messageItem) || visibilityOwnerByMessage.get(messageItem) !== publicApi) return;
         scanAnimatedElements(messageItem);
         rememberMessageHeight(messageItem);
     }, CONFIG.scanDelay);
+    scanTimers.set(messageItem, { id: scanTimer, window: messageWindow });
 }
 
 /**
@@ -380,7 +404,7 @@ function cleanupFinishedAnimations(state) {
 /**
  * ⏸️ 暂停消息内的所有动画
  */
-export function pauseMessageAnimations(messageItem) {
+function pauseMessageAnimations(messageItem) {
     const state = messageAnimationStates.get(messageItem);
     if (!state || state.isPaused) return;
 
@@ -485,7 +509,7 @@ function applyPauseToState(messageItem, state) {
 /**
  * ▶️ 恢复消息内的所有动画
  */
-export function resumeMessageAnimations(messageItem) {
+function resumeMessageAnimations(messageItem) {
     const state = messageAnimationStates.get(messageItem);
     if (!state) return;
 
@@ -570,7 +594,7 @@ export function resumeMessageAnimations(messageItem) {
 /**
  * 📝 注册 anime.js 实例
  */
-export function registerAnimeInstance(messageItem, animeInstance) {
+function registerAnimeInstance(messageItem, animeInstance) {
     if (!messageItem || !animeInstance) return;
 
     const state = messageAnimationStates.get(messageItem);
@@ -588,7 +612,7 @@ export function registerAnimeInstance(messageItem, animeInstance) {
 /**
  * 📝 注册 Three.js 上下文
  */
-export function registerThreeContext(messageItem, context) {
+function registerThreeContext(messageItem, context) {
     if (!messageItem || !context) return;
 
     const state = messageAnimationStates.get(messageItem);
@@ -615,7 +639,7 @@ export function registerThreeContext(messageItem, context) {
  * @param {HTMLElement} messageItem 
  * @param {Object} context - { canvas, pauseCallback?, resumeCallback? }
  */
-export function registerCanvasAnimation(messageItem, context) {
+function registerCanvasAnimation(messageItem, context) {
     if (!messageItem || !context?.canvas) return;
 
     const state = messageAnimationStates.get(messageItem);
@@ -649,7 +673,7 @@ export function registerCanvasAnimation(messageItem, context) {
 /**
  * ❓ 检查消息是否处于暂停状态
  */
-export function isMessagePaused(messageItem) {
+function isMessagePaused(messageItem) {
     if (!messageItem) return false;
     const state = messageAnimationStates.get(messageItem);
     return state ? state.isPaused : false;
@@ -659,7 +683,7 @@ export function isMessagePaused(messageItem) {
  * 🔧 创建一个可暂停的 requestAnimationFrame 包装器
  * 供 animation.js 在执行用户脚本时使用
  */
-export function createPausableRAF(messageItem) {
+function createPausableRAF(messageItem) {
     const wrappedRAF = (callback) => {
         const state = messageAnimationStates.get(messageItem);
         if (!state || !messageItem?.isConnected) {
@@ -692,7 +716,7 @@ export function createPausableRAF(messageItem) {
     return wrappedRAF;
 }
 
-export function createPausableTimerAPI(messageItem) {
+function createPausableTimerAPI(messageItem) {
     const getState = () => messageAnimationStates.get(messageItem);
 
     const createTimerRecord = (type, callback, delay, args, repeat) => {
@@ -796,12 +820,17 @@ export function createPausableTimerAPI(messageItem) {
 /**
  * 🗑️ 停止观察并清理消息
  */
-export function unobserveMessage(messageItem) {
+function unobserveMessage(messageItem) {
     if (visibilityObserver) {
         visibilityObserver.unobserve(messageItem);
     }
 
     const state = messageAnimationStates.get(messageItem);
+    const scanTimer = scanTimers.get(messageItem);
+    if (scanTimer) {
+        scanTimer.window.clearTimeout(scanTimer.id);
+        scanTimers.delete(messageItem);
+    }
     if (state) {
         // [新增] 断开 MutationObserver
         if (state.mutationObserver) {
@@ -835,12 +864,14 @@ export function unobserveMessage(messageItem) {
 
         messageAnimationStates.delete(messageItem);
     }
+    if (visibilityOwnerByMessage.get(messageItem) === publicApi) visibilityOwnerByMessage.delete(messageItem);
+    observedMessages.delete(messageItem);
 
     pendingPause.delete(messageItem);
     pendingResume.delete(messageItem);
 }
 
-export function isMessageInHotZone(messageItem, margin = 200) {
+function isMessageInHotZone(messageItem, margin = 200) {
     if (!messageItem || !chatContainerRef || !messageItem.isConnected) return false;
 
     try {
@@ -859,7 +890,7 @@ export function isMessageInHotZone(messageItem, margin = 200) {
 /**
  * 🔄 手动触发可见性检查
  */
-export function recheckVisibility() {
+function recheckVisibility() {
     if (!chatContainerRef) return;
 
     const containerRect = chatContainerRef.getBoundingClientRect();
@@ -881,17 +912,15 @@ export function recheckVisibility() {
 /**
  * 🛑 销毁优化器
  */
-export function destroyVisibilityOptimizer() {
+function destroyVisibilityOptimizer() {
     if (visibilityObserver) {
+        [...observedMessages].forEach(unobserveMessage);
         visibilityObserver.disconnect();
         visibilityObserver = null;
     }
 
-    // 恢复原始的 Element.animate
-    if (originalElementAnimate) {
-        Element.prototype.animate = originalElementAnimate;
-        originalElementAnimate = null;
-    }
+    releaseElementAnimateInterceptor?.();
+    releaseElementAnimateInterceptor = null;
 
     if (batchTimer) {
         clearTimeout(batchTimer);
@@ -900,7 +929,31 @@ export function destroyVisibilityOptimizer() {
 
     pendingPause.clear();
     pendingResume.clear();
+    [...observedMessages].forEach(unobserveMessage);
+    scanTimers.forEach(timer => timer.window.clearTimeout(timer.id));
+    scanTimers.clear();
     chatContainerRef = null;
+    ownerWindow = null;
 
     console.debug('[VisibilityOptimizer] Destroyed');
+}
+
+publicApi = Object.freeze({
+    initializeVisibilityOptimizer,
+    observeMessage,
+    pauseMessageAnimations,
+    resumeMessageAnimations,
+    registerAnimeInstance,
+    registerThreeContext,
+    registerCanvasAnimation,
+    isMessagePaused,
+    createPausableRAF,
+    createPausableTimerAPI,
+    unobserveMessage,
+    isMessageInHotZone,
+    recheckVisibility,
+    destroyVisibilityOptimizer,
+    captureWebAnimation,
+});
+return publicApi;
 }

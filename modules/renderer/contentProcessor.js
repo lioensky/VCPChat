@@ -1,5 +1,7 @@
 // modules/renderer/contentProcessor.js
 
+/** Creates one rendered-content interaction owner for one MessageRenderer instance. */
+export function createContentProcessor() {
 let mainRefs = {};
 
 function scheduleOwnedTimeout(owner, callback, delay) {
@@ -860,6 +862,7 @@ function processInteractiveButtons(contentDiv, settings = {}) {
 
         // Add click event listener
         button.addEventListener('click', handleAIButtonClick);
+        button._vcpInteractiveCleanup = () => button.removeEventListener('click', handleAIButtonClick);
 
         console.log('[ContentProcessor] Processed interactive button:', button.textContent.trim());
     });
@@ -972,9 +975,6 @@ function sendButtonMessage(text, button) {
         if (mainRefs.messageCommands && typeof mainRefs.messageCommands.handleSendMessage === 'function') {
             // Use the main chat manager for regular chat
             sendMessageViaMainChat(text);
-        } else if (window.sendMessage && typeof window.sendMessage === 'function') {
-            // Use direct sendMessage function (for voice chat, assistant modules)
-            window.sendMessage(text);
         } else {
             throw new Error('No message sending function available');
         }
@@ -998,14 +998,14 @@ function sendButtonMessage(text, button) {
  */
 function sendMessageViaMainChat(text) {
     // Get the message input element
-    const messageInput = document.getElementById('messageInput');
+    const messageInput = mainRefs.chatMessagesDiv?.ownerDocument?.getElementById('messageInput');
     if (!messageInput) {
         throw new Error('Message input not found');
     }
 
     // Set the text in input and trigger send
     messageInput.value = text;
-    mainRefs.messageCommands.handleSendMessage();
+    mainRefs.messageCommands.handleSendMessage(text);
 
     // Note: handleSendMessage will clear the input automatically
 }
@@ -1016,13 +1016,15 @@ function sendMessageViaMainChat(text) {
  */
 function showErrorNotification(message) {
     // Try to use existing notification system
-    if (window.uiHelper && typeof window.uiHelper.showToastNotification === 'function') {
-        window.uiHelper.showToastNotification(message, 'error');
+    if (mainRefs.uiHelper && typeof mainRefs.uiHelper.showToastNotification === 'function') {
+        mainRefs.uiHelper.showToastNotification(message, 'error');
         return;
     }
 
     // Fallback: create a simple notification
-    const notification = document.createElement('div');
+    const ownerDocument = mainRefs.chatMessagesDiv?.ownerDocument;
+    if (!ownerDocument) return;
+    const notification = ownerDocument.createElement('div');
     notification.textContent = message;
     notification.style.cssText = `
         position: fixed;
@@ -1037,7 +1039,7 @@ function showErrorNotification(message) {
         box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     `;
 
-    document.body.appendChild(notification);
+    ownerDocument.body.appendChild(notification);
 
     // Auto remove after 3 seconds
     scheduleOwnedTimeout(notification, () => {
@@ -1343,6 +1345,11 @@ function cleanupPreviewsInContent(contentDiv) {
     if (!contentDiv) return;
     clearOwnedTimeouts(contentDiv);
     contentDiv.querySelectorAll('*').forEach(clearOwnedTimeouts);
+    contentDiv.querySelectorAll('button[data-vcp-interactive="true"]').forEach(button => {
+        button._vcpInteractiveCleanup?.();
+        delete button._vcpInteractiveCleanup;
+        delete button.dataset.vcpInteractive;
+    });
     const containers = contentDiv.querySelectorAll('.vcp-html-preview-container');
     containers.forEach(container => {
         if (typeof container._vcpCleanup === 'function') {
@@ -1357,7 +1364,7 @@ function cleanupPreviewsInContent(contentDiv) {
 }
 
 
-export {
+const contentProcessor = Object.freeze({
     initializeContentProcessor,
     ensureNewlineAfterCodeBlock,
     ensureSpaceAfterTilde,
@@ -1376,5 +1383,15 @@ export {
     applyContentProcessors, // Export the new batch processor
     escapeHtml,
     processStartEndMarkers,
-    cleanupPreviewsInContent
-};
+    cleanupPreviewsInContent,
+    dispose() {
+        if (mainRefs.chatMessagesDiv) cleanupPreviewsInContent(mainRefs.chatMessagesDiv);
+        mainRefs = {};
+    },
+});
+return contentProcessor;
+}
+
+// CSS scoping is a pure transform and does not consume renderer state.
+const pureContentProcessor = createContentProcessor();
+export const scopeCss = pureContentProcessor.scopeCss;

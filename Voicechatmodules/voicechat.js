@@ -299,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
                 uiHelper: uiHelperFunctions, // Pass the local helper
+                messageCommands: { handleSendMessage: text => sendMessage(text) },
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {} // Stub
             });

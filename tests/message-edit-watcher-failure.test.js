@@ -12,8 +12,8 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
         <div class="md-content">old content</div>
     </div>`, { runScripts: 'outside-only', url: 'https://vcpchat.local/' });
     const executableSource = source
-        .replace(/export\s*\{[\s\S]*?\};\s*$/, '')
-        .concat('\nwindow.__messageEditTestApi = { initializeContextMenu, toggleEditMode };\n');
+        .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
+        .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
     dom.window.eval(executableSource);
 
     const history = [{ id: 'message-1', role: 'assistant', content: 'old content' }];

@@ -309,7 +309,6 @@ const uiHelperFunctions = window.uiHelperFunctions;
 
 
 import searchManager from './modules/searchManager.js';
-import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
 import * as interruptHandler from './modules/interruptHandler.js';
 import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/startup-theme-gate.js';
  
