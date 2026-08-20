@@ -80,6 +80,7 @@ const allowedSourceDifferences = new Set([
     'modules/bootstrap/launch-protocol.js',
     'modules/bootstrap/packed-runtime.js',
     'modules/bootstrap/platform-process.js',
+    'tests/vcpchat-platform-boundary.test.mjs',
     'modules/bootstrap/process-runner.js',
     'modules/bootstrap/progress-protocol.js',
     'modules/bootstrap/repair-manifest.js',
