@@ -18,6 +18,15 @@ const ERROR_CODES = Object.freeze({
     ELECTRON_SPAWN: 'E_ELECTRON_SPAWN',
     ELECTRON_CRASH_BEFORE_READY: 'E_ELECTRON_CRASH_BEFORE_READY',
     STARTUP_TIMEOUT: 'E_STARTUP_TIMEOUT',
+    REPAIR_NOT_CONFIRMED: 'E_REPAIR_NOT_CONFIRMED',
+    REPAIR_BUDGET_EXHAUSTED: 'E_REPAIR_BUDGET_EXHAUSTED',
+    REPAIR_STAGE_FAILED: 'E_REPAIR_STAGE_FAILED',
+    REPAIR_CANCELLED: 'E_REPAIR_CANCELLED',
+    REPAIR_TIMEOUT: 'E_REPAIR_TIMEOUT',
+    RUNTIME_CLOSURE_INVALID: 'E_RUNTIME_CLOSURE_INVALID',
+    UPDATE_MANIFEST_INVALID: 'E_UPDATE_MANIFEST_INVALID',
+    UPDATE_INTEGRITY_FAILED: 'E_UPDATE_INTEGRITY_FAILED',
+    UPDATE_ROLLBACK: 'E_UPDATE_ROLLBACK',
 });
 
 const CHECK_STATUS = Object.freeze({
@@ -34,11 +43,15 @@ const BOOTSTRAP_STATES = Object.freeze([
     'validating',
     'ready-to-launch',
     'blocked',
+    'planning-repair',
+    'repairing',
+    'verifying-repair',
     'launching',
     'awaiting-ready',
     'running',
     'startup-timeout',
     'crashed-before-ready',
+    'rolling-back',
     'complete',
 ]);
 

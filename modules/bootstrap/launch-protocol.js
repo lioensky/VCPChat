@@ -216,4 +216,5 @@ module.exports = {
     writeReadyRecord,
     readReadyRecord,
     removeReadyRecord,
+    writeJsonAtomic,
 };
