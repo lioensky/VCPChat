@@ -59,6 +59,7 @@ const allowedSourceDifferences = new Set([
     'docs/vcpchat-bootstrap-contracts.md',
     'docs/vcpchat-managed-launch-architecture.md',
     'docs/vcpchat-hermes-inspired-launcher-roadmap.md',
+    'docs/vcpchat-bootstrap-completion-audit.md',
     'docs/ui-system-qa-matrix.md',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',
