@@ -388,7 +388,11 @@ try {
 
     const click = async selector => page.evaluate(value => document.querySelector(value)?.click(), selector);
     const waitForRecoveredMainPage = async () => {
-        const recoveryDeadline = Date.now() + timeout;
+        // Recovery can legitimately spend tens of seconds rebuilding the
+        // message projection after a crash while history is rendered. Keep
+        // the normal action timeout strict, but give renderer recovery its
+        // own bounded quiescence window.
+        const recoveryDeadline = Date.now() + Math.max(timeout, 90_000);
         while (Date.now() < recoveryDeadline) {
             for (const candidate of await browser.pages()) {
                 if (candidate.isClosed() || !candidate.url().includes('main.html')) continue;
