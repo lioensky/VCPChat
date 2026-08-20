@@ -2596,6 +2596,7 @@ function initializeMessageRenderer(refs) {
 
     middleClickHandler.initialize(mainRendererReferences, {
         removeMessageById: removeMessageById,
+        streamManager,
     });
 
     // --- 用户气泡文件拖拽支持 ---
@@ -4169,7 +4170,3 @@ export const messageRenderer = {
         }
     }
 };
-
-// Compatibility alias for the remaining Classic entry points. New module consumers
-// must import the explicit provider above instead of reading ambient window state.
-window.messageRenderer = messageRenderer;

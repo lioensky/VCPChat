@@ -416,7 +416,7 @@ try {
     };
     const waitForStreamQuiescence = async () => {
         await page.waitForFunction(() => {
-            const streams = window.streamManager?.getDiagnostics?.();
+            const streams = window.VCPLifecycleInspector?.snapshot?.().streams;
             return !streams
                 || (
                     streams.activeMessageId === null
@@ -425,7 +425,7 @@ try {
                     && streams.pendingFinalizations === 0
                 );
         }, { timeout: 8_000 });
-        return page.evaluate(() => window.streamManager?.getDiagnostics?.() || null);
+        return page.evaluate(() => window.VCPLifecycleInspector?.snapshot?.().streams || null);
     };
     const driver = {
         async selectAgent(id, topicId) {
@@ -573,12 +573,15 @@ try {
             try {
                 await page.waitForFunction(() => document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt', { timeout: 8_000 });
             } catch (error) {
-                const state = await page.evaluate(() => ({
+                const state = await page.evaluate(async () => {
+                    const runtime = await import('./modules/renderer/streamManager.js');
+                    return ({
                     mode: document.getElementById('sendMessageBtn')?.dataset.mode,
-                    activeStreamId: window.streamManager?.getActiveStreamingMessageId?.(),
-                    activeContext: window.streamManager?.getActiveStreamingContext?.(),
+                    activeStreamId: runtime.getActiveStreamingMessageId(),
+                    activeContext: runtime.getActiveStreamingContext(),
                     streamingDom: [...document.querySelectorAll('.message-item.streaming')].map(node => node.dataset.messageId),
-                }));
+                    });
+                });
                 throw new Error(`cancel did not settle: ${JSON.stringify(state)}`, { cause: error });
             }
         },
@@ -593,17 +596,20 @@ try {
             const requestDeadline = Date.now() + 5_000;
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
             if (fixture.requests.length === before) {
-                const state = await page.evaluate(() => ({
+                const state = await page.evaluate(async () => {
+                    const runtime = await import('./modules/renderer/streamManager.js');
+                    return ({
                     selected: window.currentSelectedItem?.id || null,
                     topicId: window.currentTopicId || null,
                     inputDisabled: document.getElementById('messageInput')?.disabled,
                     sendDisabled: document.getElementById('sendMessageBtn')?.disabled,
                     sendMode: document.getElementById('sendMessageBtn')?.dataset.mode,
-                    activeStream: window.streamManager?.getActiveStreamingMessageId?.() || null,
+                    activeStream: runtime.getActiveStreamingMessageId() || null,
                     pending: (window.currentChatHistory || []).filter(message => message?.isThinking || message?.isPendingStream).map(message => message.id),
                     streamingDom: [...document.querySelectorAll('#chatMessages .message-item.streaming')].map(node => node.dataset.messageId),
                     recentAssistant: (window.currentChatHistory || []).filter(message => message?.role === 'assistant').slice(-3).map(message => ({ id: message.id, thinking: message.isThinking, pending: message.isPendingStream })),
-                }));
+                    });
+                });
                 assert.fail(`${kind} request did not reach the controlled VCP fixture: ${JSON.stringify(state)}`);
             }
             await page.waitForFunction(() => (
@@ -652,10 +658,10 @@ try {
             const settleDeadline = Date.now() + 8_000;
             while (fixture.pending.has(key) && Date.now() < settleDeadline) await sleep(20);
             assert.equal(fixture.pending.has(key), false, `${kind}: held request did not settle`);
-            await page.waitForFunction(() => (
+            await page.waitForFunction(async () => (
                 document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt'
                 && document.querySelectorAll('.message-item.streaming').length === 0
-                && !window.streamManager?.getActiveStreamingMessageId?.()
+                && !(await import('./modules/renderer/streamManager.js')).getActiveStreamingMessageId()
             ), { timeout: 8_000 });
 
             const historySource = await fs.readFile(
@@ -708,7 +714,7 @@ try {
         settingsActive: document.getElementById('globalSettingsModal')?.classList.contains('active') === true,
         mainConnected: Boolean(document.querySelector('.container')?.isConnected && document.querySelector('.main-content')?.isConnected),
         streamingMessages: document.querySelectorAll('.message-item.streaming').length,
-        streams: window.streamManager?.getDiagnostics?.() || null,
+        streams: window.VCPLifecycleInspector?.snapshot?.().streams || null,
         lifecycle: window.VCPLifecycle?.diagnostics?.summary?.() || null,
     }));
     const collectResourceCheckpoint = async label => {
@@ -813,7 +819,7 @@ try {
         await page.evaluate(({ itemId, topicId }) => (
             window.chatManager.loadChatHistory(itemId, 'agent', topicId)
         ), { itemId: identities[0], topicId: topics[identities[0]][0] });
-        await page.evaluate(() => window.streamManager?.cleanupTransientState?.());
+        await page.evaluate(async () => (await import('./modules/renderer/streamManager.js')).cleanupTransientState());
     };
     await ensureInitialConversation();
     // C6 real VCP fixture matrix: the independent interactive surface must
@@ -873,7 +879,7 @@ try {
     await page.click('.vcp-interactive-chat__composer [data-action="cancel"]');
     await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已取消', { timeout });
     fixture.release(independentCancelKey);
-    await page.waitForFunction(() => !window.streamManager?.getActiveStreamingMessageId?.(), { timeout });
+    await page.waitForFunction(async () => !(await import('./modules/renderer/streamManager.js')).getActiveStreamingMessageId(), { timeout });
     await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
     await sendStandalone('sequence-disconnect');
     await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent?.includes('发送失败'), { timeout });

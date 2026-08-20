@@ -255,10 +255,12 @@ const allowedSourceDifferences = new Set([
     'docs/deepseek-harness-plugin-ui-architecture-research.md',
     'docs/chat-kernel-rendering-roadmap.md',
     'Voicechatmodules/voicechat.js',
+    'Voicechatmodules/voicechat.html',
     'rust_assistant_engine/ui/assistant.js',
     'rust_assistant_engine/ui/assistant.html',
     'Flowlockmodules/flowlock-integration.js',
     'modules/event-listeners.js',
+    'modules/renderer/middleClickHandler.js',
 ]);
 const allowedSourceDifferencePatterns = [
     /^vendor\/webawesome(?:-runtime)?\//,

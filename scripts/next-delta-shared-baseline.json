@@ -4,12 +4,12 @@
     "reason": "upstream chat core plus reviewed ChatContext/ChatRepository, explicit ESM provider export, injected stream projection capability, bridge-owned stream initialization, owner-retracted message-scoped Surface routing, independent renderer seam, and production fail-fast repository requirement"
   },
   "modules/messageRenderer.js": {
-    "sha256": "358b7c4bdcc04677c9d7b603be2d57cf1c3c9652328c486ec30fc3a77ccac010",
-    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure, coordinator-owned terminal entry points, explicit ESM provider export for module consumers, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
+    "sha256": "a4cb91871dba4ebb464922efc88598ee05e718b736f21d4973d38f408e88b627",
+    "reason": "upstream message semantics plus reviewed frozen RenderDependencies closure, coordinator-owned terminal entry points, explicit ESM provider with the unconsumed window facade removed, per-root resource/media cleanup, explicit Mermaid and attachment listener disposal, and DOM-free transforms"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "bf52f7c469cf5d21593fb8f0169de489334d71edbfdd93600b590132cf76fddb",
-    "reason": "shared stream DOM projection adapter with explicit ESM provider export, per-message Surface root ownership, awaited initialization, context-keyed active operations, no durable commit facade, immediate terminal cache release, and ContentRuntime render-model consumption"
+    "sha256": "c6eea429e9a50600fe9162037ccbfafd73ce35a3bcbef8ceac73b52ab208ad30",
+    "reason": "shared stream DOM projection adapter with explicit ESM provider and the unconsumed window facade removed, per-message Surface root ownership, awaited initialization, context-keyed active operations, no durable commit facade, immediate terminal cache release, and ContentRuntime render-model consumption"
   },
   "modules/topicListManager.js": {
     "sha256": "6f93242d843253f672f2afe1af2b6567781b0925c8292fbdda5bf53f490418be",
@@ -24,8 +24,8 @@
     "reason": "upstream group business surface with retired toolbar binding removed"
   },
   "modules/settingsManager.js": {
-    "sha256": "2d8e0977399577ba99f635a16aae42c13f914444a7ca88a88656170ee171b34e",
-    "reason": "reviewed Agent settings save settlement after fallible UI projection"
+    "sha256": "e9da7270e8fad4d943d24f0c6ae6ac6a875be42812830a267d65645bb87e2b2e",
+    "reason": "reviewed Agent settings save settlement after fallible UI projection with the message renderer supplied as an explicit initialization capability"
   },
   "modules/filterManager.js": {
     "sha256": "8b632c78f2d0bd525cbe24022b8883c8e6a4c3565352779c5ebc49be9350c17f",

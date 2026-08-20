@@ -31,20 +31,79 @@ const testFiles = fs.readdirSync(path.join(root, 'tests'))
 
 const source = file => read(file);
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
-const references = new Map(['chatManager', 'messageRenderer', 'streamManager'].map(name => [name, { production: [], tests: [] }]));
+const providerFiles = Object.freeze({
+    chatManager: 'modules/chatManager.js',
+    messageRenderer: 'modules/messageRenderer.js',
+    streamManager: 'modules/renderer/streamManager.js',
+});
+const surfaceFor = file => {
+    if (file === 'renderer.js' || file.startsWith('modules/event-') || file.startsWith('modules/mainChat')) return 'main-window';
+    if (file.startsWith('Voicechatmodules/')) return 'voice-chat';
+    if (file.startsWith('rust_assistant_engine/')) return 'rust-assistant';
+    if (file.startsWith('Flowlockmodules/')) return 'flowlock';
+    if (file.startsWith('modules/ui-system/')) return 'internal-app';
+    if (file.startsWith('tests/')) return 'test';
+    return 'shared-renderer';
+};
+const withoutComments = text => {
+    let block = false;
+    return text.split(/\r?\n/).map(line => {
+        let output = '';
+        for (let index = 0; index < line.length; index += 1) {
+            if (block) {
+                const end = line.indexOf('*/', index);
+                if (end < 0) return output;
+                block = false;
+                index = end + 1;
+                continue;
+            }
+            if (line.startsWith('//', index)) break;
+            if (line.startsWith('/*', index)) {
+                block = true;
+                index += 1;
+                continue;
+            }
+            output += line[index];
+        }
+        return output;
+    });
+};
+const memberEvidence = (file, name) => {
+    if (file === providerFiles[name]) return [];
+    const rawLines = source(file).split(/\r?\n/);
+    const codeLines = withoutComments(source(file));
+    const pattern = new RegExp(`\\b(window\\.)?${name}(?:\\?\\.)?\\.([A-Za-z_$][\\w$]*)`, 'g');
+    const evidence = [];
+    codeLines.forEach((line, index) => {
+        for (const match of line.matchAll(pattern)) {
+            evidence.push({
+                file,
+                line: index + 1,
+                surface: surfaceFor(file),
+                access: match[1] ? 'compatibility-global' : 'explicit-provider',
+                member: match[2],
+                snippet: rawLines[index].trim().slice(0, 240),
+            });
+        }
+    });
+    return evidence;
+};
+const references = new Map(Object.keys(providerFiles).map(name => [name, { production: [], tests: [] }]));
 
 for (const file of productionFiles) {
     if (!exists(file)) continue;
-    const text = source(file);
     for (const name of references.keys()) {
-        if (new RegExp(`\\b${name}\\b`).test(text)) references.get(name).production.push({ file, occurrences: count(text, new RegExp(`\\b${name}\\b`, 'g')) });
+        references.get(name).production.push(...memberEvidence(file, name));
     }
 }
 for (const file of testFiles) {
-    const text = source(file);
     for (const name of references.keys()) {
-        if (new RegExp(`\\b${name}\\b`).test(text)) references.get(name).tests.push({ file, occurrences: count(text, new RegExp(`\\b${name}\\b`, 'g')) });
+        references.get(name).tests.push(...memberEvidence(file, name));
     }
+}
+for (const [name, evidence] of references) {
+    assert.ok(evidence.production.length > 0, `${name} must retain at least one real production member consumer`);
+    assert.equal(evidence.production.some(item => item.file === providerFiles[name]), false, `${name} provider definition cannot self-certify as a consumer`);
 }
 
 const kernelFiles = [
@@ -88,6 +147,7 @@ const report = {
     productionFiles,
     testFiles,
     references: Object.fromEntries(references),
+    providerFiles,
     kernelFiles,
     pureKernelFiles,
     ownershipSignals: Object.fromEntries(productionFiles.map(file => {
@@ -104,6 +164,8 @@ const report = {
     invariants: [
         'pure kernel files have no document/window/electronAPI dependency',
         'production and test consumers are reported separately',
+        'provider definitions, exports and compatibility assignments cannot self-certify as consumers',
+        'each consumer evidence item records a source line, member access and production surface',
         'legacy facade removal requires a later zero-production-consumer proof',
         'main-window start/data/end/error events have one coordinator authority',
     ],
@@ -119,5 +181,7 @@ const reportPath = path.join(root, 'docs/chat-kernel-consumer-report.json');
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 console.log(`Chat Kernel consumer baseline passed (${productionFiles.length} production files, ${testFiles.length} test files, ${kernelFiles.length} kernel files).`);
 for (const [name, value] of references) {
-    console.log(`  ${name}: production=${value.production.length}, tests=${value.tests.length}`);
+    const files = new Set(value.production.map(item => item.file));
+    const compatibility = value.production.filter(item => item.access === 'compatibility-global').length;
+    console.log(`  ${name}: productionEvidence=${value.production.length}, productionFiles=${files.size}, compatibility=${compatibility}, tests=${value.tests.length}`);
 }

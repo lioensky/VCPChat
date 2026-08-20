@@ -50,45 +50,565 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 44
+          "line": 5,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { chatManager } from './modules/chatManager.js';"
+        },
+        {
+          "file": "renderer.js",
+          "line": 264,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "if (chatManager && typeof chatManager.handleSendMessage === 'function') {"
+        },
+        {
+          "file": "renderer.js",
+          "line": 265,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "await chatManager.handleSendMessage();"
+        },
+        {
+          "file": "renderer.js",
+          "line": 384,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "return chatManager.selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 439,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "return chatManager.selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 455,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "displayTopicTimestampBubble",
+          "snippet": "return chatManager.displayTopicTimestampBubble(itemId, itemType, topicId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 718,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleTopicDeletion",
+          "snippet": "return chatManager.handleTopicDeletion(remainingTopics, deletionContext);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 725,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "return chatManager.selectTopic(topicId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 738,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "init",
+          "snippet": "chatManager.init({"
+        },
+        {
+          "file": "renderer.js",
+          "line": 852,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "displayNoItemSelected",
+          "snippet": "chatManager.displayNoItemSelected();"
+        },
+        {
+          "file": "renderer.js",
+          "line": 876,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "restoreLastOpenState",
+          "snippet": "await chatManager.restoreLastOpenState(globalSettings);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1026,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "displayNoItemSelected",
+          "snippet": "chatManager.displayNoItemSelected();"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1061,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "Promise.resolve(chatManager.selectTopic(pending.topicId)).catch((error) => {"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1102,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "syncHistoryFromFile",
+          "snippet": "if (chatManager && typeof chatManager.syncHistoryFromFile === 'function') {"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1103,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "syncHistoryFromFile",
+          "snippet": "chatManager.syncHistoryFromFile(agentId, currentSelectedItem.type, topicId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 2565,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleForwardMessage",
+          "snippet": "if (chatManager && typeof chatManager.handleForwardMessage === 'function') {"
+        },
+        {
+          "file": "renderer.js",
+          "line": 2566,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleForwardMessage",
+          "snippet": "chatManager.handleForwardMessage(selectedForwardTarget, forwardedContent, attachments);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 2570,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleForwardMessage",
+          "snippet": "console.error('chatManager.handleForwardMessage is not defined');"
         },
         {
           "file": "modules/event-listeners.js",
-          "occurrences": 13
+          "line": 348,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "attemptTopicSummarizationIfNeeded",
+          "snippet": "await chatManager.attemptTopicSummarizationIfNeeded();"
         },
         {
-          "file": "modules/chatManager.js",
-          "occurrences": 4
+          "file": "modules/event-listeners.js",
+          "line": 420,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "chatManager.handleSendMessage();"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 435,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "chatManager.handleSendMessage();"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1009,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "await chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1089,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "if (chatManager && chatManager.selectTopic) {"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1090,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "await chatManager.selectTopic(result.topicId);"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1643,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "if (chatManager && chatManager.createNewTopicForItem) {"
+        },
+        {
+          "file": "modules/event-listeners.js",
+          "line": 1644,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "chatManager.createNewTopicForItem(currentSelectedItem.id, currentSelectedItem.type);"
         },
         {
           "file": "modules/messageRenderer.js",
-          "occurrences": 13
+          "line": 2653,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "processFilesData",
+          "snippet": "if (window.chatManager && window.chatManager.processFilesData) {"
         },
         {
-          "file": "modules/renderer/messageContextMenu.js",
-          "occurrences": 1
+          "file": "modules/messageRenderer.js",
+          "line": 2655,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "processFilesData",
+          "snippet": "const processedFiles = await window.chatManager.processFilesData(files);"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 2659,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "addAttachmentsToMessage",
+          "snippet": "window.chatManager.addAttachmentsToMessage(messageId, successfulFiles);"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 2668,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "processFilesData",
+          "snippet": "console.error('[MessageRenderer] window.chatManager.processFilesData not available!');"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3081,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "removeAttachmentFromMessage",
+          "snippet": "if (window.chatManager && window.chatManager.removeAttachmentFromMessage) {"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3082,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "removeAttachmentFromMessage",
+          "snippet": "window.chatManager.removeAttachmentFromMessage(message.id, index);"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "occurrences": 2
-        },
-        {
-          "file": "modules/mainChatCommands.js",
-          "occurrences": 2
+          "line": 277,
+          "surface": "flowlock",
+          "access": "compatibility-global",
+          "member": "loadChatHistory",
+          "snippet": "await window.chatManager.loadChatHistory(agentId, 'agent', topicId);"
         },
         {
           "file": "modules/renderer/contentProcessor.js",
-          "occurrences": 4
+          "line": 972,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "handleSendMessage",
+          "snippet": "if (window.chatManager && typeof window.chatManager.handleSendMessage === 'function') {"
+        },
+        {
+          "file": "modules/renderer/contentProcessor.js",
+          "line": 1008,
+          "surface": "shared-renderer",
+          "access": "compatibility-global",
+          "member": "handleSendMessage",
+          "snippet": "window.chatManager.handleSendMessage();"
         },
         {
           "file": "modules/ui-system/interactive-chat-app.js",
-          "occurrences": 3
+          "line": 5,
+          "surface": "internal-app",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { chatManager } from '../chatManager.js';"
+        },
+        {
+          "file": "modules/ui-system/interactive-chat-app.js",
+          "line": 21,
+          "surface": "internal-app",
+          "access": "explicit-provider",
+          "member": "sendMessage",
+          "snippet": "send: request => chatManager.sendMessage(request),"
         }
       ],
       "tests": [
         {
           "file": "tests/chat-manager-selection-race.test.js",
-          "occurrences": 36
+          "line": 26,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "window.eval(fs.readFileSync('modules/chatManager.js', 'utf8').replace(/\\bexport\\s+(?=const\\s+chatManager\\b)/, ''));"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 141,
+          "surface": "test",
+          "access": "compatibility-global",
+          "member": "init",
+          "snippet": "window.chatManager.init({"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 223,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectA = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 225,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectB = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 243,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "restoreLastOpenState",
+          "snippet": "const restoring = fixture.chatManager.restoreLastOpenState({"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 261,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "restoreLastOpenState",
+          "snippet": "const restoring = fixture.chatManager.restoreLastOpenState({"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 268,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selecting = fixture.chatManager.selectItem("
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 290,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "restoreLastOpenState",
+          "snippet": "assert.equal(await fixture.chatManager.restoreLastOpenState({"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 301,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selected = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 307,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "const first = fixture.chatManager.selectTopic('topic-b-2');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 309,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "const second = fixture.chatManager.selectTopic('topic-b');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 325,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selection = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 340,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectedA = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 347,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "const sending = fixture.chatManager.handleSendMessage();"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 350,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectedB = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 373,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 380,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "await fixture.chatManager.handleSendMessage();"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 392,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 399,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "await fixture.chatManager.handleSendMessage();"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 410,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 418,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "const firstSend = fixture.chatManager.handleSendMessage();"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 422,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "handleSendMessage",
+          "snippet": "const secondSend = fixture.chatManager.handleSendMessage();"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 437,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selected = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 444,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "const first = fixture.chatManager.selectTopic('topic-b-2');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 446,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectTopic",
+          "snippet": "const second = fixture.chatManager.selectTopic('topic-b');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 461,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectedA = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 466,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "const creating = fixture.chatManager.createNewTopicForItem('agent-a', 'agent');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 468,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectedB = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 486,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 491,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "const first = fixture.chatManager.createNewTopicForItem('agent-a', 'agent');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 492,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "createNewTopicForItem",
+          "snippet": "const second = fixture.chatManager.createNewTopicForItem('agent-a', 'agent');"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 508,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "selectItem",
+          "snippet": "const selectedB = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);"
+        },
+        {
+          "file": "tests/chat-manager-selection-race.test.js",
+          "line": 513,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "handleTopicDeletion",
+          "snippet": "const applied = await fixture.chatManager.handleTopicDeletion("
         }
       ]
     },
@@ -96,114 +616,690 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 23
+          "line": 3,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from './modules/messageRenderer.js';"
+        },
+        {
+          "file": "renderer.js",
+          "line": 521,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "disposeRendererResources",
+          "snippet": "messageRenderer.disposeRendererResources();"
+        },
+        {
+          "file": "renderer.js",
+          "line": 529,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "setContextMenuDependencies",
+          "snippet": "messageRenderer.setContextMenuDependencies({"
+        },
+        {
+          "file": "renderer.js",
+          "line": 631,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "renderFullMessage",
+          "snippet": "messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 639,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "renderFullMessage",
+          "snippet": "messageRenderer.renderFullMessage(messageId, fullResponse, context.agentName, context.agentId);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 650,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "messageRenderer.removeMessageById(messageId, false); // false: don't save history again"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1555,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "setUserAvatar",
+          "snippet": "messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);"
+        },
+        {
+          "file": "renderer.js",
+          "line": 1556,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "setUserAvatarColor",
+          "snippet": "messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);"
         },
         {
           "file": "modules/event-listeners.js",
-          "occurrences": 10
+          "line": 323,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });"
         },
         {
           "file": "modules/chatManager.js",
-          "occurrences": 84
+          "line": 607,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentSelectedItem",
+          "snippet": "messageRenderer.setCurrentSelectedItem(currentSelectedItem);"
         },
         {
-          "file": "modules/messageRenderer.js",
-          "occurrences": 7
+          "file": "modules/chatManager.js",
+          "line": 608,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(null);"
         },
         {
-          "file": "modules/renderer/streamManager.js",
-          "occurrences": 1
+          "file": "modules/chatManager.js",
+          "line": 609,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatar",
+          "snippet": "messageRenderer.setCurrentItemAvatar(itemAvatarUrl);"
         },
         {
-          "file": "modules/renderer/messageContextMenu.js",
-          "occurrences": 1
+          "file": "modules/chatManager.js",
+          "line": 610,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatarColor",
+          "snippet": "messageRenderer.setCurrentItemAvatarColor(itemFullConfig?.avatarCalculatedColor || null);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 666,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "if (messageRenderer) messageRenderer.setCurrentTopicId(topicToLoadId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 671,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 680,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载助手配置失败: ${agentConfig.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 687,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 690,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 701,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 704,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认群聊话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 712,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `选择${itemType === 'group' ? '群组' : '助手'}时出错: ${e.message}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 800,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 829,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 862,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(null);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 863,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "clearChat",
+          "snippet": "messageRenderer.clearChat();"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 864,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage({ role: 'system', content: '所有话题均已删除。请创建一个新话题。', timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 887,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "clearChat",
+          "snippet": "if (messageRenderer) messageRenderer.clearChat();"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 898,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 904,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: errorMsg, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 910,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: '请选择或创建一个话题以开始聊天。', timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 923,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 926,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 933,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 946,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 950,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 956,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 \"${topicId}\" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 986,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 \"${topicId}\" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1038,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "updateMessageUI",
+          "snippet": "if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1039,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "updateMessageUI",
+          "snippet": "await messageRenderer.updateMessageUI(messageId, updatedMessage);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1139,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "updateMessageUI",
+          "snippet": "if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1140,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "updateMessageUI",
+          "snippet": "await messageRenderer.updateMessageUI(messageId, message);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1245,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "summarizeTopicFromMessages",
+          "snippet": "if (messageRenderer && typeof messageRenderer.summarizeTopicFromMessages === 'function') {"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1246,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "summarizeTopicFromMessages",
+          "snippet": "const summarizedTitle = await messageRenderer.summarizeTopicFromMessages(currentChatHistory.filter(m => !m.isThinking), currentAgentName);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1786,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "startStreamingMessage",
+          "snippet": "start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1821,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1951,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "messageRenderer.setCurrentTopicId(result.topicId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1952,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "clearChat",
+          "snippet": "messageRenderer.clearChat();"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 2065,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentTopicId",
+          "snippet": "if (messageRenderer) messageRenderer.setCurrentTopicId(newTopicId);"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 2196,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "messageRenderer.removeMessageById(oldMsg.id, false); // Update UI"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 2204,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "updateMessageContent",
+          "snippet": "if (typeof messageRenderer.updateMessageContent === 'function') {"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 2205,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "updateMessageContent",
+          "snippet": "messageRenderer.updateMessageContent(oldMsg.id, newMsgData.content); // Update UI"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 2220,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "messageRenderer.renderMessage(newMsg, true); // Update UI (true = don't modify history ref inside)"
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "occurrences": 13
+          "line": 5,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from '../modules/messageRenderer.js';"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 311,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "initializeMessageRenderer",
+          "snippet": "messageRenderer.initializeMessageRenderer({"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 372,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(userMessage);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 391,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(assistantMessagePlaceholder);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 453,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "extractSpeakableTextFromContentElement",
+          "snippet": "textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);"
+        },
+        {
+          "file": "Voicechatmodules/voicechat.js",
+          "line": 491,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "extractSpeakableTextFromContentElement",
+          "snippet": "? messageRenderer.extractSpeakableTextFromContentElement(contentElement)"
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "occurrences": 9
+          "line": 5,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from '../../modules/messageRenderer.js';"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 235,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "initializeMessageRenderer",
+          "snippet": "messageRenderer.initializeMessageRenderer({"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 358,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(userMessage, false);"
+        },
+        {
+          "file": "rust_assistant_engine/ui/assistant.js",
+          "line": 381,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "renderMessage",
+          "snippet": "await messageRenderer.renderMessage(assistantMessagePlaceholder, false);"
         },
         {
           "file": "modules/settingsManager.js",
-          "occurrences": 5
+          "line": 411,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatarColor",
+          "snippet": "messageRenderer.setCurrentItemAvatarColor(avgColor);"
         },
         {
-          "file": "modules/global-settings-manager.js",
-          "occurrences": 4
+          "file": "modules/settingsManager.js",
+          "line": 475,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatar",
+          "snippet": "messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);"
         },
         {
-          "file": "modules/renderer/contentProcessor.js",
-          "occurrences": 1
+          "file": "modules/settingsManager.js",
+          "line": 476,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "setCurrentItemAvatarColor",
+          "snippet": "messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);"
         },
         {
           "file": "modules/ui-system/interactive-chat-app.js",
-          "occurrences": 3
+          "line": 4,
+          "surface": "internal-app",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from '../messageRenderer.js';"
         },
         {
           "file": "modules/ui-system/standalone-chat-app.js",
-          "occurrences": 3
+          "line": 8,
+          "surface": "internal-app",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { messageRenderer } from '../messageRenderer.js';"
         }
       ],
-      "tests": [
-        {
-          "file": "tests/chat-manager-selection-race.test.js",
-          "occurrences": 2
-        },
-        {
-          "file": "tests/main-chat-surface-adapter.test.mjs",
-          "occurrences": 1
-        },
-        {
-          "file": "tests/window-stream-runtime.test.mjs",
-          "occurrences": 2
-        }
-      ]
+      "tests": []
     },
     "streamManager": {
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 8
+          "line": 4,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { streamManager } from './modules/renderer/streamManager.js';"
         },
         {
-          "file": "modules/chatManager.js",
-          "occurrences": 1
+          "file": "renderer.js",
+          "line": 7,
+          "surface": "main-window",
+          "access": "explicit-provider",
+          "member": "getDiagnostics",
+          "snippet": "window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());"
         },
         {
           "file": "modules/messageRenderer.js",
-          "occurrences": 15
+          "line": 35,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import * as streamManager from './renderer/streamManager.js';"
         },
         {
-          "file": "modules/renderer/streamManager.js",
-          "occurrences": 5
+          "file": "modules/messageRenderer.js",
+          "line": 2543,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "discardStreamingMessage",
+          "snippet": "discardStreamingMessage: streamManager.discardStreamingMessage,"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 2559,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "initStreamManager",
+          "snippet": "streamManager.initStreamManager({"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3281,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "isMessageActive",
+          "snippet": "&& typeof streamManager.isMessageActive === 'function'"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3282,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "isMessageActive",
+          "snippet": "&& streamManager.isMessageActive(message.id);"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3583,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "startStreamingMessage",
+          "snippet": "return streamManager.startStreamingMessage(message, messageItem);"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3587,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "discardStreamingMessage",
+          "snippet": "return streamManager.discardStreamingMessage(messageId);"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 3592,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "appendStreamChunk",
+          "snippet": "streamManager.appendStreamChunk(messageId, chunkData, context);"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 4150,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "isMessageInitialized",
+          "snippet": "if (streamManager && typeof streamManager.isMessageInitialized === 'function') {"
+        },
+        {
+          "file": "modules/messageRenderer.js",
+          "line": 4151,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "isMessageInitialized",
+          "snippet": "return streamManager.isMessageInitialized(messageId);"
         },
         {
           "file": "modules/renderer/middleClickHandler.js",
-          "occurrences": 5
+          "line": 192,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "isMessageInitialized",
+          "snippet": "if (callbacks.streamManager && typeof callbacks.streamManager.isMessageInitialized === 'function') {"
         },
         {
-          "file": "Flowlockmodules/flowlock-integration.js",
-          "occurrences": 1
+          "file": "modules/renderer/middleClickHandler.js",
+          "line": 194,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "isMessageInitialized",
+          "snippet": "isStreamManagerFinalized = !callbacks.streamManager.isMessageInitialized(messageId);"
         },
         {
           "file": "Voicechatmodules/voicechat.js",
-          "occurrences": 3
+          "line": 6,
+          "surface": "voice-chat",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { streamManager } from '../modules/renderer/streamManager.js';"
         },
         {
           "file": "rust_assistant_engine/ui/assistant.js",
-          "occurrences": 3
+          "line": 6,
+          "surface": "rust-assistant",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "import { streamManager } from '../../modules/renderer/streamManager.js';"
         }
       ],
       "tests": [
         {
           "file": "tests/stream-manager-terminal-cleanup.test.js",
-          "occurrences": 2
+          "line": 8,
+          "surface": "test",
+          "access": "explicit-provider",
+          "member": "js",
+          "snippet": "const source = fs.readFileSync('modules/renderer/streamManager.js', 'utf8');"
         }
       ]
     }
+  },
+  "providerFiles": {
+    "chatManager": "modules/chatManager.js",
+    "messageRenderer": "modules/messageRenderer.js",
+    "streamManager": "modules/renderer/streamManager.js"
   },
   "kernelFiles": [
     "modules/chat/chatContext.js",
@@ -242,7 +1338,7 @@
   ],
   "ownershipSignals": {
     "renderer.js": {
-      "windowReferences": 155,
+      "windowReferences": 156,
       "documentReferences": 184,
       "electronReferences": 12,
       "timers": 2,
@@ -250,7 +1346,7 @@
       "mutableMaps": 0
     },
     "modules/event-listeners.js": {
-      "windowReferences": 38,
+      "windowReferences": 27,
       "documentReferences": 95,
       "electronReferences": 8,
       "timers": 5,
@@ -266,7 +1362,7 @@
       "mutableMaps": 4
     },
     "modules/messageRenderer.js": {
-      "windowReferences": 54,
+      "windowReferences": 52,
       "documentReferences": 42,
       "electronReferences": 17,
       "timers": 15,
@@ -274,7 +1370,7 @@
       "mutableMaps": 6
     },
     "modules/renderer/streamManager.js": {
-      "windowReferences": 13,
+      "windowReferences": 11,
       "documentReferences": 9,
       "electronReferences": 17,
       "timers": 12,
@@ -290,7 +1386,7 @@
       "mutableMaps": 0
     },
     "modules/renderer/middleClickHandler.js": {
-      "windowReferences": 18,
+      "windowReferences": 15,
       "documentReferences": 26,
       "electronReferences": 14,
       "timers": 9,
@@ -330,7 +1426,7 @@
       "mutableMaps": 0
     },
     "modules/settingsManager.js": {
-      "windowReferences": 37,
+      "windowReferences": 32,
       "documentReferences": 109,
       "electronReferences": 50,
       "timers": 11,
@@ -338,7 +1434,7 @@
       "mutableMaps": 1
     },
     "modules/global-settings-manager.js": {
-      "windowReferences": 18,
+      "windowReferences": 14,
       "documentReferences": 80,
       "electronReferences": 1,
       "timers": 0,
@@ -373,6 +1469,8 @@
   "invariants": [
     "pure kernel files have no document/window/electronAPI dependency",
     "production and test consumers are reported separately",
+    "provider definitions, exports and compatibility assignments cannot self-certify as consumers",
+    "each consumer evidence item records a source line, member access and production surface",
     "legacy facade removal requires a later zero-production-consumer proof",
     "main-window start/data/end/error events have one coordinator authority"
   ]

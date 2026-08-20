@@ -22,6 +22,7 @@ async function saveGlobalSettings(deps, settingsForm) {
 
     const {
         refs,
+        messageRenderer,
         getCroppedFile,
         setCroppedFile,
         uiHelperFunctions,
@@ -208,9 +209,7 @@ async function saveGlobalSettings(deps, settingsForm) {
                     userAvatarWrapper.classList.remove('no-avatar');
                 }
                 
-                if (window.messageRenderer) {
-                    window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
-                }
+                messageRenderer?.setUserAvatar(avatarSaveResult.avatarUrl);
                 if (avatarSaveResult.needsColorExtraction && chatAPI?.saveAvatarColor) {
                     if (window.getDominantAvatarColor) {
                         window.getDominantAvatarColor(avatarSaveResult.avatarUrl).then(avgColor => {
@@ -219,7 +218,7 @@ async function saveGlobalSettings(deps, settingsForm) {
                                     .then((saveColorResult) => {
                                         if (saveColorResult && saveColorResult.success) {
                                             refs.globalSettings.get().userAvatarCalculatedColor = avgColor;
-                                            if (window.messageRenderer) window.messageRenderer.setUserAvatarColor(avgColor);
+                                            messageRenderer?.setUserAvatarColor(avgColor);
                                         } else {
                                             console.warn("Failed to save user avatar color:", saveColorResult?.error);
                                         }

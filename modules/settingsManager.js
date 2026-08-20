@@ -44,6 +44,7 @@ const settingsManager = (() => {
     let uiHelper = null;
     let refs = {}; // To hold references to currentSelectedItem, etc.
     let mainRendererFunctions = {}; // To call back to renderer.js functions if needed
+    let messageRenderer = null;
 
     // DOM Elements
     let agentSettingsContainer, groupSettingsContainer, selectItemPromptForSettings;
@@ -406,8 +407,8 @@ const settingsManager = (() => {
                                 electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
                                     .then((saveColorResult) => {
                                         if (saveColorResult && saveColorResult.success) {
-                                            if (refs.currentSelectedItemRef.get().id === agentId && refs.currentSelectedItemRef.get().type === 'agent' && window.messageRenderer) {
-                                                window.messageRenderer.setCurrentItemAvatarColor(avgColor);
+                                            if (refs.currentSelectedItemRef.get().id === agentId && refs.currentSelectedItemRef.get().type === 'agent' && messageRenderer) {
+                                                messageRenderer.setCurrentItemAvatarColor(avgColor);
                                             }
                                         } else {
                                             console.warn(`Failed to save agent ${agentId} avatar color:`, saveColorResult?.error);
@@ -470,9 +471,9 @@ const settingsManager = (() => {
                         if (mainRendererFunctions.updateChatHeader) {
                             mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
                         }
-                        if (window.messageRenderer) {
-                            window.messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
-                            window.messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
+                        if (messageRenderer) {
+                            messageRenderer.setCurrentItemAvatar(updatedAgentConfig.avatarUrl);
+                            messageRenderer.setCurrentItemAvatarColor(updatedAgentConfig.avatarCalculatedColor || null);
                         }
                         selectedItemNameForSettingsSpan.textContent = newConfig.name;
                     }
@@ -766,6 +767,7 @@ const settingsManager = (() => {
             uiHelper = options.uiHelper;
             refs = options.refs;
             mainRendererFunctions = options.mainRendererFunctions;
+            messageRenderer = options.messageRenderer || null;
 
             // DOM Elements (Always present)
             agentSettingsContainer = options.elements.agentSettingsContainer;

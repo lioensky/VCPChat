@@ -29,7 +29,7 @@ export function setupEventListeners(deps) {
         refs,
 
         // Modules and helper functions
-        uiHelperFunctions, chatManager, itemListManager, settingsManager, uiManager, topicListManager,
+        uiHelperFunctions, chatManager, messageRenderer, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
         addNetworkPathInput
     } = deps;
@@ -315,12 +315,12 @@ export function setupEventListeners(deps) {
                 const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
 
                 if (isForActiveChat) {
-                    if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
+                    messageRenderer?.removeMessageById(thinkingMessage.id);
                 }
 
                 if (response.error) {
-                    if (isForActiveChat && window.messageRenderer) {
-                        window.messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                    if (isForActiveChat && messageRenderer) {
+                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ContinueWriting] VCP Error:`, response.error);
                 } else if (response.choices && response.choices.length > 0) {
@@ -344,8 +344,8 @@ export function setupEventListeners(deps) {
                         if (isForActiveChat) {
                             currentChatHistory.length = 0;
                             currentChatHistory.push(...finalHistory);
-                            if (window.messageRenderer) window.messageRenderer.renderMessage(assistantMessage);
-                            await window.chatManager.attemptTopicSummarizationIfNeeded();
+                            messageRenderer?.renderMessage(assistantMessage);
+                            await chatManager.attemptTopicSummarizationIfNeeded();
                         }
                     }
                 }
@@ -357,8 +357,8 @@ export function setupEventListeners(deps) {
 
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
-            if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
-            if (window.messageRenderer) window.messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+            messageRenderer?.removeMessageById(thinkingMessage.id);
+            messageRenderer?.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
             if (currentSelectedItem.id && currentTopicId) {
                 await chatAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
             }

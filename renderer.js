@@ -4,6 +4,8 @@ import { messageRenderer } from './modules/messageRenderer.js';
 import { streamManager } from './modules/renderer/streamManager.js';
 import { chatManager } from './modules/chatManager.js';
 
+window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());
+
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
@@ -793,6 +795,7 @@ const startupThemeGate = new StartupThemeGate({
         window.settingsManager.init({
             electronAPI: chatAPI,
             uiHelper: uiHelperFunctions,
+            messageRenderer,
             refs: {
                 currentSelectedItemRef: {
                     get: () => currentSelectedItem,
@@ -931,6 +934,7 @@ const startupThemeGate = new StartupThemeGate({
             },
             uiHelperFunctions,
             chatManager,
+            messageRenderer,
             itemListManager: window.itemListManager,
             settingsManager: window.settingsManager,
             uiManager: window.uiManager,

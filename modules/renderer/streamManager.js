@@ -2494,7 +2494,6 @@ export function getStreamDiagnostics() {
     });
 }
 
-// Expose to global scope for classic scripts
 export const streamManager = {
     initStreamManager,
     cleanupTransientState,
@@ -2512,7 +2511,3 @@ export const streamManager = {
         return messageInitializationStatus.has(messageId);
     }
 };
-
-// Compatibility alias for legacy Classic consumers; module consumers use the
-// explicit provider export and do not depend on ambient window state.
-window.streamManager = streamManager;

@@ -85,11 +85,12 @@ test('a runtime background-history failure releases every stream owner', async (
         const PIPELINE_MODES = window.PIPELINE_MODES;
         const createContentPipeline = window.createContentPipeline;
         ${executableSource}
+        window.__testStreamManager = streamManager;
     `);
 
     const history = [];
     const selected = { id: 'visible-agent', type: 'agent' };
-    const api = dom.window.streamManager;
+    const api = dom.window.__testStreamManager;
     api.initStreamManager({
         allowLegacyHistoryFallback: true,
         electronAPI: {
