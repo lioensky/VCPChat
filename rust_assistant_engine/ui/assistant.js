@@ -227,7 +227,6 @@ window.electronAPI.onAssistantData(async (data) => {
                 root: chatMessagesDiv,
                 streamProjection: streamManager,
                 historyPersistence,
-                messageRenderer,
                 getSelection: () => ({ id: agentId, type: 'agent' }),
                 getTopicId: getAssistantTopicId,
                 getMessageContext: () => ({

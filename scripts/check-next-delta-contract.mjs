@@ -230,8 +230,22 @@ for (const sourceFile of [
 const interactiveChatSource = read('modules/ui-system/interactive-chat-app.js');
 assert.doesNotMatch(interactiveChatSource, /__vcpCancelActiveResponse|vcp-chat-stream-terminal/,
     'independent chat must not cancel or settle through main-window global stream state');
+assert.doesNotMatch(interactiveChatSource, /from ['"]\.\.\/messageRenderer\.js|from ['"]\.\.\/chatManager\.js|window\.__vcpChat/,
+    'independent chat must consume injected mount capabilities rather than renderer singletons or window providers');
 assert.match(interactiveChatSource, /onOperation[\s\S]*operation\?\.cancel/,
     'independent chat must cancel the exact operation returned by its production send path');
+assert.doesNotMatch(read('modules/renderer/windowStreamRuntime.js'), /messageRenderer/,
+    'auxiliary stream runtime must not request an unused renderer capability');
+const standaloneChatSource = read('modules/ui-system/standalone-chat-app.js');
+assert.doesNotMatch(standaloneChatSource, /from ['"]\.\.\/messageRenderer\.js|window\.__vcp(?:Chat|Presentation)/,
+    'read-only chat must consume injected mount capabilities rather than renderer singletons or window providers');
+const nextShellSource = read('modules/ui-system/next-shell/next-shell-controller.js');
+assert.match(nextShellSource, /chat: chatCapabilities/,
+    'Next Shell must pass the chat capability closure to internal application consumers');
+assert.match(nextShellSource, /function provideChatCapabilities[\s\S]*repository: capabilities\.repository/,
+    'Next Shell must accept the real chat capability provider from the composition root');
+assert.doesNotMatch(read('renderer.js'), /window\.__vcp(?:ChatContext|ChatRepository|PresentationState)\s*=/,
+    'the renderer composition root must not publish chat services as ambient window providers');
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,
     'message edit persistence must use ChatRepository rather than renderer IPC fallbacks');
 assert.match(read('Flowlockmodules/flowlock-integration.js'), /requires a ready ChatManager provider/,

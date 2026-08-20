@@ -5,7 +5,6 @@ import { createMainChatStreamConsumer } from './mainChatStreamConsumer.js';
 export function createWindowStreamRuntime({
     streamProjection,
     historyPersistence,
-    messageRenderer,
     root,
     getSelection,
     getTopicId,
@@ -16,8 +15,8 @@ export function createWindowStreamRuntime({
     onSettled,
     reportError,
 } = {}) {
-    if (!streamProjection || !historyPersistence || !messageRenderer || !root || typeof contextFilter !== 'function') {
-        throw new TypeError('window stream runtime requires projection, renderer and context filter');
+    if (!streamProjection || !historyPersistence || !root || typeof contextFilter !== 'function') {
+        throw new TypeError('window stream runtime requires projection, persistence and context filter');
     }
     const bridge = createVcpStreamBridge({
         reportError,

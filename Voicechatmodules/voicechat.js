@@ -302,7 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 root: chatMessagesDiv,
                 streamProjection: streamManager,
                 historyPersistence,
-                messageRenderer,
                 getSelection: () => ({ id: agentId, type: 'agent' }),
                 getTopicId: getVoiceTopicId,
                 getMessageContext: () => ({

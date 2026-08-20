@@ -23,7 +23,6 @@ test('auxiliary window stream runtime owns success, persistence and disposal', a
         historyPersistence: {
             commit: async value => { calls.push(['persist', value.finishReason]); return value; },
         },
-        messageRenderer: {},
         getMessageContext: () => ({ agentName: 'Voice Agent' }),
         contextFilter: context => context?.topicId === 'voicechat_a',
         afterPersist: value => { calls.push(['terminal', value.terminal.kind]); },
@@ -52,7 +51,6 @@ test('auxiliary composer settlement still runs when durable commit fails', async
             },
         },
         historyPersistence: { async commit() { throw new Error('disk failed'); } },
-        messageRenderer: {},
         contextFilter: context => context?.topicId === 'voicechat_a',
         onSettled: ({ event }) => { settledType = event.type; },
         reportError: () => {},
@@ -77,7 +75,6 @@ test('auxiliary window close cancellation waits for the operation terminal', asy
             },
         },
         historyPersistence: { async commit(value) { calls.push('persist'); return value; } },
-        messageRenderer: {},
         contextFilter: context => context?.topicId === 'assistant_chat',
         onSettled: ({ event }) => calls.push(`settled:${event.type}`),
     });
