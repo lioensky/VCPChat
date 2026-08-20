@@ -94,6 +94,10 @@ test('voice and assistant windows cancel the real operation before durable close
         const source = fs.readFileSync(path.join(rootDirectory, relativePath), 'utf8');
         assert.match(source, /createTransientChatHistoryPersistence/);
         assert.match(source, /await streamRuntime\?\.cancel\(activeStreamingMessageId,/);
+        assert.match(source, /let historyMutationAuthority = null/);
+        assert.match(source, /historyMutationAuthority = createChatHistoryMutationAuthority/);
+        assert.match(source, /await historyMutationAuthority\?\.dispose\(\)/);
+        assert.doesNotMatch(source, /const historyMutationAuthority = createChatHistoryMutationAuthority/);
         assert.doesNotMatch(source, /waitForActiveStreamToSettle|Timed out while waiting stream to settle/);
     }
 });

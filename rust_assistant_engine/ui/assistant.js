@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let attachedFiles = [];
     let activeStreamingMessageId = null;
     let streamRuntime = null;
+    let historyMutationAuthority = null;
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
 
     const scrollToBottom = () => {
@@ -55,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('[Assistant] Error saving history on close:', error);
         } finally {
             await streamRuntime?.dispose();
+            await historyMutationAuthority?.dispose();
             window.close();
         }
     });
@@ -96,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
 
+                if (!historyMutationAuthority) throw new Error('Assistant history mutation authority is not ready');
                 await historyMutationAuthority.replace({ itemId: agentId, itemType: 'agent', topicId: newTopicId, category: 'assistant-session-close' }, persistedHistory);
                 console.log(`[Assistant] History saved to new topic: ${newTopicId}`);
 
@@ -204,7 +207,7 @@ window.electronAPI.onAssistantData(async (data) => {
                 write: history => { currentChatHistory = history; },
             });
             const historyPersistence = createTransientChatHistoryPersistence(chatRepository);
-            const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
+            historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
             messageRenderer.initializeMessageRenderer({
                 chatRepository,
                 historyMutationAuthority,

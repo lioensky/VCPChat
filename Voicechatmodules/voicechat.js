@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleInputModeBtn = document.getElementById('toggleInputModeBtn');
     const keyboardIcon = document.getElementById('keyboard-icon');
     const micIcon = document.getElementById('mic-icon');
+    let historyMutationAuthority = null;
 
     // Initialize audio context on first user gesture
     function initAudioContext() {
@@ -89,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await saveVoiceChatToHistory();
         } finally {
             await streamRuntime?.dispose();
+            await historyMutationAuthority?.dispose();
             window.close();
         }
     });
@@ -131,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
 
+                if (!historyMutationAuthority) throw new Error('Voice history mutation authority is not ready');
                 await historyMutationAuthority.replace({ itemId: agentId, itemType: 'agent', topicId: newTopicId, category: 'voice-session-close' }, persistedHistory);
                 console.log(`[VoiceChat] History saved to new topic: ${newTopicId}`);
 
@@ -280,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 write: history => { currentChatHistory = history; },
             });
             const historyPersistence = createTransientChatHistoryPersistence(chatRepository);
-            const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
+            historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
             messageRenderer.initializeMessageRenderer({
                 chatRepository,
                 historyMutationAuthority,
