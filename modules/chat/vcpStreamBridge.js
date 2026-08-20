@@ -11,7 +11,7 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
     const coordinator = createStreamCoordinator({
         reportError,
         run: (request, controls) => new Promise(resolve => {
-            const operation = { controls, resolve };
+            const operation = { controls, resolve, chain: Promise.resolve() };
             operations.set(request.sessionId, operation);
             controls.signal.addEventListener('abort', () => {
                 if (operations.get(request.sessionId) === operation) resolve({ kind: 'discarded', reason: controls.signal.reason });
@@ -56,18 +56,25 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
             if (!MANAGED_TYPES.has(event?.type) || !event?.messageId) return false;
             const operation = ensureOperation(event);
             const consumer = consumers.get(String(event.messageId));
-            consumer?.prepare?.(event);
-            if (event.type === 'data') {
-                const normalized = consumer?.normalizeChunk?.(event.chunk) ?? event.chunk;
-                operation.controls.pushChunk(normalized);
-            }
-            if (event.type === 'end' || event.type === 'error') {
-                const terminal = event.type === 'end'
-                    ? { kind: event.finish_reason || 'completed', fullResponse: event.fullResponse, context: event.context }
-                    : { kind: 'failed', error: event.error, fullResponse: event.fullResponse || event.accumulatedResponse, context: event.context };
+            operation.chain = operation.chain.then(async () => {
+                await consumer?.prepare?.(event);
+                if (event.type === 'data') {
+                    const normalized = consumer?.normalizeChunk?.(event.chunk) ?? event.chunk;
+                    operation.controls.pushChunk(normalized);
+                }
+                if (event.type === 'end' || event.type === 'error') {
+                    const terminal = event.type === 'end'
+                        ? { kind: event.finish_reason || 'completed', fullResponse: event.fullResponse, context: event.context }
+                        : { kind: 'failed', error: event.error, fullResponse: event.fullResponse || event.accumulatedResponse, context: event.context };
+                    operation.controls.terminal(terminal);
+                    operation.resolve(terminal);
+                }
+            }).catch(error => {
+                reportError('[VcpStreamBridge] event projection failed', error);
+                const terminal = { kind: 'failed', error };
                 operation.controls.terminal(terminal);
                 operation.resolve(terminal);
-            }
+            });
             return true;
         },
         async dispose() {

@@ -63,5 +63,33 @@ test('VCP bridge dispose aborts an externally-driven operation and reaches quies
     });
     bridge.accept({ type: 'data', messageId: 'pending', context: { agentId: 'a', topicId: 't' }, chunk: 'partial' });
     await bridge.dispose();
-    assert.deepEqual(seen, ['started', 'chunk']);
+    assert.deepEqual(seen, ['started'], 'dispose detaches the consumer before queued projection work can publish');
+});
+
+test('VCP bridge serializes deferred prepare before immediate chunk and terminal', async () => {
+    const seen = [];
+    let releasePrepare;
+    const prepareGate = new Promise(resolve => { releasePrepare = resolve; });
+    const bridge = createVcpStreamBridge({
+        createConsumer: () => ({
+            async prepare(event) {
+                seen.push(`prepare-start:${event.type}`);
+                if (event.type === 'data') await prepareGate;
+                seen.push(`prepare-end:${event.type}`);
+            },
+            consume: event => seen.push(`event:${event.type}`),
+            persist: value => { seen.push(`persist:${value.terminal.kind}`); },
+        }),
+    });
+    bridge.accept({ type: 'data', messageId: 'fast', context: { agentId: 'a', topicId: 't' }, chunk: 'x' });
+    bridge.accept({ type: 'end', messageId: 'fast', context: { agentId: 'a', topicId: 't' } });
+    await Promise.resolve();
+    assert.deepEqual(seen, ['event:started', 'prepare-start:data']);
+    releasePrepare();
+    await waitUntil(() => seen.includes('event:completed'));
+    assert.deepEqual(seen, [
+        'event:started', 'prepare-start:data', 'prepare-end:data', 'event:chunk',
+        'prepare-start:end', 'prepare-end:end', 'persist:completed', 'event:completed',
+    ]);
+    await bridge.dispose();
 });

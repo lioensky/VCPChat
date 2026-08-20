@@ -78,11 +78,11 @@ D0 的可重复基线由 `npm run guard:chat-kernel-consumers` 生成到 `docs/c
 
 `modules/chat/streamSession.js` 已建立纯协议层，只负责 session identity、chunk 顺序、四种终态归一化、单终态仲裁和 subscriber 隔离；不读取 DOM、Electron、history 或 desktop push。`modules/chat/streamCoordinator.js` 已建立 owner-scoped 协调层：Coordinator 私有 lease 决定提交权，同一 topic 的不同 message 可并发，同一 message retry 会撤销旧 attempt；per-conversation persistence queue、AbortController、owned cleanup 与 `done`/`dispose()` 均等待真实 Promise，不提供全局 registry、Store 或 `whenIdle()`。
 
-D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一次。持久化失败不会先发布 completed 再补发 failed，而是形成唯一 `failed` outcome，并保留原 transport outcome 作为只读证据。主聊天、VoiceChat 和 Rust Assistant 现在通过显式 `projectStreamTerminal → persistProjectedStreamTerminal` provider 由 Coordinator 等待真实提交；但 Flowlock、上下文菜单和部分旧入口仍可直接调用 legacy finalize，因此全仓唯一 authority 尚未达到退出条件。
+D2 的公共 terminal 只在 transport 停稳和 persistence settle 后发布一次。持久化失败不会先发布 completed 再补发 failed，而是形成唯一 `failed` outcome，并保留原 transport outcome 作为只读证据。主聊天、VoiceChat 和 Rust Assistant 现在通过显式 `projectStreamTerminal → persistProjectedStreamTerminal` provider，使 Coordinator 等待当前 legacy durable provider；history merge/write policy 和第二层保存队列仍位于 StreamManager。Flowlock streaming 由主窗口 bridge 消费，且上下文菜单和部分旧入口仍可直接调用 legacy finalize，因此全仓唯一 authority 尚未达到退出条件。
 
 ## D3–D5 当前施工（部分迁移，尚未 exit-ready）
 
-- 主窗口 preload 事件已经进入 `VcpStreamBridge → StreamCoordinator → MainChatStreamConsumer`，旧 `renderer.js` 的 start/data/end/error switch 已删除；VoiceChat、Rust Assistant 和 Flowlock 的流事件也已切到各自 window runtime。上下文菜单的重新生成与若干非流式 legacy 入口仍需要后续迁移。独立交互 Surface 继续共用主窗口 transport，但通过 owner-scoped route、独立 root 和 retract tombstone 隔离 DOM 与迟到结果；它尚未拥有独立 transport coordinator。
+- 主窗口 preload 事件已经进入 `VcpStreamBridge → StreamCoordinator → MainChatStreamConsumer`，旧 `renderer.js` 的 start/data/end/error switch 已删除；VoiceChat 和 Rust Assistant 已接入辅助窗口 runtime，Flowlock streaming 不再创建第二条手动 start 路径而由主窗口 bridge 消费。上下文菜单的重新生成与若干非流式 legacy 入口仍需要后续迁移。独立交互 Surface 继续共用主窗口 transport，但拥有独立 root 和可撤销 route lease；它尚未拥有独立 transport coordinator。
 - `RenderDependencies` 取代带静默默认值的可变引用袋；root、state refs、repository、transport、Markdown、feedback 和 commands 必须在 mount 时完整提供并冻结。但 `messageRenderer` 内部仍读取 `window`、`document`、Electron 和主窗口 singleton，D4 只是建立迁移闭包，不是完成纯化。辅助窗口现在显式提供短会话 `MemoryChatRepository`，不再依赖缺失 repository 的静默 fallback。
 - `MainChatSurfaceAdapter` 已组合主聊天 Surface、stream route、bridge、capability provider 与 teardown；终态副作用和错误 DOM 已从 `renderer.js` closure 移入 adapter。`renderer.js` 仍保留大量主题、设置、Electron 和 ChatManager wiring，D5 尚未完成。
 

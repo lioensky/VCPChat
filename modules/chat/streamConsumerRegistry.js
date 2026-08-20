@@ -10,21 +10,30 @@ export function createStreamConsumerRegistry() {
                 throw new Error(`stream consumer route already registered: ${messageId}`);
             }
             const token = Object.freeze({});
-            routes.set(messageId, { token, route });
+            const lease = { active: true };
+            const ownedRoute = Object.freeze({
+                get suppressed() { return !lease.active || route.suppressed === true; },
+                start(...args) { if (lease.active) return route.start?.(...args); },
+                append(...args) { if (lease.active) return route.append?.(...args); },
+                release(...args) {
+                    if (!lease.active) {
+                        if (routes.get(messageId)?.token === token) routes.delete(messageId);
+                        return;
+                    }
+                    lease.active = false;
+                    try { return route.release?.(...args); }
+                    finally { if (routes.get(messageId)?.token === token) routes.delete(messageId); }
+                },
+            });
+            routes.set(messageId, { token, route: ownedRoute });
             const release = () => {
-                if (routes.get(messageId)?.token === token) routes.delete(messageId);
+                if (routes.get(messageId)?.token !== token) return;
+                lease.active = false;
+                routes.delete(messageId);
             };
             release.retract = () => {
                 if (routes.get(messageId)?.token !== token) return;
-                const tombstone = Object.freeze({
-                    suppressed: true,
-                    start() {},
-                    append() {},
-                    release: () => {
-                        if (routes.get(messageId)?.token === token) routes.delete(messageId);
-                    },
-                });
-                routes.set(messageId, { token, route: tombstone });
+                lease.active = false;
             };
             return release;
         },

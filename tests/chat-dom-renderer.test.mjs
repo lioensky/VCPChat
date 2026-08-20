@@ -66,3 +66,13 @@ test('ChatDomRenderer retracts owned routes before waiting for render work', asy
     await adapter.dispose();
     assert.deepEqual(calls, ['retract']);
 });
+
+test('ChatDomRenderer awaits failing and asynchronous owner disposal without starving later owners', async () => {
+    const root = new JSDOM('<div></div>').window.document.querySelector('div');
+    const calls = [];
+    const adapter = createChatDomRenderer({ root, renderer: {} });
+    adapter.own(async () => { await Promise.resolve(); calls.push('async'); });
+    adapter.own(() => { calls.push('throw'); throw new Error('controlled'); });
+    await adapter.dispose();
+    assert.deepEqual(calls, ['throw', 'async']);
+});

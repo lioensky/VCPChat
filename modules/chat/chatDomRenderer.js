@@ -32,7 +32,7 @@ export function createChatDomRenderer({ root, renderer, disposeRenderer = null }
         async dispose({ clear = false } = {}) {
             if (disposed) return;
             disposed = true;
-            ownedDisposers.splice(0).reverse().forEach(disposeOwned => disposeOwned());
+            await Promise.allSettled(ownedDisposers.splice(0).reverse().map(disposeOwned => Promise.resolve().then(disposeOwned)));
             await Promise.allSettled([...pending]);
             await disposeRenderer?.();
             if (clear) root.replaceChildren();

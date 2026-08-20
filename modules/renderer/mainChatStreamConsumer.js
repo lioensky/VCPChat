@@ -33,7 +33,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
         normalizeChunk: normalizeStreamChunk,
         async prepare(event) {
             context = { ...context, ...(event.context || {}) };
-            if ((event.type === 'agent_thinking' || event.type === 'start' || event.type === 'data') && preparedType === null) {
+            if (preparedType === null) {
                 preparedType = event.type;
                 await (projection?.start || capabilities.start)(buildMessage({ ...event, context }));
             }
