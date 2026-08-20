@@ -758,6 +758,7 @@ const startupThemeGate = new StartupThemeGate({
                 topicListManager: window.topicListManager,
                 groupRenderer: window.GroupRenderer,
                 streamManager,
+                interruptHandler,
             },
             refs: {
                 currentSelectedItemRef: {
