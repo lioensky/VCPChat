@@ -25,13 +25,15 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
     dom.window.__messageEditTestApi.initializeContextMenu({
         electronAPI: {
             watcherBegin: async () => ({ success: true, token: 'edit-lease' }),
-            saveChatHistory: async (_itemId, _topicId, nextHistory) => {
-                durableWrites.push(JSON.parse(JSON.stringify(nextHistory)));
-                return { success: true };
-            },
             watcherStart: async () => {
                 watcherRestarts += 1;
                 throw new Error('controlled watcher restart failure');
+            },
+        },
+        chatRepository: {
+            saveHistory: async (_itemId, _type, _topicId, nextHistory) => {
+                durableWrites.push(JSON.parse(JSON.stringify(nextHistory)));
+                return { success: true };
             },
         },
         markedInstance: { parse: value => value },

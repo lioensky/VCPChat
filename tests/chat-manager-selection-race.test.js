@@ -139,6 +139,7 @@ function createFixture() {
         },
     };
     window.chatManager.init({
+        allowLegacyHistoryFallback: true,
         electronAPI,
         uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
         modules: {

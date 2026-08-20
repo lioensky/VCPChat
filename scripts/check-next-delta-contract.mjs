@@ -122,6 +122,78 @@ const itemListSource = read('modules/itemListManager.js');
 assert.doesNotMatch(itemListSource, /assistant-catalog|getCatalogState|getCatalogSnapshot|whenSettled|catalogChannel/,
     'item list must not publish a test-only catalog store');
 
+const chatRepositorySource = read('modules/chat/chatRepository.js');
+assert.match(chatRepositorySource, /createChatRepository/,
+    'ChatRepository must define the explicit history capability boundary');
+assert.match(read('renderer.js'), /createChatRepository\(chatAPI\)[\s\S]*?chatRepository/,
+    'ChatRepository must have a real main renderer consumer');
+assert.match(read('renderer.js'), /topicListManager\.init\([\s\S]*?chatRepository,/,
+    'TopicListManager must receive the shared ChatRepository at its production entry');
+assert.match(read('renderer.js'), /searchManager\.init\([\s\S]*?chatRepository,/,
+    'SearchManager must receive the shared ChatRepository at its production entry');
+assert.match(read('modules/messageRenderer.js'), /streamManager\.initStreamManager\([\s\S]*?chatRepository:/,
+    'StreamManager must receive the shared ChatRepository at its production entry');
+assert.match(read('modules/chat/chatDomRenderer.js'), /createChatDomRenderer/,
+    'ChatDomRenderer must define the explicit root/teardown adapter');
+assert.match(read('modules/chat/contentRuntime.js'), /createRenderModel/,
+    'ContentRuntime must expose a DOM-free render-model operation');
+assert.doesNotMatch(read('modules/chat/contentRuntime.js'), /from ['"]\.\.\/renderer\//,
+    'ContentRuntime must not depend on renderer implementation modules');
+assert.doesNotMatch(read('modules/chat/chatSurface.js'), /presentationState\?\.subscribe\?\.\(\(\) => \{\}\)/,
+    'ChatSurface must not create a test-only no-op state subscription');
+assert.match(read('modules/renderer/streamManager.js'), /createRenderModel\([\s\S]*PIPELINE_MODES\.STREAM_FAST/,
+    'StreamManager must consume the DOM-free ContentRuntime render model');
+assert.match(read('modules/messageRenderer.js'), /cleanupAnimationsInContent\(contentDiv\)[\s\S]*unobserveMessage\(messageItem\)/,
+    'message teardown must release animation and visibility resources per root');
+assert.match(read('modules/messageRenderer.js'), /vcpAudioCleanup[\s\S]*listenerDisposers[\s\S]*audio\.removeAttribute\('src'\)/,
+    'audio controls must remove listeners and release media sources on root teardown');
+assert.match(read('modules/messageRenderer.js'), /disposeRootResources[\s\S]*cleanupMessageDomResources/,
+    'independent ChatSurface roots must have an explicit resource disposer');
+assert.match(read('modules/renderer/animation.js'), /cleanupAnimationsInContent[\s\S]*renderer\.dispose\(\)/,
+    'animation cleanup must dispose Three.js renderers');
+assert.match(read('modules/renderer/animation.js'), /_vcpMutationObserver[\s\S]*disconnect/,
+    'Three.js DOM observers must disconnect with their owning renderer');
+assert.match(read('modules/renderer/contentProcessor.js'), /scheduleOwnedTimeout[\s\S]*clearOwnedTimeouts[\s\S]*cleanupPreviewsInContent/,
+    'content processor delayed work must be owned by the message root and cleared on teardown');
+assert.match(read('modules/chat/chatOperation.js'), /cancelRequested[\s\S]*if \(cancelRequested\) return true/,
+    'interactive surface cancellation must be idempotent for repeated user actions');
+assert.match(read('modules/renderer/streamManager.js'), /flushHistorySave[\s\S]*await flushHistorySave\(storedContext\)/,
+    'stream terminal persistence must await the real history save instead of relying on debounce timing');
+assert.match(read('renderer.js'), /createChatSurface\([\s\S]*?mode: 'interactive'/,
+    'main chat must be owned by a real ChatSurface');
+assert.match(read('modules/ui-system/standalone-chat-app.js'), /id: 'standalone-chat-history'/,
+    'standalone read-only chat must have a registered internal-app consumer');
+assert.match(read('modules/ui-system/standalone-chat-app.js'), /createChatSurfaceSlots/,
+    'named surface slots must have a real production consumer');
+assert.match(read('renderer.js'), /createChatOperations/,
+    'main chat must have a real operation consumer');
+assert.match(read('modules/chat/chatPresentationState.js'), /createChatPresentationState/,
+    'presentation state must define a narrow read-only state provider');
+assert.match(read('modules/ui-system/standalone-chat-app.js'), /createChatPresentationState/,
+    'standalone presentation must consume the formal state provider');
+assert.match(read('modules/ui-system/standalone-chat-app.js'), /createPresentationSkin/,
+    'standalone presentation must consume the controlled skin provider');
+assert.match(read('modules/ui-system/standalone-chat-app.js'), /createChatThemePlugin/,
+    'standalone presentation must consume the token-only theme provider');
+assert.match(read('modules/ui-system/standalone-chat-app.js'), /createChatPluginLoader[\s\S]*pluginLoader\.install/,
+    'standalone presentation must consume the controlled chat plugin loader');
+assert.match(read('modules/chat/chatPluginManifest.js'), /subscribeState[\s\S]*presentation-state capability/,
+    'chat plugin state subscriptions must be capability-gated');
+assert.match(read('main.html'), /modules\/ui-system\/standalone-chat-app\.js/,
+    'standalone chat app must be loaded by the real renderer entry');
+assert.match(read('modules/ui-system/interactive-chat-app.js'), /id: 'standalone-chat-compose'/,
+    'interactive chat must have a registered internal-app consumer');
+for (const sourceFile of [
+    'modules/chatManager.js', 'modules/messageRenderer.js',
+    'modules/renderer/messageContextMenu.js', 'modules/renderer/streamManager.js',
+    'modules/topicListManager.js', 'modules/searchManager.js'
+]) {
+    assert.match(read(sourceFile), /chatRepository/,
+        `${sourceFile} must consume the shared ChatRepository boundary or explicitly retain its compatibility fallback`);
+}
+assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /electronAPI\.save(?:Group)?ChatHistory/,
+    'message edit persistence must use ChatRepository rather than renderer IPC fallbacks');
+
 const contributionSource = read('modules/ui-system/contribution-registry.js');
 assert.doesNotMatch(contributionSource, /new ContributionRegistry\(['"](?:menu|setting)['"]\)|\bmenus\b|\bsettings\b/,
     'contribution registry must not expose kinds without production producers and consumers');

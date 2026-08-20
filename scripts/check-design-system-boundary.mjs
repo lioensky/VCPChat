@@ -10,7 +10,11 @@ const root = process.cwd();
 // changes look like design-system violations. Environment overrides remain
 // available when a PR intentionally audits against a newly reviewed snapshot.
 const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'b5931a69d0815a1dfd60c079093ed5518a73dc77';
-const upstreamRef = process.env.VCP_UPSTREAM_REF || sourceRef;
+// Compare the reviewed subtraction snapshot against the current product main
+// as the second ancestry boundary. The snapshot is intentionally not itself
+// the upstream ref: this branch may contain unrelated upstream product work
+// that is already present on main and must not be reported as a design delta.
+const upstreamRef = process.env.VCP_UPSTREAM_REF || 'origin/main';
 const failures = [];
 
 const forbiddenPaths = [
@@ -41,6 +45,8 @@ const allowedSourceDifferences = new Set([
     'docs/next-ui-webawesome-roadmap.md',
     'docs/next-ui-lifecycle-architecture.md',
     'docs/next-ui-development-roadmap.md',
+    'docs/deepseek-harness-ui-ux-research.md',
+    'docs/ui-interaction-accessibility-roadmap.md',
     'docs/next-ui-current-state.md',
     'docs/classic-retirement-architecture.md',
     'docs/classic-retirement-inventory.md',
@@ -72,6 +78,9 @@ const allowedSourceDifferences = new Set([
     'modules/ipc/windowHandlers.js',
     'modules/mainChatCommands.js',
     'modules/messageRenderer.js',
+    'modules/renderer/animation.js',
+    'modules/renderer/contentPipeline.js',
+    'modules/renderer/contentProcessor.js',
     'modules/notificationRenderer.js',
     'modules/renderer/messageContextMenu.js',
     'modules/renderer/streamManager.js',
@@ -211,6 +220,7 @@ const allowedSourceDifferences = new Set([
     'styles/components.css',
     'styles/settings.css',
     'styles/themes.css',
+    'styles/chat.css',
     'styles/appearance.css',
     'styles/setting/settings-global-modal.css',
     'styles/themes/themes纸墨与机芯.css',
@@ -239,6 +249,9 @@ const allowedSourceDifferences = new Set([
 ]);
 const allowedSourceDifferencePatterns = [
     /^vendor\/webawesome(?:-runtime)?\//,
+    /^modules\/chat\//,
+    /^modules\/ui-system\/(?:standalone-chat-app|interactive-chat-app)\.js$/,
+    /^tests\/(?:chat-|content-pipeline)/,
     /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\//,
     /^Notemodules\/notemini\.(?:html|js|css)$/,
 ];

@@ -803,6 +803,79 @@ try {
         await page.evaluate(() => window.streamManager?.cleanupTransientState?.());
     };
     await ensureInitialConversation();
+    // C6 real VCP fixture matrix: the independent interactive surface must
+    // use the production preload/VCP path, expose a real terminal state, and
+    // retain retry capability after a controlled failure.
+    await page.evaluate(() => window.topTabManager.openInternalApp('standalone-chat-compose'));
+    await page.waitForSelector('.vcp-interactive-chat__composer textarea', { timeout });
+    const standaloneRoot = '.vcp-interactive-chat';
+    const sendStandalone = async (content) => {
+        const before = fixture.requests.length;
+        await page.evaluate(({ root, value }) => {
+            const form = document.querySelector(`${root} form`);
+            const input = form?.querySelector('textarea');
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            form?.requestSubmit();
+        }, { root: standaloneRoot, value: content });
+        const requestDeadline = Date.now() + 8_000;
+        while (fixture.requests.length <= before && Date.now() < requestDeadline) await sleep(10);
+        assert.ok(fixture.requests.length > before, `standalone VCP request did not reach fixture: ${content}`);
+    };
+    await sendStandalone('standalone-success');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已发送', { timeout });
+    await page.waitForFunction(() => {
+        const root = document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages');
+        return Boolean(root?.querySelector('.message-item') && root.textContent.includes('fixture'));
+    }, { timeout });
+    await sendStandalone('sequence-fail');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent?.includes('发送失败'), { timeout });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    const standaloneFailureState = await page.evaluate(() => ({
+        status: document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent || '',
+        root: document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages')?.dataset.chatSurface || '',
+        independent: document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages') !== document.getElementById('chatMessages'),
+    }));
+    assert.equal(standaloneFailureState.root, 'interactive');
+    assert.equal(standaloneFailureState.independent, true);
+    // Closing an interactive surface while its real operation is pending must
+    // reach quiescence before the owner is gone; the late stream terminal must
+    // not recreate or mutate the detached surface.
+    await sendStandalone(`sequence-hold-close-${Date.now()}`);
+    const closeKey = [...fixture.pending.keys()].find(key => key.startsWith('close-'));
+    assert.ok(closeKey, 'close-while-pending fixture request was not observed');
+    await page.evaluate(() => {
+        window.topTabManager.closeView('app:standalone-chat-compose');
+        window.topTabManager.closeView('app:standalone-chat-compose');
+    });
+    fixture.release(closeKey);
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat'), { timeout });
+    await sleep(200);
+    assert.equal(await page.$('.vcp-interactive-chat'), null, 'late terminal recreated disposed interactive surface');
+    await page.evaluate(() => window.topTabManager.openInternalApp('standalone-chat-compose'));
+    await page.waitForSelector('.vcp-interactive-chat__composer textarea', { timeout });
+    const independentCancelKey = `independent-${Date.now()}`;
+    await sendStandalone(`sequence-hold-${independentCancelKey}`);
+    await fixture.waitPending(independentCancelKey);
+    await page.click('.vcp-interactive-chat__composer [data-action="cancel"]');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已取消', { timeout });
+    fixture.release(independentCancelKey);
+    await page.waitForFunction(() => !window.streamManager?.getActiveStreamingMessageId?.(), { timeout });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    await sendStandalone('sequence-disconnect');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent?.includes('发送失败'), { timeout });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    await page.evaluate(() => {
+        const input = document.querySelector('.vcp-interactive-chat__composer textarea');
+        input.value = 'standalone-retry';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.equal(await page.$eval('.vcp-interactive-chat__composer textarea', input => input.disabled), false, 'disconnect left standalone composer locked');
+    await page.evaluate(() => {
+        window.topTabManager.closeView('app:standalone-chat-compose');
+        window.topTabManager.closeView('app:standalone-chat-compose');
+    });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat'), { timeout });
     await warmRendererLifecycleBaseline();
     await driver.sendFault('fail');
     await resetFixtureConversationState();
