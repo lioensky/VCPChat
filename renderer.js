@@ -365,6 +365,14 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         currentChatHistoryRef: conversationCapability.historyRef,
         currentSelectedItemRef: conversationCapability.selectedItemRef,
         currentTopicIdRef: conversationCapability.topicIdRef,
+        viewAuthority: {
+            isCurrent: context => {
+                const selected = conversationCapability.selectedItemRef.get();
+                const topicId = conversationCapability.topicIdRef.get();
+                const itemId = context?.groupId || context?.agentId;
+                return Boolean(selected?.id && topicId && itemId === selected.id && context?.topicId === topicId);
+            }
+        },
         globalSettingsRef: { get: () => localSettings, set: value => { localSettings = value; } },
         chatMessagesDiv: root,
         electronAPI: chatAPI,

@@ -198,6 +198,13 @@ const report = {
     ],
 };
 const rendererSource = source('renderer.js');
+const messageRendererSource = source('modules/messageRenderer.js');
+assert.match(messageRendererSource, /export function createMessageRenderer\(options = \{\}\) \{[\s\S]*const surfaceId = String\(/,
+    'MessageRenderer must create a stable per-instance Surface namespace');
+assert.match(messageRendererSource, /const ownedStyleElements = new Set\(\)/,
+    'MessageRenderer must own injected style nodes per renderer instance');
+assert.match(messageRendererSource, /for \(const styleElement of ownedStyleElements\)/,
+    'MessageRenderer style cleanup must use instance-owned nodes');
 const streamHandlerStart = rendererSource.indexOf('chatAPI.onVCPStreamEvent');
 const streamHandlerEnd = rendererSource.indexOf('chatAPI.onVCPGroupTopicUpdated', streamHandlerStart);
 const streamHandlerSource = rendererSource.slice(streamHandlerStart, streamHandlerEnd < 0 ? undefined : streamHandlerEnd);

@@ -194,6 +194,14 @@ let transientCleanupRegistered = false;
 let transientCleanupWindow = null;
 let desktopPushConsumer = null;
 let disposed = false;
+const pendingAsyncOperations = new Set();
+
+function trackAsyncOperation(operation) {
+    const promise = Promise.resolve(operation);
+    pendingAsyncOperations.add(promise);
+    promise.finally(() => pendingAsyncOperations.delete(promise)).catch(() => {});
+    return promise;
+}
 
 const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
 const ownerWindow = () => refs.window || ownerDocument()?.defaultView || null;
@@ -315,6 +323,9 @@ function getCurrentViewSignature() {
  */
 function isMessageForCurrentView(context) {
     if (!context) return false;
+    if (refs.viewAuthority && typeof refs.viewAuthority.isCurrent === 'function') {
+        return refs.viewAuthority.isCurrent(context) === true;
+    }
     
     const newSignature = getCurrentViewSignature();
     
@@ -2263,6 +2274,7 @@ async function dispose() {
         activeStreamingMessages.clear();
         currentViewSignature = null;
         globalRenderLoopRunning = false;
+        await Promise.allSettled([...pendingAsyncOperations]);
     
         console.debug('[StreamManager] Transient state cleared');
     }
@@ -2303,9 +2315,9 @@ function getStreamDiagnostics() {
 return Object.freeze({
     initStreamManager,
     dispose,
-    startStreamingMessage,
+    startStreamingMessage: (...args) => trackAsyncOperation(startStreamingMessage(...args)),
     appendStreamChunk,
-    projectStreamTerminal,
+    projectStreamTerminal: (...args) => trackAsyncOperation(projectStreamTerminal(...args)),
     discardStreamingMessage,
     getDiagnostics: getStreamDiagnostics,
     isMessageActive,

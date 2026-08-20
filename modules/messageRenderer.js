@@ -28,6 +28,7 @@ import { createMiddleClickHandler } from './renderer/middleClickHandler.js';
 // modules/messageRenderer.js
 
 export function createMessageRenderer(options = {}) {
+const surfaceId = String(options.surfaceId || `surface-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
 const features = Object.freeze({
     contextMenu: options.enableContextMenu !== false,
     middleClick: options.enableMiddleClick !== false,
@@ -43,6 +44,7 @@ const contextMenu = options.contextMenu || createMessageContextMenu();
 const middleClickHandler = options.middleClickHandler || createMiddleClickHandler();
 const imageHandler = options.imageHandler || createImageHandler({ fixUrl: emoticonUrlFixer.fixEmoticonUrl });
 const colorExtractionPromises = new Map();
+const ownedStyleElements = new Set();
 
 async function getDominantAvatarColorCached(url) {
     if (!colorExtractionPromises.has(url)) {
@@ -2591,6 +2593,14 @@ function initializeMessageRenderer(refs) {
         currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
         currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
         currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
+        viewAuthority: {
+            isCurrent: context => {
+                const selected = mainRendererReferences.currentSelectedItemRef.get();
+                const topicId = mainRendererReferences.currentTopicIdRef.get();
+                const itemId = context?.groupId || context?.agentId;
+                return Boolean(selected?.id && topicId && itemId === selected.id && context?.topicId === topicId);
+            }
+        },
         chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
         parseTail: parseStreamTailMarkdown,
         parseFull: parseFullMarkdown,
