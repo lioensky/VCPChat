@@ -1,15 +1,15 @@
 {
   "modules/chatManager.js": {
-    "sha256": "a6aad9557cd16f73da6705d8b8d259238f2f35894c14fcaf6255eaa756ec30f1",
-    "reason": "upstream chat core plus reviewed ESM provider export with no production window facade, exact message-scoped Surface routing, operation-specific settlement and cancellation, explicit durable history mutation authority, independent conversation capability consumption that does not reread main-window selection or history, and mandatory repository access without a direct IPC fallback"
+    "sha256": "060d6f91554057a463fed9ff27ab076c9a53e03d9f3c2ba674937a494b60728b",
+    "reason": "upstream chat core plus reviewed ESM provider export, exact Surface stream routing, explicit independent conversation capability, propagated auxiliary operation failures, durable history authority, and no direct IPC fallback"
   },
   "modules/messageRenderer.js": {
-    "sha256": "5b3722ca3a1bd5b91ec840776574b542d6a0d07d6ff1e09267626d71ed956ae8",
-    "reason": "upstream message semantics plus reviewed Surface-owned renderer factory state, frozen RenderDependencies closure with explicit chat capabilities and durable history mutation authority, an injected per-Surface StreamProjection, coordinator-owned terminal entry points, no shared exported renderer instance, per-root render generation, owned scheduler quiescence and resource/media/style cleanup, renderer-owned content, image, emoticon, context-menu, middle-click and visibility providers, explicit delayed-listener-timer teardown, child-Surface feature isolation and DOM-free transforms"
+    "sha256": "7b9a918479ea82bba75b3375ed2f9eaff9e6d52457ce9a9df2740d548c487a02",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, injected realm/services/capabilities, per-Surface StreamProjection, owned scheduler/resource teardown, and no ambient renderer command, flowlock, Pretext or send-button facade"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "c57a5e453acdc6d712de6e3875324673b26a17c6e8196102cd0926a95f5706ab",
-    "reason": "per-Surface stream DOM projection factory with no exported singleton, hidden root side channel, direct durable commit facade or global send-button mutation; each owner receives one explicit root, state and side-effect capability set, disposes its unload listener and transient state to quiescence, consumes ContentRuntime render models, and delegates Desktop push to an owned subscription/timer consumer"
+    "sha256": "2483e5bdd5b0f596e84af33137ac1083733cef5c4badca806bce0fa01baf74f5",
+    "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, no exported singleton or hidden root side channel, no direct durable commit or global send-button facade, owner-quiescent disposal, ContentRuntime render models, and owned Desktop push subscription/timer consumer"
   },
   "modules/topicListManager.js": {
     "sha256": "ee31c578ad3fd6e8af5cb3788a56572b5bdd26d63f7be684c6bcf0eec6b510e1",

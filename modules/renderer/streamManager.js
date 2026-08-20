@@ -195,6 +195,9 @@ let transientCleanupWindow = null;
 let desktopPushConsumer = null;
 let disposed = false;
 
+const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
+const ownerWindow = () => refs.window || ownerDocument()?.defaultView || null;
+
 // --- Pre-compiled Regular Expressions for Performance ---
 
 /**
@@ -209,7 +212,8 @@ function initStreamManager(dependencies) {
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
     if (!transientCleanupRegistered) {
-        transientCleanupWindow = dependencies.chatMessagesDiv?.ownerDocument?.defaultView || window;
+        transientCleanupWindow = dependencies.window || dependencies.chatMessagesDiv?.ownerDocument?.defaultView || null;
+        if (!transientCleanupWindow) throw new TypeError('StreamProjection requires an owning window capability');
         transientCleanupWindow.addEventListener('beforeunload', dispose);
         transientCleanupRegistered = true;
     }
@@ -385,19 +389,19 @@ function ensureStreamingRoots(contentDiv) {
 
     if (!stableRoot || !tailRoot) {
         contentDiv.innerHTML = '';
-        stableRoot = document.createElement('div');
+        stableRoot = ownerDocument().createElement('div');
         stableRoot.className = 'vcp-stream-stable-root';
-        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot = ownerDocument().createElement('div');
         stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
         stableRoot.appendChild(stableBlocksRoot);
-        tailRoot = document.createElement('div');
+        tailRoot = ownerDocument().createElement('div');
         tailRoot.className = 'vcp-stream-tail-root';
         contentDiv.appendChild(stableRoot);
         contentDiv.appendChild(tailRoot);
     } else if (!stableBlocksRoot) {
         // 兼容旧的 stableRoot 结构：后续追加式固化只写入 stableBlocksRoot。
         // 如果 stableRoot 已有旧内容，先原样搬入 blocksRoot，避免切换实现时丢失已渲染 DOM。
-        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot = ownerDocument().createElement('div');
         stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
         while (stableRoot.firstChild) {
             stableBlocksRoot.appendChild(stableRoot.firstChild);
@@ -457,7 +461,7 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
         settings = null
     } = options;
 
-    const blockEl = document.createElement('div');
+    const blockEl = ownerDocument().createElement('div');
     const blockRecord = createStableBlockRecord(
         segmentState,
         segmentState.stableRenderedCutoff,
@@ -537,7 +541,7 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
     stableBlocksRoot.replaceChildren();
 
     for (const record of segmentState.stableBlocks) {
-        const blockEl = document.createElement('div');
+    const blockEl = ownerDocument().createElement('div');
         blockEl.className = 'vcp-stream-stable-block';
         blockEl.dataset.vcpStreamStableBlock = 'true';
         blockEl.dataset.vcpBlockKey = record.id;
@@ -1190,7 +1194,8 @@ function processStreamTailImages(container) {
 
 function highlightCompletedStreamingCodeLine(lineElement) {
     if (!lineElement || lineElement.dataset.vcpStreamCodeHighlighted === 'true') return;
-    if (!window.hljs) return;
+    const syntaxHighlighter = refs.hljs || ownerWindow()?.hljs;
+    if (!syntaxHighlighter) return;
 
     const codeElement = lineElement.closest('code');
     const languageClass = codeElement
@@ -1204,14 +1209,14 @@ function highlightCompletedStreamingCodeLine(lineElement) {
     try {
         let highlightedHtml = '';
 
-        if (lineText && language && window.hljs.getLanguage?.(language)) {
-            highlightedHtml = window.hljs.highlight(lineText, {
+        if (lineText && language && syntaxHighlighter.getLanguage?.(language)) {
+            highlightedHtml = syntaxHighlighter.highlight(lineText, {
                 language,
                 ignoreIllegals: true
             }).value;
         } else if (lineText) {
             // 没有语言标记时也只在该行完成时自动检测一次，而不是每帧重复检测。
-            highlightedHtml = window.hljs.highlightAuto(lineText).value;
+            highlightedHtml = syntaxHighlighter.highlightAuto(lineText).value;
         }
 
         if (highlightedHtml) {
@@ -1227,9 +1232,9 @@ function highlightCompletedStreamingCodeLine(lineElement) {
 
 function playStreamingCodeLineSweep(lineElement, delayMs = 0) {
     if (!lineElement || typeof lineElement.animate !== 'function') return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (ownerWindow()?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
 
-    const isLightTheme = document.body.classList.contains('light-theme');
+    const isLightTheme = ownerDocument()?.body?.classList.contains('light-theme');
     const baseColor = isLightTheme ? '#333333' : '#abb2bf';
     const colorSweep = isLightTheme
         ? `linear-gradient(90deg, transparent 0%, transparent 24%, #0077b6 37%, #6f42c1 46%, #d63384 54%, #b26a00 63%, #238636 70%, transparent 82%, transparent 100%)`
@@ -1446,7 +1451,7 @@ function renderStreamFrame(messageId) {
                 }
                 
                 // 🟢 保留输入焦点
-                if (fromEl === document.activeElement) {
+                if (fromEl === ownerDocument()?.activeElement) {
                     requestAnimationFrame(() => toEl.focus());
                 }
                 
@@ -2155,7 +2160,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
             
             const nameTimeBlock = messageItem.querySelector('.name-time-block');
             if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
-                const timestampDiv = document.createElement('div');
+                const timestampDiv = ownerDocument().createElement('div');
                 timestampDiv.classList.add('message-timestamp');
                 timestampDiv.textContent = formatMessageTimestamp(message.timestamp || Date.now());
                 nameTimeBlock.appendChild(timestampDiv);
