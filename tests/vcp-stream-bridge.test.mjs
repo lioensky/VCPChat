@@ -51,3 +51,17 @@ test('VCP bridge ignores unrelated events and normalizes error once', async () =
     assert.equal(terminals[0].outcome.transport.kind, 'failed');
     await bridge.dispose();
 });
+
+test('VCP bridge dispose aborts an externally-driven operation and reaches quiescence', async () => {
+    const seen = [];
+    const bridge = createVcpStreamBridge({
+        createConsumer: () => ({
+            prepare() {},
+            consume: event => seen.push(event.type),
+            persist() { throw new Error('discarded operations must not persist'); },
+        }),
+    });
+    bridge.accept({ type: 'data', messageId: 'pending', context: { agentId: 'a', topicId: 't' }, chunk: 'partial' });
+    await bridge.dispose();
+    assert.deepEqual(seen, ['started', 'chunk']);
+});

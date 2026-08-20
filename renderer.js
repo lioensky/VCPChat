@@ -1,6 +1,4 @@
-import { createVcpStreamBridge } from './modules/chat/vcpStreamBridge.js';
-import { createMainChatStreamConsumer } from './modules/renderer/mainChatStreamConsumer.js';
-import { createStreamConsumerRegistry } from './modules/chat/streamConsumerRegistry.js';
+import { createMainChatSurfaceAdapter } from './modules/renderer/mainChatSurfaceAdapter.js';
 
 // --- Globals ---
 let globalSettings = {
@@ -78,7 +76,6 @@ window.__vcpRendererReady = false;
 window.__vcpPendingTopicSelection = null;
 const chatAPI = window.chatAPI || window.electronAPI;
 const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
-const streamConsumerRegistry = createStreamConsumerRegistry();
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -318,7 +315,6 @@ import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/s
 import { setupEventListeners } from './modules/event-listeners.js';
 import { createChatContext } from './modules/chat/chatContext.js';
 import { createChatRepository } from './modules/chat/chatRepository.js';
-import { createChatSurface } from './modules/chat/chatSurface.js';
 import { createChatOperations } from './modules/chat/chatOperation.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
@@ -336,6 +332,62 @@ window.__vcpPresentationState = presentationState;
 window.__vcpChatRepository = chatRepository;
 let mainChatDomRenderer = null;
 let mainChatSurface = null;
+let mainChatAdapter = null;
+
+function createMainChatStreamCapabilities() {
+    return {
+        start: message => {
+            const start = window.streamManager?.startStreamingMessage
+                || window.messageRenderer?.startStreamingMessage;
+            return start?.(message);
+        },
+        append: (messageId, chunk, context) => window.messageRenderer.appendStreamChunk(messageId, chunk, context),
+        finalize: (messageId, finishReason, context, payload) => (
+            window.messageRenderer.finalizeStreamedMessage(messageId, finishReason, context, payload)
+        ),
+        dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+        async afterPersist({ terminal, finalized, context, messageId }) {
+            const finalizedContext = finalized?.context || context;
+            const finalizedContent = finalized?.content || terminal.fullResponse || '';
+            const relevant = finalizedContext
+                && currentSelectedItem
+                && (finalizedContext.groupId
+                    ? finalizedContext.groupId === currentSelectedItem.id
+                    : finalizedContext.agentId === currentSelectedItem.id)
+                && finalizedContext.topicId === currentTopicId;
+            if (terminal.kind === 'completed' && finalizedContext && !finalizedContext.isGroupMessage && relevant) {
+                await window.chatManager.attemptTopicSummarizationIfNeeded();
+            }
+            await window.flowlockManager?.handleFinalizedMessage({
+                type: terminal.kind === 'failed' ? 'error' : 'end', messageId,
+                context: finalizedContext, content: finalizedContent,
+                finishReason: finalized?.finishReason || terminal.finishReason || terminal.kind,
+                error: terminal.error || null,
+            });
+        },
+        renderError({ event, context }) {
+            const relevant = context && currentSelectedItem
+                && (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id)
+                && context.topicId === currentTopicId;
+            if (!relevant) return;
+            const error = event.outcome?.transport?.error?.message
+                || event.outcome?.transport?.error
+                || event.outcome?.persistence?.error?.message
+                || '未知连接错误';
+            const errorContent = document.querySelector(`.message-item[data-message-id="${event.messageId}"] .md-content`);
+            if (errorContent) {
+                const paragraph = document.createElement('p');
+                const strong = document.createElement('strong');
+                strong.style.color = 'red';
+                strong.textContent = `流错误: ${error}`;
+                paragraph.appendChild(strong);
+                errorContent.appendChild(paragraph);
+            } else {
+                window.messageRenderer.renderMessage({ role: 'system', content: `流处理错误 (ID: ${event.messageId}): ${error}`, timestamp: Date.now(), id: `err_${event.messageId}` });
+            }
+        },
+    };
+}
 
 const startupThemeGate = new StartupThemeGate({
     document,
@@ -476,66 +528,50 @@ const startupThemeGate = new StartupThemeGate({
     if (window.messageRenderer) {
         interruptHandler.initialize(chatAPI);
 
-        mainChatSurface = createChatSurface({
+        const renderDependencies = {
+            chatRepository,
+            currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
+            currentSelectedItemRef: {
+                get: () => currentSelectedItem,
+                set: (val) => { currentSelectedItem = val; window.currentSelectedItem = val; }
+            },
+            currentTopicIdRef: {
+                get: () => currentTopicId,
+                set: (val) => { currentTopicId = val; window.currentTopicId = val; }
+            },
+            globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
+            chatMessagesDiv,
+            electronAPI: chatAPI,
+            markedInstance,
+            uiHelper: uiHelperFunctions,
+            interruptHandler,
+            summarizeTopicFromMessages: (messages, agentName) => {
+                if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);
+                console.error('[MessageRenderer] summarizeTopicFromMessages function not found on window scope.');
+                return `关于 "${messages.find(m => m.role === 'user')?.content.substring(0, 15) || '...'}" (备用)`;
+            },
+            handleCreateBranch: selectedMessage => window.chatManager?.handleCreateBranch(selectedMessage),
+        };
+        mainChatAdapter = createMainChatSurfaceAdapter({
             root: chatMessagesDiv,
             renderer: window.messageRenderer,
             repository: chatRepository,
             focusTarget: messageInput,
-            mode: 'interactive'
-            , operations: createChatOperations({
+            operations: createChatOperations({
                 send: request => window.chatManager?.sendMessage?.(request),
                 cancel: () => interruptActiveResponseFromSendButton()
-            })
-            , presentationState
-            , disposeRenderer: async () => {
+            }),
+            presentationState,
+            renderDependencies,
+            streamCapabilities: createMainChatStreamCapabilities(),
+            disposeRenderer: async () => {
                 window.messageRenderer.disposeRendererResources();
                 await window.streamManager?.cleanupTransientState?.();
-            }
+            },
         });
-        mainChatDomRenderer = mainChatSurface.renderer;
-        window.addEventListener('beforeunload', () => mainChatSurface?.dispose(), { once: true });
-
-        window.messageRenderer.initializeMessageRenderer({
-            chatRepository,
-            chatDomRenderer: mainChatDomRenderer,
-            currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
-            currentSelectedItemRef: {
-                get: () => currentSelectedItem,
-                set: (val) => {
-                    currentSelectedItem = val;
-                    window.currentSelectedItem = val;
-                }
-            },
-            currentTopicIdRef: {
-                get: () => currentTopicId,
-                set: (val) => {
-                    currentTopicId = val;
-                    window.currentTopicId = val;
-                }
-            },
-            globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
-            chatMessagesDiv: chatMessagesDiv,
-            electronAPI: chatAPI,
-            markedInstance: markedInstance, // Assuming marked.js is loaded
-            uiHelper: uiHelperFunctions,
-            interruptHandler: interruptHandler, // Pass the handler
-            summarizeTopicFromMessages: (messages, agentName) => {
-                // Directly use the function from the summarizer module, which should be on the window scope
-                if (typeof window.summarizeTopicFromMessages === 'function') {
-                    return window.summarizeTopicFromMessages(messages, agentName);
-                } else {
-                    console.error('[MessageRenderer] summarizeTopicFromMessages function not found on window scope.');
-                    return `关于 "${messages.find(m=>m.role==='user')?.content.substring(0,15) || '...'}" (备用)`;
-                }
-            },
-            handleCreateBranch: (selectedMessage) => {
-                if (window.chatManager) {
-                    return window.chatManager.handleCreateBranch(selectedMessage);
-                } else {
-                    console.error('[MessageRenderer] chatManager not available for handleCreateBranch');
-                }
-            }
-        });
+        mainChatSurface = mainChatAdapter.surface;
+        mainChatDomRenderer = mainChatAdapter.domRenderer;
+        window.addEventListener('beforeunload', () => mainChatAdapter?.dispose(), { once: true });
         // Pass the new function to the context menu
         window.messageRenderer.setContextMenuDependencies({
             showForwardModal: showForwardModal,
@@ -599,74 +635,6 @@ const startupThemeGate = new StartupThemeGate({
         }
     });
 
-    const mainChatStreamBridge = createVcpStreamBridge({
-        createConsumer: initialEvent => createMainChatStreamConsumer(initialEvent, {
-            resolveProjection: messageId => streamConsumerRegistry.claim(messageId),
-            start: message => {
-                const start = window.streamManager?.startStreamingMessage
-                    || window.messageRenderer?.startStreamingMessage;
-                return start?.(message);
-            },
-            append: (messageId, chunk, context) => window.messageRenderer.appendStreamChunk(messageId, chunk, context),
-            finalize: (messageId, finishReason, context, payload) => (
-                window.messageRenderer.finalizeStreamedMessage(messageId, finishReason, context, payload)
-            ),
-            dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
-            async afterPersist({ terminal, finalized, context, messageId }) {
-                const finalizedContext = finalized?.context || context;
-                const finalizedContent = finalized?.content || terminal.fullResponse || '';
-                const relevant = finalizedContext
-                    && currentSelectedItem
-                    && (finalizedContext.groupId
-                        ? finalizedContext.groupId === currentSelectedItem.id
-                        : finalizedContext.agentId === currentSelectedItem.id)
-                    && finalizedContext.topicId === currentTopicId;
-                if (terminal.kind === 'completed' && finalizedContext && !finalizedContext.isGroupMessage && relevant) {
-                    await window.chatManager.attemptTopicSummarizationIfNeeded();
-                }
-                await window.flowlockManager?.handleFinalizedMessage({
-                    type: terminal.kind === 'failed' ? 'error' : 'end',
-                    messageId,
-                    context: finalizedContext,
-                    content: finalizedContent,
-                    finishReason: finalized?.finishReason || terminal.finishReason || terminal.kind,
-                    error: terminal.error || null,
-                });
-            },
-            renderError({ event, context }) {
-                const relevant = context
-                    && currentSelectedItem
-                    && (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id)
-                    && context.topicId === currentTopicId;
-                if (!relevant) return;
-                const error = event.outcome?.transport?.error?.message
-                    || event.outcome?.transport?.error
-                    || event.outcome?.persistence?.error?.message
-                    || '未知连接错误';
-                const errorContent = document.querySelector(`.message-item[data-message-id="${event.messageId}"] .md-content`);
-                if (errorContent) {
-                    const paragraph = document.createElement('p');
-                    const strong = document.createElement('strong');
-                    strong.style.color = 'red';
-                    strong.textContent = `流错误: ${error}`;
-                    paragraph.appendChild(strong);
-                    errorContent.appendChild(paragraph);
-                } else {
-                    window.messageRenderer.renderMessage({
-                        role: 'system',
-                        content: `流处理错误 (ID: ${event.messageId}): ${error}`,
-                        timestamp: Date.now(),
-                        id: `err_${event.messageId}`,
-                    });
-                }
-            },
-        }),
-    });
-    window.addEventListener('beforeunload', () => {
-        streamConsumerRegistry.dispose();
-        mainChatStreamBridge.dispose();
-    }, { once: true });
-
     // Unified listener for all VCP stream events (agent and group)
     chatAPI.onVCPStreamEvent(async (eventData) => {
         if (!window.messageRenderer) {
@@ -681,7 +649,7 @@ const startupThemeGate = new StartupThemeGate({
             return;
         }
 
-        if (mainChatStreamBridge.accept(eventData)) return;
+        if (mainChatAdapter?.acceptStreamEvent(eventData)) return;
 
         // --- Asynchronous Logic: Update data model regardless of UI state ---
         // This is where you would update a global or context-specific data store
@@ -978,7 +946,7 @@ const startupThemeGate = new StartupThemeGate({
         window.chatManager.init({
             chatContext,
             chatRepository,
-            streamConsumerRegistry,
+            streamConsumerRegistry: mainChatAdapter?.streamRoutes,
             chatDomRenderer: mainChatDomRenderer,
             electronAPI: chatAPI,
             chatRepository,

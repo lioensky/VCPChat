@@ -11,7 +11,11 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
     const coordinator = createStreamCoordinator({
         reportError,
         run: (request, controls) => new Promise(resolve => {
-            operations.set(request.sessionId, { controls, resolve });
+            const operation = { controls, resolve };
+            operations.set(request.sessionId, operation);
+            controls.signal.addEventListener('abort', () => {
+                if (operations.get(request.sessionId) === operation) resolve({ kind: 'discarded', reason: controls.signal.reason });
+            }, { once: true });
         }),
         persist: value => consumers.get(value.request.sessionId)?.persist?.(value),
     });
