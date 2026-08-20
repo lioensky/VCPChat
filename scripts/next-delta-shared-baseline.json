@@ -4,8 +4,8 @@
     "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists; selection intent persisted before watcher/history work for renderer recovery"
   },
   "modules/messageRenderer.js": {
-    "sha256": "0e7fb14113a316ea791075ca17cedb36cb7f4a585b96292a0c9cd9806945066b",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection attachment API, explicit Surface operation-state notification, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
+    "sha256": "912311757a7e7439c64c4674145296156697e2690c9139e4c856b64b5d158e0e",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, explicit Surface operation-state notification, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
   },
   "modules/renderer/streamManager.js": {
     "sha256": "62d1338b1c63a92c0f2a2e09b9f040b19b4159f7c51479f4a1c02e5a5e65af0d",
