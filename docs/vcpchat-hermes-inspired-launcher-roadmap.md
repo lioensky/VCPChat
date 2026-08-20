@@ -157,8 +157,23 @@ npm run vcpchat
 
 ## 当前下一步
 
-1. 完成 Hermes 源码快照和 commit pin。
-2. 设计 `npm run vcpchat` 的 H1 状态机与用户确认策略。
-3. 把现有 doctor、repair planner、progress protocol、recovery UI 接到 H1 入口。
-4. 为 H1 增加重复启动、取消、repair 失败和 renderer reload 测试。
-5. 再进入 H2 UI 和 H4 跨平台 handoff，不提前改原有入口。
+1. 网络恢复后补齐 Hermes 完整 clone 与 commit pin；当前研究快照已足够支撑 H1/H2 行为对照。
+2. 将现有 recovery UI 与 `npm run vcpchat` 的阻塞状态直接联动，形成真正的一键首次运行决策门。
+3. 为修复 journal、renderer reload、窗口关闭和 update handoff 增加可恢复的终态查询。
+4. 在 Windows/Linux runner 上补齐平台 handoff 和安装包证据，再进入签名下载与用户数据 migration。
+5. 保留 H6 操作序列和人工 soak 为发布前门禁，不提前改原有入口。
+
+## 2026-08-20 本机验证证据
+
+已在 macOS arm64 开发环境验证：
+
+- `npm run vcpchat -- --shallow-doctor`：通过，复用现有 Electron 单例，没有产生第二棵进程树。
+- `npm run vcpchat:ui` 的 recovery smoke：页面/preload 可见，初始 Doctor 完成后退出，无残留恢复进程。
+- `npm run check:ui-system`：通过；包含 UI/生命周期、统一 Surface、Web Awesome、主题和 Bootstrap 测试。
+- `npm run test:electron-ui-apps`：22/22 通过。
+- `npm run test:electron-main-chat-sequences`：24 个动作、8 次 VCP 请求通过。
+- `npm run test:electron-lifecycle-stress`：3 次预热 + 20 轮测量通过；listener、process、scope 和受管资源保持稳定，detached DOM 为 0。
+- `npm run pack:check`：Web Awesome runtime 闭包与仓库 vendor tree 通过。
+- Bootstrap：26 项通过，覆盖 repair consent、marker、项目隔离、取消、更新 manifest、symlink、rollback 和运行实例门禁。
+
+以下仍是发布外部证据而非本机已完成事实：Windows PowerShell/NSIS/中文长路径、macOS 签名与公证、Linux AppImage、断网/磁盘不足/睡眠恢复和 30–60 分钟人工 soak。签名网络下载和用户数据 migration 事务仍属于生产更新器后续范围。
