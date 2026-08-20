@@ -1,7 +1,7 @@
 {
   "modules/chatManager.js": {
-    "sha256": "060d6f91554057a463fed9ff27ab076c9a53e03d9f3c2ba674937a494b60728b",
-    "reason": "upstream chat core plus reviewed ESM provider export, exact Surface stream routing, explicit independent conversation capability, propagated auxiliary operation failures, durable history authority, and no direct IPC fallback"
+    "sha256": "8048c87d700241f4dfd4f1e89059fc32697cd4599e6dc127be95a60922b1a380",
+    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup and send capability for non-streaming/button paths, durable history authority, and no direct IPC fallback"
   },
   "modules/messageRenderer.js": {
     "sha256": "077dcc5653a77d256b27ec65dcb90c72c4dbf26f159d1efab0e4195c6b4b1a54",

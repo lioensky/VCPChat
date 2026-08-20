@@ -997,17 +997,11 @@ function sendButtonMessage(text, button) {
  * @param {string} text The text to send
  */
 function sendMessageViaMainChat(text) {
-    // Get the message input element
-    const messageInput = mainRefs.chatMessagesDiv?.ownerDocument?.getElementById('messageInput');
-    if (!messageInput) {
-        throw new Error('Message input not found');
-    }
-
-    // Set the text in input and trigger send
-    messageInput.value = text;
-    mainRefs.messageCommands.handleSendMessage(text);
-
-    // Note: handleSendMessage will clear the input automatically
+    const send = mainRefs.messageCommands?.handleSendMessage;
+    if (typeof send !== 'function') throw new Error('This Surface does not provide message sending');
+    // The owner supplies the send capability. Never discover #messageInput
+    // from the document: that would route an internal Surface to main chat.
+    return send(text);
 }
 
 /**

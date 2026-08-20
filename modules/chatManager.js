@@ -1856,10 +1856,12 @@ export const chatManager = (() => {
                 // Determine if the response is for the currently active chat
                 const isForActiveChat = responseContext && responseContext.agentId === activeSelectedItem.id && responseContext.topicId === activeTopicId;
 
-                if (isForActiveChat) {
-                    // If it's for the active chat, update the UI as usual
-                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
-                }
+                 if (isForActiveChat) {
+                     // Remove the placeholder through the initiating Surface;
+                     // an internal Surface must never mutate the main root.
+                     if (typeof renderTarget?.removeMessage === 'function') await renderTarget.removeMessage(thinkingMessage.id);
+                     else renderTarget?.removeMessageById?.(thinkingMessage.id);
+                 }
 
                 if (!response) {
                     throw new Error('VCP returned an empty response.');
