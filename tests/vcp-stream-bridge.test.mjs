@@ -107,6 +107,26 @@ test('retiring before the first producer event prevents operation creation and s
     await bridge.dispose();
 });
 
+test('producer operation identity isolates a same-message retry from delayed events', async () => {
+    const seen = [];
+    const bridge = createVcpStreamBridge({
+        createConsumer: event => ({
+            prepare() {},
+            consume: item => seen.push(`${event.streamOperationId}:${item.type}`),
+            persist() {},
+        }),
+    });
+    bridge.accept({ type: 'data', messageId: 'same-message', streamOperationId: 'attempt-1', context: { agentId: 'a', topicId: 't' }, chunk: 'one' });
+    bridge.accept({ type: 'end', messageId: 'same-message', streamOperationId: 'attempt-1', context: { agentId: 'a', topicId: 't' } });
+    await waitUntil(() => seen.includes('attempt-1:completed'));
+    bridge.accept({ type: 'data', messageId: 'same-message', streamOperationId: 'attempt-2', context: { agentId: 'a', topicId: 't' }, chunk: 'two' });
+    assert.equal(bridge.accept({ type: 'data', messageId: 'same-message', streamOperationId: 'attempt-1', context: { agentId: 'a', topicId: 't' }, chunk: 'late-old' }), false);
+    bridge.accept({ type: 'end', messageId: 'same-message', streamOperationId: 'attempt-2', context: { agentId: 'a', topicId: 't' } });
+    await waitUntil(() => seen.includes('attempt-2:completed'));
+    assert.equal(seen.some(item => item.includes('late-old')), false);
+    await bridge.dispose();
+});
+
 test('local cancellation drains accepted chunks and persists one cancelled terminal', async () => {
     const seen = [];
     const bridge = createVcpStreamBridge({

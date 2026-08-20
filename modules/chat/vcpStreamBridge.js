@@ -10,6 +10,7 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
     if (typeof createConsumer !== 'function') throw new TypeError('VCP stream bridge requires a consumer factory');
     const operations = new Map();
     const consumers = new Map();
+    const messageOperations = new Map();
     const retiredSessions = new Set();
     let disposed = false;
     const retireSession = sessionId => {
@@ -44,8 +45,9 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
 
     const ensureOperation = event => {
         if (disposed) return null;
-        const sessionId = String(event?.messageId || '').trim();
-        if (!sessionId || retiredSessions.has(sessionId)) return null;
+        const messageId = String(event?.messageId || '').trim();
+        const sessionId = String(event?.streamOperationId || messageId).trim();
+        if (!messageId || !sessionId || retiredSessions.has(sessionId)) return null;
         let operation = operations.get(sessionId);
         if (operation) return operation;
 
@@ -55,9 +57,10 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
             : `agent:${context.agentId || ''}/topic:${context.topicId || ''}`;
         const consumer = createConsumer(event);
         consumers.set(sessionId, consumer);
+        messageOperations.set(messageId, sessionId);
         const handle = coordinator.start({
             sessionId,
-            messageId: sessionId,
+            messageId,
             conversationKey,
             context,
         }, {
@@ -69,6 +72,7 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
             consumer.dispose?.();
             if (operations.get(sessionId)?.handle === handle) operations.delete(sessionId);
             if (consumers.get(sessionId) === consumer) consumers.delete(sessionId);
+            if (messageOperations.get(messageId) === sessionId) messageOperations.delete(messageId);
         });
         operation = operations.get(sessionId);
         operation.handle = handle;
@@ -76,7 +80,8 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
     };
 
     const disposeOperation = (messageId, reason = 'surface-disposed') => {
-        const sessionId = String(messageId || '').trim();
+        const visibleId = String(messageId || '').trim();
+        const sessionId = messageOperations.get(visibleId) || visibleId;
         retireSession(sessionId);
         const operation = operations.get(sessionId);
         if (!operation) return Promise.resolve(false);
@@ -92,7 +97,8 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
         return operation.disposePromise;
     };
     const cancelOperation = (messageId, reason = 'cancelled') => {
-        const sessionId = String(messageId || '').trim();
+        const visibleId = String(messageId || '').trim();
+        const sessionId = messageOperations.get(visibleId) || visibleId;
         const operation = operations.get(sessionId);
         if (!operation) {
             retireSession(sessionId);
@@ -110,7 +116,7 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
             if (!MANAGED_TYPES.has(event?.type) || !event?.messageId) return false;
             const operation = ensureOperation(event);
             if (!operation?.accepting) return false;
-            const consumer = consumers.get(String(event.messageId));
+            const consumer = consumers.get(String(event.streamOperationId || event.messageId));
             operation.chain = operation.chain.then(async () => {
                 if (!operation.projecting) return;
                 await consumer?.prepare?.(event);
@@ -151,6 +157,7 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
             await Promise.allSettled([...operations.values()].map(operation => operation.chain));
             operations.clear();
             consumers.clear();
+            messageOperations.clear();
             retiredSessions.clear();
         },
     });
