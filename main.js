@@ -1167,7 +1167,14 @@ if (!gotTheLock) {
             startSelectionListener: assistantHandlers.startSelectionListener,
             openChildWindows
         });
-        deepWikiHandlers.initialize({ mainWindow });
+        deepWikiHandlers.initialize({
+            mainWindow,
+            novaStickerLibraryProvider: () => emoticonHandlers.getEmoticonLibrary(),
+            userNameProvider: async () => {
+                const settings = await appSettingsManager.readSettings();
+                return settings?.userName || '';
+            }
+        });
         groupChatHandlers.initialize(mainWindow, {
             AGENT_DIR,
             USER_DATA_DIR,
