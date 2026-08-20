@@ -348,6 +348,30 @@ async function waitForChildExit(child, timeout = 3_000) {
     });
 }
 
+async function terminateChildTree(child) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    if (process.platform === 'win32') {
+        // Electron's main process can survive SIGTERM on Windows and retain
+        // GPU/renderer descendants after a renderer crash. Terminate only the
+        // exact isolated test process tree that this script spawned.
+        await new Promise(resolve => {
+            const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+                windowsHide: true,
+                stdio: 'ignore',
+            });
+            killer.once('error', () => resolve());
+            killer.once('exit', () => resolve());
+        });
+        await waitForChildExit(child);
+        return;
+    }
+    child.kill('SIGTERM');
+    if (!await waitForChildExit(child)) {
+        child.kill('SIGKILL');
+        await waitForChildExit(child);
+    }
+}
+
 function assertNoSustainedLeak(baseline, checkpoints) {
     const final = checkpoints.at(-1);
     const heapAllowance = Math.max(10 * 1024 * 1024, baseline.heapUsed * 0.4);
@@ -931,10 +955,6 @@ try {
     // app intentionally remains alive after its last window closes, so using
     // it here would hang the test runner and retain the isolated process tree.
     try { browser?.disconnect(); } catch { /* debugger may already be gone */ }
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-    if (!await waitForChildExit(child)) {
-        child.kill('SIGKILL');
-        await waitForChildExit(child);
-    }
+    await terminateChildTree(child);
     await fs.rm(appData, { recursive: true, force: true });
 }
