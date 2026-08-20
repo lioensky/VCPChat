@@ -4854,7 +4854,7 @@
       "windowReferences": 4,
       "documentReferences": 1,
       "electronReferences": 3,
-      "timers": 7,
+      "timers": 5,
       "listeners": 2,
       "mutableMaps": 13
     },
@@ -5535,7 +5535,7 @@
       "documentReferences": 184,
       "electronReferences": 13,
       "timers": 2,
-      "listeners": 28,
+      "listeners": 27,
       "mutableMaps": 0
     },
     "rust_assistant_engine/ui/assistant-bar.html": {

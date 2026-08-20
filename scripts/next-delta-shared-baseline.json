@@ -8,7 +8,7 @@
     "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, injected realm/services/capabilities, per-Surface StreamProjection, owner-scoped context-menu and middle-click callbacks, and no ambient renderer command facade"
   },
   "modules/renderer/streamManager.js": {
-      "sha256": "816a6ee032e1815a95fadde069d3ea7dd648f8ec496e4263f2ab3e4ad4fccb9f",
+      "sha256": "39e59ba82f61e9ae315c9c521dfccb267c2120f836173c62830f8d99aa43cf0b",
     "reason": "per-Surface stream projection factory with explicit owning document/window capabilities, injected view authority, owned animation-frame scheduling and pending operation disposal, no exported singleton or hidden root side channel, no direct durable commit or global send-button facade, ContentRuntime render models, and owned Desktop push subscription/timer consumer"
   },
   "modules/topicListManager.js": {
