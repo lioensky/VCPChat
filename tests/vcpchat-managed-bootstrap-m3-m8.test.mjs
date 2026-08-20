@@ -14,6 +14,7 @@ const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require(
 const { createRuntimeClosureManifest, validateRuntimePolicy, verifyDirectoryAgainstManifest } = require('../modules/bootstrap/runtime-closure');
 const { switchVersion, rollbackVersion, pointerPath, promoteVersionWithHealthCheck, validateUpdateManifest, checkStagingCapacity, canonicalize, validateUpdateSignature } = require('../modules/bootstrap/update-manager');
 const { liveReadyRecords } = await import('../scripts/vcpchat-update.mjs');
+const { downloadEntry, downloadSignedUpdate, safeHttpsUrl } = require('../modules/bootstrap/update-downloader');
 const { collectEvidence } = await import('../scripts/vcpchat-release-evidence.mjs');
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'vcpchat-m3-m8-')); }
@@ -167,6 +168,53 @@ test('H5 signed manifests require the matching public key and cover nested launc
     assert.throws(() => validateUpdateSignature({ manifest }), error => error.code === 'E_UPDATE_SIGNATURE_INVALID');
     manifest.launch.args = ['--tampered'];
     assert.throws(() => validateUpdateSignature({ manifest, publicKey: pem }), error => error.code === 'E_UPDATE_SIGNATURE_INVALID');
+});
+
+test('H5 network update requires HTTPS and resumes same-origin partial files', async () => {
+    assert.throws(() => safeHttpsUrl('http://updates.example/test'), error => error.code === 'E_UPDATE_URL_INVALID');
+    const root = tempDir(); const destination = path.join(root, 'main.js');
+    fs.writeFileSync(`${destination}.part`, 'he');
+    const result = await downloadEntry({
+        entry: { path: 'main.js', size: 5 },
+        baseUrl: new URL('https://updates.example/releases/manifest.json'),
+        stagingRoot: root,
+        fetchImpl: async (_url, options) => {
+            assert.equal(options.headers.Range, 'bytes=2-');
+            return new Response('llo', { status: 206, headers: { 'content-range': 'bytes 2-4/5' } });
+        },
+    });
+    assert.equal(result.resumedFrom, 2);
+    assert.equal(fs.readFileSync(destination, 'utf8'), 'hello');
+});
+
+test('H5 network update rejects mismatched ranges and oversized bodies', async () => {
+    const root = tempDir(); fs.writeFileSync(path.join(root, 'main.js.part'), 'he');
+    await assert.rejects(() => downloadEntry({
+        entry: { path: 'main.js', size: 5 }, baseUrl: new URL('https://updates.example/manifest.json'), stagingRoot: root,
+        fetchImpl: async () => new Response('llo', { status: 206, headers: { 'content-range': 'bytes 1-3/5' } }),
+    }), error => error.code === 'E_UPDATE_DOWNLOAD');
+    await assert.rejects(() => downloadEntry({
+        entry: { path: 'large.js', size: 2 }, baseUrl: new URL('https://updates.example/manifest.json'), stagingRoot: root,
+        fetchImpl: async () => new Response('toolarge'),
+    }), error => error.code === 'E_UPDATE_INTEGRITY_FAILED');
+    assert.equal(fs.existsSync(path.join(root, 'large.js.part')), false);
+});
+
+test('H5 signed network manifest downloads and verifies its file closure', async () => {
+    const crypto = require('node:crypto');
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const content = 'one';
+    const manifest = { schemaVersion: 1, version: '1', files: [{ path: 'main.js', size: 3, sha256: crypto.createHash('sha256').update(content).digest('hex') }] };
+    manifest.signature = { algorithm: 'RSA-SHA256', value: crypto.sign('RSA-SHA256', Buffer.from(canonicalize(manifest, true)), privateKey).toString('base64') };
+    const manifestBody = JSON.stringify(manifest);
+    const fetched = await downloadSignedUpdate({
+        manifestUrl: 'https://updates.example/releases/manifest.json',
+        publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
+        stagingRoot: tempDir(),
+        fetchImpl: async url => String(url).endsWith('manifest.json') ? new Response(manifestBody) : new Response(content),
+    });
+    assert.equal(fetched.files.length, 1);
+    assert.equal(fs.readFileSync(path.join(fetched.sourceRoot, 'main.js'), 'utf8'), content);
 });
 
 test('M7 update gate detects a live VCPChat ready process before staging', () => {

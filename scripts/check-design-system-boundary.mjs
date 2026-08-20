@@ -87,6 +87,7 @@ const allowedSourceDifferences = new Set([
     'modules/bootstrap/repair-planner.js',
     'modules/bootstrap/runtime-closure.js',
     'modules/bootstrap/update-manager.js',
+    'modules/bootstrap/update-downloader.js',
     'scripts/vcpchat.mjs',
     'modules/chatManager.js',
     'modules/assistant/assistant-rust-adapter.js',

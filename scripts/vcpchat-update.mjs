@@ -12,9 +12,10 @@ const { resolveContainedPath } = require('../modules/bootstrap/runtime-closure')
 const { terminateProcess } = require('../modules/bootstrap/process-runner');
 const { managedSpawnOptions } = require('../modules/bootstrap/platform-process');
 const { promoteVersionWithHealthCheck, rollbackVersion, acquireUpdateLock } = require('../modules/bootstrap/update-manager');
+const { downloadSignedUpdate } = require('../modules/bootstrap/update-downloader');
 
 function parseArguments(argv) {
-    const options = { apply: false, yes: false, source: null, manifest: null, publicKey: null, rollback: false, json: false, projectRoot: null };
+    const options = { apply: false, yes: false, source: null, manifest: null, manifestUrl: null, publicKey: null, rollback: false, json: false, projectRoot: null };
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
         if (arg === '--apply') options.apply = true;
@@ -23,6 +24,7 @@ function parseArguments(argv) {
         else if (arg === '--json') options.json = true;
         else if (arg === '--source') options.source = argv[++index] || null;
         else if (arg === '--manifest') options.manifest = argv[++index] || null;
+        else if (arg === '--manifest-url') options.manifestUrl = argv[++index] || null;
         else if (arg === '--public-key') options.publicKey = argv[++index] || null;
         else if (arg === '--project-root') options.projectRoot = argv[++index] || null;
         else throw new Error(`未知 update 参数：${arg}`);
@@ -105,6 +107,7 @@ export async function run(argv = process.argv.slice(2), io = process) {
     }
     if (!options.yes) { io.stderr.write('执行更新需要 --apply --yes。\n'); return 2; }
     const lock = acquireUpdateLock(stateRoot);
+    let completedDownloadRoot = null;
     try {
         const running = liveReadyRecords(stateRoot);
         if (running.length) {
@@ -117,10 +120,20 @@ export async function run(argv = process.argv.slice(2), io = process) {
             io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
             return 0;
         }
-        if (!options.source || !options.manifest) throw new Error('--source 和 --manifest 是必需的。');
-        const sourceRoot = path.resolve(options.source);
-        const manifest = JSON.parse(fs.readFileSync(path.resolve(options.manifest), 'utf8'));
-        const publicKey = options.publicKey || process.env.VCPCHAT_UPDATE_PUBLIC_KEY || null;
+        const publicKeyValue = options.publicKey || process.env.VCPCHAT_UPDATE_PUBLIC_KEY || null;
+        const publicKey = publicKeyValue && fs.existsSync(publicKeyValue) ? fs.readFileSync(publicKeyValue, 'utf8') : publicKeyValue;
+        let sourceRoot; let manifest;
+        if (options.manifestUrl) {
+            if (options.source || options.manifest) throw new Error('--manifest-url 不能与 --source/--manifest 同时使用。');
+            const downloadRoot = path.join(stateRoot, 'downloads', createOperationId('download'));
+            const downloaded = await downloadSignedUpdate({ manifestUrl: options.manifestUrl, publicKey, stagingRoot: downloadRoot });
+            completedDownloadRoot = downloadRoot;
+            ({ sourceRoot, manifest } = downloaded);
+        } else {
+            if (!options.source || !options.manifest) throw new Error('--source 和 --manifest 是必需的。');
+            sourceRoot = path.resolve(options.source);
+            manifest = JSON.parse(fs.readFileSync(path.resolve(options.manifest), 'utf8'));
+        }
         const result = await promoteVersionWithHealthCheck({
             stateRoot,
             sourceRoot,
@@ -130,7 +143,10 @@ export async function run(argv = process.argv.slice(2), io = process) {
         });
         io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         return 0;
-    } finally { lock.release(); }
+    } finally {
+        if (completedDownloadRoot) fs.rmSync(completedDownloadRoot, { recursive: true, force: true });
+        lock.release();
+    }
 }
 
 if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
