@@ -195,6 +195,7 @@ let transientCleanupWindow = null;
 let desktopPushConsumer = null;
 let disposed = false;
 const pendingAsyncOperations = new Set();
+const ownedTimeouts = new Set();
 const scheduledAnimationFrames = new Set();
 
 function trackAsyncOperation(operation) {
@@ -202,6 +203,25 @@ function trackAsyncOperation(operation) {
     pendingAsyncOperations.add(promise);
     promise.finally(() => pendingAsyncOperations.delete(promise)).catch(() => {});
     return promise;
+}
+
+function scheduleOwnedTimeout(callback, delay = 0) {
+    const environment = ownerWindow?.() || globalThis;
+    const set = environment.setTimeout?.bind(environment) || setTimeout;
+    const clear = environment.clearTimeout?.bind(environment) || clearTimeout;
+    const record = { id: null, clear };
+    record.id = set(() => {
+        ownedTimeouts.delete(record);
+        if (!disposed) callback();
+    }, delay);
+    ownedTimeouts.add(record);
+    return record;
+}
+
+function clearOwnedTimeout(record) {
+    if (!record) return;
+    record.clear(record.id);
+    ownedTimeouts.delete(record);
 }
 
 const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
@@ -1478,7 +1498,7 @@ function renderStreamFrame(messageId) {
                     if (lengthDiff > 20) {
                         // 使用脉冲动画而不是滑入动画
                         fromEl.classList.add('vcp-stream-content-pulse');
-                        setTimeout(() => {
+                        scheduleOwnedTimeout(() => {
                             fromEl.classList.remove('vcp-stream-content-pulse');
                         }, 300);
                     }
@@ -1556,7 +1576,7 @@ function renderStreamFrame(messageId) {
                     elementContentLengthCache.set(node, node.textContent.length);
                     
                     // 动画结束后清理类名，但保留一小段时间确保渲染稳定
-                    setTimeout(() => {
+                    scheduleOwnedTimeout(() => {
                         if (node && node.classList) {
                             node.classList.remove('vcp-stream-element-fade-in');
                         }
@@ -1591,7 +1611,7 @@ function throttledScrollToBottom(messageId) {
     
     refs.uiHelper.scrollToBottom();
     
-    const timerId = setTimeout(() => {
+    const timerId = scheduleOwnedTimeout(() => {
         scrollThrottleTimers.delete(messageId);
     }, SCROLL_THROTTLE_MS);
     
@@ -2196,7 +2216,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
                     }
 
                     // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
-                    setTimeout(() => {
+                    scheduleOwnedTimeout(() => {
                         if (contentDiv && contentDiv.isConnected) {
                             refs.runTextHighlights(contentDiv);
                         }
@@ -2290,9 +2310,11 @@ async function dispose() {
         cancelScheduledAnimationFrames();
         // 清理所有流式消息相关状态
         for (const timerId of scrollThrottleTimers.values()) {
-            clearTimeout(timerId);
+            clearOwnedTimeout(timerId);
         }
         scrollThrottleTimers.clear();
+        for (const timeout of ownedTimeouts) clearOwnedTimeout(timeout);
+        cancelScheduledAnimationFrames();
     
         desktopPushConsumer?.dispose();
         desktopPushConsumer = null;
@@ -2348,7 +2370,7 @@ function getStreamDiagnostics() {
         pendingFinalizations: messageInitializationWaiters.size,
         chunkQueues: streamingChunkQueues.size,
         renderTimers: streamingTimers.size,
-        delayedCleanupTimers: 0,
+        delayedCleanupTimers: ownedTimeouts.size + scheduledAnimationFrames.size,
         desktopPushStates: desktopPushConsumer?.getStateCount() || 0,
     });
 }
