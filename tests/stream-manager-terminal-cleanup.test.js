@@ -228,3 +228,18 @@ test('StreamProjection honors an owned view authority and history capability aft
     await projection.dispose();
     dom.window.close();
 });
+
+test('StreamProjection rejects chunks and terminals from a different producer operation', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"><article class="message-item" data-message-id="operation"><div class="md-content"></div></article></div>', { url: 'https://vcpchat.local/' });
+    const projection = createStreamProjection();
+    projection.initStreamManager(createDependencies(dom, {
+        renderPostProcessedHtml: async (content, html) => { content.textContent = html; },
+    }));
+    const item = dom.window.document.querySelector('.message-item');
+    await projection.startStreamingMessage({ id: 'operation', agentId: 'visible-agent', topicId: 'visible-topic', content: '', streamOperationId: 'op-a' }, item);
+    assert.equal(projection.appendStreamChunk('operation', { content: 'late' }, { agentId: 'visible-agent', topicId: 'visible-topic' }, 'op-b'), false);
+    assert.equal(await projection.projectStreamTerminal('operation', 'completed', { agentId: 'visible-agent', topicId: 'visible-topic' }, { fullResponse: 'late', streamOperationId: 'op-b' }), null);
+    await projection.dispose();
+    dom.window.close();
+});
