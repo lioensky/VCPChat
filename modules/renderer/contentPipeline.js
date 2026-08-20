@@ -13,10 +13,7 @@
  * - 业务细节（特殊块转换、HTML fenced 等）通过依赖注入提供
  */
 
-const PIPELINE_MODES = {
-    FULL_RENDER: 'full-render',
-    STREAM_FAST: 'stream-fast'
-};
+import { PIPELINE_MODES } from '../chat/contentModes.js';
 
 function noop(value) {
     return value;

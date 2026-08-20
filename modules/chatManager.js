@@ -5,6 +5,7 @@ window.chatManager = (() => {
     let electronAPI;
     let uiHelper;
     let messageRenderer;
+    let chatDomRenderer;
     let itemListManager;
     let topicListManager;
     let groupRenderer;
@@ -15,6 +16,33 @@ window.chatManager = (() => {
     let currentChatHistoryRef;
     let attachedFilesRef;
     let globalSettingsRef;
+    let chatContext;
+    let chatRepository;
+    let allowLegacyHistoryFallback = false;
+
+    function requireHistoryRepository() {
+        if (chatRepository) return chatRepository;
+        if (!allowLegacyHistoryFallback) throw new Error('ChatRepository is required for chat history operations');
+        return null;
+    }
+
+    function getHistory(itemId, itemType, topicId) {
+        const repository = requireHistoryRepository();
+        return repository
+            ? repository.getHistory(itemId, itemType, topicId)
+            : (itemType === 'group'
+                ? electronAPI.getGroupChatHistory(itemId, topicId)
+                : electronAPI.getChatHistory(itemId, topicId));
+    }
+
+    function saveHistory(itemId, itemType, topicId, history) {
+        const repository = requireHistoryRepository();
+        return repository
+            ? repository.saveHistory(itemId, itemType, topicId, history)
+            : (itemType === 'group'
+                ? electronAPI.saveGroupChatHistory(itemId, topicId, history)
+                : electronAPI.saveChatHistory(itemId, topicId, history));
+    }
 
     // DOM Elements from renderer.js
     let elements = {};
@@ -47,15 +75,16 @@ window.chatManager = (() => {
         const signature = `${sendContext.agentId}:${sendContext.topicId}`;
         const previous = outgoingPersistenceQueues.get(signature) || Promise.resolve();
         const operation = previous.catch(() => {}).then(async () => {
-            const persisted = await electronAPI.getChatHistory(sendContext.agentId, sendContext.topicId);
+            const persisted = await getHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId);
             if (!Array.isArray(persisted)) {
                 throw new Error(persisted?.error || '读取聊天记录失败');
             }
             const nextHistory = persisted.some(message => message?.id === userMessage.id)
                 ? persisted
                 : [...persisted, userMessage];
-            const saveResult = await electronAPI.saveChatHistory(
+            const saveResult = await saveHistory(
                 sendContext.agentId,
+                sendContext.itemType || 'agent',
                 sendContext.topicId,
                 nextHistory
             );
@@ -320,6 +349,11 @@ window.chatManager = (() => {
      * @param {object} config - The configuration object.
      */
     function init(config) {
+        chatContext = config.chatContext || null;
+        chatRepository = config.chatRepository || null;
+        allowLegacyHistoryFallback = config.allowLegacyHistoryFallback === true;
+        if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatManager requires ChatRepository');
+        chatDomRenderer = config.chatDomRenderer || null;
         electronAPI = config.electronAPI;
         uiHelper = config.uiHelper;
         
@@ -550,6 +584,7 @@ window.chatManager = (() => {
 
         currentSelectedItem = { id: itemId, type: itemType, name: itemName, avatarUrl: itemAvatarUrl, config: itemFullConfig };
         currentSelectedItemRef.set(currentSelectedItem);
+        chatContext?.setSelectedItem(currentSelectedItem);
         // From this point displayNoItemSelected can rely on the selected item
         // itself. Keep generation ownership for the async transaction, but do
         // not retain a separate pending marker that an unrelated renderer
@@ -557,6 +592,7 @@ window.chatManager = (() => {
         finishSelection();
         currentTopicIdRef.set(null); // Reset topic
         currentChatHistoryRef.set([]);
+        chatContext?.setHistory([]);
         window.updateSendButtonState?.();
 
         document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
@@ -887,12 +923,7 @@ window.chatManager = (() => {
             return;
         }
     
-        let historyResult;
-        if (itemType === 'agent') {
-            historyResult = await electronAPI.getChatHistory(itemId, topicId);
-        } else if (itemType === 'group') {
-            historyResult = await electronAPI.getGroupChatHistory(itemId, topicId);
-        }
+        const historyResult = await getHistory(itemId, itemType, topicId);
 
         if (abortIfStale()) {
             if (messageRenderer) messageRenderer.removeMessageById('loading_history');
@@ -931,7 +962,7 @@ window.chatManager = (() => {
                 };
                 
                 console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
-                await messageRenderer.renderHistory(historyResult, renderOptions);
+                await (chatDomRenderer || messageRenderer).renderHistory(historyResult, renderOptions);
                 if (abortIfStale()) return;
                 console.log(`[ChatManager] 话题历史加载完成`);
             }
@@ -997,7 +1028,7 @@ window.chatManager = (() => {
             }
 
             try {
-                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, updatedHistory);
+                await saveHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicId, updatedHistory);
                 currentChatHistoryRef.set(updatedHistory);
 
                 if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {
@@ -1098,7 +1129,7 @@ window.chatManager = (() => {
             if (!message.attachments) message.attachments = [];
             message.attachments.push(...successfulAttachments);
 
-            await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, updatedHistory);
+            await saveHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicId, updatedHistory);
             currentChatHistoryRef.set(updatedHistory);
 
             if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {
@@ -1232,25 +1263,28 @@ window.chatManager = (() => {
         }
     }
 
-    async function handleSendMessage() {
+    async function handleSendMessage(request = null) {
         const { messageInput } = elements;
-        let content = messageInput.value; // Use let as it might be modified
-        const attachedFiles = attachedFilesRef.get();
+        const renderTarget = request?.domRenderer || messageRenderer;
+        const input = request?.input || messageInput;
+        let content = typeof request?.content === 'string' ? request.content : input.value; // Use let as it might be modified
+        const attachedFiles = Array.isArray(request?.attachments) ? request.attachments : attachedFilesRef.get();
         const currentSelectedItem = currentSelectedItemRef.get();
         const currentTopicId = currentTopicIdRef.get();
         const globalSettings = globalSettingsRef.get();
         const sendContext = {
             agentId: currentSelectedItem.id,
+            itemType: currentSelectedItem.type || 'agent',
             agentName: currentSelectedItem.name || currentSelectedItem.id,
             topicId: currentTopicId,
-            isGroupMessage: false,
+            isGroupMessage: currentSelectedItem.type === 'group',
             avatarUrl: currentSelectedItem.avatarUrl,
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
         const isSendContextCurrent = () => {
             const activeItem = currentSelectedItemRef.get();
             return activeItem?.id === sendContext.agentId
-                && activeItem?.type === 'agent'
+                && activeItem?.type === sendContext.itemType
                 && currentTopicIdRef.get() === sendContext.topicId;
         };
 
@@ -1278,10 +1312,12 @@ window.chatManager = (() => {
             } else {
                 uiHelper.showToastNotification("群聊功能模块未加载，无法发送消息。", 'error');
             }
-            messageInput.value = '';
-            attachedFilesRef.set([]);
-            if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
-            uiHelper.autoResizeTextarea(messageInput);
+            if (!request) {
+                messageInput.value = '';
+                attachedFilesRef.set([]);
+                if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+                uiHelper.autoResizeTextarea(messageInput);
+            }
             // messageInput.focus();
             return;
         }
@@ -1340,8 +1376,8 @@ window.chatManager = (() => {
             currentChatHistoryRef.set(optimisticHistory);
         }
         let userMessageItem = null;
-        if (messageRenderer) {
-            userMessageItem = await messageRenderer.renderMessage(userMessage);
+        if (renderTarget) {
+            userMessageItem = await renderTarget.renderMessage(userMessage);
         }
         if (!isSendContextCurrent()) {
             // renderMessage targets the shared chat container. If selection
@@ -1375,14 +1411,16 @@ window.chatManager = (() => {
         // attachment added while the save was pending cannot be discarded.
         if (
             isSendContextCurrent()
-            && messageInput.value === content
-            && attachedFilesRef.get() === attachedFiles
+            && input.value === content
+            && (request || attachedFilesRef.get() === attachedFiles)
         ) {
-            messageInput.value = '';
-            attachedFilesRef.set([]);
-            if (mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
-            if (isCanvasWindowOpen) messageInput.value = CANVAS_PLACEHOLDER;
-            uiHelper.autoResizeTextarea(messageInput);
+            if (!request) {
+                messageInput.value = '';
+                attachedFilesRef.set([]);
+                if (mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+                if (isCanvasWindowOpen) messageInput.value = CANVAS_PLACEHOLDER;
+                uiHelper.autoResizeTextarea(messageInput);
+            }
         }
 
         // 用户已参与该话题：同步清除 TopicSponsor/手动设置的持久化未读标记。
@@ -1424,8 +1462,8 @@ window.chatManager = (() => {
         };
 
         let thinkingMessageItem = null;
-        if (messageRenderer && isSendContextCurrent()) {
-            thinkingMessageItem = await messageRenderer.renderMessage(thinkingMessage);
+        if (renderTarget && isSendContextCurrent()) {
+            thinkingMessageItem = await renderTarget.renderMessage(thinkingMessage);
             if (!isSendContextCurrent()) {
                 thinkingMessageItem?.remove?.();
                 thinkingMessageItem = null;
@@ -1440,13 +1478,13 @@ window.chatManager = (() => {
             window.updateSendButtonState?.();
         }
         const removeThinkingFromSource = async () => {
-            messageRenderer?.discardStreamingMessage?.(thinkingMessage.id);
+            renderTarget?.discardStreaming?.(thinkingMessage.id);
             try {
-                const sourceHistory = await electronAPI.getChatHistory(sendContext.agentId, sendContext.topicId);
+                const sourceHistory = await getHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId);
                 if (!Array.isArray(sourceHistory)) return null;
                 const cleanedHistory = sourceHistory.filter(message => message.id !== thinkingMessage.id);
                 if (cleanedHistory.length !== sourceHistory.length) {
-                    const saveResult = await electronAPI.saveChatHistory(sendContext.agentId, sendContext.topicId, cleanedHistory);
+                    const saveResult = await saveHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId, cleanedHistory);
                     if (saveResult?.success === false) {
                         throw new Error(saveResult.error || '清理临时消息失败');
                     }
@@ -1738,7 +1776,7 @@ window.chatManager = (() => {
                 if (messageRenderer) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                     // Pass the created DOM element directly to avoid race conditions with querySelector
-                    await messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
+                    await (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, { ...thinkingMessage, content: "" }, thinkingMessageItem);
                 }
             }
 
@@ -1774,10 +1812,11 @@ window.chatManager = (() => {
 
                 if (response.error) {
                     await removeThinkingFromSource();
-                    if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                    if (isForActiveChat && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ChatManager] VCP Error for background message:`, response.error);
+                    if (request?.propagateError) throw new Error(String(response.error));
                 } else if (response.choices && response.choices.length > 0) {
                     const assistantMessageContent = response.choices[0].message.content;
                     const assistantMessage = {
@@ -1791,20 +1830,20 @@ window.chatManager = (() => {
                     };
 
                     // Fetch the correct history from the file, update it, and save it back.
-                    const historyForSave = await electronAPI.getChatHistory(responseContext.agentId, responseContext.topicId);
+                    const historyForSave = await getHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId);
                     if (historyForSave && !historyForSave.error) {
                         // Remove any lingering 'thinking' message and add the new one
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id);
                         finalHistory.push(assistantMessage);
                         
                         // Save the final, complete history to the correct file
-                        await electronAPI.saveChatHistory(responseContext.agentId, responseContext.topicId, finalHistory);
+                        await saveHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId, finalHistory);
 
                         if (isForActiveChat) {
                             // If it's the active chat, also update the UI and in-memory state
                             currentChatHistoryRef.set(finalHistory);
                             window.updateSendButtonState?.();
-                            if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
+                            if (renderTarget) renderTarget.renderMessage(assistantMessage);
                             await attemptTopicSummarizationIfNeeded();
                         } else {
                             console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${responseContext.agentId}, Topic ${responseContext.topicId}`);
@@ -1814,31 +1853,34 @@ window.chatManager = (() => {
                     }
                 } else {
                     await removeThinkingFromSource();
-                    if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: 'VCP 返回了未知格式的响应。', timestamp: Date.now() });
+                    if (isForActiveChat && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: 'VCP 返回了未知格式的响应。', timestamp: Date.now() });
                     }
                 }
             } else {
                 if (vcpResponse && vcpResponse.streamError) {
                     console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
                     await removeThinkingFromSource();
-                    if (isSendContextCurrent() && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: `请求流式回复失败: ${vcpResponse.error || '未知错误'}`, timestamp: Date.now() });
+                    if (isSendContextCurrent() && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: `请求流式回复失败: ${vcpResponse.error || '未知错误'}`, timestamp: Date.now() });
                     }
+                    if (request?.propagateError) throw new Error(String(vcpResponse.error || '流式回复失败'));
                 } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
                     console.warn("Expected streaming to start, but main process returned non-streaming or error:", vcpResponse);
                     await removeThinkingFromSource();
-                    if (isSendContextCurrent() && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
+                    if (isSendContextCurrent() && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
                     }
+                    if (request?.propagateError) throw new Error('请求流式回复失败，收到非流式响应或错误');
                 }
             }
         } catch (error) {
             console.error('发送消息或处理VCP响应时出错', error);
             await removeThinkingFromSource();
-            if (isSendContextCurrent() && messageRenderer) {
-                messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+            if (isSendContextCurrent() && renderTarget) {
+                renderTarget.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
             }
+            if (request?.propagateError) throw error;
         }
         } finally {
             pendingSendContexts.delete(sendSignature);
@@ -1991,11 +2033,7 @@ window.chatManager = (() => {
 
             const newTopicId = createResult.topicId;
 
-            if (itemType === 'agent') {
-                saveResult = await electronAPI.saveChatHistory(itemId, newTopicId, historyForNewBranch);
-            } else { // group
-                saveResult = await electronAPI.saveGroupChatHistory(itemId, newTopicId, historyForNewBranch);
-            }
+            saveResult = await saveHistory(itemId, itemType, newTopicId, historyForNewBranch);
 
             if (!saveResult || !saveResult.success) {
                 uiHelper.showToastNotification(`无法将历史记录保存到新的分支话题: ${saveResult ? saveResult.error : '未知错误'}`, 'error');
@@ -2111,9 +2149,9 @@ window.chatManager = (() => {
         // 1. Fetch the latest history from the file
         let newHistory;
         if (itemType === 'agent') {
-            newHistory = await electronAPI.getChatHistory(itemId, topicId);
+            newHistory = await getHistory(itemId, itemType, topicId);
         } else if (itemType === 'group') {
-            newHistory = await electronAPI.getGroupChatHistory(itemId, topicId);
+            newHistory = await getHistory(itemId, itemType, topicId);
         }
 
         if (!newHistory || newHistory.error) {
@@ -2200,6 +2238,7 @@ window.chatManager = (() => {
         handleTopicDeletion,
         loadChatHistory,
         handleSendMessage,
+        sendMessage: handleSendMessage,
         createNewTopicForItem,
         displayNoItemSelected,
         syncNextUiEmptyStateWithMessages,

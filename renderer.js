@@ -268,6 +268,7 @@ async function handleSendButtonAction() {
 
 window.updateSendButtonState = updateSendButtonState;
 window.handleSendButtonAction = handleSendButtonAction;
+window.__vcpCancelActiveResponse = interruptActiveResponseFromSendButton;
 updateSendButtonState();
 
 const leftSidebar = document.querySelector('.sidebar');
@@ -310,6 +311,26 @@ import * as interruptHandler from './modules/interruptHandler.js';
 import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/startup-theme-gate.js';
  
 import { setupEventListeners } from './modules/event-listeners.js';
+import { createChatContext } from './modules/chat/chatContext.js';
+import { createChatRepository } from './modules/chat/chatRepository.js';
+import { createChatSurface } from './modules/chat/chatSurface.js';
+import { createChatOperations } from './modules/chat/chatOperation.js';
+import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
+
+// First production seam for the Chat Kernel migration. Legacy refs remain
+// compatible while consumers move to this explicit context.
+const chatContext = createChatContext({
+    selectedItem: currentSelectedItem,
+    topicId: currentTopicId,
+    history: currentChatHistory
+});
+window.__vcpChatContext = chatContext;
+const chatRepository = createChatRepository(chatAPI);
+const presentationState = createChatPresentationState({ theme: document.body.classList.contains('dark-theme') ? 'dark' : 'light', activeSurface: 'main' });
+window.__vcpPresentationState = presentationState;
+window.__vcpChatRepository = chatRepository;
+let mainChatDomRenderer = null;
+let mainChatSurface = null;
 
 const startupThemeGate = new StartupThemeGate({
     document,
@@ -450,7 +471,28 @@ const startupThemeGate = new StartupThemeGate({
     if (window.messageRenderer) {
         interruptHandler.initialize(chatAPI);
 
+        mainChatSurface = createChatSurface({
+            root: chatMessagesDiv,
+            renderer: window.messageRenderer,
+            repository: chatRepository,
+            focusTarget: messageInput,
+            mode: 'interactive'
+            , operations: createChatOperations({
+                send: request => window.chatManager?.sendMessage?.(request),
+                cancel: () => interruptActiveResponseFromSendButton()
+            })
+            , presentationState
+            , disposeRenderer: async () => {
+                window.messageRenderer.disposeRendererResources();
+                await window.streamManager?.cleanupTransientState?.();
+            }
+        });
+        mainChatDomRenderer = mainChatSurface.renderer;
+        window.addEventListener('beforeunload', () => mainChatSurface?.dispose(), { once: true });
+
         window.messageRenderer.initializeMessageRenderer({
+            chatRepository,
+            chatDomRenderer: mainChatDomRenderer,
             currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
             currentSelectedItemRef: {
                 get: () => currentSelectedItem,
@@ -489,7 +531,6 @@ const startupThemeGate = new StartupThemeGate({
                 }
             }
         });
-
         // Pass the new function to the context menu
         window.messageRenderer.setContextMenuDependencies({
             showForwardModal: showForwardModal,
@@ -561,6 +602,12 @@ const startupThemeGate = new StartupThemeGate({
         }
 
         const { type, messageId, context, chunk, error, finish_reason, fullResponse } = eventData;
+
+        if (type === 'end' || type === 'error') {
+            window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', {
+                detail: { type, messageId, context, error: error || null }
+            }));
+        }
 
         if (!messageId) {
             console.error("onVCPStreamEvent: Received event without a messageId. Cannot process.", eventData);
@@ -816,9 +863,10 @@ const startupThemeGate = new StartupThemeGate({
     if (window.topicListManager) {
         window.topicListManager.init({
             elements: {
-                topicListContainer: tabContentTopics,
+            topicListContainer: tabContentTopics,
             },
             electronAPI: chatAPI,
+            chatRepository: chatRepository,
             refs: {
                 currentSelectedItemRef: {
                     get: () => currentSelectedItem
@@ -859,7 +907,12 @@ const startupThemeGate = new StartupThemeGate({
     // Initialize ChatManager
     if (window.chatManager) {
         window.chatManager.init({
+            chatContext,
+            chatRepository,
+            chatDomRenderer: mainChatDomRenderer,
             electronAPI: chatAPI,
+            chatRepository,
+            chatRepository,
             uiHelper: uiHelperFunctions,
             modules: {
                 messageRenderer: window.messageRenderer,
@@ -1144,6 +1197,7 @@ const startupThemeGate = new StartupThemeGate({
         if (searchManager) {
             searchManager.init({
                 electronAPI: chatAPI,
+                chatRepository,
                 uiHelper: uiHelperFunctions,
                 refs: {
                     currentSelectedItemRef: { get: () => currentSelectedItem },
@@ -1687,6 +1741,7 @@ function applyInitialThemeClass(mode) {
         document.body.classList.remove('light-theme', 'dark-theme');
         document.body.classList.add(`${effectiveTheme}-theme`);
     }
+    presentationState?.set({ theme: effectiveTheme });
     document.body.removeAttribute('data-theme-pending');
 }
 

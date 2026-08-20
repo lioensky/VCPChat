@@ -13,6 +13,7 @@ const CDN_TO_LOCAL_MAP = {
 import * as visibilityOptimizer from './visibilityOptimizer.js';
 import { createPausableRAF, createPausableTimerAPI, registerCanvasAnimation } from './visibilityOptimizer.js';
 
+
 // 🔥 全局跟踪已加载的脚本，防止跨消息重复加载
 if (!window._vcp_loaded_scripts) {
     window._vcp_loaded_scripts = new Set();
@@ -102,6 +103,11 @@ function patchThreeJS() {
         renderer.dispose = function() {
             if (this._disposed) return;
             this._disposed = true;
+            // This observer is owned by the renderer. Disconnect it before
+            // releasing GPU resources so a detached canvas cannot retain the
+            // document or re-register itself after teardown.
+            this._vcpMutationObserver?.disconnect?.();
+            this._vcpMutationObserver = null;
             if (originalDispose) {
                 return originalDispose.call(this);
             }
@@ -135,6 +141,8 @@ function patchThreeJS() {
                 observer.disconnect();
             }
         });
+
+        renderer._vcpMutationObserver = observer;
 
         observer.observe(document.body, { childList: true, subtree: true });
 

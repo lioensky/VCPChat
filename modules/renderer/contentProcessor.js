@@ -2,6 +2,24 @@
 
 let mainRefs = {};
 
+function scheduleOwnedTimeout(owner, callback, delay) {
+    if (!owner) return setTimeout(callback, delay);
+    if (!owner._vcpOwnedTimeouts) owner._vcpOwnedTimeouts = new Set();
+    const timerId = setTimeout(() => {
+        owner._vcpOwnedTimeouts?.delete(timerId);
+        callback();
+    }, delay);
+    owner._vcpOwnedTimeouts.add(timerId);
+    return timerId;
+}
+
+function clearOwnedTimeouts(owner) {
+    if (!owner?._vcpOwnedTimeouts) return;
+    for (const timerId of owner._vcpOwnedTimeouts) clearTimeout(timerId);
+    owner._vcpOwnedTimeouts.clear();
+    delete owner._vcpOwnedTimeouts;
+}
+
 /**
  * Initializes the content processor with necessary references.
  * @param {object} refs - References to main modules and utilities.
@@ -546,7 +564,7 @@ function setupSingleCodeCopyButton(preElement, rawText) {
             copyButton.innerHTML = '<span class="vcp-code-copy-icon">⚠️</span><span class="vcp-code-copy-text">失败</span>';
         }
 
-        setTimeout(() => {
+        scheduleOwnedTimeout(copyButton, () => {
             if (!copyButton.isConnected) return;
             copyButton.disabled = false;
             copyButton.classList.remove('copied', 'failed');
@@ -794,7 +812,7 @@ function setupHtmlPreview(preElement, htmlContent) {
             }
             
             // 🟢 延迟隐藏代码块，确保iframe先显示
-            setTimeout(() => {
+            scheduleOwnedTimeout(preElement, () => {
                 preElement.style.display = 'none';
             }, 50);
             
@@ -903,7 +921,7 @@ function handleAIButtonClick(event) {
     disableButton(button);
 
     // Send the message asynchronously to avoid blocking
-    setTimeout(() => {
+    scheduleOwnedTimeout(button, () => {
         sendButtonMessage(finalSendText, button);
     }, 10);
 
@@ -1022,7 +1040,7 @@ function showErrorNotification(message) {
     document.body.appendChild(notification);
 
     // Auto remove after 3 seconds
-    setTimeout(() => {
+    scheduleOwnedTimeout(notification, () => {
         if (notification.parentNode) {
             document.body.removeChild(notification);
         }
@@ -1323,6 +1341,8 @@ function deIndentMisinterpretedCodeBlocks(text) {
  */
 function cleanupPreviewsInContent(contentDiv) {
     if (!contentDiv) return;
+    clearOwnedTimeouts(contentDiv);
+    contentDiv.querySelectorAll('*').forEach(clearOwnedTimeouts);
     const containers = contentDiv.querySelectorAll('.vcp-html-preview-container');
     containers.forEach(container => {
         if (typeof container._vcpCleanup === 'function') {

@@ -35,6 +35,9 @@ import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBui
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
+import { createContentRuntime } from './chat/contentRuntime.js';
+import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
+import { createChatDomRenderer } from './chat/chatDomRenderer.js';
 import {
     TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
     TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
@@ -548,6 +551,12 @@ function enhanceMermaidDiagram(mermaidElement) {
     wrapper.dataset.scale = '1';
     wrapper.dataset.translateX = '0';
     wrapper.dataset.translateY = '0';
+    const disposers = [];
+    const listen = (target, type, handler, options) => {
+        target.addEventListener(type, handler, options);
+        disposers.push(() => target.removeEventListener(type, handler, options));
+    };
+    wrapper._vcpDisposers = disposers;
 
     const toolbar = document.createElement('div');
     toolbar.className = 'mermaid-viewer-toolbar';
@@ -616,7 +625,8 @@ function enhanceMermaidDiagram(mermaidElement) {
         });
     };
 
-    toolbar.addEventListener('click', (event) => {
+
+    listen(toolbar, 'click', (event) => {
         const button = event.target.closest('[data-mermaid-action]');
         if (!button) return;
 
@@ -631,7 +641,7 @@ function enhanceMermaidDiagram(mermaidElement) {
         else if (action === 'fit') fitToWidth();
     });
 
-    viewport.addEventListener('wheel', (event) => {
+    listen(viewport, 'wheel', (event) => {
         event.preventDefault();
         event.stopPropagation();
 
@@ -641,7 +651,7 @@ function enhanceMermaidDiagram(mermaidElement) {
     }, { passive: false });
 
     let dragState = null;
-    viewport.addEventListener('pointerdown', (event) => {
+    listen(viewport, 'pointerdown', (event) => {
         if (event.button !== 0) return;
 
         const state = getState();
@@ -652,12 +662,13 @@ function enhanceMermaidDiagram(mermaidElement) {
             originX: state.translateX,
             originY: state.translateY
         };
+        wrapper._vcpPointerId = event.pointerId;
         viewport.classList.add('dragging');
         viewport.setPointerCapture?.(event.pointerId);
         event.preventDefault();
     });
 
-    viewport.addEventListener('pointermove', (event) => {
+    listen(viewport, 'pointermove', (event) => {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
 
         setState({
@@ -670,17 +681,40 @@ function enhanceMermaidDiagram(mermaidElement) {
     const endDrag = (event) => {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
         dragState = null;
+        delete wrapper._vcpPointerId;
         viewport.classList.remove('dragging');
         viewport.releasePointerCapture?.(event.pointerId);
     };
-    viewport.addEventListener('pointerup', endDrag);
-    viewport.addEventListener('pointercancel', endDrag);
-    viewport.addEventListener('dblclick', (event) => {
+    listen(viewport, 'pointerup', endDrag);
+    listen(viewport, 'pointercancel', endDrag);
+    listen(viewport, 'dblclick', (event) => {
         event.preventDefault();
         resetView();
     });
 
-    requestAnimationFrame(fitToWidth);
+    wrapper._vcpFitRaf = requestAnimationFrame(() => {
+        delete wrapper._vcpFitRaf;
+        if (wrapper.isConnected) fitToWidth();
+    });
+}
+
+function cleanupMermaidViewers(contentDiv) {
+    contentDiv?.querySelectorAll?.('.mermaid-viewer').forEach(wrapper => {
+        wrapper._vcpDisposers?.splice(0).forEach(dispose => {
+            try { dispose(); } catch { /* listener already removed */ }
+        });
+        if (wrapper._vcpFitRaf) {
+            if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(wrapper._vcpFitRaf);
+            delete wrapper._vcpFitRaf;
+        }
+        const viewport = wrapper.querySelector('.mermaid-viewer-viewport');
+        const pointerId = wrapper._vcpPointerId;
+        if (pointerId !== undefined && viewport?.hasPointerCapture?.(pointerId)) {
+            try { viewport.releasePointerCapture(pointerId); } catch { /* pointer already released */ }
+        }
+        wrapper.replaceChildren();
+        delete wrapper._vcpPointerId;
+    });
 }
 
 function getCompiledRegex(rule) {
@@ -1554,7 +1588,7 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
         return { text, toolResultMap: null };
     }
 
-    const result = contentPipeline.process(text, {
+    const result = contentRuntime.processFull(text, {
         mode: PIPELINE_MODES.FULL_RENDER,
         settings,
         messageRole,
@@ -1570,9 +1604,7 @@ function preprocessStreamTailContent(text) {
         return text;
     }
 
-    return contentPipeline.process(text, {
-        mode: PIPELINE_MODES.STREAM_FAST
-    }).text;
+    return contentRuntime.processStream(text).text;
 }
 
 function estimateStringBytes(str) {
@@ -2187,6 +2219,7 @@ let mainRendererReferences = {
 
     chatMessagesDiv: null,
     electronAPI: null,
+    chatRepository: null,
     markedInstance: null,
     uiHelper: {
         scrollToBottom: () => { },
@@ -2201,6 +2234,24 @@ let mainRendererReferences = {
 
 
 let contentPipeline = null;
+let contentRuntime = null;
+let rendererListenerDisposers = [];
+function disposeRendererListeners() {
+    rendererListenerDisposers.splice(0).reverse().forEach(dispose => { try { dispose(); } catch (error) { console.warn('[MessageRenderer] listener dispose failed:', error); } });
+}
+function disposeRendererResources() {
+    disposeRendererListeners();
+    visibilityOptimizer.destroyVisibilityOptimizer?.();
+}
+function disposeRootResources(root) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('.message-item').forEach(item => cleanupMessageDomResources(item, item.dataset?.messageId || null));
+    root.replaceChildren();
+}
+function ownRendererListener(target, type, handler, options) {
+    target.addEventListener(type, handler, options);
+    rendererListenerDisposers.push(() => target.removeEventListener(type, handler, options));
+}
 
 let activeRenderSessionId = 0;
 
@@ -2244,8 +2295,34 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
 
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
+        if (contentDiv._vcpDeferredHighlightTimer) {
+            clearTimeout(contentDiv._vcpDeferredHighlightTimer);
+            delete contentDiv._vcpDeferredHighlightTimer;
+        }
+        if (contentDiv._vcpPretextIdleHandle) {
+            const { kind, id } = contentDiv._vcpPretextIdleHandle;
+            if (kind === 'idle' && typeof window.cancelIdleCallback === 'function') {
+                window.cancelIdleCallback(id);
+            } else if (kind === 'timer') {
+                clearTimeout(id);
+            }
+            delete contentDiv._vcpPretextIdleHandle;
+        }
+        cleanupMermaidViewers(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
         cleanupAnimationsInContent(contentDiv);
+        contentDiv.querySelectorAll('[data-vcp-attachment-cleanup], .message-attachment-wrapper *').forEach(node => {
+            node._vcpAttachmentCleanup?.();
+            delete node._vcpAttachmentCleanup;
+        });
+        contentDiv.querySelectorAll('.vcp-audio-player').forEach(player => player._vcpAudioCleanup?.());
+        contentDiv.querySelectorAll('video, audio').forEach(media => {
+            if (media.closest('.vcp-audio-player')) return;
+            try { media.pause?.(); } catch { /* detached media may already be closed */ }
+            media.removeAttribute('src');
+            media.querySelectorAll?.('source').forEach(source => source.removeAttribute('src'));
+            try { media.load?.(); } catch { /* detached media may already be closed */ }
+        });
     }
 
     cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null);
@@ -2276,11 +2353,12 @@ function removeMessageById(messageId, saveHistory = false) {
             const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
             const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
             if (currentSelectedItemVal.id && currentTopicIdVal) {
-                if (currentSelectedItemVal.type === 'agent') {
-                    mainRendererReferences.electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                } else if (currentSelectedItemVal.type === 'group' && mainRendererReferences.electronAPI.saveGroupChatHistory) {
-                    mainRendererReferences.electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                }
+                mainRendererReferences.chatRepository?.saveHistory(
+                    currentSelectedItemVal.id,
+                    currentSelectedItemVal.type,
+                    currentTopicIdVal,
+                    currentChatHistoryArray
+                );
             }
         }
     }
@@ -2321,6 +2399,7 @@ function clearChat() {
 
 
 function initializeMessageRenderer(refs) {
+    disposeRendererListeners();
     Object.assign(mainRendererReferences, refs);
 
     contentPipeline = createContentPipeline({
@@ -2340,21 +2419,7 @@ function initializeMessageRenderer(refs) {
             }
             return window.flowlockProtocol.transformForRender(text);
         },
-        transformMermaidPlaceholders: (text) => {
-            let transformed = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
-                const tempEl = document.createElement('textarea');
-                tempEl.innerHTML = code;
-                const encodedCode = encodeURIComponent(tempEl.value.trim());
-                return `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodedCode}"></div>`;
-            });
-
-            transformed = transformed.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
-                const encodedCode = encodeURIComponent(code.trim());
-                return `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodedCode}"></div>`;
-            });
-
-            return transformed;
-        },
+        transformMermaidPlaceholders: createMermaidPlaceholderTransform({ escapeHtml }),
         getToolResultRegex: () => TOOL_RESULT_REGEX,
         getToolRequestRegex: () => TOOL_REGEX,
         replaceToolRequestBlocks,
@@ -2362,6 +2427,13 @@ function initializeMessageRenderer(refs) {
         getDesktopPushRegex: () => DESKTOP_PUSH_REGEX,
         getDesktopPushPartialRegex: () => DESKTOP_PUSH_PARTIAL_REGEX,
     });
+    contentRuntime = typeof createContentRuntime === 'function'
+        ? createContentRuntime({ pipeline: contentPipeline })
+        : {
+            normalizeMessage: (message) => ({ ...(message || {}), id: message?.id || `msg_${Date.now()}`, role: message?.role || 'assistant', content: message?.content ?? '' }),
+            processFull: (text, options = {}) => contentPipeline.process(text, { ...options, mode: PIPELINE_MODES.FULL_RENDER }),
+            processStream: (text, options = {}) => contentPipeline.process(text, { ...options, mode: PIPELINE_MODES.STREAM_FAST })
+        };
 
     initializeImageHandler({
         electronAPI: mainRendererReferences.electronAPI,
@@ -2379,7 +2451,7 @@ function initializeMessageRenderer(refs) {
     visibilityOptimizer.initializeVisibilityOptimizer(scrollContainer || mainRendererReferences.chatMessagesDiv);
 
     // --- Event Delegation ---
-    mainRendererReferences.chatMessagesDiv.addEventListener('click', (e) => {
+    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'click', (e) => {
         // 1. Handle collapsible tool results and thought chains
         const toolHeader = e.target.closest('.vcp-tool-result-header');
         if (toolHeader) {
@@ -2434,7 +2506,7 @@ function initializeMessageRenderer(refs) {
     });
 
     // Delegated context menu
-    mainRendererReferences.chatMessagesDiv.addEventListener('contextmenu', (e) => {
+    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'contextmenu', (e) => {
         const messageItem = e.target.closest('.message-item');
         if (!messageItem) return;
 
@@ -2449,7 +2521,7 @@ function initializeMessageRenderer(refs) {
     });
 
     // Delegated middle mouse button click
-    mainRendererReferences.chatMessagesDiv.addEventListener('mousedown', (e) => {
+    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'mousedown', (e) => {
         if (e.button !== 1) return; // 只处理中键
 
         const messageItem = e.target.closest('.message-item');
@@ -2504,6 +2576,8 @@ function initializeMessageRenderer(refs) {
     }
 
     streamManager.initStreamManager({
+        chatRepository: mainRendererReferences.chatRepository,
+        chatDomRenderer: mainRendererReferences.chatDomRenderer,
         globalSettingsRef: mainRendererReferences.globalSettingsRef,
         currentChatHistoryRef: mainRendererReferences.currentChatHistoryRef,
         currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
@@ -2544,7 +2618,7 @@ function initializeMessageRenderer(refs) {
     });
 
     // --- 用户气泡文件拖拽支持 ---
-    mainRendererReferences.chatMessagesDiv.addEventListener('dragover', (e) => {
+    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'dragover', (e) => {
         const messageItem = e.target.closest('.message-item.user');
         if (!messageItem) return;
 
@@ -2563,7 +2637,7 @@ function initializeMessageRenderer(refs) {
         }
     });
 
-    mainRendererReferences.chatMessagesDiv.addEventListener('dragleave', (e) => {
+    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'dragleave', (e) => {
         const messageItem = e.target.closest('.message-item.user');
         if (!messageItem) return;
 
@@ -2577,7 +2651,7 @@ function initializeMessageRenderer(refs) {
         }
     });
 
-    mainRendererReferences.chatMessagesDiv.addEventListener('drop', async (e) => {
+    ownRendererListener(mainRendererReferences.chatMessagesDiv, 'drop', async (e) => {
         const messageItem = e.target.closest('.message-item.user');
         if (!messageItem) return;
 
@@ -2834,7 +2908,12 @@ function enhanceAudioPlayers(container) {
             }
         };
 
-        playButton.addEventListener('click', () => {
+        const listenerDisposers = [];
+        const listen = (target, type, handler, options) => {
+            target.addEventListener(type, handler, options);
+            listenerDisposers.push(() => target.removeEventListener(type, handler, options));
+        };
+        const onPlayControl = () => {
             if (audio.paused || audio.ended) {
                 document.querySelectorAll('audio.vcp-audio-native').forEach((otherAudio) => {
                     if (otherAudio !== audio && !otherAudio.paused) otherAudio.pause();
@@ -2843,38 +2922,54 @@ function enhanceAudioPlayers(container) {
             } else {
                 audio.pause();
             }
-        });
-        progress.addEventListener('input', () => {
+        };
+        const onProgressInput = () => {
             if (Number.isFinite(audio.duration) && audio.duration > 0) {
                 audio.currentTime = (Number(progress.value) / 100) * audio.duration;
             }
-        });
-        muteButton.addEventListener('click', () => {
+        };
+        const onMute = () => {
             audio.muted = !audio.muted;
             if (!audio.muted && audio.volume === 0) audio.volume = 0.7;
             updateVolume();
-        });
-        volume.addEventListener('input', () => {
+        };
+        const onVolumeInput = () => {
             audio.volume = Number(volume.value);
             audio.muted = audio.volume === 0;
             updateVolume();
-        });
-
-        audio.addEventListener('loadedmetadata', updateProgress);
-        audio.addEventListener('durationchange', updateProgress);
-        audio.addEventListener('timeupdate', updateProgress);
-        audio.addEventListener('play', updatePlaybackState);
-        audio.addEventListener('pause', updatePlaybackState);
-        audio.addEventListener('ended', updatePlaybackState);
-        audio.addEventListener('volumechange', updateVolume);
-        audio.addEventListener('waiting', () => player.classList.add('is-buffering'));
-        audio.addEventListener('playing', () => player.classList.remove('is-buffering', 'has-error'));
-        audio.addEventListener('canplay', () => player.classList.remove('is-buffering'));
-        audio.addEventListener('error', () => {
+        };
+        const onWaiting = () => player.classList.add('is-buffering');
+        const onPlaying = () => player.classList.remove('is-buffering', 'has-error');
+        const onCanPlay = () => player.classList.remove('is-buffering');
+        const onError = () => {
             player.classList.remove('is-buffering');
             player.classList.add('has-error');
             title.textContent = '音频加载失败';
-        });
+        };
+        player._vcpAudioCleanup = () => {
+            stopSmoothProgress();
+            listenerDisposers.splice(0).reverse().forEach(dispose => dispose());
+            try { audio.pause(); } catch { /* detached media may already be closed */ }
+            audio.removeAttribute('src');
+            audio.querySelectorAll('source').forEach(source => source.removeAttribute('src'));
+            try { audio.load(); } catch { /* detached media may already be closed */ }
+        };
+
+        listen(playButton, 'click', onPlayControl);
+        listen(progress, 'input', onProgressInput);
+        listen(muteButton, 'click', onMute);
+        listen(volume, 'input', onVolumeInput);
+        listen(audio, 'loadedmetadata', updateProgress);
+        listen(audio, 'durationchange', updateProgress);
+        listen(audio, 'timeupdate', updateProgress);
+        listen(audio, 'play', updatePlaybackState);
+        listen(audio, 'pause', updatePlaybackState);
+        listen(audio, 'ended', updatePlaybackState);
+        listen(audio, 'volumechange', updateVolume);
+        listen(audio, 'waiting', onWaiting);
+        listen(audio, 'playing', onPlaying);
+        listen(audio, 'canplay', onCanPlay);
+        listen(audio, 'error', onError);
 
         updateProgress();
         updateVolume();
@@ -2913,15 +3008,21 @@ async function renderAttachments(message, contentDiv) {
                 attachmentElement.alt = `附件图片: ${att.name}`;
                 attachmentElement.title = `点击在新窗口预览: ${att.name}`;
                 attachmentElement.classList.add('message-attachment-image-thumbnail');
-                attachmentElement.onclick = (e) => {
+                const onImageClick = (e) => {
                     e.stopPropagation();
                     const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
                     electronAPI.openImageViewer({ src: att.src, title: att.name, theme: currentTheme });
                 };
-                attachmentElement.addEventListener('contextmenu', (e) => {
+                const onImageContextMenu = (e) => {
                     e.preventDefault(); e.stopPropagation();
                     electronAPI.showImageContextMenu(att.src);
-                });
+                };
+                attachmentElement.addEventListener('click', onImageClick);
+                attachmentElement.addEventListener('contextmenu', onImageContextMenu);
+                attachmentElement._vcpAttachmentCleanup = () => {
+                    attachmentElement.removeEventListener('click', onImageClick);
+                    attachmentElement.removeEventListener('contextmenu', onImageContextMenu);
+                };
             } else if (att.type.startsWith('audio/')) {
                 attachmentElement = document.createElement('audio');
                 attachmentElement.src = att.src;
@@ -2948,7 +3049,7 @@ async function renderAttachments(message, contentDiv) {
                 attachmentElement.title = isPythonAttachment
                     ? `使用记事本打开（不会执行）: ${att.name}`
                     : `点击打开文件: ${att.name}`;
-                attachmentElement.onclick = async (e) => {
+                const onFileClick = async (e) => {
                     e.preventDefault();
                     // 阻止聊天区的全局链接委托再次按系统文件关联打开同一个附件。
                     // 对 .py 而言，二次打开可能直接触发 Python 解释器执行。
@@ -2975,6 +3076,8 @@ async function renderAttachments(message, contentDiv) {
                         electronAPI.sendOpenExternalLink(att.src);
                     }
                 };
+                attachmentElement.addEventListener('click', onFileClick);
+                attachmentElement._vcpAttachmentCleanup = () => attachmentElement.removeEventListener('click', onFileClick);
                 const iconSpan = document.createElement('span');
                 iconSpan.className = 'message-attachment-file-icon';
                 iconSpan.innerHTML = fileVisual.iconMarkup;
@@ -2991,12 +3094,14 @@ async function renderAttachments(message, contentDiv) {
                 removeBtn.className = 'message-attachment-remove-btn';
                 removeBtn.innerHTML = '&times;';
                 removeBtn.title = '移除此附件';
-                removeBtn.onclick = (e) => {
+                const onRemoveClick = (e) => {
                     e.preventDefault(); e.stopPropagation();
                     if (window.chatManager && window.chatManager.removeAttachmentFromMessage) {
                         window.chatManager.removeAttachmentFromMessage(message.id, index);
                     }
                 };
+                removeBtn.addEventListener('click', onRemoveClick);
+                removeBtn._vcpAttachmentCleanup = () => removeBtn.removeEventListener('click', onRemoveClick);
                 wrapper.appendChild(removeBtn);
                 attachmentsContainer.appendChild(wrapper);
             }
@@ -3062,7 +3167,9 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     if (!isStillValid()) return;
 
     if (deferHighlights) {
-        setTimeout(() => {
+        if (contentDiv._vcpDeferredHighlightTimer) clearTimeout(contentDiv._vcpDeferredHighlightTimer);
+        contentDiv._vcpDeferredHighlightTimer = setTimeout(() => {
+            delete contentDiv._vcpDeferredHighlightTimer;
             if (isStillValid()) {
                 contentProcessor.highlightAllPatternsInMessage(contentDiv);
             }
@@ -3085,14 +3192,16 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         return null;
     }
 
+    message = contentRuntime.normalizeMessage(message);
     // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
+    const renderRoot = renderContext.root || chatMessagesDiv;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
 
     // Prevent re-rendering if the message already exists in the DOM, unless it's a thinking message being replaced.
-    const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
+    const existingMessageDom = renderRoot.querySelector(`.message-item[data-message-id="${message.id}"]`);
     if (existingMessageDom && !existingMessageDom.classList.contains('thinking')) {
         // console.log(`[MessageRenderer] Message ${message.id} already in DOM. Skipping render.`);
         // return existingMessageDom;
@@ -3180,7 +3289,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) {
             return null;
         }
-        chatMessagesDiv.appendChild(messageItem);
+        renderRoot.appendChild(messageItem);
         window.chatManager?.syncNextUiEmptyStateWithMessages?.();
         // 观察新消息的可见性
         visibilityOptimizer.observeMessage(messageItem);
@@ -3460,7 +3569,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
          if (currentSelectedItem.id && mainRendererReferences.currentTopicIdRef.get()) {
               if (currentSelectedItem.type === 'agent') {
-                 electronAPI.saveChatHistory(currentSelectedItem.id, mainRendererReferences.currentTopicIdRef.get(), currentChatHistoryArray);
+                 mainRendererReferences.chatRepository?.saveHistory(currentSelectedItem.id, currentSelectedItem.type, mainRendererReferences.currentTopicIdRef.get(), currentChatHistoryArray);
               } else if (currentSelectedItem.type === 'group') {
                  // Group history is usually saved by groupchat.js in main process after AI response
               }
@@ -3566,9 +3675,9 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
 
         // Save history
         if (currentSelectedItem && currentSelectedItem.id && currentTopicIdVal && currentSelectedItem.type === 'group') {
-            if (electronAPI.saveGroupChatHistory) {
+            if (mainRendererReferences.chatRepository) {
                 try {
-                    await electronAPI.saveGroupChatHistory(currentSelectedItem.id, currentTopicIdVal, currentChatHistoryArray.filter(m => !m.isThinking));
+                    await mainRendererReferences.chatRepository.saveHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicIdVal, currentChatHistoryArray.filter(m => !m.isThinking));
                 } catch (error) {
                     console.error(`[MR renderFullMessage] FAILED to save GROUP history for ${currentSelectedItem.id}, topic ${currentTopicIdVal}:`, error);
                 }
@@ -3657,10 +3766,22 @@ function scheduleMessagePretextEstimate(messageId, text, container) {
         }
     };
 
+    const contentDiv = container?.closest?.('.md-content') || container?.querySelector?.('.md-content') || null;
+    if (contentDiv?._vcpPretextIdleHandle) {
+        const previous = contentDiv._vcpPretextIdleHandle;
+        if (previous.kind === 'idle' && typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(previous.id);
+        else if (previous.kind === 'timer') clearTimeout(previous.id);
+    }
+    const wrappedRun = () => {
+        if (contentDiv) delete contentDiv._vcpPretextIdleHandle;
+        run();
+    };
     if (typeof window.requestIdleCallback === 'function') {
-        window.requestIdleCallback(run, { timeout: 300 });
+        const id = window.requestIdleCallback(wrappedRun, { timeout: 300 });
+        if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'idle', id };
     } else {
-        setTimeout(run, 0);
+        const id = setTimeout(wrappedRun, 0);
+        if (contentDiv) contentDiv._vcpPretextIdleHandle = { kind: 'timer', id };
     }
 }
 
@@ -3774,7 +3895,8 @@ async function renderHistory(history, options = {}) {
     }
 
     const renderContext = {
-        depthMap: buildTurnDepthMap(history)
+        depthMap: buildTurnDepthMap(history),
+        root: options.root || null
     };
 
     // 如果消息数量很少，直接使用原来的方式渲染
@@ -3871,7 +3993,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
             }
 
             // Step 1: Append all elements to the DOM at once.
-            mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            (renderContext.root || mainRendererReferences.chatMessagesDiv).appendChild(fragment);
             window.chatManager?.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
@@ -3926,7 +4048,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                     return;
                 }
 
-                const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
+                const chatMessagesDiv = renderContext.root || mainRendererReferences.chatMessagesDiv;
                 let insertPoint = chatMessagesDiv.firstChild;
                 while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
                     insertPoint = insertPoint.nextSibling;
@@ -3998,7 +4120,7 @@ async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSes
             }
 
             // Step 1: Append all elements to the DOM.
-            mainRendererReferences.chatMessagesDiv.appendChild(fragment);
+            (renderContext.root || mainRendererReferences.chatMessagesDiv).appendChild(fragment);
             window.chatManager?.syncNextUiEmptyStateWithMessages?.();
 
             // Step 2: Run the deferred processing for each element now that it's attached.
@@ -4050,6 +4172,10 @@ window.messageRenderer = {
     refreshLayoutDependentState,
     extractSpeakableTextFromContentElement,
     clearRenderHtmlCache,
+    disposeRendererListeners,
+    disposeRendererResources,
+    disposeRootResources,
+    createDomRenderer: (root = mainRendererReferences.chatMessagesDiv) => createChatDomRenderer({ root, renderer: window.messageRenderer }),
     getRenderHtmlCacheStats: () => ({
         entries: renderHtmlCache.size,
         bytes: renderHtmlCacheBytes,

@@ -4,6 +4,8 @@ window.topicListManager = (() => {
     // --- Private Variables ---
     let topicListContainer;
     let electronAPI;
+    let chatRepository;
+    let allowLegacyHistoryFallback = false;
     let currentSelectedItemRef;
     let currentTopicIdRef;
     let uiHelper;
@@ -39,6 +41,8 @@ window.topicListManager = (() => {
 
         topicListContainer = config.elements.topicListContainer;
         electronAPI = config.electronAPI;
+        chatRepository = config.chatRepository || null;
+        allowLegacyHistoryFallback = config.allowLegacyHistoryFallback === true;
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
         currentTopicIdRef = config.refs.currentTopicIdRef;
         uiHelper = config.uiHelper;
@@ -49,6 +53,15 @@ window.topicListManager = (() => {
         setupNextUiTopicTools();
 
         console.log('[TopicListManager] Initialized successfully.');
+    }
+
+    function getHistory(itemId, itemType, topicId) {
+        if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatRepository is required for topic history');
+        return chatRepository
+            ? chatRepository.getHistory(itemId, itemType, topicId)
+            : (itemType === 'group'
+                ? electronAPI.getGroupChatHistory(itemId, topicId)
+                : electronAPI.getChatHistory(itemId, topicId));
     }
 
     function hasUserParticipation(history) {
@@ -151,9 +164,7 @@ window.topicListManager = (() => {
         const topicsWithUnreadState = await Promise.all(topics.map(async topic => {
             let history = [];
             try {
-                history = currentSelectedItem.type === 'group'
-                    ? await electronAPI.getGroupChatHistory(currentSelectedItem.id, topic.id)
-                    : await electronAPI.getChatHistory(currentSelectedItem.id, topic.id);
+                history = await getHistory(currentSelectedItem.id, currentSelectedItem.type, topic.id);
             } catch (error) {
                 console.warn(`[TopicListManager] 读取话题 ${topic.id} 的未读状态失败:`, error);
             }
@@ -277,11 +288,7 @@ window.topicListManager = (() => {
         li.dataset.countLoading = 'true';
 
         let historyPromise;
-        if (itemType === 'agent') {
-            historyPromise = electronAPI.getChatHistory(itemId, topicId);
-        } else if (itemType === 'group') {
-            historyPromise = electronAPI.getGroupChatHistory(itemId, topicId);
-        }
+        historyPromise = getHistory(itemId, itemType, topicId);
 
         if (!historyPromise) {
             messageCountSpan.textContent = 'N/A';
@@ -1326,9 +1333,7 @@ window.topicListManager = (() => {
         console.log(`[TopicListManager] Exporting full raw topic: ${topicName} (ID: ${topicId})`);
 
         try {
-            const history = itemType === 'group'
-                ? await electronAPI.getGroupChatHistory(itemFullConfig.id, topicId)
-                : await electronAPI.getChatHistory(itemFullConfig.id, topicId);
+            const history = await getHistory(itemFullConfig.id, itemType, topicId);
 
             if (!Array.isArray(history)) {
                 throw new Error(history?.error || '无法读取话题历史');

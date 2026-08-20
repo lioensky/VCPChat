@@ -1,6 +1,7 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
+import { createContentRuntime } from '../chat/contentRuntime.js';
 
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
@@ -20,6 +21,7 @@ const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌�
 const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
 const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', '<style', 'target:','<!--'];
 let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
+let allowLegacyHistoryFallback = false;
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -195,6 +197,7 @@ const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId,
 // --- Local Reference Store ---
 let refs = {};
 let contentPipeline = null;
+let contentRuntime = null;
 let transientCleanupRegistered = false;
 
 // --- Pre-compiled Regular Expressions for Performance ---
@@ -205,6 +208,7 @@ let transientCleanupRegistered = false;
  */
 export function initStreamManager(dependencies) {
     refs = dependencies;
+    allowLegacyHistoryFallback = dependencies.allowLegacyHistoryFallback === true;
 
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
@@ -250,6 +254,15 @@ export function initStreamManager(dependencies) {
             return processedText;
         }
     });
+    contentRuntime = typeof createContentRuntime === 'function'
+        ? createContentRuntime({ pipeline: contentPipeline })
+        : {
+            processStream: (text, options = {}) => contentPipeline.process(text, { ...options, mode: PIPELINE_MODES.STREAM_FAST }),
+            extractChunkText: (chunk) => {
+                if (chunk?.error === 'json_parse_error') return '';
+                return chunk?.choices?.[0]?.delta?.content || chunk?.delta?.content || chunk?.content || (typeof chunk === 'string' ? chunk : '') || (chunk?.raw && !chunk?.error ? chunk.raw : '');
+            }
+        };
 
     // Assume morphdom is passed in dependencies, warn if not present.
     if (!refs.morphdom) {
@@ -325,7 +338,7 @@ function isMessageForCurrentView(context) {
 }
 
 async function getHistoryForContext(context) {
-    const { electronAPI } = refs;
+    const { electronAPI, chatRepository } = refs;
     if (!context) return null;
     
     const { agentId, groupId, topicId, isGroupMessage } = context;
@@ -334,9 +347,12 @@ async function getHistoryForContext(context) {
     if (!itemId || !topicId) return null;
     
     try {
-        const historyResult = isGroupMessage
-            ? await electronAPI.getGroupChatHistory(itemId, topicId)
-            : await electronAPI.getChatHistory(itemId, topicId);
+        if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatRepository is required for stream history');
+        const historyResult = chatRepository
+            ? await chatRepository.getHistory(itemId, isGroupMessage ? 'group' : 'agent', topicId)
+            : (isGroupMessage
+                ? await electronAPI.getGroupChatHistory(itemId, topicId)
+                : await electronAPI.getChatHistory(itemId, topicId));
         
         if (historyResult && !historyResult.error) {
             return historyResult;
@@ -350,6 +366,7 @@ async function getHistoryForContext(context) {
 
 // 🟢 历史保存防抖
 const historySaveQueue = new Map(); // context signature -> {context, history, timerId}
+const historySaveChains = new Map(); // context signature -> serialized durable save
 const HISTORY_SAVE_DEBOUNCE = 1000; // 1秒防抖
 
 async function debouncedSaveHistory(context, history) {
@@ -378,8 +395,18 @@ async function debouncedSaveHistory(context, history) {
     historySaveQueue.set(signature, { context, history: [...history], timerId });
 }
 
+async function flushHistorySave(context) {
+    if (!context || context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) return;
+    const signature = `${context.groupId || context.agentId}-${context.topicId}`;
+    const queuedData = historySaveQueue.get(signature);
+    if (!queuedData) return;
+    clearTimeout(queuedData.timerId);
+    historySaveQueue.delete(signature);
+    await saveHistoryForContext(queuedData.context, queuedData.history);
+}
+
 async function saveHistoryForContext(context, history) {
-    const { electronAPI } = refs;
+    const { electronAPI, chatRepository } = refs;
     if (!context || context.isGroupMessage) {
         // For group messages, the main process (groupchat.js) is the single source of truth for history.
         // The renderer avoids saving to prevent race conditions and overwriting the correct history.
@@ -390,12 +417,42 @@ async function saveHistoryForContext(context, history) {
     
     if (!agentId || !topicId) return;
     
+    const signature = `${agentId}-${topicId}`;
     const historyToSave = history.filter(msg => !msg.isThinking && !msg.isPendingStream);
-    
-    try {
-        await electronAPI.saveChatHistory(agentId, topicId, historyToSave);
-    } catch (e) {
+    const previous = historySaveChains.get(signature) || Promise.resolve();
+    const current = previous.catch(() => {}).then(async () => {
+        let mergedHistory = historyToSave;
+        // Reverse-completing streams can otherwise overwrite a newer durable
+        // response with an older in-memory snapshot. Merge against the latest
+        // repository state while serializing writes for this topic.
+        try {
+            const durable = chatRepository
+                ? await chatRepository.getHistory(agentId, 'agent', topicId)
+                : allowLegacyHistoryFallback ? await electronAPI.getChatHistory(agentId, topicId) : null;
+            if (Array.isArray(durable)) {
+                const byId = new Map(durable.map(message => [message.id || `${message.role}:${message.timestamp}:${message.content}`, message]));
+                for (const message of historyToSave) {
+                    const key = message.id || `${message.role}:${message.timestamp}:${message.content}`;
+                    byId.set(key, message);
+                }
+                mergedHistory = [...byId.values()];
+            }
+        } catch (error) {
+            console.warn('[StreamManager] Could not merge durable history before save:', error);
+        }
+        if (chatRepository) {
+            await chatRepository.saveHistory(agentId, 'agent', topicId, mergedHistory);
+        } else if (allowLegacyHistoryFallback) {
+            await electronAPI.saveChatHistory(agentId, topicId, mergedHistory);
+        } else {
+            throw new Error('ChatRepository is required for stream history');
+        }
+    }).catch(e => {
         console.error(`[StreamManager] Failed to save history for context`, context, e);
+    });
+    historySaveChains.set(signature, current);
+    try { await current; } finally {
+        if (historySaveChains.get(signature) === current) historySaveChains.delete(signature);
     }
 }
 
@@ -405,11 +462,8 @@ async function saveHistoryForContext(context, history) {
  */
 function applyStreamingPreprocessors(text) {
     if (!text) return '';
-    if (!contentPipeline) return text;
-
-    return contentPipeline.process(text, {
-        mode: PIPELINE_MODES.STREAM_FAST
-    }).text;
+    if (!contentRuntime) return text;
+    return contentRuntime.createRenderModel({ content: text, role: 'assistant' }, { mode: PIPELINE_MODES.STREAM_FAST }).text;
 }
 
 function parseStreamTail(text) {
@@ -1715,7 +1769,9 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
                 timestamp: message.timestamp || Date.now(), 
                 isGroupMessage: message.isGroupMessage || false 
             };
-            messageItem = refs.renderMessage(placeholderMessage, false);
+            messageItem = refs.chatDomRenderer
+                ? await refs.chatDomRenderer.renderMessage(placeholderMessage, false)
+                : refs.renderMessage(placeholderMessage, false);
             if (!messageItem) {
                 console.error(`[StreamManager] Failed to render message item for ${message.id}`);
                 discardStreamingMessage(messageId);
@@ -1726,6 +1782,8 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         if (messageItem && messageItem.classList) {
             messageItem.classList.add('streaming');
             messageItem.classList.remove('thinking');
+            const contentDiv = messageItem.querySelector('.md-content');
+            if (contentDiv) messageDomCache.set(messageId, { messageItem, contentDiv });
         }
     }
     
@@ -2149,19 +2207,9 @@ export function appendStreamChunk(messageId, chunkData, context) {
         return;
     }
     
-    let textToAppend = "";
-    if (chunkData?.choices?.[0]?.delta?.content) {
-        textToAppend = chunkData.choices[0].delta.content;
-    } else if (chunkData?.delta?.content) {
-        textToAppend = chunkData.delta.content;
-    } else if (typeof chunkData?.content === 'string') {
-        textToAppend = chunkData.content;
-    } else if (typeof chunkData === 'string') {
-        textToAppend = chunkData;
-    } else if (chunkData?.raw && !chunkData?.error) {
-        // 只有在没有错误标记时才显示 raw 数据
-        textToAppend = chunkData.raw;
-    }
+    const textToAppend = contentRuntime
+        ? contentRuntime.extractChunkText(chunkData)
+        : '';
     
     if (!textToAppend) return;
 
@@ -2339,7 +2387,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     if (isForCurrentView) {
         refs.currentChatHistoryRef.set([...historyForThisMessage]);
 
-        const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        const messageItem = messageDomCache.get(messageId)?.messageItem
+            || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
 
@@ -2406,6 +2455,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     // 🟢 使用防抖保存
     if (storedContext.topicId !== 'assistant_chat') {
         debouncedSaveHistory(storedContext, historyForThisMessage);
+        await flushHistorySave(storedContext);
     }
     
     // Cleanup
@@ -2539,6 +2589,7 @@ export function getStreamDiagnostics() {
 // Expose to global scope for classic scripts
 window.streamManager = {
     initStreamManager,
+    cleanupTransientState,
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,

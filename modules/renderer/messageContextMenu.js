@@ -543,12 +543,8 @@ function toggleEditMode(messageItem, message) {
 
             try {
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
-                    let saveResult;
-                    if (currentSelectedItemVal.type === 'agent') {
-                        saveResult = await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                    } else if (currentSelectedItemVal.type === 'group' && electronAPI.saveGroupChatHistory) {
-                        saveResult = await electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                    }
+                    if (!mainRefs.chatRepository) throw new Error('ChatRepository is required for message edits');
+                    const saveResult = await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, currentChatHistoryArray);
                     
                     // 🔧 检查保存结果
                     if (saveResult && !saveResult.success) {
@@ -681,7 +677,8 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
     if (currentSelectedItemVal.id && currentTopicIdVal) {
         try {
-            await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+            if (!mainRefs.chatRepository) throw new Error('ChatRepository is required for regeneration');
+            await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, currentChatHistoryArray);
         } catch (saveError) {
             console.error("ContextMenu: Failed to save chat history after splice in regenerate:", saveError);
         }
@@ -1041,13 +1038,14 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 };
 
                 // 【修复2】采用更健壮的“读-改-写”模式
-                const historyForSave = await electronAPI.getChatHistory(context.agentId, context.topicId);
+                if (!mainRefs.chatRepository) throw new Error('ChatRepository is required for regeneration');
+                const historyForSave = await mainRefs.chatRepository.getHistory(context.agentId, context.isGroupMessage ? 'group' : 'agent', context.topicId);
                 if (historyForSave && !historyForSave.error) {
                     // 确保历史记录中没有残余的 "thinking" 消息
                     const finalHistory = historyForSave.filter(msg => msg.id !== regenerationThinkingMessage.id && !msg.isThinking);
                     finalHistory.push(assistantMessage);
                     
-                    await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                    await mainRefs.chatRepository.saveHistory(context.agentId, context.isGroupMessage ? 'group' : 'agent', context.topicId, finalHistory);
 
                     if (isForActiveChat) {
                         mainRefs.currentChatHistoryRef.set(finalHistory);
@@ -1067,7 +1065,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
     } catch (error) {
         contextMenuDependencies.finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `客户端错误 (重新生成): ${error.message}`);
-        if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+        if (currentSelectedItemVal.id && currentTopicIdVal && mainRefs.chatRepository) await mainRefs.chatRepository.saveHistory(currentSelectedItemVal.id, currentSelectedItemVal.type, currentTopicIdVal, currentChatHistoryArray);
         uiHelper.scrollToBottom();
     }
 }
