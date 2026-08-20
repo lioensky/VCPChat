@@ -1047,6 +1047,47 @@ try {
         closeSelector: '#close-btn-assistant',
         label: 'assistant',
     });
+
+    // D7: both auxiliary surfaces must be able to own real operations at the
+    // same time. Opening and settling them independently catches accidental
+    // singleton renderer/stream state, while the final close verifies that
+    // each window reaches its own quiescent terminal before teardown.
+    await Promise.all([
+        page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]),
+        page.evaluate(() => window.chatAPI.assistantAction('open')),
+    ]);
+    const [concurrentVoicePage, concurrentAssistantPage] = await Promise.all([
+        waitForAuxiliaryPage('Voicechatmodules/voicechat.html'),
+        waitForAuxiliaryPage('rust_assistant_engine/ui/assistant.html'),
+    ]);
+    await Promise.all([
+        (async () => {
+            await concurrentVoicePage.type('#messageInput', 'voice-concurrent');
+            await concurrentVoicePage.click('#sendMessageBtn');
+            await concurrentVoicePage.waitForFunction(() => (
+                !document.querySelector('#messageInput')?.disabled
+                && [...document.querySelectorAll('.message-item.assistant .md-content')]
+                    .some(node => /fixture\s+stream\s+complete/.test(node.textContent || ''))
+            ), { timeout });
+        })(),
+        (async () => {
+            await concurrentAssistantPage.type('#messageInput', 'assistant-concurrent');
+            await concurrentAssistantPage.click('#sendMessageBtn');
+            await concurrentAssistantPage.waitForFunction(() => (
+                !document.querySelector('#messageInput')?.disabled
+                && [...document.querySelectorAll('.message-item.assistant .md-content')]
+                    .some(node => /fixture\s+stream\s+complete/.test(node.textContent || ''))
+            ), { timeout });
+        })(),
+    ]);
+    await Promise.all([
+        concurrentVoicePage.click('#close-btn-voicechat'),
+        concurrentAssistantPage.click('#close-btn-assistant'),
+    ]);
+    await Promise.all([
+        waitForAuxiliaryClose(concurrentVoicePage),
+        waitForAuxiliaryClose(concurrentAssistantPage),
+    ]);
     const allHistoryFiles = await findFilesNamed(path.join(appData, 'UserData'), 'history.json');
     const parsedHistories = await Promise.all(allHistoryFiles
         .map(async file => ({ file, history: JSON.parse(await fs.readFile(file, 'utf8')) })));
