@@ -269,7 +269,7 @@ const allowedSourceDifferencePatterns = [
     /^rust_assistant_engine\/ui\/assistant\.(?:js|html)$/,
     /^Flowlockmodules\/flowlock-integration\.js$/,
     /^modules\/event-listeners\.js$/,
-    /^tests\/(?:chat-|content-|stream-|render-dependencies|main-chat-surface-adapter|vcp-stream-bridge)/,
+    /^tests\/(?:chat-|content-|stream-|memory-chat-repository|window-stream-runtime|render-dependencies|main-chat-surface-adapter|vcp-stream-bridge)/,
     /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\//,
     /^Notemodules\/notemini\.(?:html|js|css)$/,
 ];
