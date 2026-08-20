@@ -1,5 +1,15 @@
 import { PIPELINE_MODES } from './contentModes.js';
 
+export function normalizeStreamChunk(chunk) {
+    if (chunk?.error === 'json_parse_error') return '';
+    if (typeof chunk?.choices?.[0]?.delta?.content === 'string') return chunk.choices[0].delta.content;
+    if (typeof chunk?.delta?.content === 'string') return chunk.delta.content;
+    if (typeof chunk?.content === 'string') return chunk.content;
+    if (typeof chunk === 'string') return chunk;
+    if (typeof chunk?.raw === 'string' && !chunk?.error) return chunk.raw;
+    return '';
+}
+
 /**
  * Content Runtime contract. It owns content normalization/preprocessing but
  * deliberately knows nothing about DOM, Electron or a chat surface.
@@ -51,13 +61,7 @@ export function createContentRuntime({ pipeline }) {
             return process(text, PIPELINE_MODES.STREAM_FAST, options);
         },
         extractChunkText(chunk) {
-            if (chunk?.error === 'json_parse_error') return '';
-            if (typeof chunk?.choices?.[0]?.delta?.content === 'string') return chunk.choices[0].delta.content;
-            if (typeof chunk?.delta?.content === 'string') return chunk.delta.content;
-            if (typeof chunk?.content === 'string') return chunk.content;
-            if (typeof chunk === 'string') return chunk;
-            if (typeof chunk?.raw === 'string' && !chunk?.error) return chunk.raw;
-            return '';
+            return normalizeStreamChunk(chunk);
         },
         createStreamAssembler(initial = '') {
             let text = typeof initial === 'string' ? initial : '';

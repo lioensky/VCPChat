@@ -1,3 +1,7 @@
+import { createVcpStreamBridge } from './modules/chat/vcpStreamBridge.js';
+import { createMainChatStreamConsumer } from './modules/renderer/mainChatStreamConsumer.js';
+import { createStreamConsumerRegistry } from './modules/chat/streamConsumerRegistry.js';
+
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
@@ -74,6 +78,7 @@ window.__vcpRendererReady = false;
 window.__vcpPendingTopicSelection = null;
 const chatAPI = window.chatAPI || window.electronAPI;
 const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
+const streamConsumerRegistry = createStreamConsumerRegistry();
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -594,6 +599,74 @@ const startupThemeGate = new StartupThemeGate({
         }
     });
 
+    const mainChatStreamBridge = createVcpStreamBridge({
+        createConsumer: initialEvent => createMainChatStreamConsumer(initialEvent, {
+            resolveProjection: messageId => streamConsumerRegistry.claim(messageId),
+            start: message => {
+                const start = window.streamManager?.startStreamingMessage
+                    || window.messageRenderer?.startStreamingMessage;
+                return start?.(message);
+            },
+            append: (messageId, chunk, context) => window.messageRenderer.appendStreamChunk(messageId, chunk, context),
+            finalize: (messageId, finishReason, context, payload) => (
+                window.messageRenderer.finalizeStreamedMessage(messageId, finishReason, context, payload)
+            ),
+            dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+            async afterPersist({ terminal, finalized, context, messageId }) {
+                const finalizedContext = finalized?.context || context;
+                const finalizedContent = finalized?.content || terminal.fullResponse || '';
+                const relevant = finalizedContext
+                    && currentSelectedItem
+                    && (finalizedContext.groupId
+                        ? finalizedContext.groupId === currentSelectedItem.id
+                        : finalizedContext.agentId === currentSelectedItem.id)
+                    && finalizedContext.topicId === currentTopicId;
+                if (terminal.kind === 'completed' && finalizedContext && !finalizedContext.isGroupMessage && relevant) {
+                    await window.chatManager.attemptTopicSummarizationIfNeeded();
+                }
+                await window.flowlockManager?.handleFinalizedMessage({
+                    type: terminal.kind === 'failed' ? 'error' : 'end',
+                    messageId,
+                    context: finalizedContext,
+                    content: finalizedContent,
+                    finishReason: finalized?.finishReason || terminal.finishReason || terminal.kind,
+                    error: terminal.error || null,
+                });
+            },
+            renderError({ event, context }) {
+                const relevant = context
+                    && currentSelectedItem
+                    && (context.groupId ? context.groupId === currentSelectedItem.id : context.agentId === currentSelectedItem.id)
+                    && context.topicId === currentTopicId;
+                if (!relevant) return;
+                const error = event.outcome?.transport?.error?.message
+                    || event.outcome?.transport?.error
+                    || event.outcome?.persistence?.error?.message
+                    || '未知连接错误';
+                const errorContent = document.querySelector(`.message-item[data-message-id="${event.messageId}"] .md-content`);
+                if (errorContent) {
+                    const paragraph = document.createElement('p');
+                    const strong = document.createElement('strong');
+                    strong.style.color = 'red';
+                    strong.textContent = `流错误: ${error}`;
+                    paragraph.appendChild(strong);
+                    errorContent.appendChild(paragraph);
+                } else {
+                    window.messageRenderer.renderMessage({
+                        role: 'system',
+                        content: `流处理错误 (ID: ${event.messageId}): ${error}`,
+                        timestamp: Date.now(),
+                        id: `err_${event.messageId}`,
+                    });
+                }
+            },
+        }),
+    });
+    window.addEventListener('beforeunload', () => {
+        streamConsumerRegistry.dispose();
+        mainChatStreamBridge.dispose();
+    }, { once: true });
+
     // Unified listener for all VCP stream events (agent and group)
     chatAPI.onVCPStreamEvent(async (eventData) => {
         if (!window.messageRenderer) {
@@ -603,16 +676,12 @@ const startupThemeGate = new StartupThemeGate({
 
         const { type, messageId, context, chunk, error, finish_reason, fullResponse } = eventData;
 
-        if (type === 'end' || type === 'error') {
-            window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', {
-                detail: { type, messageId, context, error: error || null }
-            }));
-        }
-
         if (!messageId) {
             console.error("onVCPStreamEvent: Received event without a messageId. Cannot process.", eventData);
             return;
         }
+
+        if (mainChatStreamBridge.accept(eventData)) return;
 
         // --- Asynchronous Logic: Update data model regardless of UI state ---
         // This is where you would update a global or context-specific data store
@@ -909,6 +978,7 @@ const startupThemeGate = new StartupThemeGate({
         window.chatManager.init({
             chatContext,
             chatRepository,
+            streamConsumerRegistry,
             chatDomRenderer: mainChatDomRenderer,
             electronAPI: chatAPI,
             chatRepository,

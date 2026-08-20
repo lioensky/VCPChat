@@ -163,19 +163,23 @@ export function createStreamCoordinator({ run, persist, reportError = console.er
 
             const transport = await record.session.done;
             let persistence = freeze({ status: 'skipped' });
+            let persistenceValue;
             let outcomeKind = transport.kind;
             let phase;
             if (persist && transport.kind !== 'discarded' && records.get(sessionId) === record) {
                 try {
                     await enqueuePersistence(record, async () => {
                         if (records.get(sessionId) !== record) return;
-                        await persist(freeze({
+                        persistenceValue = await persist(freeze({
                             request: record.request,
                             terminal: immutableDto(transport),
                             snapshot: immutableDto(record.session.snapshot),
                         }));
                     });
-                    persistence = freeze({ status: records.get(sessionId) === record ? 'saved' : 'skipped' });
+                    persistence = immutableDto({
+                        status: records.get(sessionId) === record ? 'saved' : 'skipped',
+                        value: persistenceValue,
+                    });
                 } catch (error) {
                     persistence = freeze({ status: 'failed', error: errorDto(error) });
                     outcomeKind = 'failed';

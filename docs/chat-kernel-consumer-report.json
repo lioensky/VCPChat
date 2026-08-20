@@ -29,14 +29,15 @@
     "tests/stream-coordinator.test.mjs",
     "tests/stream-manager-terminal-cleanup.test.js",
     "tests/stream-session.test.mjs",
-    "tests/topic-list-mode-lifecycle.test.js"
+    "tests/topic-list-mode-lifecycle.test.js",
+    "tests/vcp-stream-bridge.test.mjs"
   ],
   "references": {
     "chatManager": {
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 46
+          "occurrences": 47
         },
         {
           "file": "modules/event-listeners.js",
@@ -70,7 +71,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 36
+          "occurrences": 40
         },
         {
           "file": "modules/event-listeners.js",
@@ -108,7 +109,7 @@
       "production": [
         {
           "file": "renderer.js",
-          "occurrences": 13
+          "occurrences": 14
         },
         {
           "file": "modules/chatManager.js",
@@ -170,11 +171,11 @@
   ],
   "ownershipSignals": {
     "renderer.js": {
-      "windowReferences": 226,
-      "documentReferences": 185,
+      "windowReferences": 234,
+      "documentReferences": 188,
       "electronReferences": 12,
       "timers": 2,
-      "listeners": 28,
+      "listeners": 29,
       "mutableMaps": 0
     },
     "modules/event-listeners.js": {

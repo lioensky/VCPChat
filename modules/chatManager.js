@@ -18,6 +18,7 @@ window.chatManager = (() => {
     let globalSettingsRef;
     let chatContext;
     let chatRepository;
+    let streamConsumerRegistry;
     let allowLegacyHistoryFallback = false;
 
     function requireHistoryRepository() {
@@ -351,6 +352,7 @@ window.chatManager = (() => {
     function init(config) {
         chatContext = config.chatContext || null;
         chatRepository = config.chatRepository || null;
+        streamConsumerRegistry = config.streamConsumerRegistry || null;
         allowLegacyHistoryFallback = config.allowLegacyHistoryFallback === true;
         if (!chatRepository && !allowLegacyHistoryFallback) throw new Error('ChatManager requires ChatRepository');
         chatDomRenderer = config.chatDomRenderer || null;
@@ -1462,6 +1464,7 @@ window.chatManager = (() => {
         };
 
         let thinkingMessageItem = null;
+        let releaseStreamConsumerRoute = null;
         if (renderTarget && isSendContextCurrent()) {
             thinkingMessageItem = await renderTarget.renderMessage(thinkingMessage);
             if (!isSendContextCurrent()) {
@@ -1478,6 +1481,8 @@ window.chatManager = (() => {
             window.updateSendButtonState?.();
         }
         const removeThinkingFromSource = async () => {
+            releaseStreamConsumerRoute?.();
+            releaseStreamConsumerRoute = null;
             renderTarget?.discardStreaming?.(thinkingMessage.id);
             try {
                 const sourceHistory = await getHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId);
@@ -1774,6 +1779,14 @@ window.chatManager = (() => {
 
             if (useStreaming) {
                 if (messageRenderer) {
+                    releaseStreamConsumerRoute = streamConsumerRegistry?.register?.(thinkingMessage.id, {
+                        kind: request?.domRenderer ? 'independent-surface' : 'main-chat',
+                        start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),
+                        release: () => {
+                            releaseStreamConsumerRoute?.();
+                            releaseStreamConsumerRoute = null;
+                        },
+                    });
                     await new Promise(resolve => setTimeout(resolve, 500));
                     // Pass the created DOM element directly to avoid race conditions with querySelector
                     await (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, { ...thinkingMessage, content: "" }, thinkingMessageItem);
