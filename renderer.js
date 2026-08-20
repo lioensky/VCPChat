@@ -5,6 +5,7 @@ import { streamManager } from './modules/renderer/streamManager.js';
 import { chatManager } from './modules/chatManager.js';
 
 window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());
+window.MainChatCommands?.setChatManagerProvider?.(chatManager);
 
 // --- Globals ---
 let globalSettings = {
@@ -489,6 +490,7 @@ const startupThemeGate = new StartupThemeGate({
             markedInstance,
             uiHelper: uiHelperFunctions,
             interruptHandler,
+            chatManager,
             summarizeTopicFromMessages: (messages, agentName) => {
                 if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);
                 console.error('[MessageRenderer] summarizeTopicFromMessages function not found on window scope.');
@@ -1107,7 +1109,7 @@ const startupThemeGate = new StartupThemeGate({
 
     // --- Initialize Flowlock Module ---
     if (window.initializeFlowlockIntegration) {
-        window.initializeFlowlockIntegration();
+        window.initializeFlowlockIntegration({ chatManager });
         console.log('[Renderer] Flowlock integration initialized.');
     } else {
         console.warn('[Renderer] Flowlock integration function not found.');

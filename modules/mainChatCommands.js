@@ -1,4 +1,5 @@
 (() => {
+    let chatManagerProvider = null;
     const api = () => window.chatAPI || window.electronAPI;
     const windowCommand = (name, fallback) => window.VCPWindowState?.[name]
         ? window.VCPWindowState[name]()
@@ -98,7 +99,7 @@
         try {
             await window.itemListManager?.loadItems?.();
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
-            await window.chatManager?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
+            await chatManagerProvider?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             window.uiManager?.switchToTab?.('settings');
             return { ...result, navigationSuccess: true };
@@ -119,7 +120,7 @@
         try {
             await window.itemListManager?.loadItems?.();
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
-            await window.chatManager?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
+            await chatManagerProvider?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             window.uiManager?.switchToTab?.('settings');
             return { ...result, navigationSuccess: true };
@@ -175,5 +176,10 @@
         execute: (id, ...args) => commandRegistry?.execute(id, ...args),
         list: () => commandRegistry?.list() || [],
         register: (definition, options) => commandRegistry?.register(definition, options),
+        setChatManagerProvider(provider) {
+            if (!provider || typeof provider.selectItem !== 'function') throw new TypeError('MainChatCommands requires a chat manager provider.');
+            if (chatManagerProvider && chatManagerProvider !== provider) throw new Error('MainChatCommands chat manager provider is already registered.');
+            chatManagerProvider = provider;
+        },
     });
 })();

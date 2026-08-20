@@ -3,6 +3,7 @@
 // 多 Agent 并发架构：续写不再依赖当前 UI 状态，而是按指定 Agent/Topic 后台执行。
 
 console.log('[Flowlock Integration] Loading integration script (multi-session)...');
+let chatManagerProvider = null;
 
 /**
  * 初始化Flowlock模块
@@ -273,8 +274,8 @@ async function continueWritingForContext(params) {
                 finalHistory.push(assistantMessage);
                 await chatAPI.saveChatHistory(agentId, topicId, finalHistory);
 
-                if (isForCurrentView && window.chatManager?.loadChatHistory) {
-                    await window.chatManager.loadChatHistory(agentId, 'agent', topicId);
+                if (isForCurrentView && chatManagerProvider?.loadChatHistory) {
+                    await chatManagerProvider.loadChatHistory(agentId, 'agent', topicId);
                 }
             }
 
@@ -397,8 +398,9 @@ function setupFlowlockShortcuts() {
 /**
  * 主初始化函数
  */
-function initializeFlowlockIntegration() {
+function initializeFlowlockIntegration(dependencies = {}) {
     try {
+        chatManagerProvider = dependencies.chatManager || null;
         initializeFlowlock();
         setupFlowlockInteractions();
         setupFlowlockShortcuts();

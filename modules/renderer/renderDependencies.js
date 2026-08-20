@@ -47,6 +47,7 @@ export function createRenderDependencies(input = {}) {
         feedback: input.uiHelper,
         commands,
         interrupt: input.interruptHandler || null,
+        chatManager: input.chatManager || null,
         chatDomRenderer: input.chatDomRenderer || null,
 
         // Flat aliases are temporary D4 migration adapters, not public globals.
@@ -62,6 +63,7 @@ export function createRenderDependencies(input = {}) {
         summarizeTopicFromMessages: commands.summarizeTopic,
         handleCreateBranch: commands.createBranch,
         interruptHandler: input.interruptHandler || null,
+        chatManager: input.chatManager || null,
     };
     return Object.freeze(closure);
 }

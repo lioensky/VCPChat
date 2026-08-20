@@ -2266,8 +2266,3 @@ export const chatManager = (() => {
         syncHistoryFromFile, // Expose the new function
     };
 })();
-
-// Compatibility alias for the remaining Classic scripts. Module consumers use
-// the explicit provider export so this alias can be retired consumer by consumer.
-window.chatManager = chatManager;
-

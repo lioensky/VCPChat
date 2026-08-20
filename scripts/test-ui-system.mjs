@@ -733,6 +733,21 @@ assert.equal(JSON.stringify(creationCalls[0]), JSON.stringify(['Nova', { model: 
     'renderer creation must pass only the model override to the main process');
 assert.equal(partialCreation.success, true, 'a persisted Agent must remain a successful creation result');
 assert.equal(partialCreation.navigationSuccess, false, 'post-create UI failure must be reported separately');
+const selectedItems = [];
+const chatManagerProvider = {
+    selectItem: async (...args) => { selectedItems.push(args); }
+};
+commandDom.window.MainChatCommands.setChatManagerProvider(chatManagerProvider);
+assert.throws(
+    () => commandDom.window.MainChatCommands.setChatManagerProvider({ selectItem() {} }),
+    /already registered/,
+    'the main command facade must have one explicit chat manager provider'
+);
+commandDom.window.itemListManager.loadItems = async () => [];
+const completeCreation = await commandDom.window.MainChatCommands.createAgent({ name: 'Terra', model: 'model-next' });
+assert.equal(completeCreation.navigationSuccess, true,
+    'creation navigation must complete through the explicitly registered provider');
+assert.deepEqual(selectedItems[0], ['agent-1', 'agent', 'Terra', null, { model: 'model-next' }]);
 assert.match(mainHtml,
     /id="nextUiMainPanel"[^>]*>[\s\S]*<main class="main-content">[\s\S]*id="resizerRight"[\s\S]*id="notificationsSidebar"[\s\S]*<\/section>/s,
     'main chat, notification resizer, and notification sidebar must share one clipping host');

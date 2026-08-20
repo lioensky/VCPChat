@@ -969,7 +969,7 @@ function restoreButton(button) {
 function sendButtonMessage(text, button) {
     try {
         // Check if chatManager is available
-        if (window.chatManager && typeof window.chatManager.handleSendMessage === 'function') {
+        if (mainRefs.chatManager && typeof mainRefs.chatManager.handleSendMessage === 'function') {
             // Use the main chat manager for regular chat
             sendMessageViaMainChat(text);
         } else if (window.sendMessage && typeof window.sendMessage === 'function') {
@@ -1005,7 +1005,7 @@ function sendMessageViaMainChat(text) {
 
     // Set the text in input and trigger send
     messageInput.value = text;
-    window.chatManager.handleSendMessage();
+    mainRefs.chatManager.handleSendMessage();
 
     // Note: handleSendMessage will clear the input automatically
 }

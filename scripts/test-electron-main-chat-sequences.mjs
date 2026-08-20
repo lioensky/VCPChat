@@ -352,6 +352,27 @@ try {
     };
     trackPage(page);
     await page.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout });
+    const providerBoundary = await page.evaluate(async () => {
+        const [{ chatManager }, { messageRenderer }, { streamManager }] = await Promise.all([
+            import('./modules/chatManager.js'),
+            import('./modules/messageRenderer.js'),
+            import('./modules/renderer/streamManager.js'),
+        ]);
+        return {
+            noGlobals: !('chatManager' in window)
+                && !('messageRenderer' in window)
+                && !('streamManager' in window),
+            chatProvider: typeof chatManager.sendMessage === 'function',
+            rendererProvider: typeof messageRenderer.renderMessage === 'function',
+            streamProvider: typeof streamManager.getDiagnostics === 'function',
+        };
+    });
+    assert.deepEqual(providerBoundary, {
+        noGlobals: true,
+        chatProvider: true,
+        rendererProvider: true,
+        streamProvider: true,
+    }, 'main renderer must use explicit providers without compatibility globals');
     await page.waitForFunction(ids => ids.every(id => document.querySelector(`#agentList > [data-item-id="${id}"][data-item-type="agent"]`)), { timeout }, identities);
 
     const click = async selector => page.evaluate(value => document.querySelector(value)?.click(), selector);
@@ -541,7 +562,7 @@ try {
             }));
             const createdTopicId = await page.evaluate(async ({ itemId, itemType }) => {
                 const before = new Set((await window.chatAPI.getAgentTopics(itemId)).map(topic => topic.id));
-                await window.chatManager.createNewTopicForItem(itemId, itemType);
+                await (await import('./modules/chatManager.js')).chatManager.createNewTopicForItem(itemId, itemType);
                 const after = await window.chatAPI.getAgentTopics(itemId);
                 return after.find(topic => !before.has(topic.id))?.id || null;
             }, { itemId: item.id, itemType: item.type });
@@ -551,7 +572,7 @@ try {
             const deletion = await page.evaluate(async ({ itemId, itemType, topicId }) => {
                 const result = await window.chatAPI.deleteTopic(itemId, topicId);
                 if (!result?.success) return result;
-                await window.chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType });
+                await (await import('./modules/chatManager.js')).chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType });
                 return result;
             }, { itemId: item.id, itemType: item.type, topicId: createdTopicId });
             assert.equal(deletion?.success, true, `topic deletion roundtrip failed: ${JSON.stringify(deletion)}`);
@@ -797,7 +818,7 @@ try {
         await page.waitForFunction(expectedId => window.currentSelectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
         const activeTopic = await page.evaluate(() => window.currentTopicId);
         if (activeTopic !== topicId) {
-            await page.evaluate(expectedTopicId => window.chatManager.selectTopic(expectedTopicId), topicId);
+            await page.evaluate(async expectedTopicId => (await import('./modules/chatManager.js')).chatManager.selectTopic(expectedTopicId), topicId);
         }
         await waitState(itemId, topicId);
     };
@@ -816,8 +837,8 @@ try {
             }
         }, topics);
         await ensureInitialConversation();
-        await page.evaluate(({ itemId, topicId }) => (
-            window.chatManager.loadChatHistory(itemId, 'agent', topicId)
+        await page.evaluate(async ({ itemId, topicId }) => (
+            (await import('./modules/chatManager.js')).chatManager.loadChatHistory(itemId, 'agent', topicId)
         ), { itemId: identities[0], topicId: topics[identities[0]][0] });
         await page.evaluate(async () => (await import('./modules/renderer/streamManager.js')).cleanupTransientState());
     };
