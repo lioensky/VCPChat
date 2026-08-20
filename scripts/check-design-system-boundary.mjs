@@ -55,6 +55,7 @@ const allowedSourceDifferences = new Set([
     'docs/deepseek-harness-ui-ux-research.md',
     'docs/ui-interaction-accessibility-gaps.md',
     'docs/ui-interaction-accessibility-roadmap.md',
+    'docs/ui-harness-external-evidence-checklist.md',
     'docs/ui-system-qa-matrix.md',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',

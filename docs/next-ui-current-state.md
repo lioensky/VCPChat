@@ -68,7 +68,7 @@
 | 高频主题切换证据 | 已完成当前 canonical 范围 | 真实 Electron smoke 连续切换 20 次，最终主题、Web Awesome theme link 数量和 owner 数量均与切换前一致 |
 | macOS unpacked packaged launch | 证据未完成 | 本机已生成 `dist/mac-arm64/VCP聊天客户端.app` 并确认 `app.asar`/资源存在；直接启动未建立 remote-debugging endpoint，未将未签名产物启动结果计为通过 |
 
-最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
+历史证据快照（2026-08-17，P3，不代表当前 HEAD 的 Windows 或发布证据）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明当时覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
 ## 4. 公共能力收口状态
 
@@ -108,7 +108,7 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 
 同步后的 macOS 自动证据：
 
-- `npm run check:ui-system`：通过（含 Escape dispatcher、Launchpad 与最新共享边界证据）。
+- `npm run check:ui-system`：当前 HEAD 首次运行因新增外部证据清单未加入设计边界白名单而失败；该守卫同步修复后需重新取得绿证据，不能引用旧快照代替。
 - Electron UI Apps：22/22。
 - 主聊天操作序列：24 actions、11 action kinds、21 pairs、12 transitions、2 faults、required edge 1/1。
 - 生命周期压力：3 次预热 + 20 次测量；861 listener、8 Scope、162 受管资源、5 process、2 renderer process 在全部 checkpoint 恒定，detached root/icon/option 为 0，heap 约 9.8 MiB → 9.7 MiB。
@@ -123,11 +123,11 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
-P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
+历史证据快照（2026-08-17，不代表当前 HEAD 的 Windows 证据）：P1 所有权缺陷已关闭；组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。此前记录的 UI System 75/75、Electron UI Apps 22/22 和生命周期压力结果只作为当时的回归记录。
 
-P2 无消费者架构减法已于 2026-08-17 关闭：产品文件树不再携带休眠子页面 runtime、静态 mode facade 或 Settings/Creation/item list 测试 Store；负向边界门禁阻止这些接口在无生产消费者时回归。完整 Windows 验证为 UI System 75/75、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过。
+历史证据快照（2026-08-17，不代表当前 HEAD 的 Windows 证据）：P2 无消费者架构减法已关闭；产品文件树不再携带休眠子页面 runtime、静态 mode facade 或 Settings/Creation/item list 测试 Store；负向边界门禁阻止这些接口在无生产消费者时回归。
 
-P3 公共合同收口已于 2026-08-17 关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。完整 Windows 验证为 UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、162 项受管资源、407 个 listener、5 个 Electron process，detached root/icon/option 为 0。
+历史证据快照（2026-08-17，不代表当前 HEAD 的 Windows 证据）：P3 公共合同收口已关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。
 
 P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐。动态壁纸、插件运行时和业务子页面迁移继续排除在本轮之外。
 
