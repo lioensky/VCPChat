@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('vcpBootstrap', Object.freeze({
     doctor: deep => ipcRenderer.invoke('bootstrap:doctor', deep),
+    plan: () => ipcRenderer.invoke('bootstrap:plan'),
     repair: args => ipcRenderer.invoke('bootstrap:repair', args || []),
     launch: safe => ipcRenderer.invoke('bootstrap:launch', Boolean(safe)),
     cancel: () => ipcRenderer.invoke('bootstrap:cancel'),

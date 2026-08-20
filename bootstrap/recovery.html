@@ -9,10 +9,12 @@
   <div class="progress"><div id="bar"></div></div>
   <pre id="log" hidden></pre>
   <section id="checks" class="checks"></section>
+  <section id="plan" class="plan" hidden aria-live="polite"></section>
   <div class="actions">
     <button id="repair" hidden>按计划修复</button>
     <button id="safe" hidden>最小启动（禁用 GPU）</button>
     <button id="launch" hidden>启动 VCPChat</button>
+    <button id="cancel" class="quiet" hidden>取消当前操作</button>
     <button id="logs">查看诊断</button>
     <button id="quit" class="quiet">退出</button>
   </div>

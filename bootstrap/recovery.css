@@ -8,6 +8,9 @@ p { color: #b5c0d1; line-height: 1.55; }
 .progress { height: 6px; margin: 24px 0; overflow: hidden; border-radius: 99px; background: #2a3445; }
 .progress > div { width: 8%; height: 100%; border-radius: inherit; background: #79a9ff; transition: width .25s ease; }
 .checks { display: grid; gap: 8px; margin: 22px 0; }
+.plan { margin: 18px 0; padding: 12px; border: 1px solid #394963; border-radius: 10px; background: #131b28; color: #c9d7ed; }
+.plan h2 { margin: 0 0 8px; font-size: 14px; }
+.plan ul { margin: 0; padding-left: 20px; color: #aebed7; }
 .check { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid #2b3649; border-radius: 10px; background: #171e29; }
 .check small { color: #9cabc0; text-align: right; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }

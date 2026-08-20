@@ -76,6 +76,10 @@ ipcMain.handle('bootstrap:doctor', async (_event, deep = true) => {
     const result = await runScript('vcpchat-doctor.mjs', deep ? ['--deep', '--json'] : ['--json']);
     return JSON.parse(result.stdout);
 });
+ipcMain.handle('bootstrap:plan', async () => {
+    const result = await runScript('vcpchat-repair.mjs', ['--json']);
+    return JSON.parse(result.stdout);
+});
 ipcMain.handle('bootstrap:repair', async (_event, args = []) => runScript('vcpchat-repair.mjs', ['--apply', '--yes', ...args]));
 ipcMain.handle('bootstrap:launch', async (_event, safe = false) => {
     return runScript('vcpchat-dev-launcher.mjs', safe ? ['--project-root', projectRoot, '--', '--disable-gpu'] : ['--project-root', projectRoot]);

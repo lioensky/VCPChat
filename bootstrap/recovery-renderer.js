@@ -7,6 +7,9 @@
     const repairButton = document.querySelector('#repair');
     const safeButton = document.querySelector('#safe');
     const launchButton = document.querySelector('#launch');
+    const cancelButton = document.querySelector('#cancel');
+    const plan = document.querySelector('#plan');
+    let operationActive = false;
     const write = text => { log.hidden = false; log.textContent += text; log.scrollTop = log.scrollHeight; };
     const renderDoctor = report => {
         checks.textContent = '';
@@ -23,12 +26,27 @@
         bar.style.width = `${Math.max(8, Math.round((report.summary.pass / Math.max(1, report.checks.length)) * 100))}%`;
         return blocked;
     };
-    const refresh = async () => { try { renderDoctor(await window.vcpBootstrap.doctor(true)); } catch (error) { title.textContent = '检查失败'; summary.textContent = error.message; safeButton.hidden = false; } };
-    window.vcpBootstrap.onOutput(detail => write(detail.text));
-    repairButton.onclick = async () => { repairButton.disabled = true; write('\n开始受控修复…\n'); try { await window.vcpBootstrap.repair([]); } catch (error) { write(`${error.message}\n`); } finally { repairButton.disabled = false; await refresh(); } };
-    safeButton.onclick = async () => { safeButton.disabled = true; write('\n尝试最小启动…\n'); try { await window.vcpBootstrap.launch(true); } catch (error) { write(`${error.message}\n`); safeButton.disabled = false; } };
-    launchButton.onclick = async () => { launchButton.disabled = true; try { await window.vcpBootstrap.launch(false); } catch (error) { write(`${error.message}\n`); launchButton.disabled = false; } };
+    const renderPlan = async blocked => {
+        if (!blocked) { plan.hidden = true; return; }
+        try {
+            const value = await window.vcpBootstrap.plan();
+            plan.textContent = '';
+            const heading = document.createElement('h2'); heading.textContent = '修复计划';
+            const list = document.createElement('ul');
+            (value.stages || []).forEach(stage => { const item = document.createElement('li'); item.textContent = `${stage.mutates ? '修改' : '检查'}：${stage.id}`; list.append(item); });
+            plan.append(heading, list);
+            plan.hidden = false;
+        } catch (error) { write(`\n无法读取修复计划：${error.message}\n`); }
+    };
+    const refresh = async () => { try { const blocked = renderDoctor(await window.vcpBootstrap.doctor(true)); await renderPlan(blocked); } catch (error) { title.textContent = '检查失败'; summary.textContent = error.message; safeButton.hidden = false; } };
+    const setOperation = active => { operationActive = active; cancelButton.hidden = !active; repairButton.disabled = active; safeButton.disabled = active; launchButton.disabled = active; };
+    const releaseOutput = window.vcpBootstrap.onOutput(detail => write(detail.text));
+    repairButton.onclick = async () => { setOperation(true); write('\n开始受控修复…\n'); try { await window.vcpBootstrap.repair([]); } catch (error) { write(`${error.message}\n`); } finally { setOperation(false); await refresh(); } };
+    safeButton.onclick = async () => { setOperation(true); write('\n尝试最小启动…\n'); try { await window.vcpBootstrap.launch(true); } catch (error) { write(`${error.message}\n`); setOperation(false); } };
+    launchButton.onclick = async () => { setOperation(true); try { await window.vcpBootstrap.launch(false); } catch (error) { write(`${error.message}\n`); setOperation(false); } };
+    cancelButton.onclick = async () => { if (operationActive) { cancelButton.disabled = true; await window.vcpBootstrap.cancel(); write('\n已请求取消当前操作。\n'); } };
     document.querySelector('#logs').onclick = async () => { const entries = await window.vcpBootstrap.logs(); write(`${entries.map(entry => entry.path).join('\n') || '暂无诊断文件'}\n`); if (entries[0]) await window.vcpBootstrap.openLog(entries[0].path); };
     document.querySelector('#quit').onclick = () => window.vcpBootstrap.quit();
+    window.addEventListener('beforeunload', () => { releaseOutput?.(); });
     refresh();
 })();
