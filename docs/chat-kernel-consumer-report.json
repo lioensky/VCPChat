@@ -432,6 +432,7 @@
     "modules/ui-system/next-shell/assistant-search-controller.js",
     "modules/ui-system/next-shell/creation-controller.js",
     "modules/ui-system/next-shell/embedded-app-controller.js",
+    "modules/ui-system/next-shell/escape-dispatcher.js",
     "modules/ui-system/next-shell/launchpad-controller.js",
     "modules/ui-system/next-shell/next-shell-controller.js",
     "modules/ui-system/next-shell/notification-menu-controller.js",
@@ -572,7 +573,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1664,
+          "line": 1669,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -580,7 +581,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1665,
+          "line": 1670,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -2144,99 +2145,64 @@
       "retirement": "retain while Next shell, Classic menus or plugin commands consume it",
       "production": [
         {
-          "file": "modules/event-listeners.js",
-          "line": 1180,
-          "surface": "main-window",
-          "member": "openForum",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.openForum?.());"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1183,
-          "surface": "main-window",
-          "member": "openMemo",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.openMemo?.());"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1187,
-          "surface": "main-window",
-          "member": "toggleNotificationFilter",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.toggleNotificationFilter?.());"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1191,
-          "surface": "main-window",
-          "member": "openNotificationFilterSettings",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.openNotificationFilterSettings?.(), {"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1197,
-          "surface": "main-window",
-          "member": "clearNotifications",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.clearNotifications?.());"
-        },
-        {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 603,
+          "line": 746,
           "surface": "internal-app",
           "member": "subscribeWindowState",
           "snippet": "releaseWindowState = window.MainChatCommands?.subscribeWindowState?.(syncWindowControl) || null;"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 628,
+          "line": 772,
           "surface": "internal-app",
           "member": "toggleTheme",
           "snippet": "toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 674,
+          "line": 829,
           "surface": "internal-app",
           "member": "openThemes",
           "snippet": "listen(document.getElementById('nextUiThemeStoreBtn'), 'click', () => window.MainChatCommands?.openThemes?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 675,
+          "line": 830,
           "surface": "internal-app",
           "member": "toggleTheme",
           "snippet": "listen(document.getElementById('nextUiThemeBtn'), 'click', () => window.MainChatCommands?.toggleTheme?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 676,
+          "line": 831,
           "surface": "internal-app",
           "member": "openSettings",
           "snippet": "listen(document.getElementById('nextUiSettingsBtn'), 'click', () => window.MainChatCommands?.openSettings?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 677,
+          "line": 832,
           "surface": "internal-app",
           "member": "minimizeToTray",
           "snippet": "listen(document.getElementById('nextUiMinimizeToTrayBtn'), 'click', () => window.MainChatCommands?.minimizeToTray?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 678,
+          "line": 833,
           "surface": "internal-app",
           "member": "minimize",
           "snippet": "listen(document.getElementById('nextUiMinimizeBtn'), 'click', () => window.MainChatCommands?.minimize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 679,
+          "line": 834,
           "surface": "internal-app",
           "member": "toggleMaximize",
           "snippet": "listen(document.getElementById('nextUiMaximizeBtn'), 'click', () => window.MainChatCommands?.toggleMaximize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 680,
+          "line": 835,
           "surface": "internal-app",
           "member": "close",
           "snippet": "listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());"
@@ -2258,21 +2224,21 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 625,
+          "line": 769,
           "surface": "internal-app",
           "member": "open",
           "snippet": "openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 627,
+          "line": 771,
           "surface": "internal-app",
           "member": "setThemeMode",
           "snippet": "setThemeMode: mode => window.VCPAppearanceStudio?.setThemeMode?.(mode, { source: 'account-menu' }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 629,
+          "line": 773,
           "surface": "internal-app",
           "member": "syncAccountMenuValue",
           "snippet": "syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),"
@@ -2930,7 +2896,7 @@
       "definitions": [
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 564,
+          "line": 672,
           "syntax": "dot-assignment",
           "snippet": "window.askNovaController = createAskNovaController();"
         }
@@ -2938,7 +2904,7 @@
       "production": [
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 563,
+          "line": 671,
           "surface": "internal-app",
           "snippet": "if (window.askNovaController) return;"
         }
@@ -3292,24 +3258,6 @@
       ],
       "production": [
         {
-          "file": "modules/event-listeners.js",
-          "line": 1139,
-          "surface": "main-window",
-          "snippet": "const isActive = typeof state?.enabled === 'boolean' ? state.enabled : window.filterManager?.isFilterEnabled?.() === true;"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1247,
-          "surface": "main-window",
-          "snippet": "if (window.filterManager?.subscribe) {"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1251,
-          "surface": "main-window",
-          "snippet": "listenerOwner?.own(window.filterManager.subscribe(syncNotificationFilterState));"
-        },
-        {
           "file": "modules/mainChatCommands.js",
           "line": 81,
           "surface": "main-window",
@@ -3326,6 +3274,12 @@
           "line": 98,
           "surface": "shared-renderer",
           "snippet": "const autoApprovalResult = (filterManagerCapability || window.filterManager)?.checkToolAutoApproval?.(logData.data);"
+        },
+        {
+          "file": "modules/ui-system/next-shell/next-shell-controller.js",
+          "line": 783,
+          "surface": "internal-app",
+          "snippet": "filterManager: window.filterManager,"
         },
         {
           "file": "renderer.js",
@@ -3517,7 +3471,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1629,
+          "line": 1634,
           "surface": "main-window",
           "snippet": "if (window.flowlockManager?.isAgentLocked?.(refs.currentSelectedItem.get()?.id)) {"
         },
@@ -3603,13 +3557,13 @@
         },
         {
           "file": "modules/global-settings-manager.js",
-          "line": 222,
+          "line": 233,
           "surface": "shared-renderer",
           "snippet": "if (window.getDominantAvatarColor) {"
         },
         {
           "file": "modules/global-settings-manager.js",
-          "line": 223,
+          "line": 234,
           "surface": "shared-renderer",
           "snippet": "window.getDominantAvatarColor(avatarSaveResult.avatarUrl).then(avgColor => {"
         },
@@ -3671,7 +3625,7 @@
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 607,
+          "line": 610,
           "surface": "shared-renderer",
           "snippet": "else if (cropType === 'group' && window.GroupRenderer) {"
         },
@@ -3997,92 +3951,68 @@
       ],
       "production": [
         {
-          "file": "modules/event-listeners.js",
-          "line": 1180,
-          "surface": "main-window",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.openForum?.());"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1183,
-          "surface": "main-window",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.openMemo?.());"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1187,
-          "surface": "main-window",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.toggleNotificationFilter?.());"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1191,
-          "surface": "main-window",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.openNotificationFilterSettings?.(), {"
-        },
-        {
-          "file": "modules/event-listeners.js",
-          "line": 1197,
-          "surface": "main-window",
-          "snippet": "void runMenuAction(() => window.MainChatCommands?.clearNotifications?.());"
-        },
-        {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 603,
+          "line": 746,
           "surface": "internal-app",
           "snippet": "releaseWindowState = window.MainChatCommands?.subscribeWindowState?.(syncWindowControl) || null;"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 628,
+          "line": 772,
           "surface": "internal-app",
           "snippet": "toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 657,
+          "line": 782,
           "surface": "internal-app",
           "snippet": "commands: () => window.MainChatCommands,"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 674,
+          "line": 811,
+          "surface": "internal-app",
+          "snippet": "commands: () => window.MainChatCommands,"
+        },
+        {
+          "file": "modules/ui-system/next-shell/next-shell-controller.js",
+          "line": 829,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiThemeStoreBtn'), 'click', () => window.MainChatCommands?.openThemes?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 675,
+          "line": 830,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiThemeBtn'), 'click', () => window.MainChatCommands?.toggleTheme?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 676,
+          "line": 831,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiSettingsBtn'), 'click', () => window.MainChatCommands?.openSettings?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 677,
+          "line": 832,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiMinimizeToTrayBtn'), 'click', () => window.MainChatCommands?.minimizeToTray?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 678,
+          "line": 833,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiMinimizeBtn'), 'click', () => window.MainChatCommands?.minimize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 679,
+          "line": 834,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiMaximizeBtn'), 'click', () => window.MainChatCommands?.toggleMaximize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 680,
+          "line": 835,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());"
         }
@@ -4128,19 +4058,19 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 206,
+          "line": 209,
           "surface": "internal-app",
           "snippet": "const app = window.nextUiApps?.get(appId);"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 482,
+          "line": 485,
           "surface": "internal-app",
           "snippet": "if (!window.nextUiApps?.get(descriptor.id)) {"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 637,
+          "line": 791,
           "surface": "internal-app",
           "snippet": "getInternalApps: () => window.nextUiApps?.list?.() || [],"
         }
@@ -4160,13 +4090,13 @@
       "production": [
         {
           "file": "modules/global-settings-manager.js",
-          "line": 316,
+          "line": 331,
           "surface": "shared-renderer",
           "snippet": "if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, document.getElementById('vcpLogConnectionStatus'));"
         },
         {
           "file": "modules/global-settings-manager.js",
-          "line": 316,
+          "line": 331,
           "surface": "shared-renderer",
           "snippet": "if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, document.getElementById('vcpLogConnectionStatus'));"
         },
@@ -6484,19 +6414,19 @@
       "production": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 460,
+          "line": 463,
           "surface": "shared-renderer",
           "snippet": "if (window.topicListManager && window.topicListManager.showTopicContextMenu) {"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 460,
+          "line": 463,
           "surface": "shared-renderer",
           "snippet": "if (window.topicListManager && window.topicListManager.showTopicContextMenu) {"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 461,
+          "line": 464,
           "surface": "shared-renderer",
           "snippet": "window.topicListManager.showTopicContextMenu(event, topicItemElement, itemFullConfig, topic, itemType);"
         },
@@ -6631,15 +6561,21 @@
         },
         {
           "file": "modules/trayManager.js",
-          "line": 354,
+          "line": 380,
           "surface": "shared-renderer",
-          "snippet": "window.topTabManager?.releaseOverlay?.(overlayOwner);"
+          "snippet": "if (overlayAcquired) window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/trayManager.js",
-          "line": 357,
+          "line": 383,
           "surface": "shared-renderer",
-          "snippet": "Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).catch(error => {"
+          "snippet": "Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).then(() => {"
+        },
+        {
+          "file": "modules/trayManager.js",
+          "line": 386,
+          "surface": "shared-renderer",
+          "snippet": "window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/appearance-studio.js",
@@ -6661,49 +6597,49 @@
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 163,
+          "line": 243,
           "surface": "internal-app",
           "snippet": "await window.topTabManager?.acquireOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 172,
+          "line": 252,
           "surface": "internal-app",
           "snippet": "window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 175,
+          "line": 255,
           "surface": "internal-app",
           "snippet": "modalScope?.own(() => window.topTabManager?.releaseOverlay?.(overlayOwner), 'overlay-lease', 'overlay');"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 178,
+          "line": 258,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 183,
+          "line": 263,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 188,
+          "line": 268,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 281,
+          "line": 367,
           "surface": "internal-app",
           "snippet": "window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 298,
+          "line": 384,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
@@ -6733,7 +6669,7 @@
       "definitions": [
         {
           "file": "modules/trayManager.js",
-          "line": 417,
+          "line": 449,
           "syntax": "dot-assignment",
           "snippet": "window.trayManager = trayManager;"
         }
@@ -6741,43 +6677,43 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 313,
+          "line": 316,
           "surface": "internal-app",
           "snippet": "await window.trayManager?.launchApp(app);"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 353,
+          "line": 356,
           "surface": "internal-app",
           "snippet": "iconSvg: window.trayManager?.getIcon(app.icon),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 448,
+          "line": 451,
           "surface": "internal-app",
           "snippet": "const apps = window.trayManager?.getApps?.() || [];"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 489,
+          "line": 492,
           "surface": "internal-app",
           "snippet": "const app = window.trayManager?.getApps?.().find(candidate => candidate.id === descriptor.id && candidate.embed);"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 636,
+          "line": 790,
           "surface": "internal-app",
           "snippet": "getExternalApps: () => window.trayManager?.getApps?.() || [],"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 638,
+          "line": 792,
           "surface": "internal-app",
           "snippet": "getIcon: icon => window.trayManager?.getIcon?.(icon) || '',"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 639,
+          "line": 793,
           "surface": "internal-app",
           "snippet": "openExternal: app => window.trayManager?.launchApp?.(app),"
         },
@@ -6814,7 +6750,7 @@
       "definitions": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 960,
+          "line": 976,
           "syntax": "dot-assignment",
           "snippet": "window.uiHelperFunctions = uiHelperFunctions;"
         }
@@ -7050,37 +6986,37 @@
         },
         {
           "file": "modules/trayManager.js",
-          "line": 377,
+          "line": 409,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "modules/trayManager.js",
-          "line": 378,
+          "line": 410,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification('最多只能选择 4 个常用应用', 'warning');"
         },
         {
           "file": "modules/trayManager.js",
-          "line": 389,
+          "line": 421,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "modules/trayManager.js",
-          "line": 390,
+          "line": 422,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification('请至少选择一个应用', 'warning');"
         },
         {
           "file": "modules/trayManager.js",
-          "line": 399,
+          "line": 431,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "modules/trayManager.js",
-          "line": 400,
+          "line": 432,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification('常用应用设置已保存', 'success');"
         },
@@ -7110,19 +7046,37 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 617,
+          "line": 740,
+          "surface": "internal-app",
+          "snippet": "if (typeof window.uiHelperFunctions?.closeModal !== 'function') return false;"
+        },
+        {
+          "file": "modules/ui-system/next-shell/next-shell-controller.js",
+          "line": 741,
+          "surface": "internal-app",
+          "snippet": "window.uiHelperFunctions.closeModal('globalSettingsModal');"
+        },
+        {
+          "file": "modules/ui-system/next-shell/next-shell-controller.js",
+          "line": 760,
           "surface": "internal-app",
           "snippet": "filter: value => window.uiHelperFunctions?.filterAgentList?.(value),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 624,
+          "line": 768,
           "surface": "internal-app",
           "snippet": "openSettings: () => window.uiHelperFunctions?.openModal?.('globalSettingsModal'),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 661,
+          "line": 784,
+          "surface": "internal-app",
+          "snippet": "showToast: (message, variant) => window.uiHelperFunctions?.showToastNotification?.(message, variant),"
+        },
+        {
+          "file": "modules/ui-system/next-shell/next-shell-controller.js",
+          "line": 815,
           "surface": "internal-app",
           "snippet": "showUnavailable: message => window.uiHelperFunctions?.showToastNotification?.("
         },
@@ -7292,7 +7246,7 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 631,
+          "line": 775,
           "surface": "internal-app",
           "snippet": "subscribeTheme: (listener, options) => window.uiManager?.subscribeTheme?.(listener, options),"
         },
@@ -7437,7 +7391,7 @@
       "production": [
         {
           "file": "modules/global-settings-manager.js",
-          "line": 33,
+          "line": 44,
           "surface": "shared-renderer",
           "snippet": "getAppearance = () => window.VCPAppearance"
         },
@@ -7487,19 +7441,19 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 625,
+          "line": 769,
           "surface": "internal-app",
           "snippet": "openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 627,
+          "line": 771,
           "surface": "internal-app",
           "snippet": "setThemeMode: mode => window.VCPAppearanceStudio?.setThemeMode?.(mode, { source: 'account-menu' }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 629,
+          "line": 773,
           "surface": "internal-app",
           "snippet": "syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),"
         },
@@ -9793,19 +9747,19 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 124,
+          "line": 127,
           "surface": "internal-app",
           "snippet": "if (window.VCPIcons?.set) window.VCPIcons.set(icon, state.maximized ? 'filter_none' : 'crop_square');"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 124,
+          "line": 127,
           "surface": "internal-app",
           "snippet": "if (window.VCPIcons?.set) window.VCPIcons.set(icon, state.maximized ? 'filter_none' : 'crop_square');"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 630,
+          "line": 774,
           "surface": "internal-app",
           "snippet": "setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),"
         },
@@ -9873,7 +9827,7 @@
       "definitions": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 781,
+          "line": 941,
           "syntax": "dot-assignment",
           "snippet": "window.VCPNextShellController = Object.freeze({"
         }
@@ -9906,7 +9860,7 @@
       "definitions": [
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2379,
+          "line": 2383,
           "syntax": "dot-assignment",
           "snippet": "window.VCPUI = VCPUI;"
         }
@@ -9914,13 +9868,13 @@
       "production": [
         {
           "file": "modules/ui-helpers.js",
-          "line": 376,
+          "line": 379,
           "surface": "shared-renderer",
           "snippet": "if (window.VCPUI?.feedback?.toast) {"
         },
         {
           "file": "modules/ui-helpers.js",
-          "line": 378,
+          "line": 381,
           "surface": "shared-renderer",
           "snippet": "return window.VCPUI.feedback.toast(String(message), { variant, duration });"
         },
@@ -9956,43 +9910,43 @@
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 137,
+          "line": 207,
           "surface": "internal-app",
           "snippet": "const VCPUI = options.VCPUI || window.VCPUI;"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 475,
+          "line": 583,
           "surface": "internal-app",
           "snippet": "window.VCPUI?.feedback?.toast?.('复制失败', { variant: 'error' });"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 523,
+          "line": 631,
           "surface": "internal-app",
           "snippet": "window.VCPUI?.feedback?.toast?.(error?.message || 'Ask Nova 打开失败', { variant: 'error' });"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 224,
+          "line": 227,
           "surface": "internal-app",
           "snippet": "feedback: window.VCPUI?.feedback,"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 403,
+          "line": 406,
           "surface": "internal-app",
           "snippet": "window.VCPUI?.feedback?.toast?.(error.message || '标签拖出失败', { variant: 'error' });"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 524,
+          "line": 527,
           "surface": "internal-app",
           "snippet": "window.VCPUI?.feedback.cancelAll();"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 655,
+          "line": 809,
           "surface": "internal-app",
           "snippet": "getUi: () => window.VCPUI,"
         },
@@ -10010,7 +9964,7 @@
         },
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 228,
+          "line": 229,
           "surface": "internal-app",
           "snippet": "state.list = window.VCPUI.create('List', { items });"
         }
@@ -10022,7 +9976,7 @@
       "definitions": [
         {
           "file": "modules/ui-system/settings-bridge.js",
-          "line": 410,
+          "line": 456,
           "syntax": "dot-assignment",
           "snippet": "window.VCPUISettingsBridge = Object.freeze({"
         }
@@ -10080,7 +10034,7 @@
         },
         {
           "file": "modules/ui-system/vcp-ui.js",
-          "line": 2344,
+          "line": 2348,
           "surface": "internal-app",
           "snippet": "&& window.VCPWebAwesome?.isDefined?.('select');"
         }
@@ -12765,7 +12719,7 @@
       "windowReferences": 3,
       "documentReferences": 0,
       "electronReferences": 0,
-      "timers": 8,
+      "timers": 6,
       "listeners": 0,
       "mutableMaps": 1
     },
@@ -13570,10 +13524,10 @@
       "mutableMaps": 0
     },
     "main.js": {
-      "windowReferences": 27,
+      "windowReferences": 28,
       "documentReferences": 0,
       "electronReferences": 0,
-      "timers": 12,
+      "timers": 10,
       "listeners": 0,
       "mutableMaps": 0
     },
@@ -13837,7 +13791,7 @@
       "windowReferences": 8,
       "documentReferences": 80,
       "electronReferences": 1,
-      "timers": 0,
+      "timers": 1,
       "listeners": 0,
       "mutableMaps": 0
     },
@@ -14762,8 +14716,8 @@
       "mutableMaps": 0
     },
     "modules/trayManager.js": {
-      "windowReferences": 33,
-      "documentReferences": 22,
+      "windowReferences": 34,
+      "documentReferences": 26,
       "electronReferences": 4,
       "timers": 3,
       "listeners": 6,
@@ -14771,11 +14725,11 @@
     },
     "modules/ui-helpers.js": {
       "windowReferences": 7,
-      "documentReferences": 52,
+      "documentReferences": 54,
       "electronReferences": 0,
-      "timers": 8,
+      "timers": 7,
       "listeners": 10,
-      "mutableMaps": 1
+      "mutableMaps": 2
     },
     "modules/ui-system/appearance-engine.js": {
       "windowReferences": 4,
@@ -14799,7 +14753,7 @@
       "electronReferences": 1,
       "timers": 3,
       "listeners": 4,
-      "mutableMaps": 0
+      "mutableMaps": 2
     },
     "modules/ui-system/avatar-picker.js": {
       "windowReferences": 1,
@@ -14867,7 +14821,7 @@
     },
     "modules/ui-system/next-shell/account-menu-controller.js": {
       "windowReferences": 7,
-      "documentReferences": 12,
+      "documentReferences": 13,
       "electronReferences": 0,
       "timers": 0,
       "listeners": 1,
@@ -14875,9 +14829,9 @@
     },
     "modules/ui-system/next-shell/app-tab-host.js": {
       "windowReferences": 0,
-      "documentReferences": 17,
+      "documentReferences": 26,
       "electronReferences": 0,
-      "timers": 0,
+      "timers": 2,
       "listeners": 1,
       "mutableMaps": 1
     },
@@ -14905,21 +14859,29 @@
       "listeners": 0,
       "mutableMaps": 0
     },
-    "modules/ui-system/next-shell/launchpad-controller.js": {
-      "windowReferences": 1,
-      "documentReferences": 9,
+    "modules/ui-system/next-shell/escape-dispatcher.js": {
+      "windowReferences": 0,
+      "documentReferences": 6,
       "electronReferences": 0,
       "timers": 0,
       "listeners": 1,
       "mutableMaps": 0
     },
-    "modules/ui-system/next-shell/next-shell-controller.js": {
-      "windowReferences": 60,
-      "documentReferences": 30,
-      "electronReferences": 2,
+    "modules/ui-system/next-shell/launchpad-controller.js": {
+      "windowReferences": 1,
+      "documentReferences": 12,
+      "electronReferences": 0,
       "timers": 0,
       "listeners": 2,
-      "mutableMaps": 1
+      "mutableMaps": 0
+    },
+    "modules/ui-system/next-shell/next-shell-controller.js": {
+      "windowReferences": 71,
+      "documentReferences": 43,
+      "electronReferences": 2,
+      "timers": 3,
+      "listeners": 2,
+      "mutableMaps": 2
     },
     "modules/ui-system/next-shell/notification-menu-controller.js": {
       "windowReferences": 10,
@@ -14931,7 +14893,7 @@
     },
     "modules/ui-system/next-shell/overlay-coordinator.js": {
       "windowReferences": 0,
-      "documentReferences": 9,
+      "documentReferences": 10,
       "electronReferences": 0,
       "timers": 0,
       "listeners": 1,
@@ -14955,10 +14917,10 @@
     },
     "modules/ui-system/settings-bridge.js": {
       "windowReferences": 7,
-      "documentReferences": 28,
+      "documentReferences": 29,
       "electronReferences": 0,
       "timers": 0,
-      "listeners": 5,
+      "listeners": 6,
       "mutableMaps": 1
     },
     "modules/ui-system/settlement.js": {
