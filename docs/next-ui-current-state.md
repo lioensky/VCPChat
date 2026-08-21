@@ -2,7 +2,7 @@
 
 > 状态：当前权威事实文档<br>
 > 核对日期：2026-08-21<br>
-> 核对范围：当前工作树 `codex/ui-ux-harness-research-20260819` 的实际代码、门禁与测试结果<br>
+> 核对范围：当前工作树 `codex/chat-kernel-deep-decoupling-draft-20260821` 的实际代码、门禁与测试结果<br>
 > 后续施工顺序：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
 
 > 文件名中的 `next-ui` 是历史命名。当前主窗口只有一套正式布局；`next` 是现行主窗口 presentation，不再与 Classic 构成可切换的双布局。Classic 仅保留给未迁移的业务子页面和兼容边界。
@@ -94,16 +94,15 @@ P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement
 
 Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字节；门禁现统一按 LF 文本语义计算 SHA-256，并用 LF/CRLF 等价断言防复发。Web Awesome 生成产物通过 `.gitattributes` 仅在 `vendor/webawesome-runtime/**` 禁用 text conversion 和 whitespace diagnostics；源码检查保持启用，pack check 会验证该属性没有丢失。
 
-同步后的 macOS 自动证据：
+当前分支自动证据（详细阶段状态以最终审计为准）：
 
-- `npm run check:ui-system`：通过，UI System 80/80。
-- Electron UI Apps：24/24。
-- 主聊天操作序列：24 actions；最近 3 次连续运行累计 72 actions、28 个 VCP 请求，11 action kinds、54 pairs、24 transitions、4 faults、required edge 1/1。
-- 生命周期压力：3 次预热 + 20 次测量；861 listener、8 Scope、162 受管资源、5 process、2 renderer process 在全部 checkpoint 恒定，detached root/icon/option 为 0，heap 约 9.8 MiB → 9.7 MiB。
-- Web Awesome closure：101 files、0.46 MiB，可重复生成；pack check 通过。
-- `git diff --check upstream/main...HEAD`：通过。
+- Chat Kernel：144/144；UI System：92/92。
+- `npm run check:ui-system`：通过，包含 design subtraction、consumer、Classic、Next、应用运行时和 UI System 全链路。
+- Electron UI Apps：24/24；主聊天与辅助窗口证据、当前主机 Windows 矩阵见 [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md)。
+- 当前精确补丁的 lifecycle stress：3 次预热 + 20 次测量；历史 60-cycle 证据不作为本补丁的重跑证据。
+- Web Awesome closure 与 pack check：沿用既有通过证据，发布配置矩阵仍属于 D7 未完成项。
 
-尚未纳入自动化的发布证据仍是 30–60 分钟人工 soak；这不影响 C0–C7 实现退出条件，但不应把自动矩阵代替人工体验观察。本分支明确不携带 `.github/workflows/**`。
+尚未纳入自动化的发布证据仍是 30–60 分钟人工 soak；这不影响 C0–C7 实现退出条件，但不应把自动矩阵代替人工体验观察。本分支现提供 Chat Kernel 与 UI 的 PR 门禁工作流；跨配置 Windows、打包安装和人工 soak 仍需单独执行。
 
 当前文档权威关系已在 2026-08-20 收敛；历史文档可以保留当时的双 presentation 描述，但不得用于描述当前主窗口拓扑。
 
@@ -123,7 +122,7 @@ D0 consumer baseline 已接入 `check:ui-system`：生产引用、测试引用�
 
 D0–D6 已接入生产并具备各自的源码、静态门禁和自动化证据；D7 BLOCKED。历史复核的 115/115、129/129、85/85 等数字保留为历史记录，不能作为当前状态。当前 Chat Kernel、UI System、Electron 和 Windows 单主机证据统一记录在最终审计；辅助窗口长矩阵、完整跨配置 Windows 矩阵和 30–60 分钟人工 soak 仍未完成。
 
-最新 vD5 增量已将主聊天选择、history 与 TTS 状态改为显式 capability/owner：`VCPMainChatState` 只读快照替代可变 selection globals，主 history 由 `MainChatStateAuthority` 持有，`TtsSurfaceOwner` 持有 AudioContext、队列和订阅；`TopicSelectionReadiness` 替代 renderer-ready/pending selection 全局字段。Flowlock、AutoTTS 和 Electron 序列测试均已迁移到真实 consumer。该增量当时为 Chat Kernel 113/113；当前为 129/129。辅助 Voice/Rust 并发流场景已纳入主聊天序列。
+最新 vD5 增量已将主聊天选择、history 与 TTS 状态改为显式 capability/owner：`VCPMainChatState` 只读快照替代可变 selection globals，主 history 由 `MainChatStateAuthority` 持有，`TtsSurfaceOwner` 持有 AudioContext、队列和订阅；`TopicSelectionReadiness` 替代 renderer-ready/pending selection 全局字段。Flowlock、AutoTTS 和 Electron 序列测试均已迁移到真实 consumer。该增量当时为 Chat Kernel 113/113；当前测试数字只读取最终审计。辅助 Voice/Rust 并发流场景已纳入主聊天序列。
 
 并发流的终态持久化现在会在 stream terminal 显式 flush 并等待当前 topic 的 ChatRepository 保存；独立交互 Surface 的测试也在下一次请求前等待真实 `aria-busy=false` 终态，避免把 terminal 事件误当成发送 Promise 已完成。
 
@@ -155,4 +154,4 @@ D0–D6 已接入生产并具备各自的源码、静态门禁和自动化证据
 
 人工 soak 入口现为 `npm run test:manual-soak`，运行产物写入 `artifacts/manual-soak/` 并固定标记为 `manual_observation_required`；它只提供真实 Electron 采样和人工检查清单，不会替代人工交互或把单台 Windows 观察升级为发布证据。
 
-最新单机 Windows 串行矩阵 artifact 为 `artifacts/windows-matrix/2026-08-20T20-49-30-813Z.json`，六项入口全部通过；resize CDP 仍为显式 skipped，矩阵不代表多版本或安装包覆盖。
+最新单机 Windows 串行矩阵 artifact 只在 [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md) 维护；resize CDP 仍为显式 skipped，矩阵不代表多版本或安装包覆盖。

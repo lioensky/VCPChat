@@ -38,6 +38,7 @@ const forbiddenPaths = [
 
 const allowedSourceDifferences = new Set([
     '.github/workflows/canonical_ui.yml',
+    '.github/workflows/chat_kernel_ui.yml',
     '.gitattributes',
     '.gitignore',
     'README.md',
@@ -308,6 +309,13 @@ const allowedSourceDifferences = new Set([
 ]);
 const allowedSourceDifferencePatterns = [
     /^docs\/archive\/2026-08-chat-kernel-and-ui-roadmaps\//,
+    // Chat Kernel D5/D6 owner modules and focused lifecycle tests belong to
+    // this review slice, not to the design-system subtraction leak set.
+    /^modules\/renderer\/(?:domListenerOwner|forwardMessageOwner|mainChatAttachmentOwner|mainChatAuxiliaryEventOwner|mainChatFlowlockOwner|mainChatSendOwner|mainChatSettingsOwner|mainChatThemeOwner|ttsSurfaceOwner)\.js$/,
+    /^tests\/(?:dom-listener-owner|enhanced-color-utils-lifecycle|forward-message-owner|input-enhancer-owner|main-chat-attachment-owner|main-chat-auxiliary-event-owner|main-chat-flowlock-owner|main-chat-send-owner|main-chat-theme-owner|notification-renderer-lifecycle|tts-surface-owner|ui-manager-lifecycle)\.test\.(?:js|mjs)$/,
+    /^scripts\/test-electron-manual-soak\.mjs$/,
+    // Generated evidence is audited output, not product UI source.
+    /^artifacts\/(?:manual-soak|windows-matrix)\/[^/]+\.json$/,
     /^vendor\/webawesome(?:-runtime)?\//,
     /^modules\/chat\//,
     /^modules\/renderer\/(?:mainChatComposition|mainChatSettingsPresentationOwner|mainChatStreamConsumer|mainChatSurfaceAdapter|renderDependencies|windowStreamRuntime)\.js$/,

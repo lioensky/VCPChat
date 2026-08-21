@@ -36,7 +36,7 @@
 ## 当前自动化证据
 
 - Chat Kernel：144/144。
-- UI System：92/92；`npm run check:ui-system` 全链路通过。
+- UI System：92/92；`npm run check:ui-system` 已在本次门禁修正后复跑，完整链路通过。
 - Electron UI Apps：24/24；主聊天：24 actions / 25 VCP requests；辅助 crash recovery：24 actions / 27 VCP requests。
 - Windows 当前主机最终矩阵：`artifacts/windows-matrix/2026-08-21T06-13-58-840Z.json`，六行全部通过。Settings resize CDP 能力显式 skipped，不计为通过。
 - 历史最终矩阵包含 3 warmup + 60 measured。当前精确补丁（包括 Electron fixture 协议超时与进程树清理修正）的最新复跑为 3 warmup + 20 measured：connected elements 2569、listeners 876、lifecycle resources 163 保持稳定；detached roots/icons/options 均为 0。不得把历史 60-cycle 记录描述为本补丁的重跑证据。
