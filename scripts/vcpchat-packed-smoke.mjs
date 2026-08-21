@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const { createOperationId, readReadyRecord, removeReadyRecord } = require('../modules/bootstrap/launch-protocol');
+const { resolveCommandInvocation } = require('../modules/bootstrap/command-invocation');
 const { verifyPackagedRuntime } = require('../modules/bootstrap/packed-runtime');
 
 function findPackagedExecutable(distRoot, platform = process.platform) {
@@ -16,7 +17,10 @@ function findPackagedExecutable(distRoot, platform = process.platform) {
         ? fs.readdirSync(distRoot, { recursive: true, withFileTypes: true })
         : [];
     const files = entries.filter(entry => entry.isFile()).map(entry => path.join(entry.parentPath, entry.name));
-    if (platform === 'darwin') return files.find(file => /\.app\/Contents\/MacOS\//.test(file) && !/\/Frameworks\//.test(file)) || null;
+    if (platform === 'darwin') return files.find(file => {
+        const portable = file.replaceAll('\\', '/');
+        return /\.app\/Contents\/MacOS\//.test(portable) && !/\/Frameworks\//.test(portable);
+    }) || null;
     if (platform === 'win32') return files.find(file => /win[^/\\]*-unpacked[/\\].+\.exe$/i.test(file)) || null;
     return files.find(file => /linux-unpacked[/\\]/.test(file) && !path.extname(file)) || null;
 }
@@ -49,7 +53,8 @@ export async function run(argv = process.argv.slice(2), io = process) {
     const distIndex = argv.indexOf('--dist');
     const distRoot = path.resolve(distIndex >= 0 ? argv[distIndex + 1] : path.join(projectRoot, 'dist'));
     if (shouldBuild) {
-        const result = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'pack'], {
+        const invocation = resolveCommandInvocation(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'pack']);
+        const result = spawnSync(invocation.command, invocation.args, {
             cwd: projectRoot,
             stdio: 'inherit',
             windowsHide: true,

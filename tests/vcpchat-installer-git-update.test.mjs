@@ -9,6 +9,10 @@ function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 
+function readText(file) {
+  return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+}
+
 function configure(cwd) {
   git(cwd, 'config', 'user.name', 'VCPChat Installer Test')
   git(cwd, 'config', 'user.email', 'installer-test@vcpchat.invalid')
@@ -73,9 +77,9 @@ test('dirty update restores tracked and untracked work, then drops only its reco
   git(local, 'merge', '--ff-only', '@{upstream}')
   restoreAndDrop(local, oid)
 
-  assert.equal(fs.readFileSync(path.join(local, 'shared.txt'), 'utf8'), 'local work\n')
-  assert.equal(fs.readFileSync(path.join(local, 'untracked.txt'), 'utf8'), 'private draft\n')
-  assert.equal(fs.readFileSync(path.join(local, 'upstream.txt'), 'utf8'), 'upstream update\n')
+  assert.equal(readText(path.join(local, 'shared.txt')), 'local work\n')
+  assert.equal(readText(path.join(local, 'untracked.txt')), 'private draft\n')
+  assert.equal(readText(path.join(local, 'upstream.txt')), 'upstream update\n')
   assert.equal(exactStashRef(local, oid), undefined)
 })
 
@@ -96,7 +100,7 @@ test('stash restore conflict leaves updated HEAD clean and preserves the recorde
 
   assert.equal(git(local, 'status', '--porcelain'), '')
   assert.ok(exactStashRef(local, oid))
-  assert.equal(fs.readFileSync(path.join(local, 'shared.txt'), 'utf8'), 'upstream work\n')
+  assert.equal(readText(path.join(local, 'shared.txt')), 'upstream work\n')
   assert.equal(fs.existsSync(path.join(local, 'untracked.txt')), false)
 })
 
@@ -117,8 +121,8 @@ test('post-update validation failure rolls HEAD back before restoring local work
   restoreAndDrop(local, oid)
 
   assert.equal(git(local, 'rev-parse', 'HEAD'), originalHead)
-  assert.equal(fs.readFileSync(path.join(local, 'shared.txt'), 'utf8'), 'local work\n')
-  assert.equal(fs.readFileSync(path.join(local, 'untracked.txt'), 'utf8'), 'private draft\n')
+  assert.equal(readText(path.join(local, 'shared.txt')), 'local work\n')
+  assert.equal(readText(path.join(local, 'untracked.txt')), 'private draft\n')
   assert.equal(fs.existsSync(path.join(local, 'installer-artifact.txt')), false)
   assert.equal(exactStashRef(local, oid), undefined)
 })

@@ -32,7 +32,12 @@ function createRepairManifest({ projectRoot, platform = process.platform } = {})
                 kind: 'command',
                 mutates: true,
                 command: node,
-                args: [path.join('node_modules', '@electron', 'rebuild', 'lib', 'cli.js'), '-f', ...NATIVE_MODULES.flatMap(id => ['-w', id])],
+                args: [
+                    path.join('node_modules', '@electron', 'rebuild', 'lib', 'cli.js'),
+                    '-f',
+                    '--only',
+                    NATIVE_MODULES.join(','),
+                ],
                 timeoutMs: DEFAULT_STAGE_TIMEOUT_MS,
             },
             {

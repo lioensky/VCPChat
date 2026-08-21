@@ -5,8 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-import { createElectronChildEnv, detachChildForHandoff, parseArguments, waitForReady } from '../scripts/vcpchat-dev-launcher.mjs';
+import { createElectronChildEnv, detachChildForHandoff, managedElectronSpawnOptions, parseArguments, waitForReady } from '../scripts/vcpchat-dev-launcher.mjs';
 import { parseArguments as parseManagedEntryArguments, runVcpchat } from '../scripts/vcpchat.mjs';
 import { collectDoctorReport } from '../modules/bootstrap/environment-doctor.js';
 
@@ -46,7 +47,7 @@ test('M0 protocol resolves platform state roots and publishes operation-scoped r
 });
 
 test('graphical launcher entries are present without replacing upstream launchers', () => {
-    const root = path.resolve(new URL('..', import.meta.url).pathname);
+    const root = fileURLToPath(new URL('..', import.meta.url));
     for (const name of [
         'launchers/VCPChat-Launcher.command',
         'launchers/VCPChat-Launcher.vbs',
@@ -130,6 +131,7 @@ test('M2 argument parser separates launcher options from Electron arguments', ()
 test('managed launcher removes Electron-as-Node flag before spawning the real app', () => {
     const env = createElectronChildEnv({
         env: { ELECTRON_RUN_AS_NODE: '1', PATH: '/usr/bin' },
+        projectRoot: '/tmp/vcpchat-project',
         stateRoot: '/tmp/vcpchat-state',
         operationId: 'launch-test',
         buildId: 'revision',
@@ -137,12 +139,36 @@ test('managed launcher removes Electron-as-Node flag before spawning the real ap
     assert.equal(env.ELECTRON_RUN_AS_NODE, undefined);
     assert.equal(env.VCPCHAT_STATE_DIR, '/tmp/vcpchat-state');
     assert.equal(env.VCPCHAT_BOOTSTRAP_OPERATION_ID, 'launch-test');
+    assert.equal(env.VCPCHAT_APP_DATA_DIR, path.join(path.resolve('/tmp/vcpchat-project'), 'AppData'));
+});
+
+test('managed launcher preserves an explicit isolated app-data root', () => {
+    const env = createElectronChildEnv({
+        env: { VCPCHAT_APP_DATA_DIR: '/tmp/custom-vcpchat-data' },
+        projectRoot: '/tmp/vcpchat-project',
+        stateRoot: '/tmp/vcpchat-state',
+        operationId: 'launch-custom-data',
+    });
+    assert.equal(env.VCPCHAT_APP_DATA_DIR, '/tmp/custom-vcpchat-data');
 });
 
 test('managed launcher detaches Electron after authoritative handoff', () => {
     let detached = false;
     detachChildForHandoff({ unref() { detached = true; } });
     assert.equal(detached, true);
+});
+
+test('managed handoff launches Electron with independent stdio and platform-safe ownership', () => {
+    const options = managedElectronSpawnOptions({ handoff: true, handoffLogFd: 42 });
+    assert.equal(options.detached, true);
+    assert.deepEqual(options.stdio, ['ignore', 42, 42]);
+});
+
+test('managed readiness requires the main window to be visible before setup exits', () => {
+    const mainSource = fs.readFileSync(path.join(fileURLToPath(new URL('..', import.meta.url)), 'main.js'), 'utf8');
+    assert.match(mainSource, /if \(!mainWindow\.isVisible\(\)\) mainWindow\.show\(\)/);
+    assert.match(mainSource, /mainWindow: 'visible'/);
+    assert.doesNotMatch(mainSource, /mainWindow: 'delegated'/);
 });
 
 test('H1 managed entry shows a repair plan without mutating when consent is absent', async () => {
@@ -244,6 +270,21 @@ test('M2 ready waiter accepts only matching operation and child PID', async () =
     const result = await waitForReady({ stateRoot: root, operationId, child, timeoutMs: 100, sleep: async () => {} });
     assert.equal(result.ok, true);
     assert.equal(result.record.operationId, operationId);
+});
+
+test('M2 ready waiter accepts a visible main window as stronger readiness', async () => {
+    const stateRoot = tempDir('vcpchat-visible-ready-');
+    const operationId = 'visible-ready';
+    const child = new EventEmitter();
+    child.pid = process.pid;
+    protocol.writeReadyRecord({
+        stateRoot,
+        operationId,
+        pid: child.pid,
+        checks: { mainWindow: 'visible', preload: 'ready', renderer: 'ready' },
+    });
+    const result = await waitForReady({ stateRoot, operationId, child, timeoutMs: 100 });
+    assert.equal(result.ok, true);
 });
 
 test('M2 ready waiter reports child exit before readiness', async () => {

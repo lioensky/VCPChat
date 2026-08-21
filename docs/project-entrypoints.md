@@ -1,0 +1,58 @@
+# VCPChat Project Entry Points
+
+This document is the source of truth for how the repository is started, repaired,
+tested, and packaged. Older scripts remain available for compatibility, but they
+are not all release entry points.
+
+## Recommended Paths
+
+| Audience | Entry point | Purpose | Release status |
+| --- | --- | --- | --- |
+| End user, source checkout | `launchers/VCPChat-Launcher.vbs` (Windows), `launchers/VCPChat-Launcher.command` (macOS), `launchers/VCPChat-Launcher.sh` (Linux) | Open the graphical setup/recovery flow for the current checkout | Supported source launcher |
+| End user, portable bootstrap | `npm run installer:portable` → `portable/VCPChat-Setup.exe` | Double-click from any folder; it checks/prepares the VCPChat source and starts the app | No system installation; signing is separate |
+| End user, packaged build | NSIS/MSI/DMG/AppImage produced by `apps/bootstrap-installer` | Install the standalone setup application | Optional release artifact; signing is separate |
+| Developer | `npm run vcpchat` | Diagnose, optionally repair with explicit consent, then launch | Supported CLI |
+| Developer, direct debugging | `npm start` | Run Electron directly and keep the existing debugging behavior | Compatibility/debug only |
+| CI/package validation | `npm run check:release-surface` | Validate required entrypoints, manifests, locks, and artifact naming | Required gate |
+
+## Artifact Ownership
+
+- `apps/bootstrap-installer/` owns the Tauri Setup application and its NSIS/MSI,
+  macOS, and Linux bundle configuration.
+- `main.js`, `renderer.js`, and the root Electron package own the desktop app.
+- `scripts/vcpchat.mjs` owns the consent-aware managed CLI state machine.
+- `scripts/vcpchat-dev-launcher.mjs` owns the lower-level managed Electron handoff.
+- `bootstrap/` owns the legacy Recovery UI. It is retained for development and
+  recovery compatibility, not presented as the production installer.
+- `start.bat`, `启动Vchat.vbs`, `启动全部.vbs`, `start-desktop.vbs`, and
+  `start-rag-observer.vbs` remain compatibility/debug entries. They must not be
+  used as release evidence.
+
+## Build Outputs
+
+| Output | Command | Location | Verification |
+| --- | --- | --- | --- |
+| Tauri Setup bundles | `npm run installer:build` | `apps/bootstrap-installer/src-tauri/target/release/bundle/` | `npm run check:release-surface` |
+| Tauri portable bootstrap | `npm run installer:portable` | `portable/VCPChat-Setup.exe` | `npm run check:release-surface` |
+| Electron unpacked package | `npm run pack` | `dist/` | `npm run test:packed-install` |
+| Electron installer | `npm run dist` | `dist/` | `npm run verify:runtime-closure` |
+| Offline Web Awesome closure | `npm run pack:check` | `vendor/webawesome-runtime/` | `npm run pack:check` |
+
+Build directories, `node_modules`, user data, logs, runtime databases, and local
+state are not release inputs and must not be committed as product evidence.
+
+## Windows Test Order
+
+1. Run `launchers/VCPChat-Launcher.vbs` from a clean source checkout.
+2. Click the setup flow's prepare action and wait for Doctor, dependency repair,
+   native rebuild, and final Doctor.
+3. Verify the setup window exits only after operation-scoped `renderer-ready`.
+4. Test a clean NSIS or MSI artifact in an isolated install directory.
+5. Record remaining warnings separately from blocking failures.
+
+## Compatibility Policy
+
+The legacy direct launchers are intentionally not deleted in this milestone.
+They are kept so existing developer workflows and desktop shortcuts do not break.
+New documentation and release evidence must point to the managed launcher or the
+standalone Setup artifact instead.

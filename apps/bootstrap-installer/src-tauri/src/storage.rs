@@ -143,11 +143,15 @@ fn lock_owner_is_alive(path: &Path) -> bool {
         .map(|s| s.success())
         .unwrap_or(false);
     #[cfg(windows)]
-    return std::process::Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+    {
+        let mut command = std::process::Command::new("tasklist");
+        command.args(["/FI", &format!("PID eq {pid}"), "/NH"]);
+        crate::process::configure_hidden(&mut command);
+        return command
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
         .unwrap_or(false);
+    }
     #[allow(unreachable_code)]
     false
 }

@@ -160,9 +160,10 @@ fn publish_cancelled(app: &AppHandle, status: &Arc<Mutex<InstallerStatus>>) {
 }
 
 fn git_output(root: &std::path::Path, args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(root)
+    let mut command = std::process::Command::new("git");
+    command.args(args).current_dir(root);
+    process::configure_hidden(&mut command);
+    let output = command
         .output()
         .map_err(|error| format!("运行 git {} 失败: {error}", args.join(" ")))?;
     if !output.status.success() {
@@ -992,12 +993,12 @@ async fn launch_vcpchat(app: AppHandle, state: State<'_, AppState>) -> Result<()
     #[cfg(target_os = "windows")]
     let (program, args) = (
         root.join("VCPChat.exe").to_string_lossy().into_owned(),
-        Vec::new(),
+        Vec::<String>::new(),
     );
     #[cfg(target_os = "linux")]
     let (program, args) = (
         root.join("VCPChat").to_string_lossy().into_owned(),
-        Vec::new(),
+        Vec::<String>::new(),
     );
     std::process::Command::new(program)
         .args(args)

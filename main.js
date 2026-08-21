@@ -337,7 +337,19 @@ async function publishManagedBootstrapReadyAfterRenderer() {
                 true
             );
             if (ready) {
-                publishManagedBootstrapReady({ mainWindow: 'ready', preload: 'ready', renderer: 'ready' });
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                if (!mainWindow.isVisible()) mainWindow.show();
+                mainWindow.focus();
+                mainWindow.moveTop();
+                if (!mainWindow.isVisible()) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    continue;
+                }
+                publishManagedBootstrapReady({
+                    mainWindow: 'visible',
+                    preload: 'ready',
+                    renderer: 'ready',
+                });
                 reportLauncherProgress('renderer-ready', 1, '准备完成');
                 return;
             }
@@ -852,7 +864,9 @@ if (!gotTheLock) {
             console.warn('[Main] Failed to create .vcp_ready in second instance:', err.message);
         }
     }
-    publishManagedBootstrapReady({ mainWindow: 'delegated', preload: 'existing-instance', renderer: 'existing-instance' });
+    // Another primary instance cannot prove that this operation's project
+    // window rendered. Let the managed launcher observe this child exit rather
+    // than publishing a false ready record and closing the setup UI.
     app.quit();
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {

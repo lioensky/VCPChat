@@ -15,6 +15,8 @@
     "installer:dev": "npm --prefix apps/bootstrap-installer run tauri:dev",
     "installer:typecheck": "npm --prefix apps/bootstrap-installer run typecheck",
     "installer:build": "npm --prefix apps/bootstrap-installer run tauri:build",
+    "installer:portable": "node scripts/package-portable-installer.mjs",
+    "check:release-surface": "node scripts/check-release-surface.mjs",
     "test:installer-contract": "node --test tests/vcpchat-installer-contract.test.mjs tests/vcpchat-installer-git-update.test.mjs",
     "verify:runtime-closure": "node scripts/vcpchat-runtime-closure.mjs --json",
     "test:packed-install": "node scripts/vcpchat-packed-smoke.mjs",

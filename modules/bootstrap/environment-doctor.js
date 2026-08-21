@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { BOOTSTRAP_SCHEMA_VERSION, CHECK_STATUS, ERROR_CODES } = require('./contracts');
+const { resolveCommandInvocation } = require('./command-invocation');
 const { inspectOperationLock, resolveStateRoot } = require('./launch-protocol');
 
 const NATIVE_MODULES = Object.freeze(['better-sqlite3', 'node-pty', 'sharp']);
@@ -136,7 +137,12 @@ function collectDoctorReport({
         checks.push(check('node', CHECK_STATUS.PASS, `Node.js ${nodeVersion} 可用于托管开发启动。`, { actual: nodeVersion }));
     }
 
-    const npmResult = spawn(platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'], {
+    const npmInvocation = resolveCommandInvocation(
+        platform === 'win32' ? 'npm.cmd' : 'npm',
+        ['--version'],
+        { platform, env },
+    );
+    const npmResult = spawn(npmInvocation.command, npmInvocation.args, {
         cwd: root,
         encoding: 'utf8',
         timeout: 10_000,

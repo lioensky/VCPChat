@@ -24,6 +24,17 @@ struct StartupEvent {
 pub type ActiveChild = Arc<Mutex<Option<Child>>>;
 pub type SharedLog = Arc<Mutex<File>>;
 
+/// Prevent helper commands such as git/npm from creating a visible console
+/// window on Windows. The Tauri installer itself is the only UI surface.
+#[cfg(windows)]
+pub fn configure_hidden(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(0x0800_0000);
+}
+
+#[cfg(not(windows))]
+pub fn configure_hidden(_command: &mut Command) {}
+
 pub fn run(
     app: &AppHandle,
     active_child: &ActiveChild,

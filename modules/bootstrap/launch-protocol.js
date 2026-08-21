@@ -8,6 +8,10 @@ const path = require('path');
 const SCHEMA_VERSION = 1;
 const DEFAULT_LOCK_MAX_AGE_MS = 30 * 60 * 1000;
 
+function pathForPlatform(platform) {
+    return platform === 'win32' ? path.win32 : path.posix;
+}
+
 function writeJsonAtomic(filePath, value) {
     const temp = `${filePath}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
     let fd;
@@ -41,20 +45,23 @@ function resolveStateRoot({ env = process.env, platform = process.platform, home
     const explicit = typeof env.VCPCHAT_STATE_DIR === 'string' ? env.VCPCHAT_STATE_DIR.trim() : '';
     if (explicit) return path.resolve(explicit);
 
+    const platformPath = pathForPlatform(platform);
+
     if (platform === 'win32') {
-        return path.join(env.LOCALAPPDATA || path.join(homeDirectory, 'AppData', 'Local'), 'VCPChat', 'bootstrap');
+        return platformPath.join(env.LOCALAPPDATA || platformPath.join(homeDirectory, 'AppData', 'Local'), 'VCPChat', 'bootstrap');
     }
     if (platform === 'darwin') {
-        return path.join(homeDirectory, 'Library', 'Application Support', 'VCPChat', 'bootstrap');
+        return platformPath.join(homeDirectory, 'Library', 'Application Support', 'VCPChat', 'bootstrap');
     }
-    return path.join(env.XDG_STATE_HOME || path.join(homeDirectory, '.local', 'state'), 'vcpchat', 'bootstrap');
+    return platformPath.join(env.XDG_STATE_HOME || platformPath.join(homeDirectory, '.local', 'state'), 'vcpchat', 'bootstrap');
 }
 
 function resolveProjectStateRoot({ projectRoot, env = process.env, platform = process.platform, homeDirectory = os.homedir() } = {}) {
     if (!projectRoot) return resolveStateRoot({ env, platform, homeDirectory });
     const base = resolveStateRoot({ env: { ...env, VCPCHAT_STATE_DIR: '' }, platform, homeDirectory });
-    const identity = crypto.createHash('sha256').update(path.resolve(projectRoot)).digest('hex').slice(0, 16);
-    return path.join(path.dirname(base), `${path.basename(base)}-${identity}`);
+    const platformPath = pathForPlatform(platform);
+    const identity = crypto.createHash('sha256').update(platformPath.resolve(projectRoot)).digest('hex').slice(0, 16);
+    return platformPath.join(platformPath.dirname(base), `${platformPath.basename(base)}-${identity}`);
 }
 
 function ensureStateRoot(options = {}) {

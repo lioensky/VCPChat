@@ -1,6 +1,7 @@
 'use strict';
 
 const { spawn } = require('child_process');
+const { resolveCommandInvocation } = require('./command-invocation');
 const { managedSpawnOptions, terminateManagedProcess } = require('./platform-process');
 
 function terminateProcess(child) {
@@ -36,7 +37,8 @@ function runProcess({
         };
         if (signal?.aborted) return onAbort();
         try {
-            child = spawnProcess(command, args, {
+            const invocation = resolveCommandInvocation(command, args, { env });
+            child = spawnProcess(invocation.command, invocation.args, {
                 cwd,
                 env,
                 windowsHide: true,

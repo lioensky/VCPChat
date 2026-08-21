@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { createRepairManifest } = require('../modules/bootstrap/repair-manifest');
+const { resolveCommandInvocation } = require('../modules/bootstrap/command-invocation');
 const { environmentEpisode, selectRepairStages, validateLockfile, createRepairPlan } = require('../modules/bootstrap/repair-planner');
 const { runProcess } = require('../modules/bootstrap/process-runner');
 const { managedSpawnOptions, terminationPlan, terminateManagedProcess } = require('../modules/bootstrap/platform-process');
@@ -23,8 +24,27 @@ test('M3 repair manifest is deterministic and uses npm ci plus targeted rebuild'
     const manifest = createRepairManifest({ projectRoot: '/tmp/project', platform: 'darwin' });
     assert.equal(manifest.schemaVersion, 1);
     assert.deepEqual(manifest.stages.find(stage => stage.id === 'install-dependencies').args.slice(0, 2), ['ci', '--no-audit']);
-    assert.match(manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args[0], /@electron[\\/]rebuild[\\/]lib[\\/]cli\.js$/);
-    assert.equal(manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args.includes('-f'), true);
+    const rebuildArgs = manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args;
+    assert.match(rebuildArgs[0], /@electron[\\/]rebuild[\\/]lib[\\/]cli\.js$/);
+    assert.equal(rebuildArgs.includes('-f'), true);
+    assert.deepEqual(rebuildArgs.slice(-2), ['--only', 'better-sqlite3,node-pty,sharp']);
+});
+
+test('M3 Windows command shims run through cmd.exe instead of direct spawn', () => {
+    assert.deepEqual(
+        resolveCommandInvocation('npm.cmd', ['ci'], {
+            platform: 'win32',
+            env: { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+        }),
+        {
+            command: 'C:\\Windows\\System32\\cmd.exe',
+            args: ['/d', '/s', '/c', 'npm.cmd', 'ci'],
+        },
+    );
+    assert.deepEqual(
+        resolveCommandInvocation('npm', ['ci'], { platform: 'linux', env: {} }),
+        { command: 'npm', args: ['ci'] },
+    );
 });
 
 test('M3 selection keeps optional Rust/vendor repairs opt-in', () => {

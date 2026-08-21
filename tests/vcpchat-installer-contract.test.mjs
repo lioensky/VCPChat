@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(new URL('..', import.meta.url).pathname);
+const root = fileURLToPath(new URL('..', import.meta.url));
 const installer = path.join(root, 'apps', 'bootstrap-installer');
 
 test('standalone installer preserves Hermes MIT attribution and native identity', () => {
@@ -96,7 +97,7 @@ test('Electron startup progress is presentation-only and final success follows m
     const launcher = fs.readFileSync(path.join(root, 'scripts', 'vcpchat-dev-launcher.mjs'), 'utf8');
     assert.match(main, /VCP_STARTUP:/);
     assert.match(main, /reportLauncherProgress\('renderer-ready', 1/);
-    assert.match(main, /publishManagedBootstrapReady\(\{ mainWindow: 'ready', preload: 'ready', renderer: 'ready' \}\);[\s\S]{0,160}reportLauncherProgress/);
+    assert.match(main, /publishManagedBootstrapReady\(\{[\s\S]{0,220}mainWindow: 'visible',[\s\S]{0,220}renderer: 'ready',[\s\S]{0,160}reportLauncherProgress/);
     assert.match(launcher, /VCP_LAUNCHER_PROTOCOL: '1'/);
 });
 

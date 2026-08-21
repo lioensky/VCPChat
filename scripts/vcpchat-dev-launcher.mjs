@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -85,9 +86,8 @@ async function waitForReady({ stateRoot, operationId, child, timeoutMs, sleep = 
             const { record } = readReadyRecord({ stateRoot, operationId });
             if (record && record.operationId === operationId) {
                 const pidMatches = record.pid === child.pid;
-                const delegated = record.checks?.mainWindow === 'delegated';
-                const checksReady = delegated || (
-                    record.checks?.mainWindow === 'ready' &&
+                const checksReady = (
+                    ['ready', 'visible'].includes(record.checks?.mainWindow) &&
                     record.checks?.preload === 'ready' &&
                     record.checks?.renderer === 'ready'
                 );
@@ -127,12 +127,25 @@ function detachChildForHandoff(child) {
     child?.unref?.();
 }
 
+function managedElectronSpawnOptions({ handoff = false, handoffLogFd = null } = {}) {
+    const options = managedSpawnOptions();
+    return {
+        ...options,
+        stdio: handoff ? ['ignore', handoffLogFd, handoffLogFd] : 'inherit',
+        // Handoff transfers ownership away from the setup process. The log
+        // file keeps output valid while the detached app survives parent exit.
+        detached: handoff ? true : options.detached,
+    };
+}
+
 // Recovery UI runs Node scripts through Electron with ELECTRON_RUN_AS_NODE=1.
 // Never pass that flag to the real Electron application: with it set, Electron
 // exposes no `app` module and main.js crashes before ready.
-function createElectronChildEnv({ env = process.env, stateRoot, operationId, buildId = '' } = {}) {
+function createElectronChildEnv({ env = process.env, projectRoot, stateRoot, operationId, buildId = '' } = {}) {
     const childEnv = {
         ...env,
+        VCPCHAT_APP_DATA_DIR: env.VCPCHAT_APP_DATA_DIR?.trim()
+            || path.join(path.resolve(projectRoot), 'AppData'),
         VCPCHAT_STATE_DIR: stateRoot,
         VCPCHAT_BOOTSTRAP_OPERATION_ID: operationId,
         VCPCHAT_BUILD_ID: buildId,
@@ -187,22 +200,34 @@ export async function runManagedLauncher({
     const electronBinary = resolveElectronBinary(root);
     const childEnv = createElectronChildEnv({
         env,
+        projectRoot: root,
         stateRoot,
         operationId,
         buildId: lock.record.targetRevision || '',
     });
     let child;
+    let handoffLogFd = null;
     const onInterrupt = () => terminateChild(child);
     process.once('SIGINT', onInterrupt);
     process.once('SIGTERM', onInterrupt);
     try {
         lock.updateStage('launching');
+        if (options.handoff) {
+            const handoffLogPath = path.join(stateRoot, 'electron-handoff.log');
+            handoffLogFd = fs.openSync(handoffLogPath, 'a');
+        }
         child = spawnProcess(electronBinary, ['.', ...options.appArgs], {
             cwd: root,
             env: childEnv,
-            stdio: 'inherit',
-            ...managedSpawnOptions(),
+            // A handoff must not leave Electron attached to the Tauri/Node
+            // log pipes: those handles close when the setup UI exits and can
+            // terminate the otherwise-ready app on Windows.
+            ...managedElectronSpawnOptions({ handoff: options.handoff, handoffLogFd }),
         });
+        if (handoffLogFd !== null) {
+            fs.closeSync(handoffLogFd);
+            handoffLogFd = null;
+        }
         lock.updateStage('awaiting-ready');
         const ready = await waitForReady({
             stateRoot,
@@ -257,6 +282,9 @@ export async function runManagedLauncher({
         terminateChild(child);
         return 1;
     } finally {
+        if (handoffLogFd !== null) {
+            try { fs.closeSync(handoffLogFd); } catch { /* spawn failure owns primary error */ }
+        }
         process.removeListener('SIGINT', onInterrupt);
         process.removeListener('SIGTERM', onInterrupt);
         lock?.release();
@@ -272,4 +300,4 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
     });
 }
 
-export { createElectronChildEnv, detachChildForHandoff, parseArguments, waitForReady, formatDoctorFailure };
+export { createElectronChildEnv, detachChildForHandoff, managedElectronSpawnOptions, parseArguments, waitForReady, formatDoctorFailure };

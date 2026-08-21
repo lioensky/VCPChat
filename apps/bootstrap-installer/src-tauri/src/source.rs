@@ -3,6 +3,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::process::configure_hidden;
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSnapshot {
@@ -33,9 +35,10 @@ pub struct UpdateSnapshot {
 }
 
 fn command(root: &Path, program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program)
-        .args(args)
-        .current_dir(root)
+    let mut command = Command::new(program);
+    command.args(args).current_dir(root);
+    configure_hidden(&mut command);
+    let output = command
         .output()
         .ok()?;
     if !output.status.success() {
@@ -46,9 +49,10 @@ fn command(root: &Path, program: &str, args: &[&str]) -> Option<String> {
 }
 
 fn git_porcelain(root: &Path) -> Option<String> {
-    let output = Command::new("git")
-        .args(["status", "--porcelain=v1"])
-        .current_dir(root)
+    let mut command = Command::new("git");
+    command.args(["status", "--porcelain=v1"]).current_dir(root);
+    configure_hidden(&mut command);
+    let output = command
         .output()
         .ok()?;
     if !output.status.success() {
