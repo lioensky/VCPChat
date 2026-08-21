@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 mod manifest;
@@ -18,9 +18,21 @@ enum InstallerMode {
     Update,
 }
 
+impl InstallerMode {
+    fn from_args(args: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        if args.into_iter().any(|arg| arg.as_ref() == "--update") {
+            Self::Update
+        } else {
+            Self::Install
+        }
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 struct InstallerStatus {
     running: bool,
+    cancelling: bool,
+    cancelled: bool,
     completed: bool,
     version: Option<String>,
     last_error: Option<String>,
@@ -29,14 +41,56 @@ struct InstallerStatus {
 }
 
 #[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StageInfo {
+    id: String,
+    title: String,
+    detail: String,
+}
+
+fn stage_info(id: &str) -> StageInfo {
+    let (title, detail) = match id {
+        "locate-source" => ("定位 VCPChat", "确认项目目录和启动入口"),
+        "inspect-git" => ("检查项目状态", "保护尚未提交的本地修改"),
+        "repair-environment" => ("准备运行环境", "安装依赖并适配 Electron 原生模块"),
+        "final-doctor" => ("验证运行环境", "确认 Electron、ABI 和原生服务均可用"),
+        "resolve-runtime" => ("解析运行时", "查找可用的受管运行环境"),
+        "verify-payload" => ("验证安装内容", "检查下载内容的完整性和签名"),
+        _ => (id, "正在处理当前步骤"),
+    };
+    StageInfo {
+        id: id.to_string(),
+        title: title.to_string(),
+        detail: detail.to_string(),
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub(crate) enum InstallerEvent {
-    Manifest { stages: Vec<String> },
-    Stage { name: String, state: String },
-    Log { line: String },
-    LaunchProgress { progress: f32, message: String },
-    Complete { version: String },
-    Failed { error: String },
+    Manifest {
+        stages: Vec<StageInfo>,
+    },
+    Stage {
+        name: String,
+        state: String,
+        duration_ms: Option<u64>,
+    },
+    Log {
+        line: String,
+    },
+    LaunchProgress {
+        progress: f32,
+        message: String,
+    },
+    Complete {
+        version: String,
+    },
+    Cancelled,
+    Failed {
+        stage: Option<String>,
+        error: String,
+    },
 }
 
 struct AppState {
@@ -54,7 +108,7 @@ fn get_manifest() -> Result<manifest::InstallerManifest, String> {
 
 #[tauri::command]
 fn get_mode() -> InstallerMode {
-    InstallerMode::Install
+    InstallerMode::from_args(std::env::args())
 }
 
 #[tauri::command]
@@ -88,6 +142,17 @@ fn get_install_layout() -> storage::InstallLayout {
 fn acquire_managed_lock() -> Result<storage::OperationLock, String> {
     let layout = get_install_layout();
     layout.acquire_lock()
+}
+
+fn publish_cancelled(app: &AppHandle, status: &Arc<Mutex<InstallerStatus>>) {
+    let _ = app.emit("installer", InstallerEvent::Cancelled);
+    if let Ok(mut current) = status.lock() {
+        current.running = false;
+        current.cancelling = false;
+        current.cancelled = true;
+        current.last_error = None;
+        current.current_stage = None;
+    }
 }
 
 fn run_source_repair(
@@ -194,6 +259,8 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
         return Err("VCPChat installer is already running".into());
     }
     status.running = true;
+    status.cancelling = false;
+    status.cancelled = false;
     status.completed = false;
     status.last_error = None;
     status.current_stage = None;
@@ -220,6 +287,7 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
             let _ = app.emit(
                 "installer",
                 InstallerEvent::Failed {
+                    stage: None,
                     error: error.clone(),
                 },
             );
@@ -246,23 +314,12 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
         let _ = app.emit(
             "installer",
             InstallerEvent::Manifest {
-                stages: stages.clone(),
+                stages: stages.iter().map(|stage| stage_info(stage)).collect(),
             },
         );
         for stage in stages {
             if cancel_ref.load(Ordering::Acquire) {
-                let error = "已取消当前安装操作".to_string();
-                let _ = app.emit(
-                    "installer",
-                    InstallerEvent::Failed {
-                        error: error.clone(),
-                    },
-                );
-                if let Ok(mut current) = status_ref.lock() {
-                    current.running = false;
-                    current.last_error = Some(error);
-                    current.current_stage = None;
-                }
+                publish_cancelled(&app, &status_ref);
                 return;
             }
             let _ = app.emit(
@@ -270,8 +327,10 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
                 InstallerEvent::Stage {
                     name: stage.clone(),
                     state: "running".into(),
+                    duration_ms: None,
                 },
             );
+            let stage_started = Instant::now();
             if let Ok(mut current) = status_ref.lock() {
                 current.current_stage = Some(stage.clone());
             }
@@ -286,13 +345,15 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
                     let _ = app.emit(
                         "installer",
                         InstallerEvent::Stage {
-                            name: stage,
+                            name: stage.clone(),
                             state: "failed".into(),
+                            duration_ms: Some(stage_started.elapsed().as_millis() as u64),
                         },
                     );
                     let _ = app.emit(
                         "installer",
                         InstallerEvent::Failed {
+                            stage: Some(stage),
                             error: error.clone(),
                         },
                     );
@@ -309,22 +370,28 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
                     InstallerEvent::Stage {
                         name: stage,
                         state: "skipped".into(),
+                        duration_ms: Some(stage_started.elapsed().as_millis() as u64),
                     },
                 );
                 continue;
             }
-            if stage == "inspect-git" && snapshot.dirty {
+            if stage == "inspect-git"
+                && snapshot.dirty
+                && matches!(get_mode(), InstallerMode::Update)
+            {
                 let error = "检测到未提交源码修改；为避免覆盖用户工作，更新已阻止。".to_string();
                 let _ = app.emit(
                     "installer",
                     InstallerEvent::Stage {
-                        name: stage,
+                        name: stage.clone(),
                         state: "failed".into(),
+                        duration_ms: Some(stage_started.elapsed().as_millis() as u64),
                     },
                 );
                 let _ = app.emit(
                     "installer",
                     InstallerEvent::Failed {
+                        stage: Some(stage),
                         error: error.clone(),
                     },
                 );
@@ -340,16 +407,22 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
                     if let Err(error) =
                         run_source_repair(&app, &worker_state, std::path::Path::new(root))
                     {
+                        if cancel_ref.load(Ordering::Acquire) {
+                            publish_cancelled(&app, &status_ref);
+                            return;
+                        }
                         let _ = app.emit(
                             "installer",
                             InstallerEvent::Stage {
-                                name: stage,
+                                name: stage.clone(),
                                 state: "failed".into(),
+                                duration_ms: Some(stage_started.elapsed().as_millis() as u64),
                             },
                         );
                         let _ = app.emit(
                             "installer",
                             InstallerEvent::Failed {
+                                stage: Some(stage),
                                 error: error.clone(),
                             },
                         );
@@ -367,16 +440,22 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
                     if let Err(error) =
                         run_final_doctor(&app, &worker_state, std::path::Path::new(root))
                     {
+                        if cancel_ref.load(Ordering::Acquire) {
+                            publish_cancelled(&app, &status_ref);
+                            return;
+                        }
                         let _ = app.emit(
                             "installer",
                             InstallerEvent::Stage {
-                                name: stage,
+                                name: stage.clone(),
                                 state: "failed".into(),
+                                duration_ms: Some(stage_started.elapsed().as_millis() as u64),
                             },
                         );
                         let _ = app.emit(
                             "installer",
                             InstallerEvent::Failed {
+                                stage: Some(stage),
                                 error: error.clone(),
                             },
                         );
@@ -395,6 +474,7 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
                 InstallerEvent::Stage {
                     name: stage,
                     state: "succeeded".into(),
+                    duration_ms: Some(stage_started.elapsed().as_millis() as u64),
                 },
             );
         }
@@ -407,6 +487,8 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
         );
         if let Ok(mut current) = status_ref.lock() {
             current.running = false;
+            current.cancelling = false;
+            current.cancelled = false;
             current.completed = true;
             current.version = Some(version);
             current.current_stage = None;
@@ -417,6 +499,11 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
 
 #[tauri::command]
 fn cancel_installer(state: State<'_, AppState>) -> Result<(), String> {
+    if let Ok(mut status) = state.status.lock() {
+        if status.running {
+            status.cancelling = true;
+        }
+    }
     state.cancel.store(true, Ordering::Release);
     process::cancel(&state.active_child);
     Ok(())
@@ -515,6 +602,28 @@ fn get_log_path(app: AppHandle) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+fn open_log_directory(app: AppHandle) -> Result<(), String> {
+    let path = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("explorer");
+        command
+    };
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    command
+        .arg(path)
+        .spawn()
+        .map_err(|error| format!("无法打开诊断记录目录: {error}"))?;
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
@@ -572,6 +681,8 @@ pub fn run() {
             app.manage(AppState {
                 status: Arc::new(Mutex::new(InstallerStatus {
                     running: false,
+                    cancelling: false,
+                    cancelled: false,
                     completed: false,
                     version: None,
                     last_error: None,
@@ -598,7 +709,8 @@ pub fn run() {
             start_installer,
             cancel_installer,
             launch_vcpchat,
-            get_log_path
+            get_log_path,
+            open_log_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running VCPChat Setup");

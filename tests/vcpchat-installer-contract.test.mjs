@@ -38,6 +38,28 @@ test('installer lifecycle has one owner, cancellation, and terminal event seams'
     assert.doesNotMatch(source, /require\(['"]electron['"]\)/);
 });
 
+test('installer UI exposes explainable progress and recoverable terminal states', () => {
+    const readInstaller = relative => fs.readFileSync(path.join(installer, relative), 'utf8');
+    const rust = readInstaller('src-tauri/src/lib.rs');
+    const app = readInstaller('src/app.tsx');
+    const store = readInstaller('src/store.ts');
+    const styles = readInstaller('src/styles.css');
+    const theme = readInstaller('src/theme.ts');
+
+    assert.match(rust, /struct StageInfo/);
+    assert.match(rust, /duration_ms: Option<u64>/);
+    assert.match(rust, /Cancelled/);
+    assert.match(rust, /fn open_log_directory/);
+    assert.match(store, /'cancelled'/);
+    assert.match(store, /computed\(\$stages/);
+    assert.match(app, /aria-valuenow=\{percent\}/);
+    assert.match(app, /打开诊断记录/);
+    assert.match(app, /正在安全停止/);
+    assert.doesNotMatch(app, /检查更新状态/);
+    assert.match(theme, /onThemeChanged/);
+    assert.match(styles, /prefers-reduced-motion/);
+});
+
 test('installer fails closed without source and waits for managed ready handoff', () => {
     const source = fs.readFileSync(path.join(installer, 'src-tauri', 'src', 'lib.rs'), 'utf8');
     assert.match(source, /无源码 payload 下载、发布和回滚尚未完成/);
