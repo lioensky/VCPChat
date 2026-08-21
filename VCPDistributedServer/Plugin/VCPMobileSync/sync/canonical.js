@@ -175,23 +175,29 @@ function canonicalizeAttachment(value, messageId, index, warnings) {
   return attachment;
 }
 
-function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings()) {
+function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), rewrites) {
   if (!isPlainObject(value)) {
     throw new SyncProtocolError(`Topic ${topicId} contains a non-object message`);
   }
 
   const id = requireNonEmptyString(value.id, `Topic ${topicId} message id`);
   const role = requireNonEmptyString(value.role, `Message ${id} role`);
+  // topicId 是来源元数据而非消息身份：frame topic 才是双端存储权威，消息指纹
+  // 也不含 topicId。话题分支会合法地让消息携带旧话题的 topicId（1.0 时代从未
+  // 校验过），因此 Wire 1.1 硬切引入的"topicId 必须等于 frame topic"硬校验
+  // 降级为 frame 权威归一化：不一致（或非字符串）时重写为 frame topic。
+  // 注意：重写计数不得混入 warnings（附件告警在 push 路径是硬失败门禁）。
   if (
     Object.prototype.hasOwnProperty.call(value, "topicId") &&
     value.topicId !== null &&
-    (typeof value.topicId !== "string" || value.topicId !== topicId)
+    value.topicId !== topicId
   ) {
-    throw new SyncProtocolError(
-      typeof value.topicId === "string"
-        ? `Message ${id} topicId ${value.topicId} conflicts with frame topic ${topicId}`
-        : `Message ${id} topicId must be a string`,
-    );
+    if (rewrites) {
+      rewrites.push(
+        `message=${id}: topicId ${JSON.stringify(value.topicId)} normalized to frame topic ${topicId}`,
+      );
+    }
+    value = { ...value, topicId };
   }
   if (
     value.status === "removed" ||
@@ -340,8 +346,9 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
     warnings.samples = upstreamSamples.slice(0, warnings.limit);
   }
   const seen = new Set();
+  const topicIdRewrites = new BoundedWarnings();
   const messages = value.messages.map((rawMessage) => {
-    const message = canonicalizeMessage(rawMessage, topicId, warnings);
+    const message = canonicalizeMessage(rawMessage, topicId, warnings, topicIdRewrites);
     if (seen.has(message.id)) {
       throw new SyncProtocolError(
         `Topic ${topicId} contains duplicate message ${message.id}`,
@@ -368,6 +375,8 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
     },
     warningCount: warnings.count,
     warningSamples: [...warnings.samples],
+    topicIdRewrites: topicIdRewrites.count,
+    topicIdRewriteSamples: [...topicIdRewrites.samples],
     contentHashes: messages.map(messageContentHash),
   };
 }

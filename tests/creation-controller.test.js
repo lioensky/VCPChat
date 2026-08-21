@@ -184,7 +184,7 @@ test('disposing while the creation kernel loads prevents a late surface mount', 
     dom.window.close();
 });
 
-test('a terminal Web Awesome load failure exposes an error without mounting a second UI', async () => {
+test('a terminal Web Awesome load failure mounts the same creation surface with native kernel', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
     const ui = createUi(dom.window);
     const unavailable = [];
@@ -201,9 +201,9 @@ test('a terminal Web Awesome load failure exposes an error without mounting a se
     });
     controller.mount();
     await controller.open();
-    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null);
-    assert.equal(ui.controls.length, 0, 'kernel failure must not construct native substitutes');
-    assert.deepEqual(unavailable, ['创建界面组件加载失败，请按 Ctrl+R 重新加载应用。']);
+    assert.equal(dom.window.document.querySelectorAll('.next-ui-create-dialog-host').length, 1);
+    assert.ok(ui.controls.length > 0, 'kernel failure must retain the native creation surface');
+    assert.deepEqual(unavailable, []);
     dom.window.close();
 });
 
@@ -237,5 +237,33 @@ test('creation submission waits for the command promise and restores controls af
     assert.equal(buttons[0].element.disabled, false);
     assert.equal(modal.options.dismissible, true);
     controller.dispose();
+    dom.window.close();
+});
+
+test('late creation completion loses authority after the modal is disposed', async () => {
+    const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>', { pretendToBeVisual: true });
+    const ui = createUi(dom.window);
+    installSurfaceRuntime(dom.window);
+    let resolveCreation;
+    const creation = new Promise(resolve => { resolveCreation = resolve; });
+    let toasts = 0;
+    const controller = new CreationController({
+        window: dom.window,
+        document: dom.window.document,
+        getUi: () => ({ ...ui, feedback: { toast: () => { toasts += 1; } } }),
+        getApi: () => ({ getCachedModels: async () => [] }),
+        commands: () => ({ createAgent: () => creation, createGroup: () => creation }),
+    });
+    controller.mount();
+    await controller.open();
+    const form = dom.window.document.querySelector('.next-ui-create-dialog-form');
+    form.querySelector('input').value = 'Late';
+    form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise(resolve => setImmediate(resolve));
+    controller.dispose();
+    resolveCreation({ success: true });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(toasts, 0, 'disposed creation must not publish a late success toast');
+    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null);
     dom.window.close();
 });

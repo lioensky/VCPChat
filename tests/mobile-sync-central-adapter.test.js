@@ -33,7 +33,6 @@ function createClient(overrides = {}) {
       type: "SYNC_DIFF_RESULTS_BATCH",
       results: {},
     }),
-    syncMessagesPull: async () => [],
     syncMessagesPush: async () => ({ results: [] }),
     changes: async () => ({ changes: [], nextSequence: 0, hasMore: false }),
     ...overrides,
@@ -71,10 +70,11 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
     }),
   });
 
-  await adapter.handleSyncManifest({
+  const result = await adapter.handleSyncManifest({
     dataType: "topic",
     data: [{ id: "topic_1", hash: "remote" }],
     targetedOwners: ["agent_1"],
+    phase: 2,
   });
 
   assert.deepEqual(captured, {
@@ -82,6 +82,32 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
     data: [{ id: "topic_1", hash: "remote" }],
     targetedOwners: ["agent_1"],
   });
+  // 移动端 diff_handler 对 SYNC_DIFF_RESULTS.phase 是硬门禁，中央路径必须回填
+  assert.equal(result.phase, 2);
+});
+
+test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient(),
+  });
+
+  await assert.rejects(
+    adapter.handleSyncManifest({
+      dataType: "topic",
+      data: [],
+      targetedOwners: ["agent_1"],
+      phase: 1,
+    }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  await assert.rejects(
+    adapter.handleSyncManifest({
+      dataType: "agent",
+      data: [],
+      phase: 2,
+    }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
 });
 
 test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic", async () => {

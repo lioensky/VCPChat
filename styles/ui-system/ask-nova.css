@@ -198,6 +198,17 @@
         color: var(--vcp-ui-text-accent);
     }
 
+    html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-sticker {
+        width: auto;
+        max-width: min(180px, 100%);
+        max-height: 180px;
+        margin: var(--vcp-ui-space-2) var(--vcp-ui-space-1);
+        display: inline-block;
+        border-radius: var(--vcp-ui-radius-md);
+        object-fit: contain;
+        vertical-align: middle;
+    }
+
     html .vcp-ui-scope.ask-nova-scope .ask-nova-modal-host .ask-nova-message-user .ask-nova-message-bubble a {
         color: inherit;
     }

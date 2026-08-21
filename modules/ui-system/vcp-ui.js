@@ -1437,6 +1437,7 @@ function listFactory(options = {}) {
             if (row instanceof HTMLButtonElement) row.type = 'button';
             row.className = 'vcp-ui-list-item';
             row.setAttribute('role', 'listitem');
+            if (item.value !== undefined) row.dataset.value = String(item.value);
             row.disabled = Boolean(item.disabled);
             row.dataset.state = item.selected ? 'selected' : 'default';
             if (item.icon) row.append(icon(item.icon));
@@ -1817,6 +1818,8 @@ function modalFactory(options = {}) {
     dialog.className = 'vcp-ui-modal';
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
+    const titleId = options.titleId || `vcpUiModalTitle-${Math.random().toString(36).slice(2)}`;
+    dialog.setAttribute('aria-labelledby', titleId);
     overlay.append(dialog);
     const previousFocus = document.activeElement;
     const state = {
@@ -1837,6 +1840,7 @@ function modalFactory(options = {}) {
         dialog.replaceChildren();
         const header = document.createElement('header');
         const title = document.createElement('h2');
+        title.id = titleId;
         title.textContent = current.title;
         const closeButton = options.native === true
             ? (() => {

@@ -6,9 +6,13 @@ const { createDeepWikiService } = require('../services/deepWikiService');
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9:_-]{1,128}$/;
 let initialized = false;
 
-function initialize({ mainWindow, service = createDeepWikiService() }) {
+function initialize({ mainWindow, service, novaStickerLibraryProvider, userNameProvider } = {}) {
     if (initialized) return;
     initialized = true;
+    const resolvedService = service || createDeepWikiService({
+        novaStickerLibraryProvider,
+        userNameProvider
+    });
     const activeRequests = new Map();
 
     const isMainRenderer = event => Boolean(
@@ -34,7 +38,7 @@ function initialize({ mainWindow, service = createDeepWikiService() }) {
         const controller = new AbortController();
         activeRequests.set(key, controller);
         try {
-            const result = await service.ask(payload, { signal: controller.signal });
+            const result = await resolvedService.ask(payload, { signal: controller.signal });
             return { success: true, ...result };
         } catch (error) {
             return {

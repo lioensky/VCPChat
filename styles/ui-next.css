@@ -15,7 +15,7 @@
 
 html {
     --ui-mode: next;
-    --next-topbar-height: 44px;
+    --next-topbar-height: 42px;
 }
 
 html body {
@@ -279,6 +279,19 @@ html #nextUiHomeTab > span:last-child {
     min-width: 0;
 }
 
+.next-ui-tab-label-button {
+    min-width: 0;
+    flex: 1 1 auto;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .next-ui-tab-close {
     width: 20px;
     height: 20px;
@@ -290,6 +303,12 @@ html #nextUiHomeTab > span:last-child {
     color: var(--next-muted);
     background: transparent;
     cursor: pointer;
+}
+
+.next-ui-tab-label-button:focus-visible {
+    outline: 2px solid #3f70ff;
+    outline-offset: -2px;
+    border-radius: 5px;
 }
 
 .next-ui-tab-close:hover {
@@ -560,7 +579,7 @@ html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active {
 
 html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover,
 html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible {
-    background: color-mix(in srgb, var(--next-text) 8%, transparent);
+    background: transparent;
 }
 
 html .next-ui-brand-tab-group {
@@ -642,6 +661,21 @@ html .next-ui-sidebar-mode-button:hover > .next-ui-sidebar-control-icon,
 html .next-ui-sidebar-mode-button:focus-visible > .next-ui-sidebar-control-icon {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
+}
+
+/* Switching to avatar-only mode leaves the pointer over this button, so
+   :hover remains true without any new pointer movement. In that active mode,
+   keep the brand visible instead of allowing the control glyph to cover it. */
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover .next-ui-sidebar-brand,
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible .next-ui-sidebar-brand {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover > .next-ui-sidebar-control-icon,
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible > .next-ui-sidebar-control-icon {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.76);
 }
 
 html .assistant-control-icon-classic {
@@ -1130,6 +1164,7 @@ body.light-theme .next-ui-nova-panel::before {
 
 .next-ui-app-item:focus-visible,
 .next-ui-tab:focus-visible,
+.next-ui-tab-label-button:focus-visible,
 .next-ui-add-tab:focus-visible,
 .next-ui-icon-button:focus-visible,
 .next-ui-window-button:focus-visible {

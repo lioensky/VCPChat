@@ -19,12 +19,14 @@
             this.host = null;
             this.focusOrigin = null;
             this.fallback = false;
+            this.kernelPreference = options.kernelPreference || null;
             this.disposers = [];
             this.disposePromise = null;
             this.ownerRelease = null;
         }
 
         chooseKernel() {
+            if (this.kernelPreference === 'native' || this.kernelPreference === 'web-awesome') return this.kernelPreference;
             const runtime = this.window.VCPWebAwesome?.getRuntimeState?.();
             return this.document.documentElement.dataset.uiMode === 'next' && runtime?.state === 'ready'
                 ? 'web-awesome'

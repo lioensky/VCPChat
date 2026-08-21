@@ -19,6 +19,15 @@ const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const { spawn } = require('child_process'); // For executing local python
 const { Worker } = require('worker_threads');
+
+function reportStartup(stage, progress, message) {
+    if (process.env.VCP_LAUNCHER_PROTOCOL !== '1') return;
+    const payload = JSON.stringify({ stage, progress, message });
+    process.stdout.write(`VCP_STARTUP:${payload}\n`);
+}
+
+reportStartup('process-started', 0.08, 'VChat 进程已启动');
+
 const fileManager = require('./modules/fileManager'); // Import the new file manager
 const groupChat = require('./Groupmodules/groupchat'); // Import the group chat module
 const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window IPC handlers
@@ -622,15 +631,7 @@ function createWindow({ deferLoad = false } = {}) {
 
 function loadMainWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
-        const readyFile = path.join(__dirname, '.vcp_ready');
-        fs.ensureFileSync(readyFile);
-
-        setTimeout(() => {
-            if (fs.existsSync(readyFile)) {
-                fs.unlinkSync(readyFile);
-            }
-        }, 3000);
-
+        reportStartup('renderer-ready', 1.0, '准备完成！');
         mainWindow.show();
     });
 
@@ -750,36 +751,10 @@ function createTray() {
 const gotTheLock = process.argv.includes('--allow-multiple-instances') || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
-    const isInternalLaunch = process.argv.includes('--desktop-only') || process.argv.includes('--rag-observer-only');
-
-    if (!isInternalLaunch) {
-        const readyFile = path.join(__dirname, '.vcp_ready');
-        try {
-            fs.ensureFileSync(readyFile);
-            console.log('[Main] Second instance signaled NativeSplash to close.');
-        } catch (err) {
-            // 异常安全：只读/Docker 环境下静默降级，不影响单例聚焦
-            console.warn('[Main] Failed to create .vcp_ready in second instance:', err.message);
-        }
-    }
+    reportStartup('existing-instance', 1.0, 'VChat 已经在运行');
     app.quit();
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
-        // 当第一实例被第二实例唤醒时，延迟 1.5 秒清理可能由第二实例创建的信号文件。
-        // 1.5 秒足够 Rust 闪屏端（200ms轮询）检测并退出，且能 100% 避免冷启动信号残留。
-        const readyFile = path.join(__dirname, '.vcp_ready');
-        setTimeout(() => {
-            try {
-                if (fs.existsSync(readyFile)) {
-                    fs.unlinkSync(readyFile);
-                    console.log('[Main] Cleaned up .vcp_ready signal created by second instance.');
-                }
-            } catch (err) {
-                console.warn('[Main] Failed to clean up second-instance .vcp_ready:', err.message);
-            }
-        }, 1500);
-
         const wantsRagOnly = commandLine.includes('--rag-observer-only');
         const wantsDesktop = commandLine.includes('--desktop-only');
 
@@ -820,6 +795,8 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(async () => { // Make the function async
+        reportStartup('electron-ready', 0.16, 'Electron 核心已就绪');
+
         // 全局处理普通 VChat 窗口的新窗口请求。VCP Loom 的远程 WebContentsView
         // 会由 VCPLoomManager 设置自己的隔离导航策略，因此不在这里提前覆盖。
         app.on('web-contents-created', (event, contents) => {
@@ -837,14 +814,6 @@ if (!gotTheLock) {
             });
         });
 
-        // Handle the emergency close request from the splash screen
-        ipcMain.on('close-app', () => {
-            console.log('[Main] Received close-app request from splash screen. Quitting.');
-            app.quit();
-        });
-
-        // The native splash screen is started by the batch file, so no action is needed here.
-
         // Pre-warm the audio engine in the background. This doesn't block the main window.
         if (process.env.VCPCHAT_E2E_TEST !== '1') startAudioEngine().catch(err => {
             console.error('[Main] Failed to pre-warm audio engine on startup:', err);
@@ -861,6 +830,7 @@ if (!gotTheLock) {
         fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
         fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
         groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
+        reportStartup('storage-ready', 0.27, '配置与数据目录已就绪');
 
         const AppSettingsManager = require('./modules/utils/appSettingsManager');
         const AgentConfigManager = require('./modules/utils/agentConfigManager');
@@ -954,6 +924,7 @@ if (!gotTheLock) {
         // Create the native window first, but load the renderer only after IPC registration.
         createWindow({ deferLoad: true });
         createTray();
+        reportStartup('window-created', 0.38, '主窗口骨架已创建');
         // --- Application Menu ---
         const isMac = process.platform === 'darwin';
         const menuTemplate = [
@@ -1189,13 +1160,21 @@ if (!gotTheLock) {
         });
 
         await assistantHandlers.initialize({ SETTINGS_FILE });
+        reportStartup('assistant-ready', 0.56, '小助手已经醒来');
         fileDialogHandlers.initialize(mainWindow, {
             getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             openChildWindows
         });
-        deepWikiHandlers.initialize({ mainWindow });
+        deepWikiHandlers.initialize({
+            mainWindow,
+            novaStickerLibraryProvider: () => emoticonHandlers.getEmoticonLibrary(),
+            userNameProvider: async () => {
+                const settings = await appSettingsManager.readSettings();
+                return settings?.userName || '';
+            }
+        });
         groupChatHandlers.initialize(mainWindow, {
             AGENT_DIR,
             USER_DATA_DIR,
@@ -1390,6 +1369,7 @@ if (!gotTheLock) {
             mainWindow,
             openChildWindows
         });
+        reportStartup('workspace-ready', 0.76, '工作空间与功能模块已连接');
         desktopRemoteHandlers.initialize({ mainWindow });
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
@@ -1479,6 +1459,7 @@ if (!gotTheLock) {
         // 主窗口页面完成加载、触发展示后再后台预热 Scriptorium。
         // 不 await：重型 CommonJS 解析不会延迟主窗口首屏；若用户更早打开
         // 文坊，临时 IPC 桥接会立即启动并等待同一个单例加载 Promise。
+        reportStartup('renderer-loading', 0.9, '正在绘制聊天界面');
         void loadMainWindow()
             .then(() => loadDocxHandlers())
             .catch((error) => {
@@ -1569,12 +1550,6 @@ if (!gotTheLock) {
     });
 
     app.on('will-quit', () => {
-        // 0. Clean up the ready signal file for the native splash screen
-        const readyFile = path.join(__dirname, '.vcp_ready');
-        if (fs.existsSync(readyFile)) {
-            fs.unlinkSync(readyFile);
-        }
-
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');
         assistantHandlers.stopSelectionListener();

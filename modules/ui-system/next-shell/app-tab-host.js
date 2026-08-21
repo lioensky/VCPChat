@@ -94,11 +94,20 @@
             const tab = this.document.createElement('div');
             tab.className = 'next-ui-tab';
             tab.dataset.viewId = id;
-            tab.setAttribute('role', 'tab');
-            tab.setAttribute('aria-selected', 'false');
-            tab.tabIndex = -1;
+            // The wrapper owns the visual tab slot and drag affordance. Keep
+            // the actionable tab and close control as siblings: a `role=tab`
+            // must not contain an interactive descendant (AT treats tab
+            // descendants as presentational).
+            tab.setAttribute('role', 'presentation');
+            const tabButton = this.document.createElement('button');
+            tabButton.type = 'button';
+            tabButton.className = 'next-ui-tab-label next-ui-tab-label-button';
+            tabButton.id = `nextUiTab-${String(id).replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+            tabButton.setAttribute('role', 'tab');
+            tabButton.setAttribute('aria-selected', 'false');
+            tabButton.tabIndex = -1;
             const label = this.document.createElement('span');
-            label.className = 'next-ui-tab-label vcp-ui-scope';
+            label.className = 'vcp-ui-scope';
             if (icon || iconSvg) {
                 const symbol = this.document.createElement('span');
                 symbol.className = icon ? 'vcp-ui-icon next-ui-tab-symbol' : 'next-ui-tab-symbol next-ui-tab-svg';
@@ -110,13 +119,14 @@
             const text = this.document.createElement('span');
             text.textContent = title;
             label.append(text);
+            tabButton.append(label);
             const close = this.document.createElement('button');
             close.type = 'button';
             close.className = 'next-ui-tab-close';
             close.setAttribute('aria-label', closeLabel || `关闭${title}标签`);
             close.title = '关闭标签';
             close.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">close</span>';
-            tab.append(label, close);
+            tab.append(tabButton, close);
             const listen = (type, handler) => scope
                 ? scope.listen(tab, type, handler, undefined, `tab:${id}:${type}`)
                 : tab.addEventListener(type, handler);
@@ -132,16 +142,35 @@
                 event.preventDefault();
                 this.setView(id);
             });
+            listen('keydown', event => {
+                if (event.target.closest('.next-ui-tab-close')) return;
+                const tabs = [...this.document.querySelectorAll('#nextUiDynamicTabs .next-ui-tab-label-button')];
+                const current = tabs.indexOf(tabButton);
+                if (current < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === 'Home' ? 0
+                    : event.key === 'End' ? tabs.length - 1
+                        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                tabs[next]?.focus();
+            });
             this.document.getElementById('nextUiDynamicTabs')?.append(tab);
             return tab;
         }
 
         register(viewId, view) {
+            const tabButton = view.tabButton || view.tab?.querySelector?.('.next-ui-tab-label-button') || view.tab;
+            view.tabButton = tabButton;
+            const panelId = view.container.id || `nextUiPanel-${String(viewId).replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+            view.container.id = panelId;
+            tabButton.setAttribute('aria-controls', panelId);
+            view.container.setAttribute('role', 'tabpanel');
+            if (tabButton.id) view.container.setAttribute('aria-labelledby', tabButton.id);
             this.views.set(viewId, view);
             this.publish();
         }
 
         updateVisibility() {
+            const previousViewId = this._lastActiveViewId || 'home';
             const isHome = this.activeViewId === 'home';
             const isLaunchpad = this.activeViewId === 'launchpad';
             const isInternal = this.activeViewId.startsWith('app:');
@@ -155,6 +184,10 @@
             homeTab?.classList.toggle('active', isHome);
             homeTab?.setAttribute('aria-selected', String(isHome));
             launchpad?.setAttribute('aria-hidden', String(!isLaunchpad));
+            // App buttons are created dynamically, so static interaction gates
+            // cannot see their focusability while the surface is closed.
+            // Keep the hidden launchpad out of keyboard/AT navigation.
+            if (launchpad) launchpad.inert = !isLaunchpad;
             host?.setAttribute('aria-hidden', String(!isInternal));
             if (host) {
                 host.hidden = !isInternal;
@@ -166,11 +199,24 @@
             this.views.forEach((view, id) => {
                 const active = id === this.activeViewId;
                 view.tab.classList.toggle('active', active);
-                view.tab.setAttribute('aria-selected', String(active));
-                view.tab.tabIndex = active ? 0 : -1;
+                const tabButton = view.tabButton || view.tab;
+                tabButton.setAttribute('aria-selected', String(active));
+                tabButton.tabIndex = active ? 0 : -1;
                 view.container.hidden = !active;
+                view.container.setAttribute('role', 'tabpanel');
+                if (tabButton.id) view.container.setAttribute('aria-labelledby', tabButton.id);
             });
             this.onActivate(this.activeViewId, activeView);
+            this._lastActiveViewId = this.activeViewId;
+            if (previousViewId !== 'launchpad' && isLaunchpad) {
+                const focusFirst = () => {
+                    if (this.activeViewId === 'launchpad') this.document.querySelector('#nextUiAppGrid .next-ui-app-item')?.focus();
+                };
+                this.document.defaultView?.requestAnimationFrame ? this.document.defaultView.requestAnimationFrame(focusFirst) : queueMicrotask(focusFirst);
+            } else if (previousViewId === 'launchpad' && !isLaunchpad
+                && this.document.activeElement?.closest?.('#nextUiLaunchpad')) {
+                this.document.getElementById('nextUiAddTabBtn')?.focus();
+            }
         }
 
         setView(viewId, options = {}) {
@@ -184,6 +230,7 @@
         unregister(viewId) {
             const view = this.views.get(viewId);
             if (!view) return null;
+            const restoreFocus = view.tab.contains(this.document.activeElement);
             const tabs = [...this.document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
             const tabIndex = tabs.indexOf(view.tab);
             view.tab.remove();
@@ -193,6 +240,7 @@
                 const remaining = [...this.document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
                 const left = tabIndex > 0 ? remaining[tabIndex - 1] : null;
                 this.setView(left?.dataset.viewId || 'home');
+                if (restoreFocus) (left || this.document.getElementById('nextUiHomeTab'))?.focus();
             }
             this.persist();
             this.publish();

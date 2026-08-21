@@ -5,6 +5,8 @@
 const { getLogger, setWss } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
 const {
+  ERROR_ORIGINS,
+  ERROR_STAGES,
   createSyncError,
   createSyncErrorFrame,
   parseSyncError,
@@ -218,10 +220,15 @@ function startWsServer({ port, syncToken, onMessage }) {
       } catch (e) {
         terminated = true;
         const logger = getLogger();
+        // Wire 1.2 错误契约：边界只允许补齐缺失的 origin/stage，不得把上游
+        // 已确认的 desktop_cds / mobile_sync 改写为 desktop_plugin，
+        // 否则移动端与桌面日志会同时丢失真实故障源。
         const error = withSyncErrorContext(e, {
           code: "SYNC_ATTEMPT_FAILED",
-          origin: "desktop_plugin",
-          stage: errorStageForPayload(payload, versionAccepted, currentStage),
+          origin: ERROR_ORIGINS.has(e?.origin) ? e.origin : "desktop_plugin",
+          stage: ERROR_STAGES.has(e?.stage)
+            ? e.stage
+            : errorStageForPayload(payload, versionAccepted, currentStage),
         });
         logger.logOperation(
           "websocket",
@@ -255,6 +262,31 @@ function startWsServer({ port, syncToken, onMessage }) {
   return wss;
 }
 
+/**
+ * 停止 WebSocket 服务器并释放模块级引用。
+ * 供测试 teardown 与降级重注册使用；生产路径目前不调用。
+ */
+async function stopWsServer() {
+  const server = wss;
+  wss = null;
+  wsServerPort = null;
+  setWss(null);
+  if (!server) return;
+  for (const client of server.clients) {
+    try {
+      client.terminate();
+    } catch {}
+  }
+  await new Promise((resolve) => {
+    try {
+      server.close(() => resolve());
+    } catch {
+      resolve();
+    }
+  });
+}
+
 module.exports = {
   startWsServer,
+  stopWsServer,
 };
