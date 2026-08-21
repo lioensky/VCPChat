@@ -272,6 +272,17 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             throw error;
           }
 
+          const isTopicDelete = [
+            "topic",
+            "agent_topic",
+            "group_topic",
+          ].includes(dataType);
+          const entityDeleteContext = {
+            code: "SYNC_DELETE_FAILED",
+            stage: isTopicDelete ? "topic_metadata" : "owner_metadata",
+            failedTopicIds: isTopicDelete ? [safeId] : [],
+          };
+
           if (centralSync) {
             if (dataType === "message") {
               if (
@@ -301,7 +312,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               if (!result?.success) {
                 throw withSyncErrorContext(
                   result?.error || "entity delete failed",
-                  { code: "SYNC_DELETE_FAILED", stage: "owner_metadata" },
+                  entityDeleteContext,
                 );
               }
               await centralSync.reconcile();
@@ -344,7 +355,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             if (!result?.success) {
               throw withSyncErrorContext(
                 result?.error || "avatar delete failed",
-                { code: "SYNC_DELETE_FAILED", stage: "owner_metadata" },
+                entityDeleteContext,
               );
             }
             logger.logOperation("websocket", "delete_notify", rawId, "success", "type=avatar");
@@ -353,15 +364,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             if (!result?.success) {
               throw withSyncErrorContext(
                 result?.error || "entity delete failed",
-                {
-                  code: "SYNC_DELETE_FAILED",
-                  stage: ["topic", "agent_topic", "group_topic"].includes(dataType)
-                    ? "topic_metadata"
-                    : "owner_metadata",
-                  failedTopicIds: ["topic", "agent_topic", "group_topic"].includes(dataType)
-                    ? [safeId]
-                    : [],
-                },
+                entityDeleteContext,
               );
             }
             logger.logOperation("websocket", "delete_notify", safeId, "success", `type=${dataType}`);

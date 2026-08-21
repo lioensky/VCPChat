@@ -965,10 +965,10 @@ async function deleteEntity({ id, type, ownerType = null, deletedAt, appDataPath
       db.prepare(
         `UPDATE entity_index
          SET deleted_at = CASE
-           WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
-         WHERE file_path = ?2
+           WHEN deleted_at IS NULL THEN ? ELSE MIN(deleted_at, ?) END
+         WHERE file_path = ?
            AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')`,
-      ).run(deletedAt, row.file_path);
+      ).run(deletedAt, deletedAt, row.file_path);
     }
 
     if (entityDir && (type === "agent" || type === "group")) {
