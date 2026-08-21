@@ -17,6 +17,6 @@ If fso.FileExists(tauriExe) Then
   WScript.Quit 0
 End If
 
-MsgBox "没有找到 VCPChat 图形启动器。请先构建 apps\\bootstrap-installer\\src-tauri\\target\\release\\VCPChat-Setup.exe，或使用发布包根目录中的 VCPChat.exe。", 48, "VCPChat 启动器"
+MsgBox "没有找到 VCPChat 图形启动器。请先在仓库根目录运行 npm run installer:portable 生成 VCPChat-Setup.exe。", 48, "VCPChat 启动器"
 Set fso = Nothing
 Set shell = Nothing

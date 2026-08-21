@@ -9,16 +9,16 @@ are not all release entry points.
 | Audience | Entry point | Purpose | Release status |
 | --- | --- | --- | --- |
 | End user, source checkout | `launchers/VCPChat-Launcher.vbs` (Windows), `launchers/VCPChat-Launcher.command` (macOS), `launchers/VCPChat-Launcher.sh` (Linux) | Open the graphical setup/recovery flow for the current checkout | Supported source launcher |
-| End user, portable bootstrap | `npm run installer:portable` → `portable/VCPChat-Setup.exe` | Double-click from any folder; it checks/prepares the VCPChat source and starts the app | No system installation; signing is separate |
-| End user, packaged build | NSIS/MSI/DMG/AppImage produced by `apps/bootstrap-installer` | Install the standalone setup application | Optional release artifact; signing is separate |
+| End user, portable bootstrap | `npm run installer:portable` → root `VCPChat-Setup.exe` | Double-click from the project root; it checks/prepares the VCPChat source and starts the app | Supported Windows delivery; no system installation |
 | Developer | `npm run vcpchat` | Diagnose, optionally repair with explicit consent, then launch | Supported CLI |
 | Developer, direct debugging | `npm start` | Run Electron directly and keep the existing debugging behavior | Compatibility/debug only |
 | CI/package validation | `npm run check:release-surface` | Validate required entrypoints, manifests, locks, and artifact naming | Required gate |
 
 ## Artifact Ownership
 
-- `apps/bootstrap-installer/` owns the Tauri Setup application and its NSIS/MSI,
-  macOS, and Linux bundle configuration.
+- `apps/bootstrap-installer/` owns the standalone Tauri Setup application. Windows
+  delivery is the root-level portable `VCPChat-Setup.exe`; no NSIS/MSI installer
+  is part of the release surface.
 - `main.js`, `renderer.js`, and the root Electron package own the desktop app.
 - `scripts/vcpchat.mjs` owns the consent-aware managed CLI state machine.
 - `scripts/vcpchat-dev-launcher.mjs` owns the lower-level managed Electron handoff.
@@ -32,8 +32,7 @@ are not all release entry points.
 
 | Output | Command | Location | Verification |
 | --- | --- | --- | --- |
-| Tauri Setup bundles | `npm run installer:build` | `apps/bootstrap-installer/src-tauri/target/release/bundle/` | `npm run check:release-surface` |
-| Tauri portable bootstrap | `npm run installer:portable` | `portable/VCPChat-Setup.exe` | `npm run check:release-surface` |
+| Tauri portable bootstrap | `npm run installer:portable` | `VCPChat-Setup.exe` at repository root | `npm run check:release-surface` |
 | Electron unpacked package | `npm run pack` | `dist/` | `npm run test:packed-install` |
 | Electron installer | `npm run dist` | `dist/` | `npm run verify:runtime-closure` |
 | Offline Web Awesome closure | `npm run pack:check` | `vendor/webawesome-runtime/` | `npm run pack:check` |
@@ -47,7 +46,7 @@ state are not release inputs and must not be committed as product evidence.
 2. Click the setup flow's prepare action and wait for Doctor, dependency repair,
    native rebuild, and final Doctor.
 3. Verify the setup window exits only after operation-scoped `renderer-ready`.
-4. Test a clean NSIS or MSI artifact in an isolated install directory.
+4. Verify the root-level `VCPChat-Setup.exe` launches without an installation step.
 5. Record remaining warnings separately from blocking failures.
 
 ## Compatibility Policy

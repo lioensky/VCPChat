@@ -1,6 +1,6 @@
 # VCPChat Bootstrap Installer
 
-This is the new standalone Tauri installer for VCPChat. It is intentionally
+This is the standalone Tauri installer, shipped as a portable bootstrapper for VCPChat. It is intentionally
 separate from the Electron application and from the legacy `bootstrap/`
 Recovery UI.
 
@@ -13,7 +13,8 @@ npm install --prefix apps/bootstrap-installer
 npm run installer:dev
 ```
 
-The current source-first milestone owns dependency and Rust runtime repair, final deep Doctor,
+The Windows release artifact is a single root-level `VCPChat-Setup.exe`; NSIS/MSI
+installation is not part of the product surface. The current source-first milestone owns dependency and Rust runtime repair, final deep Doctor,
 process-tree cancellation, persistent logs, and operation-scoped ready
 handoff. Missing-source installation still fails closed because signed payload
 download, publication, and rollback are not connected yet. Do not use this

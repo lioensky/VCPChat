@@ -36,7 +36,7 @@ jobs:
             targets: app,dmg
           - os: windows-2022
             name: windows-x64
-            targets: nsis,msi
+            targets: portable
           - os: ubuntu-22.04
             name: linux-x64
             targets: appimage
@@ -55,13 +55,24 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm ci --prefix apps/bootstrap-installer --ignore-scripts
       - name: Build installer bundles
+        if: runner.os != 'Windows'
         run: npm --prefix apps/bootstrap-installer run tauri:build -- --bundles "${{ matrix.targets }}" --ci
-      - name: Upload unsigned bundle evidence
+      - name: Build portable Windows bootstrap
+        if: runner.os == 'Windows'
+        run: npm run installer:portable
+      - name: Upload unsigned bundle evidence (non-Windows)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: vcpchat-installer-${{ matrix.name }}
           if-no-files-found: error
-          path: |
-            apps/bootstrap-installer/src-tauri/target/release/bundle/**
+          path: apps/bootstrap-installer/src-tauri/target/release/bundle/**
+      - name: Upload unsigned bundle evidence (Windows portable)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpchat-installer-${{ matrix.name }}
+          if-no-files-found: error
+          path: VCPChat-Setup.exe
       # Signing/notarization is deliberately a separate protected release job.
       # A green matrix build is platform packaging evidence, not a signed release.

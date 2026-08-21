@@ -52,12 +52,12 @@ for (const [name, command] of Object.entries({
 
 if (!installerPackage.devDependencies?.['@types/node']) failures.push('installer devDependencies missing @types/node');
 if (!installerLock.packages?.['']?.devDependencies?.['@types/node']) failures.push('installer lockfile missing @types/node');
-if (!Array.isArray(tauri.bundle?.targets) || !tauri.bundle.targets.includes('nsis') || !tauri.bundle.targets.includes('msi')) {
-    failures.push('Tauri config must declare nsis and msi targets');
+if (!Array.isArray(tauri.bundle?.targets) || tauri.bundle.targets.length !== 1 || !tauri.bundle.targets.includes('app')) {
+    failures.push('Tauri config must declare only the portable app target');
 }
 if (!tauri.bundle.icon?.some(file => file.endsWith('.ico'))) failures.push('Tauri config must declare a Windows .ico icon');
 
-for (const generated of ['node_modules', 'dist', 'apps/bootstrap-installer/src-tauri/target']) {
+for (const generated of ['node_modules', 'dist', 'apps/bootstrap-installer/src-tauri/target', 'VCPChat-Setup.exe']) {
     if (fs.existsSync(path.join(root, generated))) warnings.push(`local build output present (never commit): ${generated}`);
 }
 

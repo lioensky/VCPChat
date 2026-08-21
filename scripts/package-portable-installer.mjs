@@ -7,8 +7,7 @@ import { resolveCommandInvocation } from '../modules/bootstrap/command-invocatio
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const installerRoot = path.join(root, 'apps', 'bootstrap-installer');
 const targetExe = path.join(installerRoot, 'src-tauri', 'target', 'release', 'VCPChat-Setup.exe');
-const outputDir = path.join(root, 'portable');
-const outputExe = path.join(outputDir, 'VCPChat-Setup.exe');
+const outputExe = path.join(root, 'VCPChat-Setup.exe');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const invocation = resolveCommandInvocation(npm, ['run', 'tauri:build', '--', '--no-bundle']);
 
@@ -22,6 +21,5 @@ if (!fs.existsSync(targetExe)) {
     throw new Error(`Tauri portable installer was not produced: ${targetExe}`);
 }
 
-fs.mkdirSync(outputDir, { recursive: true });
 fs.copyFileSync(targetExe, outputExe);
 console.log(`Portable Tauri installer: ${outputExe}`);

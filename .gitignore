@@ -74,3 +74,5 @@ loudness_cache.db-shm
 
 # 本机字体名称表兼容副本（可能受第三方字体许可证约束，不进入仓库）
 /font-compat-output/
+# Locally generated portable Windows bootstrapper (release artifact, never commit).
+VCPChat-Setup.exe

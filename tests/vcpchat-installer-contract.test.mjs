@@ -16,7 +16,7 @@ test('standalone installer preserves Hermes MIT attribution and native identity'
     assert.match(notices, /Hermes Agent/);
     assert.equal(config.identifier, 'com.vcpchat.setup');
     assert.equal(config.productName, 'VCPChat Setup');
-    assert.deepEqual(config.bundle.targets, ['app', 'dmg', 'appimage', 'nsis', 'msi']);
+    assert.deepEqual(config.bundle.targets, ['app']);
 });
 
 test('installer lifecycle has one owner, cancellation, and terminal event seams', () => {
@@ -167,9 +167,10 @@ test('installer has a documented root-level development entry', () => {
 
 test('commercial delivery matrix names all platform bundle evidence without claiming signing', () => {
     const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'vcpchat-installer.yml'), 'utf8');
-    for (const target of ['macos-14', 'windows-2022', 'ubuntu-22.04', 'app,dmg', 'nsis,msi', 'appimage']) {
+    for (const target of ['macos-14', 'windows-2022', 'ubuntu-22.04', 'app,dmg', 'appimage', 'installer:portable']) {
         assert.match(workflow, new RegExp(target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
+    assert.doesNotMatch(workflow, /nsis,msi/);
     assert.match(workflow, /unsigned bundle evidence/);
     assert.match(workflow, /not a signed release/);
 });

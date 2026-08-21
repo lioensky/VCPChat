@@ -31,7 +31,7 @@
     "category": "DeveloperTool",
     "shortDescription": "VCPChat Setup",
     "longDescription": "Installs and updates VCPChat.",
-    "targets": ["app", "dmg", "appimage", "nsis", "msi"],
+    "targets": ["app"],
     "icon": ["icons/icon.png", "icons/icon.ico"],
     "macOS": {
       "minimumSystemVersion": "11.0",
