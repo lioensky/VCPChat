@@ -36,10 +36,16 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies without native rebuild
+      - name: Install dependencies (including Electron runtime)
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
-        run: npm ci --ignore-scripts --omit=optional
+        # Electron's postinstall script downloads the runtime used by the
+        # embedded-app contract tests. Do not suppress lifecycle scripts here;
+        # this job does not perform native addon rebuilds.
+        run: npm ci --omit=optional
+
+      - name: Verify Electron runtime
+        run: node -e "const electron = require('electron'); if (typeof electron !== 'string') { throw new Error('Electron runtime path was not installed'); } console.log(electron)"
 
       - name: Run Chat Kernel tests
         run: npm run test:chat-kernel
