@@ -52,6 +52,10 @@ fn stage_info(id: &str) -> StageInfo {
     let (title, detail) = match id {
         "locate-source" => ("定位 VCPChat", "确认项目目录和启动入口"),
         "inspect-git" => ("检查项目状态", "保护尚未提交的本地修改"),
+        "stash-changes" => ("保护本地修改", "创建可恢复的命名 Git stash"),
+        "fetch-upstream" => ("获取上游更新", "刷新当前分支的远端提交"),
+        "update-source" => ("更新项目源码", "仅执行 fast-forward 更新"),
+        "restore-changes" => ("恢复本地修改", "按记录的 stash OID 恢复并确认"),
         "repair-environment" => ("准备运行环境", "安装依赖并适配 Electron 原生模块"),
         "final-doctor" => ("验证运行环境", "确认 Electron、ABI 和原生服务均可用"),
         "resolve-runtime" => ("解析运行时", "查找可用的受管运行环境"),
@@ -155,6 +159,355 @@ fn publish_cancelled(app: &AppHandle, status: &Arc<Mutex<InstallerStatus>>) {
     }
 }
 
+fn git_output(root: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("运行 git {} 失败: {error}", args.join(" ")))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn run_git(
+    app: &AppHandle,
+    state: &AppState,
+    root: &std::path::Path,
+    args: Vec<String>,
+) -> Result<(), String> {
+    run_git_with_cancel(app, state, root, args, &state.cancel)
+}
+
+fn run_git_with_cancel(
+    app: &AppHandle,
+    state: &AppState,
+    root: &std::path::Path,
+    args: Vec<String>,
+    cancel: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    let status = process::run(
+        app,
+        &state.active_child,
+        cancel,
+        &state.log,
+        std::path::Path::new("git"),
+        &args,
+        root,
+        &[],
+    )?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("git {} 失败，退出状态 {status}", args.join(" ")))
+    }
+}
+
+fn run_git_cleanup(
+    app: &AppHandle,
+    state: &AppState,
+    root: &std::path::Path,
+    args: Vec<String>,
+) -> Result<(), String> {
+    // Once user work has entered a stash, rollback and restoration must reach a
+    // quiescent state even when the foreground operation was cancelled.
+    let cleanup_cancel = Arc::new(AtomicBool::new(false));
+    run_git_with_cancel(app, state, root, args, &cleanup_cancel)
+}
+
+fn emit_stage(
+    app: &AppHandle,
+    status: &Arc<Mutex<InstallerStatus>>,
+    name: &str,
+    state: &str,
+    duration_ms: Option<u64>,
+) {
+    let _ = app.emit(
+        "installer",
+        InstallerEvent::Stage {
+            name: name.to_string(),
+            state: state.to_string(),
+            duration_ms,
+        },
+    );
+    if let Ok(mut current) = status.lock() {
+        current.current_stage = (state == "running").then(|| name.to_string());
+    }
+}
+
+fn find_stash_ref(root: &std::path::Path, oid: &str) -> Option<String> {
+    git_output(root, &["stash", "list", "--format=%H%x09%gd"])
+        .ok()?
+        .lines()
+        .find_map(|line| {
+            let (candidate, reference) = line.split_once('\t')?;
+            (candidate == oid).then(|| reference.to_string())
+        })
+}
+
+fn restore_stash(
+    app: &AppHandle,
+    state: &AppState,
+    root: &std::path::Path,
+    oid: &str,
+) -> Result<(), String> {
+    run_git_cleanup(
+        app,
+        state,
+        root,
+        vec!["stash".into(), "apply".into(), "--index".into(), oid.into()],
+    )?;
+    let reference = find_stash_ref(root, oid)
+        .ok_or_else(|| format!("本地修改已恢复，但找不到 stash {oid} 的引用，已保留备份"))?;
+    run_git_cleanup(
+        app,
+        state,
+        root,
+        vec!["stash".into(), "drop".into(), reference],
+    )
+}
+
+fn clean_failed_stash_apply(
+    app: &AppHandle,
+    state: &AppState,
+    root: &std::path::Path,
+    head: &str,
+) -> Result<(), String> {
+    run_git_cleanup(
+        app,
+        state,
+        root,
+        vec!["reset".into(), "--hard".into(), head.into()],
+    )?;
+    // The tree was clean immediately before stash apply. Removing only
+    // untracked (not ignored) files clears partial apply output; originals are
+    // still recoverable from the recorded stash OID.
+    run_git_cleanup(app, state, root, vec!["clean".into(), "-fd".into()])
+}
+
+fn run_update_flow(
+    app: &AppHandle,
+    state: &AppState,
+    status: &Arc<Mutex<InstallerStatus>>,
+    root: &std::path::Path,
+    strategy: Option<&str>,
+) -> Result<String, String> {
+    let stage_names = [
+        "inspect-git",
+        "stash-changes",
+        "fetch-upstream",
+        "update-source",
+        "repair-environment",
+        "final-doctor",
+        "restore-changes",
+    ];
+    let _ = app.emit(
+        "installer",
+        InstallerEvent::Manifest {
+            stages: stage_names.iter().map(|stage| stage_info(stage)).collect(),
+        },
+    );
+
+    let original_head = git_output(root, &["rev-parse", "HEAD"])?;
+    let dirty = !git_output(root, &["status", "--porcelain"])?.is_empty();
+    let mut stash_oid: Option<String> = None;
+
+    let started = Instant::now();
+    emit_stage(app, status, "inspect-git", "running", None);
+    git_output(root, &["rev-parse", "--abbrev-ref", "@{upstream}"])
+        .map_err(|_| "当前分支没有配置 upstream，无法执行安全更新".to_string())?;
+    if dirty && strategy != Some("stash") {
+        emit_stage(
+            app,
+            status,
+            "inspect-git",
+            "failed",
+            Some(started.elapsed().as_millis() as u64),
+        );
+        return Err("检测到本地修改；请选择“安全暂存并更新”或暂不更新".into());
+    }
+    emit_stage(
+        app,
+        status,
+        "inspect-git",
+        "succeeded",
+        Some(started.elapsed().as_millis() as u64),
+    );
+
+    let started = Instant::now();
+    emit_stage(app, status, "stash-changes", "running", None);
+    if dirty {
+        let previous_stash = git_output(root, &["rev-parse", "--verify", "refs/stash"]).ok();
+        let label = format!(
+            "vcpchat-installer/{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        );
+        let stash_result = run_git(
+            app,
+            state,
+            root,
+            vec![
+                "stash".into(),
+                "push".into(),
+                "--include-untracked".into(),
+                "--message".into(),
+                label,
+            ],
+        );
+        if let Err(error) = stash_result {
+            let candidate = git_output(root, &["rev-parse", "--verify", "refs/stash"]).ok();
+            if candidate != previous_stash {
+                if let Some(oid) = candidate.as_deref() {
+                    return match restore_stash(app, state, root, oid) {
+                        Ok(()) => Err(error),
+                        Err(restore_error) => Err(format!(
+                            "{error}；暂存操作中断后无法自动恢复，本地修改仍安全保存在 stash {oid}：{restore_error}。可在确认后运行 git stash apply --index {oid}"
+                        )),
+                    };
+                }
+            }
+            return Err(error);
+        }
+        stash_oid = Some(git_output(root, &["rev-parse", "refs/stash"])?);
+    }
+    emit_stage(
+        app,
+        status,
+        "stash-changes",
+        if dirty { "succeeded" } else { "skipped" },
+        Some(started.elapsed().as_millis() as u64),
+    );
+
+    let update_result = (|| -> Result<String, String> {
+        let started = Instant::now();
+        emit_stage(app, status, "fetch-upstream", "running", None);
+        run_git(app, state, root, vec!["fetch".into(), "--prune".into()])?;
+        emit_stage(
+            app,
+            status,
+            "fetch-upstream",
+            "succeeded",
+            Some(started.elapsed().as_millis() as u64),
+        );
+
+        let started = Instant::now();
+        emit_stage(app, status, "update-source", "running", None);
+        run_git(
+            app,
+            state,
+            root,
+            vec!["merge".into(), "--ff-only".into(), "@{upstream}".into()],
+        )?;
+        emit_stage(
+            app,
+            status,
+            "update-source",
+            "succeeded",
+            Some(started.elapsed().as_millis() as u64),
+        );
+
+        let started = Instant::now();
+        emit_stage(app, status, "repair-environment", "running", None);
+        run_source_repair(app, state, root)?;
+        emit_stage(
+            app,
+            status,
+            "repair-environment",
+            "succeeded",
+            Some(started.elapsed().as_millis() as u64),
+        );
+
+        let started = Instant::now();
+        emit_stage(app, status, "final-doctor", "running", None);
+        run_final_doctor(app, state, root)?;
+        emit_stage(
+            app,
+            status,
+            "final-doctor",
+            "succeeded",
+            Some(started.elapsed().as_millis() as u64),
+        );
+        let unexpected_changes = git_output(root, &["status", "--porcelain"])?;
+        if !unexpected_changes.is_empty() {
+            return Err(format!(
+                "环境修复后源码目录出现意外修改，已停止恢复用户 stash：{}",
+                unexpected_changes
+                    .lines()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join("；")
+            ));
+        }
+        git_output(root, &["rev-parse", "--short=12", "HEAD"])
+    })();
+
+    if let Err(error) = update_result {
+        let rollback_result = clean_failed_stash_apply(app, state, root, &original_head);
+        if let Err(rollback_error) = rollback_result {
+            return Err(format!(
+                "{error}；源码自动回退失败：{rollback_error}。本地修改仍安全保存在 stash {}",
+                stash_oid.as_deref().unwrap_or("（未创建）")
+            ));
+        }
+        if let Some(oid) = stash_oid.as_deref() {
+            if let Err(restore_error) = restore_stash(app, state, root, oid) {
+                let cleanup_error = clean_failed_stash_apply(app, state, root, &original_head)
+                    .err()
+                    .map(|value| format!("；清理冲突工作树失败：{value}"))
+                    .unwrap_or_default();
+                return Err(format!(
+                    "{error}；已回退源码，但本地修改仍安全保存在 stash {oid}：{restore_error}{cleanup_error}。可在确认后运行 git stash apply --index {oid}"
+                ));
+            }
+        }
+        return Err(error);
+    }
+
+    let revision = update_result?;
+    let started = Instant::now();
+    emit_stage(app, status, "restore-changes", "running", None);
+    if let Some(oid) = stash_oid.as_deref() {
+        if let Err(error) = restore_stash(app, state, root, oid) {
+            let updated_head = git_output(root, &["rev-parse", "HEAD"]).unwrap_or_default();
+            let cleanup_error = clean_failed_stash_apply(app, state, root, &updated_head)
+                .err()
+                .map(|value| format!("；清理冲突工作树失败：{value}"))
+                .unwrap_or_default();
+            emit_stage(
+                app,
+                status,
+                "restore-changes",
+                "failed",
+                Some(started.elapsed().as_millis() as u64),
+            );
+            return Err(format!(
+                "源码已更新，但本地修改无法自动恢复；本地修改仍安全保存在 stash {oid}。{error}{cleanup_error}。可在确认后运行 git stash apply --index {oid}"
+            ));
+        }
+        emit_stage(
+            app,
+            status,
+            "restore-changes",
+            "succeeded",
+            Some(started.elapsed().as_millis() as u64),
+        );
+    } else {
+        emit_stage(
+            app,
+            status,
+            "restore-changes",
+            "skipped",
+            Some(started.elapsed().as_millis() as u64),
+        );
+    }
+    Ok(revision)
+}
+
 fn run_source_repair(
     app: &AppHandle,
     state: &AppState,
@@ -248,7 +601,11 @@ fn run_final_doctor(
 }
 
 #[tauri::command]
-fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+fn start_installer(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    strategy: Option<String>,
+) -> Result<(), String> {
     let (current_manifest, custom_manifest) = manifest::load_manifest()?;
     let operation_lock = acquire_managed_lock()?;
     let mut status = state
@@ -280,6 +637,64 @@ fn start_installer(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
             log,
         };
         let snapshot = source::inspect();
+        if matches!(get_mode(), InstallerMode::Update) {
+            let result = snapshot
+                .root
+                .as_deref()
+                .ok_or_else(|| "未找到 VCPChat 源码，无法执行更新".to_string())
+                .and_then(|root| {
+                    run_update_flow(
+                        &app,
+                        &worker_state,
+                        &status_ref,
+                        std::path::Path::new(root),
+                        strategy.as_deref(),
+                    )
+                });
+            match result {
+                Ok(version) => {
+                    let _ = app.emit(
+                        "installer",
+                        InstallerEvent::Complete {
+                            version: version.clone(),
+                        },
+                    );
+                    if let Ok(mut current) = status_ref.lock() {
+                        current.running = false;
+                        current.cancelling = false;
+                        current.cancelled = false;
+                        current.completed = true;
+                        current.version = Some(version);
+                        current.last_error = None;
+                        current.current_stage = None;
+                    }
+                }
+                Err(_error) if cancel_ref.load(Ordering::Acquire) => {
+                    publish_cancelled(&app, &status_ref);
+                }
+                Err(error) => {
+                    let stage = status_ref
+                        .lock()
+                        .ok()
+                        .and_then(|status| status.current_stage.clone());
+                    let _ = app.emit(
+                        "installer",
+                        InstallerEvent::Failed {
+                            stage,
+                            error: error.clone(),
+                        },
+                    );
+                    if let Ok(mut current) = status_ref.lock() {
+                        current.running = false;
+                        current.cancelling = false;
+                        current.cancelled = false;
+                        current.last_error = Some(error);
+                        current.current_stage = None;
+                    }
+                }
+            }
+            return;
+        }
         if snapshot.mode != "source-present" {
             let error =
                 "未找到 VCPChat 源码；无源码 payload 下载、发布和回滚尚未完成，安装器已安全停止。"

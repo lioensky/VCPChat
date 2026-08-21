@@ -60,6 +60,28 @@ test('installer UI exposes explainable progress and recoverable terminal states'
     assert.match(styles, /prefers-reduced-motion/);
 });
 
+test('update dirty state offers named stash strategy and preserves a recoverable OID', () => {
+    const rust = fs.readFileSync(path.join(installer, 'src-tauri', 'src', 'lib.rs'), 'utf8');
+    const source = fs.readFileSync(path.join(installer, 'src-tauri', 'src', 'source.rs'), 'utf8');
+    const app = fs.readFileSync(path.join(installer, 'src', 'app.tsx'), 'utf8');
+    const store = fs.readFileSync(path.join(installer, 'src', 'store.ts'), 'utf8');
+    assert.match(rust, /--include-untracked/);
+    assert.match(rust, /vcpchat-installer\//);
+    assert.match(rust, /refs\/stash/);
+    assert.match(rust, /stash.*apply.*--index/);
+    assert.match(rust, /stash.*drop/);
+    assert.match(rust, /merge.*--ff-only/);
+    assert.match(rust, /run_git_cleanup/);
+    assert.match(rust, /git stash apply --index \{oid\}/);
+    assert.match(rust, /本地修改仍安全保存在 stash/);
+    assert.match(source, /pub changes: Vec<String>/);
+    assert.match(app, /暂存修改并更新/);
+    assert.match(app, /查看修改/);
+    assert.match(app, /暂不更新，启动现有版本/);
+    assert.match(app, /manualStashRecovery/);
+    assert.match(store, /startInstall\(strategy\?: 'stash'\)/);
+});
+
 test('installer fails closed without source and waits for managed ready handoff', () => {
     const source = fs.readFileSync(path.join(installer, 'src-tauri', 'src', 'lib.rs'), 'utf8');
     assert.match(source, /无源码 payload 下载、发布和回滚尚未完成/);

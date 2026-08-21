@@ -3,7 +3,7 @@ import { Check, ChevronRight, CircleAlert, FileText, RotateCcw, X } from 'lucide
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import {
-  $failedStage, $launchProgress, $logPath, $logs, $mode, $progress, $route, $stages, $status,
+  $failedStage, $launchProgress, $logPath, $logs, $mode, $progress, $route, $stages, $status, $updateSnapshot,
   cancelInstall, initialize, launchVcpchat, openLogDirectory, returnToWelcome, startInstall,
   type InstallerStage,
 } from './store'
@@ -29,6 +29,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
 function Welcome() {
   const mode = useStore($mode)
   const status = useStore($status)
+  const update = useStore($updateSnapshot)
   const locating = status.source.note === '正在定位 VCPChat 项目…'
   const sourceMissing = !locating && status.source.mode === 'source-missing'
 
@@ -42,10 +43,24 @@ function Welcome() {
       <span className="status-dot" aria-hidden="true" />
       <div><strong>{locating ? '正在检查项目' : sourceMissing ? '没有找到 VCPChat 项目' : '已找到 VCPChat 项目'}</strong><small>{status.source.note}</small></div>
     </section>
-    <button className="primary-action" disabled={locating || sourceMissing} onClick={() => void startInstall()}>
+    {mode === 'update' && update?.dirty ? <UpdateChoice snapshot={update} /> : <button className="primary-action" disabled={locating || sourceMissing} onClick={() => void startInstall()}>
       {locating ? '正在检查' : mode === 'update' ? '开始更新' : '开始准备'} <ChevronRight size={17} aria-hidden="true" />
-    </button>
+    </button>}
   </main>
+}
+
+function UpdateChoice({ snapshot }: { snapshot: import('./store').UpdateSnapshot }) {
+  const [expanded, setExpanded] = useState(false)
+  const [launchError, setLaunchError] = useState<string | null>(null)
+  async function launchExisting() {
+    setLaunchError(null)
+    try { await launchVcpchat() } catch (value) { setLaunchError(String(value)) }
+  }
+  return <section className="update-choice" aria-live="polite">
+    <div className="update-choice-copy"><strong>检测到本地修改</strong><p>{snapshot.note}</p>{expanded && <ul>{snapshot.changes.map((change) => <li key={change}>{change}</li>)}</ul>}</div>
+    <div className="update-choice-actions"><button className="primary-action" onClick={() => void startInstall('stash')}><RotateCcw size={16} />暂存修改并更新</button><button className="secondary-action" onClick={() => setExpanded((value) => !value)}>{expanded ? '隐藏修改' : `查看修改（${snapshot.changes.length}）`}</button><button className="text-action centered" onClick={() => void launchExisting()}>暂不更新，启动现有版本</button></div>
+    {launchError && <p className="inline-error" role="alert">{launchError}</p>}
+  </section>
 }
 
 function Progress() {
@@ -92,13 +107,14 @@ function StageRow({ stage, now }: { stage: InstallerStage; now: number }) {
 }
 
 function Success() {
+  const mode = useStore($mode)
   const launch = useStore($launchProgress)
   const [error, setError] = useState<string | null>(null)
   async function handleLaunch() {
     setError(null)
     try { await launchVcpchat() } catch (value) { setError(String(value)) }
   }
-  return <Terminal icon={<Check />} title="VCPChat 已准备完成" message={launch.running ? launch.message : '依赖和运行环境均已通过检查。'}>
+  return <Terminal icon={<Check />} title={mode === 'update' ? 'VCPChat 已更新完成' : 'VCPChat 已准备完成'} message={launch.running ? launch.message : '依赖和运行环境均已通过检查。'}>
     {launch.running && <div className="launch-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(launch.progress * 100)}><i style={{ width: `${Math.max(3, launch.progress * 100)}%` }} /></div>}
     <button className="primary-action" disabled={launch.running} onClick={() => void handleLaunch()}>{launch.running ? '正在启动' : '打开 VCPChat'} <ChevronRight size={17} /></button>
     {launch.running && <button className="text-action centered" onClick={() => void cancelInstall()}>取消启动</button>}
@@ -107,21 +123,26 @@ function Success() {
 }
 
 function Cancelled() {
+  const mode = useStore($mode)
+  const update = useStore($updateSnapshot)
   return <Terminal icon={<X />} title="准备已取消" message="没有继续修改运行环境。你可以返回后重新开始。">
-    <button className="primary-action" onClick={() => void startInstall()}><RotateCcw size={16} />重新开始</button>
+    <button className="primary-action" onClick={() => void startInstall(mode === 'update' && update?.dirty ? 'stash' : undefined)}><RotateCcw size={16} />重新开始</button>
     <button className="text-action centered" onClick={returnToWelcome}>返回</button>
   </Terminal>
 }
 
 function Failure() {
+  const mode = useStore($mode)
+  const update = useStore($updateSnapshot)
   const status = useStore($status)
   const stages = useStore($stages)
   const failedStage = useStore($failedStage)
   const logPath = useStore($logPath)
   const stageTitle = stages.find((stage) => stage.id === failedStage)?.title
+  const manualStashRecovery = status.lastError?.includes('git stash apply --index') ?? false
   return <Terminal danger icon={<CircleAlert />} title="准备未完成" message={stageTitle ? `${stageTitle}未能完成。` : '安装器安全停止，没有继续执行后续步骤。'}>
     <div className="error-detail" role="alert"><strong>{status.lastError ?? '发生未知错误'}</strong>{logPath && <small>诊断记录：{logPath}</small>}</div>
-    <div className="terminal-actions"><button className="primary-action" onClick={() => void startInstall()}><RotateCcw size={16} />重新检查并重试</button><button className="secondary-action" onClick={() => void openLogDirectory()}><FileText size={16} />打开诊断记录</button></div>
+    <div className="terminal-actions">{!manualStashRecovery && <button className="primary-action" onClick={() => void startInstall(mode === 'update' && update?.dirty ? 'stash' : undefined)}><RotateCcw size={16} />重新检查并重试</button>}<button className={manualStashRecovery ? 'primary-action' : 'secondary-action'} onClick={() => void openLogDirectory()}><FileText size={16} />打开诊断记录</button></div>
   </Terminal>
 }
 

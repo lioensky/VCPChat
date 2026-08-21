@@ -28,6 +28,7 @@ pub struct UpdateSnapshot {
     pub upstream: Option<String>,
     pub ahead: u64,
     pub behind: u64,
+    pub changes: Vec<String>,
     pub note: String,
 }
 
@@ -42,6 +43,22 @@ fn command(root: &Path, program: &str, args: &[&str]) -> Option<String> {
     }
     let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
     (!value.is_empty()).then_some(value)
+}
+
+fn git_porcelain(root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain=v1"])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string(),
+    )
 }
 
 fn sha256_file(path: &Path) -> Option<String> {
@@ -106,9 +123,7 @@ pub fn inspect() -> SourceSnapshot {
             note: "未找到 VCPChat 源码；安装器不会自动下载源码。".into(),
         };
     };
-    let dirty = command(&root, "git", &["status", "--porcelain"])
-        .map(|v| !v.is_empty())
-        .unwrap_or(false);
+    let dirty = git_porcelain(&root).map(|v| !v.is_empty()).unwrap_or(false);
     let electron_version = std::fs::read_to_string(root.join("package.json"))
         .ok()
         .and_then(|raw| {
@@ -134,7 +149,7 @@ pub fn inspect() -> SourceSnapshot {
         node_version: command(&root, "node", &["--version"]),
         npm_version: command(&root, "npm", &["--version"]),
         note: if dirty {
-            "源码存在但有未提交修改；更新和覆盖操作已阻止。".into()
+            "源码存在且有本地修改；更新模式会要求你明确选择保护策略。".into()
         } else {
             "源码存在；启动时只做检查，不执行 git pull。".into()
         },
@@ -150,12 +165,17 @@ pub fn inspect_update() -> UpdateSnapshot {
             upstream: None,
             ahead: 0,
             behind: 0,
+            changes: Vec::new(),
             note: "未找到源码；不会自动下载或拉取。".into(),
         };
     };
-    let dirty = command(&root, "git", &["status", "--porcelain"])
-        .map(|v| !v.is_empty())
-        .unwrap_or(false);
+    let porcelain = git_porcelain(&root).unwrap_or_default();
+    let dirty = !porcelain.is_empty();
+    let changes = porcelain
+        .lines()
+        .filter_map(|line| line.get(3..).map(str::to_owned))
+        .take(50)
+        .collect();
     let branch = command(&root, "git", &["branch", "--show-current"]);
     let upstream = command(
         &root,
@@ -177,7 +197,7 @@ pub fn inspect_update() -> UpdateSnapshot {
         Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
     })
     .unwrap_or((0, 0));
-    let available = !dirty && behind > 0;
+    let available = behind > 0;
     UpdateSnapshot {
         available,
         dirty,
@@ -185,8 +205,9 @@ pub fn inspect_update() -> UpdateSnapshot {
         upstream,
         ahead,
         behind,
+        changes,
         note: if dirty {
-            "检测到未提交修改；更新被阻止，避免覆盖用户工作。".into()
+            "检测到本地修改；可选择安全暂存后更新，修改不会被直接删除。".into()
         } else if behind > 0 {
             format!("上游有 {behind} 个提交；只有用户明确确认后才允许更新。")
         } else {
@@ -215,5 +236,16 @@ mod tests {
             note: "no source".into(),
         };
         assert_eq!(snapshot.mode, "source-missing");
+    }
+
+    #[test]
+    fn porcelain_path_keeps_the_first_character() {
+        let raw = " M apps/bootstrap-installer/src-tauri/src/lib.rs\n?? new file.txt";
+        let changes: Vec<_> = raw
+            .lines()
+            .filter_map(|line| line.get(3..).map(str::to_owned))
+            .collect();
+        assert_eq!(changes[0], "apps/bootstrap-installer/src-tauri/src/lib.rs");
+        assert_eq!(changes[1], "new file.txt");
     }
 }

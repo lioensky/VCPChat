@@ -20,12 +20,13 @@ Installer 已达到 macOS 源码优先垂直切片：全新 clean fork、无 `no
 | 原生模块损坏恢复 | 移走 `better_sqlite3.node` 后 deep Doctor fail；修复 manifest 后真实 rebuild，Doctor 恢复 pass | macOS 已完成 |
 | 主程序 ready | 无既存实例冷启动输出完整 `process-started` → `renderer-ready`、`Published managed bootstrap ready` 与 `VCPChat 已启动` | macOS 已完成 |
 | Computer Use 主窗口 | clean fork 的 VCPChat 主窗口已真实打开，URL 指向该 fork `main.html`；Installer 退出码 0 且退出，Electron 与 VCP-CDS 保持运行 | macOS 已完成 |
-| dirty 源码保护 | `inspect-git` 阻止有未提交修改的写操作 | 已实现，需故障 UI 复测 |
+| dirty 源码保护 | 用户可查看修改、命名 stash 后更新，或跳过更新启动现有版本；stash 记录精确 OID | 事务与隔离 Git 测试完成，真实 Tauri UI 复测待完成 |
 | 依赖缺失恢复 | clean fork 实际执行 `npm ci` | macOS 已完成 |
 | 重试不重复修复 | deep Doctor `12/0/0` 时跳过修复；Installer 生成的 Rust runtime 被 Git dirty 检查排除 | macOS UI 回归完成 |
 | operation lock | 单 owner、live lock 拒绝、stale PID 恢复 | Rust 测试完成 |
 | staging/current/rollback | Rust 原子 pointer 与 Node update-manager 序列测试 | 已实现，尚未连接正式 UI 更新入口 |
-| 源码更新状态 | Welcome 页“检查更新状态”只读显示 branch/upstream/ahead/behind；不会自动 fetch/pull，dirty 时阻止更新 | 已实现 |
+| 源码更新状态 | Welcome 页只读显示 branch/upstream/ahead/behind；明确确认后才 fetch，并仅接受 fast-forward | 已实现 |
+| dirty 更新回滚 | 更新成功后按 OID apply/drop；冲突保留 stash 并清理 unmerged tree；Doctor 失败回到原 HEAD 后恢复 tracked/untracked | 隔离 bare remote/clone 3 路测试完成 |
 | 签名更新 manifest | Ed25519/HTTPS/闭包测试 | 测试完成，发布密钥未配置 |
 | macOS 签名与公证 | 当前仅本地/adhoc build | 未完成 |
 | Windows 安装/启动/更新 | 配置和边界测试，不是 Windows 实机 | 未完成 |
@@ -46,7 +47,7 @@ Installer 已达到 macOS 源码优先垂直切片：全新 clean fork、无 `no
 1. Developer ID、hardened runtime、entitlements、公证和 stapling 的真实证据。
 2. Windows x64/arm64 runner：NSIS/MSI、WebView2、代码签名、native ABI、ready、更新回滚。
 3. Linux x64/arm64 runner：AppImage、桌面入口、native ABI、信号/取消和 ready。
-4. 更新 UI 必须要求用户明确触发，dirty 源码必须阻止，运行中应用必须阻止更新。
+4. 运行中应用必须阻止更新；dirty 更新 UI 已要求用户明确选择，但仍需真实 Tauri 冲突/取消 UI 证据。
 5. 断网、代理中断、磁盘不足、损坏 lockfile、损坏 native module、取消、强退、stale lock、ready timeout 的真实故障矩阵。
 6. 发布密钥托管、更新公钥轮换、证书过期、日志脱敏、SBOM 和第三方许可证随包分发。
 7. 上游 Windows 启动器内嵌字体在许可证和商业分发授权确认前不得进入正式安装包。

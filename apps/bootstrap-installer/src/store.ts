@@ -20,6 +20,17 @@ export interface SourceSnapshot {
   note: string
 }
 
+export interface UpdateSnapshot {
+  available: boolean
+  dirty: boolean
+  branch: string | null
+  upstream: string | null
+  ahead: number
+  behind: number
+  changes: string[]
+  note: string
+}
+
 export interface InstallerStatus {
   running: boolean
   cancelling: boolean
@@ -61,6 +72,7 @@ export const $stages = atom<InstallerStage[]>([])
 export const $logs = atom<string[]>([])
 export const $logPath = atom<string | null>(null)
 export const $failedStage = atom<string | null>(null)
+export const $updateSnapshot = atom<UpdateSnapshot | null>(null)
 export const $launchProgress = atom({ running: false, progress: 0, message: '' })
 export const $progress = computed($stages, (stages) => {
   const done = stages.filter((stage) => ['succeeded', 'skipped', 'failed'].includes(stage.state)).length
@@ -127,6 +139,9 @@ export async function initialize() {
     $mode.set(mode)
     $status.set(status)
     $logPath.set(logPath)
+    if (mode === 'update') {
+      try { $updateSnapshot.set(await invoke<UpdateSnapshot>('get_update_snapshot')) } catch { /* best effort */ }
+    }
     if (status.running) {
       if (status.currentStage) {
         const info = fallbackStageInfo(status.currentStage)
@@ -149,6 +164,10 @@ function fallbackStageInfo(id: string): StageInfo {
   const labels: Record<string, [string, string]> = {
     'locate-source': ['定位 VCPChat', '确认项目目录和启动入口'],
     'inspect-git': ['检查项目状态', '保护尚未提交的本地修改'],
+    'stash-changes': ['保护本地修改', '创建可恢复的命名 Git stash'],
+    'fetch-upstream': ['获取上游更新', '刷新当前分支的远端提交'],
+    'update-source': ['更新项目源码', '仅执行 fast-forward 更新'],
+    'restore-changes': ['恢复本地修改', '按记录的 stash OID 恢复并确认'],
     'repair-environment': ['准备运行环境', '安装依赖并适配 Electron 原生模块'],
     'final-doctor': ['验证运行环境', '确认 Electron、ABI 和原生服务均可用'],
   }
@@ -156,7 +175,7 @@ function fallbackStageInfo(id: string): StageInfo {
   return { id, title, detail }
 }
 
-export async function startInstall() {
+export async function startInstall(strategy?: 'stash') {
   $stages.set([{
     id: 'prepare-plan', title: '生成检查计划', detail: '正在读取项目和运行环境信息',
     state: 'running', startedAt: Date.now(),
@@ -166,7 +185,7 @@ export async function startInstall() {
   $route.set('progress')
   $status.set({ ...$status.get(), running: true, cancelling: false, cancelled: false, completed: false, version: null, lastError: null, currentStage: null })
   try {
-    await invoke('start_installer')
+    await invoke('start_installer', { strategy: strategy ?? null })
   } catch (error) {
     $status.set({ ...$status.get(), running: false, lastError: String(error) })
     $route.set('failure')

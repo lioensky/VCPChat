@@ -62,6 +62,11 @@ button:disabled { cursor: progress; opacity: .55; }
 .source-summary strong, .source-summary small { display: block; }
 .source-summary strong { font-size: 13px; }
 .source-summary small { margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.update-choice { width: min(100%, 620px); padding: 16px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); border-radius: 8px; background: var(--surface); text-align: left; }
+.update-choice-copy strong { font-size: 14px; }
+.update-choice-copy p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.update-choice-copy ul { max-height: 110px; margin: 10px 0 0; overflow: auto; padding-left: 18px; color: var(--muted); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.update-choice-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 
 .primary-action, .secondary-action, .text-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border-radius: 7px; cursor: pointer; }
 .primary-action { padding: 0 18px; border: 1px solid transparent; background: var(--primary); color: var(--on-primary); font-size: 14px; font-weight: 650; box-shadow: var(--shadow); }

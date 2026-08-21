@@ -247,3 +247,7 @@ Installed VCPChat
 - 2026-08-21：提交前对抗式审查修复窗口关闭所有权：运行中关闭会 prevent close、取消受管进程树、等待 active child 进入 quiescence 后再退出，避免 `npm ci`、Cargo 或 handoff orphan。
 - 2026-08-21：修复跨平台 CI bundle matrix 原环境变量无人消费的问题，改为向 Tauri CLI 传入平台限定 `--bundles`；同时跟踪 Installer 独立 `package.json`、npm lockfile 与 Cargo lockfile，保证 fresh checkout 可构建且依赖解析可复现。
 - 2026-08-21：源码提交排除本机 ad-hoc、arm64-only 的根目录 `.app` wrapper；正式契约只要求 `launchers/` 下可重建的 macOS/Windows/Linux 源入口，签名 app 只能作为发布产物生成。
+- 2026-08-21：Update 模式新增 dirty worktree 三路决策：命名 stash 后更新、查看最多 50 条修改、或跳过更新并启动现有 VCPChat；不再以 dirty 状态永久阻止用户主动更新。
+- 2026-08-21：安全更新事务记录原始 HEAD 与精确 stash commit OID，仅允许 `fetch --prune` + `merge --ff-only @{upstream}`；只有 `stash apply --index <oid>` 成功并能按 OID 找到 reflog 引用后才 drop，绝不依赖 `stash@{0}`。
+- 2026-08-21：取消和失败清理使用独立、不可取消的 cleanup owner。更新/Doctor 失败先回到原始 HEAD 并清除事务产生的未跟踪文件，再恢复用户修改；恢复冲突则回到干净 HEAD、保留 stash OID，并显示精确手动恢复命令。
+- 2026-08-21：新增隔离 bare remote/clone Git 故障测试，真实覆盖 tracked + untracked 成功恢复、上游冲突后 stash 保留与工作树清理、Doctor 失败后的 HEAD 回滚；Installer 合同门禁增至 17/17。
