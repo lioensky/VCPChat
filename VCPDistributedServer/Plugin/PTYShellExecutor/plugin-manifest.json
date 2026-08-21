@@ -3,7 +3,7 @@
   "name": "PTYShellExecutor",
   "version": "1.0.0",
   "displayName": "PTY Shell 执行器",
-  "description": "一个在Linux桌面环境下执行本地Shell命令的插件。使用node-pty创建持久化的PTY会话，支持bash/fish/zsh等Shell，保持环境变量和会话状态。支持同步执行和异步任务模式，自动过滤ANSI转义序列和Shell Integration标记，返回干净的文本输出。",
+  "description": "一个在Linux桌面环境下执行本地Shell命令的插件。同步执行使用独立POSIX Shell子进程，stdin固定隔离，适合短命令和ssh/docker等非交互命令；异步模式托管长任务；GUI终端镜像agent命令与原始输出并保留PTY可视化能力。自动过滤ANSI转义序列和Shell Integration标记，返回干净的文本输出。",
   "author": "Piko & 十一",
   "pluginType": "hybridservice",
   "entryPoint": {
@@ -18,7 +18,7 @@
     "invocationCommands": [
       {
         "commandIdentifier": "PTYShellExecutor",
-        "description": "在Linux桌面环境下执行本地Shell命令。支持同步执行（PTY会话）和异步任务模式（后台执行长时间任务如codex）。\n\n## 操作模式 (action 参数)\n\n### 1. 同步执行 (默认)\naction: \"execute\" 或省略\n在PTY会话中执行命令，保持环境变量和会话状态。\n\n### 2. 异步执行\naction: \"async\"\n将命令放到后台执行，立即返回taskId。适用于长时间运行的任务（如codex、编译等）。\n\n### 3. 查询任务\naction: \"query\" 或 \"eventlog\"\n查询异步任务的状态和输出。\n\n### 4. 取消任务\naction: \"cancel\"\n取消正在运行的异步任务。\n\n### 5. 列出任务\naction: \"list\"\n列出所有异步任务。\n\n## 参数说明\n- action (字符串, 可选): 操作类型，可选值: 'execute'(默认), 'async', 'query', 'cancel', 'list'\n- command (字符串, execute/async时必需): 要执行的Shell命令\n- taskId (字符串, query/cancel时必需): 异步任务ID\n- shell (字符串, 可选): 指定Shell类型: 'fish', 'zsh', 'bash'\n- newSession (布尔值, 可选): 是否创建新的PTY会话\n- cwd (字符串, 可选): 工作目录","parameters": [
+        "description": "在Linux桌面环境下执行本地Shell命令。支持同步非交互执行和异步任务模式（后台执行长时间任务如codex）。\n\n## 操作模式 (action 参数)\n\n### 1. 同步执行 (默认)\naction: \"execute\" 或省略\n使用独立POSIX Shell子进程执行命令，stdin固定隔离，不复用PTY会话，不保持跨命令目录或环境状态。适合短命令、ssh远程查询、docker exec等非交互命令。\n\n### 2. 异步执行\naction: \"async\"\n将命令放到后台执行，立即返回taskId。适用于长时间运行的任务（如codex、编译等）。\n\n### 3. 查询任务\naction: \"query\" 或 \"eventlog\"\n查询异步任务的状态和输出。\n\n### 4. 取消任务\naction: \"cancel\"\n取消正在运行的异步任务。\n\n### 5. 列出任务\naction: \"list\"\n列出所有异步任务。\n\n## 参数说明\n- action (字符串, 可选): 操作类型，可选值: 'execute'(默认), 'async', 'query', 'cancel', 'list'\n- command (字符串, execute/async时必需): 要执行的Shell命令\n- taskId (字符串, query/cancel时必需): 异步任务ID\n- shell (字符串, 可选): async模式指定Shell类型: 'fish', 'zsh', 'bash'\n- cwd (字符串, 可选): 工作目录","parameters": [
           {
             "name": "action",
             "type": "string",
@@ -41,25 +41,25 @@
             "name": "shell",
             "type": "string",
             "required": false,
-            "description": "指定Shell类型: fish, zsh, bash"
+            "description": "async模式指定Shell类型: fish, zsh, bash；execute模式固定使用bash/sh"
           },
           {
             "name": "newSession",
             "type": "boolean",
             "required": false,
-            "description": "是否创建新的PTY会话"
+            "description": "已废弃：execute模式不复用PTY会话"
           },
           {
             "name": "cwd",
             "type": "string",
             "required": false,
-            "description": "工作目录 (async模式可用)"
+            "description": "工作目录 (execute/async模式可用)"
           }
         ],
         "examples": [
           {
             "name": "同步执行命令",
-            "description": "在PTY会话中执行ls命令",
+            "description": "使用独立非交互Shell执行ls命令",
             "code": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」PTYShellExecutor「末」,\ncommand:「始」ls -la「末」,\n<<<[END_TOOL_REQUEST]>>>"
           },
           {
