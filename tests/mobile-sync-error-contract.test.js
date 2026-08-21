@@ -21,6 +21,7 @@ const {
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/error-contract");
 const {
   startWsServer,
+  stopWsServer,
   registerRoutes,
 } = (() => {
   class FakeRouter {
@@ -49,14 +50,16 @@ const {
       super();
       this.options = options;
       this.clients = new Set();
+      queueMicrotask(() => this.emit("listening"));
     }
 
     address() {
       return { address: "127.0.0.1", family: "IPv4", port: this.options.port };
     }
 
-    close() {
+    close(callback) {
       this.emit("close");
+      if (callback) callback();
     }
   }
 
@@ -85,6 +88,7 @@ const {
     );
     return {
       startWsServer: websocket.startWsServer,
+      stopWsServer: websocket.stopWsServer,
       registerRoutes: routes.registerRoutes,
     };
   } finally {
@@ -176,7 +180,7 @@ test("Wire 1.2 golden errors are strict and stable", () => {
   assert.equal(fixture.pluginVersion, "1.2.0");
   assert.equal(
     crypto.createHash("sha256").update(fixtureBytes).digest("hex"),
-    "434279b33a86a2206c1e4f47caccb4e72f05b2f9d48e093af95d5ebae6947adb",
+    "b97f753848da12cf4b44016bd2defe8eacc317ee3c2cbdb6b0db656c37d9c766",
   );
   for (const entry of fixture.validErrors) {
     assert.deepEqual(parseSyncError(entry.error), entry.error);
@@ -289,7 +293,6 @@ test("timeout registry preserves the phase that actually timed out", () => {
     ["VERSION_CHECK_TIMEOUT", "handshake"],
     ["MANIFEST_RESPONSE_TIMEOUT", "owner_metadata"],
     ["TOPIC_HASH_RESPONSE_TIMEOUT", "topic_validation"],
-    ["PHASE3_RESPONSE_TIMEOUT", "messages"],
     ["FINAL_ACK_TIMEOUT", "finalize"],
   ];
 
@@ -371,7 +374,7 @@ test("string bounds count Unicode code points consistently with Rust", () => {
 });
 
 test("WebSocket transport emits the complete root-cause error envelope", async (t) => {
-  const server = startWsServer({
+  const server = await startWsServer({
     port: 0,
     syncToken: "wire-1.2-test-token",
     onMessage: async (payload) => {
@@ -387,7 +390,7 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       });
     },
   });
-  t.after(() => server.close());
+  t.after(async () => stopWsServer());
   const socket = new FakeWebSocket();
   const nextFrame = createWsFrameReader(socket);
   t.after(() => socket.terminate());
@@ -453,6 +456,29 @@ test("HTTP route handlers return the same structured error contract", async () =
       message: "requests must be an array of at most 10000 items",
       failedTopicIds: [],
     },
+  });
+
+  const deleteEntityRoute = app.router.layers.find(
+    (layer) => layer.method === "POST" && layer.path === "/delete-entity",
+  );
+  const missingTopicOwner = new FakeHttpResponse();
+  await deleteEntityRoute.handlers.at(-1)(
+    {
+      body: { id: "topic-a", type: "topic", deletedAt: 1 },
+      query: {},
+      path: deleteEntityRoute.path,
+    },
+    missingTopicOwner,
+  );
+  assert.equal(missingTopicOwner.statusCode, 400);
+  assert.deepEqual(missingTopicOwner.body.error, {
+    code: "SYNC_DELETE_INVALID",
+    origin: "desktop_plugin",
+    stage: "topic_metadata",
+    kind: "protocol",
+    retry: "after_user_action",
+    message: "Invalid delete entity fields",
+    failedTopicIds: [],
   });
 
   const parserErrorHandler = app.router.layers.find(

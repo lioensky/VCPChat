@@ -142,7 +142,8 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
   assert.deepEqual(result.results["topic-live"], {
     ok: true,
     toPull: [],
-    toPush: false,
+    toPush: true,
+    toDelete: [],
   });
   assert.deepEqual(result.results["topic-missing"], {
     ok: false,
@@ -155,6 +156,118 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
       message: "Topic topic-missing was not found in the desktop index",
       failedTopicIds: ["topic-missing"],
     },
+  });
+});
+
+test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
+  const hashes = {
+    desktopOnly: "a".repeat(64),
+    desktopLive: "b".repeat(64),
+    mobileLive: "c".repeat(64),
+    mismatchDesktop: "d".repeat(64),
+    mismatchMobile: "e".repeat(64),
+    matched: "f".repeat(64),
+  };
+  const topicId = "topic-tombstones";
+  const result = handleSyncMessageDiffBatch(
+    {
+      topics: {
+        [topicId]: {
+          topicHash: "9".repeat(64),
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {
+            "desktop-live-mobile-deleted": "DELETED",
+            "desktop-deleted-mobile-live": hashes.mobileLive,
+            "both-deleted": "DELETED",
+            "hash-mismatch": hashes.mismatchMobile,
+            matched: hashes.matched,
+            "mobile-only-live": hashes.mobileLive,
+            "mobile-only-deleted": "DELETED",
+          },
+        },
+      },
+    },
+    fakeDiffDatabase({
+      topics: {
+        [topicId]: {
+          aggregated_hash: "desktop-root",
+          file_path: "/app/Agents/agent-a/config.json",
+        },
+      },
+      messages: {
+        [topicId]: [
+          {
+            msg_id: "desktop-live-mobile-deleted",
+            hash: hashes.desktopLive,
+            deleted_at: null,
+          },
+          {
+            msg_id: "desktop-deleted-mobile-live",
+            hash: "0".repeat(64),
+            deleted_at: 123,
+          },
+          {
+            msg_id: "both-deleted",
+            hash: "0".repeat(64),
+            deleted_at: 456,
+          },
+          {
+            msg_id: "desktop-only-live",
+            hash: hashes.desktopOnly,
+            deleted_at: null,
+          },
+          {
+            msg_id: "hash-mismatch",
+            hash: hashes.mismatchDesktop,
+            deleted_at: null,
+          },
+          {
+            msg_id: "matched",
+            hash: hashes.matched,
+            deleted_at: null,
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.deepEqual(result.results[topicId], {
+    ok: true,
+    toPull: ["desktop-only-live", "hash-mismatch"],
+    toPush: true,
+    toDelete: [{ msgId: "desktop-deleted-mobile-live", deletedAt: 123 }],
+  });
+});
+
+test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
+  const topicHash = "a".repeat(64);
+  const result = handleSyncMessageDiffBatch(
+    {
+      topics: {
+        "topic-equal-root": {
+          topicHash,
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: { "mobile-only-deleted": "DELETED" },
+        },
+      },
+    },
+    fakeDiffDatabase({
+      topics: {
+        "topic-equal-root": {
+          aggregated_hash: topicHash,
+          file_path: "/app/Agents/agent-a/config.json",
+        },
+      },
+    }),
+  );
+
+  assert.deepEqual(result.results["topic-equal-root"], {
+    ok: true,
+    toPull: [],
+    toPush: true,
+    toDelete: [],
   });
 });
 
@@ -353,6 +466,149 @@ test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () =
   );
 });
 
+test("legacy manifest、hash 与 message diff 全部排除 default", () => {
+  const hash = "a".repeat(64);
+  const database = fakeManifestDatabase({
+    entities: [
+      {
+        id: "default",
+        type: "topic",
+        file_path: "/app/Agents/agent-a/config.json",
+        hash,
+        aggregated_hash: hash,
+        updated_at: 1,
+        deleted_at: null,
+      },
+      {
+        id: "topic-live",
+        type: "topic",
+        file_path: "/app/Agents/agent-a/config.json",
+        hash,
+        aggregated_hash: hash,
+        updated_at: 1,
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    getLocalManifest("topic", null, database).map((item) => item.id),
+    ["topic-live"],
+  );
+  assert.deepEqual(
+    handleSyncTopicHashBatch({ hashes: { default: hash } }, database),
+    { type: "SYNC_TOPIC_HASH_RESULTS", changedTopics: [] },
+  );
+  assert.deepEqual(
+    handleSyncMessageDiffBatch({
+      topics: {
+        default: {
+          topicHash: hash,
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {},
+        },
+      },
+    }, database),
+    {
+      type: "SYNC_DIFF_RESULTS_BATCH",
+      results: {
+        default: { ok: true, toPull: [], toPush: false, toDelete: [] },
+      },
+    },
+  );
+  assert.deepEqual(
+    handleMessageManifest({ topicId: "default" }, database),
+    { type: "MESSAGE_MANIFEST_RESULTS", topicId: "default", messages: [] },
+  );
+  assert.deepEqual(
+    handleSyncManifest({
+      dataType: "topic",
+      phase: 2,
+      targetedOwners: ["agent-a"],
+      data: [{
+        id: "default",
+        hash,
+        configHash: hash,
+        contentHash: hash,
+        ts: 1,
+        ownerType: "agent",
+        ownerId: "agent-a",
+      }],
+    }, database),
+    { type: "SYNC_DIFF_RESULTS", data: [{
+      id: "topic-live",
+      action: "PULL",
+      ownerType: "agent",
+      ownerId: "agent-a",
+    }], dataType: "topic", phase: 2 },
+  );
+});
+
+test("实体 manifest 墓碑四象限保持动作方向", () => {
+  const hash = "b".repeat(64);
+  const localItem = (id, deletedAt) => ({
+    id,
+    type: "agent",
+    file_path: `/app/Agents/${id}/config.json`,
+    hash,
+    aggregated_hash: "",
+    updated_at: 1,
+    deleted_at: deletedAt,
+  });
+  const remoteItem = (id, deletedAt = null) => ({
+    id,
+    hash,
+    configHash: hash,
+    contentHash: "",
+    ts: 1,
+    ...(deletedAt === null ? {} : { deletedAt }),
+  });
+  const database = fakeManifestDatabase({
+    entities: [
+      localItem("mobile-deleted-desktop-live", null),
+      localItem("desktop-deleted-mobile-live", 21),
+      localItem("desktop-deleted-mobile-missing", 22),
+    ],
+  });
+
+  const result = handleSyncManifest(
+    {
+      dataType: "agent",
+      phase: 1,
+      data: [
+        remoteItem("mobile-deleted-desktop-live", 11),
+        remoteItem("mobile-deleted-desktop-missing", 12),
+        remoteItem("desktop-deleted-mobile-live"),
+      ],
+    },
+    database,
+  );
+
+  assert.deepEqual(result.data, [
+    {
+      id: "mobile-deleted-desktop-live",
+      action: "PUSH_DELETE",
+      deletedAt: 11,
+    },
+    {
+      id: "mobile-deleted-desktop-missing",
+      action: "PUSH_DELETE",
+      deletedAt: 12,
+    },
+    {
+      id: "desktop-deleted-mobile-live",
+      action: "DELETE",
+      deletedAt: 21,
+    },
+    {
+      id: "desktop-deleted-mobile-missing",
+      action: "DELETE",
+      deletedAt: 22,
+    },
+  ]);
+});
+
 test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () => {
   const hash = "b".repeat(64);
   const database = fakeManifestDatabase();
@@ -383,7 +639,7 @@ test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () 
     database,
   );
   assert.deepEqual(result.data, [
-    { id: "agent-a", action: "DELETE", deletedAt: 0 },
+    { id: "agent-a", action: "PUSH_DELETE", deletedAt: 0 },
   ]);
 });
 

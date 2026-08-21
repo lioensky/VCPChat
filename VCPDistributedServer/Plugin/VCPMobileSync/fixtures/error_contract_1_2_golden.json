@@ -24,7 +24,6 @@
     "MOBILE_ATTACHMENT_INVALID": ["data", "after_user_action"],
     "MOBILE_SYNC_ERROR": ["internal", "manual"],
     "NOT_FOUND": ["data", "manual"],
-    "PHASE3_RESPONSE_TIMEOUT": ["connection", "manual"],
     "PLUGIN_VERSION_MISMATCH": ["compatibility", "after_user_action"],
     "POWER_SAVE_MODE": ["device", "after_user_action"],
     "PROTOCOL_DUPLICATE_KEY": ["protocol", "after_user_action"],

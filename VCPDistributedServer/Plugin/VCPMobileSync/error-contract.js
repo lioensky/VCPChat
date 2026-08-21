@@ -125,7 +125,6 @@ const ERROR_DEFINITIONS = Object.freeze({
   VERSION_CHECK_TIMEOUT: definition("handshake", "connection", "manual", "mobile_sync"),
   MANIFEST_RESPONSE_TIMEOUT: definition("owner_metadata", "connection", "manual", "mobile_sync"),
   TOPIC_HASH_RESPONSE_TIMEOUT: definition("topic_validation", "connection", "manual", "mobile_sync"),
-  PHASE3_RESPONSE_TIMEOUT: definition("messages", "connection", "manual", "mobile_sync"),
   FINAL_ACK_TIMEOUT: definition("finalize", "connection", "manual", "mobile_sync"),
   PROTOCOL_MISMATCH: definition("handshake", "compatibility", "after_user_action"),
   PLUGIN_VERSION_MISMATCH: definition("handshake", "compatibility", "after_user_action"),

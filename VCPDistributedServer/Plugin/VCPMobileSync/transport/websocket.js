@@ -22,7 +22,6 @@ try {
 }
 
 let wss = null;
-let wsServerPort = null;
 
 function errorStageForPayload(payload, versionAccepted, currentStage) {
   if (!versionAccepted || payload?.type === "VERSION_CHECK") return "handshake";
@@ -75,43 +74,62 @@ function errorStageForPayload(payload, versionAccepted, currentStage) {
  * @param {number} params.port - 端口
  * @param {string} params.syncToken - 同步令牌
  * @param {function} params.onMessage - 消息处理回调
- * @returns {object|null} WebSocket 服务器实例
+ * @returns {Promise<object>} listening 后解析为 WebSocket 服务器实例
  */
-function startWsServer({ port, syncToken, onMessage }) {
+async function startWsServer({ port, syncToken, onMessage }) {
   if (!WebSocket) {
     const logger = getLogger();
     logger.logOperation("websocket", "init", "wsServer", "error", "WebSocket module not available");
-    return null;
+    throw new Error("WebSocket module not available");
   }
 
-  // 关闭旧服务
-  if (wss) {
-    try {
-      wss.close();
-    } catch {}
-    wss = null;
-    wsServerPort = null;
-  }
+  await stopWsServer();
 
-  wss = new WebSocket.Server({
-    host: "0.0.0.0",
-    port,
-    maxPayload: 32 * 1024 * 1024,
-  });
-  wsServerPort = port;
-  setWss(wss);
-
-  wss.on("listening", () => {
+  let server;
+  try {
+    server = new WebSocket.Server({
+      host: "0.0.0.0",
+      port,
+      maxPayload: 32 * 1024 * 1024,
+    });
+  } catch (error) {
     const logger = getLogger();
-    logger.logInfo("websocket", `WebSocket 同步总线已启动: ws://0.0.0.0:${port}`);
+    logger.logOperation("websocket", "error", "wsServer", "error", `port=${port}, ${error.message}`);
+    throw error;
+  }
+
+  const ready = new Promise((resolve, reject) => {
+    const cleanup = () => {
+      server.removeListener("listening", onListening);
+      server.removeListener("error", onStartupError);
+    };
+    const onListening = () => {
+      cleanup();
+      wss = server;
+      setWss(server);
+      const address = server.address();
+      const boundPort = address && typeof address === "object" ? address.port : port;
+      const logger = getLogger();
+      logger.logInfo("websocket", `WebSocket 同步总线已启动: ws://0.0.0.0:${boundPort}`);
+      resolve(server);
+    };
+    const onStartupError = (error) => {
+      cleanup();
+      try {
+        server.close();
+      } catch {}
+      reject(error);
+    };
+    server.once("listening", onListening);
+    server.once("error", onStartupError);
   });
 
-  wss.on("error", (err) => {
+  server.on("error", (err) => {
     const logger = getLogger();
     logger.logOperation("websocket", "error", "wsServer", "error", `port=${port}, ${err.message}`);
   });
 
-  wss.on("connection", (ws, req) => {
+  server.on("connection", (ws, req) => {
     const requestUrl = req?.url || "/";
     const url = new URL(
       requestUrl,
@@ -259,17 +277,16 @@ function startWsServer({ port, syncToken, onMessage }) {
     });
   });
 
-  return wss;
+  return ready;
 }
 
 /**
  * 停止 WebSocket 服务器并释放模块级引用。
- * 供测试 teardown 与降级重注册使用；生产路径目前不调用。
+ * 供测试 teardown 与重新绑定前释放旧监听使用。
  */
 async function stopWsServer() {
   const server = wss;
   wss = null;
-  wsServerPort = null;
   setWss(null);
   if (!server) return;
   for (const client of server.clients) {

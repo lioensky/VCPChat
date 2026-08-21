@@ -418,7 +418,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
 
   // 9. 删除实体
   router.post("/delete-entity", express.json(), async (req, res) => {
-    const { id, type, ownerType = null, deletedAt } = req.body;
+    const { id, type, ownerType = null, ownerId = null, deletedAt } = req.body;
     const allowedTypes = new Set([
       "agent",
       "group",
@@ -434,7 +434,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       !allowedTypes.has(type) ||
       !Number.isSafeInteger(deletedAt) ||
       deletedAt < 0 ||
-      (type === "avatar" && !["agent", "group", "user"].includes(ownerType))
+      (type === "avatar" && !["agent", "group", "user"].includes(ownerType)) ||
+      (["topic", "agent_topic", "group_topic"].includes(type) &&
+        (!["agent", "group"].includes(ownerType) ||
+          typeof ownerId !== "string" ||
+          ownerId.length === 0)) ||
+      (type === "agent_topic" && ownerType !== "agent") ||
+      (type === "group_topic" && ownerType !== "group")
     ) {
       return sendHttpError(res, 400, "Invalid delete entity fields", {
         code: "SYNC_DELETE_INVALID",
@@ -447,6 +453,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         id,
         type,
         ownerType,
+        ownerId,
         deletedAt,
         appDataPath,
       });
@@ -455,6 +462,21 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         stage: entityStage(type),
         failedTopicIds: failedTopicIds(type, id),
       });
+      if (
+        centralSync &&
+        response?.success === true &&
+        type !== "avatar"
+      ) {
+        const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
+        await centralSync.deleteEntityTombstone({
+          dataType: isTopic ? "topic" : type,
+          id,
+          deletedAt,
+          ...(isTopic
+            ? { ownerType: result.ownerType, ownerId: result.ownerId }
+            : {}),
+        });
+      }
       res.status(response?.success === true ? 200 : 409).json(response);
     } catch (e) {
       sendHttpError(res, 500, e, {

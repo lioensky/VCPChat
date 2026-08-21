@@ -12,6 +12,7 @@ const {
   upsertMessageIndex,
   upsertAttachmentIndex,
   upsertMessageAttachment,
+  updateTopicAggregatedHash,
 } = require("../core/db");
 const { computeMessageFingerprint, computeAggregatedHash } = require("../core/hash");
 const { sanitizeId, writeIntentLock } = require("./entity");
@@ -620,9 +621,7 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
       }
 
       const topicRootHash = computeAggregatedHash(fingerprints);
-      const updated = db.prepare(
-        "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL",
-      ).run(topicRootHash, now, topicId);
+      const updated = updateTopicAggregatedHash(topicId, topicRootHash, now);
       if (updated.changes !== 1) {
         // 区分 0 行（孤儿话题：磁盘历史在、config 索引缺席）与 >1 行（跨 owner 歧义）
         const matches = db

@@ -31,7 +31,14 @@ const {
 const { handleSyncTopicHashBatch, handleSyncMessageDiffBatch } = require("./sync/diff");
 const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
-const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
+const {
+  isWriteLocked,
+  repairTopicProjectionsFromDisk,
+  reconcileMissingPhysicalIndexes,
+  sanitizeId,
+  deleteEntity,
+  deleteMessage,
+} = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
 const { createPhaseAck, createVersionAck } = require("./protocol");
 const { withSyncErrorContext } = require("./error-contract");
@@ -80,14 +87,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   }
 
   const cdsClient = services.chatDataService?.client ?? null;
-  // S8 降级注册（F7）：CDS 不可用（启动失败/版本不匹配熔断等）时不再让插件
-  // 整体缺席——WS/HTTP 照常注册，中央入口经 requireClient() 抛结构化
-  // CDS_UNAVAILABLE（origin=desktop_cds，stage 由观测边界按契约收窄）
-  // → WS 边界转 SYNC_ERROR 上 wire，手机端可诊断为"桌面数据服务不可用"，
-  // 而非只见 TCP 拒绝。
-  // avatar/attachment 等本地功能在降级模式下保留；回退 legacy 请设
-  // MobileSyncUseCentralIndex=false 并重启。
-  const centralDegraded = Boolean(centralRequested && !cdsClient);
   const centralSync = centralRequested
     ? createCentralSyncAdapter({
         chatDataService: services.chatDataService ?? { client: null },
@@ -97,23 +96,19 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
 
   const logger = resetLogger();
   logger.startSession("system");
-  if (centralDegraded) {
-    logger.logInfo(
-      "startup",
-      "VCP-CDS 不可用，MobileSync 以降级模式注册：同步请求将收到结构化 CDS_UNAVAILABLE；如需回退 legacy 本地索引，请设置 MobileSyncUseCentralIndex=false 并重启",
-      "warn",
-    );
-  }
+
+  // Topic 物理目录是生存性真源；config.topics 只在初始索引前被动修正一次。
+  await repairTopicProjectionsFromDisk(appDataPath);
 
   // 中央模式不再打开持久化 sync_state.db。保留一个仅服务于附件、头像和
   // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
   if (centralSync) {
     initDb(":memory:");
-    // 降级模式下 CDS 缺席，跳过启动 reconcile（避免 CDS_UNAVAILABLE 中止注册）。
-    if (!centralDegraded) {
-      await centralSync.reconcile();
-      centralSync.logEnabled();
-    }
+    // CDS 会在 READY 后自行启动一次 reconcile；若它已持有锁，启动门禁就
+    // 继续等待同一既有动作完成。只有非 SERVICE_BUSY 的真实失败才终止注册，
+    // 因而 CDS 缺席或索引失败时不会提前开放 MobileSync 端口。
+    await centralSync.reconcile({ maxAttempts: Number.POSITIVE_INFINITY });
+    centralSync.logEnabled();
     await reconcileCompatibilityAssets(appDataPath);
   } else {
     const dbPath = path.join(__dirname, "sync_state.db");
@@ -122,7 +117,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   }
 
   // 启动 WebSocket（仅在索引完成后开放，防止手机端提前连接）
-  startWsServer({
+  await startWsServer({
     port: wsPort,
     syncToken,
     onMessage: async (payload) => {
@@ -230,7 +225,13 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           return createVersionAck(payload, manifest.version);
         }
         case "SYNC_ENTITY_DELETE": {
-          const { id: rawId, dataType, topicId } = payload;
+          const {
+            id: rawId,
+            dataType,
+            topicId,
+            ownerType: rawOwnerType,
+            ownerId: rawOwnerId,
+          } = payload;
           const deletedAt = payload.deletedAt;
           let safeId = "";
           let avatarOwnerType = null;
@@ -277,6 +278,23 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             "agent_topic",
             "group_topic",
           ].includes(dataType);
+          if (
+            isTopicDelete &&
+            (
+              !["agent", "group"].includes(rawOwnerType) ||
+              typeof rawOwnerId !== "string" ||
+              rawOwnerId.length === 0 ||
+              sanitizeId(rawOwnerId) !== rawOwnerId ||
+              (dataType === "agent_topic" && rawOwnerType !== "agent") ||
+              (dataType === "group_topic" && rawOwnerType !== "group")
+            )
+          ) {
+            const error = new Error(
+              "Topic delete ownerType/ownerId must be a complete valid identity",
+            );
+            error.code = "SYNC_DELETE_INVALID";
+            throw error;
+          }
           const entityDeleteContext = {
             code: "SYNC_DELETE_FAILED",
             stage: isTopicDelete ? "topic_metadata" : "owner_metadata",
@@ -305,7 +323,8 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               const result = await deleteEntity({
                 id: safeId,
                 type: dataType,
-                ownerType: avatarOwnerType,
+                ownerType: isTopicDelete ? rawOwnerType : avatarOwnerType,
+                ownerId: isTopicDelete ? rawOwnerId : null,
                 deletedAt,
                 appDataPath,
               });
@@ -315,7 +334,19 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                   entityDeleteContext,
                 );
               }
-              await centralSync.reconcile();
+              if (dataType !== "avatar") {
+                await centralSync.deleteEntityTombstone({
+                  dataType: isTopicDelete ? "topic" : dataType,
+                  id: safeId,
+                  deletedAt,
+                  ...(isTopicDelete
+                    ? {
+                        ownerType: result.ownerType,
+                        ownerId: result.ownerId,
+                      }
+                  : {}),
+                });
+              }
             }
             return { type: "SYNC_ACK", id: safeId };
           }
@@ -360,7 +391,14 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             }
             logger.logOperation("websocket", "delete_notify", rawId, "success", "type=avatar");
           } else {
-            const result = await deleteEntity({ id: safeId, type: dataType, deletedAt, appDataPath });
+            const result = await deleteEntity({
+              id: safeId,
+              type: dataType,
+              ownerType: isTopicDelete ? rawOwnerType : null,
+              ownerId: isTopicDelete ? rawOwnerId : null,
+              deletedAt,
+              appDataPath,
+            });
             if (!result?.success) {
               throw withSyncErrorContext(
                 result?.error || "entity delete failed",
@@ -534,10 +572,13 @@ async function reconcileLocalFiles(appDataPath) {
   // 4. 扫描历史记录
   messageCount = await scanHistory(userDataDir, db, logger);
 
-  // 5. 计算层级聚合指纹
+  // 5. 以扫描结束时的物理树清理 stale live 索引，闭合删除中断窗口。
+  const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
+
+  // 6. 计算层级聚合指纹
   const aggregatedCount = computeAggregatedHashes(db, logger);
 
-  logger.logOperation("reconcile", "summary", "reconcile", "success", `agents=${agentCount} groups=${groupCount} topics=${topicCount} messages=${messageCount} attachments=${attachmentCount} aggregated=${aggregatedCount}`);
+  logger.logOperation("reconcile", "summary", "reconcile", "success", `agents=${agentCount} groups=${groupCount} topics=${topicCount} messages=${messageCount} attachments=${attachmentCount} staleOwners=${deleted.ownersDeleted} staleTopics=${deleted.topicsDeleted} staleMessages=${deleted.messagesDeleted} aggregated=${aggregatedCount}`);
   logger.completePhase("reconcile");
   logger.logInfo("reconcile", "索引扫描完成。");
   logger.endSession();
@@ -714,7 +755,11 @@ function computeAggregatedHashes(db, logger) {
   // 1. 预加载所有 Topic 并按 Parent ID 分组，消除 N+1 查询
   const topicMap = new Map(); // Map<parentId, Array<{hash, aggregated_hash}>>
   entities
-    .filter((e) => e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic")
+    .filter(
+      (e) =>
+        e.id !== "default" &&
+        (e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic"),
+    )
     .forEach((t) => {
       if (t.file_path) {
         const parts = t.file_path.split(/[\\/]/);
@@ -746,7 +791,12 @@ function computeAggregatedHashes(db, logger) {
   }
 
   // 3. 兜底：为所有缺失 aggregated_hash 的 topic 写入标准空聚合值 (V2: 对齐手机端 computeAggregatedHash([]))
-  const nullTopics = entities.filter(e => (e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic") && (e.aggregated_hash === null || e.aggregated_hash === ""));
+  const nullTopics = entities.filter(
+    (e) =>
+      e.id !== "default" &&
+      (e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic") &&
+      (e.aggregated_hash === null || e.aggregated_hash === ""),
+  );
   if (nullTopics.length > 0) {
     const { computeAggregatedHash } = require("./core/hash");
     const emptyContentHash = computeAggregatedHash([]);
@@ -778,6 +828,46 @@ function startFileWatcher(appDataPath) {
   logger.logInfo("watcher", `文件监听已启动: path=${appDataPath}`);
 
   watcher.on("all", async (event, filePath) => {
+    if (event === "unlinkDir") {
+      const relative = path.relative(appDataPath, filePath);
+      const parts = relative.split(path.sep).filter(Boolean);
+      const isOwnerDirectory =
+        ["Agents", "AgentGroups"].includes(parts[0]) && parts.length === 2;
+      const isTopicDirectory =
+        parts[0] === "UserData" &&
+        (
+          parts.length === 2 ||
+          (parts[2] === "topics" && [3, 4].includes(parts.length))
+        );
+      if (
+        relative &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative) &&
+        (isOwnerDirectory || isTopicDirectory)
+      ) {
+        try {
+          const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
+          computeAggregatedHashes(getDb(), logger);
+          logger.logOperation(
+            "watcher",
+            "unlinkDir",
+            relative,
+            "success",
+            `owners=${deleted.ownersDeleted} topics=${deleted.topicsDeleted} messages=${deleted.messagesDeleted}`,
+          );
+        } catch (error) {
+          logger.logOperation(
+            "watcher",
+            "unlinkDir",
+            relative,
+            "error",
+            error.message,
+          );
+        }
+      }
+      return;
+    }
+
     const fileName = path.basename(filePath);
     const isHistory = fileName === "history.json";
     const isConfig = fileName === "config.json";
@@ -803,7 +893,7 @@ function startFileWatcher(appDataPath) {
         // 只有 Agents 或 AgentGroups 目录下的 config.json 才作为实体索引
         if (isAgentPath || isGroupPath) {
           const type = isAgentPath ? "agent" : "group";
-          await ingestConfigToDb(filePath, type);
+          await ingestConfigToDb(filePath, type, appDataPath);
         }
       } else if (isHistory) {
         await ingestHistoryToDb(filePath, id);
@@ -829,7 +919,7 @@ function getTopicIdFromPath(filePath) {
 /**
  * 摄取配置文件到索引
  */
-async function ingestConfigToDb(configPath, type) {
+async function ingestConfigToDb(configPath, type, appDataPath) {
   const db = getDb();
   if (!db) return;
 
@@ -840,6 +930,19 @@ async function ingestConfigToDb(configPath, type) {
     const config = JSON.parse(content);
     const now = Date.now();
     const id = config.id || path.basename(path.dirname(configPath));
+    const ownerId = path.basename(path.dirname(configPath));
+    const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
+    let topicEntries = [];
+    try {
+      topicEntries = await fs.readdir(topicsDir, { withFileTypes: true });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const physicalTopics = new Set(
+      topicEntries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name),
+    );
 
     // 索引主实体
     const hash = computeDtoHash(
@@ -853,7 +956,13 @@ async function ingestConfigToDb(configPath, type) {
     if (Array.isArray(config.topics)) {
       topicLen = config.topics.length;
       for (const topic of config.topics) {
-        if (topic.id === "default") continue;
+        if (
+          topic.id === "default" ||
+          sanitizeId(topic.id) !== topic.id ||
+          !physicalTopics.has(topic.id)
+        ) {
+          continue;
+        }
         const topicHash = computeDtoHash(
           topic,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
@@ -861,6 +970,9 @@ async function ingestConfigToDb(configPath, type) {
         upsertEntityIndex(topic.id, "topic", configPath, topicHash, now);
       }
     }
+
+    // config 事件只能更新仍有物理目录的 Topic；同时收敛此前漏掉的删除事件。
+    await reconcileMissingPhysicalIndexes(appDataPath, null, db, now);
 
     // V2: 触发层级冒泡
     computeAggregatedHashes(db, logger);
@@ -874,4 +986,5 @@ async function ingestConfigToDb(configPath, type) {
 module.exports = {
   registerRoutes,
   computeAggregatedHashes,
+  ingestConfigToDb,
 };

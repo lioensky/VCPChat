@@ -140,14 +140,17 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
   const rows = dataType === "topic"
     ? db
         .prepare(
-          "SELECT * FROM entity_index WHERE type = 'topic' OR type = 'agent_topic' OR type = 'group_topic'",
+          "SELECT * FROM entity_index WHERE id <> 'default' AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
         )
         .all()
     : db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
 
-  const filteredRows = dataType === "topic" && ownerFilter
-    ? rows.filter((row) => ownerFilter.has(topicOwnerFromPath(row.file_path).ownerId))
+  const syncRows = dataType === "topic"
+    ? rows.filter((row) => row.id !== "default")
     : rows;
+  const filteredRows = dataType === "topic" && ownerFilter
+    ? syncRows.filter((row) => ownerFilter.has(topicOwnerFromPath(row.file_path).ownerId))
+    : syncRows;
   if (filteredRows.length > MAX_MANIFEST_ITEMS) {
     throw syncContractError(
       `${dataType} manifest exceeds 10000 items`,
@@ -295,9 +298,9 @@ function handleSyncManifest(payload, database = getDb()) {
   if (dataType === "topic" && ownerFilter === null) {
     throw syncContractError("Topic manifest requires targetedOwners");
   }
-  const normalizedRemoteItems = remoteItems.map((item, index) =>
-    normalizeRemoteManifestItem(item, dataType, index),
-  );
+  const normalizedRemoteItems = remoteItems
+    .map((item, index) => normalizeRemoteManifestItem(item, dataType, index))
+    .filter((item) => dataType !== "topic" || item.id !== "default");
   const remoteById = new Map();
   for (const item of normalizedRemoteItems) {
     if (remoteById.has(item.id)) {
@@ -322,7 +325,7 @@ function handleSyncManifest(payload, database = getDb()) {
       if (!local || local.deletedAt === null) {
         results.push({
           id: remote.id,
-          action: "DELETE",
+          action: "PUSH_DELETE",
           deletedAt: remoteDeletedAt,
           ...actionIdentity(remote, dataType),
         });
@@ -338,7 +341,7 @@ function handleSyncManifest(payload, database = getDb()) {
     } else if (local.deletedAt !== null) {
       results.push({
         id: local.id,
-        action: "PUSH_DELETE",
+        action: "DELETE",
         deletedAt: local.deletedAt,
         ...actionIdentity(local, dataType),
       });
@@ -390,7 +393,7 @@ function handleSyncManifest(payload, database = getDb()) {
       if (local.deletedAt !== null) {
         results.push({
           id: local.id,
-          action: "PUSH_DELETE",
+          action: "DELETE",
           deletedAt: local.deletedAt,
           ...actionIdentity(local, dataType),
         });
@@ -437,6 +440,9 @@ function handleMessageManifest(payload, database = getDb()) {
   const topicId = sanitizeId(payload.topicId);
   if (!topicId || topicId !== payload.topicId) {
     throw syncContractError("GET_MESSAGE_MANIFEST.topicId is invalid");
+  }
+  if (topicId === "default") {
+    return { type: "MESSAGE_MANIFEST_RESULTS", topicId, messages: [] };
   }
   assertHistoryTopicHealthy(topicId);
 

@@ -129,9 +129,7 @@ class CentralSyncAdapter {
       try {
         return await client.reconcile();
       } catch (error) {
-        const isBusy =
-          error?.code === "SERVICE_BUSY" ||
-          (error?.status === 429 && error?.retryable === true);
+        const isBusy = error?.code === "SERVICE_BUSY";
         if (!isBusy || attempt === maxAttempts) {
           throw error;
         }
@@ -335,7 +333,8 @@ class CentralSyncAdapter {
           if (
             decision.error === undefined ||
             decision.toPull !== undefined ||
-            decision.toPush !== undefined
+            decision.toPush !== undefined ||
+            decision.toDelete !== undefined
           ) {
             throw cdsProtocolError(
               `CDS returned an invalid rejected decision for ${topicId}`,
@@ -354,12 +353,27 @@ class CentralSyncAdapter {
           };
           continue;
         }
+        const toDelete = decision.toDelete;
+        const deleteIds = Array.isArray(toDelete)
+          ? toDelete.map((item) => item?.msgId)
+          : [];
         if (
           decision.ok !== true ||
           !Array.isArray(decision.toPull) ||
           decision.toPull.some((id) => typeof id !== "string" || id.length === 0) ||
           new Set(decision.toPull).size !== decision.toPull.length ||
           typeof decision.toPush !== "boolean" ||
+          !Array.isArray(toDelete) ||
+          toDelete.some(
+            (item) =>
+              !isRecord(item) ||
+              typeof item.msgId !== "string" ||
+              item.msgId.length === 0 ||
+              !Number.isSafeInteger(item.deletedAt) ||
+              item.deletedAt < 0,
+          ) ||
+          new Set(deleteIds).size !== deleteIds.length ||
+          deleteIds.some((msgId) => decision.toPull.includes(msgId)) ||
           decision.error !== undefined
         ) {
           throw cdsProtocolError(
@@ -372,6 +386,10 @@ class CentralSyncAdapter {
           ok: true,
           toPull: decision.toPull,
           toPush: decision.toPush,
+          toDelete: toDelete.map((item) => ({
+            msgId: item.msgId,
+            deletedAt: item.deletedAt,
+          })),
         };
       }
       return { ...response, results };
@@ -655,6 +673,77 @@ class CentralSyncAdapter {
       }
     }
     res.end();
+  }
+
+  async deleteEntityTombstone({
+    dataType,
+    id,
+    ownerType,
+    ownerId,
+    deletedAt,
+  }) {
+    const isTopic = dataType === "topic";
+    const stage = isTopic ? "topic_metadata" : "owner_metadata";
+    const failedTopicIds = isTopic && typeof id === "string" ? [id] : [];
+    const safeId =
+      typeof id === "string" &&
+      id.length > 0 &&
+      /^[a-zA-Z0-9_-]+$/.test(id);
+    const validOwnerFields = isTopic
+      ? ["agent", "group"].includes(ownerType) &&
+        typeof ownerId === "string" &&
+        ownerId.length > 0 &&
+        /^[a-zA-Z0-9_-]+$/.test(ownerId)
+      : (ownerType === undefined || ownerType === null) &&
+        (ownerId === undefined || ownerId === null);
+    if (
+      !["agent", "group", "topic"].includes(dataType) ||
+      !safeId ||
+      !validOwnerFields ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0
+    ) {
+      throw createSyncError(
+        "SYNC_DELETE_INVALID",
+        "Central entity deletion requires a valid type, id, deletedAt, and exact topic owner",
+        {
+          origin: "desktop_plugin",
+          stage,
+          failedTopicIds,
+        },
+      );
+    }
+
+    const request = {
+      dataType,
+      id,
+      deletedAt,
+      ...(isTopic ? { ownerType, ownerId } : {}),
+    };
+    try {
+      const result = await this.requireClient().syncEntityDelete(request);
+      if (
+        !isRecord(result) ||
+        result.success !== true ||
+        typeof result.changed !== "boolean" ||
+        !Number.isSafeInteger(result.revision) ||
+        result.revision < 0
+      ) {
+        throw cdsProtocolError(
+          "CDS returned an invalid entity delete response",
+          stage,
+          failedTopicIds,
+        );
+      }
+      return result;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_DELETE_FAILED",
+        origin: "desktop_cds",
+        stage,
+        failedTopicIds,
+      });
+    }
   }
 
   async deleteMessage({ topicId, msgId, deletedAt }) {

@@ -6,6 +6,9 @@ const { test } = require("node:test");
 const {
   createCentralSyncAdapter,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/central");
+const {
+  ChatDataServiceClient,
+} = require("../modules/services/chatDataService/client");
 
 function createClient(overrides = {}) {
   return {
@@ -33,6 +36,7 @@ function createClient(overrides = {}) {
       type: "SYNC_DIFF_RESULTS_BATCH",
       results: {},
     }),
+    syncEntityDelete: async () => ({ success: true, changed: true, revision: 1 }),
     syncMessagesPush: async () => ({ results: [] }),
     changes: async () => ({ changes: [], nextSequence: 0, hasMore: false }),
     ...overrides,
@@ -161,13 +165,13 @@ test("中央适配器保留 Change Feed 游标", async () => {
   assert.equal(result.nextSequence, 42);
 });
 
-test("中央适配器在启动 reconcile 遇到 SERVICE_BUSY 时退避重试", async () => {
+test("中央启动门禁可在 SERVICE_BUSY 时持续等待既有 reconcile", async () => {
   let attempts = 0;
   const adapter = createCentralSyncAdapter({
     client: createClient({
       reconcile: async () => {
         attempts += 1;
-        if (attempts === 1) {
+        if (attempts <= 31) {
           const error = new Error("service is busy");
           error.code = "SERVICE_BUSY";
           error.status = 429;
@@ -180,12 +184,38 @@ test("中央适配器在启动 reconcile 遇到 SERVICE_BUSY 时退避重试", a
   });
 
   const result = await adapter.reconcile({
-    maxAttempts: 2,
+    maxAttempts: Number.POSITIVE_INFINITY,
     retryDelayMs: 0,
   });
 
   assert.deepEqual(result, { stats: {} });
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 32);
+});
+
+test("中央启动门禁不会把其他 429 错误误当成索引繁忙", async () => {
+  let attempts = 0;
+  const expected = Object.assign(new Error("rate limited"), {
+    code: "UPSTREAM_RATE_LIMITED",
+    status: 429,
+    retryable: true,
+  });
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      reconcile: async () => {
+        attempts += 1;
+        throw expected;
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.reconcile({
+      maxAttempts: Number.POSITIVE_INFINITY,
+      retryDelayMs: 0,
+    }),
+    (error) => error === expected,
+  );
+  assert.equal(attempts, 1);
 });
 
 test("CDS 不可用时中央适配器显式失败而非静默写旧库", async () => {
@@ -330,4 +360,172 @@ test("中央适配器将畸形 CDS Phase 3 成功帧归为上游协议错误", a
       return true;
     },
   );
+});
+
+test("中央适配器严格保留 Phase 3 message tombstone 决策", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncMessageDiff: async () => ({
+        type: "SYNC_DIFF_RESULTS_BATCH",
+        results: {
+          "topic-a": {
+            ok: true,
+            toPull: ["message-pull"],
+            toPush: false,
+            toDelete: [{ msgId: "message-delete", deletedAt: 321 }],
+          },
+        },
+      }),
+    }),
+  });
+
+  const response = await adapter.handleMessageDiffBatch({
+    topics: { "topic-a": {} },
+  });
+  assert.deepEqual(response.results["topic-a"], {
+    ok: true,
+    toPull: ["message-pull"],
+    toPush: false,
+    toDelete: [{ msgId: "message-delete", deletedAt: 321 }],
+  });
+});
+
+test("中央适配器拒绝缺失 toDelete 的漂移 CDS 成功帧", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncMessageDiff: async () => ({
+        type: "SYNC_DIFF_RESULTS_BATCH",
+        results: {
+          "topic-a": {
+            ok: true,
+            toPull: [],
+            toPush: false,
+          },
+        },
+      }),
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleMessageDiffBatch({ topics: { "topic-a": {} } }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+});
+
+test("中央适配器按复合 owner 身份转发 topic 实体墓碑", async () => {
+  let captured;
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncEntityDelete: async (request) => {
+        captured = request;
+        return { success: true, changed: true, revision: 7 };
+      },
+    }),
+  });
+
+  const result = await adapter.deleteEntityTombstone({
+    dataType: "topic",
+    id: "topic-a",
+    ownerType: "group",
+    ownerId: "group-a",
+    deletedAt: 123,
+  });
+
+  assert.deepEqual(captured, {
+    dataType: "topic",
+    id: "topic-a",
+    ownerType: "group",
+    ownerId: "group-a",
+    deletedAt: 123,
+  });
+  assert.deepEqual(result, { success: true, changed: true, revision: 7 });
+});
+
+test("中央适配器转发 owner 墓碑时不携带 topic owner 字段", async () => {
+  let captured;
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncEntityDelete: async (request) => {
+        captured = request;
+        return { success: true, changed: false, revision: 0 };
+      },
+    }),
+  });
+
+  const result = await adapter.deleteEntityTombstone({
+    dataType: "agent",
+    id: "agent-a",
+    deletedAt: 456,
+  });
+
+  assert.deepEqual(captured, {
+    dataType: "agent",
+    id: "agent-a",
+    deletedAt: 456,
+  });
+  assert.deepEqual(result, { success: true, changed: false, revision: 0 });
+});
+
+test("中央适配器在调用 CDS 前拒绝缺失 owner 身份的 topic 墓碑", async () => {
+  let called = false;
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncEntityDelete: async () => {
+        called = true;
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.deleteEntityTombstone({
+      dataType: "topic",
+      id: "topic-a",
+      ownerType: "agent",
+      deletedAt: 123,
+    }),
+    (error) => error?.code === "SYNC_DELETE_INVALID",
+  );
+  assert.equal(called, false);
+});
+
+test("中央适配器把畸形 CDS 墓碑响应归为协议错误", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncEntityDelete: async () => ({ success: true, changed: true }),
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.deleteEntityTombstone({
+      dataType: "group",
+      id: "group-a",
+      deletedAt: 123,
+    }),
+    (error) => error?.code === "SYNC_PROTOCOL_INVALID",
+  );
+});
+
+test("CDS Node client 使用受保护的实体墓碑端点", async () => {
+  const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
+  let captured;
+  client.request = async (...args) => {
+    captured = args;
+    return { success: true, changed: true, revision: 1 };
+  };
+  const request = {
+    dataType: "topic",
+    id: "topic-a",
+    ownerType: "agent",
+    ownerId: "agent-a",
+    deletedAt: 123,
+  };
+
+  await client.syncEntityDelete(request, { signal: "signal" });
+
+  assert.deepEqual(captured, [
+    "POST",
+    "/v1/sync/entity-delete",
+    request,
+    { signal: "signal" },
+  ]);
 });

@@ -20,15 +20,16 @@ function requireTopicHashMap(payload, { doubleHash = false } = {}) {
       code: "SYNC_PROTOCOL_INVALID",
     });
   }
-  const entries = Object.entries(hashes);
-  if (entries.length > 10_000) {
+  const receivedEntries = Object.entries(hashes);
+  if (receivedEntries.length > 10_000) {
     throw Object.assign(new Error("Topic hash batch exceeds 10000 topics"), {
       code: "SYNC_BUDGET_EXCEEDED",
     });
   }
+  const entries = receivedEntries.filter(([topicId]) => topicId !== "default");
   for (const [topicId, value] of entries) {
     if (!topicId) {
-      throw Object.assign(new Error("Topic hash batch contains an empty topic id"), {
+      throw Object.assign(new Error("Topic hash batch contains an invalid topic id"), {
         code: "SYNC_PROTOCOL_INVALID",
       });
     }
@@ -47,18 +48,25 @@ function requireTopicHashMap(payload, { doubleHash = false } = {}) {
       });
     }
   }
-  return { hashes, entries };
+  return { hashes: Object.fromEntries(entries), entries };
 }
 
 function requireCompoundTopicStates(payload, entries) {
-  if (!Array.isArray(payload?.topics) || payload.topics.length !== entries.length) {
+  if (!Array.isArray(payload?.topics)) {
+    throw Object.assign(
+      new Error("SYNC_TOPIC_HASH_BATCH_V2.topics must exactly cover hashes"),
+      { code: "SYNC_PROTOCOL_INVALID" },
+    );
+  }
+  const topicStates = payload.topics.filter((state) => state?.topicId !== "default");
+  if (topicStates.length !== entries.length) {
     throw Object.assign(
       new Error("SYNC_TOPIC_HASH_BATCH_V2.topics must exactly cover hashes"),
       { code: "SYNC_PROTOCOL_INVALID" },
     );
   }
   const states = new Map();
-  for (const state of payload.topics) {
+  for (const state of topicStates) {
     if (
       !state ||
       typeof state !== "object" ||
@@ -239,7 +247,7 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
 /**
  * 处理 SYNC_MESSAGE_DIFF_BATCH
  * @param {object} payload - { topics: { topicId: { topicHash, messages: { msgId: hash } } } }
- * @returns {object} strict discriminated results: `{ok:true,toPull,toPush}` or `{ok:false,error}`
+ * @returns {object} strict discriminated results: `{ok:true,toPull,toPush,toDelete}` or `{ok:false,error}`
  */
 function handleSyncMessageDiffBatch(payload, database = getDb()) {
   const db = database;
@@ -273,9 +281,17 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
   let messageCount = 0;
 
   for (const [topicId, localState] of Object.entries(topics)) {
+    if (topicId === "default") {
+      results[topicId] = {
+        ok: true,
+        toPull: [],
+        toPush: false,
+        toDelete: [],
+      };
+      continue;
+    }
     if (
       !topicId ||
-      topicId === "default" ||
       !localState ||
       typeof localState !== "object" ||
       Array.isArray(localState) ||
@@ -344,47 +360,87 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
         );
       }
 
-      if (topicRow.aggregated_hash !== null && topicRow.aggregated_hash === localState.topicHash) {
-        results[topicId] = { ok: true, toPull: [], toPush: false };
+      const mobileHasTombstones = Object.values(localState.messages).some(
+        (hash) => hash === "DELETED",
+      );
+      if (
+        topicRow.aggregated_hash !== null &&
+        topicRow.aggregated_hash === localState.topicHash &&
+        !mobileHasTombstones
+      ) {
+        results[topicId] = {
+          ok: true,
+          toPull: [],
+          toPush: false,
+          toDelete: [],
+        };
         fastPathCount++;
         // fast-path 的 topic 不输出单条日志，避免日志噪音
         continue;
       }
 
-      // 2. 详细比较：读取桌面端 message_index (过滤已被软删除的消息指纹)
+      // 2. 详细比较：墓碑必须参与四象限裁决，不能被 live-only 查询吞掉。
       const remoteRows = db
-        .prepare("SELECT msg_id, hash FROM message_index WHERE topic_id = ? AND deleted_at IS NULL")
+        .prepare("SELECT msg_id, hash, deleted_at FROM message_index WHERE topic_id = ?")
         .all(topicId);
 
-      const remoteMap = new Map(remoteRows.map((r) => [r.msg_id, r.hash]));
+      const remoteMap = new Map(remoteRows.map((row) => [row.msg_id, row]));
       const localMap = localState.messages;
 
       const toPull = [];
+      const toDelete = [];
       let toPush = false;
 
-      for (const [msgId, remoteHash] of remoteMap) {
+      for (const [msgId, remote] of remoteMap) {
         const localHash = localMap[msgId];
-        
-        if (localHash === "DELETED") continue;
+        const remoteDeleted = remote.deleted_at !== null && remote.deleted_at !== undefined;
+        if (
+          remoteDeleted &&
+          (!Number.isSafeInteger(remote.deleted_at) || remote.deleted_at < 0)
+        ) {
+          throw new Error(`Invalid desktop tombstone for ${topicId}/${msgId}`);
+        }
+
+        if (remoteDeleted) {
+          if (localHash && localHash !== "DELETED") {
+            toDelete.push({ msgId, deletedAt: remote.deleted_at });
+          }
+          continue;
+        }
+
+        if (localHash === "DELETED") {
+          // Mobile owns the tombstone timestamp, so let the existing push path
+          // send its durable delete instead of reviving the desktop live row.
+          toPush = true;
+          continue;
+        }
 
         if (!localHash) {
           toPull.push(msgId);
-        } else if (localHash !== remoteHash) {
+        } else if (localHash !== remote.hash) {
           toPull.push(msgId);
         }
       }
 
-      // 本地有而远程没有的 → push
+      // Desktop missing cannot absorb a Mobile tombstone silently: push it so
+      // the desktop persists the deletion fact for later peers.
       for (const msgId of Object.keys(localMap)) {
-        if (localMap[msgId] !== "DELETED" && !remoteMap.has(msgId)) {
+        if (!remoteMap.has(msgId)) {
           toPush = true;
-          break;
         }
       }
 
-      results[topicId] = { ok: true, toPull, toPush };
+      toPull.sort((left, right) => left.localeCompare(right));
+      toDelete.sort((left, right) => left.msgId.localeCompare(right.msgId));
+      results[topicId] = { ok: true, toPull, toPush, toDelete };
       detailedCount++;
-      logger.logOperation("messages", "diff", topicId, "success", `toPull=${toPull.length} toPush=${toPush}`);
+      logger.logOperation(
+        "messages",
+        "diff",
+        topicId,
+        "success",
+        `toPull=${toPull.length} toPush=${toPush} toDelete=${toDelete.length}`,
+      );
     } catch (e) {
       logger.logOperation("messages", "diff", topicId, "error", e.message);
       results[topicId] = {

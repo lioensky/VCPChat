@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
+const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { Readable } = require("node:stream");
@@ -16,8 +17,13 @@ const {
   uploadAttachmentStream,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
 const {
+  NdjsonWriter,
   readNdjsonLines,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/transport/ndjson");
+const {
+  startWsServer,
+  stopWsServer,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/transport/websocket");
 const {
   ChatDataServiceClient,
 } = require("../modules/services/chatDataService/client");
@@ -64,6 +70,12 @@ class FakeResponse extends EventEmitter {
       .filter(Boolean)
       .map((line) => JSON.parse(line));
   }
+}
+
+function assertWriterListenersClean(response) {
+  assert.equal(response.listenerCount("drain"), 0);
+  assert.equal(response.listenerCount("close"), 0);
+  assert.equal(response.listenerCount("error"), 0);
 }
 
 test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
@@ -368,6 +380,37 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
   });
 });
 
+test("CDS Topic/Message diff 批次使用 270 秒 HTTP 硬上限", () => {
+  const client = new ChatDataServiceClient({
+    port: 1,
+    authToken: "timeout-contract-token",
+  });
+  const calls = [];
+  client.request = (method, pathname, body, options) => {
+    calls.push({ method, pathname, body, options });
+    return null;
+  };
+
+  client.syncTopicDiff({ hashes: {} });
+  client.syncMessageDiff({ topics: {} });
+
+  assert.deepEqual(
+    calls.map(({ method, pathname, options }) => ({ method, pathname, options })),
+    [
+      {
+        method: "POST",
+        pathname: "/v1/sync/topic-diff",
+        options: { timeoutMs: 270_000 },
+      },
+      {
+        method: "POST",
+        pathname: "/v1/sync/message-diff",
+        options: { timeoutMs: 270_000 },
+      },
+    ],
+  );
+});
+
 test("附件上传流校验 SHA-256 后再原子落盘和提交索引", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-attachment-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
@@ -426,6 +469,93 @@ test("NDJSON reader 在 JSON parse 前拒绝 32 MiB 以上单帧", async () => {
       }
     },
     /32 MiB/,
+  );
+});
+
+test("NDJSON writer 在已关闭或 write 内同步关闭时立即失败并清理监听", { timeout: 1000 }, async () => {
+  const alreadyClosed = new EventEmitter();
+  alreadyClosed.destroyed = true;
+  alreadyClosed.write = () => assert.fail("closed response must not be written");
+  await assert.rejects(
+    () => new NdjsonWriter(alreadyClosed).write({ topicId: "closed" }),
+    /consumer disconnected/,
+  );
+  assertWriterListenersClean(alreadyClosed);
+
+  const closesDuringWrite = new EventEmitter();
+  closesDuringWrite.destroyed = false;
+  closesDuringWrite.write = () => {
+    closesDuringWrite.destroyed = true;
+    closesDuringWrite.emit("close");
+    return false;
+  };
+  await assert.rejects(
+    () => new NdjsonWriter(closesDuringWrite).write({ topicId: "late-close" }),
+    /consumer disconnected/,
+  );
+  assertWriterListenersClean(closesDuringWrite);
+});
+
+test("NDJSON writer 的直写、背压和错误路径都只结算一次并清理监听", async () => {
+  const direct = new EventEmitter();
+  direct.write = () => true;
+  await new NdjsonWriter(direct).write({ topicId: "direct" });
+  assertWriterListenersClean(direct);
+
+  const backpressured = new EventEmitter();
+  backpressured.write = () => {
+    queueMicrotask(() => backpressured.emit("drain"));
+    return false;
+  };
+  await new NdjsonWriter(backpressured).write({ topicId: "backpressure" });
+  assertWriterListenersClean(backpressured);
+
+  const failed = new EventEmitter();
+  failed.write = () => {
+    failed.emit("error", new Error("injected write failure"));
+    return false;
+  };
+  await assert.rejects(
+    () => new NdjsonWriter(failed).write({ topicId: "error" }),
+    /injected write failure/,
+  );
+  assertWriterListenersClean(failed);
+});
+
+test("WebSocket 启动等待 listening，并把端口绑定错误返回调用链", async (t) => {
+  t.after(async () => {
+    await stopWsServer();
+  });
+
+  const server = await startWsServer({
+    port: 0,
+    syncToken: "startup-test-token",
+    onMessage: async () => null,
+  });
+  assert.equal(server.address().port > 0, true);
+  await stopWsServer();
+
+  const blocker = net.createServer();
+  await new Promise((resolve, reject) => {
+    blocker.once("error", reject);
+    blocker.listen(0, "0.0.0.0", resolve);
+  });
+  t.after(
+    () =>
+      new Promise((resolve) => {
+        blocker.close(() => resolve());
+      }),
+  );
+  const blockedPort = blocker.address().port;
+
+  await assert.rejects(
+    () =>
+      startWsServer({
+        port: blockedPort,
+        syncToken: "startup-test-token",
+        onMessage: async () => null,
+      }),
+    (error) => error?.code === "EADDRINUSE",
   );
 });
 

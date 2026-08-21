@@ -323,7 +323,7 @@ class ChatDataServiceClient {
 
     reconcile(options) {
         return this.request('POST', '/v1/reconcile', {}, {
-            timeoutMs: 120_000,
+            timeoutMs: 270_000,
             ...options
         });
     }
@@ -360,32 +360,42 @@ class ChatDataServiceClient {
     }
 
     syncTopicDiff(request, options) {
-        return this.request('POST', '/v1/sync/topic-diff', request, options);
+        return this.request('POST', '/v1/sync/topic-diff', request, {
+            timeoutMs: 270_000,
+            ...options
+        });
     }
 
     syncMessageDiff(request, options) {
-        return this.request('POST', '/v1/sync/message-diff', request, options);
+        return this.request('POST', '/v1/sync/message-diff', request, {
+            timeoutMs: 270_000,
+            ...options
+        });
+    }
+
+    syncEntityDelete(request, options) {
+        return this.request('POST', '/v1/sync/entity-delete', request, options);
     }
 
     // v1 `/v1/sync/messages/pull` 已随 CDS 端一同弃用移除（S3-δ）：全有或全无
     // 且无活调用方；消息拉取统一走 v2 流式（per-topic `_error` 帧隔离）。
     syncMessagesPullStream(request, options) {
         return this.requestNdjson('POST', '/v2/sync/messages/pull', request, {
-            timeoutMs: 120_000,
+            timeoutMs: 270_000,
             ...options
         });
     }
 
     syncMessagesPush(request, options) {
         return this.request('POST', '/v1/sync/messages/push', request, {
-            timeoutMs: 120_000,
+            timeoutMs: 270_000,
             ...options
         });
     }
 
     syncMessagesPushTopic(topic, options) {
         return this.request('POST', '/v2/sync/messages/push-topic', topic, {
-            timeoutMs: 120_000,
+            timeoutMs: 270_000,
             ...options
         });
     }

@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use crate::{
     config::{PROTOCOL_VERSION, SCHEMA_VERSION},
-    domain::{MemoryWindow, SearchHit},
+    domain::{MemoryWindow, OwnerType, SearchHit, TopicKey},
     error::{ServiceError, ServiceResult},
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
     ingest::{ReconcileStats, Reconciler},
@@ -194,6 +194,31 @@ struct OperationResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EntityDeleteRequest {
+    data_type: String,
+    id: String,
+    deleted_at: i64,
+    #[serde(default)]
+    owner_type: Option<OwnerType>,
+    #[serde(default)]
+    owner_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityDeleteResponse {
+    success: bool,
+    changed: bool,
+    revision: i64,
+}
+
+enum EntityDeleteTarget {
+    Owner(OwnerType, String),
+    Topic(TopicKey),
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChangesQuery {
     #[serde(default)]
@@ -218,6 +243,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/sync/message-manifest", post(sync_message_manifest))
         .route("/v1/sync/topic-diff", post(sync_topic_diff))
         .route("/v1/sync/message-diff", post(sync_message_diff))
+        .route("/v1/sync/entity-delete", post(sync_entity_delete))
         .route("/v1/sync/messages/push", post(sync_messages_push))
         .route("/v1/changes", get(change_feed))
         .route("/v1/flush", post(flush))
@@ -241,7 +267,7 @@ pub fn router(state: AppState) -> Router {
         .merge(sync_v2)
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(120),
+            Duration::from_secs(270),
         ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -480,6 +506,110 @@ async fn sync_message_diff(
     sync::message_diff(state.reconciler.database(), request)
         .map(Json)
         .map_err(ServiceError::internal)
+}
+
+async fn sync_entity_delete(
+    State(state): State<AppState>,
+    Json(request): Json<EntityDeleteRequest>,
+) -> ServiceResult<Json<EntityDeleteResponse>> {
+    let (target, deleted_at) = validate_entity_delete_request(request)?;
+    let _guard = state.reconcile_lock.lock().await;
+    let commit =
+        match target {
+            EntityDeleteTarget::Owner(owner_type, owner_id) => state
+                .reconciler
+                .database()
+                .apply_sync_owner_tombstone(owner_type, &owner_id, deleted_at, "mobile_sync"),
+            EntityDeleteTarget::Topic(key) => state
+                .reconciler
+                .database()
+                .apply_sync_topic_tombstone(&key, deleted_at, "mobile_sync"),
+        }
+        .map_err(ServiceError::internal)?;
+
+    // Reconcile even on an idempotent retry: the SQLite commit may have
+    // succeeded while a previous request failed during the Tantivy update.
+    if let Some(search) = &state.search {
+        search
+            .reconcile_revisions()
+            .map_err(ServiceError::internal)?;
+    }
+
+    Ok(Json(EntityDeleteResponse {
+        success: true,
+        changed: commit.changed,
+        revision: commit.revision,
+    }))
+}
+
+fn validate_entity_delete_request(
+    request: EntityDeleteRequest,
+) -> ServiceResult<(EntityDeleteTarget, i64)> {
+    if request.id.is_empty()
+        || !request
+            .id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(ServiceError::InvalidRequest(
+            "sync entity delete id must use only ASCII letters, digits, '_' or '-'".to_string(),
+        ));
+    }
+    if !(0..=9_007_199_254_740_991).contains(&request.deleted_at) {
+        return Err(ServiceError::InvalidRequest(
+            "sync entity delete deletedAt must be a non-negative safe integer".to_string(),
+        ));
+    }
+
+    let target = match request.data_type.as_str() {
+        "agent" | "group" => {
+            if request.owner_type.is_some() || request.owner_id.is_some() {
+                return Err(ServiceError::InvalidRequest(
+                    "sync owner delete must not include topic owner fields".to_string(),
+                ));
+            }
+            let owner_type = if request.data_type == "agent" {
+                OwnerType::Agent
+            } else {
+                OwnerType::Group
+            };
+            EntityDeleteTarget::Owner(owner_type, request.id)
+        }
+        "topic" => {
+            if request.id == "default" {
+                return Err(ServiceError::InvalidRequest(
+                    "the default topic is not part of MobileSync".to_string(),
+                ));
+            }
+            let owner_type = request.owner_type.ok_or_else(|| {
+                ServiceError::InvalidRequest(
+                    "sync topic delete requires ownerType and ownerId".to_string(),
+                )
+            })?;
+            let owner_id = request.owner_id.filter(|owner_id| {
+                !owner_id.is_empty()
+                    && owner_id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            });
+            let owner_id = owner_id.ok_or_else(|| {
+                ServiceError::InvalidRequest(
+                    "sync topic delete requires a safe non-empty ownerId".to_string(),
+                )
+            })?;
+            EntityDeleteTarget::Topic(TopicKey {
+                owner_type,
+                owner_id,
+                topic_id: request.id,
+            })
+        }
+        _ => {
+            return Err(ServiceError::InvalidRequest(
+                "sync entity delete dataType must be agent, group, or topic".to_string(),
+            ));
+        }
+    };
+    Ok((target, request.deleted_at))
 }
 
 async fn sync_topic_identity(
@@ -805,4 +935,82 @@ fn format_memory_windows(windows: &[MemoryWindow]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(data_type: &str, id: &str, deleted_at: i64) -> EntityDeleteRequest {
+        EntityDeleteRequest {
+            data_type: data_type.to_string(),
+            id: id.to_string(),
+            deleted_at,
+            owner_type: None,
+            owner_id: None,
+        }
+    }
+
+    #[test]
+    fn entity_delete_validation_requires_exact_topic_owner() {
+        let missing_owner = request("topic", "topic-a", 1);
+        assert!(matches!(
+            validate_entity_delete_request(missing_owner),
+            Err(ServiceError::InvalidRequest(_))
+        ));
+
+        let mut valid = request("topic", "topic-a", 1);
+        valid.owner_type = Some(OwnerType::Group);
+        valid.owner_id = Some("group-a".to_string());
+        let (target, deleted_at) =
+            validate_entity_delete_request(valid).expect("validate exact topic owner");
+        assert_eq!(deleted_at, 1);
+        assert!(matches!(
+            target,
+            EntityDeleteTarget::Topic(TopicKey {
+                owner_type: OwnerType::Group,
+                owner_id,
+                topic_id,
+            }) if owner_id == "group-a" && topic_id == "topic-a"
+        ));
+    }
+
+    #[test]
+    fn entity_delete_validation_rejects_unsafe_ids_default_and_timestamp_bounds() {
+        for invalid in [
+            request("agent", "../agent", 1),
+            request("group", "group/a", 1),
+            request("topic", "default", 1),
+            request("agent", "agent-a", -1),
+            request("agent", "agent-a", 9_007_199_254_740_992),
+        ] {
+            assert!(matches!(
+                validate_entity_delete_request(invalid),
+                Err(ServiceError::InvalidRequest(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn entity_delete_validation_accepts_only_agent_group_and_topic() {
+        for (data_type, expected_type) in [("agent", OwnerType::Agent), ("group", OwnerType::Group)]
+        {
+            let (target, deleted_at) = validate_entity_delete_request(request(
+                data_type,
+                "owner-a",
+                9_007_199_254_740_991,
+            ))
+            .expect("validate owner deletion");
+            assert_eq!(deleted_at, 9_007_199_254_740_991);
+            assert!(matches!(
+                target,
+                EntityDeleteTarget::Owner(owner_type, owner_id)
+                    if owner_type == expected_type && owner_id == "owner-a"
+            ));
+        }
+        assert!(matches!(
+            validate_entity_delete_request(request("message", "message-a", 1)),
+            Err(ServiceError::InvalidRequest(_))
+        ));
+    }
 }

@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    io::ErrorKind,
     path::Path,
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
@@ -66,11 +67,12 @@ impl Reconciler {
             ..Default::default()
         };
 
-        for owner in owners.values() {
-            self.database.upsert_owner(owner)?;
+        for configured_owner in owners.values() {
+            let owner = self.effective_owner(configured_owner)?;
+            self.database.upsert_owner(&owner)?;
             for topic in &owner.topics {
                 stats.topics_seen += 1;
-                let source = self.topic_source(owner, topic);
+                let source = self.topic_source(&owner, topic);
                 self.database.upsert_topic_source(&source)?;
                 stats.files_checked += 1;
 
@@ -81,8 +83,9 @@ impl Reconciler {
                         stats.messages_ingested += commit.message_count;
                     }
                     Ok(None) => {
-                        // A configured topic with no prior valid source is a legitimate
-                        // empty topic. Only a previously ingested source can become missing.
+                        // A physical topic directory (or configured default) with no prior
+                        // valid source is a legitimate empty topic. Only a previously
+                        // ingested source can become missing.
                         if let Some(commit) = self
                             .database
                             .mark_history_source_missing(&source, "reconcile")?
@@ -124,6 +127,9 @@ impl Reconciler {
         else {
             return Ok(None);
         };
+        if !path.is_file() {
+            return Ok(None);
+        }
 
         let registry = self.scan_owner_registry()?.0;
         let matching: Vec<&OwnerRecord> = registry
@@ -131,31 +137,105 @@ impl Reconciler {
             .filter(|owner| owner.key.owner_id == owner_id)
             .collect();
 
-        let owner = match matching.as_slice() {
+        let configured_owner = match matching.as_slice() {
             [owner] => *owner,
             [] => anyhow::bail!("history owner {owner_id} has no Agent or Group config"),
             _ => anyhow::bail!("history owner {owner_id} is ambiguous between Agent and Group"),
         };
+        let owner = self.effective_owner(configured_owner)?;
 
         let topic = owner
             .topics
             .iter()
             .find(|topic| topic.topic_id == topic_id)
             .cloned()
-            .unwrap_or_else(|| TopicDefinition {
-                topic_id: topic_id.clone(),
+            .with_context(|| {
+                format!("physical history topic {topic_id} disappeared while preparing ingestion")
+            })?;
+        let source = self.topic_source(&owner, &topic);
+        self.database.upsert_owner(&owner)?;
+        self.database.upsert_topic_source(&source)?;
+        self.ingest_source_if_changed(&source, origin).await
+    }
+
+    fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
+        let topics_directory = self
+            .config
+            .user_data_dir
+            .join(&configured_owner.key.owner_id)
+            .join("topics");
+        let mut physical_topic_ids = Vec::new();
+        match fs::metadata(&topics_directory) {
+            Ok(metadata) => {
+                anyhow::ensure!(
+                    metadata.is_dir(),
+                    "physical topics path is not a directory: {}",
+                    topics_directory.display()
+                );
+                for entry in fs::read_dir(&topics_directory)
+                    .with_context(|| format!("failed to read {}", topics_directory.display()))?
+                {
+                    let entry = entry?;
+                    if !entry.file_type()?.is_dir() {
+                        continue;
+                    }
+                    physical_topic_ids.push(entry.file_name().to_string_lossy().to_string());
+                }
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to inspect {}", topics_directory.display()));
+            }
+        }
+        physical_topic_ids.sort();
+
+        let physical_topic_id_set = physical_topic_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        let configured_topic_ids = configured_owner
+            .topics
+            .iter()
+            .map(|topic| topic.topic_id.as_str())
+            .collect::<HashSet<_>>();
+        let mut topics = configured_owner
+            .topics
+            .iter()
+            .filter(|topic| {
+                topic.topic_id == "default"
+                    || physical_topic_id_set.contains(topic.topic_id.as_str())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut next_ordinal = configured_owner
+            .topics
+            .iter()
+            .map(|topic| topic.ordinal)
+            .max()
+            .unwrap_or(-1)
+            + 1;
+
+        for topic_id in physical_topic_ids {
+            if configured_topic_ids.contains(topic_id.as_str()) {
+                continue;
+            }
+            topics.push(TopicDefinition {
+                topic_id,
                 display_name: None,
                 created_at: None,
-                ordinal: owner.topics.len() as i64,
+                ordinal: next_ordinal,
                 metadata: serde_json::json!({
                     "orphanHistory": true,
                     "compatibilityStatus": "history_not_listed_in_config"
                 }),
             });
-        let source = self.topic_source(owner, &topic);
-        self.database.upsert_owner(owner)?;
-        self.database.upsert_topic_source(&source)?;
-        self.ingest_source_if_changed(&source, origin).await
+            next_ordinal += 1;
+        }
+
+        let mut effective = configured_owner.clone();
+        effective.topics = topics;
+        Ok(effective)
     }
 
     pub fn scan_owner_registry(&self) -> Result<(HashMap<OwnerKey, OwnerRecord>, usize)> {
@@ -198,22 +278,58 @@ impl Reconciler {
             let owner_id = entry.file_name().to_string_lossy().to_string();
             let config_path = entry.path().join("config.json");
             if !config_path.is_file() {
+                tracing::warn!(
+                    owner_type = %owner_type,
+                    owner_id,
+                    config_path = %config_path.display(),
+                    "owner config is missing; retaining owner from its physical directory"
+                );
+                let owner = self.recovery_owner(owner_type, owner_id, config_path)?;
+                owners.insert(owner.key.clone(), owner);
                 continue;
             }
 
-            match parse_owner_config(owner_type, owner_id, &config_path) {
+            match parse_owner_config(owner_type, owner_id.clone(), &config_path) {
                 Ok(owner) => {
                     owners.insert(owner.key.clone(), owner);
                 }
-                Err(error) => tracing::warn!(
-                    owner_type = %owner_type,
-                    config_path = %config_path.display(),
-                    error = ?error,
-                    "skipping invalid owner config"
-                ),
+                Err(error) => {
+                    tracing::warn!(
+                        owner_type = %owner_type,
+                        owner_id,
+                        config_path = %config_path.display(),
+                        error = ?error,
+                        "owner config is invalid; retaining owner from its physical directory"
+                    );
+                    let owner = self.recovery_owner(owner_type, owner_id, config_path)?;
+                    owners.insert(owner.key.clone(), owner);
+                }
             }
         }
         Ok(())
+    }
+
+    fn recovery_owner(
+        &self,
+        owner_type: OwnerType,
+        owner_id: String,
+        config_path: impl Into<std::path::PathBuf>,
+    ) -> Result<OwnerRecord> {
+        let display_name = self
+            .database
+            .owner_by_id(owner_type, &owner_id)?
+            .map(|(_, display_name)| display_name)
+            .unwrap_or_else(|| owner_id.clone());
+        Ok(OwnerRecord {
+            key: OwnerKey {
+                owner_type,
+                owner_id,
+            },
+            display_name,
+            config_path: config_path.into(),
+            config_hash: "physical-owner-recovery".to_string(),
+            topics: Vec::new(),
+        })
     }
 
     fn topic_source(&self, owner: &OwnerRecord, topic: &TopicDefinition) -> TopicSource {
@@ -763,6 +879,333 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn noop_reconcile_preserves_owner_and_topic_updated_at() {
+        let (_temp, config, database, reconciler) = fixture();
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent_stable",
+            "Stable Agent",
+            &["topic_stable"],
+        );
+        write_history(
+            &config,
+            "agent_stable",
+            "topic_stable",
+            serde_json::json!([
+                {"id":"message_stable","role":"user","content":"stable","timestamp":1}
+            ]),
+        );
+        reconciler.reconcile().await.expect("initial reconcile");
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE owners SET updated_at=123
+                     WHERE owner_type='agent' AND owner_id='agent_stable'",
+                    [],
+                )
+                .expect("set owner timestamp sentinel");
+            connection
+                .execute(
+                    "UPDATE topics SET updated_at=456
+                     WHERE owner_type='agent' AND owner_id='agent_stable'
+                       AND topic_id='topic_stable'",
+                    [],
+                )
+                .expect("set topic timestamp sentinel");
+        }
+
+        let stats = reconciler.reconcile().await.expect("no-op reconcile");
+        assert_eq!(stats.files_ingested, 0);
+        assert_eq!(stats.files_skipped, 1);
+        let (owner_updated_at, topic_updated_at) = {
+            let connection = database.connection.lock();
+            let owner_updated_at = connection
+                .query_row(
+                    "SELECT updated_at FROM owners
+                     WHERE owner_type='agent' AND owner_id='agent_stable'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("read owner timestamp");
+            let topic_updated_at = connection
+                .query_row(
+                    "SELECT updated_at FROM topics
+                     WHERE owner_type='agent' AND owner_id='agent_stable'
+                       AND topic_id='topic_stable'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("read topic timestamp");
+            (owner_updated_at, topic_updated_at)
+        };
+        assert_eq!(owner_updated_at, 123);
+        assert_eq!(topic_updated_at, 456);
+    }
+
+    #[tokio::test]
+    async fn stale_config_cannot_resurrect_topic_after_physical_delete() {
+        let (_temp, config, database, reconciler) = fixture();
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent_stale_topic",
+            "Stale Topic Agent",
+            &["topic_deleted", "topic_never_physical"],
+        );
+        write_history(
+            &config,
+            "agent_stale_topic",
+            "topic_deleted",
+            serde_json::json!([
+                {"id":"message_deleted","role":"user","content":"delete me","timestamp":1}
+            ]),
+        );
+        let initial = reconciler.reconcile().await.expect("initial reconcile");
+        assert_eq!(initial.topics_seen, 1);
+
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent_stale_topic".to_string(),
+            topic_id: "topic_deleted".to_string(),
+        };
+        database
+            .apply_sync_topic_tombstone(&key, 321, "mobile_sync")
+            .expect("apply explicit topic tombstone");
+        let topic_directory = config
+            .user_data_dir
+            .join("agent_stale_topic/topics/topic_deleted");
+        let stale_history_path = topic_directory.join("history.json");
+        fs::remove_dir_all(&topic_directory).expect("delete physical topic directory");
+
+        assert!(reconciler
+            .ingest_path(&stale_history_path, "notify")
+            .await
+            .expect("ignore missing physical history")
+            .is_none());
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile stale config");
+        assert_eq!(stats.topics_seen, 0);
+        assert!(database
+            .active_messages_for_topic(&key)
+            .expect("load messages after reconcile")
+            .is_empty());
+
+        let connection = database.connection.lock();
+        let topic_deleted_at = connection
+            .query_row(
+                "SELECT deleted_at FROM topics
+                 WHERE owner_type='agent' AND owner_id='agent_stale_topic'
+                   AND topic_id='topic_deleted'",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .expect("load topic tombstone");
+        let message_deleted_at = connection
+            .query_row(
+                "SELECT deleted_at FROM messages
+                 WHERE owner_type='agent' AND owner_id='agent_stale_topic'
+                   AND topic_id='topic_deleted' AND msg_id='message_deleted'",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .expect("load message tombstone");
+        let persisted_tombstone = connection
+            .query_row(
+                "SELECT deleted_at FROM tombstones
+                 WHERE entity_type='topic' AND owner_type='agent'
+                   AND owner_id='agent_stale_topic' AND topic_id='topic_deleted'
+                   AND entity_id='topic_deleted'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("load persisted topic tombstone");
+        let never_created: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM topics
+                 WHERE owner_type='agent' AND owner_id='agent_stale_topic'
+                   AND topic_id='topic_never_physical'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count config-only topic");
+        assert_eq!(topic_deleted_at, Some(321));
+        assert_eq!(message_deleted_at, Some(321));
+        assert_eq!(persisted_tombstone, 321);
+        assert_eq!(never_created, 0);
+    }
+
+    #[tokio::test]
+    async fn physical_topic_missing_from_config_is_ingested_as_stable_orphan() {
+        let (_temp, config, database, reconciler) = fixture();
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent_orphan_topic",
+            "Orphan Topic Agent",
+            &[],
+        );
+        write_history(
+            &config,
+            "agent_orphan_topic",
+            "topic_orphan",
+            serde_json::json!([
+                {"id":"message_orphan","role":"user","content":"physical truth","timestamp":1}
+            ]),
+        );
+
+        let first = reconciler.reconcile().await.expect("initial reconcile");
+        assert_eq!(first.topics_seen, 1);
+        assert_eq!(first.files_ingested, 1);
+        assert_eq!(first.messages_ingested, 1);
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent_orphan_topic".to_string(),
+            topic_id: "topic_orphan".to_string(),
+        };
+        let messages = database
+            .active_messages_for_topic(&key)
+            .expect("load orphan messages");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content_text, "physical truth");
+
+        let before = {
+            let connection = database.connection.lock();
+            connection
+                .query_row(
+                    "SELECT topic_ordinal, metadata_json, updated_at FROM topics
+                     WHERE owner_type='agent' AND owner_id='agent_orphan_topic'
+                       AND topic_id='topic_orphan' AND deleted_at IS NULL",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .expect("load orphan topic")
+        };
+        assert_eq!(before.0, 0);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&before.1).expect("parse orphan metadata"),
+            serde_json::json!({
+                "orphanHistory": true,
+                "compatibilityStatus": "history_not_listed_in_config"
+            })
+        );
+
+        let second = reconciler.reconcile().await.expect("repeat reconcile");
+        assert_eq!(second.files_ingested, 0);
+        assert_eq!(second.files_skipped, 1);
+        let after = {
+            let connection = database.connection.lock();
+            connection
+                .query_row(
+                    "SELECT topic_ordinal, metadata_json, updated_at FROM topics
+                     WHERE owner_type='agent' AND owner_id='agent_orphan_topic'
+                       AND topic_id='topic_orphan' AND deleted_at IS NULL",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                        ))
+                    },
+                )
+                .expect("reload orphan topic")
+        };
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn missing_or_invalid_owner_config_keeps_physical_history_live() {
+        let (_temp, config, database, reconciler) = fixture();
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent_recovery",
+            "Recovery Agent",
+            &["topic_recovery"],
+        );
+        write_history(
+            &config,
+            "agent_recovery",
+            "topic_recovery",
+            serde_json::json!([
+                {"id":"message_recovery","role":"user","content":"must stay live","timestamp":1}
+            ]),
+        );
+        reconciler.reconcile().await.expect("initial reconcile");
+
+        let owner_config = config.agents_dir.join("agent_recovery/config.json");
+        fs::remove_file(&owner_config).expect("remove owner config");
+        let missing = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile missing owner config");
+        assert_eq!(missing.owners_deleted, 0);
+        assert_eq!(missing.topics_seen, 1);
+        assert_eq!(missing.files_skipped, 1);
+
+        fs::write(&owner_config, br#"{"name":"broken""#).expect("write invalid owner config");
+        let invalid = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile invalid owner config");
+        assert_eq!(invalid.owners_deleted, 0);
+        assert_eq!(invalid.topics_seen, 1);
+        assert_eq!(invalid.files_skipped, 1);
+
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent_recovery".to_string(),
+            topic_id: "topic_recovery".to_string(),
+        };
+        let messages = database
+            .active_messages_for_topic(&key)
+            .expect("load messages after recovery reconciles");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content_text, "must stay live");
+        assert_eq!(
+            database
+                .owner_by_id(OwnerType::Agent, "agent_recovery")
+                .expect("load recovered owner")
+                .expect("owner remains live")
+                .1,
+            "Recovery Agent"
+        );
+
+        let connection = database.connection.lock();
+        let deleted_state = connection
+            .query_row(
+                "SELECT o.deleted_at, t.deleted_at, m.deleted_at
+                 FROM owners o
+                 JOIN topics t ON t.owner_type=o.owner_type AND t.owner_id=o.owner_id
+                 JOIN messages m ON m.owner_type=t.owner_type AND m.owner_id=t.owner_id
+                                AND m.topic_id=t.topic_id
+                 WHERE o.owner_type='agent' AND o.owner_id='agent_recovery'
+                   AND t.topic_id='topic_recovery' AND m.msg_id='message_recovery'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<i64>>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                },
+            )
+            .expect("load recovered deletion state");
+        assert_eq!(deleted_state, (None, None, None));
+    }
+
+    #[tokio::test]
     async fn legacy_maid_uses_unique_contains_but_rejects_ambiguity() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
@@ -1037,6 +1480,14 @@ mod tests {
             "shared_id",
             "Group",
             &["group_topic"],
+        );
+        write_history(
+            &config,
+            "shared_id",
+            "agent_topic",
+            serde_json::json!([
+                {"id":"agent_message","role":"user","content":"agent namespace"}
+            ]),
         );
         reconciler.reconcile().await.expect("initial reconcile");
 

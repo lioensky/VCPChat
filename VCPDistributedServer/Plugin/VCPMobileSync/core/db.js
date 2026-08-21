@@ -13,6 +13,8 @@ try {
 const { getLogger } = require("./logger");
 
 let db = null;
+const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
+const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
 
 /**
  * 初始化数据库
@@ -337,6 +339,42 @@ function softDeleteEntityIndex(id, type, deletedAt = Date.now()) {
 }
 
 /**
+ * 持久化实体墓碑；即使本机从未见过该实体，也要保留删除事实供其他端收敛。
+ */
+function upsertEntityTombstone(
+  id,
+  type,
+  filePath,
+  deletedAt = Date.now(),
+) {
+  if (!db) return;
+
+  const normalizedType = ["topic", "agent_topic", "group_topic"].includes(type)
+    ? "topic"
+    : type;
+  const updated = softDeleteEntityIndex(id, normalizedType, deletedAt);
+  if (updated?.changes > 0) return updated;
+
+  return db.prepare(
+    `INSERT INTO entity_index
+       (id, type, file_path, hash, aggregated_hash, updated_at, deleted_at)
+     VALUES (?, ?, ?, ?, '', ?, ?)
+     ON CONFLICT(id, type) DO UPDATE SET
+       deleted_at = CASE
+         WHEN entity_index.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(entity_index.deleted_at, excluded.deleted_at)
+       END`,
+  ).run(
+    id,
+    normalizedType,
+    filePath,
+    ENTITY_TOMBSTONE_HASH,
+    deletedAt,
+    deletedAt,
+  );
+}
+
+/**
  * 软删除消息索引
  * @param {string} msgId - 消息 ID
  * @param {number} deletedAt - 删除时间戳
@@ -348,12 +386,22 @@ function softDeleteMessageIndex(msgId, deletedAt = Date.now(), topicId = null) {
   if (topicId) {
     return db
       .prepare(
-        `UPDATE message_index
-         SET deleted_at = CASE
-           WHEN deleted_at IS NULL THEN ? ELSE MIN(deleted_at, ?) END
-         WHERE topic_id = ? AND msg_id = ?`,
+        `INSERT INTO message_index
+           (msg_id, topic_id, hash, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(topic_id, msg_id) DO UPDATE SET
+           deleted_at = CASE
+             WHEN message_index.deleted_at IS NULL THEN excluded.deleted_at
+             ELSE MIN(message_index.deleted_at, excluded.deleted_at)
+           END`,
       )
-      .run(deletedAt, deletedAt, topicId, msgId);
+      .run(
+        msgId,
+        topicId,
+        MESSAGE_TOMBSTONE_HASH,
+        deletedAt,
+        deletedAt,
+      );
   } else {
     return db
       .prepare(
@@ -383,6 +431,22 @@ function softDeleteAvatarIndex(ownerId, ownerType, deletedAt = Date.now()) {
        WHERE owner_id = ? AND owner_type = ?`,
     )
     .run(deletedAt, deletedAt, ownerId, ownerType);
+}
+
+function updateTopicAggregatedHash(topicId, aggregatedHash, updatedAt = Date.now()) {
+  if (!db) throw new Error("Database not initialized");
+
+  return db.prepare(
+    `UPDATE entity_index
+     SET updated_at = CASE
+           WHEN aggregated_hash IS NOT ? THEN ?
+           ELSE updated_at
+         END,
+         aggregated_hash = ?
+     WHERE id = ?
+       AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')
+       AND deleted_at IS NULL`,
+  ).run(aggregatedHash, updatedAt, aggregatedHash, topicId);
 }
 
 /**
@@ -431,7 +495,9 @@ module.exports = {
   getEntitiesByType,
   getMessagesByTopic,
   softDeleteEntityIndex,
+  upsertEntityTombstone,
   softDeleteMessageIndex,
   softDeleteAvatarIndex,
+  updateTopicAggregatedHash,
   cleanupOldDeletedRecords,
 };
