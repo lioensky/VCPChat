@@ -44,8 +44,8 @@
 | P6 按业务逐页演进 | 条件式远期 | 只在真实需求出现时迁移一个子页面 | 页面独立 PR，consumer/runtime/test 同时进入 |
 
 | 交互与可访问性行为合同 | 规划中 | 将键盘/焦点/ARIA、Modal/Select、异步终态、主题/DPI/fallback 和任务级视觉回归纳入真实 Electron 证据 | [`ui-interaction-accessibility-roadmap.md`](./ui-interaction-accessibility-roadmap.md) 的 A0–A6 全部退出；A7 仍按真实需求条件式执行 |
-| Chat Kernel 与受控 UI 插件化 | 已完成（C0–C7，2026-08-19） | 将高度耦合的聊天运行时逐步拆为 Domain、Content Runtime、Renderer Adapter 与 Surface；以 Harness 消费者证据约束主题、slot 和 presentation skin 扩展 | [`chat-kernel-rendering-roadmap.md`](./chat-kernel-rendering-roadmap.md) 记录 C0–C7 退出条件、真实消费者和最终矩阵证据；后续扩展必须重新提供同等级证据 |
-| Chat Kernel 深度解耦 | 施工中（D0–D7；D0–D4 核心证据已建立，D5–D7 未完成） | 将 StreamManager 的实时协调与 DOM/持久化分离，并把 `renderer.js` 收敛为主窗口 composition adapter；不重写消息协议、不迁移业务子页面 | [`chat-kernel-deep-decoupling-roadmap.md`](./chat-kernel-deep-decoupling-roadmap.md) 的 D0–D7 退出条件全部满足后，才可宣称 renderer 深度解耦 |
+| Chat Kernel 与受控 UI 插件化 | 已完成（C0–C7，2026-08-19） | 将高度耦合的聊天运行时逐步拆为 Domain、Content Runtime、Renderer Adapter 与 Surface；以 Harness 消费者证据约束主题、slot 和 presentation skin 扩展 | C0–C7 路线已移入 [`archive/2026-08-chat-kernel-and-ui-roadmaps/`](./archive/2026-08-chat-kernel-and-ui-roadmaps/)；后续扩展必须重新提供同等级证据 |
+| Chat Kernel 深度解耦 | D5/D6 PASS，D7 BLOCKED | 将 StreamManager 的实时协调与 DOM/持久化分离，并把 `renderer.js` 收敛为主窗口 composition adapter；不重写消息协议、不迁移业务子页面 | [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md) 是阶段状态权威；D7 需跨 Windows/打包/GPU-DPI 矩阵及人工 soak，满足前不得宣称最终解耦完成 |
 
 P0–P4 是当前上游 PR 的实际路线。P5–P6 不阻塞当前施工，也不得提前把实现放入本 PR。
 

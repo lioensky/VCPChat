@@ -10,6 +10,10 @@ window.topicListManager = (() => {
     let topicSelectionReadiness;
     let uiHelper;
     let mainRendererFunctions;
+    let listenerOwner;
+    let uiManager;
+    let itemListManager;
+    let renderListenerDisposers = [];
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
     let topicListRenderGeneration = 0;
     let topicListScrollCleanup = null;
@@ -24,6 +28,21 @@ window.topicListManager = (() => {
     const TOPIC_INITIAL_RENDER_COUNT = 40;
     const TOPIC_PROGRESSIVE_BATCH_SIZE = 30;
     const TOPIC_LOAD_MORE_THRESHOLD_PX = 320;
+
+    const addListener = (target, type, handler, options) => {
+        if (listenerOwner) return listenerOwner.add(target, type, handler, options);
+        target?.addEventListener?.(type, handler, options);
+        return true;
+    };
+
+    function addRenderListener(target, type, handler, options) {
+        target?.addEventListener?.(type, handler, options);
+        renderListenerDisposers.push(() => target?.removeEventListener?.(type, handler, options));
+    }
+
+    function disposeRenderListeners() {
+        renderListenerDisposers.splice(0).reverse().forEach(dispose => dispose());
+    }
 
     /**
      * Initializes the TopicListManager module.
@@ -48,6 +67,9 @@ window.topicListManager = (() => {
         topicSelectionReadiness = config.topicSelectionReadiness;
         uiHelper = config.uiHelper;
         mainRendererFunctions = config.mainRendererFunctions;
+        listenerOwner = config.listenerOwner || null;
+        uiManager = config.uiManager || null;
+        itemListManager = config.itemListManager || null;
 
         // 设置鼠标快捷键
         setupMouseShortcuts();
@@ -231,6 +253,7 @@ window.topicListManager = (() => {
 
     function cleanupProgressiveTopicRendering() {
         topicListRenderGeneration++;
+        disposeRenderListeners();
         if (typeof topicListScrollCleanup === 'function') {
             topicListScrollCleanup();
             topicListScrollCleanup = null;
@@ -384,7 +407,7 @@ window.topicListManager = (() => {
         const observer = ensureTopicCountObserver();
         observer.observe(li);
 
-        li.addEventListener('click', async () => {
+        addRenderListener(li, 'click', async () => {
             if (isManageMode) {
                 toggleTopicSelection(topic.id);
                 return;
@@ -416,7 +439,7 @@ window.topicListManager = (() => {
             }
         });
 
-        li.addEventListener('contextmenu', (e) => {
+        addRenderListener(li, 'contextmenu', (e) => {
             e.preventDefault();
             if (isManageMode) return;
             showTopicContextMenu(e, li, itemConfigFull, topic, currentSelectedItem.type);
@@ -665,8 +688,8 @@ window.topicListManager = (() => {
         if (inputElement.dataset.topicSearchBound === 'true') return;
         inputElement.dataset.topicSearchBound = 'true';
 
-        inputElement.addEventListener('input', filterTopicList);
-        inputElement.addEventListener('keydown', (event) => {
+        addListener(inputElement, 'input', filterTopicList);
+        addListener(inputElement, 'keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
                 filterTopicList();
@@ -704,10 +727,10 @@ window.topicListManager = (() => {
             else if (document.activeElement === searchInput) searchButton.focus();
         };
 
-        createButton.addEventListener('click', () => {
+        addListener(createButton, 'click', () => {
             document.getElementById('currentAgentSettingsBtn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
-        createButton.addEventListener('contextmenu', (event) => {
+        addListener(createButton, 'contextmenu', (event) => {
             event.preventDefault();
             document.getElementById('currentAgentSettingsBtn')?.dispatchEvent(new MouseEvent('contextmenu', {
                 bubbles: true,
@@ -715,18 +738,18 @@ window.topicListManager = (() => {
                 clientY: event.clientY
             }));
         });
-        manageButton.addEventListener('click', () => setManageMode(!isManageMode));
-        searchButton.addEventListener('click', () => setSearchMode(true, false));
-        searchCloseButton.addEventListener('click', () => setSearchMode(false, true));
-        searchInput.addEventListener('keydown', (event) => {
+        addListener(manageButton, 'click', () => setManageMode(!isManageMode));
+        addListener(searchButton, 'click', () => setSearchMode(true, false));
+        addListener(searchCloseButton, 'click', () => setSearchMode(false, true));
+        addListener(searchInput, 'keydown', (event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 setSearchMode(false, true);
             }
         });
-        selectAllButton?.addEventListener('click', toggleSelectAllDisplayedTopics);
-        deleteButton?.addEventListener('click', deleteSelectedTopics);
-        exitButton?.addEventListener('click', () => setManageMode(false));
+        if (selectAllButton) addListener(selectAllButton, 'click', toggleSelectAllDisplayedTopics);
+        if (deleteButton) addListener(deleteButton, 'click', deleteSelectedTopics);
+        if (exitButton) addListener(exitButton, 'click', () => setManageMode(false));
 
         syncManageUi();
     }
@@ -1075,8 +1098,8 @@ window.topicListManager = (() => {
                     );
                     loadTopicList(); // 刷新列表
                     // 同时刷新助手列表以更新计数
-                    if (window.itemListManager) {
-                        window.itemListManager.loadItems();
+                    if (itemListManager) {
+                        itemListManager.loadItems();
                     }
                 } else {
                     uiHelper.showToastNotification(`操作失败: ${result.error}`, 'error');
@@ -1396,7 +1419,7 @@ window.topicListManager = (() => {
         let lastLeftClickTime = 0;
 
         // 双击左键：进入设置页面
-        topicsContainer.addEventListener('click', (e) => {
+        addListener(topicsContainer, 'click', (e) => {
             if (isManageMode) return;
             if (e.target.closest('button, input, .topics-header-container, .next-ui-topic-manage-panel')) return;
             if (e.button === 0) { // 左键
@@ -1409,8 +1432,8 @@ window.topicListManager = (() => {
                     e.stopPropagation();
 
                     // 切换到设置页面
-                    if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
-                        window.uiManager.switchToTab('settings');
+                    if (uiManager && typeof uiManager.switchToTab === 'function') {
+                        uiManager.switchToTab('settings');
                     } else {
                         console.warn('[TopicListManager] uiManager不可用，无法切换到设置页面');
                     }
@@ -1421,18 +1444,18 @@ window.topicListManager = (() => {
         });
 
         // 中键点击：返回助手页面
-        topicsContainer.addEventListener('auxclick', (e) => {
+        addListener(topicsContainer, 'auxclick', (e) => {
             if (e.button === 1) { // 中键
                 console.log('[TopicListManager] 检测到中键点击，返回助手页面');
                 e.preventDefault();
                 e.stopPropagation();
 
                 // 切换到助手页面
-                if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
-                    window.uiManager.switchToTab('agents');
+                if (uiManager && typeof uiManager.switchToTab === 'function') {
+                    uiManager.switchToTab('agents');
                     // 重置助手页面的鼠标事件状态，确保双击功能正常工作
-                    if (window.itemListManager && typeof window.itemListManager.resetMouseEventStates === 'function') {
-                        window.itemListManager.resetMouseEventStates();
+                    if (itemListManager && typeof itemListManager.resetMouseEventStates === 'function') {
+                        itemListManager.resetMouseEventStates();
                     }
                 } else {
                     console.warn('[TopicListManager] uiManager不可用，无法切换到助手页面');
@@ -1441,7 +1464,7 @@ window.topicListManager = (() => {
         });
 
         // 防止中键点击的默认行为
-        topicsContainer.addEventListener('mousedown', (e) => {
+        addListener(topicsContainer, 'mousedown', (e) => {
             if (e.button === 1) { // 中键
                 e.preventDefault();
             }
@@ -1450,12 +1473,25 @@ window.topicListManager = (() => {
         console.log('[TopicListManager] 鼠标快捷键设置完成');
     }
 
+    function dispose() {
+        cleanupProgressiveTopicRendering();
+        closeTopicContextMenu();
+        selectedTopicIds.clear();
+        displayedTopics = [];
+        availableTopics = [];
+        currentItemConfig = null;
+        managedItemKey = '';
+        topicListContainer = null;
+        listenerOwner = null;
+    }
+
     // --- Public API ---
     return {
         init,
         loadTopicList,
         setupTopicSearch,
         showTopicContextMenu,
-        setupMouseShortcuts
+        setupMouseShortcuts,
+        dispose
     };
 })();

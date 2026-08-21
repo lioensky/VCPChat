@@ -26,6 +26,7 @@ export function createMainChatComposition({
     showForwardModal,
     provideCapabilities,
     capabilitySnapshot,
+    settings,
     createInternalRenderer,
     disposeCapabilities,
 }) {
@@ -68,6 +69,7 @@ export function createMainChatComposition({
         createRenderer: createInternalRenderer,
         manager: chatManager,
         presentation: presentationState,
+        settings,
     }) || null;
 
     messageRenderer.setContextMenuDependencies({

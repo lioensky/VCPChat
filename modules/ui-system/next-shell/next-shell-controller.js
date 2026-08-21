@@ -620,7 +620,7 @@
         accountMenuController = new AccountMenuController({
             window,
             document,
-            getSettings: () => window.globalSettings || {},
+            getSettings: () => chatCapabilities?.settings?.get?.() || {},
             openSettings: () => window.uiHelperFunctions?.openModal?.('globalSettingsModal'),
             openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),
             openThemes: () => (window.chatAPI || window.electronAPI)?.openThemesWindow?.(),
@@ -765,6 +765,7 @@
             createRenderer: capabilities.createRenderer,
             manager: capabilities.manager,
             presentation: capabilities.presentation || null,
+            settings: capabilities.settings || null,
         });
         return () => {
             if (chatCapabilities?.repository === capabilities.repository) chatCapabilities = null;

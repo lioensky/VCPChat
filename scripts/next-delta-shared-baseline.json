@@ -1,19 +1,19 @@
 {
   "modules/chatManager.js": {
-    "sha256": "28c60fbd43f477abf42503b236430c33543c58a1b1ecfabe60405aee0ad2e71f",
-    "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion completion carries explicit deleted topic identity and sanitizes returned list; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists; selection intent persisted before watcher/history work for renderer recovery"
+      "sha256": "6d4c35cd45dcd1881d3ef97c8844c930c03a739a263b09272b27991a3b466262",
+      "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion and topic-summary completion replace immutable selection snapshots through their authority; outgoing attachment draft identity changes on append so a file added during durable persistence is preserved; selection intent persists before watcher/history work and restore waits for topic projection before reporting completion; named ChatManager lifecycle retracts canvas subscriptions, observer, forward timers and selection authority before draining persistence queues; file-history sync now captures selection/topic generations and revalidates the active conversation after its read, so a late result cannot modify a different or disposed Surface"
   },
   "modules/messageRenderer.js": {
-    "sha256": "304416ea276c5cde0452c772335c68966fa7e2230f4ff9b4880f82b2d0065d5b",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, explicit Surface operation-state notification, owner-scoped context-menu and middle-click callbacks including forward/audio capabilities, and no ambient renderer command facade"
+    "sha256": "2d1e8858561f46b22d3bb6f59d46b5d0dc4357b0699456762e4f27b4f5992901",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, owner-scoped context-menu and middle-click callbacks, copy-before-mutate history projection, and avatar-color completion guarded by live selection identity before authority replacement"
   },
   "modules/renderer/streamManager.js": {
     "sha256": "58399ecd709a8c6e793d7e520d634bfb43fc53045307407f2ffb0747f513421c",
     "reason": "per-Surface stream projection factory with an explicit StreamProjectionRuntime provider, owning document/window capabilities, attachStreamProjection lifecycle API, injected view authority, transient message models delegated to StreamTransientHistory, owned animation-frame scheduling and pending operation disposal, no repository or durable commit authority, no exported singleton or hidden root side channel, ContentRuntime render models, and owned Desktop push subscription/timer consumer; producer streamOperationId carried into projection and terminal validation; operation-scoped runtime map adapter, retry retirement, and display-id projection index"
   },
   "modules/topicListManager.js": {
-    "sha256": "8564f048ab82eec46163019f6f2abbb80916df439e2ca0b59cb425106a4bf349",
-    "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, and explicit injected topic-selection readiness capability; deletion completion carries explicit deleted topic identity, fallback selection, and sanitizes returned lists"
+      "sha256": "0c613e24341ce273ad5807609b089138edbf098259801df7972d8a0733803607",
+      "reason": "shared topic authority with canonical presentation projection, mandatory repository access without a direct IPC fallback, explicit injected topic-selection readiness, lifecycle listener owner, ui manager and item-list service capabilities, render-scoped listener cleanup, and disposal of observers, sortable state, context menus, and dynamic topic resources"
   },
   "modules/itemListManager.js": {
     "sha256": "1a227093cc438de479c1ca8dc9c1abf7acd4dace1bd773c4d4256f10be1bd162",
@@ -24,16 +24,16 @@
     "reason": "upstream group business surface with retired toolbar binding removed"
   },
   "modules/settingsManager.js": {
-    "sha256": "e9da7270e8fad4d943d24f0c6ae6ac6a875be42812830a267d65645bb87e2b2e",
-    "reason": "reviewed Agent settings save settlement after fallible UI projection with the message renderer supplied as an explicit initialization capability"
+    "sha256": "1ac9eee2aa754ee2eda2916a0694c9844fc41f39477fa6c0d4124b3d2eeb2abd",
+    "reason": "reviewed Agent settings behavior after replacing ambient globalSettings reads with the composition-injected settings authority; saved Agent projection and collapse-state updates replace immutable selection snapshots through the injected selection authority"
   },
   "modules/filterManager.js": {
     "sha256": "8b632c78f2d0bd525cbe24022b8883c8e6a4c3565352779c5ebc49be9350c17f",
     "reason": "shared filter authority; canonical menu calls its public API"
   },
   "modules/notificationRenderer.js": {
-    "sha256": "24b2510275b74eee40a99ec03ed73d256284b1117c785f8733a4094fff13341e",
-    "reason": "upstream notification rendering semantics"
+    "sha256": "fbd20f4ecbca87196a2f288ac05df02b5101ce9e9f3ee417ae07da85cd84a3c9",
+    "reason": "reviewed notification rendering after injected filtering and owner-scoped toast timers and transition listeners replaced ambient lifecycle effects"
   },
   "VCPDistributedServer/frontend-plugin-loader.js": {
     "sha256": "0987ee41ed76c8b4f0963353c4b387f0b46a6202b9e8516aa02cce27568862ca",

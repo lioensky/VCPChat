@@ -26,11 +26,17 @@ function createFixture(options = {}) {
     window.eval(`${fs.readFileSync('modules/chatManager.js', 'utf8').replace(/\bexport\s+(?=const\s+chatManager\b)/, '')}\nwindow.__testChatManager = chatManager;`);
     window.chatManager = window.__testChatManager;
 
-    let selected = { id: null, type: null, name: null, avatarUrl: null, config: null };
+    let selected = Object.freeze({ id: null, type: null, name: null, avatarUrl: null, config: null });
     let topicId = null;
     let history = [];
     let attachedFiles = [];
+    const attachmentRef = {
+        get: () => attachedFiles,
+        set: value => { attachedFiles = value; },
+        append: value => { attachedFiles = [...attachedFiles, value]; return attachedFiles; },
+    };
     let nextHistorySaveGate = null;
+    let nextHistoryReadGate = null;
     let nextHistorySaveError = null;
     let nextWatcherStartError = null;
     let nextVcpError = null;
@@ -51,6 +57,9 @@ function createFixture(options = {}) {
         'agent-b': { id: 'agent-b', name: 'Agent B', agentDataPath: '/tmp/b', topics: [{ id: 'topic-b', createdAt: 2 }, { id: 'topic-b-2', createdAt: 3 }] },
     };
     const chatMessages = window.document.getElementById('chatMessages');
+    let canvasContentListener = null;
+    let canvasClosedListener = null;
+    let canvasDisposals = 0;
     const messageRenderer = {
         setCurrentSelectedItem() {}, setCurrentTopicId() {}, setCurrentItemAvatar() {}, setCurrentItemAvatarColor() {},
         clearChat() { chatMessages.textContent = ''; },
@@ -76,10 +85,15 @@ function createFixture(options = {}) {
         },
     };
     const electronAPI = {
-        onCanvasContentUpdate() {
+        onCanvasContentUpdate(listener) {
             if (options.failCanvasRegistration) throw new Error('controlled canvas listener failure');
+            canvasContentListener = listener;
+            return () => { canvasDisposals += 1; };
         },
-        onCanvasWindowClosed() {},
+        onCanvasWindowClosed(listener) {
+            canvasClosedListener = listener;
+            return () => { canvasDisposals += 1; };
+        },
         watcherStop: async () => {},
         watcherStart: async (_path, itemId, requestedTopicId) => {
             if (nextWatcherStartError) {
@@ -95,7 +109,15 @@ function createFixture(options = {}) {
             topicRequests.set(itemId, pending);
             return pending.promise;
         },
-        getChatHistory: async (itemId, requestedTopicId) => histories.get(`${itemId}:${requestedTopicId}`) || [],
+        getChatHistory: async (itemId, requestedTopicId) => {
+            const gate = nextHistoryReadGate;
+            if (gate) {
+                nextHistoryReadGate = null;
+                gate.started.resolve();
+                await gate.release.promise;
+            }
+            return histories.get(`${itemId}:${requestedTopicId}`) || [];
+        },
         getAgentConfig: async itemId => configs[itemId],
         createNewTopicForAgent: itemId => {
             const pending = deferred();
@@ -160,14 +182,14 @@ function createFixture(options = {}) {
                     return item && itemType === 'agent' ? { ...item, type: 'agent' } : null;
                 },
             },
-            topicListManager: { loadTopicList() {} },
+            topicListManager: { loadTopicList: () => options.topicListProjection?.promise },
             groupRenderer: null,
         },
         refs: {
-            currentSelectedItemRef: { get: () => selected, set: value => { selected = value; } },
+            currentSelectedItemRef: { get: () => selected, set: value => { selected = Object.freeze({ ...value }); } },
             currentTopicIdRef: { get: () => topicId, set: value => { topicId = value; } },
             currentChatHistoryRef: { get: () => history, set: value => { history = value; } },
-            attachedFilesRef: { get: () => attachedFiles, set: value => { attachedFiles = value; } },
+            attachedFilesRef: attachmentRef,
             globalSettingsRef: { get: () => ({ assistantEnabled: false, vcpServerUrl: 'http://fixture.local/v1/chat', vcpApiKey: 'test' }) },
         },
         elements: {
@@ -192,10 +214,16 @@ function createFixture(options = {}) {
         createTopicRequests,
         watcherRequests,
         sentRequests,
+        attachmentRef,
         configs,
         holdNextHistorySave() {
             const gate = { started: deferred(), release: deferred() };
             nextHistorySaveGate = gate;
+            return gate;
+        },
+        holdNextHistoryRead() {
+            const gate = { started: deferred(), release: deferred() };
+            nextHistoryReadGate = gate;
             return gate;
         },
         failNextHistorySave(message = 'controlled save failure') {
@@ -214,8 +242,16 @@ function createFixture(options = {}) {
         },
         savedSettings,
         historySaveCount: () => historySaveCount,
+        canvas: {
+            emitContent: value => canvasContentListener?.(value),
+            emitClosed: () => canvasClosedListener?.(),
+            disposalCount: () => canvasDisposals,
+        },
         persistedHistory(itemId, requestedTopicId) {
             return JSON.parse(JSON.stringify(histories.get(`${itemId}:${requestedTopicId}`) || []));
+        },
+        setPersistedHistory(itemId, requestedTopicId, messages) {
+            histories.set(`${itemId}:${requestedTopicId}`, JSON.parse(JSON.stringify(messages)));
         },
         state: () => ({
             selected,
@@ -224,6 +260,7 @@ function createFixture(options = {}) {
                 ? window.localStorage.getItem(`lastActiveTopic_${selected.id}_${selected.type}`)
                 : null,
             history: [...history],
+            attachedFiles: [...attachedFiles],
             visibleMessageIds: [...chatMessages.querySelectorAll('.message-item:not(.topic-timestamp-bubble)')]
                 .map(element => element.dataset.messageId),
         }),
@@ -271,6 +308,28 @@ test('startup restoration selects the last durable assistant and topic', async (
     assert.equal(state.selected.id, 'agent-b');
     assert.equal(state.topicId, 'topic-b-2');
     assert.deepEqual(state.history.map(message => message.id), ['b2-message']);
+    fixture.dom.window.close();
+});
+
+test('startup restoration waits for the topic projection consumer', async () => {
+    const topicListProjection = deferred();
+    const fixture = createFixture({ topicListProjection });
+    let restored = false;
+    const restoring = fixture.chatManager.restoreLastOpenState({
+        lastOpenItemId: 'agent-b',
+        lastOpenItemType: 'agent',
+        lastOpenTopicId: 'topic-b-2',
+    }).then(result => {
+        restored = result;
+        return result;
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(restored, false, 'restoration resolved before the topic projection completed');
+    topicListProjection.resolve();
+    assert.equal(await restoring, true);
     fixture.dom.window.close();
 });
 
@@ -402,6 +461,38 @@ test('a failed durable save preserves the draft and retracts the optimistic mess
     assert.deepEqual(state.history.map(message => message.id), ['a-message']);
     assert.deepEqual(state.visibleMessageIds.filter(Boolean), ['a-message']);
     assert.equal(fixture.sentRequests.length, 0);
+    fixture.dom.window.close();
+});
+
+test('an attachment added while the outgoing message is persisting remains in the draft', async () => {
+    const fixture = createFixture();
+    const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selected;
+
+    const firstAttachment = {
+        file: { name: 'sent.txt', type: 'text/plain', size: 4 },
+        originalName: 'sent.txt',
+        localPath: '/tmp/sent.txt',
+    };
+    fixture.attachmentRef.append(firstAttachment);
+    fixture.window.document.getElementById('messageInput').value = 'send with attachment';
+    const saveGate = fixture.holdNextHistorySave();
+    const sending = fixture.chatManager.handleSendMessage();
+    await saveGate.started.promise;
+
+    const lateAttachment = {
+        file: { name: 'next.txt', type: 'text/plain', size: 4 },
+        originalName: 'next.txt',
+        localPath: '/tmp/next.txt',
+    };
+    fixture.attachmentRef.append(lateAttachment);
+    saveGate.release.resolve();
+    await sending;
+
+    assert.deepEqual(fixture.state().attachedFiles, [firstAttachment, lateAttachment]);
+    assert.equal(fixture.window.document.getElementById('messageInput').value, 'send with attachment');
     fixture.dom.window.close();
 });
 
@@ -538,5 +629,76 @@ test('a deletion completed for an old assistant cannot rewrite the new assistant
     assert.equal(state.selected.id, 'agent-b');
     assert.equal(state.topicId, 'topic-b');
     assert.deepEqual(state.history.map(message => message.id), ['b-message']);
+    fixture.dom.window.close();
+});
+
+test('ChatManager dispose retracts Canvas subscriptions and ignores late Canvas events', async () => {
+    const fixture = createFixture();
+    const input = fixture.window.document.getElementById('messageInput');
+    fixture.canvas.emitContent({ content: 'before-dispose' });
+    assert.match(input.value, /VCPChatCanvas/);
+    input.value = 'stable';
+
+    await fixture.chatManager.dispose();
+    await fixture.chatManager.dispose();
+    fixture.canvas.emitContent({ content: 'late' });
+    fixture.canvas.emitClosed();
+
+    assert.equal(fixture.canvas.disposalCount(), 2);
+    assert.equal(input.value, 'stable');
+    assert.equal(fixture.chatManager.isReady(), false);
+    fixture.dom.window.close();
+});
+
+test('a history-file sync resolving after selection changes cannot mutate the new conversation', async () => {
+    const fixture = createFixture();
+    const selectedB = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+    await selectedB;
+
+    fixture.setPersistedHistory('agent-b', 'topic-b', [
+        { id: 'late-b-message', role: 'assistant', content: 'Late B', timestamp: 4 },
+    ]);
+    const historyRead = fixture.holdNextHistoryRead();
+    const sync = fixture.chatManager.syncHistoryFromFile('agent-b', 'agent', 'topic-b');
+    await historyRead.started.promise;
+
+    const selectedA = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selectedA;
+    historyRead.release.resolve();
+    await sync;
+
+    const state = fixture.state();
+    assert.equal(state.selected.id, 'agent-a');
+    assert.equal(state.topicId, 'topic-a');
+    assert.deepEqual(state.history.map(message => message.id), ['a-message']);
+    assert.deepEqual(state.visibleMessageIds.filter(Boolean), ['a-message']);
+    fixture.dom.window.close();
+});
+
+test('a history-file sync resolving after dispose cannot mutate history or the DOM', async () => {
+    const fixture = createFixture();
+    const selected = fixture.chatManager.selectItem('agent-b', 'agent', 'Agent B', null, fixture.configs['agent-b']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-b').resolve(fixture.configs['agent-b'].topics);
+    await selected;
+
+    fixture.setPersistedHistory('agent-b', 'topic-b', [
+        { id: 'late-b-message', role: 'assistant', content: 'Late B', timestamp: 4 },
+    ]);
+    const historyRead = fixture.holdNextHistoryRead();
+    const sync = fixture.chatManager.syncHistoryFromFile('agent-b', 'agent', 'topic-b');
+    await historyRead.started.promise;
+    const beforeDispose = fixture.state();
+    const disposal = fixture.chatManager.dispose();
+    historyRead.release.resolve();
+    await Promise.all([sync, disposal]);
+
+    const state = fixture.state();
+    assert.deepEqual(state.history, beforeDispose.history);
+    assert.deepEqual(state.visibleMessageIds, beforeDispose.visibleMessageIds);
     fixture.dom.window.close();
 });

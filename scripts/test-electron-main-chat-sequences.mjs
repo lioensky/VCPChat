@@ -19,6 +19,7 @@ const electron = process.platform === 'darwin'
     ? path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
     : path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const timeout = 45_000;
+const protocolTimeout = positiveInteger(process.env.VCPCHAT_SEQUENCE_PROTOCOL_TIMEOUT_MS, 120_000);
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const safeFilePart = value => String(value).replace(/[^a-z0-9._-]+/gi, '-').slice(0, 80) || 'unknown';
 const requestedUiMode = process.env.VCPCHAT_SEQUENCE_UI_MODE || 'next';
@@ -160,6 +161,27 @@ async function writeAgent(appData, id, topics) {
             content: `${id}/${topicId}`,
             timestamp: 1,
         }]), 'utf8');
+    }
+}
+
+async function terminateChildTree(child) {
+    if (process.platform === 'win32') {
+        await new Promise(resolve => {
+            const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+                windowsHide: true,
+                stdio: 'ignore',
+            });
+            killer.once('error', resolve);
+            killer.once('exit', resolve);
+        });
+        await waitForChildExit(child);
+        return;
+    }
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill('SIGTERM');
+    if (!await waitForChildExit(child)) {
+        child.kill('SIGKILL');
+        await waitForChildExit(child);
     }
 }
 
@@ -341,7 +363,10 @@ try {
         if (child.exitCode !== null) throw new Error(`Electron exited: ${stderr.value}`);
         try { await requestJson(`http://127.0.0.1:${debugPort}/json/version`); break; } catch { await sleep(100); }
     }
-    browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
+    browser = await puppeteer.connect({
+        browserURL: `http://127.0.0.1:${debugPort}`,
+        protocolTimeout,
+    });
     let page;
     while (Date.now() < deadline && !page) {
         page = (await browser.pages()).find(candidate => candidate.url().includes('main.html'));
@@ -384,6 +409,34 @@ try {
         rendererProvider: true,
         streamProvider: true,
     }, 'main renderer must use explicit providers without compatibility globals');
+    const stateFacadeBoundary = await page.evaluate(() => {
+        const descriptor = Object.getOwnPropertyDescriptor(window, 'VCPMainChatState');
+        const snapshot = window.VCPMainChatState.snapshot();
+        return {
+            frozen: Object.isFrozen(window.VCPMainChatState),
+            writable: descriptor?.writable,
+            configurable: descriptor?.configurable,
+            snapshotFrozen: Object.isFrozen(snapshot),
+            selectedFrozen: Object.isFrozen(snapshot.selectedItem),
+            selectedConfigFrozen: snapshot.selectedItem?.config == null || Object.isFrozen(snapshot.selectedItem.config),
+            historyFrozen: Object.isFrozen(snapshot.history),
+            historyEntryFrozen: snapshot.history.length === 0 || Object.isFrozen(snapshot.history[0]),
+            hasMutationRef: 'selectedItemRef' in window.VCPMainChatState || 'topicIdRef' in window.VCPMainChatState,
+            hasHistoryRef: 'historyRef' in window.VCPMainChatState,
+        };
+    });
+    assert.deepEqual(stateFacadeBoundary, {
+        frozen: true,
+        writable: false,
+        configurable: false,
+        snapshotFrozen: true,
+        selectedFrozen: true,
+        selectedConfigFrozen: true,
+        historyFrozen: true,
+        historyEntryFrozen: true,
+        hasMutationRef: false,
+        hasHistoryRef: false,
+    }, 'VCPMainChatState must remain a frozen, non-replaceable read-only plugin facade');
     await page.waitForFunction(ids => ids.every(id => document.querySelector(`#agentList > [data-item-id="${id}"][data-item-type="agent"]`)), { timeout }, identities);
 
     const click = async selector => page.evaluate(value => document.querySelector(value)?.click(), selector);
@@ -871,14 +924,13 @@ try {
         while (fixture.requests.length <= before && Date.now() < requestDeadline) await sleep(10);
         assert.ok(fixture.requests.length > before, `standalone VCP request did not reach fixture: ${content}`);
     };
-    const waitForAuxiliaryPage = async fragment => {
+    const waitForAuxiliaryPage = async (fragment, { exclude = null } = {}) => {
         const deadline = Date.now() + timeout;
         while (Date.now() < deadline) {
-            const candidate = (await browser.pages()).find(entry => !entry.isClosed() && entry.url().includes(fragment));
+            const candidate = (await browser.pages()).find(entry => entry !== exclude && !entry.isClosed() && entry.url().includes(fragment));
             if (candidate) {
                 trackPage(candidate);
-                await candidate.waitForSelector('#messageInput:not([disabled])', { timeout: 8_000 });
-                return candidate;
+                try { await candidate.waitForSelector('#messageInput:not([disabled])', { timeout: 1_500 }); return candidate; } catch { /* stale/crashed candidate */ }
             }
             await sleep(50);
         }
@@ -910,6 +962,46 @@ try {
         await fixture.waitPending(holdKey);
         await auxiliaryPage.click(closeSelector);
         fixture.release(holdKey);
+        await waitForAuxiliaryClose(auxiliaryPage);
+
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        const reloadKey = `${label}-reload-${Date.now()}`;
+        await auxiliaryPage.type('#messageInput', `sequence-hold-${reloadKey}`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await fixture.waitPending(reloadKey);
+        await auxiliaryPage.reload({ waitUntil: 'domcontentloaded', timeout: 20_000 });
+        fixture.release(reloadKey);
+        await auxiliaryPage.waitForSelector('#messageInput:not([disabled])', { timeout });
+        await auxiliaryPage.waitForFunction(() => (
+            !document.querySelector('.message-item.is-thinking, .message-item.streaming')
+            && !document.querySelector('#messageInput')?.disabled
+        ), { timeout });
+        await auxiliaryPage.close();
+        await waitForAuxiliaryClose(auxiliaryPage);
+
+        if (process.env.VCPCHAT_AUX_CRASH_MATRIX !== '1') return;
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        const crashKey = `${label}-crash-${Date.now()}`;
+        await auxiliaryPage.type('#messageInput', `sequence-hold-${crashKey}`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await fixture.waitPending(crashKey);
+        const crashSession = await auxiliaryPage.createCDPSession();
+        try { await crashSession.send('Page.crash'); } catch (error) {
+            if (!/Target closed|Session closed|crash/i.test(String(error?.message || error))) throw error;
+        }
+        try { await crashSession.detach(); } catch { /* crashed target */ }
+        fixture.release(crashKey);
+        const crashedPage = auxiliaryPage;
+        await sleep(1_000);
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment, { exclude: crashedPage });
+        await auxiliaryPage.waitForFunction(() => (
+            !document.querySelector('.message-item.is-thinking, .message-item.streaming')
+            && !document.querySelector('#messageInput')?.disabled
+        ), { timeout });
+        await auxiliaryPage.close();
         await waitForAuxiliaryClose(auxiliaryPage);
     };
     await sendStandalone('standalone-success');
@@ -1281,11 +1373,7 @@ try {
     console.log(`Sequence coverage: actions=${Object.keys(coverageReport.actions).length}, pairs=${Object.keys(coverageReport.actionPairs).length}, transitions=${Object.keys(coverageReport.transitions).length}, faults=${Object.keys(coverageReport.faults).length}, required=${coverageReport.passedRequiredEdges.length}/${coverageReport.requiredEdges.length}`);
 } finally {
     try { await browser?.disconnect(); } catch { /* noop */ }
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-    if (!await waitForChildExit(child)) {
-        child.kill('SIGKILL');
-        await waitForChildExit(child);
-    }
+    await terminateChildTree(child);
     await fixture.close();
     await fs.rm(appData, { recursive: true, force: true });
 }

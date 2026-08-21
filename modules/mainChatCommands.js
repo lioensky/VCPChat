@@ -1,6 +1,8 @@
 (() => {
     let chatManagerProvider = null;
+    let capabilities = Object.create(null);
     const api = () => window.chatAPI || window.electronAPI;
+    const capability = (name, fallback) => capabilities[name] || fallback?.();
     const windowCommand = (name, fallback) => window.VCPWindowState?.[name]
         ? window.VCPWindowState[name]()
         : fallback?.();
@@ -21,7 +23,7 @@
     }
 
     function openSettings() {
-        const open = () => window.uiHelperFunctions?.openModal?.('globalSettingsModal');
+        const open = () => capability('uiHelper', () => window.uiHelperFunctions)?.openModal?.('globalSettingsModal');
         return window.VCPPerformance?.measure
             ? window.VCPPerformance.measure('settings.open', open, { source: 'main-chat-command' })
             : open();
@@ -32,19 +34,19 @@
     }
 
     function toggleTheme() {
-        const currentTheme = window.uiManager?.getThemeState?.()?.effective || 'light';
+        const currentTheme = capability('uiManager', () => window.uiManager)?.getThemeState?.()?.effective || 'light';
         const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        if (!window.VCPAppearanceStudio?.setThemeMode?.(nextTheme, { source: 'main-chat-command' })) {
+        if (!capability('appearanceStudio', () => window.VCPAppearanceStudio)?.setThemeMode?.(nextTheme, { source: 'main-chat-command' })) {
             api()?.setTheme?.(nextTheme);
         }
     }
 
     function createItem() {
-        return window.topTabManager?.openCreateDialog?.();
+        return capability('topTabManager', () => window.topTabManager)?.openCreateDialog?.();
     }
 
     function notify(message, type = 'error') {
-        window.uiHelperFunctions?.showToastNotification?.(message, type);
+        capability('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.(message, type);
     }
 
     async function openForum() {
@@ -76,15 +78,15 @@
     }
 
     function toggleNotificationFilter() {
-        return window.filterManager?.toggleFilterMode?.();
+        return capability('filterManager', () => window.filterManager)?.toggleFilterMode?.();
     }
 
     function openNotificationFilterSettings() {
-        return window.filterManager?.openFilterRulesModal?.();
+        return capability('filterManager', () => window.filterManager)?.openFilterRulesModal?.();
     }
 
     function clearNotifications() {
-        return window.notificationRenderer?.clearPersistentNotifications?.()
+        return capability('notificationRenderer', () => window.notificationRenderer)?.clearPersistentNotifications?.()
             || { success: false, removed: 0 };
     }
 
@@ -105,11 +107,11 @@
             return { ...result, navigationSuccess: false, warning: '聊天界面尚未就绪，请稍后重试。' };
         }
         try {
-            await window.itemListManager?.loadItems?.();
+            await capability('itemListManager', () => window.itemListManager)?.loadItems?.();
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             await chatManagerProvider?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
-            window.uiManager?.switchToTab?.('settings');
+            capability('uiManager', () => window.uiManager)?.switchToTab?.('settings');
             return { ...result, navigationSuccess: true };
         } catch (error) {
             console.error('[MainChatCommands] Agent created but UI navigation failed:', error);
@@ -129,11 +131,11 @@
             return { ...result, navigationSuccess: false, warning: '聊天界面尚未就绪，请稍后重试。' };
         }
         try {
-            await window.itemListManager?.loadItems?.();
+            await capability('itemListManager', () => window.itemListManager)?.loadItems?.();
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             await chatManagerProvider?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
             if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
-            window.uiManager?.switchToTab?.('settings');
+            capability('uiManager', () => window.uiManager)?.switchToTab?.('settings');
             return { ...result, navigationSuccess: true };
         } catch (error) {
             console.error('[MainChatCommands] Group created but UI navigation failed:', error);
@@ -170,6 +172,21 @@
         name,
         `main.${name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`,
     ]));
+    window.addEventListener('vcp-main-chat-commands-configure', event => {
+        const provider = event.detail?.chatManager;
+        const nextCapabilities = event.detail?.capabilities;
+        if (!provider || typeof provider.selectItem !== 'function') {
+            throw new TypeError('MainChatCommands requires a chat manager provider.');
+        }
+        if (!nextCapabilities || typeof nextCapabilities !== 'object') {
+            throw new TypeError('MainChatCommands capabilities must be an object.');
+        }
+        if (chatManagerProvider && chatManagerProvider !== provider) {
+            throw new Error('MainChatCommands chat manager provider is already registered.');
+        }
+        chatManagerProvider = provider;
+        capabilities = Object.freeze({ ...nextCapabilities });
+    }, { once: true });
     if (commandRegistry) {
         Object.entries(handlers).forEach(([name, handler]) => {
             const id = commandIds[name];
@@ -180,17 +197,12 @@
         name,
         (...args) => commandRegistry ? commandRegistry.execute(commandIds[name], ...args) : handler(...args),
     ]));
-    window.MainChatCommands = Object.freeze({
+    Object.defineProperty(window, 'MainChatCommands', { value: Object.freeze({
         ...facade,
         getWindowState: () => window.VCPWindowState?.getState?.() || Object.freeze({ ready: false, maximized: false }),
         subscribeWindowState: (listener, options) => window.VCPWindowState?.subscribe?.(listener, options) || (() => false),
         execute: (id, ...args) => commandRegistry?.execute(id, ...args),
         list: () => commandRegistry?.list() || [],
         register: (definition, options) => commandRegistry?.register(definition, options),
-        setChatManagerProvider(provider) {
-            if (!provider || typeof provider.selectItem !== 'function') throw new TypeError('MainChatCommands requires a chat manager provider.');
-            if (chatManagerProvider && chatManagerProvider !== provider) throw new Error('MainChatCommands chat manager provider is already registered.');
-            chatManagerProvider = provider;
-        },
-    });
+    }), writable: false, configurable: false });
 })();

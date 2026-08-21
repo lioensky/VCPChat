@@ -83,10 +83,8 @@ class TTLCache {
 // Enhanced avatar color cache with TTL
 export const avatarColorCache = new TTLCache(24 * 60 * 60 * 1000); // 24 hours
 
-// Start periodic cleanup
-setInterval(() => {
-    avatarColorCache.cleanup();
-}, 60 * 60 * 1000); // Clean up every hour
+// Expired entries are removed on access. A module-level interval would keep a
+// renderer process alive after its Surface owner has been disposed.
 
 // Enhanced color extraction with better error handling
 export function getDominantAvatarColor(imageUrl) {

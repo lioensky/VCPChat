@@ -2374,12 +2374,12 @@ function removeMessageById(messageId, saveHistory = false, root = mainRendererRe
         item.remove();
     }
 
-    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+    const currentChatHistoryArray = [...mainRendererReferences.currentChatHistoryRef.get()];
     const index = currentChatHistoryArray.findIndex(m => m.id === messageId);
 
     if (index > -1) {
         currentChatHistoryArray.splice(index, 1);
-        mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+        mainRendererReferences.currentChatHistoryRef.set(currentChatHistoryArray);
         mainRendererReferences.messageCommands.updateSendButtonState?.();
 
         if (saveHistory) {
@@ -3544,11 +3544,12 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                                     if (typeToSave === 'user') {
                                         mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarCalculatedColor: dominantColor });
                                     } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id) {
-                                        if (currentSelectedItem.config) {
-                                            currentSelectedItem.config.avatarCalculatedColor = dominantColor;
-                                        } else {
-                                            currentSelectedItem.avatarCalculatedColor = dominantColor;
-                                        }
+                                        const liveSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+                                        if (liveSelectedItem?.id !== idToSaveFor || liveSelectedItem.type !== 'agent') return;
+                                        const nextSelectedItem = liveSelectedItem.config
+                                            ? { ...liveSelectedItem, config: { ...liveSelectedItem.config, avatarCalculatedColor: dominantColor } }
+                                            : { ...liveSelectedItem, avatarCalculatedColor: dominantColor };
+                                        mainRendererReferences.currentSelectedItemRef.set(nextSelectedItem);
                                     }
                                 }
                             });
@@ -3623,7 +3624,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     if (isInitialLoad && message.isThinking && !isActiveStreamRequest) {
         // 仅清理没有对应活动请求的陈旧思考占位。
         // 活动异步请求可能在用户切换 Agent/话题后重新加载，不能在这里误删。
-        const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
+        const currentChatHistoryArray = [...mainRendererReferences.currentChatHistoryRef.get()];
         const thinkingMsgIndex = currentChatHistoryArray.findIndex(m => m.id === message.id && m.isThinking);
         if (thinkingMsgIndex > -1) {
             currentChatHistoryArray.splice(thinkingMsgIndex, 1);

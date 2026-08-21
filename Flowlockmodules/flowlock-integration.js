@@ -5,6 +5,7 @@
 console.log('[Flowlock Integration] Loading integration script (multi-session)...');
 let chatManagerProvider = null;
 let historyMutationAuthorityProvider = null;
+let settingsProvider = null;
 const mainChatSnapshot = () => window.VCPMainChatState?.snapshot?.() || { selectedItem: null, topicId: null };
 
 /**
@@ -26,7 +27,7 @@ function initializeFlowlock() {
         electronAPI: electronAPI,
         uiHelper: window.uiHelperFunctions,
         globalSettingsRef: {
-            get: () => window.globalSettings || {}
+            get: () => settingsProvider?.get?.() || {}
         },
         continueWritingForContext: continueWritingForContext
     });
@@ -61,7 +62,7 @@ function normalizeFlowlockHeartbeatPrompt(prompt) {
 async function continueWritingForContext(params) {
     const { agentId, topicId, prompt, messageId } = params;
     const chatAPI = window.chatAPI || window.electronAPI;
-    const globalSettings = window.globalSettings || {};
+    const globalSettings = settingsProvider?.get?.() || {};
 
     if (!agentId || !topicId) {
         console.error('[Flowlock] continueWritingForContext: missing agentId or topicId');
@@ -422,18 +423,24 @@ function initializeFlowlockIntegration(dependencies = {}) {
         if (historyMutationAuthorityProvider && historyMutationAuthorityProvider !== mutationAuthority) {
             throw new Error('Flowlock history mutation authority is already registered.');
         }
+        if (!dependencies.settings || typeof dependencies.settings.get !== 'function') {
+            throw new TypeError('Flowlock integration requires a settings provider.');
+        }
         chatManagerProvider = provider;
         historyMutationAuthorityProvider = mutationAuthority;
+        settingsProvider = dependencies.settings;
         initializeFlowlock();
         setupFlowlockInteractions();
         setupFlowlockShortcuts();
 
         // 页面卸载时清理
-        window.addEventListener('beforeunload', () => {
+        const cleanup = () => {
             if (window.flowlockManager) {
                 window.flowlockManager.cleanup();
             }
-        });
+        };
+        if (dependencies.listenerOwner?.add) dependencies.listenerOwner.add(window, 'beforeunload', cleanup, { once: true });
+        else window.addEventListener('beforeunload', cleanup, { once: true });
 
         console.log('[Flowlock Integration] Full integration complete (multi-session).');
     } catch (error) {

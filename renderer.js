@@ -8,6 +8,16 @@ import { createStreamProjection } from './modules/renderer/streamManager.js';
 import { createMainChatEventBridge } from './modules/renderer/mainChatEventBridge.js';
 import { createOwnedPreloadSubscription } from './modules/renderer/ownedPreloadSubscription.js';
 import { createTopicSelectionReadiness } from './modules/renderer/topicSelectionReadiness.js';
+import { createTtsSurfaceOwner } from './modules/renderer/ttsSurfaceOwner.js';
+import { createMainChatAuxiliaryEventOwner } from './modules/renderer/mainChatAuxiliaryEventOwner.js';
+import { createMainChatFlowlockOwner } from './modules/renderer/mainChatFlowlockOwner.js';
+import { createForwardMessageOwner } from './modules/renderer/forwardMessageOwner.js';
+import { createMainChatSettingsOwner } from './modules/renderer/mainChatSettingsOwner.js';
+import { createDomListenerOwner } from './modules/renderer/domListenerOwner.js';
+import { createMainChatThemeOwner } from './modules/renderer/mainChatThemeOwner.js';
+import { createMainChatSettingsPresentationOwner } from './modules/renderer/mainChatSettingsPresentationOwner.js';
+import { createMainChatAttachmentOwner } from './modules/renderer/mainChatAttachmentOwner.js';
+import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -16,7 +26,7 @@ import { chatManager } from './modules/chatManager.js';
 window.VCPLifecycleInspector?.setStreamDiagnosticsProvider?.(() => streamManager.getDiagnostics());
 
 // --- Globals ---
-let globalSettings = {
+const mainChatSettingsOwner = createMainChatSettingsOwner({ initial: {
     sidebarWidth: 260,
     showHomeVisualBrand: true,
     showHomeVisualTagline: true,
@@ -76,39 +86,29 @@ let globalSettings = {
         providerUrl: 'https://api.siliconflow.cn',
         providerKey: ''
     }
-};
-// Unified selected item state
-let currentSelectedItem = {
+} });
+const initialSelectedItem = {
     id: null, // Can be agentId or groupId
     type: null, // 'agent' or 'group'
     name: null,
     avatarUrl: null,
     config: null // Store full config object for the selected item
 };
-let currentTopicId = null;
-let currentChatHistory = [];
-const mainChatStateAuthority = createMainChatStateAuthority({ selectedItem: currentSelectedItem, topicId: currentTopicId });
+const mainChatStateAuthority = createMainChatStateAuthority({ selectedItem: initialSelectedItem, topicId: null, history: [] });
+const currentSelectedItemRef = mainChatStateAuthority.selectedItemRef;
+const currentTopicIdRef = mainChatStateAuthority.topicIdRef;
+const mainHistoryRef = mainChatStateAuthority.historyRef;
 const topicSelectionReadiness = createTopicSelectionReadiness();
 const chatAPI = window.chatAPI || window.electronAPI;
 const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
 
 // Plugin-facing state is read-only; mutation authority remains here.
-window.VCPMainChatState = mainChatStateAuthority.consumer;
-const setCurrentSelectedItem = value => {
-    currentSelectedItem = value;
-    mainChatStateAuthority.setSelectedItem(value);
-};
-const setCurrentTopicId = value => {
-    currentTopicId = value;
-    mainChatStateAuthority.setTopicId(value);
-};
-let attachedFiles = [];
-let audioContext = null;
-let currentAudioSource = null;
-let ttsAudioQueue = []; // 新增：TTS音频播放队列
-let isTtsPlaying = false; // 新增：TTS播放状态标志
-let currentPlayingMsgId = null; // 新增：跟踪当前播放的msgId以控制UI
-let currentTtsSessionId = -1; // 新增：会话ID，用于处理异步时序问题
+Object.defineProperty(window, 'VCPMainChatState', {
+    value: Object.freeze(mainChatStateAuthority.consumer),
+    writable: false,
+    configurable: false,
+});
+const getGlobalSettings = () => mainChatSettingsOwner.get();
 
 // --- Main-window composition bindings ---
 const {
@@ -132,124 +132,13 @@ let globalSettingsForm = null;
 let userAvatarInput = null;
 let userAvatarPreview = null;
 console.log('[Renderer EARLY CHECK] selectItemPromptForSettings element:', selectItemPromptForSettings); // 添加日志
-const DEFAULT_SEND_BUTTON_HTML = sendMessageBtn?.innerHTML || '';
-const INTERRUPT_SEND_BUTTON_HTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="6" y="6" width="12" height="12" rx="1"></rect>
-    </svg>
-`;
-
 function isContextForCurrentChat(context) {
+    const currentSelectedItem = currentSelectedItemRef.get();
+    const currentTopicId = currentTopicIdRef.get();
     if (!context || !currentSelectedItem?.id || !currentTopicId) return false;
     const contextItemId = context.groupId || context.agentId;
     return contextItemId === currentSelectedItem.id && context.topicId === currentTopicId;
 }
-
-function getInterruptibleMessageForCurrentChat() {
-    if (Array.isArray(currentChatHistory) && currentChatHistory.length > 0) {
-        for (let i = currentChatHistory.length - 1; i >= 0; i--) {
-            const message = currentChatHistory[i];
-            if (!message || message.role !== 'assistant') continue;
-
-            const messageItem = chatMessagesDiv?.querySelector(`.message-item[data-message-id="${message.id}"]`);
-            const isStreaming = Boolean(messageItem?.classList.contains('streaming'));
-            const hasMountedPlaceholder = Boolean(messageItem?.isConnected && message.isThinking === true);
-            if (hasMountedPlaceholder || isStreaming) {
-                return { ...message, isStreaming };
-            }
-        }
-    }
-
-    const activeStreamingMessageId = streamManager?.getActiveStreamingMessageId?.();
-    const activeStreamingContext = streamManager?.getActiveStreamingContext?.();
-    if (!activeStreamingMessageId || !isContextForCurrentChat(activeStreamingContext)) {
-        return null;
-    }
-
-    const activeStreamingMessage = currentChatHistory.find(
-        (message) => message?.id === activeStreamingMessageId && message.role === 'assistant'
-    );
-    if (activeStreamingMessage) {
-        return { ...activeStreamingMessage, isStreaming: true };
-    }
-
-    return {
-        id: activeStreamingMessageId,
-        role: 'assistant',
-        name: activeStreamingContext.agentName || currentSelectedItem?.name || currentSelectedItem?.id,
-        agentId: activeStreamingContext.agentId,
-        groupId: activeStreamingContext.groupId,
-        isGroupMessage: activeStreamingContext.isGroupMessage === true,
-        avatarUrl: activeStreamingContext.avatarUrl || currentSelectedItem?.avatarUrl,
-        avatarColor: activeStreamingContext.avatarColor || currentSelectedItem?.config?.avatarCalculatedColor,
-        isStreaming: true
-    };
-}
-
-function updateSendButtonState() {
-    if (!sendMessageBtn) return;
-
-    const nextMode = getInterruptibleMessageForCurrentChat() ? 'interrupt' : 'send';
-    sendMessageBtn.dataset.mode = nextMode;
-    sendMessageBtn.classList.toggle('interrupt-mode', nextMode === 'interrupt');
-    sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
-    sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
-    sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
-}
-
-async function interruptActiveResponseFromSendButton() {
-    const activeMessage = getInterruptibleMessageForCurrentChat();
-    if (!activeMessage) return false;
-
-    const isGroupMessage = activeMessage.isGroupMessage === true || currentSelectedItem?.type === 'group';
-    let result = { success: false, error: '无法发送中止请求。' };
-    if (isGroupMessage) {
-        if (chatAPI && typeof chatAPI.interruptGroupRequest === 'function') {
-            result = await chatAPI.interruptGroupRequest(activeMessage.id);
-        } else {
-            result = { success: false, error: '群聊中止接口不可用。' };
-        }
-    } else if (interruptHandler && typeof interruptHandler.interrupt === 'function') {
-        result = await interruptHandler.interrupt(activeMessage.id);
-    }
-
-    if (result.success) {
-        // 与消息右键菜单保持一致：中止成功后等待主进程发送最终的 end/error 事件。
-        // 不在此处提前 finalize，否则仍在 IPC 队列中的最后几个 chunk 会因消息已 finalized
-        // 而被 appendStreamChunk 丢弃，导致已经输出到界面上的半截内容无法完整落盘。
-        uiHelperFunctions?.showToastNotification?.('已发送中止信号。', 'success');
-        return true;
-    }
-
-    // 只有后端中止请求失败时才本地兜底收尾，避免消息永久停留在流式状态。
-    const localOutcome = await mainChatAdapter?.cancelStream?.(
-        activeMessage.id,
-        result.error || 'interrupt-request-failed'
-    );
-    if (!localOutcome) {
-        streamManager?.discardStreamingMessage?.(activeMessage.id);
-        currentChatHistory = currentChatHistory.filter(message => message?.id !== activeMessage.id);
-        messageRenderer?.removeMessageById?.(activeMessage.id, false);
-    }
-
-    updateSendButtonState();
-    uiHelperFunctions?.showToastNotification?.(`中止失败：${result.error || '未知错误'}，已在本地停止。`, 'error');
-    return true;
-}
-
-async function handleSendButtonAction() {
-    if (getInterruptibleMessageForCurrentChat()) {
-        await interruptActiveResponseFromSendButton();
-        return;
-    }
-
-    if (chatManager && typeof chatManager.handleSendMessage === 'function') {
-        await chatManager.handleSendMessage();
-    }
-}
-
-updateSendButtonState();
 
 // Cropped file state is now managed within modules/ui-helpers.js
 let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的引用
@@ -284,12 +173,22 @@ import { createMainChatStateAuthority } from './modules/chat/mainChatStateAuthor
 import { createNonStreamingEventConsumer } from './modules/renderer/nonStreamingEventConsumer.js';
 import { createChatPresentationState } from './modules/chat/chatPresentationState.js';
 
+const ttsSurfaceOwner = createTtsSurfaceOwner({
+    subscribePlay: callback => chatAPI.onPlayTtsAudio(callback),
+    subscribeStop: callback => chatAPI.onStopTtsAudio(callback),
+    createAudioContext: () => new (window.AudioContext || window.webkitAudioContext)(),
+    decodeBase64: value => Uint8Array.from(atob(value), character => character.charCodeAt(0)).buffer,
+    updateSpeakingIndicator: (messageId, active) => uiHelperFunctions.updateSpeakingIndicator(messageId, active),
+    showError: message => uiHelperFunctions.showToastNotification(message, 'error'),
+});
+
 // First production seam for the Chat Kernel migration. Legacy refs remain
 // compatible while consumers move to this explicit context.
+const initialChatState = mainChatStateAuthority.snapshot();
 const chatContext = createChatContext({
-    selectedItem: currentSelectedItem,
-    topicId: currentTopicId,
-    history: currentChatHistory
+    selectedItem: initialChatState.selectedItem,
+    topicId: initialChatState.topicId,
+    history: mainHistoryRef.get()
 });
 const chatRepository = createChatRepository(chatAPI);
 const historyMutationAuthority = createChatHistoryMutationAuthority({ repository: chatRepository });
@@ -300,15 +199,103 @@ let mainChatAdapter = null;
 let nonStreamingEventConsumer = null;
 let mainChatEventBridge = null;
 const ownedRendererSubscriptions = new Set();
+const mainChatDomListenerOwner = createDomListenerOwner();
+const topicListDomListenerOwner = createDomListenerOwner();
+const mainChatAttachmentOwner = createMainChatAttachmentOwner({
+    renderPreview: files => uiHelperFunctions.updateAttachmentPreview(files, attachmentPreviewArea),
+});
+const mainChatSendOwner = createMainChatSendOwner({
+    button: sendMessageBtn,
+    messagesRoot: chatMessagesDiv,
+    historyRef: mainHistoryRef,
+    selectedItemRef: currentSelectedItemRef,
+    topicIdRef: currentTopicIdRef,
+    streamProjection: streamManager,
+    chatAPI,
+    interruptHandler,
+    getAdapter: () => mainChatAdapter,
+    getChatManager: () => chatManager,
+    messageRenderer,
+    notify: (message, type) => uiHelperFunctions?.showToastNotification?.(message, type),
+});
+const mainChatSettingsPresentationOwner = createMainChatSettingsPresentationOwner({
+    documentRef: document,
+    settingsOwner: mainChatSettingsOwner,
+    listenerOwner: mainChatDomListenerOwner,
+    chatAPI,
+    elements: {
+        leftSidebar,
+        rightNotificationsSidebar,
+        vcpLogConnectionStatus: vcpLogConnectionStatusDiv,
+        toggleAssistant: toggleAssistantBtn,
+        toggleSidebarMode: toggleSidebarModeBtn,
+    },
+    notificationRenderer: window.notificationRenderer,
+    messageRenderer,
+    windowRef: window,
+    getSettingsManager: () => window.settingsManager,
+    getAppearance: () => window.VCPAppearance,
+    getPretextBridge: () => window.pretextBridge,
+});
+ownedRendererSubscriptions.add(mainChatSettingsPresentationOwner);
+ownedRendererSubscriptions.add(mainChatDomListenerOwner);
+ownedRendererSubscriptions.add(topicListDomListenerOwner);
+ownedRendererSubscriptions.add(mainChatAttachmentOwner);
+ownedRendererSubscriptions.add(mainChatSendOwner);
+mainChatSendOwner.update();
+ownedRendererSubscriptions.add({
+    async dispose() {
+        const receipt = { promise: Promise.resolve() };
+        window.dispatchEvent(new CustomEvent('vcp-appearance-studio-dispose', { detail: receipt }));
+        await receipt.promise;
+    },
+});
+window.notificationRenderer?.configureCapabilities?.({
+    filterManager: window.filterManager,
+    listenerOwner: mainChatDomListenerOwner,
+});
+window.settingsManager?.configureCapabilities?.({ settings: mainChatSettingsOwner });
+window.weatherService?.configureCapabilities?.({ settings: mainChatSettingsOwner });
+window.dispatchEvent(new CustomEvent('vcp-appearance-studio-configure', { detail: {
+    settings: mainChatSettingsOwner,
+    appearance: window.VCPAppearance,
+    uiManager: window.uiManager,
+    presentation: Object.freeze({ normalize: normalizeChatPresentationMode, apply: applyChatPresentationMode }),
+} }));
+const mainChatThemeOwner = createMainChatThemeOwner({
+    settingsOwner: mainChatSettingsOwner,
+    documentRef: document,
+    presentationState,
+    getUiManager: () => window.uiManager,
+    matchMedia: query => window.matchMedia(query),
+    saveSettings: settings => chatAPI.saveSettings(settings),
+    pretextBridge: window.pretextBridge,
+    refreshLayout: () => messageRenderer?.refreshLayoutDependentState?.(),
+    syncControls: mainChatSettingsPresentationOwner.syncPresentationControls,
+    captureAnchor: mainChatSettingsPresentationOwner.capturePresentationAnchor,
+    restoreAnchor: mainChatSettingsPresentationOwner.restorePresentationAnchor,
+    scheduleFrame: callback => requestAnimationFrame(callback),
+    notify: (message, type) => uiHelperFunctions?.showToastNotification?.(message, type),
+});
+mainChatSettingsPresentationOwner.configureThemeOwner(mainChatThemeOwner);
+ownedRendererSubscriptions.add(mainChatThemeOwner);
 let releaseNextUiChatCapabilities = null;
+const forwardMessageOwner = createForwardMessageOwner({
+    chatAPI,
+    chatManager,
+    uiHelperFunctions,
+    getConversation: () => ({ item: currentSelectedItemRef.get(), topicId: currentTopicIdRef.get() }),
+});
+ownedRendererSubscriptions.add(forwardMessageOwner);
+const showForwardModal = message => forwardMessageOwner.show(message);
 
 function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMessage = null, conversation = null } = {}) {
     if (!root?.querySelector) throw new TypeError('Internal chat renderer requires a Surface root');
     const conversationCapability = createSurfaceConversation({
-        selectedItem: conversation?.selectedItem || currentSelectedItem,
-        topicId: conversation?.topicId ?? currentTopicId,
+        selectedItem: conversation?.selectedItem || currentSelectedItemRef.get(),
+        topicId: conversation?.topicId ?? currentTopicIdRef.get(),
     });
-    let localSettings = globalSettings;
+    let localSettings = getGlobalSettings();
     let disposed = false;
     const streamProjection = createStreamProjection();
     const transientStreamHistory = createStreamTransientHistory({
@@ -395,9 +382,17 @@ const startupThemeGate = new StartupThemeGate({
     applyTheme: applyInitialThemeClass,
     statusElement: document.getElementById('startupInitializationStatus'),
 });
+mainChatSettingsPresentationOwner.configureStartup({
+    loadSettings: loadSettingsWithTimeout,
+    startupThemeGate,
+});
  
  // --- Initialization ---
- document.addEventListener('DOMContentLoaded', async () => {
+ mainChatDomListenerOwner.add(document, 'DOMContentLoaded', async () => {
+    window.notificationRenderer?.configureCapabilities?.({
+        filterManager: window.filterManager,
+        listenerOwner: mainChatDomListenerOwner,
+    });
     // Initialize Emoticon Manager
     if (window.emoticonManager) {
         window.emoticonManager.initialize({
@@ -433,7 +428,7 @@ const startupThemeGate = new StartupThemeGate({
             },
             electronAPI: chatAPI,
             refs: {
-                currentSelectedItemRef: { get: () => currentSelectedItem },
+                currentSelectedItemRef,
             },
             mainRendererFunctions: {
                 selectItem: (itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) => {
@@ -472,19 +467,9 @@ const startupThemeGate = new StartupThemeGate({
 
         window.GroupRenderer.init({
             electronAPI: chatAPI,
-            globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
-            currentSelectedItemRef: {
-                get: () => currentSelectedItem,
-                set: (val) => {
-                    setCurrentSelectedItem(val);
-                }
-            },
-            currentTopicIdRef: {
-                get: () => currentTopicId,
-                set: (val) => {
-                    setCurrentTopicId(val);
-                }
-            },
+            globalSettingsRef: mainChatSettingsOwner.ref,
+            currentSelectedItemRef,
+            currentTopicIdRef,
             messageRenderer, // Explicit provider; initialized below
             uiHelper: uiHelperFunctions,
             mainRendererElements: mainRendererElementsForGroupRenderer, // 使用构造好的对象
@@ -500,12 +485,12 @@ const startupThemeGate = new StartupThemeGate({
                 highlightActiveItem: (itemId, itemType) => window.itemListManager ? window.itemListManager.highlightActiveItem(itemId, itemType) : console.error('[GroupRenderer] itemListManager not available'),
                 displaySettingsForItem: () => window.settingsManager ? window.settingsManager.displaySettingsForItem() : console.error('[GroupRenderer] settingsManager not available'),
                 loadTopicList: () => window.topicListManager ? window.topicListManager.loadTopicList() : console.error('[GroupRenderer] topicListManager not available'),
-                getAttachedFiles: () => attachedFiles,
-                clearAttachedFiles: () => { attachedFiles.length = 0; },
-                updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
+                getAttachedFiles: mainChatAttachmentOwner.get,
+                clearAttachedFiles: mainChatAttachmentOwner.clear,
+                updateAttachmentPreview: mainChatAttachmentOwner.syncPreview,
                 setCroppedFile: uiHelperFunctions.setCroppedFile,
                 getCroppedFile: uiHelperFunctions.getCroppedFile,
-                setCurrentChatHistory: (history) => currentChatHistory = history,
+                setCurrentChatHistory: history => mainHistoryRef.set(history),
                 displayTopicTimestampBubble: (itemId, itemType, topicId) => {
                     if (chatManager) {
                         return chatManager.displayTopicTimestampBubble(itemId, itemType, topicId);
@@ -528,7 +513,6 @@ const startupThemeGate = new StartupThemeGate({
         interruptHandler.initialize(chatAPI);
 
         const historyPersistence = createChatHistoryPersistence(chatRepository);
-        const mainHistoryRef = { get: () => currentChatHistory, set: (val) => currentChatHistory = val };
         const transientStreamHistory = createStreamTransientHistory({
             repository: chatRepository,
             currentHistory: { get: mainHistoryRef.get, replace: mainHistoryRef.set },
@@ -538,15 +522,9 @@ const startupThemeGate = new StartupThemeGate({
             historyMutationAuthority,
             currentChatHistoryRef: mainHistoryRef,
             transientStreamHistory,
-            currentSelectedItemRef: {
-                get: () => currentSelectedItem,
-                set: setCurrentSelectedItem
-            },
-            currentTopicIdRef: {
-                get: () => currentTopicId,
-                set: setCurrentTopicId
-            },
-            globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
+            currentSelectedItemRef,
+            currentTopicIdRef,
+            globalSettingsRef: mainChatSettingsOwner.ref,
             chatMessagesDiv,
             electronAPI: chatAPI,
             markedInstance,
@@ -555,7 +533,7 @@ const startupThemeGate = new StartupThemeGate({
             flowlockProtocol: window.flowlockProtocol,
             uiHelper: uiHelperFunctions,
             showForwardModal,
-            ensureAudioContext: initAudioContext,
+            ensureAudioContext: ttsSurfaceOwner.ensureAudioContext,
             interruptHandler,
             messageCommands: {
                 processFilesData: (...args) => chatManager.processFilesData(...args),
@@ -563,7 +541,7 @@ const startupThemeGate = new StartupThemeGate({
                 removeAttachmentFromMessage: (...args) => chatManager.removeAttachmentFromMessage(...args),
                 syncNextUiEmptyStateWithMessages: (...args) => chatManager.syncNextUiEmptyStateWithMessages(...args),
                 handleSendMessage: (...args) => chatManager.handleSendMessage(...args),
-                updateSendButtonState,
+                updateSendButtonState: mainChatSendOwner.update,
             },
             summarizeTopicFromMessages: (messages, agentName) => {
                 if (typeof window.summarizeTopicFromMessages === 'function') return window.summarizeTopicFromMessages(messages, agentName);
@@ -583,28 +561,36 @@ const startupThemeGate = new StartupThemeGate({
             renderDependencies,
             chatManager,
             flowlockManager: window.flowlockManager,
-            currentSelection: () => currentSelectedItem,
-            currentTopicId: () => currentTopicId,
+            currentSelection: currentSelectedItemRef.get,
+            currentTopicId: currentTopicIdRef.get,
             chatWindow: window,
-            interrupt: interruptActiveResponseFromSendButton,
+            interrupt: mainChatSendOwner.interrupt,
             dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
-            notifySendStateChanged: updateSendButtonState,
+            notifySendStateChanged: mainChatSendOwner.update,
             showForwardModal,
             provideCapabilities: window.VCPNextShellController?.provideChatCapabilities,
             capabilitySnapshot: () => Object.freeze({
-                selectedItem: currentSelectedItem ? { ...currentSelectedItem } : null,
-                topicId: currentTopicId,
+                selectedItem: currentSelectedItemRef.get(),
+                topicId: currentTopicIdRef.get(),
             }),
+            settings: mainChatSettingsOwner,
             createInternalRenderer: createOwnedInternalChatRenderer,
             disposeCapabilities: async () => {
-                for (const subscription of ownedRendererSubscriptions) subscription.dispose();
-                ownedRendererSubscriptions.clear();
-                mainChatEventBridge?.dispose?.();
+                await mainChatEventBridge?.dispose?.();
                 mainChatEventBridge = null;
-                nonStreamingEventConsumer?.dispose();
+                await nonStreamingEventConsumer?.dispose?.();
                 nonStreamingEventConsumer = null;
                 releaseNextUiChatCapabilities?.();
                 releaseNextUiChatCapabilities = null;
+                const subscriptions = [...ownedRendererSubscriptions].reverse();
+                ownedRendererSubscriptions.clear();
+                for (const subscription of subscriptions) {
+                    try {
+                        await subscription.dispose();
+                    } catch (error) {
+                        console.error('[Renderer] Owned capability disposal failed:', error);
+                    }
+                }
             },
         });
         mainChatAdapter = mainComposition.adapter;
@@ -626,20 +612,26 @@ const startupThemeGate = new StartupThemeGate({
             messageInput: messageInput,
             dropTargetElement: chatInputCard,
             electronAPI: chatAPI,
-            attachedFiles: { get: () => attachedFiles, set: (val) => attachedFiles = val },
-            updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
-            getCurrentAgentId: () => currentSelectedItem.id, // Corrected: pass a function that returns the ID
-            getCurrentTopicId: () => currentTopicId,
+            attachedFiles: mainChatAttachmentOwner.ref,
+            updateAttachmentPreview: mainChatAttachmentOwner.syncPreview,
+            getCurrentAgentId: () => currentSelectedItemRef.get()?.id,
+            getCurrentTopicId: currentTopicIdRef.get,
             uiHelper: uiHelperFunctions,
+            listenerOwner: mainChatDomListenerOwner,
         });
+        ownedRendererSubscriptions.add({ dispose: () => window.inputEnhancer.dispose?.() });
     } else {
         console.error('[RENDERER_INIT] inputEnhancer module not found!');
     }
 
-    if (chatAPI?.onLoomShareTextToInput) {
-        ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
-            subscribe: chatAPI.onLoomShareTextToInput,
-            consume: (sharedText) => {
+    const auxiliaryEventOwner = createMainChatAuxiliaryEventOwner({
+        subscriptions: {
+            loomShareText: chatAPI?.onLoomShareTextToInput,
+            logStatus: chatAPI?.onVCPLogStatus,
+            logMessage: chatAPI?.onVCPLogMessage,
+            groupTopicUpdated: chatAPI?.onVCPGroupTopicUpdated,
+        },
+        insertSharedText: (sharedText) => {
             if (!messageInput || typeof sharedText !== 'string' || !sharedText) return;
             const start = Number.isInteger(messageInput.selectionStart)
                 ? messageInput.selectionStart
@@ -653,22 +645,10 @@ const startupThemeGate = new StartupThemeGate({
             messageInput.dispatchEvent(new Event('input', { bubbles: true }));
             messageInput.focus();
             uiHelperFunctions?.showToastNotification?.('Loom 页面文本已加入输入框。', 'success');
-            },
-        }));
-    }
-
-    if (chatAPI?.onVCPLogStatus) ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
-        subscribe: chatAPI.onVCPLogStatus,
-        consume: (statusUpdate) => {
-        if (window.notificationRenderer) {
-            window.notificationRenderer.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv);
-        }
         },
-    }));
-    if (chatAPI?.onVCPLogMessage) ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
-        subscribe: chatAPI.onVCPLogMessage,
-        consume: (logData) => {
-        if (window.notificationRenderer) {
+        consumeLogStatus: statusUpdate => window.notificationRenderer?.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv),
+        consumeLogMessage: logData => {
+            if (!window.notificationRenderer) return;
             const computedStyle = getComputedStyle(document.body);
             const themeColors = {
                 notificationBg: computedStyle.getPropertyValue('--notification-bg').trim(),
@@ -680,52 +660,41 @@ const startupThemeGate = new StartupThemeGate({
             };
             // 修复：只传递一个 logData 参数，第二个参数显式传递 null，以匹配 preload 定义
             window.notificationRenderer.renderVCPLogNotification(logData, null, notificationsListUl, themeColors);
-        }
         },
-    }));
+        consumeGroupTopicUpdate: async ({ groupId, topicId, newTitle, topics }, lifecycle) => {
+            const selectedItem = currentSelectedItemRef.get();
+            if (selectedItem?.id !== groupId || selectedItem.type !== 'group') return;
+            const config = selectedItem.config || selectedItem;
+            if (config) {
+                const nextConfig = { ...config };
+                const topicIndex = Array.isArray(config.topics)
+                    ? config.topics.findIndex(topic => topic.id === topicId)
+                    : -1;
+                if (topicIndex >= 0) {
+                    nextConfig.topics = config.topics.map((topic, index) => (
+                        index === topicIndex ? { ...topic, name: newTitle } : topic
+                    ));
+                } else {
+                    nextConfig.topics = topics;
+                }
+                currentSelectedItemRef.set(selectedItem.config
+                    ? { ...selectedItem, config: nextConfig }
+                    : { ...selectedItem, ...nextConfig });
+            }
+            if (document.getElementById('tabContentTopics').classList.contains('active')) {
+                await window.topicListManager.loadTopicList();
+                if (!lifecycle.isActive()) return;
+            }
+        },
+    });
+    auxiliaryEventOwner.mount();
+    ownedRendererSubscriptions.add(auxiliaryEventOwner);
 
     mainChatEventBridge = createMainChatEventBridge({
         chatAPI,
         acceptStreamEvent: eventData => mainChatAdapter?.acceptStreamEvent(eventData) === true,
         consumeNonStreamingEvent: eventData => nonStreamingEventConsumer?.consume(eventData),
     });
-
-    // Listener for group topic title updates. Keep the preload subscription
-    // under the renderer owner so reload/crash teardown cannot leave a late
-    // callback mutating a replaced selection.
-    if (chatAPI?.onVCPGroupTopicUpdated) ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
-        subscribe: chatAPI.onVCPGroupTopicUpdated,
-        consume: async (eventData) => {
-        const { groupId, topicId, newTitle, topics } = eventData;
-        console.log(`[Renderer] Received topic update for group ${groupId}, topic ${topicId}: "${newTitle}"`);
-        if (currentSelectedItem.id === groupId && currentSelectedItem.type === 'group') {
-            // Update the currentSelectedItem's config if it's the active group
-            const config = currentSelectedItem.config || currentSelectedItem;
-            if (config && config.topics) {
-                const topicIndex = config.topics.findIndex(t => t.id === topicId);
-                if (topicIndex !== -1) {
-                    config.topics[topicIndex].name = newTitle;
-                } else { // Topic might be new or ID changed, replace topics array
-                    config.topics = topics;
-                }
-            } else if (config) {
-                config.topics = topics;
-            }
-
-
-            // If the topics tab is active, reload the list
-            if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                await window.topicListManager.loadTopicList();
-            }
-            // Removed toast notification as per user feedback
-            // if (uiHelperFunctions && uiHelperFunctions.showToastNotification) {
-            //      uiHelperFunctions.showToastNotification(`群组 "${currentSelectedItem.name}" 的话题 "${newTitle}" 已自动总结并更新。`);
-            // }
-            console.log(`群组 "${currentSelectedItem.name}" 的话题 "${newTitle}" 已自动总结并更新 (通知已移除).`);
-        }
-        },
-    }));
-
 
     // Initialize TopicListManager
     if (window.topicListManager) {
@@ -736,23 +705,20 @@ const startupThemeGate = new StartupThemeGate({
             electronAPI: chatAPI,
             chatRepository: chatRepository,
             refs: {
-                currentSelectedItemRef: {
-                    get: () => currentSelectedItem
-                },
-                currentTopicIdRef: {
-                    get: () => currentTopicId
-                },
+                currentSelectedItemRef,
+                currentTopicIdRef,
             },
             topicSelectionReadiness,
+            listenerOwner: topicListDomListenerOwner,
+            uiManager: window.uiManager,
+            itemListManager: window.itemListManager,
             uiHelper: uiHelperFunctions,
             mainRendererFunctions: {
                 updateCurrentItemConfig: (newConfig) => {
-                    if (currentSelectedItem.config) {
-                        currentSelectedItem.config = newConfig;
-                    } else {
-                        Object.assign(currentSelectedItem, newConfig);
-                    }
-                    mainChatStateAuthority.setSelectedItem(currentSelectedItem);
+                    const selectedItem = currentSelectedItemRef.get();
+                    currentSelectedItemRef.set(selectedItem?.config
+                        ? { ...selectedItem, config: newConfig }
+                        : { ...selectedItem, ...newConfig });
                 },
                 handleTopicDeletion: (remainingTopics, deletionContext) => {
                     if (chatManager) {
@@ -792,21 +758,11 @@ const startupThemeGate = new StartupThemeGate({
                 interruptHandler,
             },
             refs: {
-                currentSelectedItemRef: {
-                    get: () => currentSelectedItem,
-                    set: (val) => {
-                        setCurrentSelectedItem(val);
-                    }
-                },
-                currentTopicIdRef: {
-                    get: () => currentTopicId,
-                    set: (val) => {
-                        setCurrentTopicId(val);
-                    }
-                },
-                currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
-                attachedFilesRef: { get: () => attachedFiles, set: (val) => attachedFiles = val },
-                globalSettingsRef: { get: () => globalSettings },
+                currentSelectedItemRef,
+                currentTopicIdRef,
+                currentChatHistoryRef: mainHistoryRef,
+                attachedFilesRef: mainChatAttachmentOwner.ref,
+                globalSettingsRef: mainChatSettingsOwner.ref,
             },
             elements: {
                 chatMessagesDiv: chatMessagesDiv,
@@ -819,12 +775,25 @@ const startupThemeGate = new StartupThemeGate({
             },
             mainRendererFunctions: {
                 displaySettingsForItem: () => window.settingsManager.displaySettingsForItem(),
-                updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
+                updateAttachmentPreview: mainChatAttachmentOwner.syncPreview,
                 // This is no longer needed as chatManager will call messageRenderer's summarizer
             },
-            notifySendStateChanged: updateSendButtonState
+            notifySendStateChanged: mainChatSendOwner.update
         });
-        window.MainChatCommands?.setChatManagerProvider?.(chatManager);
+        ownedRendererSubscriptions.add(chatManager);
+        ownedRendererSubscriptions.add({ dispose: () => window.topicListManager.dispose?.() });
+        window.dispatchEvent(new CustomEvent('vcp-main-chat-commands-configure', { detail: {
+            chatManager,
+            capabilities: {
+                uiHelper: uiHelperFunctions,
+                uiManager: window.uiManager,
+                itemListManager: window.itemListManager,
+                filterManager: window.filterManager,
+                notificationRenderer: window.notificationRenderer,
+                appearanceStudio: window.VCPAppearanceStudio,
+                topTabManager: window.topTabManager,
+            },
+        } }));
     } else {
         console.error('[RENDERER_INIT] chatManager module not found!');
     }
@@ -837,19 +806,9 @@ const startupThemeGate = new StartupThemeGate({
             uiHelper: uiHelperFunctions,
             messageRenderer,
             refs: {
-                currentSelectedItemRef: {
-                    get: () => currentSelectedItem,
-                    set: (val) => {
-                        setCurrentSelectedItem(val);
-                    }
-                },
-                currentTopicIdRef: {
-                    get: () => currentTopicId,
-                    set: (val) => {
-                        setCurrentTopicId(val);
-                    }
-                },
-                currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
+                currentSelectedItemRef,
+                currentTopicIdRef,
+                currentChatHistoryRef: mainHistoryRef,
             },
             elements: {
                 agentSettingsContainer: document.getElementById('agentSettingsContainer'),
@@ -911,15 +870,20 @@ const startupThemeGate = new StartupThemeGate({
             startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败，已使用系统主题' });
         }
         await window.itemListManager.loadItems(); // Load both agents and groups
-        await chatManager.restoreLastOpenState(globalSettings);
+        await chatManager.restoreLastOpenState(getGlobalSettings());
 
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
+            ownedRendererSubscriptions.add({ dispose: () => window.uiManager.dispose?.() });
             await window.uiManager.init({
                 electronAPI: chatAPI,
                 refs: {
-                    globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
+            globalSettingsRef: mainChatSettingsOwner.ref,
                 },
+                listenerOwner: mainChatDomListenerOwner,
+                settingsManager: window.settingsManager,
+                itemListManager: window.itemListManager,
+                uiHelper: uiHelperFunctions,
                 elements: {
                     leftSidebar: document.querySelector('.sidebar'),
                     rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
@@ -942,7 +906,7 @@ const startupThemeGate = new StartupThemeGate({
                 electronAPI: chatAPI,
                 uiHelper: uiHelperFunctions,
                 refs: {
-                    globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
+                    globalSettingsRef: mainChatSettingsOwner.ref,
                 }
             });
         } else {
@@ -964,11 +928,11 @@ const startupThemeGate = new StartupThemeGate({
             contextSanitizerDepthContainer: document.getElementById('contextSanitizerDepthContainer'),
             addNetworkPathBtn: document.getElementById('addNetworkPathBtn'),
             refs: {
-                currentSelectedItem: { get: () => currentSelectedItem },
-                currentTopicId: { get: () => currentTopicId },
-                globalSettings: { get: () => globalSettings },
-                attachedFiles: { get: () => attachedFiles, set: (val) => attachedFiles = val },
-                currentChatHistory: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
+                currentSelectedItem: currentSelectedItemRef,
+                currentTopicId: currentTopicIdRef,
+                globalSettings: mainChatSettingsOwner.ref,
+                attachedFiles: mainChatAttachmentOwner.ref,
+                currentChatHistory: mainHistoryRef,
             },
             uiHelperFunctions,
             chatManager,
@@ -980,10 +944,15 @@ const startupThemeGate = new StartupThemeGate({
             topicListManager: window.topicListManager,
             getCroppedFile: uiHelperFunctions.getCroppedFile,
             setCroppedFile: uiHelperFunctions.setCroppedFile,
-            updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
+            updateAttachmentPreview: mainChatAttachmentOwner.syncPreview,
             filterAgentList: uiHelperFunctions.filterAgentList,
             addNetworkPathInput: uiHelperFunctions.addNetworkPathInput,
-            sendButtonAction: handleSendButtonAction
+            sendButtonAction: mainChatSendOwner.handleAction,
+            normalizeChatPresentationMode,
+            applyChatPresentationMode,
+            applyChatBubbleLayoutSettings,
+            getAppearance: () => window.VCPAppearance,
+            listenerOwner: mainChatDomListenerOwner
         });
 
         // A visible DOM shell is not enough to call the desktop interactive:
@@ -1005,10 +974,10 @@ const startupThemeGate = new StartupThemeGate({
                 window.emoticonManager.togglePanel(emoticonTriggerBtn);
             };
 
-            emoticonTriggerBtn.addEventListener('click', openEmoticonPanel);
-            emoticonTriggerBtn.addEventListener('contextmenu', openEmoticonPanel);
+            mainChatDomListenerOwner.add(emoticonTriggerBtn, 'click', openEmoticonPanel);
+            mainChatDomListenerOwner.add(emoticonTriggerBtn, 'contextmenu', openEmoticonPanel);
 
-            const emoticonTriggerObserver = new MutationObserver(syncEmoticonTriggerButton);
+            const emoticonTriggerObserver = mainChatDomListenerOwner.own(new MutationObserver(syncEmoticonTriggerButton));
             emoticonTriggerObserver.observe(attachFileBtn, {
                 attributes: true,
                 attributeFilter: ['disabled']
@@ -1043,13 +1012,13 @@ const startupThemeGate = new StartupThemeGate({
                 }));
             };
 
-            quickNewTopicBtn.addEventListener('click', () => forwardCurrentItemAction('click'));
-            quickNewTopicBtn.addEventListener('contextmenu', (event) => {
+            mainChatDomListenerOwner.add(quickNewTopicBtn, 'click', () => forwardCurrentItemAction('click'));
+            mainChatDomListenerOwner.add(quickNewTopicBtn, 'contextmenu', (event) => {
                 event.preventDefault();
                 forwardCurrentItemAction('contextmenu');
             });
 
-            const quickTopicObserver = new MutationObserver(syncQuickNewTopicButton);
+            const quickTopicObserver = mainChatDomListenerOwner.own(new MutationObserver(syncQuickNewTopicButton));
             quickTopicObserver.observe(currentItemActionBtn, {
                 attributes: true,
                 attributeFilter: ['style', 'title'],
@@ -1062,7 +1031,7 @@ const startupThemeGate = new StartupThemeGate({
         }
 
         // Set default view if no item is selected
-        if (!currentSelectedItem.id) {
+        if (!currentSelectedItemRef.get()?.id) {
             chatManager.displayNoItemSelected();
         }
  
@@ -1073,8 +1042,8 @@ const startupThemeGate = new StartupThemeGate({
                 chatRepository,
                 uiHelper: uiHelperFunctions,
                 refs: {
-                    currentSelectedItemRef: { get: () => currentSelectedItem },
-                    currentTopicIdRef: { get: () => currentTopicId },
+                    currentSelectedItemRef,
+                    currentTopicIdRef,
                 },
                 modules: {
                     chatManager,
@@ -1087,15 +1056,16 @@ const startupThemeGate = new StartupThemeGate({
        // Emoticon URL fixer is now initialized within messageRenderer
         topicSelectionReadiness.setReady(true);
 
-        chatAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+        chatAPI.toggleSelectionListener(!!getGlobalSettings().assistantEnabled);
 
         const pendingTopicSelection = topicSelectionReadiness.takePending();
         if (pendingTopicSelection && chatManager) {
             const pending = pendingTopicSelection;
+            const selectedItem = currentSelectedItemRef.get();
             const matchesCurrentItem =
-                currentSelectedItem &&
-                currentSelectedItem.id === pending.itemId &&
-                currentSelectedItem.type === pending.itemType;
+                selectedItem &&
+                selectedItem.id === pending.itemId &&
+                selectedItem.type === pending.itemType;
 
             if (matchesCurrentItem) {
                 Promise.resolve(chatManager.selectTopic(pending.topicId)).catch((error) => {
@@ -1117,10 +1087,13 @@ const startupThemeGate = new StartupThemeGate({
 
     // --- Agent Settings Reload Listener ---
     if (chatAPI?.onReloadAgentSettings) {
-        chatAPI.onReloadAgentSettings(async ({ agentId }) => {
+        ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
+            subscribe: chatAPI.onReloadAgentSettings,
+            consume: async ({ agentId }, lifecycle) => {
             console.log('[Renderer] Received reload-agent-settings event for agent:', agentId);
             if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {
                 const result = await window.settingsManager.reloadAgentSettings(agentId);
+                if (!lifecycle.isActive()) return;
                 if (result.success && !result.skipped) {
                     console.log('[Renderer] Agent settings reloaded successfully');
                     uiHelperFunctions.showToastNotification('设置已自动更新', 'success');
@@ -1128,1300 +1101,73 @@ const startupThemeGate = new StartupThemeGate({
                     console.log('[Renderer] Agent settings reload skipped (not currently editing)');
                 }
             }
-        });
+            },
+        }));
         console.log('[Renderer] Agent settings reload listener initialized');
     }
     
     // --- TTS Audio Playback and Visuals ---
-    setupTtsListeners();
+    ttsSurfaceOwner.mount();
+    ownedRendererSubscriptions.add({ dispose: () => ttsSurfaceOwner.dispose() });
     // --- File Watcher Listener ---
-    chatAPI.onHistoryFileUpdated(({ agentId, topicId, path }) => {
-        if (currentSelectedItem && currentSelectedItem.id === agentId && currentTopicId === topicId) {
+    ownedRendererSubscriptions.add(createOwnedPreloadSubscription({
+        subscribe: chatAPI.onHistoryFileUpdated,
+        consume: async ({ agentId, topicId, path }, lifecycle) => {
+        const selectedItem = currentSelectedItemRef.get();
+        if (selectedItem?.id === agentId && currentTopicIdRef.get() === topicId) {
             console.log('[Renderer] Active chat history was modified externally. Syncing...');
+            if (!lifecycle.isActive()) return;
             uiHelperFunctions.showToastNotification("聊天记录已同步。", "info");
             if (chatManager && typeof chatManager.syncHistoryFromFile === 'function') {
-                chatManager.syncHistoryFromFile(agentId, currentSelectedItem.type, topicId);
+                await chatManager.syncHistoryFromFile(agentId, selectedItem.type, topicId);
             }
         }
-    });
+        },
+    }));
 
     // --- Initialize Flowlock Module ---
     if (window.initializeFlowlockIntegration) {
-        window.initializeFlowlockIntegration({ chatManager, historyMutationAuthority });
+        window.initializeFlowlockIntegration({
+            chatManager,
+            historyMutationAuthority,
+            settings: mainChatSettingsOwner,
+            listenerOwner: mainChatDomListenerOwner,
+        });
         console.log('[Renderer] Flowlock integration initialized.');
     } else {
         console.warn('[Renderer] Flowlock integration function not found.');
     }
 
-    // --- Listen for Flowlock commands from plugins (via main process) ---
-    if (chatAPI?.onFlowlockCommand) {
-        const respondToFlowlockRequest = (commandData, responseData) => {
-            if (!commandData?.requestId || !chatAPI?.sendFlowlockRpcResponse) {
-                return;
-            }
-
-            chatAPI.sendFlowlockRpcResponse({
-                requestId: commandData.requestId,
-                ok: responseData?.success !== false,
-                data: responseData?.success === false ? undefined : responseData,
-                error: responseData?.success === false ? responseData.error : undefined,
-            });
-        };
-
-        const flowlockCommandHandler = async (commandData) => {
-            console.log('[Renderer] Received flowlock command from plugin:', commandData);
-            
-            if (!window.flowlockManager) {
-                console.error('[Renderer] flowlockManager not available');
-                respondToFlowlockRequest(commandData, {
-                    command: commandData?.command,
-                    success: false,
-                    error: 'flowlockManager not available'
-                });
-                return;
-            }
-            
-            const { command, agentId, topicId, prompt, promptSource } = commandData;
-            const targetAgentId = agentId || currentSelectedItem?.id;
-            
-            try {
-                switch (command) {
-                    case 'start':
-                        // 兼容入口：内部 Session Map 仍是唯一运行状态源。
-                        if (targetAgentId && topicId) {
-                            await window.flowlockManager.start(targetAgentId, topicId, { startImmediately: false });
-                            console.log(`[Renderer] Flowlock started for agent: ${targetAgentId}, topic: ${topicId}`);
-                        } else {
-                            console.error('[Renderer] Missing agentId or topicId for start command');
-                        }
-                        break;
-                        
-                    case 'stop':
-                        if (targetAgentId) {
-                            await window.flowlockManager.stop(targetAgentId);
-                            console.log(`[Renderer] Flowlock stopped for agent: ${targetAgentId}`);
-                        }
-                        break;
-                        
-                    case 'promptee':
-                        if (targetAgentId && prompt) {
-                            window.flowlockManager.setCustomPrompt(targetAgentId, prompt);
-                            console.log(`[Renderer] Flowlock next prompt set for agent: ${targetAgentId}`);
-                        } else {
-                            console.error('[Renderer] Missing target agent or prompt for promptee command');
-                        }
-                        break;
-                        
-                    case 'prompter':
-                        // Get content from external source and append to input
-                        if (promptSource) {
-                            // TODO: Implement fetching from external source
-                            // For now, just log the source
-                            console.log(`[Renderer] Prompter source: ${promptSource}`);
-                            // Placeholder: treat promptSource as the actual prompt for now
-                            if (messageInput) {
-                                const currentValue = messageInput.value;
-                                messageInput.value = currentValue + (currentValue ? ' ' : '') + `[来自: ${promptSource}]`;
-                                console.log(`[Renderer] Prompter content appended from source: ${promptSource}`);
-                                // Auto-resize textarea after content change
-                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
-                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
-                                }
-                            }
-                        } else {
-                            console.error('[Renderer] Missing promptSource for prompter command');
-                        }
-                        break;
-                        
-                    case 'clear':
-                        // Clear all content in input box
-                        {
-                            if (messageInput) {
-                                messageInput.value = '';
-                                console.log('[Renderer] Input box cleared');
-                                // Auto-resize textarea after content change
-                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
-                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
-                                }
-                            }
-                        }
-                        break;
-                        
-                    case 'remove':
-                        // Remove specific text from input
-                        {
-                            const { target } = commandData;
-                            if (target) {
-                                if (messageInput) {
-                                    const currentValue = messageInput.value;
-                                    // Remove all occurrences of target text
-                                    messageInput.value = currentValue.split(target).join('');
-                                    console.log(`[Renderer] Removed "${target}" from input`);
-                                    // Auto-resize textarea after content change
-                                    if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
-                                        window.uiHelperFunctions.autoResizeTextarea(messageInput);
-                                    }
-                                }
-                            } else {
-                                console.error('[Renderer] Missing target for remove command');
-                            }
-                        }
-                        break;
-                        
-                    case 'edit':
-                        // Edit (diff) specific text in input - find oldText and replace with newText
-                        {
-                            const { oldText, newText } = commandData;
-                            if (oldText && newText !== undefined) {
-                                if (messageInput) {
-                                    const currentValue = messageInput.value;
-                                    // Replace first occurrence only (diff-style)
-                                    const index = currentValue.indexOf(oldText);
-                                    if (index !== -1) {
-                                        messageInput.value = currentValue.substring(0, index) + newText + currentValue.substring(index + oldText.length);
-                                        console.log(`[Renderer] Edited text: "${oldText}" → "${newText}"`);
-                                        // Auto-resize textarea after content change
-                                        if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
-                                            window.uiHelperFunctions.autoResizeTextarea(messageInput);
-                                        }
-                                    } else {
-                                        console.warn(`[Renderer] oldText "${oldText}" not found in input`);
-                                    }
-                                }
-                            } else {
-                                console.error('[Renderer] Missing oldText or newText for edit command');
-                            }
-                        }
-                        break;
-                        
-                    case 'get':
-                        // Get current input box content and return it
-                        {
-                            if (messageInput) {
-                                const content = messageInput.value;
-                                console.log(`[Renderer] Retrieved input box content: "${content}"`);
-                                respondToFlowlockRequest(commandData, {
-                                    command: 'get',
-                                    success: true,
-                                    content: content
-                                });
-                            } else {
-                                console.error('[Renderer] Message input element not found');
-                                respondToFlowlockRequest(commandData, {
-                                    command: 'get',
-                                    success: false,
-                                    error: 'Message input element not found'
-                                });
-                            }
-                        }
-                        break;
-                        
-                    case 'status':
-                        {
-                            if (window.flowlockManager) {
-                                const state = targetAgentId
-                                    ? window.flowlockManager.getSession(targetAgentId)
-                                    : null;
-                                const activeAgents = window.flowlockManager.getActiveAgents();
-                                console.log('[Renderer] Retrieved flowlock status:', { state, activeAgents });
-                                respondToFlowlockRequest(commandData, {
-                                    command: 'status',
-                                    success: true,
-                                    status: {
-                                        isActive: state?.status === 'active',
-                                        isProcessing: !!state?.activeMessageId,
-                                        agentId: state?.agentId || targetAgentId || null,
-                                        topicId: state?.topicId || null,
-                                        session: state,
-                                        activeAgents
-                                    }
-                                });
-                            } else {
-                                console.error('[Renderer] flowlockManager not available');
-                                respondToFlowlockRequest(commandData, {
-                                    command: 'status',
-                                    success: false,
-                                    error: 'flowlockManager not available'
-                                });
-                            }
-                        }
-                        break;
-                        
-                    default:
-                        console.error(`[Renderer] Unknown flowlock command: ${command}`);
-                }
-            } catch (error) {
-                console.error('[Renderer] Error executing flowlock command:', error);
-            }
-        };
-
-        chatAPI.onFlowlockCommand(flowlockCommandHandler);
-        if (chatAPI.onFlowlockRequest) {
-            chatAPI.onFlowlockRequest(flowlockCommandHandler);
-        }
-        console.log('[Renderer] Flowlock command listener initialized');
-    }
-
-});
-
-function setupTtsListeners() {
-    // This function is now called from ensureAudioContext, not on body events
-    const initAudioContext = () => {
-        if (!audioContext) {
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                console.log("[TTS Renderer] AudioContext initialized successfully.");
-                return true;
-            } catch (e) {
-                console.error("[TTS Renderer] Failed to initialize AudioContext:", e);
-                uiHelperFunctions.showToastNotification("无法初始化音频播放器。", "error");
-                return false;
-            }
-        }
-        return true;
-    };
-
-    // Expose a function to be called on demand
-    window.ensureAudioContext = initAudioContext;
-
-    // 新的TTS播放逻辑：使用sessionId来处理异步时序问题
-    chatAPI.onPlayTtsAudio(async ({ audioData, msgId, sessionId }) => {
-        // 如果收到的sessionId小于当前的，说明是过时的事件，直接忽略
-        if (sessionId < currentTtsSessionId) {
-            console.log(`[TTS Renderer] Discarding stale audio data from old session ${sessionId}. Current session is ${currentTtsSessionId}.`);
-            return;
-        }
-
-        // 如果sessionId大于当前的，说明是一个全新的播放请求
-        if (sessionId > currentTtsSessionId) {
-            console.log(`[TTS Renderer] New TTS session ${sessionId} started. Clearing old queue.`);
-            currentTtsSessionId = sessionId;
-            // 清空队列，扔掉所有可能属于更旧会话的音频块
-            ttsAudioQueue = [];
-        }
-        
-        // 只有当sessionId匹配时，才将音频加入队列
-        console.log(`[TTS Renderer] Received audio data for msgId ${msgId} (session ${sessionId}). Pushing to queue.`);
-        if (!audioContext) {
-            console.warn("[TTS Renderer] AudioContext not initialized. Buffering audio but cannot play yet.");
-        }
-        ttsAudioQueue.push({ audioData, msgId });
-        processTtsQueue(); // 尝试处理队列
-    });
-
-    async function processTtsQueue() {
-        if (isTtsPlaying || ttsAudioQueue.length === 0) {
-            // 如果队列为空且没有在播放，确保关闭所有动画
-            if (!isTtsPlaying && currentPlayingMsgId) {
-                uiHelperFunctions.updateSpeakingIndicator(currentPlayingMsgId, false);
-                currentPlayingMsgId = null;
-            }
-            return;
-        }
-
-        if (!audioContext) {
-            console.warn("[TTS Renderer] AudioContext not ready. Waiting to process TTS queue.");
-            return;
-        }
-
-        isTtsPlaying = true;
-        const { audioData, msgId } = ttsAudioQueue.shift();
-
-        // 更新UI动画
-        if (currentPlayingMsgId !== msgId) {
-            // 关闭上一个正在播放的动画（如果有）
-            if (currentPlayingMsgId) {
-                uiHelperFunctions.updateSpeakingIndicator(currentPlayingMsgId, false);
-            }
-            // 开启当前新的动画
-            currentPlayingMsgId = msgId;
-            uiHelperFunctions.updateSpeakingIndicator(currentPlayingMsgId, true);
-        }
-
-        try {
-            const audioBuffer = await audioContext.decodeAudioData(
-                Uint8Array.from(atob(audioData), c => c.charCodeAt(0)).buffer
-            );
-
-            // 关键修复：在异步解码后，再次检查停止标志，防止竞态条件
-            if (!isTtsPlaying) {
-                console.log("[TTS Renderer] Stop command received during audio decoding. Aborting playback.");
-                // onStopTtsAudio已经处理了状态重置，这里只需中止即可
-                return;
-            }
-            
-            currentAudioSource = audioContext.createBufferSource();
-            currentAudioSource.buffer = audioBuffer;
-            currentAudioSource.connect(audioContext.destination);
-            
-            currentAudioSource.onended = () => {
-                console.log(`[TTS Renderer] Playback finished for a chunk of msgId ${msgId}.`);
-                isTtsPlaying = false;
-                currentAudioSource = null;
-                processTtsQueue(); // 播放下一个
-            };
-
-            currentAudioSource.start(0);
-            console.log(`[TTS Renderer] Starting playback for a chunk of msgId ${msgId}.`);
-
-        } catch (error) {
-            console.error("[TTS Renderer] Error decoding or playing TTS audio from queue:", error);
-            uiHelperFunctions.showToastNotification(`播放音频失败: ${error.message}`, "error");
-            isTtsPlaying = false;
-            processTtsQueue(); // 即使失败也尝试处理下一个
-        }
-    }
-
-    chatAPI.onStopTtsAudio(() => {
-        console.error("!!!!!!!!!! [TTS RENDERER] STOP EVENT RECEIVED !!!!!!!!!!");
-        
-        // 关键：增加会话ID，使所有后续到达的、属于旧会话的play-tts-audio事件全部失效
-        currentTtsSessionId++;
-        console.log(`[TTS Renderer] Stop event incremented session ID to ${currentTtsSessionId}.`);
-
-        console.log("Clearing TTS queue, stopping current audio source, and resetting state.");
-        
-        ttsAudioQueue = []; // 1. 清空前端队列
-        
-        if (currentAudioSource) {
-            console.log("Found active audio source. Stopping it now.");
-            currentAudioSource.onended = null; // 2. 阻止onended回调
-            currentAudioSource.stop();        // 3. 停止当前音频
-            currentAudioSource = null;
-        } else {
-            console.warn("Stop event received, but no active audio source was found.");
-        }
-        
-        isTtsPlaying = false; // 4. 重置播放状态标志
-
-        // 5. 确保关闭当前的播放动画
-        if (currentPlayingMsgId) {
-            console.log(`Closing speaking indicator for message ID: ${currentPlayingMsgId}`);
-            uiHelperFunctions.updateSpeakingIndicator(currentPlayingMsgId, false);
-            currentPlayingMsgId = null;
-        }
-    });
-
-    // 移除旧的 onSovitsStatusChanged 监听器，因为它不再准确
-    // window.electronAPI.onSovitsStatusChanged(...)
-
-    // This function has been moved to modules/ui-helpers.js
-}
-
-// This function has been moved to modules/ui-helpers.js
-
-
-async function loadAndApplyGlobalSettings() {
-    let settings;
-    try {
-        settings = await loadSettingsWithTimeout(
-            chatAPI?.loadSettings,
-            STARTUP_SETTINGS_TIMEOUT_MS,
-            '加载设置超时'
-        );
-    } catch (error) {
-        startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败' });
-        throw error;
-    }
-    if (settings && !settings.error) {
-        globalSettings = { ...globalSettings, ...settings };
-        window.globalSettings = globalSettings;
-
-        // Theme variables must be selected before any item/chat restoration can paint.
-        // The uiManager listener is initialized later and receives the same effective value.
-        startupThemeGate.release({ mode: globalSettings.currentThemeMode });
-
-        globalSettings.appearanceProfile = window.VCPAppearance?.commit(
-            globalSettings.appearanceProfile,
-            { uiMode: 'next', source: 'settings-load' }
-        ) || globalSettings.appearanceProfile;
-        window.dispatchEvent(new CustomEvent('global-settings-updated', {
-            detail: { settings: globalSettings, source: 'settings-load' }
-        }));
-        applyChatBubbleLayoutSettings(globalSettings);
-        
-        // 🟢 优化：仅更新始终存在的 UI 元素
-        if (globalSettings.sidebarWidth && leftSidebar) {
-            leftSidebar.style.width = `${globalSettings.sidebarWidth}px`;
-        }
-        if (leftSidebar) {
-            const sidebarIsActive = globalSettings.sidebarActive !== false;
-            const avatarOnly = sidebarIsActive && globalSettings.sidebarAvatarOnly === true;
-            leftSidebar.classList.toggle('active', sidebarIsActive);
-            leftSidebar.classList.toggle('avatar-only', avatarOnly);
-            document.querySelector('.main-content')?.classList.toggle('sidebar-active', sidebarIsActive);
-        }
-        if (globalSettings.notificationsSidebarWidth && rightNotificationsSidebar) {
-            if (rightNotificationsSidebar.classList.contains('active')) {
-                rightNotificationsSidebar.style.width = `${globalSettings.notificationsSidebarWidth}px`;
-            }
-        }
-
-        if (globalSettings.vcpLogUrl && globalSettings.vcpLogKey) {
-            if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'connecting', message: '连接中...' }, vcpLogConnectionStatusDiv);
-            chatAPI.connectVCPLog(globalSettings.vcpLogUrl, globalSettings.vcpLogKey);
-        } else {
-            if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
-        }
-
-        // Set the initial state of the new toggle button in the main UI
-        if (toggleAssistantBtn) {
-            toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
-        }
-        if (toggleSidebarModeBtn) {
-            const avatarOnly = globalSettings.sidebarActive !== false && globalSettings.sidebarAvatarOnly === true;
-            toggleSidebarModeBtn.classList.toggle('active', avatarOnly);
-            toggleSidebarModeBtn.setAttribute('aria-pressed', String(avatarOnly));
-        }
-        // Selection listener startup moved to post-renderer-ready stage.
-
-        // Load filter mode setting
-        let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
-        globalSettings.filterEnabled = filterEnabled;
-        // 🟢 核心逻辑：监听模态框就绪事件，届时再同步模态框内部 UI
-        document.addEventListener('modal-ready', (e) => {
-            const { modalId } = e.detail;
-            if (modalId === 'globalSettingsModal') {
-                syncGlobalSettingsToUI();
-            }
-        });
-
-        if (messageRenderer) {
-            messageRenderer.setUserAvatar(globalSettings.userAvatarUrl);
-            messageRenderer.setUserAvatarColor(globalSettings.userAvatarCalculatedColor);
-        }
-    } else {
-        console.warn('加载全局设置失败或无设置:', settings?.error);
-        startupThemeGate.release({ mode: 'system', message: settings?.error || '设置加载失败，已使用系统主题' });
-        if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
-    }
-}
-
-function applyInitialThemeClass(mode) {
-    let effectiveTheme = mode === 'light' || mode === 'dark' ? mode : null;
-    if (!effectiveTheme && typeof window.matchMedia === 'function') {
-        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    effectiveTheme = effectiveTheme || 'light';
-    if (window.uiManager?.applyTheme) {
-        window.uiManager.applyTheme(effectiveTheme);
-    } else {
-        document.body.classList.remove('light-theme', 'dark-theme');
-        document.body.classList.add(`${effectiveTheme}-theme`);
-    }
-    presentationState?.set({ theme: effectiveTheme });
-    document.body.removeAttribute('data-theme-pending');
-}
-
-const CHAT_PRESENTATION_MODES = Object.freeze(['bubble', 'panel', 'immersive']);
-const CHAT_PRESENTATION_MODE_CLASSES = CHAT_PRESENTATION_MODES.map(
-    mode => `chat-presentation-${mode}`
-);
-
-function normalizeChatPresentationMode(mode) {
-    return CHAT_PRESENTATION_MODES.includes(mode) ? mode : 'bubble';
-}
-
-function isChatVisuallyNearBottom(scrollContainer, threshold = 64) {
-    const messages = scrollContainer?.querySelector('.chat-messages');
-    if (!scrollContainer || !messages) return true;
-
-    const containerRect = scrollContainer.getBoundingClientRect();
-    const messagesRect = messages.getBoundingClientRect();
-    return Math.abs(messagesRect.bottom - containerRect.bottom) <= threshold;
-}
-
-function captureChatPresentationScrollAnchor() {
-    const scrollContainer = document.querySelector('.chat-messages-container');
-    if (!scrollContainer) return null;
-
-    if (isChatVisuallyNearBottom(scrollContainer)) {
-        return { scrollContainer, stickToBottom: true };
-    }
-
-    const containerRect = scrollContainer.getBoundingClientRect();
-    const visibleMessages = Array.from(
-        scrollContainer.querySelectorAll('.message-item[data-message-id]')
-    )
-        .map(element => ({ element, rect: element.getBoundingClientRect() }))
-        .filter(({ rect }) => rect.bottom > containerRect.top && rect.top < containerRect.bottom)
-        .sort((a, b) => a.rect.top - b.rect.top);
-
-    const anchor = visibleMessages[0];
-    if (!anchor) {
-        return {
-            scrollContainer,
-            stickToBottom: false,
-            scrollTop: scrollContainer.scrollTop
-        };
-    }
-
-    return {
-        scrollContainer,
-        stickToBottom: false,
-        messageId: anchor.element.dataset.messageId,
-        viewportOffset: anchor.rect.top - containerRect.top,
-        scrollTop: scrollContainer.scrollTop
-    };
-}
-
-function restoreChatPresentationScrollAnchor(anchor) {
-    if (!anchor?.scrollContainer?.isConnected) return;
-
-    const { scrollContainer } = anchor;
-    if (anchor.stickToBottom) {
-        const messages = scrollContainer.querySelector('.chat-messages');
-        if (!messages) return;
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const messagesRect = messages.getBoundingClientRect();
-        scrollContainer.scrollTop += messagesRect.bottom - containerRect.bottom;
-        return;
-    }
-
-    const anchorElement = anchor.messageId
-        ? scrollContainer.querySelector(`.message-item[data-message-id="${CSS.escape(anchor.messageId)}"]`)
-        : null;
-
-    if (!anchorElement) {
-        scrollContainer.scrollTop = anchor.scrollTop;
-        return;
-    }
-
-    const containerRect = scrollContainer.getBoundingClientRect();
-    const currentOffset = anchorElement.getBoundingClientRect().top - containerRect.top;
-    scrollContainer.scrollTop += currentOffset - anchor.viewportOffset;
-}
-
-function syncChatPresentationModeControls(mode = globalSettings.chatPresentationMode) {
-    const normalizedMode = normalizeChatPresentationMode(mode);
-    const modeControl = document.querySelector(
-        `input[name="chatPresentationMode"][value="${normalizedMode}"]`
-    );
-    if (modeControl) modeControl.checked = true;
-
-    document.querySelectorAll('.chat-presentation-quick-option').forEach((option) => {
-        const isActive = option.dataset.presentationMode === normalizedMode;
-        option.classList.toggle('active', isActive);
-        option.setAttribute('aria-checked', String(isActive));
-        option.tabIndex = isActive ? 0 : -1;
-    });
-
-    const bubbleOnlySettings = document.getElementById('userChatBubbleSettings');
-    if (bubbleOnlySettings) {
-        bubbleOnlySettings.hidden = normalizedMode !== 'bubble';
-    }
-
-    const bubbleWidthSettings = document.getElementById('chatBubbleWidthSettings');
-    if (bubbleWidthSettings) {
-        bubbleWidthSettings.hidden = normalizedMode !== 'bubble';
-    }
-}
-
-function setupChatPresentationQuickSwitcher() {
-    document.querySelectorAll('.chat-presentation-quick-switcher').forEach((switcher) => {
-        const options = Array.from(switcher.querySelectorAll('.chat-presentation-quick-option'));
-        if (!options.length || switcher.dataset.bound === 'true') return;
-        const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
-        const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
-
-        const setOpen = (open) => {
-            switcher.classList.toggle('is-open', open);
-            trigger?.setAttribute('aria-expanded', String(open));
-        };
-
-        const selectMode = async (option) => {
-            const mode = option?.dataset.presentationMode;
-            if (!mode) return;
-            await applyChatPresentationMode(mode, {
-                persist: true,
-                preserveScroll: true,
-                notify: false,
-                source: `${switcher.id || 'chat-presentation'}-quick-switcher`
-            });
-        };
-
-        if (usesExplicitState && trigger) {
-            trigger.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const open = !switcher.classList.contains('is-open');
-                setOpen(open);
-                if (open) {
-                    options.find(option => option.getAttribute('aria-checked') === 'true')?.focus();
-                }
-            });
-            document.addEventListener('pointerdown', (event) => {
-                if (!switcher.classList.contains('is-open')) return;
-                if (switcher.contains(event.target) || trigger.contains(event.target)) return;
-                setOpen(false);
-            });
-            document.addEventListener('keydown', (event) => {
-                if (event.key !== 'Escape' || !switcher.classList.contains('is-open')) return;
-                event.preventDefault();
-                event.stopPropagation();
-                setOpen(false);
-                trigger.focus();
-            });
-        }
-
-        options.forEach((option) => {
-            option.addEventListener('click', async () => {
-                await selectMode(option);
-                if (usesExplicitState) setOpen(false);
-            });
-            option.addEventListener('keydown', (event) => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-                event.preventDefault();
-
-                const currentIndex = Math.max(0, options.indexOf(option));
-                let nextIndex = currentIndex;
-                if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
-                if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
-                if (event.key === 'Home') nextIndex = 0;
-                if (event.key === 'End') nextIndex = options.length - 1;
-
-                options[nextIndex].focus();
-                selectMode(options[nextIndex]);
-            });
-        });
-
-        switcher.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (usesExplicitState) setOpen(false);
-            trigger?.focus();
-            if (!usesExplicitState) trigger?.blur();
-        });
-
-        switcher.dataset.bound = 'true';
-    });
-    syncChatPresentationModeControls(globalSettings.chatPresentationMode);
-}
-
-async function applyChatPresentationMode(mode, options = {}) {
-    const {
-        persist = false,
-        preserveScroll = true,
-        notify = false,
-        source = 'unknown'
-    } = options;
-    const normalizedMode = normalizeChatPresentationMode(mode);
-    const previousMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
-    const anchor = preserveScroll ? captureChatPresentationScrollAnchor() : null;
-
-    document.body?.classList.remove(...CHAT_PRESENTATION_MODE_CLASSES);
-    document.body?.classList.add(`chat-presentation-${normalizedMode}`);
-    globalSettings.chatPresentationMode = normalizedMode;
-    window.globalSettings = globalSettings;
-    syncChatPresentationModeControls(normalizedMode);
-
-    if (window.pretextBridge?.setPresentationMode) {
-        window.pretextBridge.setPresentationMode(normalizedMode);
-    } else {
-        window.pretextBridge?.clearAll?.();
-    }
-    messageRenderer?.refreshLayoutDependentState?.();
-
-    if (anchor) {
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => restoreChatPresentationScrollAnchor(anchor));
-        });
-    }
-
-    if (!persist || normalizedMode === previousMode) {
-        return { success: true, mode: normalizedMode };
-    }
-
-    try {
-        const result = await chatAPI.saveSettings({ chatPresentationMode: normalizedMode });
-        if (!result?.success) {
-            throw new Error(result?.error || '设置保存失败');
-        }
-        if (notify) {
-            uiHelperFunctions?.showToastNotification?.('聊天显示模式已切换。', 'success');
-        }
-        return { success: true, mode: normalizedMode, source };
-    } catch (error) {
-        await applyChatPresentationMode(previousMode, {
-            persist: false,
-            preserveScroll: true,
-            notify: false,
-            source: 'rollback'
-        });
-        uiHelperFunctions?.showToastNotification?.(`聊天显示模式保存失败：${error.message}`, 'error');
-        return { success: false, mode: previousMode, error };
-    }
-}
-
-function clampChatBubbleWidthPercent(value, fallback) {
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed)) return fallback;
-    return Math.min(98, Math.max(50, parsed));
-}
-
-const CHAT_FONT_PRESETS = Object.freeze({
-    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"',
-    segoe: '"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
-    ubuntu: '"Ubuntu", "Segoe UI", "Microsoft YaHei UI", sans-serif',
-    yahei: '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif',
-    pingfang: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", sans-serif',
-    'source-han': '"Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", sans-serif',
-    serif: '"Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif'
-});
-
-const CHAT_CODE_FONT_PRESETS = Object.freeze({
-    cascadia: '"Cascadia Code", "Consolas", "JetBrains Mono", monospace',
-    fira: '"Fira Code", "Consolas", "JetBrains Mono", monospace',
-    consolas: '"Consolas", "Monaco", "Courier New", monospace',
-    system: 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-    jetbrains: '"JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace',
-    monaspace: '"Monaspace Neon", "JetBrains Mono", "Cascadia Code", monospace'
-});
-
-const TOOL_CARD_FONT_PRESETS = Object.freeze({
-    ...CHAT_FONT_PRESETS,
-    cascadia: CHAT_CODE_FONT_PRESETS.cascadia,
-    fira: CHAT_CODE_FONT_PRESETS.fira,
-    consolas: CHAT_CODE_FONT_PRESETS.consolas,
-    jetbrains: CHAT_CODE_FONT_PRESETS.jetbrains,
-    monaspace: CHAT_CODE_FONT_PRESETS.monaspace
-});
-
-function sanitizeFontFamilyValue(value) {
-    if (typeof value !== 'string') return '';
-    return value.trim().replace(/[\r\n]+/g, ' ');
-}
-
-function resolveFontFamilyFromPreset(presetMap, presetKey, customValue, fallbackKey) {
-    const normalizedPreset = typeof presetKey === 'string' ? presetKey : fallbackKey;
-    if (normalizedPreset === 'custom') {
-        return sanitizeFontFamilyValue(customValue) || presetMap[fallbackKey];
-    }
-    return presetMap[normalizedPreset] || presetMap[fallbackKey];
-}
-
-function resolveChatFontFamily(settings = globalSettings) {
-    return resolveFontFamilyFromPreset(
-        CHAT_FONT_PRESETS,
-        settings?.chatFontPreset,
-        settings?.chatFontCustom,
-        'system'
-    );
-}
-
-function resolveChatCodeFontFamily(settings = globalSettings) {
-    return resolveFontFamilyFromPreset(
-        CHAT_CODE_FONT_PRESETS,
-        settings?.chatCodeFontPreset,
-        settings?.chatCodeFontCustom,
-        'consolas'
-    );
-}
-
-function resolveDiaryFontFamily(settings = globalSettings) {
-    return resolveFontFamilyFromPreset(
-        CHAT_FONT_PRESETS,
-        settings?.chatDiaryFontPreset,
-        settings?.chatDiaryFontCustom,
-        'serif'
-    );
-}
-
-function resolveToolFontFamily(settings = globalSettings) {
-    return resolveFontFamilyFromPreset(
-        TOOL_CARD_FONT_PRESETS,
-        settings?.chatToolFontPreset,
-        settings?.chatToolFontCustom,
-        'system'
-    );
-}
-
-function syncChatFontControl(selectId, customRowId) {
-    const presetSelect = document.getElementById(selectId);
-    const customRow = document.getElementById(customRowId);
-    if (!presetSelect || !customRow) return;
-    customRow.style.display = presetSelect.value === 'custom' ? 'block' : 'none';
-}
-
-function updateFontScenarioPreview() {
-    const bodyFontFamily = resolveChatFontFamily({
-        chatFontPreset: document.getElementById('chatFontPreset')?.value || 'system',
-        chatFontCustom: document.getElementById('chatFontCustom')?.value || ''
-    });
-    const codeFontFamily = resolveChatCodeFontFamily({
-        chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || 'consolas',
-        chatCodeFontCustom: document.getElementById('chatCodeFontCustom')?.value || ''
-    });
-    const diaryFontFamily = resolveDiaryFontFamily({
-        chatDiaryFontPreset: document.getElementById('chatDiaryFontPreset')?.value || 'serif',
-        chatDiaryFontCustom: document.getElementById('chatDiaryFontCustom')?.value || ''
-    });
-    const toolFontFamily = resolveToolFontFamily({
-        chatToolFontPreset: document.getElementById('chatToolFontPreset')?.value || 'system',
-        chatToolFontCustom: document.getElementById('chatToolFontCustom')?.value || ''
-    });
-
-    const bodyEl = document.getElementById('scenarioPreviewBody');
-    const codeEl = document.getElementById('scenarioPreviewCode');
-    const diaryEl = document.getElementById('scenarioPreviewDiary');
-    const toolEl = document.getElementById('scenarioPreviewTool');
-
-    if (bodyEl) bodyEl.style.fontFamily = bodyFontFamily;
-    if (codeEl) codeEl.style.fontFamily = codeFontFamily;
-    if (diaryEl) diaryEl.style.fontFamily = diaryFontFamily;
-    if (toolEl) toolEl.style.fontFamily = toolFontFamily;
-}
-
-function ensureScenarioFontSettingsMount(previewId, mountId) {
-    const previewEl = document.getElementById(previewId);
-    if (!previewEl) return null;
-
-    const card = previewEl.closest('.scenario-preview-card');
-    if (!card) return null;
-
-    let mountEl = document.getElementById(mountId);
-    if (!mountEl) {
-        mountEl = document.createElement('div');
-        mountEl.id = mountId;
-        mountEl.className = 'scenario-preview-settings-slot';
-        const noteEl = card.querySelector('.scenario-preview-note');
-        if (noteEl) {
-            card.insertBefore(mountEl, noteEl);
-        } else {
-            card.appendChild(mountEl);
-        }
-    }
-
-    return mountEl;
-}
-
-function mountChatFontSettingGroups() {
-    [
-        {
-            groupId: 'chatFontSettingsGroup',
-            previewId: 'scenarioPreviewBody',
-            mountId: 'chatFontSettingsMount'
+    // Flowlock command/request ownership is provided by MainChatFlowlockOwner.
+
+
+    const flowlockOwner = createMainChatFlowlockOwner({
+        subscriptions: { command: chatAPI?.onFlowlockCommand, request: chatAPI?.onFlowlockRequest },
+        flowlockManager: window.flowlockManager,
+        getSelectedItem: currentSelectedItemRef.get,
+        messageInput,
+        uiHelperFunctions: window.uiHelperFunctions,
+        sendResponse: (commandData, responseData) => {
+            if (!commandData?.requestId || !chatAPI?.sendFlowlockRpcResponse) return;
+            chatAPI.sendFlowlockRpcResponse({ requestId: commandData.requestId, ok: responseData?.success !== false, data: responseData?.success === false ? undefined : responseData, error: responseData?.success === false ? responseData.error : undefined });
         },
-        {
-            groupId: 'chatCodeFontSettingsGroup',
-            previewId: 'scenarioPreviewCode',
-            mountId: 'chatCodeFontSettingsMount'
-        }
-    ].forEach(({ groupId, previewId, mountId }) => {
-        const groupEl = document.getElementById(groupId);
-        const mountEl = ensureScenarioFontSettingsMount(previewId, mountId);
-        if (!groupEl || !mountEl) return;
-
-        if (groupEl.parentElement !== mountEl) {
-            mountEl.appendChild(groupEl);
-        }
-
-        groupEl.style.marginTop = '0';
-        groupEl.style.marginBottom = '0';
     });
-}
+    flowlockOwner.mount();
+    ownedRendererSubscriptions.add(flowlockOwner);
 
-function syncChatFontControls() {
-    mountChatFontSettingGroups();
-    syncChatFontControl('chatFontPreset', 'chatFontCustomRow');
-    syncChatFontControl('chatCodeFontPreset', 'chatCodeFontCustomRow');
-    syncChatFontControl('chatDiaryFontPreset', 'chatDiaryFontCustomRow');
-    syncChatFontControl('chatToolFontPreset', 'chatToolFontCustomRow');
-    updateFontScenarioPreview();
-}
+});
 
-function syncWideChatLayoutControls() {
-    const wideModeRadio = document.getElementById('chatLayoutModeWide');
-    const widthSettings = document.getElementById('chatBubbleWidthSettings');
-    if (!wideModeRadio || !widthSettings) return;
-    widthSettings.style.display = wideModeRadio.checked ? 'block' : 'none';
-}
+function loadAndApplyGlobalSettings() { return mainChatSettingsPresentationOwner.loadAndApply(); }
 
-function syncUserChatBubbleControls() {
-    const bubbleUiToggle = document.getElementById('enableUserChatBubbleUi');
-    const metaSettings = document.getElementById('userChatBubbleMetaSettings');
-    if (!bubbleUiToggle || !metaSettings) return;
-    metaSettings.style.display = bubbleUiToggle.checked ? 'flex' : 'none';
-}
 
-function applyUserChatBubbleUiState(settings = globalSettings) {
-    document.querySelectorAll('.message-item.user').forEach((messageItem) => {
-        applyUserMessageLayoutState(messageItem, settings);
-    });
-}
+function applyInitialThemeClass(mode) { mainChatThemeOwner.applyInitialTheme(mode); }
 
-function applyChatBubbleLayoutSettings(settings = globalSettings) {
-    const rootStyle = document.documentElement.style;
-    const resolvedSettings = settings || {};
-    const chatFontFamily = resolveChatFontFamily(resolvedSettings);
-    const chatCodeFontFamily = resolveChatCodeFontFamily(resolvedSettings);
-    const diaryFontFamily = resolveDiaryFontFamily(resolvedSettings);
-    const toolFontFamily = resolveToolFontFamily(resolvedSettings);
 
-    const defaultWidth = clampChatBubbleWidthPercent(resolvedSettings.chatBubbleMaxWidthDefault, 82);
-    const notificationsWidth = clampChatBubbleWidthPercent(resolvedSettings.chatBubbleMaxWidthNotifications, 90);
-    const narrowWidth = clampChatBubbleWidthPercent(resolvedSettings.chatBubbleMaxWidthNarrow, 85);
-    const wideDefaultWidth = clampChatBubbleWidthPercent(resolvedSettings.chatBubbleMaxWidthWideDefault, 92);
-    const wideNotificationsWidth = clampChatBubbleWidthPercent(resolvedSettings.chatBubbleMaxWidthWideNotifications, 96);
-    const wideNarrowWidth = clampChatBubbleWidthPercent(
-        resolvedSettings.chatBubbleMaxWidthWideNarrow,
-        wideDefaultWidth
-    );
-
-    rootStyle.setProperty('--chat-bubble-max-width', `${defaultWidth}%`);
-    rootStyle.setProperty('--chat-bubble-max-width-notifications', `${notificationsWidth}%`);
-    rootStyle.setProperty('--chat-bubble-max-width-narrow', `${narrowWidth}%`);
-    rootStyle.setProperty('--chat-bubble-max-width-wide', `${wideDefaultWidth}%`);
-    rootStyle.setProperty('--chat-bubble-max-width-wide-notifications', `${wideNotificationsWidth}%`);
-    rootStyle.setProperty('--chat-bubble-max-width-wide-narrow', `${wideNarrowWidth}%`);
-    rootStyle.setProperty('--vcp-chat-font-family', chatFontFamily);
-    rootStyle.setProperty('--vcp-chat-code-font-family', chatCodeFontFamily);
-    rootStyle.setProperty('--vcp-diary-font-family', diaryFontFamily);
-    rootStyle.setProperty('--vcp-tool-card-font-family', toolFontFamily);
-    rootStyle.setProperty('--font-family', chatFontFamily);
-    rootStyle.setProperty('--font-family-sans-serif', chatFontFamily);
-    rootStyle.setProperty('--font-family-monospace', chatCodeFontFamily);
-
-    if (window.pretextBridge && typeof window.pretextBridge.setChatFonts === 'function') {
-        window.pretextBridge.setChatFonts(chatFontFamily, chatCodeFontFamily);
-    }
-
-    if (document.body) {
-        document.body.classList.toggle('chat-wide-layout', resolvedSettings.enableWideChatLayout === true);
-    }
-    applyChatPresentationMode(resolvedSettings.chatPresentationMode, {
-        persist: false,
-        preserveScroll: false,
-        source: 'layout-settings'
-    });
-    applyUserChatBubbleUiState(resolvedSettings);
-}
-
-/**
- * 🟢 将全局设置同步到 UI 元素（仅在模态框实例化后调用）
- */
-async function syncGlobalSettingsToUI() {
-    const safeSet = (id, value, prop = 'value') => {
-        const el = document.getElementById(id);
-        if (el) el[prop] = value;
-    };
-    const safeCheck = (id, checked) => {
-        const el = document.getElementById(id);
-        if (el) el.checked = !!checked;
-    };
-    const syncRustDebugPanelVisibility = () => {
-        const rustDebugModeEl = document.getElementById('rustDebugMode');
-        const rustDebugPanelEl = document.getElementById('rustDebugPanel');
-        if (rustDebugPanelEl) {
-            rustDebugPanelEl.style.display = rustDebugModeEl?.checked ? 'block' : 'none';
-        }
-    };
-    const joinKeywords = (value) => Array.isArray(value) ? value.join('\n') : '';
-    const shouldShowRustGuardRules = () => {
-        const useRust = document.getElementById('rustUseAssistant')?.checked === true;
-        return useRust;
-    };
-    const syncRustGuardRulesVisibility = () => {
-        const container = document.getElementById('rustGuardRulesContainer');
-        if (container) {
-            container.style.display = shouldShowRustGuardRules() ? 'block' : 'none';
-        }
-    };
-
-    safeSet('userName', globalSettings.userName || '用户');
-    
-    const borderColor = globalSettings.userAvatarBorderColor || '#3d5a80';
-    safeSet('userAvatarBorderColor', borderColor);
-    safeSet('userAvatarBorderColorText', borderColor);
-    
-    const nameColor = globalSettings.userNameTextColor || '#ffffff';
-    safeSet('userNameTextColor', nameColor);
-    safeSet('userNameTextColorText', nameColor);
-    
-    safeCheck('userUseThemeColorsInChat', globalSettings.userUseThemeColorsInChat);
-    
-    const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
-    safeSet('vcpServerUrl', completedUrl);
-    safeSet('vcpApiKey', globalSettings.vcpApiKey || '');
-    safeSet('fileKey', globalSettings.fileKey || '');
-    safeSet('vcpLogUrl', globalSettings.vcpLogUrl || '');
-    safeSet('vcpLogKey', globalSettings.vcpLogKey || '');
-    safeSet('topicSummaryModel', globalSettings.topicSummaryModel || '');
-    safeSet('continueWritingPrompt', globalSettings.continueWritingPrompt || '请继续');
-    safeSet('flowlockContinueDelay', globalSettings.flowlockContinueDelay ?? 5);
-    safeCheck('voiceModeLocal', (globalSettings.voiceMode || 'local') !== 'network');
-    safeCheck('voiceModeNetwork', (globalSettings.voiceMode || 'local') === 'network');
-    safeSet('speechRecognizerBrowserPath', globalSettings.speechRecognizerBrowserPath || '');
-    safeSet('speechRecognizerPagePath', globalSettings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html');
-    safeSet('voiceLocalSovitsUrl', globalSettings.voiceLocalSettings?.sovitsUrl || '');
-    safeSet('voiceLocalSovitsKey', globalSettings.voiceLocalSettings?.sovitsKey || '');
-    safeSet('voiceNetworkProviderUrl', globalSettings.voiceNetworkSettings?.providerUrl || '');
-    safeSet('voiceNetworkProviderKey', globalSettings.voiceNetworkSettings?.providerKey || '');
-    
-    // Network Notes Paths
-    const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
-    if (networkNotesPathsContainer) {
-        networkNotesPathsContainer.innerHTML = '';
-        const paths = Array.isArray(globalSettings.networkNotesPaths) ? globalSettings.networkNotesPaths : (globalSettings.networkNotesPath ? [globalSettings.networkNotesPath] : []);
-        if (paths.length === 0) {
-            uiHelperFunctions.addNetworkPathInput('');
-        } else {
-            paths.forEach(path => uiHelperFunctions.addNetworkPathInput(path));
-        }
-    }
-
-    safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
-    safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
-    safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
-    safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
-    const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, 'next');
-    safeSet('appearanceDensity', appearance?.density || 'comfortable');
-    safeSet('appearanceRadius', appearance?.radius || 'small');
-    safeSet('appearanceTypography', appearance?.typography || 'system');
-    safeSet('appearanceFontScale', appearance?.fontScale || 'normal');
-    safeSet('appearanceContentWidth', appearance?.contentWidth || 'full');
-    safeSet('appearanceSidebarRowHeight', appearance?.sidebarRowHeight ?? 46);
-    safeSet('appearanceSidebarRowHeightValue', `${appearance?.sidebarRowHeight ?? 46}px`);
-    safeSet('appearanceSidebarAvatarSize', appearance?.sidebarAvatarSize ?? 32);
-    safeSet('appearanceSidebarAvatarSizeValue', `${appearance?.sidebarAvatarSize ?? 32}px`);
-    safeSet('appearanceSidebarRadius', appearance?.sidebarRadius || 'tuned');
-    safeCheck(`appearanceSidebarRadiusChoice-${appearance?.sidebarRadius || 'tuned'}`, true);
-    safeSet('appearanceCustomRadius', appearance?.customRadius ?? 10);
-    safeSet('appearanceCustomRadiusValue', `${appearance?.customRadius ?? 10}px`);
-    document.getElementById('appearanceSidebarAvatarSize')?.dispatchEvent(new Event('input', { bubbles: true }));
-    safeSet('appearanceSurface', appearance?.surface || 'translucent');
-    safeSet('chatFontPreset', globalSettings.chatFontPreset || 'system');
-    safeSet('chatFontCustom', globalSettings.chatFontCustom || '');
-    safeSet('chatCodeFontPreset', globalSettings.chatCodeFontPreset || 'consolas');
-    safeSet('chatCodeFontCustom', globalSettings.chatCodeFontCustom || '');
-    safeSet('chatDiaryFontPreset', globalSettings.chatDiaryFontPreset || 'serif');
-    safeSet('chatDiaryFontCustom', globalSettings.chatDiaryFontCustom || '');
-    safeSet('chatToolFontPreset', globalSettings.chatToolFontPreset || 'system');
-    safeSet('chatToolFontCustom', globalSettings.chatToolFontCustom || '');
-    const presentationMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
-    safeCheck(`chatPresentationMode${presentationMode[0].toUpperCase()}${presentationMode.slice(1)}`, true);
-    safeCheck('chatLayoutModeWide', globalSettings.enableWideChatLayout === true);
-    safeCheck('chatLayoutModeNormal', globalSettings.enableWideChatLayout !== true);
-    safeCheck('enableUserChatBubbleUi', globalSettings.enableUserChatBubbleUi !== false);
-    safeCheck('showUserMetaInChatBubbleUi', globalSettings.showUserMetaInChatBubbleUi !== false);
-    safeSet('chatBubbleMaxWidthWideDefault', clampChatBubbleWidthPercent(globalSettings.chatBubbleMaxWidthWideDefault, 92));
-    safeSet('chatBubbleMaxWidthWideNotifications', clampChatBubbleWidthPercent(globalSettings.chatBubbleMaxWidthWideNotifications, 96));
-    safeSet(
-        'chatBubbleMaxWidthWideNarrow',
-        clampChatBubbleWidthPercent(
-            globalSettings.chatBubbleMaxWidthWideNarrow,
-            clampChatBubbleWidthPercent(globalSettings.chatBubbleMaxWidthWideDefault, 92)
-        )
-    );
-    safeSet('minChunkBufferSize', globalSettings.minChunkBufferSize ?? 16);
-    safeSet('smoothStreamIntervalMs', globalSettings.smoothStreamIntervalMs ?? 100);
-    syncChatFontControls();
-    syncWideChatLayoutControls();
-    syncUserChatBubbleControls();
-    syncChatPresentationModeControls(presentationMode);
-
-    const chatFontPresetSelect = document.getElementById('chatFontPreset');
-    const chatFontCustomInput = document.getElementById('chatFontCustom');
-    const chatCodeFontPresetSelect = document.getElementById('chatCodeFontPreset');
-    const chatCodeFontCustomInput = document.getElementById('chatCodeFontCustom');
-    const chatDiaryFontPresetSelect = document.getElementById('chatDiaryFontPreset');
-    const chatDiaryFontCustomInput = document.getElementById('chatDiaryFontCustom');
-    const chatToolFontPresetSelect = document.getElementById('chatToolFontPreset');
-    const chatToolFontCustomInput = document.getElementById('chatToolFontCustom');
-    const wideModeRadio = document.getElementById('chatLayoutModeWide');
-    const normalModeRadio = document.getElementById('chatLayoutModeNormal');
-    const userBubbleUiToggle = document.getElementById('enableUserChatBubbleUi');
-    const presentationModeRadios = document.querySelectorAll('input[name="chatPresentationMode"]');
-    if (chatFontPresetSelect && !chatFontPresetSelect.dataset.boundFontToggle) {
-        chatFontPresetSelect.addEventListener('change', syncChatFontControls);
-        chatFontPresetSelect.dataset.boundFontToggle = 'true';
-    }
-    if (chatCodeFontPresetSelect && !chatCodeFontPresetSelect.dataset.boundFontToggle) {
-        chatCodeFontPresetSelect.addEventListener('change', syncChatFontControls);
-        chatCodeFontPresetSelect.dataset.boundFontToggle = 'true';
-    }
-    if (chatDiaryFontPresetSelect && !chatDiaryFontPresetSelect.dataset.boundFontToggle) {
-        chatDiaryFontPresetSelect.addEventListener('change', syncChatFontControls);
-        chatDiaryFontPresetSelect.dataset.boundFontToggle = 'true';
-    }
-    if (chatToolFontPresetSelect && !chatToolFontPresetSelect.dataset.boundFontToggle) {
-        chatToolFontPresetSelect.addEventListener('change', syncChatFontControls);
-        chatToolFontPresetSelect.dataset.boundFontToggle = 'true';
-    }
-    if (chatFontCustomInput && !chatFontCustomInput.dataset.boundFontPreview) {
-        chatFontCustomInput.addEventListener('input', updateFontScenarioPreview);
-        chatFontCustomInput.dataset.boundFontPreview = 'true';
-    }
-    if (chatCodeFontCustomInput && !chatCodeFontCustomInput.dataset.boundFontPreview) {
-        chatCodeFontCustomInput.addEventListener('input', updateFontScenarioPreview);
-        chatCodeFontCustomInput.dataset.boundFontPreview = 'true';
-    }
-    if (chatDiaryFontCustomInput && !chatDiaryFontCustomInput.dataset.boundFontPreview) {
-        chatDiaryFontCustomInput.addEventListener('input', updateFontScenarioPreview);
-        chatDiaryFontCustomInput.dataset.boundFontPreview = 'true';
-    }
-    if (chatToolFontCustomInput && !chatToolFontCustomInput.dataset.boundFontPreview) {
-        chatToolFontCustomInput.addEventListener('input', updateFontScenarioPreview);
-        chatToolFontCustomInput.dataset.boundFontPreview = 'true';
-    }
-    if (wideModeRadio && !wideModeRadio.dataset.boundWideChatToggle) {
-        wideModeRadio.addEventListener('change', syncWideChatLayoutControls);
-        wideModeRadio.dataset.boundWideChatToggle = 'true';
-    }
-    if (normalModeRadio && !normalModeRadio.dataset.boundWideChatToggle) {
-        normalModeRadio.addEventListener('change', syncWideChatLayoutControls);
-        normalModeRadio.dataset.boundWideChatToggle = 'true';
-    }
-    if (userBubbleUiToggle && !userBubbleUiToggle.dataset.boundUserBubbleToggle) {
-        userBubbleUiToggle.addEventListener('change', syncUserChatBubbleControls);
-        userBubbleUiToggle.dataset.boundUserBubbleToggle = 'true';
-    }
-    presentationModeRadios.forEach((radio) => {
-        if (radio.dataset.boundPresentationModeToggle) return;
-        radio.addEventListener('change', () => {
-            if (!radio.checked) return;
-            applyChatPresentationMode(radio.value, {
-                persist: true,
-                preserveScroll: true,
-                notify: false,
-                source: 'settings'
-            });
-        });
-        radio.dataset.boundPresentationModeToggle = 'true';
-    });
-
-    // User Avatar Preview
-    const userAvatarPreview = document.getElementById('userAvatarPreview');
-    const userAvatarWrapper = userAvatarPreview?.closest('.agent-avatar-wrapper');
-    if (userAvatarPreview) {
-        if (globalSettings.userAvatarUrl) {
-            userAvatarPreview.src = globalSettings.userAvatarUrl;
-            userAvatarPreview.style.display = 'block';
-            userAvatarWrapper?.classList.remove('no-avatar');
-        } else {
-            userAvatarPreview.src = '#';
-            userAvatarPreview.style.display = 'none';
-            userAvatarWrapper?.classList.add('no-avatar');
-        }
-    }
-
-    // 加载论坛配置并填充管理员账号/密码
-    try {
-        const forumConfig = await chatAPI.loadForumConfig();
-        if (forumConfig && !forumConfig.error) {
-            safeSet('adminUsername', forumConfig.username || '');
-            safeSet('adminPassword', forumConfig.password || '');
-        }
-    } catch (err) {
-        console.warn('[Renderer] Failed to load forum config for global settings:', err);
-    }
-
-    // Assistant Select
-    const assistantAgentSelect = document.getElementById('assistantAgent');
-    if (assistantAgentSelect) {
-        await window.settingsManager.populateAssistantAgentSelect();
-        assistantAgentSelect.value = globalSettings.assistantAgent || '';
-    }
-
-    safeCheck('enableDistributedServer', globalSettings.enableDistributedServer === true);
-    safeCheck('agentMusicControl', globalSettings.agentMusicControl === true);
-    safeCheck('enableVcpToolInjection', globalSettings.enableVcpToolInjection === true);
-    safeCheck('enableThoughtChainInjection', globalSettings.enableThoughtChainInjection === true);
-    safeCheck('enableContextSanitizer', globalSettings.enableContextSanitizer === true);
-    safeSet('contextSanitizerDepth', globalSettings.contextSanitizerDepth ?? 2);
-    
-    const contextSanitizerDepthContainer = document.getElementById('contextSanitizerDepthContainer');
-    if (contextSanitizerDepthContainer) {
-        contextSanitizerDepthContainer.style.display = globalSettings.enableContextSanitizer === true ? 'block' : 'none';
-    }
-
-    safeCheck('enableAiMessageButtons', globalSettings.enableAiMessageButtons !== false);
-    safeCheck('enableMiddleClickQuickAction', globalSettings.enableMiddleClickQuickAction === true);
-    safeSet('middleClickQuickAction', globalSettings.middleClickQuickAction || '');
-    safeCheck('enableMiddleClickAdvanced', globalSettings.enableMiddleClickAdvanced === true);
-    safeSet('middleClickAdvancedDelay', Math.max(1000, globalSettings.middleClickAdvancedDelay ?? 1000));
-    safeCheck('enableRegenerateConfirmation', globalSettings.enableRegenerateConfirmation !== false);
-
-    if (chatAPI?.getRustAssistantConfig) {
-        try {
-            const rustConfig = await chatAPI.getRustAssistantConfig();
-            if (rustConfig && !rustConfig.error) {
-                safeCheck('rustUseAssistant', rustConfig.useRustAssistant === true);
-                safeCheck('rustDebugMode', rustConfig.debugMode === true);
-                safeSet('rustWhitelistKeywords', joinKeywords(rustConfig.whitelist || []));
-                safeSet('rustBlacklistKeywords', joinKeywords(rustConfig.blacklist || []));
-                safeSet('rustScreenshotApps', joinKeywords(rustConfig.screenshotApps || []));
-                syncRustDebugPanelVisibility();
-                syncRustGuardRulesVisibility();
-
-                const rustDebugModeEl = document.getElementById('rustDebugMode');
-                if (rustDebugModeEl && !rustDebugModeEl.dataset.debugPanelBound) {
-                    rustDebugModeEl.addEventListener('change', syncRustDebugPanelVisibility);
-                    rustDebugModeEl.dataset.debugPanelBound = 'true';
-                }
-
-                const rustUseAssistantEl = document.getElementById('rustUseAssistant');
-                if (rustUseAssistantEl && !rustUseAssistantEl.dataset.guardPanelBound) {
-                    rustUseAssistantEl.addEventListener('change', syncRustGuardRulesVisibility);
-                    rustUseAssistantEl.dataset.guardPanelBound = 'true';
-                }
-
-            }
-        } catch (error) {
-            console.warn('[Renderer] Failed to sync Rust assistant config:', error);
-        }
-    }
-
-    if (chatAPI?.getAssistantRuntimeStatus && document.getElementById('rustDebugMode')?.checked) {
-        try {
-            const runtime = await chatAPI.getAssistantRuntimeStatus();
-            if (runtime && runtime.success) {
-                const modeText = runtime.mode === 'rust'
-                    ? 'Rust'
-                    : (runtime.mode === 'disabled' ? 'Disabled' : runtime.mode || 'Unknown');
-                const desiredText = runtime.desiredMode === 'rust'
-                    ? 'Rust'
-                    : (runtime.desiredMode === 'disabled' ? 'Disabled' : runtime.desiredMode || 'Unknown');
-                const activeText = runtime.active ? '运行中' : '未运行';
-                const debugReasonText = runtime.lastDebugReason || '无';
-                const forwardedCount = runtime.forwardedEventCount || 0;
-                const sidecarActiveText = runtime.rustSidecarListenerActive === null
-                    ? '未知'
-                    : (runtime.rustSidecarListenerActive ? '是' : '否');
-                const processAliveText = runtime.adapterProcessAlive ? '运行中' : '未运行';
-                const processPidText = runtime.adapterProcessPid ? String(runtime.adapterProcessPid) : '无';
-                const autoFallbackCount = runtime.runtimeFallbackTrace?.autoFallbackCount || 0;
-                const autoFallbackReason = runtime.runtimeFallbackTrace?.lastAutoFallbackReason || '无';
-                const receivedCount = runtime.integrationTrace?.receivedSelectionCount || 0;
-                const showAttemptCount = runtime.integrationTrace?.showAttemptCount || 0;
-                const showErrorText = runtime.integrationTrace?.lastShowError || '无';
-                safeSet('assistantRuntimeMode', modeText, 'textContent');
-                safeSet('assistantRuntimeDesiredMode', desiredText, 'textContent');
-                safeSet('assistantRuntimeActive', activeText, 'textContent');
-                safeSet('assistantRuntimeDebugReason', debugReasonText, 'textContent');
-                safeSet('assistantRuntimeForwardedCount', String(forwardedCount), 'textContent');
-                safeSet('assistantRuntimeSidecarActive', sidecarActiveText, 'textContent');
-                safeSet('assistantRuntimeProcessAlive', processAliveText, 'textContent');
-                safeSet('assistantRuntimeProcessPid', processPidText, 'textContent');
-                safeSet('assistantRuntimeAutoFallbackCount', String(autoFallbackCount), 'textContent');
-                safeSet('assistantRuntimeAutoFallbackReason', autoFallbackReason, 'textContent');
-                safeSet('assistantRuntimeReceivedCount', String(receivedCount), 'textContent');
-                safeSet('assistantRuntimeShowAttemptCount', String(showAttemptCount), 'textContent');
-                safeSet('assistantRuntimeShowError', showErrorText, 'textContent');
-            }
-        } catch (error) {
-            console.warn('[Renderer] Failed to load assistant runtime status:', error);
-        }
-    }
-
-    // Visibility toggles
-    const middleClickContainer = document.getElementById('middleClickQuickActionContainer');
-    if (middleClickContainer) middleClickContainer.style.display = globalSettings.enableMiddleClickQuickAction ? 'block' : 'none';
-    const middleClickAdvancedContainer = document.getElementById('middleClickAdvancedContainer');
-    if (middleClickAdvancedContainer) middleClickAdvancedContainer.style.display = globalSettings.enableMiddleClickQuickAction ? 'block' : 'none';
-    const middleClickAdvancedSettings = document.getElementById('middleClickAdvancedSettings');
-    if (middleClickAdvancedSettings) middleClickAdvancedSettings.style.display = globalSettings.enableMiddleClickAdvanced ? 'block' : 'none';
-}
+function normalizeChatPresentationMode(mode) { return mainChatSettingsPresentationOwner.normalizePresentation(mode); }
+function applyChatPresentationMode(mode, options = {}) { return mainChatSettingsPresentationOwner.applyPresentation(mode, options); }
+function setupChatPresentationQuickSwitcher() { return mainChatSettingsPresentationOwner.setupPresentationQuickSwitcher(); }
+function applyChatBubbleLayoutSettings(settings = getGlobalSettings()) { return mainChatSettingsPresentationOwner.applyLayoutSettings(settings); }
+function syncGlobalSettingsToUI() { return mainChatSettingsPresentationOwner.syncSettingsToUI(); }
 
 // --- Chat Functionality ---
 // --- UI Event Listeners & Helpers ---
@@ -2451,179 +1197,7 @@ if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Mar
     markedInstance = { parse: (text) => `<p>${String(text || '').replace(/\n/g, '<br>')}</p>` };
 }
 
-window.addEventListener('contextmenu', (e) => {
-    // Allow context menu for text input fields
-    if (e.target.closest('textarea, input[type="text"], .message-item .md-content')) { // Also allow on rendered message content
-        // Standard context menu will appear
-    } else {
-        // e.preventDefault(); // Optionally prevent context menu elsewhere
-    }
-}, false);
- 
 // Helper to get a centrally stored cropped file (agent, group, or user)
 // These functions are now part of modules/ui-helpers.js and are accessed via uiHelperFunctions
 
-// --- Forward Message Functionality ---
-let messageToForward = null;
-let selectedForwardTarget = null;
-
-async function showForwardModal(message) {
-    messageToForward = message;
-    selectedForwardTarget = null; // Reset selection
-    
-    // 🟢 修复：先调用 openModal 确保从模板实例化 DOM 元素
-    uiHelperFunctions.openModal('forwardMessageModal');
-
-    const modal = document.getElementById('forwardMessageModal');
-    const targetList = document.getElementById('forwardTargetList');
-    const searchInput = document.getElementById('forwardTargetSearch');
-    const commentInput = document.getElementById('forwardAdditionalComment');
-    const confirmBtn = document.getElementById('confirmForwardBtn');
-
-    if (!targetList || !searchInput || !commentInput || !confirmBtn) {
-        console.error("[Forward Modal] Elements not found even after modal open!");
-        return;
-    }
-
-    targetList.innerHTML = '<li>Loading...</li>';
-    commentInput.value = '';
-    searchInput.value = '';
-    confirmBtn.disabled = true;
-
-    const result = await chatAPI.getAllItems();
-    if (result.success) {
-        renderForwardTargetList(result.items);
-    } else {
-        targetList.innerHTML = '<li>Failed to load targets.</li>';
-    }
-
-    searchInput.oninput = () => {
-        const searchTerm = searchInput.value.toLowerCase();
-        const items = targetList.querySelectorAll('.agent-item');
-        items.forEach(item => {
-            const name = item.dataset.name.toLowerCase();
-            if (name.includes(searchTerm)) {
-                item.style.display = '';
-            } else {
-                item.style.display = 'none';
-            }
-        });
-    };
-
-    confirmBtn.onclick = handleConfirmForward;
-}
-
-function renderForwardTargetList(items) {
-    const targetList = document.getElementById('forwardTargetList');
-    const confirmBtn = document.getElementById('confirmForwardBtn');
-    targetList.innerHTML = '';
-
-    items.forEach(item => {
-        const li = document.createElement('li');
-        li.className = 'agent-item';
-        li.dataset.id = item.id;
-        li.dataset.type = item.type;
-        li.dataset.name = item.name;
-
-        const avatar = document.createElement('img');
-        avatar.className = 'avatar';
-        avatar.src = item.avatarUrl || (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_user_avatar.png');
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'agent-name';
-        nameSpan.textContent = `${item.name} (${item.type === 'group' ? '群组' : 'Agent'})`;
-
-        li.appendChild(avatar);
-        li.appendChild(nameSpan);
-
-        li.onclick = () => {
-            const currentSelected = targetList.querySelector('.selected');
-            if (currentSelected) {
-                currentSelected.classList.remove('selected');
-            }
-            li.classList.add('selected');
-            selectedForwardTarget = { id: item.id, type: item.type, name: item.name };
-            confirmBtn.disabled = false;
-        };
-        targetList.appendChild(li);
-    });
-}
-
-async function handleConfirmForward() {
-    if (!messageToForward || !selectedForwardTarget) {
-        uiHelperFunctions.showToastNotification('错误：未选择消息或转发目标。', 'error');
-        return;
-    }
-
-    const additionalComment = document.getElementById('forwardAdditionalComment').value.trim();
-    
-    // We need to get the original message from history to ensure we have all data
-    const originalMessageResult = await chatAPI.getOriginalMessageContent(
-        currentSelectedItem.id,
-        currentSelectedItem.type,
-        currentTopicId,
-        messageToForward.id
-    );
-
-    if (!originalMessageResult.success) {
-        uiHelperFunctions.showToastNotification(`无法获取原始消息内容: ${originalMessageResult.error}`, 'error');
-        return;
-    }
-    
-    const originalMessage = { ...messageToForward, content: originalMessageResult.content };
-
-    let forwardedContent = '';
-    const senderName = originalMessage.name || (originalMessage.role === 'user' ? '用户' : '助手');
-    forwardedContent += `> 转发自 **${senderName}** 的消息:\n\n`;
-    
-    let originalText = '';
-    if (typeof originalMessage.content === 'string') {
-        originalText = originalMessage.content;
-    } else if (originalMessage.content && typeof originalMessage.content.text === 'string') {
-        originalText = originalMessage.content.text;
-    }
-    
-    forwardedContent += originalText;
-
-    if (additionalComment) {
-        forwardedContent += `\n\n---\n${additionalComment}`;
-    }
-
-    const attachments = originalMessage.attachments || [];
-
-    // This is a simplified send. We might need a more robust solution
-    // that re-uses the logic from chatManager.handleSendMessage
-    // For now, let's create a new function in chatManager for this.
-    if (chatManager && typeof chatManager.handleForwardMessage === 'function') {
-        chatManager.handleForwardMessage(selectedForwardTarget, forwardedContent, attachments);
-        uiHelperFunctions.showToastNotification(`消息已转发给 ${selectedForwardTarget.name}`, 'success');
-    } else {
-        uiHelperFunctions.showToastNotification('转发功能尚未完全实现。', 'error');
-        console.error('chatManager.handleForwardMessage is not defined');
-    }
-
-    uiHelperFunctions.closeModal('forwardMessageModal');
-    messageToForward = null;
-    selectedForwardTarget = null;
-}
-// Expose these functions globally for ui-helpers.js
-// Expose the new helper functions on the window object for modules that need them
-// These are no longer needed as uiHelperFunctions handles them directly
-window.ensureAudioContext = () => { /* Placeholder, will be defined in setupTtsListeners */ };
-window.showForwardModal = showForwardModal;
-
-// Make globalSettings accessible for notification renderer
-window.applyChatBubbleLayoutSettings = applyChatBubbleLayoutSettings;
-window.applyChatPresentationMode = applyChatPresentationMode;
-window.setChatPresentationMode = applyChatPresentationMode;
-window.normalizeChatPresentationMode = normalizeChatPresentationMode;
-window.globalSettings = globalSettings;
-
-// Make filter functions globally accessible for notification renderer
-window.checkMessageFilter = (messageTitle) => {
-    if (window.filterManager) {
-        return window.filterManager.checkMessageFilter(messageTitle);
-    }
-    // Fallback if the manager is not available
-    return null;
-};
+// Forward modal ownership is provided by ForwardMessageOwner.

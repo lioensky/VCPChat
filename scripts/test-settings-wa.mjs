@@ -93,6 +93,9 @@ const deps = {
     settingsManager: {
         completeVcpUrl: (url) => url,
     },
+    normalizeChatPresentationMode: mode => ['bubble', 'panel', 'immersive'].includes(mode) ? mode : 'bubble',
+    applyChatPresentationMode: async mode => ({ success: true, mode }),
+    applyChatBubbleLayoutSettings() {},
 };
 
 const { handleSaveGlobalSettings } = await import(pathToFileURL(`${root}/modules/global-settings-manager.js`).href);

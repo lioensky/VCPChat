@@ -57,15 +57,20 @@ export const chatManager = (() => {
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
     let lastAssistantSuspendAt = 0;
     let activeHistoryLoadToken = 0;
+    let historySyncGeneration = 0;
     let itemSelectionGeneration = 0;
     let topicSelectionGeneration = 0;
     let topicCreationGeneration = 0;
     let pendingItemSelectionToken = null;
     let emptyStateObserver = null;
+    let canvasContentDisposer = null;
+    let canvasClosedDisposer = null;
+    const forwardTimers = new Set();
     const outgoingPersistenceQueues = new Map();
     const pendingSendContexts = new Set();
     let lastOpenSaveQueue = Promise.resolve();
     let initialized = false;
+    let disposed = false;
 
     function insertAfterMessage(history, ownerMessageId, message) {
         const next = Array.isArray(history) ? [...history] : [];
@@ -355,6 +360,7 @@ export const chatManager = (() => {
      * @param {object} config - The configuration object.
      */
     function init(config) {
+        if (disposed) throw new Error('ChatManager has been disposed');
         initialized = false;
         chatContext = config.chatContext || null;
         chatRepository = config.chatRepository || null;
@@ -407,8 +413,22 @@ export const chatManager = (() => {
 
         // Listen for Canvas events
         if (electronAPI) {
-            electronAPI.onCanvasContentUpdate(handleCanvasContentUpdate);
-            electronAPI.onCanvasWindowClosed(handleCanvasWindowClosed);
+            canvasContentDisposer?.();
+            canvasClosedDisposer?.();
+            canvasContentDisposer = null;
+            canvasClosedDisposer = null;
+            try {
+                canvasContentDisposer = electronAPI.onCanvasContentUpdate?.(handleCanvasContentUpdate) || null;
+                canvasClosedDisposer = electronAPI.onCanvasWindowClosed?.(handleCanvasWindowClosed) || null;
+            } catch (error) {
+                canvasContentDisposer?.();
+                canvasClosedDisposer?.();
+                canvasContentDisposer = null;
+                canvasClosedDisposer = null;
+                emptyStateObserver?.disconnect();
+                emptyStateObserver = null;
+                throw error;
+            }
         }
         initialized = true;
         console.log('[ChatManager] Initialized successfully.');
@@ -728,7 +748,8 @@ export const chatManager = (() => {
         sendMessageBtn.disabled = false;
         attachFileBtn.disabled = false;
         // messageInput.focus();
-        if (topicListManager) topicListManager.loadTopicList();
+        if (topicListManager) await Promise.resolve(topicListManager.loadTopicList());
+        if (!isSelectionCurrent()) return;
         await _saveLastOpenState(); // Commit before startup/reload can observe the selection.
         finishSelection();
     }
@@ -868,8 +889,11 @@ export const chatManager = (() => {
         ].filter(Boolean).map(String));
         const sanitizedRemainingTopics = (Array.isArray(remainingTopics) ? remainingTopics : [])
             .filter(topic => !deletedTopicIds.has(String(topic?.id)));
-        const config = currentSelectedItem.config || currentSelectedItem;
-        config.topics = sanitizedRemainingTopics;
+        const currentConfig = currentSelectedItem.config || currentSelectedItem;
+        const nextConfig = { ...currentConfig, topics: sanitizedRemainingTopics };
+        currentSelectedItem = currentSelectedItem.config
+            ? { ...currentSelectedItem, config: nextConfig }
+            : { ...currentSelectedItem, ...nextConfig };
         currentSelectedItemRef.set(currentSelectedItem);
 
         if (sanitizedRemainingTopics.length > 0) {
@@ -1254,12 +1278,10 @@ export const chatManager = (() => {
                 return;
             }
             // 使用最新的配置更新内存中的状态，以保持同步
-            if (currentSelectedItem.config) {
-                currentSelectedItem.config = agentConfigForSummary;
-            } else {
-                Object.assign(currentSelectedItem, agentConfigForSummary);
-            }
-            currentSelectedItemRef.set(currentSelectedItem);
+            const refreshedSelectedItem = currentSelectedItem.config
+                ? { ...currentSelectedItem, name: agentConfigForSummary.name || currentSelectedItem.name, config: agentConfigForSummary }
+                : { ...currentSelectedItem, ...agentConfigForSummary };
+            currentSelectedItemRef.set(refreshedSelectedItem);
 
             const topics = agentConfigForSummary.topics || [];
             const currentTopicObject = topics.find(t => t.id === currentTopicId);
@@ -2166,7 +2188,9 @@ export const chatManager = (() => {
         await selectItem(target.id, target.type, target.name, targetItemFullConfig.avatarUrl, targetItemFullConfig);
 
         // 3. After a brief delay to allow the UI to update from selectItem, populate and send.
-        setTimeout(async () => {
+        const timer = setTimeout(async () => {
+            forwardTimers.delete(timer);
+            if (disposed) return;
             // 4. Populate the message input and attachments ref
             messageInput.value = content;
             
@@ -2190,12 +2214,14 @@ export const chatManager = (() => {
             await handleSendMessage();
 
         }, 200); // 200ms delay seems reasonable for UI transition
+        forwardTimers.add(timer);
     }
 
     // --- Canvas Integration ---
     const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
 
     function handleCanvasContentUpdate(data) {
+        if (disposed) return;
         isCanvasWindowOpen = true;
         const { messageInput } = elements;
         // If the canvas is open and there's content, ensure the placeholder is in the input
@@ -2208,6 +2234,7 @@ export const chatManager = (() => {
     }
 
     function handleCanvasWindowClosed() {
+        if (disposed) return;
         isCanvasWindowOpen = false;
         const { messageInput } = elements;
         // Remove the placeholder when the window is closed
@@ -2220,7 +2247,21 @@ export const chatManager = (() => {
 
 
     async function syncHistoryFromFile(itemId, itemType, topicId) {
-        if (!messageRenderer) return;
+        const syncGeneration = ++historySyncGeneration;
+        const itemGeneration = itemSelectionGeneration;
+        const topicGeneration = topicSelectionGeneration;
+        const isSyncCurrent = () => {
+            const selectedItem = currentSelectedItemRef.get();
+            return !disposed
+                && Boolean(messageRenderer)
+                && syncGeneration === historySyncGeneration
+                && itemGeneration === itemSelectionGeneration
+                && topicGeneration === topicSelectionGeneration
+                && selectedItem?.id === itemId
+                && selectedItem?.type === itemType
+                && currentTopicIdRef.get() === topicId;
+        };
+        if (!isSyncCurrent()) return;
 
         // 🔧 检查是否有正在进行的编辑操作
         const isEditing = document.querySelector('.message-item-editing');
@@ -2236,6 +2277,10 @@ export const chatManager = (() => {
         } else if (itemType === 'group') {
             newHistory = await getHistory(itemId, itemType, topicId);
         }
+
+        // A file notification may resolve after navigation, a newer sync, or
+        // teardown. Only the still-selected conversation may update its view.
+        if (!isSyncCurrent()) return;
 
         if (!newHistory || newHistory.error) {
             console.error("Sync failed: Could not fetch new history.", newHistory?.error);
@@ -2312,9 +2357,36 @@ export const chatManager = (() => {
 
 
 
+    async function dispose() {
+        if (disposed) return;
+        disposed = true;
+        initialized = false;
+        itemSelectionGeneration += 1;
+        topicSelectionGeneration += 1;
+        topicCreationGeneration += 1;
+        activeHistoryLoadToken += 1;
+        historySyncGeneration += 1;
+        pendingItemSelectionToken = null;
+        emptyStateObserver?.disconnect();
+        emptyStateObserver = null;
+        canvasContentDisposer?.();
+        canvasClosedDisposer?.();
+        canvasContentDisposer = null;
+        canvasClosedDisposer = null;
+        for (const timer of forwardTimers) clearTimeout(timer);
+        forwardTimers.clear();
+        await Promise.allSettled([
+            lastOpenSaveQueue,
+            ...outgoingPersistenceQueues.values(),
+        ]);
+        outgoingPersistenceQueues.clear();
+        pendingSendContexts.clear();
+    }
+
     // --- Public API ---
     return {
         init,
+        dispose,
         isReady: () => initialized,
         selectItem,
         restoreLastOpenState,

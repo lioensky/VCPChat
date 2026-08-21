@@ -23,6 +23,7 @@ const electron = process.platform === 'darwin'
     ? path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
     : path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const timeoutMs = 90_000;
+const protocolTimeout = positiveInteger(process.env.VCPCHAT_STRESS_PROTOCOL_TIMEOUT_MS, 120_000);
 const cycles = positiveInteger(process.env.VCPCHAT_STRESS_CYCLES, 20);
 const warmupCycles = positiveInteger(process.env.VCPCHAT_STRESS_WARMUP, 3);
 const checkpointEvery = Math.max(2, positiveInteger(process.env.VCPCHAT_STRESS_CHECKPOINT_EVERY, 5));
@@ -348,8 +349,29 @@ async function waitForChildExit(child, timeout = 3_000) {
     });
 }
 
+async function waitForRecoveredMainPage(browser, label, deadline = Date.now() + timeoutMs) {
+    while (Date.now() < deadline) {
+        for (const candidate of await browser.pages()) {
+            if (candidate.isClosed() || !candidate.url().includes('main.html')) continue;
+            try {
+                // Electron can retain the crashed target briefly. Bound this
+                // probe so a stale execution context cannot hide the page
+                // created by main-process recovery.
+                await candidate.waitForFunction(
+                    () => document.documentElement.dataset.vcpRendererReady === 'true',
+                    { timeout: 1_000 }
+                );
+                return candidate;
+            } catch {
+                // The crash target or a loading recovery page is not ready yet.
+            }
+        }
+        await sleep(100);
+    }
+    throw new Error(`${label} did not reach renderer readiness after recovery`);
+}
+
 async function terminateChildTree(child) {
-    if (child.exitCode !== null || child.signalCode !== null) return;
     if (process.platform === 'win32') {
         // Electron's main process can survive SIGTERM on Windows and retain
         // GPU/renderer descendants after a renderer crash. Terminate only the
@@ -365,6 +387,7 @@ async function terminateChildTree(child) {
         await waitForChildExit(child);
         return;
     }
+    if (child.exitCode !== null || child.signalCode !== null) return;
     child.kill('SIGTERM');
     if (!await waitForChildExit(child)) {
         child.kill('SIGKILL');
@@ -763,8 +786,7 @@ async function cycleRendererCrash(page, browser, app, label) {
     }
     try { await crashSession.detach(); } catch { /* the crashed target may already be detached */ }
 
-    const recoveredPage = await waitForPage(browser, candidate => candidate.url().includes('main.html'), `${label}: recovered main renderer`);
-    await recoveredPage.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout: timeoutMs });
+    const recoveredPage = await waitForRecoveredMainPage(browser, `${label}: recovered main renderer`);
     await recoveredPage.waitForFunction(() => window.topTabManager?.isMounted?.() && window.askNovaController, { timeout: timeoutMs });
     await recoveredPage.waitForFunction(expectedId => (
         document.querySelector(`[data-view-id="app:${expectedId}"]`)
@@ -852,7 +874,10 @@ try {
             await sleep(150);
         }
     }
-    browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}` });
+    browser = await puppeteer.connect({
+        browserURL: `http://127.0.0.1:${port}`,
+        protocolTimeout,
+    });
     let page = await waitForPage(browser, candidate => candidate.url().includes('main.html'), 'main renderer');
     const trackRendererPage = rendererPage => {
         rendererPage.on('pageerror', error => rendererErrors.push(error?.stack || String(error)));

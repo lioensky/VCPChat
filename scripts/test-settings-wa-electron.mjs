@@ -246,6 +246,16 @@ try {
     }, uniquePrompt);
     const footerStateBefore = await page.evaluate(() => document.querySelector('.global-settings-footer')?.dataset.state);
     assert.equal(footerStateBefore, 'dirty', 'save bar reports dirty before saving');
+    await page.evaluate(() => {
+        window.__settingsSaveProjection = null;
+        window.addEventListener('global-settings-updated', event => {
+            if (event.detail?.source !== 'settings-save') return;
+            window.__settingsSaveProjection = {
+                continueWritingPrompt: event.detail.settings?.continueWritingPrompt,
+                userName: event.detail.settings?.userName,
+            };
+        }, { once: true });
+    });
     await page.evaluate(() => document.querySelector('.global-settings-footer button[type="submit"]').click());
     // Poll for the modal to close; collect diagnostics so a hang is debuggable.
     let saveDiagnostics = null;
@@ -253,7 +263,7 @@ try {
         const state = await page.evaluate(() => ({
             active: document.getElementById('globalSettingsModal')?.classList.contains('active') || false,
             footerState: document.querySelector('.global-settings-footer')?.dataset.state || '',
-            prompt: window.globalSettings?.continueWritingPrompt || '',
+            prompt: window.__settingsSaveProjection?.continueWritingPrompt || '',
         }));
         if (!state.active) break;
         saveDiagnostics = state;
@@ -265,10 +275,10 @@ try {
         toast: [...document.querySelectorAll('.vcp-ui-toast, .floating-toast-notification')].map(node => node.textContent).slice(0, 3),
     }));
     assert.equal(afterSave.active, false, `modal closed after save; last poll ${JSON.stringify(saveDiagnostics)}, after ${JSON.stringify(afterSave)}`);
-    const savedInMemory = await page.evaluate(() => window.globalSettings?.continueWritingPrompt);
-    assert.equal(savedInMemory, uniquePrompt, 'globalSettings reflects the persisted value after save');
-    const savedUserName = await page.evaluate(() => window.globalSettings?.userName);
-    console.log('  [PASS] 6. real save via IPC persists (modal closed, in-memory settings updated)');
+    const savedProjection = await page.evaluate(() => window.__settingsSaveProjection);
+    assert.equal(savedProjection?.continueWritingPrompt, uniquePrompt, 'settings authority publishes the persisted value after save');
+    const savedUserName = savedProjection?.userName;
+    console.log('  [PASS] 6. real save via IPC persists (modal closed, authority projection updated)');
 
     // Reopen after a full reload: the form must be re-populated from settings.json.
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -287,13 +297,13 @@ try {
     assert.equal(restored.active, 'section-user-identity', 'reopened modal starts on the first category');
     console.log('  [PASS] 7. reopen after reload restores persisted values from settings.json');
 
-    // ---- 8. Classic teardown keeps next-mode surfaces clean ----
+    // ---- 8. Canonical next layout survives reload ----
     assert.equal(await page.evaluate(() => document.documentElement.dataset.uiMode), 'next');
     await page.waitForFunction(() => {
         const modal = document.getElementById('globalSettingsModal');
-        return !modal?.querySelector('.vcp-ui-settings-shell') && !modal?.querySelector('.vcp-ui-settings-search');
+        return Boolean(modal?.querySelector('.vcp-ui-settings-shell') && modal?.querySelector('.vcp-ui-settings-search'));
     }, { timeout: timeoutMs });
-    console.log('  [PASS] 8. switching to classic tears the SettingsShell down');
+    console.log('  [PASS] 8. canonical Next SettingsShell survives reload');
 
     console.log('\nSettings WA Electron gate passed (shell layout, nav/search, real save + reload restore, screenshots).');
 } catch (error) {

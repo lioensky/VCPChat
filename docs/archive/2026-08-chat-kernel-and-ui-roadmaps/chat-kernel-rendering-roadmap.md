@@ -1,5 +1,7 @@
 # VCPChat Chat Kernel、Renderer 与受控 UI 插件化路线
 
+> 归档说明（2026-08-21）：本文是已完成的 C0-C7 历史路线，不再维护当前阶段状态。当前 D0-D7 状态以 `../../chat-kernel-vd7-final-audit.md` 为准。
+
 > 状态：C0–C7 已完成并通过 Windows 最终矩阵；后续扩展继续受本路线合同约束。
 > 规范依据：`C:\\VCP\\vchat-develop\\deepseek-harness\\AGENTS.md`、`docs/defensive-patterns.md`、`docs/testing.md` 及相关 skill。
 

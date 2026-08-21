@@ -722,19 +722,30 @@ try {
     assert.deepEqual(appTrayState.drawerGeometry.occludedItems, [], `Next app drawer is clipped or covered by its rail: ${JSON.stringify(appTrayState)}`);
     assert.deepEqual(appTrayState.drawerGeometry.overflowingItems, [], `Next app drawer content overflows its item: ${JSON.stringify(appTrayState)}`);
     const parityControls = await page.evaluate(async () => {
-        const originalCommands = window.MainChatCommands;
         const calls = [];
         const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-        window.MainChatCommands = {
-            ...originalCommands,
-            toggleTheme: () => calls.push('theme'),
-            minimizeToTray: () => calls.push('minimize-to-tray'),
-            openForum: () => calls.push('forum'),
-            openMemo: () => calls.push('memo'),
-            toggleNotificationFilter: () => calls.push('filter-toggle'),
-            openNotificationFilterSettings: () => calls.push('filter-settings'),
-            clearNotifications: () => calls.push('clear'),
+        const registry = window.VCPContributions.commands;
+        const originals = new Map();
+        const commandId = name => `main.${name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`;
+        const replaceCommand = (name, handler) => {
+            const id = commandId(name);
+            if (!originals.has(id)) originals.set(id, registry.get(id));
+            registry.unregister(id);
+            registry.register({ ...originals.get(id), handler });
         };
+        const restoreCommands = () => {
+            originals.forEach((definition, id) => {
+                registry.unregister(id);
+                registry.register(definition);
+            });
+        };
+        replaceCommand('toggleTheme', () => calls.push('theme'));
+        replaceCommand('minimizeToTray', () => calls.push('minimize-to-tray'));
+        replaceCommand('openForum', () => calls.push('forum'));
+        replaceCommand('openMemo', () => calls.push('memo'));
+        replaceCommand('toggleNotificationFilter', () => calls.push('filter-toggle'));
+        replaceCommand('openNotificationFilterSettings', () => calls.push('filter-settings'));
+        replaceCommand('clearNotifications', () => calls.push('clear'));
 
         const display = id => getComputedStyle(document.getElementById(id)).display;
         const presentationButton = document.getElementById('nextUiPresentationBtn');
@@ -797,17 +808,14 @@ try {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         const closedByEscape = menu.hidden && menuButton.getAttribute('aria-expanded') === 'false';
 
-        window.MainChatCommands = {
-            ...originalCommands,
-            openForum: async () => { throw new Error('expected menu action failure'); },
-        };
+        replaceCommand('openForum', async () => { throw new Error('expected menu action failure'); });
         await openMenu();
         forum.click();
         await tick();
         await tick();
         const rejectedActionClosed = menu.hidden && menuButton.getAttribute('aria-expanded') === 'false';
 
-        window.MainChatCommands = originalCommands;
+        restoreCommands();
         const notifications = document.getElementById('notificationsList');
         const disposable = document.createElement('li');
         disposable.className = 'notification-item parity-disposable';
@@ -815,7 +823,7 @@ try {
         protectedItem.className = 'notification-item parity-protected';
         protectedItem.dataset.protectedNotification = 'tool-approval';
         notifications.append(disposable, protectedItem);
-        const clearResult = originalCommands.clearNotifications();
+        const clearResult = window.MainChatCommands.clearNotifications();
         const clearProtection = {
             disposableRemoved: !notifications.querySelector('.parity-disposable'),
             protectedPreserved: Boolean(notifications.querySelector('.parity-protected')),
@@ -1094,11 +1102,13 @@ try {
     const preCreationKernel = await page.evaluate(() => window.VCPWebAwesome?.getRuntimeState?.().state || 'missing');
     assert.equal(preCreationKernel, 'idle', `creation test was not a cold WA start: ${preCreationKernel}`);
     const createEntryState = await page.evaluate(async () => {
-        window.__nextDeltaOriginalCommands = window.MainChatCommands;
-        window.MainChatCommands = {
-            ...window.MainChatCommands,
-            createAgent: () => new Promise(resolve => { window.__nextDeltaResolveCreate = resolve; }),
-        };
+        const registry = window.VCPContributions.commands;
+        window.__nextDeltaOriginalCreateCommand = registry.get('main.create-agent');
+        registry.unregister('main.create-agent');
+        registry.register({
+            ...window.__nextDeltaOriginalCreateCommand,
+            handler: () => new Promise(resolve => { window.__nextDeltaResolveCreate = resolve; }),
+        });
         const button = document.getElementById('nextUiCreateItemBtn');
         button?.click();
         await new Promise(resolve => setTimeout(resolve, 250));
@@ -1271,10 +1281,12 @@ try {
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
     await page.evaluate(() => {
-        window.MainChatCommands = {
-            ...window.MainChatCommands,
-            createAgent: async () => ({ success: true, navigationSuccess: true }),
-        };
+        const registry = window.VCPContributions.commands;
+        registry.unregister('main.create-agent');
+        registry.register({
+            ...window.__nextDeltaOriginalCreateCommand,
+            handler: async () => ({ success: true, navigationSuccess: true }),
+        });
         document.getElementById('nextUiCreateItemBtn')?.click();
     });
     await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
@@ -1289,8 +1301,10 @@ try {
     });
     await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
     await page.evaluate(() => {
-        window.MainChatCommands = window.__nextDeltaOriginalCommands;
-        delete window.__nextDeltaOriginalCommands;
+        const registry = window.VCPContributions.commands;
+        registry.unregister('main.create-agent');
+        registry.register(window.__nextDeltaOriginalCreateCommand);
+        delete window.__nextDeltaOriginalCreateCommand;
         delete window.__nextDeltaResolveCreate;
     });
     const productionCreationName = `Electron Provider Agent ${Date.now()}`;

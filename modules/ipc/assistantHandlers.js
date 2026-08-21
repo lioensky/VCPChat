@@ -1121,6 +1121,12 @@ function createAssistantWindow(data) {
         assistantWindow.webContents.send('assistant-data', data);
     });
     assistantWindow.loadFile(path.join(__dirname, '..', '..', 'rust_assistant_engine', 'ui', 'assistant.html'));
+    assistantWindow.webContents.on('render-process-gone', (_event, details) => {
+        console.warn('[Assistant] assistant renderer exited; releasing window owner:', details?.reason || 'unknown');
+        const crashedWindow = assistantWindow;
+        assistantWindow = null;
+        if (crashedWindow && !crashedWindow.isDestroyed()) crashedWindow.destroy();
+    });
     assistantWindow.once('ready-to-show', () => {
         assistantWindow.show();
     });

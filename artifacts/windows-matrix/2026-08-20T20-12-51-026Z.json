@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-08-20T20:12:51.028Z",
+  "platform": "win32",
+  "arch": "x64",
+  "node": "v22.17.1",
+  "hostname": "FlowX13",
+  "matrixScope": "windows-current-host",
+  "rows": [
+    {
+      "id": "ui-apps-next-classic",
+      "command": "C:\\Program Files\\nodejs\\node.exe node_modules\\npm\\bin\\npm-cli.js run test:electron-ui-apps",
+      "env": {},
+      "startedAt": "2026-08-20T20:12:51.040Z",
+      "finishedAt": "2026-08-20T20:12:51.167Z",
+      "exitCode": 1,
+      "signal": null,
+      "status": "failed",
+      "output": "node:internal/modules/cjs/loader:1404\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\VCP\\vchat-develop\\VCPChat-design-system-no-workflow-windows-test\\node_modules\\npm\\bin\\npm-cli.js'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1211:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)\r\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\r\n    at node:internal/main/run_main_module:36:49 {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: []\r\n}\r\n\r\nNode.js v22.17.1\r\n"
+    }
+  ]
+}

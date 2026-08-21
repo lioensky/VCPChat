@@ -90,8 +90,8 @@ for (const file of ['renderer.js', 'Flowlockmodules/flowlock-integration.js', 'F
     assert.doesNotMatch(read(file), /window\.(?:currentSelectedItem|currentTopicId)\b/,
         `${file} must consume the read-only VCPMainChatState capability instead of mutable selection globals`);
 }
-assert.match(rendererSource, /window\.VCPMainChatState = mainChatStateAuthority\.consumer/,
-    'the composition root must expose only the read-only main-chat state consumer');
+assert.match(rendererSource, /Object\.defineProperty\(window, ['"]VCPMainChatState['"], \{[\s\S]*value: Object\.freeze\(mainChatStateAuthority\.consumer\)[\s\S]*writable: false,[\s\S]*configurable: false/,
+    'the composition root must expose a frozen, non-replaceable read-only main-chat state consumer');
 assert.doesNotMatch(read('modules/chat/mainChatStateAuthority.js'), /\b(?:window|document|electronAPI)\b/,
     'main chat state authority must remain independent from DOM and Electron');
 assert.match(read('modules/topicListManager.js'), /topicSelectionReadiness\.isReady\(\)[\s\S]*topicSelectionReadiness\.defer/,
@@ -278,8 +278,10 @@ assert.match(read('modules/renderer/mainChatStreamConsumer.js'), /persistTermina
     'post-commit side effects must not rewrite a successful durable outcome');
 assert.doesNotMatch(read('modules/renderer/messageContextMenu.js'), /contextMenuDependencies\.(?:startStreamingMessage|finalizeStreamedMessage)/,
     'regeneration and context-menu cancellation must use the coordinator-owned bridge');
-assert.match(read('renderer.js'), /mainChatAdapter\?\.cancelStream/,
-    'main send-button cancellation fallback must use the coordinator-owned operation');
+assert.match(read('modules/renderer/mainChatSendOwner.js'), /getAdapter\(\)\?\.cancelStream/,
+    'main send-button owner cancellation fallback must use the coordinator-owned operation');
+assert.doesNotMatch(read('renderer.js'), /mainChatAdapter\?\.cancelStream|function\s+interruptActiveResponseFromSendButton/,
+    'renderer composition must not regain cancellation policy');
 const rendererStreamHandler = read('renderer.js');
 assert.match(rendererStreamHandler, /createNonStreamingEventConsumer/,
     'non-streaming VCP events must have an explicit consumer');

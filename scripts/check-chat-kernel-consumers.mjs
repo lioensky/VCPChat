@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const exists = relative => fs.existsSync(path.join(root, relative));
+const packageScripts = JSON.parse(read('package.json')).scripts || {};
 
 const ignoredProductionDirectoryNames = new Set([
     '.git',
@@ -97,11 +98,155 @@ const memberEvidence = (file, name) => {
     return evidence;
 };
 const references = new Map(Object.keys(providerFiles).map(name => [name, { production: [], tests: [] }]));
+const retiredRendererGlobals = Object.freeze([
+    'globalSettings',
+    'applyChatPresentationMode',
+    'normalizeChatPresentationMode',
+    'checkMessageFilter',
+    'applyChatBubbleLayoutSettings',
+]);
+const publicFacades = Object.freeze({
+    VCPMainChatState: Object.freeze({
+        owner: 'renderer.js',
+        dynamicSmoke: 'scripts/test-electron-main-chat-sequences.mjs',
+        dynamicScript: 'test:electron-main-chat-sequences',
+        smokeAssertions: Object.freeze([
+            'selectedConfigFrozen: snapshot.selectedItem?.config == null || Object.isFrozen(snapshot.selectedItem.config)',
+            "hasHistoryRef: 'historyRef' in window.VCPMainChatState",
+            'VCPMainChatState must remain a frozen, non-replaceable read-only plugin facade',
+        ]),
+        mutability: 'frozen deep read-only snapshot facade; mutation remains in MainChatStateAuthority',
+        retirement: 'retain while Flowlock and AutoTTS plugin consumers use the main-chat state protocol',
+        compositionMethodsCheck: false,
+    }),
+    MainChatCommands: Object.freeze({
+        owner: 'modules/mainChatCommands.js',
+        dynamicSmoke: 'scripts/test-electron-ui-apps-smoke.mjs',
+        dynamicScript: 'test:electron-ui-apps',
+        smokeAssertions: Object.freeze([
+            'const clearResult = window.MainChatCommands.clearNotifications()',
+            'assert.deepEqual(parityControls.clearProtection',
+        ]),
+        mutability: 'frozen command facade; composition is configured by one-shot event',
+        retirement: 'retain while Next shell, Classic menus or plugin commands consume it',
+    }),
+    VCPAppearanceStudio: Object.freeze({
+        owner: 'modules/ui-system/appearance-studio.js',
+        dynamicSmoke: 'scripts/test-appearance-studio.mjs',
+        dynamicScript: 'test:appearance-studio',
+        smokeAssertions: Object.freeze([
+            'const studio = window.VCPAppearanceStudio',
+            'assert.equal(studio.open(',
+            'assert.equal(studio.isOpen(), true)',
+        ]),
+        mutability: 'frozen appearance command facade; composition and disposal use internal events',
+        retirement: 'retain while Next shell and settings entrypoints consume it',
+    }),
+});
 
 for (const file of productionFiles) {
     if (!exists(file)) continue;
     for (const name of references.keys()) {
         references.get(name).production.push(...memberEvidence(file, name));
+    }
+}
+
+const facadeLedger = {};
+for (const [name, definition] of Object.entries(publicFacades)) {
+    const production = [];
+    const tests = [];
+    const pattern = new RegExp(`\\bwindow\\.${name}(?:\\?\\.|\\.)([A-Za-z_$][\\w$]*)`, 'g');
+    for (const file of productionFiles) {
+        if (file === definition.owner) continue;
+        const rawLines = source(file).split(/\r?\n/);
+        withoutComments(source(file)).forEach((line, index) => {
+            for (const match of line.matchAll(pattern)) {
+                production.push({ file, line: index + 1, surface: surfaceFor(file), member: match[1], snippet: rawLines[index].trim().slice(0, 240) });
+            }
+        });
+    }
+    for (const file of testFiles) {
+        const rawLines = source(file).split(/\r?\n/);
+        withoutComments(source(file)).forEach((line, index) => {
+            for (const match of line.matchAll(pattern)) tests.push({ file, line: index + 1, member: match[1], snippet: rawLines[index].trim().slice(0, 240) });
+        });
+    }
+    const ownerSource = source(definition.owner);
+    const smokeSource = source(definition.dynamicSmoke);
+    assert.ok(production.length > 0, `${name} must have a real production consumer or be retired`);
+    assert.equal(exists(definition.dynamicSmoke), true, `${name} must name an existing dynamic smoke`);
+    assert.match(packageScripts[definition.dynamicScript] || '', new RegExp(definition.dynamicSmoke.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+        `${name} dynamic smoke must be wired to npm script ${definition.dynamicScript}`);
+    for (const assertion of definition.smokeAssertions) {
+        assert.ok(smokeSource.includes(assertion), `${name} dynamic smoke must retain protocol assertion: ${assertion}`);
+    }
+    assert.match(ownerSource, new RegExp(`Object\\.defineProperty\\(window, ['"]${name}['"], \\{\\s*value: Object\\.freeze\\(`),
+        `${name} must publish a frozen, non-replaceable facade`);
+    assert.match(ownerSource, /writable:\s*false,\s*configurable:\s*false/,
+        `${name} window property must be non-writable and non-configurable`);
+    if (definition.compositionMethodsCheck !== false) {
+        assert.doesNotMatch(ownerSource, /\b(?:configureCapabilities|setChatManagerProvider)\s*\(/, `${name} must not expose composition methods`);
+    }
+    facadeLedger[name] = { ...definition, production, tests };
+}
+
+const ambientFacadeDefinitions = new Map();
+const ambientFacadeReferences = { production: new Map(), tests: new Map() };
+const recordAmbientDefinition = (name, file, line, syntax, snippet) => {
+    const definitions = ambientFacadeDefinitions.get(name) || [];
+    definitions.push({ file, line, syntax, snippet });
+    ambientFacadeDefinitions.set(name, definitions);
+};
+const recordAmbientReference = (target, name, file, line, snippet) => {
+    const references = target.get(name) || [];
+    references.push({ file, line, surface: surfaceFor(file), snippet });
+    target.set(name, references);
+};
+const indexAmbientFacades = (files, target, includeDefinitions) => {
+for (const file of files) {
+    const rawLines = source(file).split(/\r?\n/);
+    const codeLines = withoutComments(source(file));
+    codeLines.forEach((line, index) => {
+        const snippet = rawLines[index].trim().slice(0, 240);
+        for (const match of line.matchAll(/(?<![A-Za-z0-9_$.])window(?:\.([A-Za-z_$][\w$]*)|\[['"]([A-Za-z_$][\w$]*)['"]\])/g)) {
+            recordAmbientReference(target, match[1] || match[2], file, index + 1, snippet);
+        }
+        if (!includeDefinitions) return;
+        for (const match of line.matchAll(/(?<![A-Za-z0-9_$.])window\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)) {
+            recordAmbientDefinition(match[1], file, index + 1, 'dot-assignment', rawLines[index].trim().slice(0, 240));
+        }
+        for (const match of line.matchAll(/(?<![A-Za-z0-9_$.])window\[['"]([A-Za-z_$][\w$]*)['"]\]\s*=(?!=)/g)) {
+            recordAmbientDefinition(match[1], file, index + 1, 'bracket-assignment', rawLines[index].trim().slice(0, 240));
+        }
+        for (const match of line.matchAll(/Object\.defineProperty\(window,\s*['"]([A-Za-z_$][\w$]*)['"]/g)) {
+            recordAmbientDefinition(match[1], file, index + 1, 'define-property', rawLines[index].trim().slice(0, 240));
+        }
+    });
+}
+};
+indexAmbientFacades(productionFiles, ambientFacadeReferences.production, true);
+indexAmbientFacades(testFiles, ambientFacadeReferences.tests, false);
+const ambientFacadeLedger = {};
+for (const [name, definitions] of [...ambientFacadeDefinitions].sort(([left], [right]) => left.localeCompare(right))) {
+    const definitionKeys = new Set(definitions.map(item => `${item.file}:${item.line}`));
+    const production = (ambientFacadeReferences.production.get(name) || [])
+        .filter(item => !definitionKeys.has(`${item.file}:${item.line}`));
+    const tests = ambientFacadeReferences.tests.get(name) || [];
+    ambientFacadeLedger[name] = {
+        classification: publicFacades[name] ? 'supported-public-facade' : 'legacy-or-feature-local-ambient',
+        definitions,
+        production,
+        tests,
+    };
+}
+for (const name of Object.keys(publicFacades)) {
+    assert.ok(ambientFacadeLedger[name], `${name} must appear in the complete ambient facade inventory`);
+}
+
+for (const file of productionFiles) {
+    const code = withoutComments(source(file)).join('\n');
+    for (const name of retiredRendererGlobals) {
+        assert.doesNotMatch(code, new RegExp(`\\bwindow\\.${name}\\b`), `${file} must not consume or publish retired window.${name}`);
     }
 }
 for (const file of testFiles) {
@@ -174,6 +319,9 @@ const report = {
     productionFiles,
     testFiles,
     references: Object.fromEntries(references),
+    retiredRendererGlobals,
+    publicFacades: facadeLedger,
+    ambientFacades: ambientFacadeLedger,
     providerFiles,
     kernelFiles,
     pureKernelFiles,
@@ -195,15 +343,24 @@ const report = {
         'production consumers and compatibility globals are discovered across all repository production sources',
         'each consumer evidence item records a source line, member access and production surface',
         'legacy facade removal requires a later zero-production-consumer proof',
+        'retired renderer globals have zero production definitions and consumers',
+        'each retained public facade is frozen, has production consumers, a dynamic smoke and a retirement decision',
+        'all direct production window facade publications are inventoried with definitions and consumers',
         'main-window start/data/end/error events have one coordinator authority',
     ],
 };
 const rendererSource = source('renderer.js');
+const settingsPresentationOwnerSource = source('modules/renderer/mainChatSettingsPresentationOwner.js');
 const messageRendererSource = source('modules/messageRenderer.js');
 const mainChatEventBridgeSource = source('modules/renderer/mainChatEventBridge.js');
 const nonStreamingEventConsumerSource = source('modules/renderer/nonStreamingEventConsumer.js');
 const contentProcessorSource = source('modules/renderer/contentProcessor.js');
 const chatManagerSource = source('modules/chatManager.js');
+const settingsOwnerSource = source('modules/renderer/mainChatSettingsOwner.js');
+const ownedPreloadSource = source('modules/renderer/ownedPreloadSubscription.js');
+const uiManagerSource = source('modules/uiManager.js');
+const eventListenersSource = source('modules/event-listeners.js');
+const appearanceStudioSource = source('modules/ui-system/appearance-studio.js');
 assert.match(messageRendererSource, /export function createMessageRenderer\(options = \{\}\) \{[\s\S]*const surfaceId = String\(/,
     'MessageRenderer must create a stable per-instance Surface namespace');
 assert.match(messageRendererSource, /const ownedStyleElements = new Set\(\)/,
@@ -216,6 +373,71 @@ const streamHandlerSource = rendererSource.slice(streamHandlerStart, streamHandl
 assert.doesNotMatch(streamHandlerSource, /messageRenderer\.appendStreamChunk\(messageId/, 'renderer must not retain direct stream chunk dispatch');
 assert.doesNotMatch(streamHandlerSource, /messageRenderer\.finalizeStreamedMessage\(\s*messageId/, 'renderer must not retain direct stream terminal dispatch');
 assert.match(rendererSource, /mainChatAdapter\?\.acceptStreamEvent\(eventData\)/, 'main window must route VCP events through MainChatSurfaceAdapter');
+assert.match(rendererSource, /createMainChatSettingsPresentationOwner/, 'renderer must construct the settings presentation owner');
+assert.match(rendererSource, /createMainChatAttachmentOwner/, 'renderer must construct the attachment state owner');
+assert.match(rendererSource, /createMainChatSendOwner/, 'renderer must construct the send and interrupt owner');
+assert.match(rendererSource, /attachedFilesRef: mainChatAttachmentOwner\.ref/, 'ChatManager must receive the owned attachment ref');
+assert.match(rendererSource, /sendButtonAction: mainChatSendOwner\.handleAction/, 'event listeners must receive the owned send action');
+assert.match(rendererSource, /notifySendStateChanged: mainChatSendOwner\.update/, 'stream composition must receive the owned send projection');
+assert.match(rendererSource, /currentSelectedItemRef = mainChatStateAuthority\.selectedItemRef/, 'renderer must consume the selection authority ref');
+assert.match(rendererSource, /currentTopicIdRef = mainChatStateAuthority\.topicIdRef/, 'renderer must consume the topic authority ref');
+assert.doesNotMatch(rendererSource, /\blet\s+(?:attachedFiles|currentSelectedItem|currentTopicId)\b/,
+    'renderer must not regain mutable attachment or conversation mirrors');
+assert.doesNotMatch(rendererSource, /function\s+(?:getInterruptibleMessageForCurrentChat|updateSendButtonState|interruptActiveResponseFromSendButton|handleSendButtonAction)\b/,
+    'renderer must not regain send or interrupt business policy');
+for (const [file, text] of [
+    ['modules/chatManager.js', chatManagerSource],
+    ['modules/settingsManager.js', source('modules/settingsManager.js')],
+    ['modules/messageRenderer.js', messageRendererSource],
+]) {
+    assert.doesNotMatch(
+        withoutComments(text).join('\n'),
+        /\b(?:currentSelectedItem|selectedItem|currentSelectedItemVal)\.(?:name|config|topics|uiCollapseStates|avatarUrl|avatarCalculatedColor)\s*=|Object\.assign\((?:currentSelectedItem|selectedItem)\b/,
+        `${file} must replace selection state through its authority instead of mutating borrowed values`
+    );
+}
+assert.doesNotMatch(
+    withoutComments(messageRendererSource).join('\n'),
+    /const\s+currentChatHistoryArray\s*=\s*mainRendererReferences\.currentChatHistoryRef\.get\(\)[\s\S]{0,400}?currentChatHistoryArray\.splice\(/,
+    'MessageRenderer must copy history snapshots before mutation'
+);
+assert.match(rendererSource, /\[\.\.\.ownedRendererSubscriptions\]\.reverse\(\)[\s\S]*for \(const subscription of subscriptions\)[\s\S]*await subscription\.dispose\(\)/,
+    'renderer composition must await owned capability disposal in reverse registration order');
+assert.match(ownedPreloadSource, /const tasks = new Set\(\)[\s\S]*await Promise\.allSettled\(\[\.\.\.tasks\]\)/,
+    'owned preload subscriptions must drain in-flight async consumers during disposal');
+assert.match(ownedPreloadSource, /abortController\.abort\(\)/,
+    'owned preload subscriptions must signal lifecycle cancellation before draining consumers');
+assert.match(chatManagerSource, /async function dispose\(\)[\s\S]*emptyStateObserver\?\.disconnect\(\)[\s\S]*canvasContentDisposer\?\.\(\)[\s\S]*await Promise\.allSettled/,
+    'ChatManager must retract DOM/preload resources and drain owned persistence work');
+assert.match(rendererSource, /ownedRendererSubscriptions\.add\(chatManager\)/,
+    'renderer composition must register ChatManager teardown');
+assert.match(uiManagerSource, /themeDisposer = electronAPI\.onThemeUpdated[\s\S]*async \(\) => \{[\s\S]*themeDisposer\?\.\(\)[\s\S]*await Promise\.allSettled/,
+    'UIManager must own its theme subscription and drain async projection work');
+assert.match(rendererSource, /ownedRendererSubscriptions\.add\(\{ dispose: \(\) => window\.uiManager\.dispose\?\.\(\) \}\)[\s\S]*await window\.uiManager\.init/,
+    'renderer must register UIManager disposal before awaiting initialization');
+assert.match(settingsOwnerSource, /const get = \(\) => clone\(settings\)/,
+    'settings authority reads must return detached values');
+assert.match(settingsOwnerSource, /const snapshot = \(\) => freeze\(clone\(settings\)\)/,
+    'settings authority snapshots must be recursively frozen');
+for (const [file, text] of [
+    ['modules/event-listeners.js', eventListenersSource],
+    ['modules/uiManager.js', uiManagerSource],
+    ['modules/ui-system/appearance-studio.js', appearanceStudioSource],
+]) {
+    assert.doesNotMatch(
+        withoutComments(text).join('\n'),
+        /(?:globalSettings|currentSettings|settings)\.(?:sidebarAvatarOnly|sidebarActive|assistantEnabled|currentThemeMode|appearanceProfile|filterEnabled)\s*=|Object\.assign\(getSettings\(\)/,
+        `${file} must commit settings changes through the settings authority`
+    );
+}
+assert.match(rendererSource, /mainChatSettingsPresentationOwner\.loadAndApply\(\)/,
+    'renderer must delegate settings loading and projection to its owner');
+assert.doesNotMatch(rendererSource, /CHAT_FONT_PRESETS|function captureChatPresentationScrollAnchor|function syncChatPresentationModeControls/,
+    'renderer must not regain settings or presentation DOM policy');
+assert.match(settingsPresentationOwnerSource, /async function loadAndApply\(\)/,
+    'settings presentation owner must own startup settings projection');
+assert.doesNotMatch(rendererSource, /window\.(?:globalSettings|applyChatPresentationMode|normalizeChatPresentationMode|checkMessageFilter|applyChatBubbleLayoutSettings)/,
+    'renderer must not republish retired ambient settings and presentation globals');
 // These assertions require production composition evidence; test-only imports cannot satisfy them.
 assert.match(rendererSource, /createMainChatEventBridge/, 'renderer must construct the main chat event bridge');
 assert.match(mainChatEventBridgeSource, /chatAPI\.onVCPStreamEvent/, 'event bridge must consume the preload producer');

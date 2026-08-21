@@ -45,6 +45,7 @@ const settingsManager = (() => {
     let refs = {}; // To hold references to currentSelectedItem, etc.
     let mainRendererFunctions = {}; // To call back to renderer.js functions if needed
     let messageRenderer = null;
+    let getGlobalSettings = () => ({});
 
     // DOM Elements
     let agentSettingsContainer, groupSettingsContainer, selectItemPromptForSettings;
@@ -454,18 +455,16 @@ const settingsManager = (() => {
                         console.error(`[SettingsManager] Failed to get updated agent config:`, updatedAgentConfig.error);
                         uiHelper.showToastNotification(`无法刷新Agent配置: ${updatedAgentConfig.error}`, 'warning');
                         // 仍然更新名称，但不更新其他可能缺失的属性
-                        currentSelectedItem.name = newConfig.name;
+                        refs.currentSelectedItemRef.set({ ...currentSelectedItem, name: newConfig.name });
                         selectedItemNameForSettingsSpan.textContent = newConfig.name;
                         if (mainRendererFunctions.updateChatHeader) {
                             mainRendererFunctions.updateChatHeader(`与 ${newConfig.name} 聊天中`);
                         }
                     } else if (updatedAgentConfig) {
-                        currentSelectedItem.name = newConfig.name;
-                        if (currentSelectedItem.config) {
-                            currentSelectedItem.config = updatedAgentConfig;
-                        } else {
-                            Object.assign(currentSelectedItem, updatedAgentConfig);
-                        }
+                        const nextSelectedItem = currentSelectedItem.config
+                            ? { ...currentSelectedItem, name: newConfig.name, config: updatedAgentConfig }
+                            : { ...currentSelectedItem, ...updatedAgentConfig, name: newConfig.name };
+                        refs.currentSelectedItemRef.set(nextSelectedItem);
 
                         // Update other UI parts via callbacks or direct calls if modules are passed in
                         if (mainRendererFunctions.updateChatHeader) {
@@ -573,7 +572,7 @@ const settingsManager = (() => {
     async function populateTtsModels(currentPrimaryVoice, currentSecondaryVoice) {
         if (!agentTtsVoicePrimarySelect || !agentTtsVoiceSecondarySelect) return;
 
-        const globalSettings = window.globalSettings || {};
+        const globalSettings = getGlobalSettings();
         const isNetworkMode = globalSettings.voiceMode === 'network';
         const commitOptions = (select, options, selectedValue = '') => {
             const current = [...select.options];
@@ -757,6 +756,11 @@ const settingsManager = (() => {
 
     // --- Public API ---
     return {
+        configureCapabilities: ({ settings = null } = {}) => {
+            getGlobalSettings = typeof settings?.get === 'function'
+                ? () => settings.get() || {}
+                : () => ({});
+        },
         init: (options) => {
             if (initialized) {
                 console.warn('[SettingsManager] Ignored duplicate initialization.');
@@ -973,7 +977,7 @@ const settingsManager = (() => {
 
             if (refreshTtsModelsBtn) {
                 refreshTtsModelsBtn.addEventListener('click', async () => {
-                    const isNetworkMode = (window.globalSettings || {}).voiceMode === 'network';
+                    const isNetworkMode = getGlobalSettings().voiceMode === 'network';
                     uiHelper.showToastNotification(isNetworkMode ? '正在刷新网络音色列表...' : '正在刷新语音模型...', 'info');
                     try {
                         if (electronAPI.sovitsGetModels) {
@@ -2130,11 +2134,10 @@ function setupParamsCollapsible() {
             return;
         }
 
-        if (currentSelectedItem.config) {
-            currentSelectedItem.config.uiCollapseStates = { ...collapseStates };
-        } else {
-            currentSelectedItem.uiCollapseStates = { ...collapseStates };
-        }
+        const nextSelectedItem = currentSelectedItem.config
+            ? { ...currentSelectedItem, config: { ...currentSelectedItem.config, uiCollapseStates: { ...collapseStates } } }
+            : { ...currentSelectedItem, uiCollapseStates: { ...collapseStates } };
+        refs.currentSelectedItemRef.set(nextSelectedItem);
     }
 
     async function persistCollapseStatesForCurrentSelection() {
