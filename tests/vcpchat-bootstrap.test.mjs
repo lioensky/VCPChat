@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
 
-import { parseArguments, waitForReady } from '../scripts/vcpchat-dev-launcher.mjs';
+import { createElectronChildEnv, detachChildForHandoff, parseArguments, waitForReady } from '../scripts/vcpchat-dev-launcher.mjs';
 import { parseArguments as parseManagedEntryArguments, runVcpchat } from '../scripts/vcpchat.mjs';
 import { collectDoctorReport } from '../modules/bootstrap/environment-doctor.js';
 
@@ -43,6 +43,26 @@ test('M0 protocol resolves platform state roots and publishes operation-scoped r
     assert.equal(protocol.removeReadyRecord({ stateRoot: root, operationId }), true);
     assert.equal(lock.release(), true);
     assert.equal(protocol.inspectOperationLock(root).state, 'free');
+});
+
+test('graphical launcher entries are present without replacing upstream launchers', () => {
+    const root = path.resolve(new URL('..', import.meta.url).pathname);
+    for (const name of [
+        'launchers/VCPChat-Launcher.command',
+        'launchers/VCPChat-Launcher.vbs',
+        'launchers/VCPChat-Launcher.sh',
+        'launchers/VCPChat-Setup.command',
+    ]) {
+        assert.equal(fs.existsSync(path.join(root, name)), true, name);
+    }
+    for (const name of ['start.bat', '启动Vchat.vbs']) {
+        assert.equal(fs.existsSync(path.join(root, name)), true, name);
+    }
+    const recoveryHtml = fs.readFileSync(path.join(root, 'bootstrap/recovery.html'), 'utf8');
+    assert.match(recoveryHtml, /id="welcome"/);
+    assert.match(recoveryHtml, /id="workspace"/);
+    assert.match(recoveryHtml, /id="liveOutput"/);
+    assert.match(recoveryHtml, /id="failure"/);
 });
 
 test('M0 stale operation locks are recoverable but live locks are not', () => {
@@ -105,6 +125,24 @@ test('M2 argument parser separates launcher options from Electron arguments', ()
         appArgs: ['--desktop-only', '--trace-warnings'],
     });
     assert.throws(() => parseArguments(['--repair']), /不会自动修复/);
+});
+
+test('managed launcher removes Electron-as-Node flag before spawning the real app', () => {
+    const env = createElectronChildEnv({
+        env: { ELECTRON_RUN_AS_NODE: '1', PATH: '/usr/bin' },
+        stateRoot: '/tmp/vcpchat-state',
+        operationId: 'launch-test',
+        buildId: 'revision',
+    });
+    assert.equal(env.ELECTRON_RUN_AS_NODE, undefined);
+    assert.equal(env.VCPCHAT_STATE_DIR, '/tmp/vcpchat-state');
+    assert.equal(env.VCPCHAT_BOOTSTRAP_OPERATION_ID, 'launch-test');
+});
+
+test('managed launcher detaches Electron after authoritative handoff', () => {
+    let detached = false;
+    detachChildForHandoff({ unref() { detached = true; } });
+    assert.equal(detached, true);
 });
 
 test('H1 managed entry shows a repair plan without mutating when consent is absent', async () => {

@@ -23,6 +23,7 @@ function environmentEpisode({ projectRoot, doctorReport }) {
         .map(item => `${item.id}:${item.code || item.status}`)
         .sort();
     const identity = {
+        projectRoot: path.resolve(projectRoot),
         failures,
         packageLock: sha256File(path.join(projectRoot, 'package-lock.json')),
         node: process.versions.node,
@@ -56,13 +57,17 @@ function selectRepairStages({ doctorReport, manifest, includeRust = false, repai
         .filter(item => item.status === 'warn')
         .map(item => item.code));
     const selected = ['validate-lockfile'];
-    if (full || failedCodes.has('E_DEPENDENCY_MISSING') || failedCodes.has('E_DEPENDENCY_CORRUPT')) {
+    const installsDependencies = full || failedCodes.has('E_DEPENDENCY_MISSING') || failedCodes.has('E_DEPENDENCY_CORRUPT');
+    if (installsDependencies) {
         selected.push('install-dependencies');
     }
     selected.push('probe-native-modules');
-    if (full || failedCodes.has('E_NATIVE_ABI_MISMATCH')) selected.push('rebuild-native-modules');
+    if (installsDependencies || failedCodes.has('E_NATIVE_ABI_MISMATCH')) selected.push('rebuild-native-modules');
     if (includeRust && (full || warningCodes.has('E_RUST_RUNTIME_MISSING') || warningCodes.has('E_RUST_RUNTIME_INVALID'))) {
         selected.push('build-rust-runtime');
+    }
+    if (includeRust && (full || warningCodes.has('E_AUDIO_RUNTIME_MISSING') || warningCodes.has('E_AUDIO_RUNTIME_INVALID'))) {
+        selected.push('build-audio-runtime');
     }
     const vendorInvalid = warningCodes.has('E_VENDOR_CLOSURE_INVALID');
     if (repairVendor && (full || vendorInvalid)) selected.push('repair-vendor-closure');

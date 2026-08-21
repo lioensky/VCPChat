@@ -123,6 +123,25 @@ function terminateChild(child) {
     terminateManagedProcess(child);
 }
 
+function detachChildForHandoff(child) {
+    child?.unref?.();
+}
+
+// Recovery UI runs Node scripts through Electron with ELECTRON_RUN_AS_NODE=1.
+// Never pass that flag to the real Electron application: with it set, Electron
+// exposes no `app` module and main.js crashes before ready.
+function createElectronChildEnv({ env = process.env, stateRoot, operationId, buildId = '' } = {}) {
+    const childEnv = {
+        ...env,
+        VCPCHAT_STATE_DIR: stateRoot,
+        VCPCHAT_BOOTSTRAP_OPERATION_ID: operationId,
+        VCPCHAT_BUILD_ID: buildId,
+        VCP_LAUNCHER_PROTOCOL: '1',
+    };
+    delete childEnv.ELECTRON_RUN_AS_NODE;
+    return childEnv;
+}
+
 export async function runManagedLauncher({
     argv = process.argv.slice(2),
     projectRoot = null,
@@ -166,12 +185,12 @@ export async function runManagedLauncher({
     }
 
     const electronBinary = resolveElectronBinary(root);
-    const childEnv = {
-        ...env,
-        VCPCHAT_STATE_DIR: stateRoot,
-        VCPCHAT_BOOTSTRAP_OPERATION_ID: operationId,
-        VCPCHAT_BUILD_ID: lock.record.targetRevision || '',
-    };
+    const childEnv = createElectronChildEnv({
+        env,
+        stateRoot,
+        operationId,
+        buildId: lock.record.targetRevision || '',
+    });
     let child;
     const onInterrupt = () => terminateChild(child);
     process.once('SIGINT', onInterrupt);
@@ -215,7 +234,10 @@ export async function runManagedLauncher({
         lock = null;
         io.stdout.write(`VCPChat 已启动（operation ${operationId}）。\n`);
         removeReadyRecord({ stateRoot, operationId });
-        if (options.handoff) return 0;
+        if (options.handoff) {
+            detachChildForHandoff(child);
+            return 0;
+        }
         if (child.exitCode === null && child.signalCode === null) {
             await new Promise(resolve => child.once('exit', resolve));
         }
@@ -250,4 +272,4 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
     });
 }
 
-export { parseArguments, waitForReady, formatDoctorFailure };
+export { createElectronChildEnv, detachChildForHandoff, parseArguments, waitForReady, formatDoctorFailure };

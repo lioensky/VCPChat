@@ -24,6 +24,14 @@ if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR)
     });
 }
 
+function reportLauncherProgress(stage, progress, message) {
+    if (process.env.VCP_LAUNCHER_PROTOCOL !== '1') return;
+    const payload = JSON.stringify({ stage, progress, message });
+    process.stdout.write(`VCP_STARTUP:${payload}\n`);
+}
+
+reportLauncherProgress('process-started', 0.08, 'VChat 进程已启动');
+
 // --- 模块加载性能诊断 ---
 const originalRequire = require;
 require = function (id) {
@@ -330,6 +338,7 @@ async function publishManagedBootstrapReadyAfterRenderer() {
             );
             if (ready) {
                 publishManagedBootstrapReady({ mainWindow: 'ready', preload: 'ready', renderer: 'ready' });
+                reportLauncherProgress('renderer-ready', 1, '准备完成');
                 return;
             }
         } catch (error) {
@@ -425,9 +434,16 @@ function startAudioEngine() {
 
         // Use the Rust audio server binary (moved to audio_engine directory)
         const binaryName = process.platform === 'win32' ? 'audio_server.exe' : 'audio_server';
-        const rustBinaryPath = app.isPackaged
-            ? path.join(process.resourcesPath, 'app.asar.unpacked', 'audio_engine', binaryName)
-            : path.join(__dirname, 'audio_engine', binaryName);
+        const platformDirectory = `${process.platform}-${process.arch}`;
+        const audioRoot = app.isPackaged
+            ? path.join(process.resourcesPath, 'app.asar.unpacked', 'audio_engine')
+            : path.join(__dirname, 'audio_engine');
+        const platformBinaryPath = path.join(audioRoot, 'bin', platformDirectory, binaryName);
+        const legacyBinaryPath = path.join(audioRoot, binaryName);
+        const legacyMatchesPlatform = process.platform === 'win32' || (process.platform === 'linux' && process.arch === 'x64');
+        const rustBinaryPath = fs.existsSync(platformBinaryPath)
+            ? platformBinaryPath
+            : legacyMatchesPlatform ? legacyBinaryPath : platformBinaryPath;
         console.log(`[Main] Starting Rust Audio Engine from: ${rustBinaryPath}`);
 
         // Check if the binary exists
@@ -877,6 +893,11 @@ if (!gotTheLock) {
         // 默认聚焦主窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
+            // macOS deliberately hides the main window when it is closed. A
+            // managed launcher handoff must make that existing instance
+            // visible again, otherwise Recovery exits while the app remains
+            // running invisibly in the background.
+            if (!mainWindow.isVisible()) mainWindow.show();
             mainWindow.focus();
             return;
         }
@@ -894,6 +915,7 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(async () => { // Make the function async
+        reportLauncherProgress('electron-ready', 0.16, 'Electron 核心已就绪');
         // 全局处理普通 VChat 窗口的新窗口请求。VCP Loom 的远程 WebContentsView
         // 会由 VCPLoomManager 设置自己的隔离导航策略，因此不在这里提前覆盖。
         app.on('web-contents-created', (event, contents) => {
@@ -933,6 +955,7 @@ if (!gotTheLock) {
         fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
         fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
         fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
+        reportLauncherProgress('storage-ready', 0.27, '配置与数据目录已就绪');
         fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
         groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
 
@@ -1029,6 +1052,7 @@ if (!gotTheLock) {
         // Create the native window first, but load the renderer only after IPC registration.
         createWindow({ deferLoad: true });
         createTray();
+        reportLauncherProgress('window-created', 0.38, '主窗口骨架已创建');
         // --- Application Menu ---
         const isMac = process.platform === 'darwin';
         const menuTemplate = [
@@ -1264,6 +1288,7 @@ if (!gotTheLock) {
         });
 
         await assistantHandlers.initialize({ SETTINGS_FILE });
+        reportLauncherProgress('assistant-ready', 0.56, '小助手已经醒来');
         fileDialogHandlers.initialize(mainWindow, {
             getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
             stopSelectionListener: assistantHandlers.stopSelectionListener,
@@ -1471,6 +1496,7 @@ if (!gotTheLock) {
             openChildWindows
         });
         desktopRemoteHandlers.initialize({ mainWindow });
+        reportLauncherProgress('workspace-ready', 0.76, '工作空间与功能模块已连接');
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
@@ -1559,6 +1585,7 @@ if (!gotTheLock) {
         // 主窗口页面完成加载、触发展示后再后台预热 Scriptorium。
         // 不 await：重型 CommonJS 解析不会延迟主窗口首屏；若用户更早打开
         // 文坊，临时 IPC 桥接会立即启动并等待同一个单例加载 Promise。
+        reportLauncherProgress('renderer-loading', 0.9, '正在绘制聊天界面');
         void loadMainWindow()
             .then(() => loadDocxHandlers())
             .catch((error) => {

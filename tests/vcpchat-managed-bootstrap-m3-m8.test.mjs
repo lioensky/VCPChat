@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { createRepairManifest } = require('../modules/bootstrap/repair-manifest');
-const { selectRepairStages, validateLockfile, createRepairPlan } = require('../modules/bootstrap/repair-planner');
+const { environmentEpisode, selectRepairStages, validateLockfile, createRepairPlan } = require('../modules/bootstrap/repair-planner');
 const { runProcess } = require('../modules/bootstrap/process-runner');
 const { managedSpawnOptions, terminationPlan, terminateManagedProcess } = require('../modules/bootstrap/platform-process');
 const { createProgressEvent, encodeProgressEvent, parseProgressLine } = require('../modules/bootstrap/progress-protocol');
@@ -23,8 +23,8 @@ test('M3 repair manifest is deterministic and uses npm ci plus targeted rebuild'
     const manifest = createRepairManifest({ projectRoot: '/tmp/project', platform: 'darwin' });
     assert.equal(manifest.schemaVersion, 1);
     assert.deepEqual(manifest.stages.find(stage => stage.id === 'install-dependencies').args.slice(0, 2), ['ci', '--no-audit']);
-    assert.equal(manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args[0], 'exec');
-    assert.equal(manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args.includes('electron-rebuild'), true);
+    assert.match(manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args[0], /@electron[\\/]rebuild[\\/]lib[\\/]cli\.js$/);
+    assert.equal(manifest.stages.find(stage => stage.id === 'rebuild-native-modules').args.includes('-f'), true);
 });
 
 test('M3 selection keeps optional Rust/vendor repairs opt-in', () => {
@@ -32,11 +32,15 @@ test('M3 selection keeps optional Rust/vendor repairs opt-in', () => {
     const report = { checks: [
         { id: 'dependencies', status: 'fail', code: 'E_DEPENDENCY_MISSING' },
         { id: 'rust-runtime', status: 'warn', code: 'E_RUST_RUNTIME_MISSING' },
+        { id: 'audio-runtime', status: 'warn', code: 'E_AUDIO_RUNTIME_MISSING' },
     ] };
     const defaultStages = selectRepairStages({ doctorReport: report, manifest });
     assert.equal(defaultStages.some(stage => stage.id === 'build-rust-runtime'), false);
+    assert.equal(defaultStages.some(stage => stage.id === 'build-audio-runtime'), false);
+    assert.equal(defaultStages.some(stage => stage.id === 'rebuild-native-modules'), true);
     const fullStages = selectRepairStages({ doctorReport: report, manifest, includeRust: true, repairVendor: true, full: true });
     assert.equal(fullStages.some(stage => stage.id === 'build-rust-runtime'), true);
+    assert.equal(fullStages.some(stage => stage.id === 'build-audio-runtime'), true);
     assert.equal(fullStages.some(stage => stage.id === 'repair-vendor-closure'), true);
 });
 
@@ -45,6 +49,13 @@ test('M3 lock validation rejects package identity drift before npm ci', () => {
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'one', version: '1.0.0' }));
     fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'two', version: '1.0.0' } } }));
     assert.throws(() => validateLockfile(root), error => error.code === 'E_LOCKFILE_INVALID');
+});
+
+test('M3 repair episodes remain isolated across clones with the same lockfile', () => {
+    const report = { checks: [{ id: 'native-abi', status: 'fail', code: 'E_NATIVE_ABI_MISMATCH' }] };
+    const first = environmentEpisode({ projectRoot: '/tmp/vcpchat-a', doctorReport: report });
+    const second = environmentEpisode({ projectRoot: '/tmp/vcpchat-b', doctorReport: report });
+    assert.notEqual(first.id, second.id);
 });
 
 test('M3 process runner cancels and settles exactly once', async () => {

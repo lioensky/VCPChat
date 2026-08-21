@@ -80,7 +80,7 @@ VCPChat 后续必须为 macOS、Windows、Linux 保持独立的进程启动/终�
 - M7：本地 trusted staging、current 指针、健康检查和 rollback。
 - M8：发布证据矩阵与外部平台证据缺口记录。
 
-当前 `start:managed` 主要执行 M1 + M2，即“诊断后托管启动”。本轮新增的 `npm run vcpchat` 已接通 H1 CLI 状态机：诊断通过即启动，阻塞时展示 typed repair plan，只有 `--repair --yes` 才会修改依赖，修复后重新 Doctor 再启动；`npm run vcpchat:ui` 打开独立的准备/恢复 UI。它仍不是 Hermes 的完整图形安装器；H2 还需把一键入口与该 UI 的决策门进一步合并。
+当前 `start:managed` 主要执行 M1 + M2，即“诊断后托管启动”。`npm run vcpchat` 已接通 H1 CLI 状态机；`npm run vcpchat:ui` 和源码树中的双击入口打开独立的准备/恢复 UI。它仍不是 Hermes 的完整图形安装器：尚未由签名安装器创建跨平台快捷方式，也不能在完全没有 Node/Electron 的机器上自举。
 
 H1 同时加入了按项目路径隔离的 state root、完成 marker、深度 Doctor 快路径和 SIGINT/SIGTERM 修复取消。marker 只代表当前 package/package-lock、Node 主版本、Electron 版本和平台架构组合已通过本机 Doctor，不代表跨平台安装包已验证。
 
@@ -156,6 +156,8 @@ npm run vcpchat
 - 不在没有签名和跨平台证据时宣称“生产级自动更新已完成”。
 
 ## 当前下一步
+
+2026-08-20 起，正式路线改为直接派生 Hermes MIT Bootstrap Installer，而不是继续扩展源码树 Electron Recovery。详细里程碑、许可证归属和验收门见 [`vcpchat-tauri-installer-development-plan.md`](./vcpchat-tauri-installer-development-plan.md)。旧 Recovery 仅作为开发/恢复兼容入口保留。
 
 1. 网络恢复后补齐 Hermes 完整 clone 与 commit pin；当前研究快照已足够支撑 H1/H2 行为对照。
 2. 将现有 recovery UI 与 `npm run vcpchat` 的阻塞状态直接联动，形成真正的一键首次运行决策门。

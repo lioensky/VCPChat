@@ -46,10 +46,17 @@ function probeNativeModules({ projectRoot, electronBinary, nativeModules = NATIV
     }
     const source = [
         'const failures = [];',
+        '(async () => {',
         `for (const id of ${JSON.stringify(nativeModules)}) {`,
-        '  try { require(id); } catch (error) { failures.push({ id, message: error && error.message ? error.message : String(error) }); }',
+        '  try {',
+        "    if (id === 'better-sqlite3') { const Database = require(id); const db = new Database(':memory:'); db.prepare('SELECT 1').get(); db.close(); }",
+        "    else if (id === 'node-pty') { const pty = require(id); if (typeof pty.spawn !== 'function') throw new Error('node-pty spawn API missing'); }",
+        "    else if (id === 'sharp') { const sharp = require(id); await sharp({ create: { width: 1, height: 1, channels: 4, background: '#00000000' } }).metadata(); }",
+        '    else { require(id); }',
+        '  } catch (error) { failures.push({ id, message: error && error.message ? error.message : String(error) }); }',
         '}',
         'if (failures.length) { console.error(JSON.stringify(failures)); process.exit(2); }',
+        '})().catch(error => { console.error(error && error.stack ? error.stack : String(error)); process.exit(2); });',
     ].join('\n');
     const result = spawn(electronBinary, ['-e', source], {
         cwd: projectRoot,
@@ -223,6 +230,25 @@ function collectDoctorReport({
             : check('rust-runtime', CHECK_STATUS.WARN, 'VCP-CDS shadow runtime 不可执行；主聊天仍可降级启动。', {
                 code: ERROR_CODES.RUST_RUNTIME_INVALID,
                 path: rustPath,
+                optional: true,
+            }));
+    }
+
+    const audioExecutable = platform === 'win32' ? 'audio_server.exe' : 'audio_server';
+    const audioPath = path.join(root, 'audio_engine', 'bin', `${platform}-${arch}`, audioExecutable);
+    if (!fs.existsSync(audioPath)) {
+        checks.push(check('audio-runtime', CHECK_STATUS.WARN, '当前平台的 Rust audio runtime 不存在；音乐播放会降级。', {
+            code: ERROR_CODES.AUDIO_RUNTIME_MISSING,
+            path: audioPath,
+            optional: true,
+        }));
+    } else {
+        const executable = platform === 'win32' || canAccess(audioPath, fs.constants.X_OK);
+        checks.push(executable
+            ? check('audio-runtime', CHECK_STATUS.PASS, 'Rust audio runtime 存在且权限可用。', { path: audioPath })
+            : check('audio-runtime', CHECK_STATUS.WARN, 'Rust audio runtime 不可执行；音乐播放会降级。', {
+                code: ERROR_CODES.AUDIO_RUNTIME_INVALID,
+                path: audioPath,
                 optional: true,
             }));
     }

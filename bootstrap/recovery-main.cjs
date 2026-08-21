@@ -6,6 +6,11 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const projectRoot = path.resolve(process.env.VCPCHAT_PROJECT_ROOT || path.join(__dirname, '..'));
+// Recovery is a separate Electron surface. Give it its own identity and
+// userData root so opening it never collides with the already-running VCPChat
+// main process' Electron single-instance lock.
+app.setName('VCPChat Bootstrap');
+app.setPath('userData', path.join(app.getPath('appData'), 'VCPChat Bootstrap'));
 const { terminateProcess } = require(path.join(projectRoot, 'modules', 'bootstrap', 'process-runner'));
 const { managedSpawnOptions } = require(path.join(projectRoot, 'modules', 'bootstrap', 'platform-process'));
 let windowRef;
@@ -17,7 +22,7 @@ function nodeCommand() {
 
 function scriptPath(name) { return path.join(projectRoot, 'scripts', name); }
 
-function runScript(name, args = []) {
+function runScript(name, args = [], { streamStdout = true, streamStderr = true } = {}) {
     if (operation) return Promise.reject(Object.assign(new Error('已有 Bootstrap 操作正在运行。'), { code: 'E_OPERATION_BUSY' }));
     return new Promise((resolve, reject) => {
         const child = spawn(nodeCommand(), [scriptPath(name), ...args], {
@@ -31,11 +36,11 @@ function runScript(name, args = []) {
         let stderr = '';
         child.stdout.on('data', chunk => {
             stdout += String(chunk);
-            windowRef?.webContents.send('bootstrap:output', { stream: 'stdout', text: String(chunk) });
+            if (streamStdout) windowRef?.webContents.send('bootstrap:output', { stream: 'stdout', text: String(chunk) });
         });
         child.stderr.on('data', chunk => {
             stderr += String(chunk);
-            windowRef?.webContents.send('bootstrap:output', { stream: 'stderr', text: String(chunk) });
+            if (streamStderr) windowRef?.webContents.send('bootstrap:output', { stream: 'stderr', text: String(chunk) });
         });
         child.once('error', error => { operation = null; reject(error); });
         child.once('exit', code => {
@@ -48,12 +53,15 @@ function runScript(name, args = []) {
 
 function createWindow() {
     windowRef = new BrowserWindow({
-        width: 560,
-        height: 680,
-        minWidth: 480,
+        width: 980,
+        height: 720,
+        minWidth: 720,
         minHeight: 560,
         show: false,
-        title: 'VCPChat 准备与恢复',
+        title: 'VCPChat',
+        titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+        trafficLightPosition: process.platform === 'darwin' ? { x: 16, y: 18 } : undefined,
+        backgroundColor: '#252a30',
         webPreferences: {
             preload: path.join(__dirname, 'recovery-preload.cjs'),
             contextIsolation: true,
@@ -76,16 +84,20 @@ function createWindow() {
 }
 
 ipcMain.handle('bootstrap:doctor', async (_event, deep = true) => {
-    const result = await runScript('vcpchat-doctor.mjs', deep ? ['--deep', '--json'] : ['--json']);
+    const result = await runScript('vcpchat-doctor.mjs', deep ? ['--deep', '--json'] : ['--json'], { streamStdout: false });
     return JSON.parse(result.stdout);
 });
 ipcMain.handle('bootstrap:plan', async () => {
-    const result = await runScript('vcpchat-repair.mjs', ['--json']);
+    const result = await runScript('vcpchat-repair.mjs', ['--json'], { streamStdout: false });
     return JSON.parse(result.stdout);
 });
 ipcMain.handle('bootstrap:repair', async (_event, args = []) => runScript('vcpchat-repair.mjs', ['--apply', '--yes', ...args]));
 ipcMain.handle('bootstrap:launch', async (_event, safe = false) => {
-    return runScript('vcpchat.mjs', safe ? ['--project-root', projectRoot, '--handoff', '--', '--disable-gpu'] : ['--project-root', projectRoot, '--handoff']);
+    return runScript(
+        'vcpchat.mjs',
+        safe ? ['--project-root', projectRoot, '--handoff', '--', '--disable-gpu'] : ['--project-root', projectRoot, '--handoff'],
+        { streamStdout: false },
+    );
 });
 ipcMain.handle('bootstrap:cancel', () => {
     if (!operation) return false;

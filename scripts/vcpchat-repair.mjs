@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { resolveStateRoot } = require('../modules/bootstrap/launch-protocol');
+const { resolveProjectStateRoot } = require('../modules/bootstrap/launch-protocol');
 const { createRepairPlan, executeRepairPlan } = require('../modules/bootstrap/repair-planner');
 const { createProgressEvent, encodeProgressEvent } = require('../modules/bootstrap/progress-protocol');
 
@@ -52,7 +52,7 @@ function printablePlan(plan) {
 export async function runRepairCli({ argv = process.argv.slice(2), env = process.env, io = process } = {}) {
     const options = parseArguments(argv);
     const root = path.resolve(options.projectRoot || path.dirname(path.dirname(fileURLToPath(import.meta.url))));
-    const stateRoot = resolveStateRoot({ env });
+    const stateRoot = resolveProjectStateRoot({ projectRoot: root, env });
     const plan = createRepairPlan({
         projectRoot: root,
         stateRoot,
