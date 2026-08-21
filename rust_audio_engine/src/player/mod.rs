@@ -10,11 +10,10 @@ mod audio_thread;
 mod spectrum;
 
 // Re-exports
-pub use state::{AudioCommand, PlayerState, AtomicPlayerState, SharedState, AudioDeviceInfo,
+pub use state::{AudioCommand, PlayerState, SharedState, AudioDeviceInfo,
     EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR, EVENT_TRACK_CHANGED,
-    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD, EVENT_NEEDS_PRELOAD_RESET};
+    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD_RESET};
 pub use gapless::GaplessManager;
-pub use callback::{LockfreeDspContext, audio_callback_lockfree, normalize_channels};
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -28,12 +27,12 @@ use cpal::traits::{HostTrait, DeviceTrait};
 use crate::config::{AppConfig, ResampleQuality};
 use crate::processor::{
     SpectrumAnalyzer,
-    LoudnessNormalizer, LoudnessInfo, AtomicLoudnessState,
+    LoudnessNormalizer, LoudnessInfo,
     // Lock-free parameters
     AtomicEqParams, AtomicSaturationParams, AtomicCrossfeedParams,
     AtomicPeakLimiterParams, AtomicVolumeParams, AtomicNoiseShaperParams,
     AtomicDynamicLoudnessParams, AtomicDynamicLoudnessTelemetry,
-    NoiseShaperCurve,
+    NoiseShaperCurve, SaturationTypeValue,
     FirPhaseMode, STANDARD_BANDS,
 };
 
@@ -48,13 +47,8 @@ pub struct AudioPlayer {
     cmd_tx: Sender<AudioCommand>,
     audio_thread: Option<JoinHandle<()>>,
 
-    // Spectrum analyzer for visualization
-    spectrum_analyzer: Arc<SpectrumAnalyzer>,
-    
     // Loudness normalizer for main thread operations
     loudness_normalizer: Arc<Mutex<LoudnessNormalizer>>,
-    loudness_state: Arc<AtomicLoudnessState>,
-
     // ═══════════════════════════════════════════════════════════════
     // Lock-free Parameter Structures
     // These allow main thread to set parameters without blocking audio thread
@@ -140,6 +134,9 @@ impl AudioPlayer {
             lockfree_saturation_params.set_drive(config.saturation.drive);
             lockfree_saturation_params.set_threshold(config.saturation.threshold);
             lockfree_saturation_params.set_mix(config.saturation.mix);
+            lockfree_saturation_params.set_sat_type(SaturationTypeValue::from(config.saturation.sat_type));
+            lockfree_saturation_params.set_input_gain(config.saturation.input_gain_db);
+            lockfree_saturation_params.set_output_gain(config.saturation.output_gain_db);
             lockfree_saturation_params.set_enabled(config.saturation.enabled);
         }
 
@@ -148,6 +145,8 @@ impl AudioPlayer {
             lockfree_dynamic_loudness_params.set_enabled(config.dynamic_loudness.enabled);
             lockfree_dynamic_loudness_params.set_strength(config.dynamic_loudness.strength);
             lockfree_dynamic_loudness_params.set_ref_volume_db(config.dynamic_loudness.ref_volume_db);
+            lockfree_dynamic_loudness_params.set_transition_db(config.dynamic_loudness.transition_db);
+            lockfree_dynamic_loudness_params.set_pre_gain_db(config.dynamic_loudness.pre_gain_db);
         }
 
         {
@@ -195,9 +194,7 @@ impl AudioPlayer {
             shared_state,
             cmd_tx,
             audio_thread: Some(audio_thread),
-            spectrum_analyzer,
             loudness_normalizer,
-            loudness_state,
             // Lock-free parameters
             lockfree_eq_params,
             lockfree_saturation_params,
@@ -278,7 +275,10 @@ impl AudioPlayer {
         self.stop();
         GaplessManager::cancel_preload(&self.shared_state);
 
-        // Set loading state
+        // Set loading state and publish a new load generation.
+        // Slow decode/resample threads from older track changes must not be
+        // allowed to overwrite the current track after a newer request starts.
+        let load_generation = self.shared_state.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
         self.shared_state.is_loading.store(true, Ordering::Release);
         self.shared_state.load_progress.store(0, Ordering::Relaxed);
         *self.shared_state.load_error.write() = None;
@@ -302,16 +302,24 @@ impl AudioPlayer {
                 loudness_enabled,
             );
 
-            shared_state.is_loading.store(false, Ordering::Release);
-
             match result {
                 Ok(load_result) => {
-                    let _ = cmd_tx.send(AudioCommand::LoadComplete(load_result));
+                    // NOTE: is_loading is cleared by the audio thread after
+                    // LoadComplete is processed and file_path is updated.
+                    // Clearing it here would create a race condition where
+                    // the frontend sees is_loading=false but file_path is
+                    // still the old value, causing waitForTrackReady to time out.
+                    let _ = cmd_tx.send(AudioCommand::LoadComplete {
+                        generation: load_generation,
+                        result: load_result,
+                    });
                 }
                 Err(e) => {
                     log::error!("Async load failed: {}", e);
-                    *shared_state.load_error.write() = Some(e.clone());
-                    let _ = cmd_tx.send(AudioCommand::LoadError(e));
+                    let _ = cmd_tx.send(AudioCommand::LoadError {
+                        generation: load_generation,
+                        error: e,
+                    });
                 }
             }
         });
@@ -501,7 +509,7 @@ impl AudioPlayer {
 
     /// Check if a file is currently being loaded
     pub fn is_loading(&self) -> bool {
-        self.shared_state.is_loading.load(Ordering::Relaxed)
+        self.shared_state.is_loading.load(Ordering::Acquire)
     }
 
     /// Get loading progress (0-100)

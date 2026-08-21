@@ -1,15 +1,20 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>我的笔记</title>
     <!-- 确保这个路径对于你的项目结构是正确的 -->
     <!-- <link rel="stylesheet" href="../style.css"> -->
-<link rel="stylesheet" href="../styles/themes.css"> <!-- 引用主题样式 -->
-    <link rel="stylesheet" href="notes.css">
+    <link rel="stylesheet" href="../styles/themes.css" />
+    <!-- 引用主题样式 -->
+    <link rel="stylesheet" href="notes.css" />
     <!-- 用于语法高亮的 Highlight.js -->
-    <link rel="stylesheet" href="../vendor/atom-one-dark.min.css" id="highlight-theme-style">
+    <link
+      rel="stylesheet"
+      href="../vendor/atom-one-dark.min.css"
+      id="highlight-theme-style"
+    />
     <script src="../vendor/marked.min.js"></script>
     <script src="../vendor/highlight.min.js"></script>
     <!-- DOMPurify for HTML sanitization -->
@@ -17,85 +22,364 @@
     <!-- Mermaid for diagram rendering -->
     <script src="../vendor/mermaid.min.js"></script>
     <!-- KaTeX for LaTeX rendering -->
-    <link rel="stylesheet" href="../vendor/katex.min.css">
+    <link rel="stylesheet" href="../vendor/katex.min.css" />
     <script defer src="../vendor/katex.min.js" crossorigin="anonymous"></script>
-    <script defer src="../vendor/auto-render.min.js" crossorigin="anonymous"></script>
-</head>
-<body>
-<!-- Custom Title Bar -->
+    <script
+      defer
+      src="../vendor/auto-render.min.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <!-- Custom Title Bar -->
     <div id="custom-title-bar">
-        <div class="title">VCP - 笔记</div>
-        <div class="titlebar-actions">
-            <button id="preview-toggle-btn" class="window-control-btn preview-toggle-btn" title="关闭预览区" aria-label="关闭预览区">
-                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                    <path fill="none" stroke="currentColor" stroke-width="1" d="M3,1.5 L8,5 L3,8.5 Z"></path>
-                </svg>
-            </button>
-            <div class="window-controls">
-                <button id="minimize-notes-btn" class="window-control-btn" title="最小化">
-                    <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
-                </button>
-                <button id="maximize-notes-btn" class="window-control-btn" title="最大化">
-                    <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
-                </button>
-                <button id="close-notes-btn" class="window-control-btn" title="关闭">
-                    <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
-                </button>
-            </div>
+      <div class="title">VCP - 笔记</div>
+      <div class="titlebar-actions">
+        <button
+          id="preview-toggle-btn"
+          class="window-control-btn preview-toggle-btn"
+          title="关闭预览区"
+          aria-label="关闭预览区"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1"
+              d="M3,1.5 L8,5 L3,8.5 Z"
+            ></path>
+          </svg>
+        </button>
+        <div class="window-controls">
+          <button
+            id="minimize-notes-btn"
+            class="window-control-btn"
+            title="最小化"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <line
+                x1="0"
+                y1="5"
+                x2="10"
+                y2="5"
+                stroke="currentColor"
+                stroke-width="1.2"
+              ></line>
+            </svg>
+          </button>
+          <button
+            id="maximize-notes-btn"
+            class="window-control-btn"
+            title="最大化"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1"
+                d="M0.5,0.5 h9 v9 h-9 z"
+              ></path>
+            </svg>
+          </button>
+          <button id="close-notes-btn" class="window-control-btn" title="关闭">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path
+                fill="currentColor"
+                d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5"
+                stroke="currentColor"
+                stroke-width="1.2"
+              ></path>
+            </svg>
+          </button>
         </div>
+      </div>
     </div>
     <div class="top-light-effect"></div>
     <div class="container">
-        <!-- 用于笔记列表和操作的侧边栏 -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <input type="text" id="searchInput" placeholder="搜索笔记..." aria-label="搜索笔记">
-                <div class="sidebar-actions">
-                    <button id="newMdBtn" class="button">新建MD</button>
-                    <button id="newTxtBtn" class="button">新建TXT</button>
-                    <button id="newFolderBtn" class="button">新建文档</button>
-                </div>
-            </div>
-            <ul id="noteList" class="note-list-panel" aria-live="polite">
-                <!-- 笔记项目将由 JavaScript 动态插入此处 -->
-            </ul>
+      <!-- 用于笔记列表和操作的侧边栏 -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-heading">
+            <span>我的笔记</span>
+            <button
+              id="helpBtn"
+              class="text-button"
+              type="button"
+              title="查看笔记使用帮助"
+            >
+              帮助
+            </button>
+          </div>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="搜索标题、内容或标签..."
+            aria-label="搜索笔记"
+          />
+          <div class="sidebar-actions">
+            <button
+              id="newMdBtn"
+              class="button"
+              type="button"
+              title="创建 Markdown 笔记"
+            >
+              新建笔记
+            </button>
+            <button
+              id="newTxtBtn"
+              class="button"
+              type="button"
+              title="创建纯文本笔记"
+            >
+              新建文本
+            </button>
+            <button id="newFolderBtn" class="button" type="button">
+              新建文档
+            </button>
+          </div>
+          <div class="notes-filter-row" aria-label="笔记筛选">
+            <select id="noteScopeFilter" aria-label="笔记来源筛选">
+              <option value="all">全部来源</option>
+              <option value="local">仅本地</option>
+              <option value="network">仅网络</option>
+            </select>
+            <select id="noteTagFilter" aria-label="标签筛选">
+              <option value="">全部标签</option>
+            </select>
+            <select id="noteSortSelect" aria-label="笔记排序方式">
+              <option value="custom">自定义排序</option>
+              <option value="updated">最近修改</option>
+              <option value="created">最早创建</option>
+              <option value="title">标题 A-Z</option>
+            </select>
+          </div>
         </div>
+        <ul id="noteList" class="note-list-panel" aria-live="polite">
+          <!-- 笔记项目将由 JavaScript 动态插入此处 -->
+        </ul>
+      </div>
 
-        <!-- Resizer Handle -->
-        <div class="resizer" id="resizer"></div>
+      <!-- Resizer Handle -->
+      <div class="resizer" id="resizer"></div>
 
-        <!-- 用于笔记编辑和预览的主内容区域 -->
-        <div class="main-content">
-            <div class="note-editor-header">
-                <input type="text" id="noteTitle" placeholder="笔记标题" aria-label="笔记标题">
-                <div class="note-actions">
-                    <button id="saveNoteBtn" class="button button-primary">保存</button>
-                    <button id="deleteNoteBtn" class="button button-danger">删除</button>
-                </div>
-            </div>
-            <div class="note-body">
-                <!-- Editor Area -->
-                <div class="editor-container">
-                    <div id="editorFindBar" class="editor-find-bar" aria-label="编辑区搜索" hidden>
-                        <input type="text" id="editorFindInput" placeholder="搜索当前笔记..." aria-label="搜索当前笔记">
-                        <span id="editorFindStatus" class="editor-find-status">0/0</span>
-                        <button id="editorFindPrev" type="button" class="editor-find-button" title="上一个匹配">↑</button>
-                        <button id="editorFindNext" type="button" class="editor-find-button" title="下一个匹配">↓</button>
-                        <button id="editorFindClose" type="button" class="editor-find-button" title="关闭搜索">×</button>
-                    </div>
-                    <textarea id="noteContent" placeholder="开始写笔记..." aria-label="笔记内容"></textarea>
-                    <div class="content-bubble editor-bubble">编辑区</div>
-                </div>
-                <div id="editorPreviewResizer" class="editor-preview-resizer" role="separator" aria-orientation="vertical" aria-label="调整编辑区和预览区宽度" title="拖动调整编辑区/预览区比例"></div>
-                <!-- Preview Area -->
-                <div class="preview-container">
-                    <div id="previewContent" class="markdown-preview" aria-live="polite">
-                        <!-- Markdown 预览将在此处渲染 -->
-                    </div>
-                    <div class="content-bubble preview-bubble">预览区</div>
-                </div>
-            </div>
+      <!-- 用于笔记编辑和预览的主内容区域 -->
+      <div class="main-content">
+        <div class="note-editor-header">
+          <input
+            type="text"
+            id="noteTitle"
+            placeholder="笔记标题"
+            aria-label="笔记标题"
+          />
+          <div class="note-actions">
+            <button
+              id="saveNoteBtn"
+              class="button button-primary"
+              type="button"
+            >
+              保存
+            </button>
+            <button
+              id="deleteNoteBtn"
+              class="button button-danger"
+              type="button"
+            >
+              删除
+            </button>
+          </div>
         </div>
+        <div class="note-workspace-toolbar" aria-label="笔记编辑工具">
+          <div class="view-mode-group" role="group" aria-label="编辑视图">
+            <button
+              class="toolbar-button view-mode-button is-active"
+              type="button"
+              data-view-mode="split"
+              aria-pressed="true"
+            >
+              分屏
+            </button>
+            <button
+              class="toolbar-button view-mode-button"
+              type="button"
+              data-view-mode="editor"
+              aria-pressed="false"
+            >
+              编辑
+            </button>
+            <button
+              class="toolbar-button view-mode-button"
+              type="button"
+              data-view-mode="preview"
+              aria-pressed="false"
+            >
+              预览
+            </button>
+          </div>
+          <span class="toolbar-divider" aria-hidden="true"></span>
+          <div
+            class="formatting-toolbar"
+            role="toolbar"
+            aria-label="Markdown 格式工具"
+          >
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="bold"
+              title="加粗（Ctrl+B）"
+            >
+              <strong>B</strong>
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="italic"
+              title="斜体（Ctrl+I）"
+            >
+              <em>I</em>
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="heading"
+              title="插入标题"
+            >
+              标题
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="bulletList"
+              title="插入无序列表"
+            >
+              列表
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="quote"
+              title="插入引用"
+            >
+              引用
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="code"
+              title="插入代码块"
+            >
+              代码
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="link"
+              title="插入链接"
+            >
+              链接
+            </button>
+            <button
+              class="toolbar-button"
+              type="button"
+              data-markdown-action="tag"
+              title="插入标签"
+            >
+              标签
+            </button>
+            <button
+              id="insertImageBtn"
+              class="toolbar-button"
+              type="button"
+              title="选择并插入图片"
+            >
+              插入图片
+            </button>
+            <input id="imageFileInput" type="file" accept="image/*" hidden />
+          </div>
+          <div class="template-toolbar">
+            <label for="noteTemplateSelect">模板</label>
+            <select id="noteTemplateSelect" aria-label="笔记模板">
+              <option value="">选择模板...</option>
+              <option value="learning">学习笔记</option>
+              <option value="meeting">会议记录</option>
+              <option value="project">项目计划</option>
+              <option value="troubleshooting">问题排查</option>
+            </select>
+          </div>
+        </div>
+        <p class="markdown-hint">
+          支持 Markdown：<code># 标题</code>、<code>**加粗**</code>、<code
+            >- 列表</code
+          >；可粘贴或通过“插入图片”添加图片。
+        </p>
+        <div class="note-body">
+          <!-- Editor Area -->
+          <div class="editor-container">
+            <div
+              id="editorFindBar"
+              class="editor-find-bar"
+              aria-label="编辑区搜索"
+              hidden
+            >
+              <input
+                type="text"
+                id="editorFindInput"
+                placeholder="搜索当前笔记..."
+                aria-label="搜索当前笔记"
+              />
+              <span id="editorFindStatus" class="editor-find-status">0/0</span>
+              <button
+                id="editorFindPrev"
+                type="button"
+                class="editor-find-button"
+                title="上一个匹配"
+              >
+                ↑
+              </button>
+              <button
+                id="editorFindNext"
+                type="button"
+                class="editor-find-button"
+                title="下一个匹配"
+              >
+                ↓
+              </button>
+              <button
+                id="editorFindClose"
+                type="button"
+                class="editor-find-button"
+                title="关闭搜索"
+              >
+                ×
+              </button>
+            </div>
+            <textarea
+              id="noteContent"
+              placeholder="开始写笔记..."
+              aria-label="笔记内容"
+            ></textarea>
+            <div class="content-bubble editor-bubble">编辑区</div>
+          </div>
+          <div
+            id="editorPreviewResizer"
+            class="editor-preview-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整编辑区和预览区宽度"
+            title="拖动调整编辑区/预览区比例"
+          ></div>
+          <!-- Preview Area -->
+          <div class="preview-container">
+            <div
+              id="previewContent"
+              class="markdown-preview"
+              aria-live="polite"
+            >
+              <!-- Markdown 预览将在此处渲染 -->
+            </div>
+            <div class="content-bubble preview-bubble">预览区</div>
+          </div>
+        </div>
+      </div>
     </div>
     <!-- Pretext 文本布局引擎 -->
     <script src="../modules/renderer/pretext-bridge.js"></script>
@@ -103,33 +387,35 @@
 
     <!-- Custom Context Menu HTML -->
     <div id="customContextMenu" class="custom-context-menu">
-        <ul>
-            <li id="context-rename">重命名</li>
-            <li id="context-delete">删除</li>
-            <li id="context-copy-note">复制笔记</li>
-        </ul>
+      <ul>
+        <li id="context-rename">重命名</li>
+        <li id="context-delete">删除</li>
+        <li id="context-copy-note">复制笔记</li>
+      </ul>
     </div>
 
     <!-- Editor Context Menu HTML -->
     <div id="editorContextMenu" class="custom-context-menu editor-context-menu">
-        <ul>
-            <li id="editor-context-undo">撤回</li>
-            <li id="editor-context-cut">剪切</li>
-            <li id="editor-context-copy">复制</li>
-            <li id="editor-context-paste">粘贴</li>
-            <li id="editor-context-select-all">全选</li>
-        </ul>
+      <ul>
+        <li id="editor-context-undo">撤回</li>
+        <li id="editor-context-cut">剪切</li>
+        <li id="editor-context-copy">复制</li>
+        <li id="editor-context-paste">粘贴</li>
+        <li id="editor-context-select-all">全选</li>
+      </ul>
     </div>
-<!-- Confirmation Modal -->
-    <div id="confirmationModal" class="modal-overlay" style="display: none;">
-        <div class="modal-content">
-            <h3 id="modalTitle">确认操作</h3>
-            <p id="modalMessage">你确定要执行这个操作吗？</p>
-            <div class="modal-actions">
-                <button id="modalConfirmBtn" class="button button-danger">确认</button>
-                <button id="modalCancelBtn" class="button">取消</button>
-            </div>
+    <!-- Confirmation Modal -->
+    <div id="confirmationModal" class="modal-overlay" style="display: none">
+      <div class="modal-content">
+        <h3 id="modalTitle">确认操作</h3>
+        <p id="modalMessage">你确定要执行这个操作吗？</p>
+        <div class="modal-actions">
+          <button id="modalConfirmBtn" class="button button-danger">
+            确认
+          </button>
+          <button id="modalCancelBtn" class="button">取消</button>
         </div>
+      </div>
     </div>
-</body>
+  </body>
 </html>

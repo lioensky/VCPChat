@@ -39,6 +39,15 @@
             }
         });
 
+        contextMenuElement.querySelector('[data-action="code-edit"]')?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const targetId = contextMenuTargetWidgetId;
+            hideContextMenu();
+            if (targetId) {
+                await openWidgetCodeEditor(targetId);
+            }
+        });
+
         contextMenuElement.querySelector('[data-action="close"]')?.addEventListener('click', (e) => {
             e.stopPropagation();
             const targetId = contextMenuTargetWidgetId;
@@ -316,6 +325,54 @@
         }
     }
 
+    async function openWidgetCodeEditor(widgetId) {
+        const widgetData = state.widgets.get(widgetId);
+        if (!widgetData?.savedId) {
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('waiting', '请先收藏该挂件，再编辑源码');
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+            }
+            return;
+        }
+
+        if (!desktopApi?.desktopOpenWidgetInCanvas) {
+            console.warn('[ContextMenu] desktopOpenWidgetInCanvas API not available');
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('waiting', '代码编辑 API 不可用，请重启应用');
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+            }
+            return;
+        }
+
+        try {
+            const result = await desktopApi.desktopOpenWidgetInCanvas({
+                savedId: widgetData.savedId,
+                fileName: 'widget.html',
+            });
+
+            if (result?.success) {
+                if (window.VCPDesktop.status) {
+                    window.VCPDesktop.status.update('connected', `正在编辑源码: ${widgetData.savedName || widgetData.savedId}`);
+                    window.VCPDesktop.status.show();
+                    setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+                }
+            } else if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('waiting', result?.error || '打开代码编辑失败');
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+            }
+        } catch (err) {
+            console.error('[ContextMenu] Open widget code editor error:', err);
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('waiting', '打开代码编辑失败');
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+            }
+        }
+    }
+
     /**
      * 打开 Windows 系统工具
      */
@@ -357,6 +414,11 @@
         const refreshBtn = contextMenuElement.querySelector('[data-action="refresh"]');
         if (refreshBtn) {
             refreshBtn.style.display = widgetData?.savedId ? '' : 'none';
+        }
+
+        const codeEditBtn = contextMenuElement.querySelector('[data-action="code-edit"]');
+        if (codeEditBtn) {
+            codeEditBtn.style.display = widgetData?.savedId ? '' : 'none';
         }
 
         // 定位，确保不超出视口

@@ -18,18 +18,6 @@ const CACHE_MAGIC: &[u8; 4] = b"VCP1";
 const CACHE_VERSION: u32 = 1;
 const CACHE_HEADER_SIZE: usize = 32;
 
-/// Cache file header for validation
-#[repr(C)]
-struct CacheHeader {
-    magic: [u8; 4],
-    version: u32,
-    sample_rate: u32,
-    channels: u32,
-    frame_count: u64,
-    checksum: u32,
-    _reserved: u32,
-}
-
 /// Calculate CRC32 checksum for cache validation
 fn calculate_checksum(data: &[f64]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
@@ -207,8 +195,8 @@ pub enum AudioCommand {
     SetFirConvolver { ir_data: Vec<f64>, channels: usize },
     ClearFirConvolver,
     SetNoiseShaperCurve { curve: NoiseShaperCurve },
-    LoadComplete(LoadResult),
-    LoadError(String),
+    LoadComplete { generation: u64, result: LoadResult },
+    LoadError { generation: u64, error: String },
 }
 
 /// State of the audio player
@@ -316,6 +304,9 @@ pub struct SharedState {
 
     // Async loading state
     pub is_loading: AtomicBool,
+    /// Monotonically increasing async load request id.
+    /// Stale decode threads must not publish LoadComplete/LoadError for older ids.
+    pub load_generation: AtomicU64,
     pub load_progress: AtomicU64,  // Percentage (0-100)
     pub load_error: RwLock<Option<String>>,
 
@@ -367,6 +358,7 @@ impl SharedState {
             gapless_swap_pending: AtomicBool::new(false),
 
             is_loading: AtomicBool::new(false),
+            load_generation: AtomicU64::new(0),
             load_progress: AtomicU64::new(0),
             load_error: RwLock::new(None),
 

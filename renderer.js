@@ -1,6 +1,20 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
+    showHomeVisualBrand: true,
+    showHomeVisualTagline: true,
+    homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
+    appearanceProfile: {
+        density: 'comfortable',
+        radius: 'small',
+        typography: 'system',
+        fontScale: 'normal',
+        contentWidth: 'full',
+        sidebarRowHeight: 46,
+        sidebarAvatarSize: 32,
+        customRadius: 10,
+        surface: 'translucent'
+    },
     enableMiddleClickQuickAction: false,
     middleClickQuickAction: '',
     enableMiddleClickAdvanced: false,
@@ -10,11 +24,14 @@ let globalSettings = {
     doNotDisturbLogMode: false, // 勿扰模式状态（已废弃，保留兼容性）
     filterEnabled: false, // 过滤总开关状态
     filterRules: [], // 过滤规则列表
+    toolAutoApprovalEnabled: false, // 工具调用默认允许总开关
+    toolAutoApprovalRules: [], // 工具调用默认允许规则列表
     enableRegenerateConfirmation: true, // 重新回复确认机制开关
     flowlockContinueDelay: 5, // 心流锁续写延迟（秒）
     enableThoughtChainInjection: false, // 元思考注入上下文开关
     fileKey: '',
     enableWideChatLayout: false,
+    chatPresentationMode: 'bubble',
     chatBubbleMaxWidthDefault: 82,
     chatBubbleMaxWidthNotifications: 90,
     chatBubbleMaxWidthNarrow: 85,
@@ -56,6 +73,7 @@ let currentChatHistory = [];
 window.__vcpRendererReady = false;
 window.__vcpPendingTopicSelection = null;
 const chatAPI = window.chatAPI || window.electronAPI;
+const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -86,9 +104,6 @@ let globalSettingsForm = null;
 let userAvatarInput = null;
 let userAvatarPreview = null;
 
-const createNewAgentBtn = document.getElementById('createNewAgentBtn'); // Text will change
-const createNewGroupBtn = document.getElementById('createNewGroupBtn'); // New button
-
 const itemSettingsContainerTitle = document.getElementById('agentSettingsContainerTitle'); // Will be itemSettingsContainerTitle
 const selectedItemNameForSettingsSpan = document.getElementById('selectedAgentNameForSettings'); // Will show Agent or Group name
 
@@ -114,15 +129,11 @@ const deleteItemBtn = document.getElementById('deleteAgentBtn'); // Will be dele
 
 const currentItemActionBtn = document.getElementById('currentAgentSettingsBtn'); // Text will change (e.g. "New Topic" / "New Group Topic")
 const clearCurrentChatBtn = document.getElementById('clearCurrentChatBtn');
-const openForumBtn = document.getElementById('openForumBtn');
-const themeToggleBtn = document.getElementById('themeToggleBtn');
 const toggleNotificationsBtn = document.getElementById('toggleNotificationsBtn');
 
 const notificationsSidebar = document.getElementById('notificationsSidebar');
 const vcpLogConnectionStatusDiv = document.getElementById('vcpLogConnectionStatus');
 const notificationsListUl = document.getElementById('notificationsList');
-const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
-const doNotDisturbBtn = document.getElementById('doNotDisturbBtn');
 
 const sidebarTabButtons = document.querySelectorAll('.sidebar-tab-button');
 const sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
@@ -132,9 +143,9 @@ const tabContentSettings = document.getElementById('tabContentSettings');
 const topicSearchInput = document.getElementById('topicSearchInput'); // Should be in tabContentTopics
 const DEFAULT_SEND_BUTTON_HTML = sendMessageBtn?.innerHTML || '';
 const INTERRUPT_SEND_BUTTON_HTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-        fill="none" stroke="none" aria-hidden="true">
-        <rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor"></rect>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="6" width="12" height="12" rx="1"></rect>
     </svg>
 `;
 
@@ -192,6 +203,8 @@ function updateSendButtonState() {
     sendMessageBtn.classList.toggle('interrupt-mode', nextMode === 'interrupt');
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
     sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
+    sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
+    sendMessageBtn.setAttribute('aria-busy', String(nextMode === 'interrupt'));
 }
 
 async function interruptActiveResponseFromSendButton() {
@@ -220,23 +233,26 @@ async function interruptActiveResponseFromSendButton() {
         result = await interruptHandler.interrupt(activeMessage.id);
     }
 
+    if (result.success) {
+        // 与消息右键菜单保持一致：中止成功后等待主进程发送最终的 end/error 事件。
+        // 不在此处提前 finalize，否则仍在 IPC 队列中的最后几个 chunk 会因消息已 finalized
+        // 而被 appendStreamChunk 丢弃，导致已经输出到界面上的半截内容无法完整落盘。
+        uiHelperFunctions?.showToastNotification?.('已发送中止信号。', 'success');
+        return true;
+    }
+
+    // 只有后端中止请求失败时才本地兜底收尾，避免消息永久停留在流式状态。
     if (window.messageRenderer && typeof window.messageRenderer.finalizeStreamedMessage === 'function') {
         await window.messageRenderer.finalizeStreamedMessage(
             activeMessage.id,
             'cancelled_by_user',
             messageContext,
-            { error: '用户已中止回复。' }
+            { error: result.error || '无法发送中止请求，已在本地停止流式消息。' }
         );
     }
 
     updateSendButtonState();
-
-    if (result.success) {
-        uiHelperFunctions?.showToastNotification?.('已发送中止信号。', 'success');
-        return true;
-    }
-
-    uiHelperFunctions?.showToastNotification?.(`中止失败：${result.error || '未知错误'}`, 'error');
+    uiHelperFunctions?.showToastNotification?.(`中止失败：${result.error || '未知错误'}，已在本地停止。`, 'error');
     return true;
 }
 
@@ -260,12 +276,6 @@ const rightNotificationsSidebar = document.getElementById('notificationsSidebar'
 const resizerLeft = document.getElementById('resizerLeft');
 const resizerRight = document.getElementById('resizerRight');
 
-const minimizeBtn = document.getElementById('minimize-btn');
-const maximizeBtn = document.getElementById('maximize-btn');
-const restoreBtn = document.getElementById('restore-btn');
-const closeBtn = document.getElementById('close-btn');
-const settingsBtn = document.getElementById('settings-btn'); // DevTools button
-const minimizeToTrayBtn = document.getElementById('minimize-to-tray-btn');
 const agentSearchInput = document.getElementById('agentSearchInput');
 
 // Cropped file state is now managed within modules/ui-helpers.js
@@ -277,6 +287,7 @@ let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的�
 
 // Assistant settings elements
 const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New button
+const toggleSidebarModeBtn = document.getElementById('toggleSidebarModeBtn');
 // 模态框内部元素延迟加载
 let assistantAgentContainer = null;
 let assistantAgentSelect = null;
@@ -297,8 +308,15 @@ const uiHelperFunctions = window.uiHelperFunctions;
 import searchManager from './modules/searchManager.js';
 import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
 import * as interruptHandler from './modules/interruptHandler.js';
+import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/startup-theme-gate.js';
  
 import { setupEventListeners } from './modules/event-listeners.js';
+
+const startupThemeGate = new StartupThemeGate({
+    document,
+    applyTheme: applyInitialThemeClass,
+    statusElement: document.getElementById('startupInitializationStatus'),
+});
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
@@ -317,6 +335,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
         window.trayManager.init();
     } else {
         console.error('[RENDERER_INIT] trayManager module not found!');
+    }
+
+    if (window.topTabManager) {
+        window.topTabManager.init();
+    } else {
+        console.error('[RENDERER_INIT] topTabManager module not found!');
     }
 
     // 确保在GroupRenderer初始化之前，其容器已准备好
@@ -491,6 +515,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
         console.error('[RENDERER_INIT] inputEnhancer module not found!');
     }
 
+    if (chatAPI?.onLoomShareTextToInput) {
+        chatAPI.onLoomShareTextToInput((sharedText) => {
+            if (!messageInput || typeof sharedText !== 'string' || !sharedText) return;
+            const start = Number.isInteger(messageInput.selectionStart)
+                ? messageInput.selectionStart
+                : messageInput.value.length;
+            const end = Number.isInteger(messageInput.selectionEnd)
+                ? messageInput.selectionEnd
+                : start;
+            const separator = start > 0 && !messageInput.value.slice(0, start).endsWith('\n') ? '\n\n' : '';
+            const insertion = `${separator}${sharedText}`;
+            messageInput.setRangeText(insertion, start, end, 'end');
+            messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+            messageInput.focus();
+            uiHelperFunctions?.showToastNotification?.('Loom 页面文本已加入输入框。', 'success');
+        });
+    }
 
     chatAPI.onVCPLogStatus((statusUpdate) => {
         if (window.notificationRenderer) {
@@ -548,96 +589,36 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 window.messageRenderer.appendStreamChunk(messageId, chunk, context);
                 break;
 
-            case 'end':
-                window.messageRenderer.finalizeStreamedMessage(
+            case 'end': {
+                const finalizedMessage = await window.messageRenderer.finalizeStreamedMessage(
                     messageId,
                     finish_reason || 'completed',
                     context,
                     { fullResponse, error }
                 );
-                if (context && !context.isGroupMessage) {
-                    // This can run in the background
+
+                const finalizedContext = finalizedMessage?.context || context;
+                const finalizedContent = finalizedMessage?.content || fullResponse || '';
+
+                if (finalizedContext && !finalizedContext.isGroupMessage && isRelevantToCurrentView) {
                     await window.chatManager.attemptTopicSummarizationIfNeeded();
                 }
-                
-                // --- Flowlock: 检查是否需要自动触发续写 ---
-                if (window.flowlockManager) {
-                    const flowlockState = window.flowlockManager.getState();
-                    console.log('[Flowlock] End event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
-                    
-                    if (flowlockState.isActive && !flowlockState.isProcessing && isRelevantToCurrentView) {
-                        console.log('[Flowlock] ✓ All conditions met, triggering continue writing...');
-                        
-                        // 使用全局设置中的延迟
-                        const delaySeconds = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
-                        const delayMilliseconds = delaySeconds * 1000;
-                        console.log(`[Flowlock] Using delay of ${delaySeconds}s (${delayMilliseconds}ms)`);
 
-                        // 延迟指定时间确保消息完全渲染，然后直接调用续写函数
-                        setTimeout(() => {
-                            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                                console.log('[Flowlock] Calling handleContinueWriting now...');
-                                
-                                // 触发心跳动画
-                                const chatNameElement = document.getElementById('currentChatAgentName');
-                                if (chatNameElement) {
-                                    chatNameElement.classList.add('flowlock-heartbeat');
-                                    // 动画结束后移除类
-                                    setTimeout(() => {
-                                        chatNameElement.classList.remove('flowlock-heartbeat');
-                                    }, 800);
-                                }
-                                
-                                // 获取输入框内容作为提示词
-                                const messageInput = document.getElementById('messageInput');
-                                const customPrompt = messageInput ? messageInput.value.trim() : '';
-                                console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
-                                
-                                // 直接调用续写函数，使用输入框内容或空字符串（将使用默认提示词）
-                                if (window.handleContinueWriting) {
-                                    window.flowlockManager.isProcessing = true;
-                                    window.handleContinueWriting(customPrompt).then(() => {
-                                        console.log('[Flowlock] Continue writing completed');
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount = 0; // 重置重试计数
-                                    }).catch((error) => {
-                                        console.error('[Flowlock] Continue writing failed:', error);
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount++;
-                                        
-                                        if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
-                                            console.error('[Flowlock] Max retries reached, stopping flowlock');
-                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
-                                            }
-                                            window.flowlockManager.stop();
-                                        } else {
-                                            console.log(`[Flowlock] Retry ${window.flowlockManager.retryCount}/${window.flowlockManager.maxRetries}`);
-                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                window.uiHelperFunctions.showToastNotification(`心流锁续写失败，正在重试 (${window.flowlockManager.retryCount}/${window.flowlockManager.maxRetries})`, 'warning');
-                                            }
-                                        }
-                                    });
-                                } else {
-                                    console.error('[Flowlock] handleContinueWriting function not found!');
-                                }
-                            } else {
-                                console.log('[Flowlock] Flowlock was stopped before timeout, skipping continue writing');
-                            }
-                        }, delayMilliseconds);
-                    } else {
-                        console.log('[Flowlock] Conditions not met:', {
-                            isActive: flowlockState.isActive,
-                            isProcessing: flowlockState.isProcessing,
-                            isRelevantToCurrentView: isRelevantToCurrentView
-                        });
-                    }
-                }
+                // Flowlock 以消息身份为依据运行，与当前可见 Agent/Topic 完全解耦。
+                // 使用 streamManager 实际落盘的完整文本，避免 end 事件未携带 fullResponse 时漏掉控制标记。
+                await window.flowlockManager?.handleFinalizedMessage({
+                    type: 'end',
+                    messageId,
+                    context: finalizedContext,
+                    content: finalizedContent,
+                    finishReason: finalizedMessage?.finishReason || finish_reason || 'completed'
+                });
                 break;
+            }
 
             case 'error':
                 console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
-                
+
                 // --- Recovery Logic: Use accumulated text from main if fullResponse is missing ---
                 let finalContent = fullResponse || eventData.accumulatedResponse || "";
                 if (finalContent && finalContent.trim() !== "") {
@@ -645,76 +626,24 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     finalContent += "\n\n> [!WARNING]\n> **流式响应中断**: " + (error || "未知连接错误") + "。已保存已接收的部分内容。";
                 }
 
-                window.messageRenderer.finalizeStreamedMessage(
-                    messageId,
-                    'error',
-                    context,
-                    { fullResponse: finalContent, error }
-                );
-                
-                // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---
-                if (window.flowlockManager) {
-                    const flowlockState = window.flowlockManager.getState();
-                    console.log('[Flowlock] Error event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
-                    
-                    // 重置processing状态
-                    if (window.flowlockManager.isProcessing) {
-                        console.log('[Flowlock] Resetting isProcessing state due to error');
-                        window.flowlockManager.isProcessing = false;
-                    }
-                    
-                    // 如果心流锁仍然激活且相关，触发下一次续写（即使出错也继续）
-                    if (flowlockState.isActive && isRelevantToCurrentView) {
-                        console.log('[Flowlock] Flowlock still active after error, will trigger next continue writing');
-                        
-                        const errorDelaySeconds = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
-                        const errorDelayMilliseconds = errorDelaySeconds * 1000;
-                        console.log(`[Flowlock] Using error recovery delay of ${errorDelaySeconds}s (${errorDelayMilliseconds}ms)`);
+                {
+                    const finalizedMessage = await window.messageRenderer.finalizeStreamedMessage(
+                        messageId,
+                        'error',
+                        context,
+                        { fullResponse: finalContent, error }
+                    );
 
-                        setTimeout(() => {
-                            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                                console.log('[Flowlock] Triggering continue writing after error...');
-                                
-                                // 触发心跳动画
-                                const chatNameElement = document.getElementById('currentChatAgentName');
-                                if (chatNameElement) {
-                                    chatNameElement.classList.add('flowlock-heartbeat');
-                                    setTimeout(() => {
-                                        chatNameElement.classList.remove('flowlock-heartbeat');
-                                    }, 800);
-                                }
-                                
-                                // 获取输入框内容作为提示词
-                                const messageInput = document.getElementById('messageInput');
-                                const customPrompt = messageInput ? messageInput.value.trim() : '';
-                                console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
-                                
-                                // 触发续写
-                                if (window.handleContinueWriting) {
-                                    window.flowlockManager.isProcessing = true;
-                                    window.handleContinueWriting(customPrompt).then(() => {
-                                        console.log('[Flowlock] Continue writing completed after error recovery');
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount = 0;
-                                    }).catch((error) => {
-                                        console.error('[Flowlock] Continue writing failed after error recovery:', error);
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount++;
-                                        
-                                        if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
-                                            console.error('[Flowlock] Max retries reached, stopping flowlock');
-                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
-                                            }
-                                            window.flowlockManager.stop();
-                                        }
-                                    });
-                                }
-                            }
-                        }, errorDelayMilliseconds);
-                    }
+                    await window.flowlockManager?.handleFinalizedMessage({
+                        type: 'error',
+                        messageId,
+                        context: finalizedMessage?.context || context,
+                        content: finalizedMessage?.content || finalContent,
+                        finishReason: 'error',
+                        error
+                    });
                 }
-                
+
                 if (isRelevantToCurrentView) {
                     const errorMsgItem = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
                     if (errorMsgItem) {
@@ -908,9 +837,9 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         Object.assign(currentSelectedItem, newConfig);
                     }
                 },
-                handleTopicDeletion: (remainingTopics) => {
+                handleTopicDeletion: (remainingTopics, deletionContext) => {
                     if (window.chatManager) {
-                        return window.chatManager.handleTopicDeletion(remainingTopics);
+                        return window.chatManager.handleTopicDeletion(remainingTopics, deletionContext);
                     } else {
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
@@ -1051,8 +980,16 @@ import { setupEventListeners } from './modules/event-listeners.js';
     }
 
     try {
-        await loadAndApplyGlobalSettings();
+        setupChatPresentationQuickSwitcher();
+        try {
+            await loadAndApplyGlobalSettings();
+        } catch (error) {
+            // Do not leave the startup gate closed if settings IPC fails.
+            console.error('[RENDERER_INIT] Failed to load global settings:', error);
+            startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败，已使用系统主题' });
+        }
         await window.itemListManager.loadItems(); // Load both agents and groups
+        await window.chatManager.restoreLastOpenState(globalSettings);
 
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
@@ -1066,12 +1003,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     rightNotificationsSidebar: document.getElementById('notificationsSidebar'),
                     resizerLeft: document.getElementById('resizerLeft'),
                     resizerRight: document.getElementById('resizerRight'),
-                    minimizeBtn: document.getElementById('minimize-btn'),
-                    maximizeBtn: document.getElementById('maximize-btn'),
-                    restoreBtn: document.getElementById('restore-btn'),
-                    closeBtn: document.getElementById('close-btn'),
-                    settingsBtn: document.getElementById('settings-btn'),
-                    themeToggleBtn: document.getElementById('themeToggleBtn'),
                     digitalClockElement: document.getElementById('digitalClock'),
                     dateDisplayElement: document.getElementById('dateDisplay'),
                     notificationTitleElement: document.getElementById('notificationTitle'),
@@ -1098,18 +1029,17 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
         setupEventListeners({
             chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
-            globalSettingsForm, userAvatarInput, createNewAgentBtn, createNewGroupBtn,
-            currentItemActionBtn, clearNotificationsBtn, openForumBtn, toggleNotificationsBtn,
-            notificationsSidebar, agentSearchInput, minimizeToTrayBtn, leftSidebar,
+            globalSettingsForm, userAvatarInput,
+            currentItemActionBtn, toggleNotificationsBtn,
+            notificationsSidebar, agentSearchInput, leftSidebar,
             openTranslatorBtn: document.getElementById('openTranslatorBtn'),
             openNotesBtn: document.getElementById('openNotesBtn'),
             openMusicBtn: document.getElementById('openMusicBtn'),
             openCanvasBtn: document.getElementById('openCanvasBtn'),
-            toggleAssistantBtn,
+            toggleAssistantBtn, toggleSidebarModeBtn,
             voiceChatBtn: document.getElementById('voiceChatBtn'),
             enableContextSanitizerCheckbox: document.getElementById('enableContextSanitizer'),
             contextSanitizerDepthContainer: document.getElementById('contextSanitizerDepthContainer'),
-            seamFixer: document.getElementById('title-bar-seam-fixer'),
             addNetworkPathBtn: document.getElementById('addNetworkPathBtn'),
             refs: {
                 currentSelectedItem: { get: () => currentSelectedItem },
@@ -1130,6 +1060,13 @@ import { setupEventListeners } from './modules/event-listeners.js';
             filterAgentList: uiHelperFunctions.filterAgentList,
             addNetworkPathInput: uiHelperFunctions.addNetworkPathInput
         });
+
+        // A visible DOM shell is not enough to call the desktop interactive:
+        // template-backed modals and settings actions depend on the listeners
+        // registered above.  Expose one explicit readiness point for startup
+        // diagnostics and isolated Electron smoke tests.
+        document.documentElement.dataset.vcpRendererReady = 'true';
+        window.dispatchEvent(new CustomEvent('vcp-renderer-ready'));
 
         // Emoticon panel event listener
         if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {
@@ -1243,11 +1180,15 @@ import { setupEventListeners } from './modules/event-listeners.js';
     } catch (error) {
         window.__vcpRendererReady = false;
         console.error('Error during DOMContentLoaded initialization:', error);
-        chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
+        startupThemeGate.release({
+            mode: 'system',
+            message: `初始化失败，已使用系统主题：${error?.message || '未知错误'}`,
+        });
+        if (chatMessagesDiv) {
+            chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error?.message || '未知错误'}</div>`;
+        }
     }
 
-    console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
-    
     // --- Agent Settings Reload Listener ---
     if (chatAPI?.onReloadAgentSettings) {
         chatAPI.onReloadAgentSettings(async ({ agentId }) => {
@@ -1315,40 +1256,33 @@ import { setupEventListeners } from './modules/event-listeners.js';
             }
             
             const { command, agentId, topicId, prompt, promptSource } = commandData;
+            const targetAgentId = agentId || currentSelectedItem?.id;
             
             try {
                 switch (command) {
                     case 'start':
-                        // Start flowlock for the specified agent and topic
-                        if (agentId && topicId) {
-                            await window.flowlockManager.start(agentId, topicId, false);
-                            console.log(`[Renderer] Flowlock started for agent: ${agentId}, topic: ${topicId}`);
+                        // 兼容入口：内部 Session Map 仍是唯一运行状态源。
+                        if (targetAgentId && topicId) {
+                            await window.flowlockManager.start(targetAgentId, topicId, { startImmediately: false });
+                            console.log(`[Renderer] Flowlock started for agent: ${targetAgentId}, topic: ${topicId}`);
                         } else {
                             console.error('[Renderer] Missing agentId or topicId for start command');
                         }
                         break;
                         
                     case 'stop':
-                        // Stop flowlock
-                        await window.flowlockManager.stop();
-                        console.log('[Renderer] Flowlock stopped');
+                        if (targetAgentId) {
+                            await window.flowlockManager.stop(targetAgentId);
+                            console.log(`[Renderer] Flowlock stopped for agent: ${targetAgentId}`);
+                        }
                         break;
                         
                     case 'promptee':
-                        // Set custom prompt and append to input
-                        if (prompt) {
-                            const messageInput = document.getElementById('messageInput');
-                            if (messageInput) {
-                                const currentValue = messageInput.value;
-                                messageInput.value = currentValue + (currentValue ? ' ' : '') + prompt;
-                                console.log(`[Renderer] Prompt appended to input: "${prompt}"`);
-                                // Auto-resize textarea after content change
-                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
-                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
-                                }
-                            }
+                        if (targetAgentId && prompt) {
+                            window.flowlockManager.setCustomPrompt(targetAgentId, prompt);
+                            console.log(`[Renderer] Flowlock next prompt set for agent: ${targetAgentId}`);
                         } else {
-                            console.error('[Renderer] Missing prompt for promptee command');
+                            console.error('[Renderer] Missing target agent or prompt for promptee command');
                         }
                         break;
                         
@@ -1462,19 +1396,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         break;
                         
                     case 'status':
-                        // Get current flowlock status and return it
                         {
                             if (window.flowlockManager) {
-                                const state = window.flowlockManager.getState();
-                                console.log(`[Renderer] Retrieved flowlock status:`, state);
+                                const state = targetAgentId
+                                    ? window.flowlockManager.getSession(targetAgentId)
+                                    : null;
+                                const activeAgents = window.flowlockManager.getActiveAgents();
+                                console.log('[Renderer] Retrieved flowlock status:', { state, activeAgents });
                                 respondToFlowlockRequest(commandData, {
                                     command: 'status',
                                     success: true,
                                     status: {
-                                        isActive: state.isActive,
-                                        isProcessing: state.isProcessing,
-                                        agentId: state.agentId,
-                                        topicId: state.topicId
+                                        isActive: state?.status === 'active',
+                                        isProcessing: !!state?.activeMessageId,
+                                        agentId: state?.agentId || targetAgentId || null,
+                                        topicId: state?.topicId || null,
+                                        session: state,
+                                        activeAgents
                                     }
                                 });
                             } else {
@@ -1653,15 +1591,44 @@ function setupTtsListeners() {
 
 
 async function loadAndApplyGlobalSettings() {
-    const settings = await chatAPI.loadSettings();
+    let settings;
+    try {
+        settings = await loadSettingsWithTimeout(
+            chatAPI?.loadSettings,
+            STARTUP_SETTINGS_TIMEOUT_MS,
+            '加载设置超时'
+        );
+    } catch (error) {
+        startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败' });
+        throw error;
+    }
     if (settings && !settings.error) {
-        globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
+        globalSettings = { ...globalSettings, ...settings };
         window.globalSettings = globalSettings;
+
+        // Theme variables must be selected before any item/chat restoration can paint.
+        // The uiManager listener is initialized later and receives the same effective value.
+        startupThemeGate.release({ mode: globalSettings.currentThemeMode });
+
+        globalSettings.appearanceProfile = window.VCPAppearance?.commit(
+            globalSettings.appearanceProfile,
+            { uiMode: 'next', source: 'settings-load' }
+        ) || globalSettings.appearanceProfile;
+        window.dispatchEvent(new CustomEvent('global-settings-updated', {
+            detail: { settings: globalSettings, source: 'settings-load' }
+        }));
         applyChatBubbleLayoutSettings(globalSettings);
         
         // 🟢 优化：仅更新始终存在的 UI 元素
         if (globalSettings.sidebarWidth && leftSidebar) {
             leftSidebar.style.width = `${globalSettings.sidebarWidth}px`;
+        }
+        if (leftSidebar) {
+            const sidebarIsActive = globalSettings.sidebarActive !== false;
+            const avatarOnly = sidebarIsActive && globalSettings.sidebarAvatarOnly === true;
+            leftSidebar.classList.toggle('active', sidebarIsActive);
+            leftSidebar.classList.toggle('avatar-only', avatarOnly);
+            document.querySelector('.main-content')?.classList.toggle('sidebar-active', sidebarIsActive);
         }
         if (globalSettings.notificationsSidebarWidth && rightNotificationsSidebar) {
             if (rightNotificationsSidebar.classList.contains('active')) {
@@ -1680,13 +1647,16 @@ async function loadAndApplyGlobalSettings() {
         if (toggleAssistantBtn) {
             toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
         }
+        if (toggleSidebarModeBtn) {
+            const avatarOnly = globalSettings.sidebarActive !== false && globalSettings.sidebarAvatarOnly === true;
+            toggleSidebarModeBtn.classList.toggle('active', avatarOnly);
+            toggleSidebarModeBtn.setAttribute('aria-pressed', String(avatarOnly));
+        }
         // Selection listener startup moved to post-renderer-ready stage.
 
         // Load filter mode setting
         let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
         globalSettings.filterEnabled = filterEnabled;
-        doNotDisturbBtn.classList.toggle('active', !!filterEnabled);
-
         // 🟢 核心逻辑：监听模态框就绪事件，届时再同步模态框内部 UI
         document.addEventListener('modal-ready', (e) => {
             const { modalId } = e.detail;
@@ -1701,7 +1671,277 @@ async function loadAndApplyGlobalSettings() {
         }
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
+        startupThemeGate.release({ mode: 'system', message: settings?.error || '设置加载失败，已使用系统主题' });
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
+    }
+}
+
+function applyInitialThemeClass(mode) {
+    let effectiveTheme = mode === 'light' || mode === 'dark' ? mode : null;
+    if (!effectiveTheme && typeof window.matchMedia === 'function') {
+        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    effectiveTheme = effectiveTheme || 'light';
+    if (window.uiManager?.applyTheme) {
+        window.uiManager.applyTheme(effectiveTheme);
+    } else {
+        document.body.classList.remove('light-theme', 'dark-theme');
+        document.body.classList.add(`${effectiveTheme}-theme`);
+    }
+    document.body.removeAttribute('data-theme-pending');
+}
+
+const CHAT_PRESENTATION_MODES = Object.freeze(['bubble', 'panel', 'immersive']);
+const CHAT_PRESENTATION_MODE_CLASSES = CHAT_PRESENTATION_MODES.map(
+    mode => `chat-presentation-${mode}`
+);
+
+function normalizeChatPresentationMode(mode) {
+    return CHAT_PRESENTATION_MODES.includes(mode) ? mode : 'bubble';
+}
+
+function isChatVisuallyNearBottom(scrollContainer, threshold = 64) {
+    const messages = scrollContainer?.querySelector('.chat-messages');
+    if (!scrollContainer || !messages) return true;
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const messagesRect = messages.getBoundingClientRect();
+    return Math.abs(messagesRect.bottom - containerRect.bottom) <= threshold;
+}
+
+function captureChatPresentationScrollAnchor() {
+    const scrollContainer = document.querySelector('.chat-messages-container');
+    if (!scrollContainer) return null;
+
+    if (isChatVisuallyNearBottom(scrollContainer)) {
+        return { scrollContainer, stickToBottom: true };
+    }
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const visibleMessages = Array.from(
+        scrollContainer.querySelectorAll('.message-item[data-message-id]')
+    )
+        .map(element => ({ element, rect: element.getBoundingClientRect() }))
+        .filter(({ rect }) => rect.bottom > containerRect.top && rect.top < containerRect.bottom)
+        .sort((a, b) => a.rect.top - b.rect.top);
+
+    const anchor = visibleMessages[0];
+    if (!anchor) {
+        return {
+            scrollContainer,
+            stickToBottom: false,
+            scrollTop: scrollContainer.scrollTop
+        };
+    }
+
+    return {
+        scrollContainer,
+        stickToBottom: false,
+        messageId: anchor.element.dataset.messageId,
+        viewportOffset: anchor.rect.top - containerRect.top,
+        scrollTop: scrollContainer.scrollTop
+    };
+}
+
+function restoreChatPresentationScrollAnchor(anchor) {
+    if (!anchor?.scrollContainer?.isConnected) return;
+
+    const { scrollContainer } = anchor;
+    if (anchor.stickToBottom) {
+        const messages = scrollContainer.querySelector('.chat-messages');
+        if (!messages) return;
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const messagesRect = messages.getBoundingClientRect();
+        scrollContainer.scrollTop += messagesRect.bottom - containerRect.bottom;
+        return;
+    }
+
+    const anchorElement = anchor.messageId
+        ? scrollContainer.querySelector(`.message-item[data-message-id="${CSS.escape(anchor.messageId)}"]`)
+        : null;
+
+    if (!anchorElement) {
+        scrollContainer.scrollTop = anchor.scrollTop;
+        return;
+    }
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const currentOffset = anchorElement.getBoundingClientRect().top - containerRect.top;
+    scrollContainer.scrollTop += currentOffset - anchor.viewportOffset;
+}
+
+let chatPresentationSaveGeneration = 0;
+let chatPresentationSaveChain = Promise.resolve();
+
+function syncChatPresentationModeControls(mode = globalSettings.chatPresentationMode) {
+    const normalizedMode = normalizeChatPresentationMode(mode);
+    const modeControl = document.querySelector(
+        `input[name="chatPresentationMode"][value="${normalizedMode}"]`
+    );
+    if (modeControl) modeControl.checked = true;
+
+    document.querySelectorAll('.chat-presentation-quick-option').forEach((option) => {
+        const isActive = option.dataset.presentationMode === normalizedMode;
+        option.classList.toggle('active', isActive);
+        option.setAttribute('aria-checked', String(isActive));
+        option.tabIndex = isActive ? 0 : -1;
+    });
+
+    const bubbleOnlySettings = document.getElementById('userChatBubbleSettings');
+    if (bubbleOnlySettings) {
+        bubbleOnlySettings.hidden = normalizedMode !== 'bubble';
+    }
+
+    const bubbleWidthSettings = document.getElementById('chatBubbleWidthSettings');
+    if (bubbleWidthSettings) {
+        bubbleWidthSettings.hidden = normalizedMode !== 'bubble';
+    }
+}
+
+function setupChatPresentationQuickSwitcher() {
+    document.querySelectorAll('.chat-presentation-quick-switcher').forEach((switcher) => {
+        const options = Array.from(switcher.querySelectorAll('.chat-presentation-quick-option'));
+        if (!options.length || switcher.dataset.bound === 'true') return;
+        const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
+        const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
+
+        const setOpen = (open, { restoreFocus = false } = {}) => {
+            switcher.classList.toggle('is-open', open);
+            trigger?.setAttribute('aria-expanded', String(open));
+            switcher.setAttribute('aria-hidden', String(!open));
+            switcher.inert = !open;
+            if (!open && restoreFocus) trigger?.focus();
+        };
+
+        const selectMode = async (option) => {
+            const mode = option?.dataset.presentationMode;
+            if (!mode) return;
+            await applyChatPresentationMode(mode, {
+                persist: true,
+                preserveScroll: true,
+                notify: false,
+                source: `${switcher.id || 'chat-presentation'}-quick-switcher`
+            });
+        };
+
+        if (usesExplicitState && trigger) {
+            trigger.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const open = !switcher.classList.contains('is-open');
+                setOpen(open);
+                if (open) {
+                    options.find(option => option.getAttribute('aria-checked') === 'true')?.focus();
+                }
+            });
+            document.addEventListener('pointerdown', (event) => {
+                if (!switcher.classList.contains('is-open')) return;
+                if (switcher.contains(event.target) || trigger.contains(event.target)) return;
+                setOpen(false);
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape' || !switcher.classList.contains('is-open')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false, { restoreFocus: true });
+            });
+        }
+
+        options.forEach((option) => {
+            option.addEventListener('click', async () => {
+                await selectMode(option);
+                if (usesExplicitState) setOpen(false, { restoreFocus: true });
+            });
+            option.addEventListener('keydown', (event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+
+                const currentIndex = Math.max(0, options.indexOf(option));
+                let nextIndex = currentIndex;
+                if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
+                if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
+                if (event.key === 'Home') nextIndex = 0;
+                if (event.key === 'End') nextIndex = options.length - 1;
+
+                options[nextIndex].focus();
+                selectMode(options[nextIndex]);
+            });
+        });
+
+        switcher.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (usesExplicitState) setOpen(false);
+            trigger?.focus();
+            if (!usesExplicitState) trigger?.blur();
+        });
+
+        switcher.dataset.bound = 'true';
+        setOpen(false);
+    });
+    syncChatPresentationModeControls(globalSettings.chatPresentationMode);
+}
+
+async function applyChatPresentationMode(mode, options = {}) {
+    const {
+        persist = false,
+        preserveScroll = true,
+        notify = false,
+        source = 'unknown'
+    } = options;
+    const normalizedMode = normalizeChatPresentationMode(mode);
+    const previousMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
+    const generation = persist ? ++chatPresentationSaveGeneration : chatPresentationSaveGeneration;
+    const anchor = preserveScroll ? captureChatPresentationScrollAnchor() : null;
+
+    document.body?.classList.remove(...CHAT_PRESENTATION_MODE_CLASSES);
+    document.body?.classList.add(`chat-presentation-${normalizedMode}`);
+    globalSettings.chatPresentationMode = normalizedMode;
+    window.globalSettings = globalSettings;
+    syncChatPresentationModeControls(normalizedMode);
+
+    if (window.pretextBridge?.setPresentationMode) {
+        window.pretextBridge.setPresentationMode(normalizedMode);
+    } else {
+        window.pretextBridge?.clearAll?.();
+    }
+    window.messageRenderer?.refreshLayoutDependentState?.();
+
+    if (anchor) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => restoreChatPresentationScrollAnchor(anchor));
+        });
+    }
+
+    if (!persist || normalizedMode === previousMode) {
+        return { success: true, mode: normalizedMode };
+    }
+
+    try {
+        chatPresentationSaveChain = chatPresentationSaveChain
+            .catch(() => undefined)
+            .then(() => chatAPI.saveSettings({ chatPresentationMode: normalizedMode }));
+        const result = await chatPresentationSaveChain;
+        if (!result?.success) {
+            throw new Error(result?.error || '设置保存失败');
+        }
+        if (notify) {
+            uiHelperFunctions?.showToastNotification?.('聊天显示模式已切换。', 'success');
+        }
+        return { success: true, mode: normalizedMode, source };
+    } catch (error) {
+        if (generation === chatPresentationSaveGeneration) {
+            await applyChatPresentationMode(previousMode, {
+                persist: false,
+                preserveScroll: true,
+                notify: false,
+                source: 'rollback'
+            });
+        }
+        if (generation === chatPresentationSaveGeneration) {
+            uiHelperFunctions?.showToastNotification?.(`聊天显示模式保存失败：${error.message}`, 'error');
+        }
+        return { success: false, mode: previousMode, error };
     }
 }
 
@@ -1944,6 +2184,11 @@ function applyChatBubbleLayoutSettings(settings = globalSettings) {
     if (document.body) {
         document.body.classList.toggle('chat-wide-layout', resolvedSettings.enableWideChatLayout === true);
     }
+    applyChatPresentationMode(resolvedSettings.chatPresentationMode, {
+        persist: false,
+        preserveScroll: false,
+        source: 'layout-settings'
+    });
     applyUserChatBubbleUiState(resolvedSettings);
 }
 
@@ -2020,8 +2265,26 @@ async function syncGlobalSettingsToUI() {
         }
     }
 
-    safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
+    safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
+    safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
+    safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
+    const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, 'next');
+    safeSet('appearanceDensity', appearance?.density || 'comfortable');
+    safeSet('appearanceRadius', appearance?.radius || 'small');
+    safeSet('appearanceTypography', appearance?.typography || 'system');
+    safeSet('appearanceFontScale', appearance?.fontScale || 'normal');
+    safeSet('appearanceContentWidth', appearance?.contentWidth || 'full');
+    safeSet('appearanceSidebarRowHeight', appearance?.sidebarRowHeight ?? 46);
+    safeSet('appearanceSidebarRowHeightValue', `${appearance?.sidebarRowHeight ?? 46}px`);
+    safeSet('appearanceSidebarAvatarSize', appearance?.sidebarAvatarSize ?? 32);
+    safeSet('appearanceSidebarAvatarSizeValue', `${appearance?.sidebarAvatarSize ?? 32}px`);
+    safeSet('appearanceSidebarRadius', appearance?.sidebarRadius || 'tuned');
+    safeCheck(`appearanceSidebarRadiusChoice-${appearance?.sidebarRadius || 'tuned'}`, true);
+    safeSet('appearanceCustomRadius', appearance?.customRadius ?? 10);
+    safeSet('appearanceCustomRadiusValue', `${appearance?.customRadius ?? 10}px`);
+    document.getElementById('appearanceSidebarAvatarSize')?.dispatchEvent(new Event('input', { bubbles: true }));
+    safeSet('appearanceSurface', appearance?.surface || 'translucent');
     safeSet('chatFontPreset', globalSettings.chatFontPreset || 'system');
     safeSet('chatFontCustom', globalSettings.chatFontCustom || '');
     safeSet('chatCodeFontPreset', globalSettings.chatCodeFontPreset || 'consolas');
@@ -2030,6 +2293,8 @@ async function syncGlobalSettingsToUI() {
     safeSet('chatDiaryFontCustom', globalSettings.chatDiaryFontCustom || '');
     safeSet('chatToolFontPreset', globalSettings.chatToolFontPreset || 'system');
     safeSet('chatToolFontCustom', globalSettings.chatToolFontCustom || '');
+    const presentationMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
+    safeCheck(`chatPresentationMode${presentationMode[0].toUpperCase()}${presentationMode.slice(1)}`, true);
     safeCheck('chatLayoutModeWide', globalSettings.enableWideChatLayout === true);
     safeCheck('chatLayoutModeNormal', globalSettings.enableWideChatLayout !== true);
     safeCheck('enableUserChatBubbleUi', globalSettings.enableUserChatBubbleUi !== false);
@@ -2048,6 +2313,7 @@ async function syncGlobalSettingsToUI() {
     syncChatFontControls();
     syncWideChatLayoutControls();
     syncUserChatBubbleControls();
+    syncChatPresentationModeControls(presentationMode);
 
     const chatFontPresetSelect = document.getElementById('chatFontPreset');
     const chatFontCustomInput = document.getElementById('chatFontCustom');
@@ -2060,6 +2326,7 @@ async function syncGlobalSettingsToUI() {
     const wideModeRadio = document.getElementById('chatLayoutModeWide');
     const normalModeRadio = document.getElementById('chatLayoutModeNormal');
     const userBubbleUiToggle = document.getElementById('enableUserChatBubbleUi');
+    const presentationModeRadios = document.querySelectorAll('input[name="chatPresentationMode"]');
     if (chatFontPresetSelect && !chatFontPresetSelect.dataset.boundFontToggle) {
         chatFontPresetSelect.addEventListener('change', syncChatFontControls);
         chatFontPresetSelect.dataset.boundFontToggle = 'true';
@@ -2104,6 +2371,19 @@ async function syncGlobalSettingsToUI() {
         userBubbleUiToggle.addEventListener('change', syncUserChatBubbleControls);
         userBubbleUiToggle.dataset.boundUserBubbleToggle = 'true';
     }
+    presentationModeRadios.forEach((radio) => {
+        if (radio.dataset.boundPresentationModeToggle) return;
+        radio.addEventListener('change', () => {
+            if (!radio.checked) return;
+            applyChatPresentationMode(radio.value, {
+                persist: true,
+                preserveScroll: true,
+                notify: false,
+                source: 'settings'
+            });
+        });
+        radio.dataset.boundPresentationModeToggle = 'true';
+    });
 
     // User Avatar Preview
     const userAvatarPreview = document.getElementById('userAvatarPreview');
@@ -2254,14 +2534,7 @@ if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Mar
             pedantic: false,        // 不使用严格的 Markdown 规则
             sanitize: false,        // 不清理 HTML（允许内嵌 HTML）
             smartLists: true,       // 使用更智能的列表行为
-            smartypants: false,     // 不使用智能标点符号
-            highlight: function(code, lang) {
-                if (window.hljs) {
-                    const language = window.hljs.getLanguage(lang) ? lang : 'plaintext';
-                    return window.hljs.highlight(code, { language }).value;
-                }
-                return code; // Fallback for safety
-            }
+            smartypants: false      // 不使用智能标点符号
         });
         // Optional: Add custom processing like quote spans if needed
     } catch (err) {
@@ -2272,7 +2545,7 @@ if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Mar
     console.warn("Marked library not found or not in expected format, Markdown rendering will be basic.");
     markedInstance = { parse: (text) => `<p>${String(text || '').replace(/\n/g, '<br>')}</p>` };
 }
- 
+
 window.addEventListener('contextmenu', (e) => {
     // Allow context menu for text input fields
     if (e.target.closest('textarea, input[type="text"], .message-item .md-content')) { // Also allow on rendered message content
@@ -2436,6 +2709,9 @@ window.showForwardModal = showForwardModal;
 
 // Make globalSettings accessible for notification renderer
 window.applyChatBubbleLayoutSettings = applyChatBubbleLayoutSettings;
+window.applyChatPresentationMode = applyChatPresentationMode;
+window.setChatPresentationMode = applyChatPresentationMode;
+window.normalizeChatPresentationMode = normalizeChatPresentationMode;
 window.globalSettings = globalSettings;
 
 // Make filter functions globally accessible for notification renderer

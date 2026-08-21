@@ -92,36 +92,28 @@ body, html {
     overflow: hidden; /* 确保子元素的圆角正确 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     min-height: 0;
-    margin: 40px 10px 0 10px; /* 顶部留出标题栏空间，左右下留出边距 */
+    margin: 40px 12px 12px 12px; /* 顶部紧贴标题栏（标题栏高 40px），左右和底部保留可读边距 */
 }
 
 /* --- 静态字符画样式 --- */
 #ascii-art-container {
-    color: var(--highlight-text, #89b4fa);
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 12px;
-    line-height: 1.1;
-    text-align: center;
-    padding: 20px 10px 5px 10px;
-    margin: 0;
-    white-space: pre;
-    background-color: transparent; /* 关键：背景透明 */
-    flex-shrink: 0; /* 防止在 flex 布局中被压缩 */
+    display: none;
 }
 
 /* 终端容器样式 */
 #terminal-container {
     width: 100%;
+    height: 100%;
     flex-grow: 1; /* 让终端容器占据所有剩余的垂直空间 */
-    padding: 0 10px 0 10px; /* 移除顶部 padding，使其与字符画紧密相连 */
+    padding: 4px 6px 6px 6px; /* 给终端画布和面板边框之间留出轻微呼吸感 */
     box-sizing: border-box; /* 让 padding 不会撑大容器 */
     min-height: 0; /* 解决 flexbox 在某些情况下的溢出问题 */
 }
 
 /* xterm.js 终端的特定样式覆盖 */
 .xterm {
-    /* 终端的内边距，让文字离边框远一点 */
-    padding: 0 15px 15px 15px; /* 移除顶部 padding */
+    /* 保留适度文本内边距，避免字符紧贴窗口边缘，同时不过度压缩 TUI 可用尺寸 */
+    padding: 8px 10px 10px 10px;
     height: 100%;
     box-sizing: border-box;
     display: flex;
@@ -153,7 +145,7 @@ body, html {
 }
 /* --- 输入区域样式 --- */
 #input-area {
-    display: flex;
+    display: none;
     padding: 8px;
     margin: 10px; /* 四周外边距 */
     flex-shrink: 0; /* 防止被压缩 */
@@ -204,4 +196,51 @@ body, html {
 
 #send-button:active {
     background-color: var(--button-bg, #6c98e6);
+}
+
+/* --- 终端右键菜单 --- */
+.terminal-context-menu {
+    position: fixed;
+    min-width: 180px;
+    padding: 6px;
+    border-radius: 10px;
+    background-color: var(--panel-bg, rgba(30, 30, 46, 0.96));
+    border: 1px solid var(--border-color, #45475a);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    z-index: 2000;
+    user-select: none;
+}
+
+.context-menu-item {
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--primary-text, #cdd6f4);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+}
+
+.context-menu-item:hover:not(:disabled) {
+    background-color: var(--button-hover-bg, #45475a);
+    color: var(--primary-text, #ffffff);
+}
+
+.context-menu-item:disabled {
+    opacity: 0.42;
+    cursor: default;
+}
+
+.context-menu-separator {
+    height: 1px;
+    margin: 5px 4px;
+    background-color: var(--border-color, #45475a);
+    opacity: 0.75;
 }

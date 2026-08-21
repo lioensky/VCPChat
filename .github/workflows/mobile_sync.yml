@@ -1,0 +1,101 @@
+name: VCPMobileSync 1.2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "VCPDistributedServer/Plugin/VCPMobileSync/**"
+      - "VCPDistributedServer/VCPDistributedServer.js"
+      - "modules/services/chatDataService/**"
+      - "rust_chat_data_service/**"
+      - "tests/mobile-sync-*.test.js"
+      - "main.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile_sync.yml"
+  pull_request:
+    paths:
+      - "VCPDistributedServer/Plugin/VCPMobileSync/**"
+      - "VCPDistributedServer/VCPDistributedServer.js"
+      - "modules/services/chatDataService/**"
+      - "rust_chat_data_service/**"
+      - "tests/mobile-sync-*.test.js"
+      - "main.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile_sync.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Node contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Test MobileSync protocol and packaging contract
+        run: npm run test:mobile-sync
+
+  cds:
+    name: CDS Rust gates
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust_chat_data_service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable 2026-08-11
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Test locked dependency graph
+        run: cargo test --locked
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  package-smoke:
+    name: Electron unpacked smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable 2026-08-11
+
+      - name: Install package graph without native lifecycle scripts
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci --ignore-scripts --omit=optional
+
+      - name: Build locked CDS runtime
+        run: npm run build
+
+      - name: Create unpacked Electron package
+        run: npx electron-builder --dir --config.npmRebuild=false
+
+      - name: Verify packaged sync runtime chain
+        env:
+          VCP_UNPACKED_DIR: dist/linux-unpacked
+        run: node --test tests/mobile-sync-package.test.js

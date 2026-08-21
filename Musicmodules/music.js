@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         minimizeBtn: document.getElementById('minimize-music-btn'),
         maximizeBtn: document.getElementById('maximize-music-btn'),
         closeBtn: document.getElementById('close-music-btn'),
+        sidebarToggleBtn: document.getElementById('sidebar-toggle-btn'),
         leftSidebar: document.getElementById('left-sidebar'),
         sidebarTabs: document.querySelectorAll('.sidebar-tab'),
         sidebarFooter: document.getElementById('sidebar-footer'),
@@ -157,9 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
         visualizerColor: { r: 0, g: 195, b: 255 },
         particles: [],
         PARTICLE_COUNT: 45,
-        BASS_THRESHOLD: 0.35,
-        BASS_BOOST: 1.04,
-        BASS_DECAY: 0.98,
+        COVER_MID_START_RATIO: 0.12,
+        COVER_MID_END_RATIO: 0.42,
+        COVER_PULSE_FLOOR: 0.22,
+        COVER_PULSE_INTENSITY: 0.13,
+        COVER_PULSE_SMOOTHING: 0.45,
+        coverPulseEnergy: 0,
         bassScale: 1.0,
 
         // --- Lyrics State ---
@@ -207,6 +211,20 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
+    app.updateSidebarToggleState = (isSidebarCollapsed) => {
+        document.body.classList.toggle('sidebar-collapsed', isSidebarCollapsed);
+        app.sidebarToggleBtn?.classList.toggle('is-collapsed', isSidebarCollapsed);
+        app.sidebarToggleBtn?.setAttribute('title', isSidebarCollapsed ? '展开左侧列表' : '收纳左侧列表');
+        app.sidebarToggleBtn?.setAttribute('aria-label', isSidebarCollapsed ? '展开左侧列表' : '收纳左侧列表');
+        app.sidebarToggleBtn?.setAttribute('aria-pressed', String(isSidebarCollapsed));
+        localStorage.setItem('musicSidebarCollapsed', String(isSidebarCollapsed));
+    };
+
+    app.toggleSidebarPanel = () => {
+        app.updateSidebarToggleState(!document.body.classList.contains('sidebar-collapsed'));
+    };
+
+
     // --- Initialization ---
     const init = async () => {
         // Setup modules
@@ -234,6 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
         app.connectWebSocket();
         app.updateModeButton();
         await initializeTheme();
+
+        app.updateSidebarToggleState(localStorage.getItem('musicSidebarCollapsed') === 'true');
 
         app.phantomAudio.src = app.createSilentAudio();
         app.wnpAdapter = new WebNowPlayingAdapter(app);
@@ -365,7 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.deviceSelect.onchange = () => app.configureOutput();
         app.wasapiSwitch.onchange = () => { if (!app.wasapiSwitch._programmaticUpdate) app.configureOutput(); };
-        app.eqSwitch.onchange = () => { if (!app.eqSwitch._programmaticUpdate) app.sendEqSettings(); };
+        app.eqSwitch.onchange = () => {
+            app.updateEqSectionState();
+            if (!app.eqSwitch._programmaticUpdate) app.sendEqSettings();
+        };
         app.eqTypeSelect.onchange = () => {
             app.firTapsSelect.style.display = app.eqTypeSelect.value === 'FIR' ? 'block' : 'none';
             app.sendEqSettings();
@@ -583,6 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        app.sidebarToggleBtn.onclick = () => app.toggleSidebarPanel();
         app.minimizeBtn.onclick = () => { app.api?.minimizeWindow?.(); };
         app.maximizeBtn.onclick = () => { app.api?.maximizeWindow?.(); };
         app.closeBtn.onclick = () => { app.api?.closeWindow?.(); };
@@ -718,6 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             app.isPlaying = state.is_playing;
+            document.body.classList.toggle('music-playing', app.isPlaying);
             app.playPauseBtn.classList.toggle('is-playing', app.isPlaying);
             if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
         }
@@ -740,7 +765,9 @@ document.addEventListener('DOMContentLoaded', () => {
         Promise.resolve().then(() => app.wasapiSwitch._programmaticUpdate = false);
         if (s.eq_enabled !== undefined) {
             app.eqEnabled = s.eq_enabled; app.eqSwitch._programmaticUpdate = true;
-            app.eqSwitch.checked = s.eq_enabled; Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
+            app.eqSwitch.checked = s.eq_enabled;
+            app.updateEqSectionState();
+            Promise.resolve().then(() => app.eqSwitch._programmaticUpdate = false);
         }
         if (s.eq_type !== undefined) app.eqTypeSelect.value = s.eq_type;
         if (s.dither_enabled !== undefined) {

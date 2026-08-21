@@ -119,13 +119,13 @@ fn extract_metadata(probed: &mut ProbeResult) -> TrackMetadata {
                                 metadata.rg_track_gain = parse_rg_gain_from_value(&tag.value);
                             }
                             "replaygain_track_peak" => {
-                                metadata.rg_track_peak = tag_value_to_f64(&tag.value);
+                                metadata.rg_track_peak = parse_rg_peak_from_value(&tag.value);
                             }
                             "replaygain_album_gain" => {
                                 metadata.rg_album_gain = parse_rg_gain_from_value(&tag.value);
                             }
                             "replaygain_album_peak" => {
-                                metadata.rg_album_peak = tag_value_to_f64(&tag.value);
+                                metadata.rg_album_peak = parse_rg_peak_from_value(&tag.value);
                             }
                             _ => {}
                         }
@@ -174,17 +174,6 @@ fn tag_value_to_u32(value: &Value) -> Option<u32> {
     }
 }
 
-/// Convert tag value to f64
-fn tag_value_to_f64(value: &Value) -> Option<f64> {
-    match value {
-        Value::String(s) => s.parse().ok(),
-        Value::UnsignedInt(n) => Some(*n as f64),
-        Value::SignedInt(n) => Some(*n as f64),
-        Value::Float(f) => Some(*f),
-        _ => None,
-    }
-}
-
 /// Parse ReplayGain gain value from tag value (format: "-6.54 dB")
 fn parse_rg_gain_from_value(value: &Value) -> Option<f64> {
     let s = tag_value_to_string(value)?;
@@ -200,6 +189,17 @@ fn parse_rg_gain_str(s: &str) -> Option<f64> {
         .trim()
         .parse::<f64>()
         .ok()
+}
+
+/// Parse ReplayGain peak value from tag value (format: "0.987654" or "0.987654 dB")
+fn parse_rg_peak_from_value(value: &Value) -> Option<f64> {
+    match value {
+        Value::String(s) => parse_rg_peak_str(s),
+        Value::UnsignedInt(n) => Some(*n as f64),
+        Value::SignedInt(n) => Some(*n as f64),
+        Value::Float(f) => Some(*f),
+        _ => None,
+    }
 }
 
 /// Parse ReplayGain peak string (format: "0.987654" or "0.987654 dB")
@@ -435,7 +435,7 @@ impl StreamingDecoder {
             let owned_creds = credentials.cloned();
             let range_stream = RangeStream::new(path_str.to_string(), owned_creds.clone());
             match range_stream {
-                Ok(stream) if stream.content_length.is_some() => {
+                Ok(stream) if stream.content_length.is_some() && stream.supports_range => {
                     log::info!("HTTP URL supports Range requests, streaming: {}", path_str);
                     let mss = MediaSourceStream::new(Box::new(stream), Default::default());
                     let mut hint = Hint::new();

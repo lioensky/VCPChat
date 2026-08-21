@@ -203,8 +203,11 @@ class ContextSanitizer {
      */
     stripThoughtChains(content) {
         if (typeof content !== 'string') return content;
-        const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\][\s\S]*?\[--- 元思考链结束 ---\]/gs;
-        const CONVENTIONAL_THOUGHT_REGEX = /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi;
+
+        // 只有起止标记分别独占一行时才视为思维链协议。
+        // 正文中的 `<think>…</think>` 示例、行内代码或标签说明必须原样保留。
+        const THOUGHT_CHAIN_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*\r?\n[\s\S]*?^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
+        const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<think(?:ing)?>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
         return content.replace(THOUGHT_CHAIN_REGEX, '').replace(CONVENTIONAL_THOUGHT_REGEX, '');
     }
 
@@ -282,8 +285,18 @@ class ContextSanitizer {
         try {
             this._ensureService();
 
+            // JSDOM 会把用于讲解协议的字面量 <think>/<thinking> 标签当成未知 HTML 元素，
+            // Turndown 随后会吞掉标签本身。先保护所有标签字面量；真正需要清理的完整
+            // 思维链块应由 stripThoughtChains() 按“独占行”规则处理。
+            const thoughtTagLiterals = [];
+            const contentWithProtectedThoughtTags = content.replace(/<\/?think(?:ing)?>/gi, (tag) => {
+                const placeholder = `VCPTHOUGHTTAGLITERAL${thoughtTagLiterals.length}TOKEN`;
+                thoughtTagLiterals.push(tag);
+                return placeholder;
+            });
+
             // ✅ 使用 jsdom 解析
-            const dom = new JSDOM(content);
+            const dom = new JSDOM(contentWithProtectedThoughtTags);
             const body = dom.window.document.body;
 
             // 设置 Turndown 服务的临时状态
@@ -291,6 +304,9 @@ class ContextSanitizer {
 
             // ✅ 转换为 Markdown
             let markdown = this.turndownService.turndown(body);
+            thoughtTagLiterals.forEach((tag, index) => {
+                markdown = markdown.split(`VCPTHOUGHTTAGLITERAL${index}TOKEN`).join(tag);
+            });
 
             // 清理多余的空行（保留最多2个连续空行）
             markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();

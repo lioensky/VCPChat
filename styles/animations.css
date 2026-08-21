@@ -37,72 +37,6 @@
     }
 }
 
-.topic-item.active-topic-glowing {
-    position: relative;
-    overflow: hidden;
-    /* 替代动画的高亮效果：使用静态的背景色和边框 */
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--accent-bg) 82%, rgba(255, 255, 255, 0.34)),
-            color-mix(in srgb, var(--accent-bg) 70%, rgba(255, 255, 255, 0.18))
-        ) !important;
-    border: 1px solid rgba(51, 51, 51, 0.06);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.68),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.58),
-        inset 0 0 1px rgba(0, 0, 0, 0.08) !important;
-}
-
-.topic-item.active-topic-glowing::before {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 10px;
-    height: 10px;
-    background-image: radial-gradient(
-        circle,
-        rgba(190, 210, 240, 0.45) 0%,
-        rgba(190, 210, 240, 0.3) 40%,
-        rgba(190, 210, 240, 0) 70%
-    );
-    border-radius: 50%;
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0;
-    /* 移除话题列表激活项的持续波纹动画，减少空闲时的重绘 */
-    /* animation: st-soft-circular-ripple-effect 3.8s ease-out infinite; */
-    will-change: transform, opacity;
-    z-index: 0;
-    pointer-events: none;
-}
-body.light-theme .topic-item.active-topic-glowing::before {
-    background-image: radial-gradient(
-        circle,
-        rgba(65, 144, 213, 0.041) 0%,
-        rgba(56, 131, 196, 0.358) 40%,
-        rgba(14, 78, 134, 0) 70%
-    ) !important;
-}
-
-body:not(.light-theme) .topic-item.active-topic-glowing {
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--accent-bg) 72%, rgba(255, 255, 255, 0.07)),
-            color-mix(in srgb, var(--accent-bg) 60%, rgba(255, 255, 255, 0.03))
-        ) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
-}
-
 
 /*
  * =======================================================
@@ -157,6 +91,48 @@ body:not(.light-theme) .topic-item.active-topic-glowing {
 /* 针对 AI 侧气泡的适配 */
 .message-item.streaming.assistant .md-content::after {
   border-bottom-left-radius: 4px;
+}
+
+/*
+ * Panel / immersive modes use a continuous document surface rather than
+ * standalone bubbles. Replace the enclosing animated frame with a restrained
+ * theme-colored activity rail beside the streaming content.
+ */
+@keyframes vcp-stream-activity-rail {
+  0%, 100% {
+    opacity: 0.28;
+    transform: scaleY(0.72);
+  }
+  50% {
+    opacity: 0.82;
+    transform: scaleY(1);
+  }
+}
+
+body.chat-presentation-panel .message-item.streaming .md-content::after,
+body.chat-presentation-immersive .message-item.streaming .md-content::after {
+  top: 0.2em;
+  right: auto;
+  bottom: 0.2em;
+  left: -9px;
+  width: 2px;
+  height: auto;
+  padding: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--highlight-text) 72%, var(--border-color)) 24%,
+    var(--highlight-text) 50%,
+    color-mix(in srgb, var(--highlight-text) 72%, var(--border-color)) 76%,
+    transparent
+  );
+  background-size: auto;
+  -webkit-mask: none;
+  mask: none;
+  animation: vcp-stream-activity-rail 1.8s ease-in-out infinite;
+  transform-origin: center;
+  opacity: 0.55;
 }
 
 /*

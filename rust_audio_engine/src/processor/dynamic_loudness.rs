@@ -273,6 +273,7 @@ impl ParameterSmoother {
     }
     
     /// Get next smoothed value (call once per sample)
+    #[cfg(test)]
     #[inline(always)]
     fn next(&mut self) -> f64 {
         if self.samples_remaining > 0 {
@@ -301,13 +302,6 @@ impl ParameterSmoother {
             }
         }
         self.current
-    }
-    
-    /// Jump immediately to target
-    fn jump(&mut self, target: f64) {
-        self.current = target;
-        self.target = target;
-        self.samples_remaining = 0;
     }
     
     /// Reset to zero
@@ -367,8 +361,6 @@ pub struct DynamicLoudness {
     sample_rate: f64,
     /// Number of channels
     channels: usize,
-    /// Processing block counter
-    block_counter: usize,
     /// Current loudness factor (0.0 = full volume, 1.0 = max compensation)
     current_loudness_factor: f64,
     /// User strength multiplier (0.0 - 1.0)
@@ -413,7 +405,6 @@ impl DynamicLoudness {
             pre_gain_db: -3.0,       // Headroom for bass boost
             sample_rate,
             channels,
-            block_counter: 0,
             current_loudness_factor: 0.0,
             strength: 1.0,
             enabled: true,
@@ -487,6 +478,11 @@ impl DynamicLoudness {
         self.transition_db = transition_db.clamp(10.0, 40.0);
     }
     
+    /// Set pre-gain in dB
+    pub fn set_pre_gain_db(&mut self, pre_gain_db: f64) {
+        self.pre_gain_db = pre_gain_db.clamp(-6.0, 0.0);
+    }
+
     /// Enable or disable processing
     pub fn set_enabled(&mut self, enabled: bool) {
         if self.enabled && !enabled {

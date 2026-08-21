@@ -4,8 +4,12 @@
 import { tools } from './renderer_modules/config.js';
 import * as canvasHandler from './renderer_modules/ui/canvas-handler.js';
 import * as dynamicImageHandler from './renderer_modules/ui/dynamic-image-handler.js';
+import { ToolManager, ToolManagerUI } from './renderer_modules/tool-manager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // --- 全局工具集合（合并 config.js + user tools）---
+    let allTools = { ...tools }; // 初始为config.js的工具
+
     // --- 元素获取 ---
     const toolGrid = document.getElementById('tool-grid');
     const toolDetailView = document.getElementById('tool-detail-view');
@@ -101,6 +105,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // 加载用户工具并合并到allTools
+        const userTools = settings.vcpht_userTools || {};
+        allTools = { ...tools, ...userTools }; // user优先覆盖config
+
         initializeUI();
     }
 
@@ -167,7 +175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             background: rgba(255,152,0,0.15); color: var(--highlight-text);
             white-space: nowrap; font-weight: 600;
         `;
-        const totalTools = Object.keys(tools).length;
+        const totalTools = Object.keys(allTools).length;
         countBadge.textContent = `共${totalTools} 个`;
 
         searchBar.appendChild(searchInput);
@@ -176,8 +184,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         toolGrid.appendChild(searchBar);
 
         // 生成工具卡片
-        for (const toolName in tools) {
-            const tool = tools[toolName];
+        for (const toolName in allTools) {
+            const tool = allTools[toolName];
             const category = getCategoryForTool(toolName);
             const isFav = favorites.includes(toolName);
 
@@ -291,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         currentToolName = toolName;
 
-        const tool = tools[toolName];
+        const tool = allTools[toolName];
         toolTitle.textContent = tool.displayName;
         toolDescription.textContent = tool.description;
         
@@ -338,10 +346,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (state[el.name] !== undefined) el.value = state[el.name];
             }
         });
+
+        // 缓存值恢复后重新计算 dependsOn，避免界面仍停留在默认模式的显隐状态。
+        toolForm.querySelectorAll('input[type="radio"]:checked').forEach(el => {
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
     }
 
     function buildToolForm(toolName) {
-        const tool = tools[toolName];
+        const tool = allTools[toolName];
         toolForm.innerHTML = '';
         const paramsContainer = document.createElement('div');
         paramsContainer.id = 'params-container';
@@ -366,7 +379,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             commandSelect.addEventListener('change', (e) => {
                 renderFormParams(tool.commands[e.target.value].params, paramsContainer, toolName, e.target.value);
-            });renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);} else {
+                setupCommandSpecificForm(toolName, e.target.value);
+            });
+            renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);
+            setupCommandSpecificForm(toolName, commandSelect.value);
+        } else {
             toolForm.appendChild(paramsContainer);renderFormParams(tool.params, paramsContainer, toolName);
         }
 
@@ -454,17 +471,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => restoreFormState(toolName), 0);
     }
 
+    function setupCommandSpecificForm(toolName, commandName) {
+        if (toolName !== 'LightMemo' || commandName !== 'tagmemo_ab') return;
+
+        const kInput = toolForm.querySelector('[name="k"]');
+        const topLInput = toolForm.querySelector('[name="top_l"]');
+        if (!kInput || !topLInput) return;
+
+        let topLManuallyEdited = false;
+        const updateTopLDefault = () => {
+            if (topLManuallyEdited) return;
+            const k = Math.max(1, Number.parseInt(kInput.value, 10) || 5);
+            topLInput.value = String(Math.max(20, k * 4));
+        };
+
+        topLInput.addEventListener('input', () => {
+            topLManuallyEdited = true;
+        });
+        kInput.addEventListener('input', updateTopLDefault);
+        updateTopLDefault();
+    }
+
     function renderFormParams(params, container, toolName = '', commandName = '') {
         container.innerHTML = '';
         const dependencyListeners = [];
 
         const isNanoBananaCompose = toolName === 'NanoBananaGen' && commandName === 'compose';
 
-        // 分离必填和可选参数
+        // 分离主表单与高级选项。advanced:false 可让条件必需或高频参数常驻主表单。
         const requiredParams = [];
         const optionalParams = [];
         params.forEach(param => {
-            if (param.required) {
+            if (param.required || param.advanced === false) {
                 requiredParams.push(param);
             } else {
                 optionalParams.push(param);
@@ -542,7 +580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 radioInput.value = opt;
                 if (opt === param.default) radioInput.checked = true;
                 radioLabel.appendChild(radioInput);
-                radioLabel.append(` ${opt}`);
+                radioLabel.append(` ${param.optionLabels?.[opt] || opt}`);
                 input.appendChild(radioLabel);
 
                 radioInput.addEventListener('change', () => {
@@ -587,6 +625,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
             }
+        } else if (param.type === 'checkbox_group') {
+            input = document.createElement('div');
+            input.className = 'checkbox-group checkbox-options-group';
+            input.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px 16px; padding:8px 0;';
+            const defaultValues = Array.isArray(param.default) ? param.default : [];
+
+            param.options.forEach(opt => {
+                const checkboxLabel = document.createElement('label');
+                checkboxLabel.className = 'checkbox-label';
+                checkboxLabel.style.cssText = 'display:flex; align-items:center; gap:6px; cursor:pointer; margin:0;';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = `${param.name}__${opt}`;
+                checkbox.value = opt;
+                checkbox.dataset.checkboxGroup = param.name;
+                checkbox.checked = defaultValues.includes(opt);
+                checkbox.defaultChecked = checkbox.checked;
+
+                const checkboxText = document.createElement('span');
+                checkboxText.textContent = param.optionLabels?.[opt] || opt;
+
+                checkboxLabel.appendChild(checkbox);
+                checkboxLabel.appendChild(checkboxText);
+                input.appendChild(checkboxLabel);
+            });
         } else {
             input = document.createElement('input');
             input.type = param.type || 'text';
@@ -605,7 +669,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (param.name === 'maid' && !input.value) input.value = USER_NAME;
             }
             if (param.required) input.required = true;
-        } else {
+        } else if (param.type !== 'checkbox_group') {
             const hiddenInput = document.createElement('input');
             hiddenInput.type = 'hidden';
             hiddenInput.name = param.name;
@@ -617,11 +681,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (param.dependsOn) {
             const dependencyCheck = () => {
                 const dependencyField = toolForm.querySelector(`[name="${param.dependsOn.field}"]:checked`) || toolForm.querySelector(`[name="${param.dependsOn.field}"]`);
-                if (dependencyField && dependencyField.value === param.dependsOn.value) {
-                    paramGroup.style.display = '';
-                } else {
-                    paramGroup.style.display = 'none';
-                }
+                const isVisible = Boolean(dependencyField && dependencyField.value === param.dependsOn.value);
+                paramGroup.style.display = isVisible ? '' : 'none';
+
+                // 不成功能的模式专属字段不应进入 FormData，也不参与浏览器必填校验。
+                paramGroup.querySelectorAll('input, textarea, select').forEach(control => {
+                    control.disabled = !isVisible;
+                });
             };
             dependencyListeners.push(dependencyCheck);}
 
@@ -1003,17 +1069,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         const args = {};
         let finalToolName = toolName;
 
+        toolForm.querySelectorAll('input[type="checkbox"][data-checkbox-group]:checked').forEach(input => {
+            const groupName = input.dataset.checkboxGroup;
+            if (!args[groupName]) args[groupName] = [];
+            args[groupName].push(input.value);
+        });
+
         for (let [key, value] of formData.entries()) {
             const inputElement = toolForm.querySelector(`[name="${key}"]`);
-            if (inputElement && inputElement.type === 'checkbox') {
+            if (inputElement?.dataset.checkboxGroup) {
+                continue;
+            } else if (inputElement && inputElement.type === 'checkbox') {
                 args[key] = inputElement.checked;
             } else if (value) {
                 args[key] = value;
             }
         }
 
-        // maid 兜底：用户未填写时使用默认值
-        if (!args.maid) args.maid = USER_NAME;
+        const lightMemoExplicitScopeCommands = new Set([
+            'tagmemo_ab',
+            'tagmemo_v10',
+            'tagmemo_v10_ab'
+        ]);
+        const requiresExplicitScope = toolName === 'LightMemo'
+            && lightMemoExplicitScopeCommands.has(args.command);
+
+        if (
+            requiresExplicitScope
+            && !String(args.maid || '').trim()
+            && !String(args.folder || '').trim()
+            && args.search_all_knowledge_bases !== true
+        ) {
+            const commandLabels = {
+                tagmemo_ab: 'TagMemo V9.1 对照测试',
+                tagmemo_v10: 'TagMemo V10 Alpha 实验',
+                tagmemo_v10_ab: 'TagMemo 统一寻址具名 A/B 评审'
+            };
+            renderResult({
+                status: 'error',
+                error: `${commandLabels[args.command]}必须选择作用域：填写 folder、填写 maid，或启用全库搜索。`
+            }, toolName);
+            return;
+        }
+
+        // maid 兜底：普通工具未填写时使用默认值；TagMemo 实验命令保留显式作用域语义。
+        if (!args.maid && !requiresExplicitScope) {
+            args.maid = USER_NAME;
+        }
         // 计时器
         const startTime = Date.now();
         let timerInterval;
@@ -1036,18 +1138,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             clearInterval(timerInterval);
             const duration = ((Date.now() - startTime) / 1000).toFixed(1);
 
-            // 记录执行历史
+            const pluginError = result.success && result.data && result.data.plugin_error;
+            const executionSucceeded = result.success && !pluginError;
+
+            // plugin_error 是插件业务失败，不可作为空结果或成功调用记录。
             executionHistory.unshift({
                 toolName: finalToolName,
                 displayName: tools[finalToolName]?.displayName || finalToolName,
                 command: args.command || '',
                 time: new Date().toLocaleTimeString(),
-                success: result.success,
+                success: executionSucceeded,
                 duration: duration
             });
             if (executionHistory.length > 15) executionHistory.pop();
 
-            if (result.success) {
+            if (pluginError) {
+                renderResult({ status: 'error', error: pluginError }, toolName, duration);
+            } else if (result.success) {
                 renderResult(result.data, toolName, duration);
             } else {
                 renderResult({ status: 'error', error: result.error }, toolName, duration);
@@ -1073,6 +1180,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         saveSettings().catch(e => console.warn('History save failed:', e));
     }
 
+    function renderMarkdownBlock(markdownText, className = 'markdown-result') {
+        const div = document.createElement('div');
+        div.className = className;
+        const text = String(markdownText ?? '');
+        if (window.marked) {
+            const parser = typeof window.marked.parse === 'function'
+                ? window.marked.parse.bind(window.marked)
+                : (window.marked.marked && typeof window.marked.marked === 'function' ? window.marked.marked.bind(window.marked) : null);
+            if (parser) {
+                div.innerHTML = parser(text);
+                return div;
+            }
+        }
+        div.textContent = text;
+        return div;
+    }
+
+    function appendMarkdownToResult(markdownText, className) {
+        resultContainer.appendChild(renderMarkdownBlock(markdownText, className));
+    }
+
     function renderResult(data, toolName, duration = '') {
         resultContainer.innerHTML = '';
 
@@ -1082,15 +1210,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             durationTag.style.cssText = `
                 display: inline-block; padding: 4px 10px; border-radius: 12px;
                 font-size: 11px; margin-bottom: 10px;
-                background: ${data.status === 'error' || data.error ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'};
-                color: ${data.status === 'error' || data.error ? 'var(--danger-color)' : 'var(--success-color)'};`;
-            durationTag.textContent = `${data.status === 'error' || data.error ? '❌' : '✅'} 耗时 ${duration}s`;
+                background: ${data.status === 'error' || data.error || data.plugin_error ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'};
+                color: ${data.status === 'error' || data.error || data.plugin_error ? 'var(--danger-color)' : 'var(--success-color)'};`;
+            durationTag.textContent = `${data.status === 'error' || data.error || data.plugin_error ? '❌' : '✅'} 耗时 ${duration}s`;
             resultContainer.appendChild(durationTag);
         }
         
         // 错误处理
-        if (data.status === 'error' || data.error) {
-            const errorMessage = data.error || data.message || '未知错误';
+        if (data.status === 'error' || data.error || data.plugin_error) {
+            const errorMessage = data.plugin_error || data.error || data.message || '未知错误';
             const pre = document.createElement('pre');
             pre.className = 'error';
             pre.textContent = typeof errorMessage === 'object' ? JSON.stringify(errorMessage, null, 2) : errorMessage;
@@ -1138,9 +1266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (content && Array.isArray(content.content)) {
             content.content.forEach(item => {
                 if (item.type === 'text') {
-                    const pre = document.createElement('pre');
-                    pre.textContent = item.text;
-                    resultContainer.appendChild(pre);
+                    appendMarkdownToResult(item.text, 'markdown-result tool-text-result');
                 } else if (item.type === 'image_url' && item.image_url && item.image_url.url) {
                     const imgElement = document.createElement('img');
                     imgElement.src = item.image_url.url;
@@ -1152,13 +1278,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             imgElement.src = content;
             resultContainer.appendChild(imgElement);
         } else if (typeof content === 'string') {
-            const div = document.createElement('div');
-            if (window.marked && typeof window.marked.parse === 'function') {
-                div.innerHTML = window.marked.parse(content);
-            } else {
-                div.textContent = content;
-            }
-            resultContainer.appendChild(div);
+            appendMarkdownToResult(content);
         } else if (toolName === 'TavilySearch' && content && (content.results || content.images)) {
             const searchResultsWrapper = document.createElement('div');
             searchResultsWrapper.className = 'tavily-search-results';
@@ -1195,13 +1315,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const url = document.createElement('p');
                     url.className = 'tavily-result-url';
                     url.textContent = result.url;
-                    const snippet = document.createElement('div');
-                    snippet.className = 'tavily-result-snippet';
-                    if (window.marked && typeof window.marked.parse === 'function') {
-                        snippet.innerHTML = window.marked.parse(result.content);
-                    } else {
-                        snippet.textContent = result.content;
-                    }
+                    const snippet = renderMarkdownBlock(result.content, 'tavily-result-snippet markdown-result');
                     resultItem.appendChild(title);
                     resultItem.appendChild(url);
                     resultItem.appendChild(snippet);
@@ -1220,11 +1334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 imgElement.src = imageUrl;
                 resultContainer.appendChild(imgElement);
             } else if (typeof textResult === 'string') {
-                if (window.marked && typeof window.marked.parse === 'function') {
-                    resultContainer.innerHTML += window.marked.parse(textResult);
-                } else {
-                    resultContainer.textContent = textResult;
-                }
+                appendMarkdownToResult(textResult);
             } else {
                 const pre = document.createElement('pre');
                 pre.textContent = JSON.stringify(content, null, 2);
@@ -1421,6 +1531,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (workflowBtn) {
             workflowBtn.addEventListener('click', openWorkflowEditor);
         }
+
+        // Tab切换逻辑
+        const toolTabBtn = document.getElementById('tool-tab-btn');
+        const manageTabBtn = document.getElementById('manage-tab-btn');
+        const toolGridEl = document.getElementById('tool-grid');
+        const managePanelEl = document.getElementById('manage-panel');
+
+        if (toolTabBtn && manageTabBtn && toolGridEl && managePanelEl) {
+            toolTabBtn.addEventListener('click', () => {
+                toolTabBtn.classList.add('tab-btn-active');
+                manageTabBtn.classList.remove('tab-btn-active');
+                toolGridEl.style.display = 'grid';
+                managePanelEl.style.display = 'none';
+                toolDetailView.style.display = 'none'; // 隐藏工具详情
+            });
+
+            manageTabBtn.addEventListener('click', async () => {
+                manageTabBtn.classList.add('tab-btn-active');
+                toolTabBtn.classList.remove('tab-btn-active');
+                toolGridEl.style.display = 'none';
+                managePanelEl.style.display = 'block';
+                toolDetailView.style.display = 'none';
+
+                // 初始化管理面板（首次点击时）
+                if (!window.toolManagerUIInitialized) {
+                    await window.toolManagerUI.init('manage-panel');
+                    window.toolManagerUIInitialized = true;
+                }
+            });
+        }
+
+        // 初始化工具管理器（但不立即渲染UI）
+        window.toolManager = new ToolManager();
+        window.toolManagerUI = new ToolManagerUI(window.toolManager);
+        window.toolManagerUIInitialized = false;
+
+        // 暴露刷新工具网格的函数供tool-manager调用
+        window.refreshToolGrid = async () => {
+            await initializeApp(); // 重新加载settings并合并allTools
+            renderToolGrid(); // 重新渲染工具网格
+        };
+
         renderToolGrid();
         loadAndProcessWallpaper();
         setupImageViewer();

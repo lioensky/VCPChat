@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: file:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VCP Loom Manager</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <style>
+        :root {
+            --bg: var(--primary-bg, #171a1d);
+            --panel: var(--panel-bg-dark, rgba(32, 37, 42, .94));
+            --panel-2: var(--secondary-bg, #20252a);
+            --line: color-mix(in srgb, var(--border-color, #3b4449) 72%, transparent);
+            --text: var(--primary-text, #f2f0e9);
+            --muted: var(--secondary-text, #a7afb1);
+            --accent: var(--highlight-text, #f2a900);
+            --accent-2: var(--success-color, #76bfae);
+            --danger: var(--danger-color, #e06c5f);
+            --shadow: 0 18px 60px color-mix(in srgb, var(--primary-bg, #171a1d) 62%, transparent);
+            --loom-panel: color-mix(in srgb, var(--panel-bg, var(--panel)) 94%, transparent);
+            --loom-bar: color-mix(in srgb, var(--secondary-bg, #20252a) 88%, transparent);
+            --loom-sidebar: color-mix(in srgb, var(--primary-bg, #171a1d) 82%, transparent);
+            --loom-control: color-mix(in srgb, var(--secondary-bg, #20252a) 72%, transparent);
+            --loom-hover: color-mix(in srgb, var(--accent) 11%, transparent);
+        }
+        body.light-theme {
+            --panel: var(--panel-bg-light, rgba(252, 250, 244, .94));
+            --shadow: 0 18px 60px rgba(27, 33, 31, .12);
+        }
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+        body {
+            background:
+                radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 30%),
+                radial-gradient(circle at 85% 80%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 28%),
+                var(--bg);
+            color: var(--text);
+            font: 13px/1.45 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        }
+        button, input, textarea, select { font: inherit; }
+        button { color: inherit; }
+        .titlebar {
+            height: 44px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid var(--line);
+            background: var(--loom-bar);
+            backdrop-filter: blur(14px) saturate(112%);
+            -webkit-backdrop-filter: blur(14px) saturate(112%);
+            -webkit-app-region: drag;
+            user-select: none;
+        }
+        .brand { padding: 0 16px; display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .3px; }
+        .brand-mark {
+            width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
+            background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--accent-2)));
+            color: var(--text-on-accent, #171a1d);
+            box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
+            line-height: 1; padding-bottom: 1px;
+        }
+        .brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+        .window-controls { margin-left: auto; height: 100%; display: flex; -webkit-app-region: no-drag; }
+        .window-controls button {
+            width: 48px; border: 0; background: transparent; cursor: pointer; font-size: 16px;
+        }
+        .window-controls button:hover { background: var(--loom-hover); }
+        .window-controls .close:hover { background: var(--danger); color: var(--text-on-accent, white); }
+        .layout { height: calc(100% - 44px); display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+        .sidebar {
+            min-width: 0; border-right: 1px solid var(--line); background: var(--loom-sidebar);
+            display: flex; flex-direction: column; backdrop-filter: blur(14px) saturate(112%);
+            -webkit-backdrop-filter: blur(14px) saturate(112%);
+        }
+        .side-actions { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid var(--line); }
+        .btn {
+            border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: var(--loom-control);
+            cursor: pointer; transition: .15s ease; white-space: nowrap;
+        }
+        .btn:hover { border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: var(--loom-hover); }
+        .btn.primary { background: var(--button-bg, var(--accent)); color: var(--text-on-accent, #171a1d); border-color: transparent; font-weight: 600; }
+        .btn.primary:hover { background: var(--button-hover-bg, var(--accent)); }
+        .btn.danger { color: var(--danger); }
+        .btn:disabled { opacity: .48; cursor: default; }
+        .search { margin: 12px 14px 7px; width: calc(100% - 28px); }
+        input, textarea, select {
+            color: var(--text); background: var(--input-bg, var(--loom-control)); border: 1px solid var(--line); border-radius: 8px;
+            outline: none; padding: 8px 10px;
+        }
+        input::placeholder, textarea::placeholder { color: var(--placeholder-text, var(--muted)); }
+        input:focus, textarea:focus, select:focus { border-color: color-mix(in srgb, var(--accent) 75%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+        .app-list { overflow: auto; padding: 6px 9px 14px; }
+        .app-card {
+            width: 100%; border: 1px solid transparent; border-radius: 11px; background: transparent; padding: 10px;
+            display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; text-align: left; cursor: pointer;
+        }
+        .app-card:hover { background: var(--loom-hover); }
+        .app-card.active { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+        .app-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; object-fit: cover; background: var(--loom-control); font-size: 21px; }
+        .app-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .app-id { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .55; }
+        .status-dot.running { background: var(--accent-2); box-shadow: 0 0 10px color-mix(in srgb, var(--accent-2) 70%, transparent); opacity: 1; }
+        .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
+        .editor { min-width: 0; display: flex; flex-direction: column; }
+        .editor-head {
+            height: 59px; padding: 10px 17px; border-bottom: 1px solid var(--line);
+            display: flex; align-items: center; gap: 8px; background: var(--loom-bar);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        }
+        .editor-title { min-width: 0; margin-right: auto; }
+        .editor-title strong { display: block; font-size: 15px; }
+        .editor-title span { color: var(--muted); font-size: 11px; }
+        .editor-body { min-height: 0; flex: 1; overflow: auto; padding: 17px; }
+        .placeholder {
+            height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center;
+        }
+        .placeholder-mark { font-size: 55px; filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent)); }
+        .form { display: none; max-width: 1100px; margin: 0 auto; }
+        .form.visible { display: block; }
+        .section {
+            background: var(--loom-panel); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 13px;
+            box-shadow: var(--shadow); overflow: hidden;
+        }
+        .section-title { padding: 11px 14px; border-bottom: 1px solid var(--line); font-weight: 650; color: var(--accent); }
+        .section-body { padding: 14px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+        .field { grid-column: span 6; min-width: 0; }
+        .field.full { grid-column: 1 / -1; }
+        .field.third { grid-column: span 4; }
+        .field.quarter { grid-column: span 3; }
+        .field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
+        .field input, .field select, .field textarea { width: 100%; }
+        .field textarea { min-height: 94px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; }
+        .field textarea.code { min-height: 250px; tab-size: 4; }
+        .check-row { display: flex; flex-wrap: wrap; gap: 18px; grid-column: 1 / -1; }
+        .check { display: flex; gap: 7px; align-items: center; color: var(--text); }
+        .check input { width: 15px; height: 15px; accent-color: var(--accent); }
+        .hint { color: var(--muted); font-size: 11px; margin-top: 5px; }
+        .toast {
+            position: fixed; right: 18px; bottom: 18px; max-width: 430px; padding: 11px 14px; border-radius: 10px;
+            background: var(--notification-bg, var(--panel)); border: 1px solid var(--line); box-shadow: var(--shadow);
+            opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s ease; z-index: 20;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { border-color: color-mix(in srgb, var(--danger) 55%, transparent); color: var(--danger); }
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 240px minmax(0, 1fr); }
+            .field, .field.third, .field.quarter { grid-column: 1 / -1; }
+        }
+    </style>
+</head>
+<body>
+    <header class="titlebar">
+        <div class="brand"><span class="brand-mark">🕸</span><span>VCP Loom <small>Arachne / 一期管理器</small></span></div>
+        <div class="window-controls">
+            <button id="minimize" title="最小化">─</button>
+            <button id="maximize" title="最大化">□</button>
+            <button id="close" class="close" title="关闭">×</button>
+        </div>
+    </header>
+
+    <main class="layout">
+        <aside class="sidebar">
+            <div class="side-actions">
+                <button class="btn primary" id="newApp">＋ 新建</button>
+                <button class="btn" id="importApp">⇩ 导入</button>
+                <button class="btn" id="refreshApps">↻ 刷新</button>
+                <button class="btn" id="exportApp">⇧ 导出</button>
+            </div>
+            <input id="search" class="search" type="search" placeholder="搜索 LoomAPP…">
+            <div class="app-list" id="appList"></div>
+        </aside>
+
+        <section class="editor">
+            <div class="editor-head">
+                <div class="editor-title">
+                    <strong id="editorName">选择或创建 LoomAPP</strong>
+                    <span id="editorMeta">远程网页持久化应用容器</span>
+                </div>
+                <button class="btn" id="openFolder" disabled>目录</button>
+                <button class="btn" id="clearSession" disabled>清除登录</button>
+                <button class="btn danger" id="deleteApp" disabled>删除</button>
+                <button class="btn" id="launchApp" disabled>▶ 启动</button>
+                <button class="btn primary" id="saveApp" disabled>保存</button>
+            </div>
+            <div class="editor-body">
+                <div class="placeholder" id="placeholder">
+                    <div><div class="placeholder-mark">🕸️</div><h2>VCP Loom</h2><p>将真实网页织入 VChat，形成拥有独立身份与持久会话的子应用。</p></div>
+                </div>
+
+                <form class="form" id="appForm">
+                    <div class="section">
+                        <div class="section-title">应用身份</div>
+                        <div class="section-body">
+                            <div class="field third"><label for="appId">应用 ID</label><input id="appId" required pattern="[a-z0-9][a-z0-9_\-]{1,63}" placeholder="example-mobile"></div>
+                            <div class="field third"><label for="appName">显示名称</label><input id="appName" required placeholder="示例移动应用"></div>
+                            <div class="field third"><label for="emoji">Emoji 图标</label><input id="emoji" value="🕸️" maxlength="8"></div>
+                            <div class="field full"><label for="description">描述</label><input id="description" placeholder="此 LoomAPP 的用途"></div>
+                            <div class="field full"><label for="startUrl">启动 URL</label><input id="startUrl" required type="url" value="https://example.com/"></div>
+                            <div class="field full"><label for="icon">图标</label><input id="icon" placeholder="应用目录内相对路径、https URL 或 data URL"><div class="hint">社区分发建议使用应用目录内文件名，例如 icon.png。</div></div>
+                            <div class="check-row">
+                                <label class="check"><input id="enabled" type="checkbox" checked>启用应用</label>
+                                <label class="check"><input id="exposeDrawer" type="checkbox" checked>暴露在应用抽屉</label>
+                                <label class="check"><input id="exposeManager" type="checkbox" checked>允许管理器暴露在应用抽屉</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-title">窗口与视口</div>
+                        <div class="section-body">
+                            <div class="field quarter"><label for="windowWidth">窗口宽度</label><input id="windowWidth" type="number" min="320" max="3840" value="420"></div>
+                            <div class="field quarter"><label for="windowHeight">窗口高度</label><input id="windowHeight" type="number" min="360" max="2160" value="780"></div>
+                            <div class="field quarter"><label for="minWidth">最小宽度</label><input id="minWidth" type="number" min="240" value="320"></div>
+                            <div class="field quarter"><label for="minHeight">最小高度</label><input id="minHeight" type="number" min="240" value="480"></div>
+                            <div class="field quarter"><label for="viewportWidth">页面视口宽度</label><input id="viewportWidth" type="number" min="240" value="390"></div>
+                            <div class="field quarter"><label for="viewportHeight">页面视口高度</label><input id="viewportHeight" type="number" min="240" value="700"></div>
+                            <div class="field quarter"><label for="maxWidth">最大宽度（可空）</label><input id="maxWidth" type="number" min="320"></div>
+                            <div class="field quarter"><label for="maxHeight">最大高度（可空）</label><input id="maxHeight" type="number" min="360"></div>
+                            <div class="check-row">
+                                <label class="check"><input id="resizable" type="checkbox" checked>窗口可调整尺寸</label>
+                                <label class="check"><input id="autoResize" type="checkbox" checked>页面视口跟随窗口</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-title">请求模拟与导航</div>
+                        <div class="section-body">
+                            <div class="field third">
+                                <label for="profile">请求配置</label>
+                                <select id="profile">
+                                    <option value="desktop">桌面浏览器</option>
+                                    <option value="mobile" selected>Android 手机</option>
+                                    <option value="iphone">iPhone</option>
+                                    <option value="custom">自定义 UA</option>
+                                </select>
+                            </div>
+                            <div class="field" style="grid-column: span 8"><label for="userAgent">自定义 User-Agent（可空）</label><input id="userAgent" placeholder="留空则使用所选配置的内置 UA"></div>
+                            <div class="field full"><label for="headers">附加请求头（JSON）</label><textarea id="headers" spellcheck="false">{}</textarea><div class="hint">Cookie 与 Host 不允许在此覆写；登录状态由独立持久化 session 自动保存。</div></div>
+                            <div class="check-row">
+                                <label class="check"><input id="allowPopups" type="checkbox">允许弹窗链接在应用内打开</label>
+                                <label class="check"><input id="externalOrigins" type="checkbox">跨域导航改用系统浏览器</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-title">注入修正</div>
+                        <div class="section-body">
+                            <div class="field full"><label for="injectCss">inject.css</label><textarea class="code" id="injectCss" spellcheck="false" placeholder="/* 页面布局修正 */"></textarea></div>
+                            <div class="field full"><label for="injectJs">inject.js</label><textarea class="code" id="injectJs" spellcheck="false" placeholder="// 页面功能修正；代码在页面加载完成后执行"></textarea></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        'use strict';
+
+        const api = window.loomAPI;
+        const $ = (id) => document.getElementById(id);
+        let apps = [];
+        let selectedId = null;
+        let originalId = null;
+        let isNew = false;
+        let toastTimer = null;
+
+        function applyTheme(theme) {
+            document.body.classList.toggle('light-theme', theme === 'light');
+        }
+
+        async function initializeTheme() {
+            try {
+                if (api?.getCurrentTheme) applyTheme(await api.getCurrentTheme());
+            } catch (error) {
+                console.warn('[Loom Manager] 无法读取当前主题：', error);
+            }
+            api?.onThemeUpdated?.(applyTheme);
+        }
+
+        function unwrap(result) {
+            if (!result || result.success !== true) throw new Error(result?.error || '操作失败');
+            return result.data;
+        }
+
+        function showToast(message, isError = false) {
+            const toast = $('toast');
+            toast.textContent = message;
+            toast.className = `toast show${isError ? ' error' : ''}`;
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { toast.className = 'toast'; }, 3200);
+        }
+
+        function numberValue(id, fallback = null) {
+            const value = $(id).value.trim();
+            if (!value) return fallback;
+            const parsed = Number.parseInt(value, 10);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        }
+
+        function emptyManifest() {
+            return {
+                schemaVersion: 1,
+                id: '',
+                name: '',
+                description: '',
+                startUrl: 'https://example.com/',
+                enabled: true,
+                exposeInAppDrawer: true,
+                exposeManagerInAppDrawer: true,
+                icon: '',
+                emoji: '🕸️',
+                window: { width: 420, height: 780, minWidth: 320, minHeight: 480, maxWidth: null, maxHeight: null, resizable: true },
+                viewport: { width: 390, height: 700, autoResize: true },
+                request: { profile: 'mobile', userAgent: '', headers: {} },
+                navigation: { allowPopups: false, openExternalOriginsInBrowser: false },
+            };
+        }
+
+        function setForm(manifest, css = '', js = '') {
+            $('appId').value = manifest.id || '';
+            $('appId').disabled = !isNew;
+            $('appName').value = manifest.name || '';
+            $('description').value = manifest.description || '';
+            $('startUrl').value = manifest.startUrl || '';
+            $('icon').value = manifest.icon || '';
+            $('emoji').value = manifest.emoji || '🕸️';
+            $('enabled').checked = manifest.enabled !== false;
+            $('exposeDrawer').checked = manifest.exposeInAppDrawer !== false;
+            $('exposeManager').checked = manifest.exposeManagerInAppDrawer !== false;
+            $('windowWidth').value = manifest.window?.width || 420;
+            $('windowHeight').value = manifest.window?.height || 780;
+            $('minWidth').value = manifest.window?.minWidth || 320;
+            $('minHeight').value = manifest.window?.minHeight || 480;
+            $('maxWidth').value = manifest.window?.maxWidth || '';
+            $('maxHeight').value = manifest.window?.maxHeight || '';
+            $('resizable').checked = manifest.window?.resizable !== false;
+            $('viewportWidth').value = manifest.viewport?.width || 390;
+            $('viewportHeight').value = manifest.viewport?.height || 700;
+            $('autoResize').checked = manifest.viewport?.autoResize !== false;
+            $('profile').value = manifest.request?.profile || 'desktop';
+            $('userAgent').value = manifest.request?.userAgent || '';
+            $('headers').value = JSON.stringify(manifest.request?.headers || {}, null, 2);
+            $('allowPopups').checked = manifest.navigation?.allowPopups === true;
+            $('externalOrigins').checked = manifest.navigation?.openExternalOriginsInBrowser === true;
+            $('injectCss').value = css;
+            $('injectJs').value = js;
+            $('placeholder').style.display = 'none';
+            $('appForm').classList.add('visible');
+            $('saveApp').disabled = false;
+            $('launchApp').disabled = isNew;
+            $('deleteApp').disabled = isNew;
+            $('clearSession').disabled = isNew;
+            $('openFolder').disabled = isNew;
+            $('editorName').textContent = isNew ? '新建 LoomAPP' : manifest.name;
+            $('editorMeta').textContent = isNew ? '配置应用身份与页面容器' : `${manifest.id} · ${manifest.running ? '运行中' : '未运行'}`;
+        }
+
+        function collectForm() {
+            let headers;
+            try {
+                headers = JSON.parse($('headers').value || '{}');
+            } catch {
+                throw new Error('附加请求头不是有效 JSON。');
+            }
+            return {
+                schemaVersion: 1,
+                id: $('appId').value.trim(),
+                name: $('appName').value.trim(),
+                description: $('description').value.trim(),
+                startUrl: $('startUrl').value.trim(),
+                enabled: $('enabled').checked,
+                exposeInAppDrawer: $('exposeDrawer').checked,
+                exposeManagerInAppDrawer: $('exposeManager').checked,
+                icon: $('icon').value.trim(),
+                emoji: $('emoji').value.trim() || '🕸️',
+                window: {
+                    width: numberValue('windowWidth', 420),
+                    height: numberValue('windowHeight', 780),
+                    minWidth: numberValue('minWidth', 320),
+                    minHeight: numberValue('minHeight', 480),
+                    maxWidth: numberValue('maxWidth'),
+                    maxHeight: numberValue('maxHeight'),
+                    resizable: $('resizable').checked,
+                },
+                viewport: {
+                    width: numberValue('viewportWidth', 390),
+                    height: numberValue('viewportHeight', 700),
+                    autoResize: $('autoResize').checked,
+                },
+                request: {
+                    profile: $('profile').value,
+                    userAgent: $('userAgent').value.trim(),
+                    headers,
+                },
+                navigation: {
+                    allowPopups: $('allowPopups').checked,
+                    openExternalOriginsInBrowser: $('externalOrigins').checked,
+                },
+                injection: { css: 'inject.css', js: 'inject.js' },
+            };
+        }
+
+        function renderList() {
+            const list = $('appList');
+            const query = $('search').value.trim().toLowerCase();
+            const filtered = apps.filter((item) =>
+                !query || item.name.toLowerCase().includes(query) || item.id.toLowerCase().includes(query)
+            );
+            list.innerHTML = '';
+            if (!filtered.length) {
+                list.innerHTML = '<div class="empty">没有 LoomAPP</div>';
+                return;
+            }
+            filtered.forEach((item) => {
+                const card = document.createElement('button');
+                card.className = `app-card${item.id === selectedId ? ' active' : ''}`;
+
+                let icon;
+                if (item.icon) {
+                    icon = document.createElement('img');
+                    icon.src = item.icon;
+                    icon.alt = '';
+                } else {
+                    icon = document.createElement('span');
+                    icon.textContent = item.emoji || '🕸️';
+                }
+                icon.className = 'app-icon';
+
+                const identity = document.createElement('span');
+                const name = document.createElement('span');
+                name.className = 'app-name';
+                name.textContent = item.name;
+                const id = document.createElement('span');
+                id.className = 'app-id';
+                id.textContent = item.id;
+                identity.append(name, id);
+
+                const status = document.createElement('span');
+                status.className = `status-dot${item.running ? ' running' : ''}`;
+
+                card.append(icon, identity, status);
+                card.addEventListener('click', () => selectApp(item.id));
+                list.appendChild(card);
+            });
+        }
+
+        async function loadApps() {
+            apps = unwrap(await api.listApps()) || [];
+            renderList();
+            if (selectedId && !isNew) {
+                const current = apps.find((item) => item.id === selectedId);
+                if (current) {
+                    $('editorName').textContent = current.name;
+                    $('editorMeta').textContent = `${current.id} · ${current.running ? '运行中' : '未运行'}`;
+                }
+            }
+        }
+
+        async function selectApp(appId) {
+            try {
+                selectedId = appId;
+                originalId = appId;
+                isNew = false;
+                renderList();
+                const sources = unwrap(await api.getApp(appId));
+                setForm(sources.manifest, sources.css, sources.js);
+            } catch (error) {
+                showToast(error.message, true);
+            }
+        }
+
+        $('newApp').addEventListener('click', () => {
+            selectedId = null;
+            originalId = null;
+            isNew = true;
+            renderList();
+            setForm(emptyManifest());
+            $('appId').focus();
+        });
+
+        $('saveApp').addEventListener('click', async () => {
+            try {
+                if (!$('appForm').reportValidity()) return;
+                const manifest = collectForm();
+                const payload = { originalId, manifest, css: $('injectCss').value, js: $('injectJs').value };
+                const saved = unwrap(await (isNew ? api.createApp(payload) : api.saveApp(payload)));
+                selectedId = saved.id;
+                originalId = saved.id;
+                isNew = false;
+                showToast('LoomAPP 已保存。');
+                await loadApps();
+                await selectApp(saved.id);
+            } catch (error) {
+                showToast(error.message, true);
+            }
+        });
+
+        $('launchApp').addEventListener('click', async () => {
+            try {
+                unwrap(await api.openApp(originalId));
+                showToast('LoomAPP 已启动。');
+                await loadApps();
+            } catch (error) { showToast(error.message, true); }
+        });
+
+        $('deleteApp').addEventListener('click', async () => {
+            if (!originalId || !confirm(`确定删除 LoomAPP “${originalId}”吗？其配置与注入脚本将被删除。`)) return;
+            try {
+                unwrap(await api.deleteApp(originalId));
+                selectedId = originalId = null;
+                $('appForm').classList.remove('visible');
+                $('placeholder').style.display = '';
+                $('saveApp').disabled = $('launchApp').disabled = $('deleteApp').disabled = $('clearSession').disabled = $('openFolder').disabled = true;
+                $('editorName').textContent = '选择或创建 LoomAPP';
+                $('editorMeta').textContent = '远程网页持久化应用容器';
+                showToast('LoomAPP 已删除。');
+                await loadApps();
+            } catch (error) { showToast(error.message, true); }
+        });
+
+        $('clearSession').addEventListener('click', async () => {
+            if (!originalId || !confirm('清除独立会话将退出此应用中的登录账号，并清除 Cookie、缓存与站点存储。继续吗？')) return;
+            try {
+                unwrap(await api.clearSession(originalId));
+                showToast('独立会话已清除。');
+                await loadApps();
+            } catch (error) { showToast(error.message, true); }
+        });
+
+        $('openFolder').addEventListener('click', async () => {
+            try { unwrap(await api.openAppFolder(originalId)); }
+            catch (error) { showToast(error.message, true); }
+        });
+
+        $('refreshApps').addEventListener('click', async () => {
+            try {
+                apps = unwrap(await api.reloadRegistry()) || [];
+                renderList();
+                showToast('注册表已刷新。');
+            } catch (error) { showToast(error.message, true); }
+        });
+
+        $('importApp').addEventListener('click', async () => {
+            try {
+                const result = unwrap(await api.importApp());
+                if (result?.canceled) return;
+                showToast('LoomAPP 已导入。');
+                await loadApps();
+                if (result?.app?.id) await selectApp(result.app.id);
+            } catch (error) { showToast(error.message, true); }
+        });
+
+        $('exportApp').addEventListener('click', async () => {
+            if (!originalId) return showToast('请先选择要导出的 LoomAPP。', true);
+            try {
+                const result = unwrap(await api.exportApp(originalId));
+                if (!result?.canceled) showToast(`已导出到 ${result.filePath}`);
+            } catch (error) { showToast(error.message, true); }
+        });
+
+        $('search').addEventListener('input', renderList);
+        $('minimize').addEventListener('click', () => api.minimizeWindow());
+        $('maximize').addEventListener('click', () => api.maximizeWindow());
+        $('close').addEventListener('click', () => api.closeWindow());
+
+        api.onRegistryChanged((nextApps) => {
+            apps = Array.isArray(nextApps) ? nextApps : apps;
+            renderList();
+        });
+
+        initializeTheme();
+        loadApps().catch((error) => showToast(error.message, true));
+    </script>
+</body>
+</html>

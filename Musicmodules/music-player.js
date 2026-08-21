@@ -36,7 +36,7 @@ function setupPlayer(app) {
             app.updateBlurredBackground(albumArtUrl);
         } else {
             app.albumArt.style.backgroundImage = defaultArtUrl;
-            app.updateBlurredBackground(defaultArtUrl);
+            app.updateBlurredBackground('none');
         }
 
         app.renderPlaylist(app.currentFilteredTracks);
@@ -88,6 +88,7 @@ function setupPlayer(app) {
             app.lastCommandTime = Date.now();
             app.expectedPlayingState = true;
             app.isPlaying = true;
+            document.body.classList.add('music-playing');
             app.playPauseBtn.classList.add('is-playing');
             app.phantomAudio.loop = true;
             app.phantomAudio.play().catch(e => console.error("Phantom audio play failed:", e));
@@ -105,6 +106,7 @@ function setupPlayer(app) {
             app.lastCommandTime = Date.now();
             app.expectedPlayingState = false;
             app.isPlaying = false;
+            document.body.classList.remove('music-playing');
             app.playPauseBtn.classList.remove('is-playing');
             app.phantomAudio.pause();
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -265,7 +267,7 @@ function setupPlayer(app) {
                 app.updateBlurredBackground(albumArtUrl);
             } else {
                 app.albumArt.style.backgroundImage = defaultArtUrl;
-                app.updateBlurredBackground(defaultArtUrl);
+                app.updateBlurredBackground('none');
             }
             
             app.renderPlaylist(app.currentFilteredTracks);
@@ -312,7 +314,7 @@ function setupPlayer(app) {
                         app.updateBlurredBackground(albumArtUrl);
                     } else {
                         app.albumArt.style.backgroundImage = defaultArtUrl;
-                        app.updateBlurredBackground(defaultArtUrl);
+                        app.updateBlurredBackground('none');
                     }
                     
                     app.renderPlaylist(app.currentFilteredTracks);

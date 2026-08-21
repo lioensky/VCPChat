@@ -16,6 +16,15 @@ function setupEffects(app) {
         }
     };
 
+    app.updateEqSectionState = () => {
+        const isExpanded = app.eqSwitch.checked;
+        const content = app.eqSection.querySelector('.block-content');
+
+        app.eqSection.classList.toggle('eq-collapsed', !isExpanded);
+        app.eqSwitch.setAttribute('aria-expanded', String(isExpanded));
+        if (content) content.setAttribute('aria-hidden', String(!isExpanded));
+    };
+
     app.applyEqPreset = (presetName) => {
         const preset = app.eqPresets[presetName];
         if (!preset) return;

@@ -674,8 +674,7 @@ setupThemeWatcher();
 
 // --- IPC 事件监听 ---
 if (ipcMain) {
-    ipcMain.on('shell-gui-ready', (event) => {
-        shellGuiReady = true;
+    ipcMain.on('shell-gui-ready', async (event) => {
         sendThemeUpdate(event.sender, true);
         flushShellDataBacklog(event.sender);
         
@@ -683,7 +682,7 @@ if (ipcMain) {
         if (!ptyProcess) {
             console.log('[PTYShellExecutor] GUI ready but no PTY session. Starting default session...');
             try {
-                createNewShellSession();
+                await createNewShellSession();
             } catch (e) {
                 console.error('[PTYShellExecutor] Failed to start shell session on GUI ready:', e);
             }
@@ -971,6 +970,8 @@ let activeSessionMode = null; // 'pty' | 'pipe' | null
 let executionQueue = Promise.resolve();
 let executionQueueLength = 0;
 const MAX_EXECUTION_QUEUE_LENGTH = 50;
+let sessionGeneration = 0;
+let sessionCreationPromise = null;
 
 // --- 配置加载 ---
 const defaultConfig = {
@@ -1086,7 +1087,7 @@ function createNewPtySession(preferredShell) {
 
     console.log(`[PTYShellExecutor] Starting shell: ${shell} with args: ${args.join(' ')}`);
 
-    ptyProcess = pty.spawn(shell, args, {
+    const session = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cwd: process.env.HOME || '/home',
         env: withPagerDisabledEnv({
@@ -1096,22 +1097,28 @@ function createNewPtySession(preferredShell) {
             LC_ALL: 'en_US.UTF-8'
         })
     });
-    childProcesses.add(ptyProcess);
+    ptyProcess = session;
+    const currentGeneration = ++sessionGeneration;
+    childProcesses.add(session);
     activeSessionMode = 'pty';
 
     // 数据监听 - 转发到 GUI
-    ptyProcess.onData((data) => {
+    session.onData((data) => {
         if (isExecutingCommand) return;
         sendShellData(data);
     });
 
-    ptyProcess.onExit(() => {
-        childProcesses.delete(ptyProcess);
-        ptyProcess = null;
-        isExecutingCommand = false;
-        activeSessionMode = null;
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('pty-status', { connected: false });
+    session.onExit(() => {
+        childProcesses.delete(session);
+        if (ptyProcess === session && sessionGeneration === currentGeneration) {
+            ptyProcess = null;
+            isExecutingCommand = false;
+            activeSessionMode = null;
+            if (guiWindow && !guiWindow.isDestroyed()) {
+                guiWindow.webContents.send('pty-status', { connected: false });
+            }
+        } else {
+            console.log('[PTYShellExecutor] Ignoring stale PTY exit for replaced session.');
         }
     });
 
@@ -1200,6 +1207,7 @@ function createNewPipeSession(preferredShell) {
     });
 
     ptyProcess = session;
+    const currentGeneration = ++sessionGeneration;
     childProcesses.add(session);
     activeSessionMode = 'pipe';
 
@@ -1211,13 +1219,15 @@ function createNewPipeSession(preferredShell) {
 
     session.onExit(() => {
         childProcesses.delete(session);
-        if (ptyProcess === session) {
+        if (ptyProcess === session && sessionGeneration === currentGeneration) {
             ptyProcess = null;
-        }
-        activeSessionMode = null;
-        isExecutingCommand = false;
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('pty-status', { connected: false });
+            activeSessionMode = null;
+            isExecutingCommand = false;
+            if (guiWindow && !guiWindow.isDestroyed()) {
+                guiWindow.webContents.send('pty-status', { connected: false });
+            }
+        } else {
+            console.log('[PTYShellExecutor] Ignoring stale pipe exit for replaced session.');
         }
     });
 
@@ -1225,6 +1235,22 @@ function createNewPipeSession(preferredShell) {
 }
 
 function createNewShellSession(preferredShell) {
+    if (sessionCreationPromise) {
+        return sessionCreationPromise;
+    }
+
+    sessionCreationPromise = Promise.resolve().then(() => createNewShellSessionImmediate(preferredShell));
+
+    sessionCreationPromise.then(() => {
+        sessionCreationPromise = null;
+    }, () => {
+        sessionCreationPromise = null;
+    });
+
+    return sessionCreationPromise;
+}
+
+function createNewShellSessionImmediate(preferredShell) {
     const mode = getEffectivePtyMode();
     if (mode === 'pipe') {
         return { shellName: createNewPipeSession(preferredShell), mode: 'pipe' };
@@ -1536,6 +1562,12 @@ async function handleSyncExecute(args) {
         // 确保 GUI 窗口存在
         ensureGuiWindow();
 
+        // 创建或复用会话
+        if (newSession || !ptyProcess) {
+            const created = await createNewShellSession(preferredShell);
+            await new Promise(resolve => setTimeout(resolve, 800)); // 等待 shell 初始化
+            console.log(`[PTYShellExecutor] Session started with ${created.shellName} (mode=${created.mode})`);
+        }
         // 执行命令
         const outputs = [];
         isExecutingCommand = true;

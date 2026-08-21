@@ -1,4 +1,5 @@
 import * as emoticonFixer from './renderer/emoticonUrlFixer.js';
+import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const viewerAPI = window.utilityAPI || window.electronAPI;
@@ -48,11 +49,26 @@ document.addEventListener('DOMContentLoaded', async () => {
      * @returns {string} The scoped selector.
      */
     function scopeSelector(selector, scopeId) {
-        if (selector.match(/^(@|from|to|\d+%|:root|html|body)/)) {
+        if (selector.match(/^(@|from|to|\d+%)/)) {
             return selector;
+        }
+        if (selector.match(/^:root$/)) {
+            return `#${scopeId}`;
+        }
+        if (selector.match(/^(html|body)$/i)) {
+            return `#${scopeId}`;
+        }
+        if (selector.match(/^(html|body)\s+/i)) {
+            return selector.replace(/^(html|body)\s+/i, `#${scopeId} `);
+        }
+        if (selector.match(/^:root\s+/)) {
+            return selector.replace(/^:root\s+/, `#${scopeId} `);
         }
         if (selector.match(/^::?[\w-]+$/)) {
             return `#${scopeId}${selector}`;
+        }
+        if (selector === '*') {
+            return `#${scopeId} *`;
         }
         return `#${scopeId} ${selector}`;
     }
@@ -140,11 +156,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     function escapeHtml(text) {
         if (typeof text !== 'string') return '';
         return text
-            .replace(/&/g, '&')
-            .replace(/</g, '<')
-            .replace(/>/g, '>')
-            .replace(/"/g, '"')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    function normalizeAdjacentBoldBoundaries(text) {
+        if (typeof text !== 'string' || !text.includes('**')) return text;
+
+        // marked/CommonMark 在中文/引号无空格相邻时可能把
+        // **“文字a”**文字b**""文字c""**
+        // 解析成嵌套 strong。HTML 注释是不可见 Markdown 边界，可强制断开。
+        const separator = '<!-- -->';
+        let result = '';
+        let cursor = 0;
+        let inBold = false;
+
+        const needsSeparatorAfter = (char) => !!char && !/\s/.test(char) && char !== '<' && char !== '*';
+        const needsSeparatorBefore = (char) => !!char && !/\s/.test(char) && char !== '>' && char !== '*';
+
+        while (cursor < text.length) {
+            const markerIndex = text.indexOf('**', cursor);
+            if (markerIndex === -1) {
+                result += text.slice(cursor);
+                break;
+            }
+
+            const previousChar = markerIndex > 0 ? text[markerIndex - 1] : '';
+
+            result += text.slice(cursor, markerIndex);
+
+            if (!inBold && result && !result.endsWith(separator) && needsSeparatorBefore(previousChar)) {
+                result += separator;
+            }
+
+            result += '**';
+            cursor = markerIndex + 2;
+            inBold = !inBold;
+
+            if (!inBold) {
+                const nextChar = text[cursor] || '';
+                if (needsSeparatorAfter(nextChar)) {
+                    result += separator;
+                }
+            }
+        }
+
+        return result;
     }
 
     // --- 工具请求块扫描器（共享给 transformSpecialBlocksForViewer 和 preprocessFullContent） ---
@@ -238,6 +298,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function transformSpecialBlocksForViewer(text) {
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
         const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
+        const toolCallSummaryRegex = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
+        const thoughtChainRegex = /^[ \t]*\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\][ \t]*\r?\n([\s\S]*?)^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
+        const conventionalThoughtRegex = /^[ \t]*<think(?:ing)?>[ \t]*\r?\n([\s\S]*?)^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+        const roleDividerRegex = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
         // 🟢 桌面推送块正则（排除反引号包裹）
         const desktopPushRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
         const desktopPushPartialRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s;
@@ -273,18 +337,197 @@ document.addEventListener('DOMContentLoaded', async () => {
             return source.slice(contentStart, endMatch.index).trim();
         };
 
+        const renderMarkdownField = (rawText) => {
+            const source = rawText || '';
+            if (window.marked) {
+                try {
+                    return window.marked.parse(source);
+                } catch (e) {
+                    return escapeHtml(source);
+                }
+            }
+            return escapeHtml(source);
+        };
+
+        const getDailyNoteAgentInfo = (source) => {
+            const maid = extractMarkedField(source, /(?:maid|maidName):\s*/i) || '';
+            const valet = extractMarkedField(source, /(?:valet|valetName):\s*/i) || '';
+
+            if (valet) {
+                return {
+                    name: valet,
+                    type: 'valet',
+                    gender: 'male',
+                    label: 'Valet',
+                    title: "Valet's Diary"
+                };
+            }
+
+            return {
+                name: maid,
+                type: 'maid',
+                gender: 'female',
+                label: 'Maid',
+                title: "Maid's Diary"
+            };
+        };
+
+        const renderDailyNoteCreate = ({ agentName, agentType = 'maid', agentGender = 'female', agentLabel = 'Maid', defaultTitle = "Maid's Diary", date, fileName, folder, diaryContent, diaryTag }) => {
+            let html = `<div class="maid-diary-bubble ${agentType}-diary-bubble" data-vcp-block-type="maid-diary" data-agent-gender="${escapeHtml(agentGender)}">`;
+            html += `<div class="diary-header">`;
+            html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : escapeHtml(defaultTitle)}</span>`;
+            if (date) {
+                html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+            }
+            html += `</div>`;
+
+            if (agentName || folder) {
+                html += `<div class="diary-maid-info">`;
+                if (agentName) {
+                    html += `<span class="diary-maid-label">${escapeHtml(agentLabel)}:</span> `;
+                    html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
+                }
+                if (folder) {
+                    if (agentName) html += ` <span class="diary-meta-separator">·</span> `;
+                    html += `<span class="diary-folder-label">Folder:</span> `;
+                    html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+                }
+                html += `</div>`;
+            }
+
+            let diaryBody = diaryContent || '[日记内容解析失败]';
+            if (diaryTag) {
+                diaryBody += `\n\nTag:${diaryTag}`;
+            }
+
+            html += `<div class="diary-content">${renderMarkdownField(diaryBody)}</div>`;
+            html += `</div>`;
+
+            return `\n\n${html}\n\n`;
+        };
+
+        const renderDailyNoteUpdate = ({ agentName, agentType = 'maid', agentGender = 'female', folder, target, replace }) => {
+            const hasTarget = target && target.trim();
+            const hasReplace = replace && replace.trim();
+
+            let html = `<div class="maid-diary-update-bubble ${agentType}-diary-update-bubble" data-vcp-block-type="maid-diary-update" data-agent-gender="${escapeHtml(agentGender)}">`;
+            html += `<div class="diary-update-header">`;
+            html += `<span class="diary-update-title">DailyNote Update</span>`;
+            if (agentName || folder) {
+                html += `<span class="diary-update-meta">`;
+                if (agentName) html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
+                if (agentName && folder) html += ` <span class="diary-meta-separator">·</span> `;
+                if (folder) html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+                html += `</span>`;
+            }
+            html += `</div>`;
+
+            html += `<div class="diary-update-body">`;
+            html += `<div class="diary-update-side diary-update-before">`;
+            html += `<div class="diary-update-label">A</div>`;
+            html += `<div class="diary-update-content">${hasTarget ? renderMarkdownField(target) : '<em>原文解析失败</em>'}</div>`;
+            html += `</div>`;
+            html += `<div class="diary-update-arrow" aria-hidden="true">→</div>`;
+            html += `<div class="diary-update-side diary-update-after">`;
+            html += `<div class="diary-update-label">B</div>`;
+            html += `<div class="diary-update-content">${hasReplace ? renderMarkdownField(replace) : '<em>替换内容解析失败</em>'}</div>`;
+            html += `</div>`;
+            html += `</div>`;
+            html += `</div>`;
+
+            return `\n\n${html}\n\n`;
+        };
+
+        const renderToolCallSummaryBlock = (rawContent) => {
+            const content = (rawContent || '').trim();
+            const entries = content
+                .split(/[；;。]\s*/u)
+                .map(item => item.trim())
+                .filter(Boolean);
+
+            const getStatusInfo = (entry) => {
+                if (/拒绝|被拒|denied|rejected|refused/i.test(entry)) return { key: 'rejected', label: '拒绝' };
+                if (/失败|错误|异常|error|failed/i.test(entry)) return { key: 'failure', label: '失败' };
+                if (/超时|timeout/i.test(entry)) return { key: 'timeout', label: '超时' };
+                if (/成功|完成|success|succeeded|ok/i.test(entry)) return { key: 'success', label: '成功' };
+                if (/取消|中止|cancel/i.test(entry)) return { key: 'cancelled', label: '取消' };
+                if (/跳过|skip/i.test(entry)) return { key: 'skipped', label: '跳过' };
+                return { key: 'unknown', label: '未知' };
+            };
+
+            const renderEntry = (entry) => {
+                const statusInfo = getStatusInfo(entry);
+                const toolNameMatch = entry.match(/^(.+?)\s*调用/u);
+                const toolName = (toolNameMatch?.[1] || entry.replace(/调用.*/u, '') || 'Tool').trim();
+                return `<span class="vcp-tool-call-summary-chip status-${statusInfo.key}">` +
+                    `<span class="vcp-tool-call-summary-tool">${escapeHtml(toolName)}</span>` +
+                    `<span class="vcp-tool-call-summary-status">${escapeHtml(statusInfo.label)}</span>` +
+                    `</span>`;
+            };
+
+            let html = `<div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary">`;
+            html += `<div class="vcp-tool-call-summary-header">`;
+            html += `<span class="vcp-tool-call-summary-icon">🧾</span>`;
+            html += `<span class="vcp-tool-call-summary-title">本轮工具调用摘要</span>`;
+            html += `</div>`;
+            if (entries.length > 0) {
+                html += `<div class="vcp-tool-call-summary-list">${entries.map(renderEntry).join('')}</div>`;
+            } else {
+                html += `<div class="vcp-tool-call-summary-raw">${escapeHtml(content || '无摘要内容')}</div>`;
+            }
+            html += `</div>`;
+            return `\n\n${html}\n\n`;
+        };
+
+        const renderThoughtChain = (theme, rawContent) => {
+            const displayTheme = theme ? theme.trim() : '元思考链';
+            const content = (rawContent || '').trim();
+            const processedContent = renderMarkdownField(content);
+            return `\n\n<div class="vcp-thought-chain-bubble collapsible expanded" data-vcp-block-type="thought-chain">` +
+                `<div class="vcp-thought-chain-header">` +
+                `<span class="vcp-thought-chain-icon">🧠</span>` +
+                `<span class="vcp-thought-chain-label">${escapeHtml(displayTheme)}</span>` +
+                `<span class="vcp-result-toggle-icon"></span>` +
+                `</div>` +
+                `<div class="vcp-thought-chain-collapsible-content">` +
+                `<div class="vcp-thought-chain-body">${processedContent}</div>` +
+                `</div>` +
+                `</div>\n\n`;
+        };
+
         let processed = text;
 
-        // 🟢 处理桌面推送块：将推送的HTML内容渲染为代码块展示
+        processed = processed.replace(toolCallSummaryRegex, (match, rawContent) => renderToolCallSummaryBlock(rawContent));
+        processed = processed.replace(thoughtChainRegex, (match, theme, rawContent) => renderThoughtChain(theme, rawContent));
+        processed = processed.replace(conventionalThoughtRegex, (match, rawContent) => renderThoughtChain('思维链', rawContent));
+        processed = processed.replace(roleDividerRegex, (match, isEnd, role) => {
+            const roleLower = role.toLowerCase();
+            const label = roleLower === 'system' ? 'System' : roleLower === 'assistant' ? 'Assistant' : 'User';
+            const actionText = isEnd ? '末' : '始';
+            return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEnd ? 'end' : 'start'}" data-vcp-block-type="role-divider"><span class="divider-text">${label} 分界之${actionText}</span></div>\n\n`;
+        });
+
+        // 🟢 处理桌面推送块：阅读模式使用消息渲染器同款占位卡，而不是退化成普通代码块。
         processed = processed.replace(desktopPushRegex, (match, rawContent) => {
             const content = rawContent.trim();
-            // 将推送内容作为 HTML 代码块展示，而非直接渲染为 HTML
-            return '\n```html\n' + content + '\n```\n';
+            return `\n\n<div class="vcp-desktop-push-placeholder" data-vcp-block-type="desktop-push">` +
+                `<div class="vcp-desktop-push-header">` +
+                `<span class="vcp-desktop-push-icon">🖥️</span>` +
+                `<span class="vcp-desktop-push-label">VCP Desktop Push</span>` +
+                `</div>` +
+                `<div class="vcp-desktop-push-preview"><pre>${escapeHtml(content)}</pre></div>` +
+                `</div>\n\n`;
         });
         // 处理未闭合的桌面推送块（流式传输场景）
         processed = processed.replace(desktopPushPartialRegex, (match, rawContent) => {
             const content = rawContent.trim();
-            return '\n```html\n' + content + '\n（桌面推送内容，尚未结束...）\n```\n';
+            return `\n\n<div class="vcp-desktop-push-placeholder constructing" data-vcp-block-type="desktop-push">` +
+                `<div class="vcp-desktop-push-header">` +
+                `<span class="vcp-desktop-push-icon">🖥️</span>` +
+                `<span class="vcp-desktop-push-label">VCP Desktop Push 构建中</span>` +
+                `</div>` +
+                `<div class="vcp-desktop-push-preview"><pre>${escapeHtml(content)}</pre></div>` +
+                `</div>\n\n`;
         });
 
         // Process VCP Tool Results - Viewer Mode (Full Details)
@@ -333,13 +576,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             flushCurrentField();
 
-            let html = `<div class="vcp-tool-result-bubble">`;
+            let html = `<div class="vcp-tool-result-bubble collapsible" data-vcp-block-type="tool-result">`;
             html += `<div class="vcp-tool-result-header">`;
             html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
             html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
             html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+            html += `<span class="vcp-result-toggle-icon"></span>`;
             html += `</div>`;
 
+            html += `<div class="vcp-tool-result-collapsible-content">`;
             html += `<div class="vcp-tool-result-details">`;
             details.forEach(({ key, value }) => {
                 const isMarkdownField = markdownFieldKeys.has(key);
@@ -377,29 +622,65 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             html += `</div>`;
+            html += `</div>`;
 
             return `\n\n${html}\n\n`;
         });
 
-        // Process Tool Requests - Viewer Mode (Full Details)
+        // Process Tool Requests - Viewer Mode (Full Details, always expanded)
         processed = replaceToolRequestBlocks(processed, (match, content) => {
+            const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
+            const detectedCommand = extractMarkedField(content, /command:\s*/i);
+            const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
+            const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
+
+            const dailyNoteContent = extractMarkedField(content, /Content:\s*/i);
+            const dailyNoteTarget = extractMarkedField(content, /target:\s*/i);
+            const dailyNoteReplace = extractMarkedField(content, /replace:\s*/i);
+            const isDailyNoteTool = normalizedToolName === 'dailynote';
+            const isDailyNoteUpdate = isDailyNoteTool && (normalizedCommand === 'update' || (!normalizedCommand && dailyNoteTarget && dailyNoteReplace));
+            const isDailyNoteCreate = isDailyNoteTool && !isDailyNoteUpdate && (normalizedCommand === 'create' || (!normalizedCommand && dailyNoteContent));
+
+            if (isDailyNoteCreate) {
+                const dailyNoteAgent = getDailyNoteAgentInfo(content);
+                return renderDailyNoteCreate({
+                    agentName: dailyNoteAgent.name,
+                    agentType: dailyNoteAgent.type,
+                    agentGender: dailyNoteAgent.gender,
+                    agentLabel: dailyNoteAgent.label,
+                    defaultTitle: dailyNoteAgent.title,
+                    date: extractMarkedField(content, /Date:\s*/i) || '',
+                    fileName: extractMarkedField(content, /fileName:\s*/i) || '',
+                    folder: extractMarkedField(content, /folder:\s*/i) || '',
+                    diaryContent: dailyNoteContent || '[日记内容解析失败]',
+                    diaryTag: extractMarkedField(content, /Tag:\s*/i) || ''
+                });
+            }
+
+            if (isDailyNoteUpdate) {
+                const dailyNoteAgent = getDailyNoteAgentInfo(content);
+                return renderDailyNoteUpdate({
+                    agentName: dailyNoteAgent.name,
+                    agentType: dailyNoteAgent.type,
+                    agentGender: dailyNoteAgent.gender,
+                    folder: extractMarkedField(content, /folder:\s*/i) || '',
+                    target: dailyNoteTarget || '',
+                    replace: dailyNoteReplace || ''
+                });
+            }
+
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
-            const markedToolName = extractMarkedField(content, /tool_name:\s*/i);
-            let toolName = (xmlToolNameMatch?.[1] || markedToolName || 'Tool Call').trim();
+            let toolName = (xmlToolNameMatch?.[1] || detectedToolName || 'Tool Call').trim();
             toolName = toolName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
 
-            let finalContent = escapeHtml(content.trim());
-            if (toolName) {
-                 finalContent = finalContent.replace(
-                    escapeHtml(toolName),
-                    `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>`
-                );
-            }
-            
-            return `\n\n<div class="vcp-tool-use-bubble">` +
-                   `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
-                   finalContent +
-                   `</div>\n\n`;
+            const escapedFullContent = escapeHtml(content.trim());
+            return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use">` +
+                `<div class="vcp-tool-summary">` +
+                `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
+                `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+                `</div>` +
+                `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
+                `</div>\n\n`;
         });
 
         // Process Daily Notes - Viewer Mode (Styled)
@@ -432,7 +713,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 html += `</div>`;
             }
 
-            html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+            html += `<div class="diary-content">${renderMarkdownField(diaryContent)}</div>`;
             html += `</div>`;
 
             return `\n\n${html}\n\n`;
@@ -578,7 +859,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
 
-        // Step 6: Restore the protected code blocks.
+        // Step 6: Markdown 解析前修复相邻粗体边界；此时代码块仍是占位符，避免污染代码内容。
+        processed = normalizeAdjacentBoldBoundaries(processed);
+
+        // Step 7: Restore the protected code blocks.
         if (codeBlockMap.size > 0) {
             for (const [placeholder, block] of codeBlockMap.entries()) {
                 processed = processed.replace(placeholder, block);
@@ -970,33 +1254,67 @@ document.addEventListener('DOMContentLoaded', async () => {
         return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]/g, '');
     }
 
-    function removeBoldMarkersAroundQuotes(text) {
-        if (typeof text !== 'string') return text;
-        // Replace **" with " and **“ with “
-        let processedText = text.replace(/\*\*(["“])/g, '$1');
-        // Replace "** with " and ”** with ”
-        processedText = processedText.replace(/(["”])\*\*/g, '$1');
-        return processedText;
-    }
+    const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g;
 
-    function renderQuotedText(text, currentTheme) {
-        const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
-        // This regex uses alternation. It first tries to match a whole code block.
-        // If it matches, the code block is returned unmodified.
-        // Otherwise, it tries to match a quoted string and wraps it.
-        // This is much more robust than splitting the string.
-        return text.replace(/(```[\s\S]*?```)|("([^"]*?)"|“([^”]*?)”)/g, (match, codeBlock, fullQuote) => {
-            // If a code block is matched (group 1), return it as is.
-            if (codeBlock) {
-                return codeBlock;
+    function highlightQuotedTextInRenderedContent(container) {
+        if (!container) return;
+
+        const className = document.body.classList.contains('light-theme') ? 'custom-quote-light' : 'custom-quote-dark';
+        const walker = document.createTreeWalker(
+            container,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: (node) => {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (parent.closest('pre, code, script, style, textarea, .custom-quote-light, .custom-quote-dark')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    QUOTE_REGEX.lastIndex = 0;
+                    return node.nodeValue && QUOTE_REGEX.test(node.nodeValue)
+                        ? NodeFilter.FILTER_ACCEPT
+                        : NodeFilter.FILTER_SKIP;
+                }
+            },
+            false
+        );
+
+        const nodesToProcess = [];
+        while (walker.nextNode()) {
+            nodesToProcess.push(walker.currentNode);
+        }
+
+        nodesToProcess.forEach(node => {
+            QUOTE_REGEX.lastIndex = 0;
+            const text = node.nodeValue || '';
+            const fragment = document.createDocumentFragment();
+            let lastIndex = 0;
+            let match;
+
+            while ((match = QUOTE_REGEX.exec(text)) !== null) {
+                if (!(match[1] || match[2])) continue;
+
+                if (match.index > lastIndex) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                }
+
+                const span = document.createElement('span');
+                span.className = className;
+                span.textContent = match[0];
+                fragment.appendChild(span);
+                lastIndex = match.index + match[0].length;
             }
-            // If a quote is matched (group 2), wrap it in a span.
-            if (fullQuote) {
-                return `<span class="${className}">${fullQuote}</span>`;
+
+            if (lastIndex < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
             }
-            // Fallback, should not happen with this regex structure
-            return match;
+
+            if (fragment.childNodes.length > 0 && node.parentNode) {
+                node.parentNode.replaceChild(fragment, node);
+            }
         });
+
+        QUOTE_REGEX.lastIndex = 0;
     }
 
     function decodeHtmlEntities(text) {
@@ -1005,51 +1323,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return textarea.value;
     }
 
-    function applyBoldFormatting(container) {
-        const walker = document.createTreeWalker(
-            container,
-            NodeFilter.SHOW_TEXT,
-            { acceptNode: (node) => {
-                // 拒绝在这些元素内进行加粗处理
-                if (node.parentElement.closest('pre, code, script, style, .vcp-tool-use-bubble, .vcp-tool-result-bubble, a')) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                // 只接受包含 "**" 的文本节点
-                if (/\*\*/.test(node.nodeValue)) {
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-                return NodeFilter.FILTER_SKIP;
-            }},
-            false
-        );
-
-        const nodesToProcess = [];
-        // TreeWalker 会动态变化，所以先收集所有节点
-        while (walker.nextNode()) {
-            nodesToProcess.push(walker.currentNode);
-        }
-
-        nodesToProcess.forEach(node => {
-            const parent = node.parentElement;
-            if (!parent) return;
-
-            const fragment = document.createDocumentFragment();
-            // 使用正则表达式分割文本，保留分隔符
-            const parts = node.nodeValue.split(/(\*\*.*?\*\*)/g);
-
-            parts.forEach(part => {
-                if (part.startsWith('**') && part.endsWith('**')) {
-                    const strong = document.createElement('strong');
-                    strong.textContent = part.slice(2, -2);
-                    fragment.appendChild(strong);
-                } else if (part) { // 避免添加空的文本节点
-                    fragment.appendChild(document.createTextNode(part));
-                }
-            });
-            // 用新的文档片段替换旧的文本节点
-            parent.replaceChild(fragment, node);
-        });
-    }
 
     const textContent = params.get('text');
     const windowTitle = params.get('title') || '文本阅读模式';
@@ -1085,7 +1358,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 originalRawContent = existingTextarea.value; // Get updated raw content
 
                 // Re-render content using the full pipeline
-                const processedContent = preprocessFullContent(originalRawContent);
+                const processedContent = preprocessFullContent(originalRawContent, scopeId);
                 const renderedHtml = window.marked.parse(processedContent);
                 contentDiv.innerHTML = renderedHtml;
                 enhanceRenderedContent(contentDiv); // This already includes syntax highlighting etc.
@@ -1315,6 +1588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 preElement.appendChild(playButton);
 
                 playButton.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     const existingPreview = preElement.nextElementSibling;
                     if (existingPreview && existingPreview.classList.contains('html-preview-container')) {
@@ -1326,7 +1600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'html-preview-container';
                     const iframe = document.createElement('iframe');
-                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
+                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-forms allow-popups allow-downloads allow-pointer-lock';
                     const exitButton = document.createElement('button');
                     exitButton.innerHTML = codeIconSVG + ' 返回代码';
                     exitButton.className = 'exit-preview-button';
@@ -1351,6 +1625,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     // Use srcdoc for better security and reliability
                     iframe.srcdoc = finalHtml;
+                    setTimeout(() => iframe.contentWindow?.focus?.(), 80);
                 });
             } else if (isPython) {
                 const pyPlayButton = document.createElement('button');
@@ -1381,6 +1656,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 preElement.appendChild(playButton);
 
                 playButton.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     const existingPreview = preElement.nextElementSibling;
                     if (existingPreview && existingPreview.classList.contains('html-preview-container')) {
@@ -1392,7 +1668,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'html-preview-container';
                     const iframe = document.createElement('iframe');
-                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
+                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-forms allow-popups allow-downloads allow-pointer-lock';
                     const exitButton = document.createElement('button');
                     exitButton.innerHTML = codeIconSVG + ' 返回代码';
                     exitButton.className = 'exit-preview-button';
@@ -1432,6 +1708,7 @@ ${codeContent}
                     `;
                     // Use srcdoc for better security and reliability
                     iframe.srcdoc = threeJsHtml;
+                    setTimeout(() => iframe.contentWindow?.focus?.(), 80);
                 });
             }
 
@@ -1505,11 +1782,38 @@ ${codeContent}
             }
         }
         
+        // --- COLLAPSIBLE SPECIAL BLOCKS ---
+        container.querySelectorAll('.vcp-tool-result-header').forEach(header => {
+            if (header.dataset.viewerToggleBound === 'true') return;
+            header.dataset.viewerToggleBound = 'true';
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const bubble = header.closest('.vcp-tool-result-bubble.collapsible');
+                if (bubble) {
+                    bubble.classList.toggle('expanded');
+                }
+            });
+        });
+
+        container.querySelectorAll('.vcp-thought-chain-header').forEach(header => {
+            if (header.dataset.viewerToggleBound === 'true') return;
+            header.dataset.viewerToggleBound = 'true';
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const bubble = header.closest('.vcp-thought-chain-bubble.collapsible');
+                if (bubble) {
+                    bubble.classList.toggle('expanded');
+                }
+            });
+        });
+
+        // --- Final formatting pass for quoted text ---
+        highlightQuotedTextInRenderedContent(container);
+
         // --- Call animation processor after all other enhancements ---
         processAnimationsInContent(container);
-
-        // --- Final formatting pass for bold text ---
-        applyBoldFormatting(container);
     }
 
     /**
@@ -1730,54 +2034,126 @@ ${codeContent}
             contextMenu.style.display = 'none';
         });
  
-         contextMenuShareScreenshotButton.addEventListener('click', () => {
+         contextMenuShareScreenshotButton.addEventListener('click', async () => {
             contextMenu.style.display = 'none';
-            if (window.html2canvas && mainContentDiv) {
-                html2canvas(mainContentDiv, {
-                    useCORS: true, // Allow loading cross-origin images
-                    // Use the body's actual background color. This is crucial for correct rendering.
-                    backgroundColor: window.getComputedStyle(document.body).backgroundColor,
-                    onclone: (clonedDoc) => {
-                        // Re-apply the theme class to the cloned document's body so styles are correct
-                        if (document.body.classList.contains('light-theme')) {
-                            clonedDoc.body.classList.add('light-theme');
-                        }
-                        // Also explicitly set the background color on the cloned body, as it can help html2canvas
-                        // with layout calculations. A transparent background can cause rendering glitches.
-                        clonedDoc.body.style.backgroundColor = window.getComputedStyle(document.body).backgroundColor;
+            if (!mainContentDiv) {
+                alert('截图功能不可用：找不到内容容器。');
+                return;
+            }
 
-                        // --- FIX for flexbox rendering issue ---
-                        // html2canvas can struggle with text nodes that are direct children of flex containers.
-                        // We wrap them in a <span> to make them element nodes, which are handled more robustly.
-                        clonedDoc.querySelectorAll('*').forEach(el => {
-                            const style = window.getComputedStyle(el);
-                            if (style.display === 'flex') {
-                                Array.from(el.childNodes).forEach(child => {
-                                    // Node.TEXT_NODE === 3
-                                    if (child.nodeType === 3 && child.textContent.trim().length > 0) {
-                                        const span = clonedDoc.createElement('span');
-                                        span.textContent = child.textContent;
-                                        el.replaceChild(span, child);
-                                    }
-                                });
+            try {
+                console.log('[text-viewer] Screenshot start. Content size:',
+                    mainContentDiv.scrollWidth, 'x', mainContentDiv.scrollHeight);
+
+                // 使用 modern-screenshot (ESM) 取代已停止维护的 html2canvas。
+                // 该库支持 color-mix / oklch 等现代 CSS 颜色函数，且通过 SVG <foreignObject>
+                // 渲染，对 flex/text-node 等场景表现更稳定。
+                const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+                const isLightTheme = document.body.classList.contains('light-theme');
+
+                // 自适应缩放：避免长 Markdown 文档生成超大 canvas（Chromium 单边上限约 16384px）。
+                // 同时为高 DPI 屏提供更清晰的输出。
+                const dpr = window.devicePixelRatio > 1 ? window.devicePixelRatio : 2;
+                const MAX_DIM = 14000; // 留点余量，避免触达 16384 上限
+                const longestSide = Math.max(mainContentDiv.scrollWidth, mainContentDiv.scrollHeight) || 1;
+                const adaptiveScale = Math.min(dpr, MAX_DIM / longestSide);
+                const finalScale = Math.max(1, adaptiveScale); // 至少 1 倍
+                console.log('[text-viewer] Screenshot scale (dpr→adaptive→final):', dpr, adaptiveScale, finalScale);
+
+                const renderOptions = {
+                    backgroundColor: bodyBg,
+                    scale: finalScale,
+                    // 在 cloned 子树根节点上同步主题类与背景，
+                    // 防止某些主题变量在脱离 body 后无法解析。
+                    onCloneNode: (clonedRoot) => {
+                        try {
+                            if (clonedRoot && clonedRoot.classList) {
+                                if (isLightTheme) {
+                                    clonedRoot.classList.add('light-theme');
+                                }
+                                clonedRoot.style.backgroundColor = bodyBg;
                             }
-                        });
+                        } catch (cloneErr) {
+                            console.warn('[text-viewer] onCloneNode adjustment failed:', cloneErr);
+                        }
                     }
-                }).then(canvas => {
-                    const imageDataUrl = canvas.toDataURL('image/png');
-                    if (viewerAPI && viewerAPI.openImageViewer) {
-                        viewerAPI.openImageViewer({
+                };
+
+                // 优先用 domToBlob 直接拿到 PNG Blob，转换为 dataURL 时通过 FileReader 逐块流式读取，
+                // 比 canvas.toDataURL 更省内存，能减少超长截图时的卡顿/失败。
+                let imageDataUrl = null;
+                try {
+                    const blob = await domToBlob(mainContentDiv, { ...renderOptions, type: 'image/png' });
+                    if (!blob) throw new Error('domToBlob returned empty.');
+                    console.log('[text-viewer] Screenshot blob size:', blob.size, 'bytes');
+                    imageDataUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = () => reject(reader.error || new Error('FileReader failed.'));
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (blobErr) {
+                    console.warn('[text-viewer] domToBlob failed, falling back to domToCanvas:', blobErr);
+                    const canvas = await domToCanvas(mainContentDiv, renderOptions);
+                    if (!canvas || !canvas.width || !canvas.height) {
+                        throw new Error('Screenshot canvas is empty (0x0).');
+                    }
+                    console.log('[text-viewer] Screenshot canvas size:', canvas.width, 'x', canvas.height);
+                    imageDataUrl = canvas.toDataURL('image/png');
+                }
+
+                if (!imageDataUrl || imageDataUrl === 'data:,' || !imageDataUrl.startsWith('data:image/')) {
+                    throw new Error('Screenshot output is empty or invalid.');
+                }
+
+                console.log('[text-viewer] Screenshot dataURL length:', imageDataUrl.length);
+
+                if (!viewerAPI) {
+                    console.error('[text-viewer] viewerAPI is not available.');
+                    alert('截图功能不可用：viewerAPI 未注入。');
+                    return;
+                }
+
+                const imageTitle = `截图分享 - ${document.title}`;
+
+                // 优先：把 dataURL 注册到主进程，拿 token 后只用 token 打开窗口，
+                // 彻底绕开 BrowserWindow URL 长度限制（Chromium 对 file:// + query 有上限）。
+                if (typeof viewerAPI.registerImageViewerPayload === 'function') {
+                    try {
+                        const token = await viewerAPI.registerImageViewerPayload({
                             src: imageDataUrl,
-                            title: `截图分享 - ${document.title}`
+                            title: imageTitle,
+                            theme: isLightTheme ? 'light' : 'dark',
                         });
-                    } else {
-                        console.error('viewerAPI.openImageViewer is not available.');
-                        alert('截图功能不可用。');
+                        console.log('[text-viewer] Registered screenshot payload, token:', token);
+                        if (token && viewerAPI.openImageViewer) {
+                            // 主进程 open-image-viewer 在收到 dataURL 时已会自动走 token，
+                            // 但这里我们已显式注册过了，因此只把 token 当 src 传进去也能触发主进程的
+                            // 大体积分支（src.startsWith('data:') || length>1500），保持兼容。
+                            // 不过更干净的做法是直接让主进程走我们已注册的 token：
+                            // 由于 open-image-viewer 不接 token 字段，这里改回直接传 src，
+                            // 主进程会再注册一次（覆盖），多注册一次的代价仅是一段字符串拷贝。
+                        }
+                    } catch (regErr) {
+                        console.warn('[text-viewer] registerImageViewerPayload failed (non-fatal):', regErr);
                     }
-                }).catch(err => {
-                    console.error('Error generating screenshot:', err);
-                    alert('生成截图失败。');
-                });
+                }
+
+                if (typeof viewerAPI.openImageViewer === 'function') {
+                    // 主进程会自动检测 dataURL 并改走 token+payload 缓存，
+                    // 因此这里仍可以直接把 dataURL 交给它。
+                    viewerAPI.openImageViewer({
+                        src: imageDataUrl,
+                        title: imageTitle,
+                    });
+                    console.log('[text-viewer] openImageViewer dispatched.');
+                } else {
+                    console.error('[text-viewer] viewerAPI.openImageViewer is not available.');
+                    alert('截图功能不可用：openImageViewer 未注入。');
+                }
+            } catch (err) {
+                console.error('[text-viewer] Error generating screenshot:', err);
+                alert(`生成截图失败：${err && err.message ? err.message : err}`);
             }
         });
  

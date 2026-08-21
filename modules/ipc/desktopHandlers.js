@@ -6,6 +6,7 @@
 
 const { BrowserWindow, ipcMain, app, screen, shell, dialog, nativeTheme } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs-extra');
 const desktopMetrics = require('./desktopMetrics');
 const windowService = require('../services/windowService');
@@ -32,14 +33,15 @@ let vchatTranslatorWindow = null;
 let vchatMusicWindow = null;
 let vchatThemesWindow = null;
 let vchatTaskWindow = null;
+let vchatPluginManagerWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DESKTOP_WIDGETS_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets');
-const DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
-const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
-const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
-const CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
+let DESKTOP_WIDGETS_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets');
+let DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
+let DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
+let LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
+let CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
 
 // --- 布局文件写锁/队列 ---
 let layoutOpQueue = Promise.resolve();
@@ -48,6 +50,129 @@ function removeFromOpenChildWindows(win) {
     if (!win || !openChildWindows) return;
     const idx = openChildWindows.indexOf(win);
     if (idx > -1) openChildWindows.splice(idx, 1);
+}
+
+function isSafeWidgetId(value) {
+    return typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value);
+}
+
+function isSafePluginFolderName(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value === path.basename(value)
+        && !value.includes('..')
+        && !/[\\/]/.test(value);
+}
+
+function getPluginManagerPluginDir(folderName) {
+    if (!isSafePluginFolderName(folderName)) {
+        throw new Error('不安全或缺失的插件目录名');
+    }
+    const pluginDir = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', folderName);
+    const normalizedRoot = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin');
+    const relative = path.relative(normalizedRoot, pluginDir);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        throw new Error('插件目录越界');
+    }
+    return pluginDir;
+}
+
+function findExistingManifestPath(pluginDir) {
+    const enabledPath = path.join(pluginDir, 'plugin-manifest.json');
+    const disabledPath = path.join(pluginDir, 'plugin-manifest.json.block');
+    if (fs.pathExistsSync(enabledPath)) return { path: enabledPath, enabled: true, fileName: 'plugin-manifest.json' };
+    if (fs.pathExistsSync(disabledPath)) return { path: disabledPath, enabled: false, fileName: 'plugin-manifest.json.block' };
+    return { path: enabledPath, enabled: true, fileName: 'plugin-manifest.json' };
+}
+
+function resolveFrontendPluginResource(pluginDir, folderName, fileName) {
+    if (typeof fileName !== 'string' || fileName !== path.basename(fileName) || !fileName) return null;
+    const fullPath = path.join(pluginDir, fileName);
+    const relative = path.relative(pluginDir, fullPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.pathExistsSync(fullPath)) return null;
+    return `VCPDistributedServer/Plugin/${folderName}/${fileName}`;
+}
+
+async function listEnabledFrontendPlugins() {
+    const pluginsRoot = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin');
+    await fs.ensureDir(pluginsRoot);
+    const entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
+    const plugins = [];
+
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = path.join(pluginsRoot, entry.name, 'plugin-manifest.json');
+        if (!await fs.pathExists(manifestPath)) continue;
+        try {
+            const manifest = await fs.readJson(manifestPath);
+            if (!manifest.frontend || typeof manifest.frontend !== 'object') continue;
+            const pluginDir = path.join(pluginsRoot, entry.name);
+            const style = resolveFrontendPluginResource(pluginDir, entry.name, manifest.frontend.style);
+            const script = resolveFrontendPluginResource(pluginDir, entry.name, manifest.frontend.script);
+            if (!script) continue;
+            plugins.push({ id: manifest.name || entry.name, style, script });
+        } catch (error) {
+            console.warn(`[PluginManager] 跳过无效前端插件 ${entry.name}:`, error.message);
+        }
+    }
+
+    return plugins;
+}
+
+async function readVcpPluginEntry(entry, pluginsRoot) {
+    const pluginDir = path.join(pluginsRoot, entry.name);
+    const enabledManifestPath = path.join(pluginDir, 'plugin-manifest.json');
+    const disabledManifestPath = path.join(pluginDir, 'plugin-manifest.json.block');
+    const envPath = path.join(pluginDir, 'config.env');
+
+    const enabledExists = await fs.pathExists(enabledManifestPath);
+    const disabledExists = await fs.pathExists(disabledManifestPath);
+    if (!enabledExists && !disabledExists) return null;
+
+    const manifestPath = enabledExists ? enabledManifestPath : disabledManifestPath;
+    const enabled = enabledExists;
+    const envExists = await fs.pathExists(envPath);
+
+    let manifest = {};
+    let parseError = null;
+    let rawManifest = '';
+
+    try {
+        rawManifest = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(rawManifest);
+    } catch (error) {
+        parseError = error.message;
+        manifest = {};
+    }
+
+    let configEnvContent = '';
+    if (envExists) {
+        try {
+            configEnvContent = await fs.readFile(envPath, 'utf-8');
+        } catch (error) {
+            configEnvContent = '';
+        }
+    }
+
+    return {
+        folderName: entry.name,
+        relativePath: path.relative(PROJECT_ROOT, pluginDir).replace(/\\/g, '/'),
+        enabled,
+        manifestFileName: path.basename(manifestPath),
+        hasConfigEnv: envExists,
+        configEnvContent,
+        manifest,
+        rawManifest,
+        parseError,
+        pluginType: manifest.pluginType || 'unknown'
+    };
+}
+
+function isSafeWidgetFileName(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value === path.basename(value)
+        && !value.includes('..');
 }
 
 function cleanupStandaloneAppProcesses() {
@@ -361,6 +486,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
         if (win === vchatThemesWindow) vchatThemesWindow = null;
         if (win === vchatTaskWindow) vchatTaskWindow = null;
+        if (win === vchatPluginManagerWindow) vchatPluginManagerWindow = null;
     });
 
     console.log(`[DesktopHandlers] Created child window: ${options.title}`);
@@ -522,7 +648,7 @@ function registerManagedWindows() {
         },
         open: async (options = {}) => {
             const canvasHandlers = require('./canvasHandlers');
-            await canvasHandlers.createCanvasWindow(options.filePath || null);
+            await canvasHandlers.createCanvasWindow(options.filePath ? options : null);
             return canvasHandlers.getCanvasWindow();
         },
         readyTimeoutMs: 10000,
@@ -598,6 +724,26 @@ function registerManagedWindows() {
             return vchatTaskWindow;
         },
     });
+
+    windowService.register(WINDOW_APP_IDS.PLUGIN_MANAGER, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatPluginManagerWindow || findWindowByUrl('plugin-manager.html'),
+        open: async () => {
+            const existingPluginManager = findWindowByUrl('plugin-manager.html');
+            if (existingPluginManager) {
+                if (!existingPluginManager.isVisible()) existingPluginManager.show();
+                existingPluginManager.focus();
+                vchatPluginManagerWindow = existingPluginManager;
+                return existingPluginManager;
+            }
+            vchatPluginManagerWindow = createOrFocusChildWindow(vchatPluginManagerWindow, {
+                width: 1240, height: 820, minWidth: 900, minHeight: 620,
+                title: 'VCP 插件管理器',
+                htmlPath: path.join(app.getAppPath(), 'PluginManagerModules', 'plugin-manager.html'),
+            });
+            return vchatPluginManagerWindow;
+        },
+    });
 }
 
 function resolveAppActionToAppId(appAction) {
@@ -628,10 +774,55 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.THEMES;
         case 'open-task-window':
             return WINDOW_APP_IDS.TASK;
+        case 'open-plugin-manager-window':
+            return WINDOW_APP_IDS.PLUGIN_MANAGER;
+        case 'open-scriptorium-window':
+            return WINDOW_APP_IDS.DOCX;
         case 'open-desktop-window':
             return WINDOW_APP_IDS.DESKTOP;
         default:
             return null;
+    }
+}
+
+async function launchVchatApp(appAction) {
+    try {
+        console.log(`[DesktopHandlers] Launching VChat app via WindowService: ${appAction}`);
+
+        const appId = resolveAppActionToAppId(appAction);
+        if (appId) {
+            await windowService.open(appId);
+            return { success: true, appId };
+        }
+
+        if (appAction === 'launch-human-toolbox') {
+            return await launchStandaloneElectronApp('VCPHumanToolBox', 'Human Toolbox');
+        }
+
+        if (appAction === 'launch-vchat-manager') {
+            return await launchStandaloneElectronApp('VchatManager', 'VchatManager');
+        }
+
+        if (appAction === 'open-powershell-executor-terminal') {
+            const powerShellExecutor = require(path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js'));
+            if (typeof powerShellExecutor.openGuiTerminal !== 'function') {
+                return { success: false, error: 'PowerShellExecutor GUI entry is not available.' };
+            }
+
+            powerShellExecutor.openGuiTerminal();
+            return { success: true };
+        }
+
+        if (appAction && appAction.startsWith('open-system-tool:')) {
+            const cmd = appAction.substring('open-system-tool:'.length);
+            return await launchSystemTool(cmd);
+        }
+
+        console.warn(`[DesktopHandlers] Unknown VChat app action: ${appAction}`);
+        return { success: false, error: `Unknown app action: ${appAction}` };
+    } catch (err) {
+        console.error(`[DesktopHandlers] VChat app launch error (${appAction}):`, err);
+        return { success: false, error: err.message };
     }
 }
 
@@ -769,6 +960,13 @@ function initialize(params) {
     mainWindow = params.mainWindow;
     openChildWindows = params.openChildWindows;
     appSettingsManager = params.settingsManager;
+    const appDataRoot = params.APP_DATA_ROOT_IN_PROJECT
+        || path.join(PROJECT_ROOT, 'AppData');
+    DESKTOP_WIDGETS_DIR = path.join(appDataRoot, 'DesktopWidgets');
+    DESKTOP_DATA_DIR = path.join(appDataRoot, 'DesktopData');
+    DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
+    LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
+    CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
     registerManagedWindows();
 
     if (!standaloneProcessCleanupRegistered) {
@@ -804,6 +1002,48 @@ function initialize(params) {
     });
 
     // --- IPC: 收藏系统 ---
+
+    ipcMain.handle('desktop-open-widget-in-canvas', async (event, data = {}) => {
+        try {
+            const { savedId, fileName = 'widget.html' } = data;
+            if (!isSafeWidgetId(savedId)) {
+                return { success: false, error: '不安全或缺失的 widget ID' };
+            }
+            if (!isSafeWidgetFileName(fileName)) {
+                return { success: false, error: `不安全的文件名: ${fileName}` };
+            }
+
+            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, savedId);
+            if (!await fs.pathExists(widgetDir)) {
+                return { success: false, error: 'Widget 源码目录不存在，请先收藏该挂件' };
+            }
+
+            const filePath = path.join(widgetDir, fileName);
+            if (!await fs.pathExists(filePath)) {
+                if (fileName === 'widget.html') {
+                    await fs.writeFile(filePath, '<!-- Empty widget -->', 'utf-8');
+                } else {
+                    return { success: false, error: `文件不存在: ${fileName}` };
+                }
+            }
+
+            const canvasHandlers = require('./canvasHandlers');
+            await canvasHandlers.createCanvasWindow({
+                filePath,
+                rootDir: widgetDir,
+                context: 'desktop-widget',
+                metadata: {
+                    savedId,
+                    fileName,
+                },
+            });
+
+            return { success: true, filePath, rootDir: widgetDir };
+        } catch (err) {
+            console.error('[DesktopHandlers] Open widget in Canvas error:', err);
+            return { success: false, error: err.message };
+        }
+    });
 
     // 保存/更新收藏
     ipcMain.handle('desktop-save-widget', async (event, data) => {
@@ -1103,16 +1343,16 @@ function initialize(params) {
 
             console.log(`[DesktopHandlers] Capturing widget area:`, captureRect);
             const image = await desktopWindow.webContents.capturePage(captureRect);
-            
+
             // 缩放到合理的缩略图尺寸
             const MAX_THUMB = 300;
             const scale = Math.min(MAX_THUMB / captureRect.width, MAX_THUMB / captureRect.height, 1);
             const thumbWidth = Math.round(captureRect.width * scale);
             const thumbHeight = Math.round(captureRect.height * scale);
-            
+
             const resized = image.resize({ width: thumbWidth, height: thumbHeight, quality: 'good' });
             const dataUrl = `data:image/png;base64,${resized.toPNG().toString('base64')}`;
-            
+
             console.log(`[DesktopHandlers] Widget captured: ${thumbWidth}x${thumbHeight}, data length: ${dataUrl.length}`);
             return { success: true, thumbnail: dataUrl };
         } catch (err) {
@@ -1172,36 +1412,7 @@ function initialize(params) {
     });
 
     ipcMain.removeHandler('desktop-launch-vchat-app');
-    ipcMain.handle('desktop-launch-vchat-app', async (event, appAction) => {
-        try {
-            console.log(`[DesktopHandlers] Launching VChat app via WindowService: ${appAction}`);
-
-            const appId = resolveAppActionToAppId(appAction);
-            if (appId) {
-                await windowService.open(appId);
-                return { success: true, appId };
-            }
-
-            if (appAction === 'launch-human-toolbox') {
-                return await launchStandaloneElectronApp('VCPHumanToolBox', 'Human Toolbox');
-            }
-
-            if (appAction === 'launch-vchat-manager') {
-                return await launchStandaloneElectronApp('VchatManager', 'VchatManager');
-            }
-
-            if (appAction && appAction.startsWith('open-system-tool:')) {
-                const cmd = appAction.substring('open-system-tool:'.length);
-                return await launchSystemTool(cmd);
-            }
-
-            console.warn(`[DesktopHandlers] Unknown VChat app action: ${appAction}`);
-            return { success: false, error: `Unknown app action: ${appAction}` };
-        } catch (err) {
-            console.error(`[DesktopHandlers] VChat app launch error (${appAction}):`, err);
-            return { success: false, error: err.message };
-        }
-    });
+    ipcMain.handle('desktop-launch-vchat-app', (_event, appAction) => launchVchatApp(appAction));
 
     // ============================================================
     // --- IPC: 快捷方式解析 & 启动 ---
@@ -1657,7 +1868,7 @@ function initialize(params) {
                 if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
                     current = await fs.readJson(LAYOUT_CONFIG_PATH);
                 }
-                
+
                 // 合并补丁
                 const updated = {
                     ...current,
@@ -1920,6 +2131,158 @@ function initialize(params) {
             return { success: true, thumbnail: dataUrl };
         } catch (err) {
             console.error('[DesktopHandlers] Read wallpaper thumbnail error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('vchat-wallpaper-select-directory', async (event, savedDirectoryPath = '') => {
+        try {
+            let directoryPath = typeof savedDirectoryPath === 'string' ? savedDirectoryPath.trim() : '';
+            if (!directoryPath) {
+                const result = await dialog.showOpenDialog(mainWindow, {
+                    title: '选择 VChat 动态壁纸文件夹',
+                    buttonLabel: '选择文件夹',
+                    properties: ['openDirectory']
+                });
+                if (result.canceled || !result.filePaths?.length) return { success: false, canceled: true };
+                [directoryPath] = result.filePaths;
+            }
+
+            const stat = await fs.stat(directoryPath);
+            if (!stat.isDirectory()) return { success: false, error: '所选路径不是文件夹' };
+            const supportedExtensions = new Set(['.mp4', '.webm', '.mov', '.mkv', '.avi']);
+            const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+            const files = entries
+                .filter((entry) => entry.isFile() && supportedExtensions.has(path.extname(entry.name).toLowerCase()))
+                .map((entry) => ({
+                    name: entry.name,
+                    url: pathToFileURL(path.join(directoryPath, entry.name)).toString()
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
+            return { success: true, directoryPath, files };
+        } catch (error) {
+            console.error('[DynamicWallpaper] Select or scan directory error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ============================================================
+    // --- IPC: VCP 插件管理器 ---
+    // ============================================================
+
+    ipcMain.handle('list-enabled-frontend-plugins', async () => {
+        try {
+            return { success: true, plugins: await listEnabledFrontendPlugins() };
+        } catch (error) {
+            console.error('[PluginManager] List frontend plugins error:', error);
+            return { success: false, error: error.message, plugins: [] };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-list-plugins', async () => {
+        try {
+            const pluginsRoot = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin');
+            await fs.ensureDir(pluginsRoot);
+            const entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
+            const plugins = [];
+
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const plugin = await readVcpPluginEntry(entry, pluginsRoot);
+                if (plugin) plugins.push(plugin);
+            }
+
+            plugins.sort((a, b) => {
+                const aName = a.manifest?.displayName || a.manifest?.name || a.folderName;
+                const bName = b.manifest?.displayName || b.manifest?.name || b.folderName;
+                return aName.localeCompare(bName, 'zh-CN');
+            });
+
+            return { success: true, plugins, pluginsRoot };
+        } catch (err) {
+            console.error('[PluginManager] List plugins error:', err);
+            return { success: false, error: err.message, plugins: [] };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-save-manifest', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            await fs.ensureDir(pluginDir);
+            const manifestInfo = findExistingManifestPath(pluginDir);
+            const manifestPath = manifestInfo.path;
+
+            if (!data.manifest || typeof data.manifest !== 'object' || Array.isArray(data.manifest)) {
+                return { success: false, error: 'Manifest 必须是 JSON 对象' };
+            }
+
+            const serialized = `${JSON.stringify(data.manifest, null, 2)}\n`;
+            JSON.parse(serialized);
+            await fs.writeFile(manifestPath, serialized, 'utf-8');
+
+            return { success: true, path: manifestPath };
+        } catch (err) {
+            console.error('[PluginManager] Save manifest error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-save-config-env', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            await fs.ensureDir(pluginDir);
+            const envPath = path.join(pluginDir, 'config.env');
+            await fs.writeFile(envPath, String(data.content ?? ''), 'utf-8');
+            return { success: true, path: envPath };
+        } catch (err) {
+            console.error('[PluginManager] Save config.env error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-set-plugin-enabled', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            const enabledPath = path.join(pluginDir, 'plugin-manifest.json');
+            const disabledPath = path.join(pluginDir, 'plugin-manifest.json.block');
+            const targetEnabled = Boolean(data.enabled);
+
+            if (targetEnabled) {
+                if (await fs.pathExists(enabledPath)) {
+                    return { success: true, enabled: true };
+                }
+                if (!await fs.pathExists(disabledPath)) {
+                    return { success: false, error: '找不到 plugin-manifest.json.block' };
+                }
+                await fs.move(disabledPath, enabledPath, { overwrite: false });
+                return { success: true, enabled: true };
+            }
+
+            if (await fs.pathExists(disabledPath)) {
+                return { success: true, enabled: false };
+            }
+            if (!await fs.pathExists(enabledPath)) {
+                return { success: false, error: '找不到 plugin-manifest.json' };
+            }
+            await fs.move(enabledPath, disabledPath, { overwrite: false });
+            return { success: true, enabled: false };
+        } catch (err) {
+            console.error('[PluginManager] Toggle plugin enabled error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-open-plugin-folder', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            if (!await fs.pathExists(pluginDir)) {
+                return { success: false, error: '插件目录不存在' };
+            }
+            const errorMsg = await shell.openPath(pluginDir);
+            if (errorMsg) return { success: false, error: errorMsg };
+            return { success: true };
+        } catch (err) {
+            console.error('[PluginManager] Open plugin folder error:', err);
             return { success: false, error: err.message };
         }
     });
@@ -2297,4 +2660,5 @@ module.exports = {
     getDesktopWindow,
     generateCatalog,
     cleanupStandaloneAppProcesses,
+    launchVchatApp,
 };

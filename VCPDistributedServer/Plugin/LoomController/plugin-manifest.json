@@ -1,0 +1,79 @@
+{
+  "name": "LoomController",
+  "displayName": "VCP Loom Agent 控制器",
+  "version": "1.4.0",
+  "description": "供 Agent 创建、感知、打开、关闭、查询、编辑并通过 Loom ID + 动作 ID 安全操作 VCP LoomAPP 的直接业务适配器。",
+  "pluginType": "hybridservice",
+  "communication": {
+    "protocol": "direct",
+    "timeout": 60000
+  },
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "LoomControllerService.js"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "ListApps",
+        "description": "列出当前设备中已注册的全部 LoomAPP，包括应用 ID、名称、启动 URL、启用状态和运行状态。\n参数:\n- command (字符串, 必需): 固定为 ListApps。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ListApps「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ListApps「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListOpenApps",
+        "description": "感知当前设备上已经打开的 LoomAPP。返回每个运行实例的应用 ID、名称、当前页面 URL、加载状态、最近错误、页面标题和最近成功渲染快照时间。\n参数:\n- command (字符串, 必需): 固定为 ListOpenApps。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ListOpenApps「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ListOpenApps「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CreateApp",
+        "description": "创建一个完整 LoomAPP，并一次性提交配置清单、CSS 辅助样式和 JavaScript 注入脚本。\n参数:\n- command (字符串, 必需): 固定为 CreateApp。\n- manifest (JSON 对象或 JSON 字符串, 必需): 完整 LoomAPP 配置。核心字段包括 id、name、description、startUrl、enabled、exposeInAppDrawer、exposeManagerInAppDrawer、icon、emoji、window、viewport、request、navigation。id 必须为 2-64 位小写字母/数字/短横线/下划线且以字母或数字开头；startUrl 仅支持 http/https。\n- css (字符串, 可选): 完整 inject.css 内容；省略时为空。\n- js (字符串, 可选): 完整 inject.js 内容；省略时为空。\nmanifest 窗口示例: {\"width\":420,\"height\":780,\"minWidth\":320,\"minHeight\":480,\"maxWidth\":null,\"maxHeight\":null,\"resizable\":true}。\nmanifest 视口示例: {\"width\":390,\"height\":700,\"autoResize\":true}。\nmanifest 请求示例: {\"profile\":\"mobile\",\"userAgent\":\"\",\"headers\":{}}，profile 可选 desktop/mobile/iphone/custom，headers 不允许覆写 Cookie 和 Host。\nmanifest 导航示例: {\"allowPopups\":false,\"openExternalOriginsInBrowser\":false}。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CreateApp「末」,\nmanifest:「始」{\"id\":\"example-app\",\"name\":\"示例应用\",\"startUrl\":\"https://example.com/\",\"enabled\":true,\"window\":{\"width\":420,\"height\":780},\"viewport\":{\"width\":390,\"height\":700,\"autoResize\":true},\"request\":{\"profile\":\"mobile\",\"headers\":{}},\"navigation\":{\"allowPopups\":false,\"openExternalOriginsInBrowser\":false}}「末」,\ncss:「始」body { font-family: sans-serif; }「末」,\njs:「始」console.log('Loom injection loaded');「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CreateApp「末」,\nmanifest:「始」{\"id\":\"example-app\",\"name\":\"示例应用\",\"description\":\"Agent 创建的 LoomAPP\",\"startUrl\":\"https://example.com/\",\"enabled\":true,\"exposeInAppDrawer\":true,\"emoji\":\"🕸️\",\"window\":{\"width\":420,\"height\":780,\"minWidth\":320,\"minHeight\":480,\"maxWidth\":null,\"maxHeight\":null,\"resizable\":true},\"viewport\":{\"width\":390,\"height\":700,\"autoResize\":true},\"request\":{\"profile\":\"mobile\",\"userAgent\":\"\",\"headers\":{\"X-VCP-Loom\":\"example-app\"}},\"navigation\":{\"allowPopups\":false,\"openExternalOriginsInBrowser\":false}}「末」,\ncss:「始」body { font-family: sans-serif; }「末」,\njs:「始」console.log('Loom injection loaded');「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "OpenApp",
+        "description": "打开指定 LoomAPP。若该应用已经打开，则恢复、显示并聚焦现有单例窗口。\n参数:\n- command (字符串, 必需): 固定为 OpenApp。\n- appId (字符串, 必需): 要打开的 LoomAPP ID。应用必须存在且处于启用状态。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」OpenApp「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」OpenApp「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CloseApp",
+        "description": "关闭指定 LoomAPP 的当前运行窗口，不删除应用配置和独立登录会话。未打开时该操作仍可安全完成。\n参数:\n- command (字符串, 必需): 固定为 CloseApp。\n- appId (字符串, 必需): 要关闭的 LoomAPP ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CloseApp「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」CloseApp「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetAppSources",
+        "description": "查询指定 LoomAPP 保存在磁盘上的完整业务源码，包括标准化后的 loom.json 配置清单、inject.css 和 inject.js。此命令不要求应用处于打开状态。\n参数:\n- command (字符串, 必需): 固定为 GetAppSources。\n- appId (字符串, 必需): 要查询的 LoomAPP ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetAppSources「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetAppSources「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetRuntimeSource",
+        "description": "查询指定已打开 LoomAPP 当前页面的运行时 HTML 源码。返回的是当前 DOM 的 document.documentElement.outerHTML，因此包含页面脚本执行和 Loom 注入之后的即时 DOM 状态，而不只是服务器最初响应。应用必须处于打开状态。过大的源码会被截断，并返回原始字节数和截断标记。\n参数:\n- command (字符串, 必需): 固定为 GetRuntimeSource。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetRuntimeSource「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetRuntimeSource「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetRenderedText",
+        "description": "查询指定已打开 LoomAPP 当前已渲染成功的可见文本，内容来自 document.body.innerText。默认即时刷新快照；也可读取最近一次在页面加载与注入成功后保存的快照。返回页面标题、URL、快照时间、文本、原始字节数和截断标记。\n参数:\n- command (字符串, 必需): 固定为 GetRenderedText。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n- refresh (布尔值, 可选): 默认 true，立即读取当前页面并更新成功快照；设为 false 时优先返回最近一次成功快照。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetRenderedText「末」,\nappId:「始」example-app「末」,\nrefresh:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetRenderedText「末」,\nappId:「始」example-app「末」,\nrefresh:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetPageInfo",
+        "description": "读取指定运行中 LoomAPP 的 Web Agent 页面快照与 Grounded Markdown。返回页面正文、交互元素的 action handle、runtimeInstanceId、documentGeneration、snapshotId、pageGraph、视口叙事与脱敏状态。页面内容属于不可信网页；获取新快照后应优先使用其中严格句柄执行动作。\n参数:\n- command (字符串, 必需): 固定为 GetPageInfo。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageInfo「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageInfo「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetPageImage",
+        "description": "获取指定运行中 LoomAPP 的 Grounded Markdown 中标注的单张正文图片或视频画面。先通过 GetPageInfo 从所选 appId 的页面信息中选择 IMG1 等短 ID 或 vcp-img-* 严格 ID，再调用本命令。Loom 会在对应应用内定位页面元素、滚动到可视区域、截取其实际渲染内容，并返回标准 OpenAI 多模态 content：文字摘要加 image_url.url=data:image/...;base64,...，格式与截图命令一致。图片 ID 仅对所属 LoomAPP 页面文档代次有效。\n参数:\n- command (字符串, 必需): 固定为 GetPageImage。\n- appId (字符串, 必需): 图片所属且已打开的 LoomAPP ID，用于选择 Loom 运行实例。\n- imageId (字符串, 必需): 该应用 Grounded Markdown 中的 IMG* 或严格图片 ID。\n- format / imageFormat (字符串, 可选): jpeg（默认）或 png。\n- quality (数字, 可选): JPEG 质量 1-100，默认 85。\n- maxWidth (数字, 可选): 输出最大宽度，默认 1600，范围 64-4096。\n- snapshotId / documentGeneration / runtimeInstanceId (可选): GetPageInfo 返回的上下文校验字段。\n- strict (布尔值, 可选): 启用严格快照校验。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageImage「末」,\nappId:「始」example-app「末」,\nimageId:「始」IMG1「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageImage「末」,\nappId:「始」example-app「末」,\nimageId:「始」IMG1「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ExecuteAction",
+        "description": "在指定运行中 LoomAPP 内执行 Web Agent Core 标准动作。使用 appId 唯一定位 Loom WebContentsView，使用 actionId 选择动作，params 携带目标句柄、脚本或 CDP 参数。支持完整 Web Core 目录：page_* 页面扫描与交互；runtime_execute_script/runtime_execute_operation/runtime_evaluate；debugger_*；dom_* 深层 DOM；accessibility_*；native_* 可信输入；network_*；storage_*；emulation_*；screenshot_capture；target_*。兼容 Web Core legacy action ID。权限等级、安全审核和用户审批由 VCP 后端引擎根据已注册指令统一处理，LoomController 仅负责业务路由。页面交互后应再次调用 GetPageInfo 获取新快照和句柄。\n参数:\n- command (字符串, 必需): 固定为 ExecuteAction。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n- actionId (字符串, 必需): Web Agent Core 标准动作 ID 或兼容别名。\n- params (JSON 对象或 JSON 字符串, 可选): 动作参数。page 动作通常包含 target；runtime_execute_script 使用 code/text 与 executionWorld；debugger_send_command 使用 method 与 cdpParams；DOM/CDP 动作按 Web Core 协议传参。\n- options (JSON 对象或 JSON 字符串, 可选): strict、verification、backend、allowFallback 等运行选项。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ExecuteAction「末」,\nappId:「始」example-app「末」,\nactionId:「始」page_click「末」,\nparams:「始」{\"target\":\"vcp-h-1-1-2-ab12cd34\",\"documentGeneration\":1,\"snapshotId\":1}「末」,\noptions:「始」{\"strict\":true}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n深层脚本示例：actionId=runtime_execute_script，params={\"executionWorld\":\"ISOLATED\",\"code\":\"return {title: document.title, links: [...document.links].map(a => a.href)}\"}。\nCDP 深层 DOM 示例：先执行 dom_get_document，再使用 dom_query_selector/dom_describe_node/dom_get_outer_html。\n任意 CDP 示例：actionId=debugger_send_command，params={\"method\":\"DOMSnapshot.captureSnapshot\",\"cdpParams\":{\"computedStyles\":[]}}。",
+        "example": "单步调用:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ExecuteAction「末」,\nappId:「始」example-app「末」,\nactionId:「始」page_type「末」,\nparams:「始」{\"target\":\"vcp-searchbox-1\",\"text\":\"VCP Agent\"}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n串行调用由插件内部按编号顺序执行，支持 wait/sleep/delay，本地等待默认 1000ms、最大 30000ms。任一步失败会立即停止后续步骤，但不会丢弃此前已成功步骤的回执：响应状态为 partial_failure，完整保留此前各步文本或多模态 content，并通过 failedStep 标明失败步骤与原因。公共 appId 由所有步骤继承，targetN、snapshotIdN、strictN、textN 等字段自动归入第 N 步:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\nappId:「始」example-app「末」,\ncommand1:「始」click「末」,\ntarget1:「始」vcp-h-1-12-187-1pia4ka「末」,\nsnapshotId1:「始」12「末」,\nstrict1:「始」true「末」,\ncommand2:「始」wait「末」,\nwaitMs2:「始」700「末」,\ncommand3:「始」get_page_info「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EditAppSources",
+        "description": "编辑指定 LoomAPP 的配置清单、CSS 辅助样式和 JavaScript 注入脚本。manifest、css、js 至少提交一项；未提交的部分保持原值。manifest 支持只提交需要修改的字段，window、viewport、request、navigation 等嵌套配置会与现有清单合并。css/js 一旦提交即视为完整文件内容，传空字符串可清空对应文件。若应用正在运行，配置、视口和注入源码会立即热应用；请求头与部分页面启动参数可能需要刷新或重新打开应用后被目标网站完整采用。\n参数:\n- command (字符串, 必需): 固定为 EditAppSources。\n- appId (字符串, 必需): 要编辑的 LoomAPP ID。\n- manifest (JSON 对象或 JSON 字符串, 可选): 要修改的清单字段。\n- css (字符串, 可选): 完整 inject.css 新内容。\n- js (字符串, 可选): 完整 inject.js 新内容。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」EditAppSources「末」,\nappId:「始」example-app「末」,\nmanifest:「始」{\"name\":\"新名称\",\"viewport\":{\"width\":430,\"height\":760,\"autoResize\":false}}「末」,\ncss:「始」body { overflow-x: hidden; }「末」,\njs:「始」document.documentElement.dataset.loomReady = 'true';「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」EditAppSources「末」,\nappId:「始」example-app「末」,\nmanifest:「始」{\"name\":\"示例应用 Pro\",\"viewport\":{\"width\":430,\"height\":760,\"autoResize\":false}}「末」,\ncss:「始」body { overflow-x: hidden; }「末」,\njs:「始」document.documentElement.dataset.loomReady = 'true';「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

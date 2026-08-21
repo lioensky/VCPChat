@@ -47,9 +47,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const maxHistory = 50;
 
     // 缩放和拖拽变量
+    // 长截图（如阅读模式分享出来的整页 Markdown）等比缩放到视口后，
+    // 文字相当于被压缩到很小，因此需要一个比常规图片大得多的最大放大倍率。
     let currentScale = 1;
-    const minScale = 0.2;
-    const maxScale = 5;
+    const minScale = 0.05; // 极端缩小：方便看长截图全貌
+    const maxScale = 32;   // 极端放大：方便看清长截图细节文字
+    // 滚轮一格 ×1.15；按住 Shift 滚轮一格 ×1.5（快速跳跃）
+    const ZOOM_FACTOR_STEP = 1.15;
+    const ZOOM_FACTOR_FAST = 1.5;
     let isDragging = false;
     let imgInitialX = 0;
     let imgInitialY = 0;
@@ -66,9 +71,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const params = new URLSearchParams(window.location.search);
-    const imageUrl = params.get('src');
-    const imageTitle = params.get('title') || '图片预览';
+    const tokenFromUrl = params.get('token');
+    let imageUrl = params.get('src');
+    let imageTitle = params.get('title') || '图片预览';
     const initialTheme = params.get('theme') || 'dark';
+    let resolvedImageSrc = '';
+    let originalImageBlobPromise = null;
 
     applyTheme(initialTheme);
 
@@ -76,11 +84,101 @@ document.addEventListener('DOMContentLoaded', async () => {
         viewerAPI.onThemeUpdated(applyTheme);
     }
 
-    const decodedTitle = decodeURIComponent(imageTitle);
+    // 如果是 token 模式，先尝试从主进程一次性取走真正的 payload。
+    // 这样可以承载任意大体积的 dataURL（截图分享）而不会受 URL 长度限制。
+    if (tokenFromUrl && viewerAPI && typeof viewerAPI.consumeImageViewerPayload === 'function') {
+        try {
+            const payload = await viewerAPI.consumeImageViewerPayload(tokenFromUrl);
+            if (payload && payload.src) {
+                imageUrl = payload.src;
+                if (payload.title) imageTitle = payload.title;
+                if (payload.theme) applyTheme(payload.theme);
+                console.log('[ImageViewer] Loaded payload via token. src length:', payload.src.length);
+            } else {
+                console.error('[ImageViewer] Token payload missing or already consumed:', tokenFromUrl);
+            }
+        } catch (err) {
+            console.error('[ImageViewer] Failed to consume image payload by token:', err);
+        }
+    }
+
+    const decodedTitle = (() => {
+        try {
+            return decodeURIComponent(imageTitle);
+        } catch (_) {
+            return imageTitle;
+        }
+    })();
     document.title = decodedTitle;
     document.getElementById('image-title-text').textContent = decodedTitle;
 
     // ========== 工具函数 ==========
+
+    function getImageMimeType(src) {
+        const dataUrlMatch = /^data:([^;,]+)/i.exec(src || '');
+        if (dataUrlMatch) return dataUrlMatch[1].toLowerCase();
+
+        const cleanUrl = (src || '').split(/[?#]/, 1)[0];
+        if (/\.gif$/i.test(cleanUrl) || /\.gif$/i.test(decodedTitle)) return 'image/gif';
+        return '';
+    }
+
+    function isUneditedGif() {
+        return getImageMimeType(resolvedImageSrc) === 'image/gif' && historyStep <= 0;
+    }
+
+    async function getOriginalImageBlob() {
+        if (!resolvedImageSrc) throw new Error('原始图片地址不存在');
+
+        if (!originalImageBlobPromise) {
+            originalImageBlobPromise = fetch(resolvedImageSrc)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`读取原始图片失败: HTTP ${response.status}`);
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 某些服务没有返回正确的 Content-Type，以源数据识别结果为准。
+                    const mimeType = getImageMimeType(resolvedImageSrc) || blob.type;
+                    return mimeType && blob.type !== mimeType
+                        ? new Blob([blob], { type: mimeType })
+                        : blob;
+                })
+                .catch(error => {
+                    originalImageBlobPromise = null;
+                    throw error;
+                });
+        }
+
+        return originalImageBlobPromise;
+    }
+
+    function getGifDownloadName() {
+        let fileName = decodedTitle || 'image.gif';
+        if (!/\.gif$/i.test(fileName)) {
+            fileName = fileName.replace(/\.[a-z0-9]+$/i, '') + '.gif';
+        }
+        return fileName;
+    }
+
+    function getPngDownloadName() {
+        const fileName = decodedTitle || 'image.png';
+        if (fileName.toLowerCase() !== 'image.png') return fileName;
+
+        const now = new Date();
+        const timestamp = [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, '0'),
+            String(now.getDate()).padStart(2, '0')
+        ].join('') + '_' + [
+            String(now.getHours()).padStart(2, '0'),
+            String(now.getMinutes()).padStart(2, '0'),
+            String(now.getSeconds()).padStart(2, '0')
+        ].join('');
+
+        return `image_${timestamp}.png`;
+    }
 
     // 保存当前画布状态到历史记录
     function saveToHistory() {
@@ -339,9 +437,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== 图片加载 ==========
 
     if (imageUrl) {
-        const decodedImageUrl = decodeURIComponent(imageUrl);
-        console.log('Image Viewer: Loading image -', decodedImageUrl);
-        imgElement.src = decodedImageUrl;
+        // token 模式下 src 已经是原始 dataURL，不需要 decode；
+        // URL 模式下 src 是 encodeURIComponent 过的，需要解码。
+        let finalSrc = imageUrl;
+        if (!tokenFromUrl) {
+            try {
+                finalSrc = decodeURIComponent(imageUrl);
+            } catch (_) {
+                finalSrc = imageUrl;
+            }
+        }
+        resolvedImageSrc = finalSrc;
+        console.log('[ImageViewer] Loading image, length:', finalSrc.length, 'via', tokenFromUrl ? 'token' : 'url');
+        imgElement.src = finalSrc;
 
         imgElement.onload = () => {
             console.log('Image Viewer: Image loaded successfully.');
@@ -375,30 +483,52 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // ========== 缩放和拖拽功能 ==========
             
-            imgElement.addEventListener('wheel', (event) => {
-                if (event.ctrlKey && currentTool === 'select') {
-                    event.preventDefault();
+            // ---- 缩放：以鼠标位置为缩放原点（保持指向内容不偏移）----
+            // wheel 事件挂在 imageContainer 上，避免在放大后鼠标落到画布层时无响应。
+            const zoomTarget = imageContainer;
+            zoomTarget.addEventListener('wheel', (event) => {
+                if (!event.ctrlKey || currentTool !== 'select') return;
+                event.preventDefault();
 
-                    const scaleAmount = 0.1;
-                    const oldScale = currentScale;
-                    let newScale;
+                const oldScale = currentScale;
+                const factor = event.shiftKey ? ZOOM_FACTOR_FAST : ZOOM_FACTOR_STEP;
+                let newScale = event.deltaY < 0
+                    ? oldScale * factor
+                    : oldScale / factor;
+                newScale = Math.max(minScale, Math.min(maxScale, newScale));
+                if (newScale === oldScale) return;
 
-                    if (event.deltaY < 0) {
-                        newScale = Math.min(maxScale, oldScale + scaleAmount);
-                    } else {
-                        newScale = Math.max(minScale, oldScale - scaleAmount);
-                    }
+                // 计算鼠标相对于 imageContainer 中心点的偏移，使缩放围绕鼠标指向位置。
+                // imageContainer 的 transform-origin 默认为 center center。
+                const rect = zoomTarget.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const mx = event.clientX - cx;
+                const my = event.clientY - cy;
 
-                    if (newScale === oldScale) return;
+                // 根据缩放倍率变化反推平移补偿：保持鼠标位置在内容坐标系上的点不动。
+                const ratio = newScale / oldScale;
+                imgInitialX = mx - (mx - imgInitialX) * ratio;
+                imgInitialY = my - (my - imgInitialY) * ratio;
 
-                    currentScale = newScale;
-                    updateTransform();
-                }
+                currentScale = newScale;
+                updateTransform();
             }, { passive: false });
+
+            // 双击重置：缩放回 1，居中。
+            imgElement.addEventListener('dblclick', (event) => {
+                if (currentTool !== 'select') return;
+                event.preventDefault();
+                currentScale = 1;
+                imgInitialX = 0;
+                imgInitialY = 0;
+                updateTransform();
+            });
 
             let dragStartX, dragStartY;
             imgElement.addEventListener('mousedown', (event) => {
-                if (event.button === 0 && currentScale > 1 && currentTool === 'select') {
+                // 任何非 1× 状态都允许拖拽（缩小后也可能需要平移查看裁剪后的画面）。
+                if (event.button === 0 && currentScale !== 1 && currentTool === 'select') {
                     isDragging = true;
                     dragStartX = event.clientX;
                     dragStartY = event.clientY;
@@ -422,25 +552,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.addEventListener('mouseup', (event) => {
                 if (event.button === 0 && isDragging) {
                     isDragging = false;
-                    if (currentScale > 1) {
-                        imgElement.style.cursor = 'grab';
-                    } else {
-                        imgElement.style.cursor = 'default';
-                    }
+                    imgElement.style.cursor = currentScale !== 1 ? 'grab' : 'default';
                 }
             });
 
             function updateTransform() {
-                const transform = `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
-                imageContainer.style.transform = transform;
-                
-                if (currentScale > 1) {
-                    imgElement.style.cursor = 'grab';
-                } else {
-                    imgElement.style.cursor = 'default';
+                // 注意：先 translate 后 scale，使 translate 的单位保持为屏幕像素，
+                // 这样我们在 wheel 处理里基于屏幕坐标做的鼠标定位补偿才是准确的。
+                imageContainer.style.transform =
+                    `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
+
+                if (currentScale === 1) {
+                    // 仅当缩放回到 1× 时才重置平移并切换光标，
+                    // 避免用户缩小到 <1 时图片突然跳回中心。
                     imgInitialX = 0;
                     imgInitialY = 0;
-                    imageContainer.style.transform = `scale(${currentScale})`;
+                    imageContainer.style.transform = `scale(1)`;
+                    imgElement.style.cursor = 'default';
+                } else {
+                    imgElement.style.cursor = 'grab';
                 }
             }
         };
@@ -490,27 +620,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 复制功能（合并编辑后的图）
+    // 复制功能：未编辑的 GIF 保留原始动画；其他图片合并编辑层后复制为 PNG。
     copyButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
 
         const originalText = copyButton.innerHTML;
         try {
-            // 创建合成画布
-            const mergedCanvas = document.createElement('canvas');
-            mergedCanvas.width = imgElement.naturalWidth;
-            mergedCanvas.height = imgElement.naturalHeight;
-            const mergedCtx = mergedCanvas.getContext('2d');
-            
-            // 绘制原图和编辑层
-            mergedCtx.drawImage(imgElement, 0, 0);
-            mergedCtx.drawImage(canvas, 0, 0);
-            
-            // 转换为 blob 并复制
-            const blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
-            const item = new ClipboardItem({ 'image/png': blob });
-            await navigator.clipboard.write([item]);
-            
+            let blob;
+            let mimeType;
+
+            if (isUneditedGif()) {
+                blob = await getOriginalImageBlob();
+                mimeType = 'image/gif';
+
+                if (viewerAPI && typeof viewerAPI.copyGifToClipboard === 'function') {
+                    const gifBytes = new Uint8Array(await blob.arrayBuffer());
+                    await viewerAPI.copyGifToClipboard(gifBytes);
+                } else {
+                    const item = new ClipboardItem({ [mimeType]: blob });
+                    await navigator.clipboard.write([item]);
+                }
+            } else {
+                const mergedCanvas = document.createElement('canvas');
+                mergedCanvas.width = imgElement.naturalWidth;
+                mergedCanvas.height = imgElement.naturalHeight;
+                const mergedCtx = mergedCanvas.getContext('2d');
+
+                mergedCtx.drawImage(imgElement, 0, 0);
+                mergedCtx.drawImage(canvas, 0, 0);
+
+                blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
+                mimeType = 'image/png';
+
+                const item = new ClipboardItem({ [mimeType]: blob });
+                await navigator.clipboard.write([item]);
+            }
+
             copyButton.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg> 已复制';
             setTimeout(() => copyButton.innerHTML = originalText, 2000);
         } catch (err) {
@@ -520,37 +665,85 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 下载功能
-    downloadButton.addEventListener('click', () => {
+    // 下载功能：未编辑的 GIF 直接下载原文件，避免画布截取后只剩静态首帧。
+    downloadButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
 
-        // 创建合成画布
+        const link = document.createElement('a');
+
+        if (isUneditedGif()) {
+            try {
+                const blob = await getOriginalImageBlob();
+                const objectUrl = URL.createObjectURL(blob);
+                link.href = objectUrl;
+                link.download = getGifDownloadName();
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                return;
+            } catch (err) {
+                console.error('GIF download failed:', err);
+                return;
+            }
+        }
+
         const mergedCanvas = document.createElement('canvas');
         mergedCanvas.width = imgElement.naturalWidth;
         mergedCanvas.height = imgElement.naturalHeight;
         const mergedCtx = mergedCanvas.getContext('2d');
 
-        // 绘制原图和编辑层
         mergedCtx.drawImage(imgElement, 0, 0);
         mergedCtx.drawImage(canvas, 0, 0);
 
-        // 创建下载链接并点击
-        const link = document.createElement('a');
         link.href = mergedCanvas.toDataURL('image/png');
-        link.download = decodeURIComponent(imageTitle) || 'image.png';
+        link.download = getPngDownloadName();
         link.click();
     });
 
     // ========== OCR 功能 ==========
+    let tesseractLoadPromise = null;
+
+    function loadTesseractIfNeeded() {
+        if (window.Tesseract) {
+            return Promise.resolve(window.Tesseract);
+        }
+
+        if (tesseractLoadPromise) {
+            return tesseractLoadPromise;
+        }
+
+        tesseractLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '../vendor/tesseract.min.js';
+            script.async = true;
+            script.onload = () => {
+                if (window.Tesseract) {
+                    resolve(window.Tesseract);
+                } else {
+                    reject(new Error('本地 OCR 脚本已加载，但 Tesseract 对象不存在。'));
+                }
+            };
+            script.onerror = () => {
+                tesseractLoadPromise = null;
+                reject(new Error('无法加载本地 OCR 脚本: ../vendor/tesseract.min.js'));
+            };
+            document.head.appendChild(script);
+        });
+
+        return tesseractLoadPromise;
+    }
+
     ocrButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
 
         const originalHtml = ocrButton.innerHTML;
-        ocrButton.innerHTML = '识别中...';
+        ocrButton.innerHTML = '加载 OCR...';
         ocrButton.disabled = true;
 
         try {
-            const { data: { text } } = await Tesseract.recognize(
+            const TesseractAPI = await loadTesseractIfNeeded();
+            ocrButton.innerHTML = '识别中...';
+
+            const { data: { text } } = await TesseractAPI.recognize(
                 imgElement.src,
                 'chi_sim+eng', // 识别简体中文和英文
                 {

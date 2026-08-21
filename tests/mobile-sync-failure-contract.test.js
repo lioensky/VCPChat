@@ -1,0 +1,463 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { test } = require("node:test");
+
+const {
+  resolveCentralIndexPreference,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/config/defaults");
+const entityDatabase = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/db");
+const issue20EntityIndex = new Map();
+entityDatabase.getDb = () => ({});
+entityDatabase.getEntityIndex = (id, type) =>
+  issue20EntityIndex.get(`${type}:${id}`) || null;
+entityDatabase.upsertEntityIndex = (id, type, filePath, hash) => {
+  issue20EntityIndex.set(`${type}:${id}`, {
+    id,
+    type,
+    file_path: filePath,
+    hash,
+    deleted_at: null,
+  });
+};
+const {
+  handleSyncTopicHashBatch,
+  handleSyncTopicHashBatchV2,
+  handleSyncMessageDiffBatch,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/diff");
+const {
+  checkIdempotency,
+  recordOperation,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/idempotency");
+const {
+  readHistoryStrict,
+  writeHistoryAtomic,
+  markHistoryTopicUnhealthy,
+  clearHistoryTopicUnhealthy,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
+const {
+  getLocalManifest,
+  handleSyncManifest,
+  handleMessageManifest,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest");
+const {
+  uploadEntity,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/entity");
+
+function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
+  return {
+    prepare(sql) {
+      if (fail) throw new Error("injected database failure");
+      if (sql.includes("FROM entity_index")) {
+        return { get: (topicId) => topics[topicId] };
+      }
+      if (sql.includes("FROM message_index")) {
+        return { all: (topicId) => messages[topicId] || [] };
+      }
+      throw new Error(`unexpected SQL in fake database: ${sql}`);
+    },
+  };
+}
+
+function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {}) {
+  return {
+    prepare(sql) {
+      if (sql.includes("FROM avatar_index")) {
+        return { all: () => avatars };
+      }
+      if (sql.includes("FROM entity_index") && sql.includes("type = ?")) {
+        return { all: (type) => entities.filter((row) => row.type === type) };
+      }
+      if (sql.includes("FROM entity_index")) {
+        return {
+          all: () => entities.filter((row) =>
+            ["topic", "agent_topic", "group_topic"].includes(row.type)),
+        };
+      }
+      if (sql.includes("FROM message_index")) {
+        return { all: (topicId) => messages.filter((row) => row.topic_id === topicId) };
+      }
+      throw new Error(`unexpected SQL in fake manifest database: ${sql}`);
+    },
+  };
+}
+
+test("中央索引配置优先级是插件显式值 > Facade > 默认 true", () => {
+  assert.equal(
+    resolveCentralIndexPreference(
+      { MobileSyncUseCentralIndex: false },
+      { mobileSyncUseCentralIndex: true },
+    ),
+    false,
+  );
+  assert.equal(
+    resolveCentralIndexPreference(
+      { MobileSyncUseCentralIndex: true },
+      { mobileSyncUseCentralIndex: false },
+    ),
+    true,
+  );
+  assert.equal(
+    resolveCentralIndexPreference({}, { mobileSyncUseCentralIndex: false }),
+    false,
+  );
+  assert.equal(resolveCentralIndexPreference({}, {}), true);
+});
+
+test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除", () => {
+  const remoteHash = "a".repeat(64);
+  const result = handleSyncMessageDiffBatch(
+    {
+      topics: {
+        "topic-live": {
+          topicHash: "c".repeat(64),
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: { "message-1": "DELETED" },
+        },
+        "topic-missing": {
+          topicHash: "",
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {},
+        },
+      },
+    },
+    fakeDiffDatabase({
+      topics: {
+        "topic-live": {
+          aggregated_hash: "desktop",
+          file_path: "/app/Agents/agent-a/config.json",
+        },
+      },
+      messages: {
+        "topic-live": [{ msg_id: "message-1", hash: remoteHash }],
+      },
+    }),
+  );
+
+  assert.deepEqual(result.results["topic-live"], {
+    ok: true,
+    toPull: [],
+    toPush: false,
+  });
+  assert.deepEqual(result.results["topic-missing"], {
+    ok: false,
+    error: {
+      code: "TOPIC_NOT_FOUND",
+      origin: "desktop_plugin",
+      stage: "messages",
+      kind: "data",
+      retry: "manual",
+      message: "Topic topic-missing was not found in the desktop index",
+      failedTopicIds: ["topic-missing"],
+    },
+  });
+});
+
+test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成", () => {
+  assert.throws(
+    () =>
+      handleSyncMessageDiffBatch(
+        {
+          topics: {
+            topic: {
+              topicHash: "",
+              ownerType: "agent",
+              ownerId: "agent-a",
+              messages: { message: "not-a-hash" },
+            },
+          },
+        },
+        fakeDiffDatabase(),
+      ),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+
+  const result = handleSyncMessageDiffBatch(
+    {
+      topics: {
+        topic: {
+          topicHash: "",
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {},
+        },
+      },
+    },
+    fakeDiffDatabase({ fail: true }),
+  );
+  assert.equal(result.results.topic.ok, false);
+  assert.equal(result.results.topic.error.code, "MESSAGE_DIFF_FAILED");
+  assert.match(result.results.topic.error.message, /injected database failure/);
+});
+
+test("Phase 2.5 topic hash 对错误类型和超预算 fail closed", () => {
+  assert.throws(
+    () => handleSyncTopicHashBatch({ hashes: { topic: null } }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  assert.throws(
+    () =>
+      handleSyncTopicHashBatchV2({
+        hashes: { topic: { configHash: "bad", contentHash: "" } },
+      }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  const hashes = Object.fromEntries(
+    Array.from({ length: 10_001 }, (_, index) => [`topic-${index}`, ""]),
+  );
+  assert.throws(
+    () => handleSyncTopicHashBatch({ hashes }),
+    (error) => error.code === "SYNC_BUDGET_EXCEEDED",
+  );
+});
+
+test("issue #20: 未初始化数据库不会伪装成无变化 topic", () => {
+  const hash = "a".repeat(64);
+  assert.throws(
+    () =>
+      handleSyncTopicHashBatchV2(
+        {
+          hashes: {
+            "topic-issue-20": { configHash: hash, contentHash: hash },
+          },
+          topics: [
+            {
+              topicId: "topic-issue-20",
+              ownerType: "agent",
+              ownerId: "agent-issue-20",
+              configHash: hash,
+              contentHash: hash,
+            },
+          ],
+        },
+        null,
+      ),
+    (error) => error.code === "SYNC_DB_UNAVAILABLE",
+  );
+});
+
+test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-issue-20-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  issue20EntityIndex.clear();
+
+  const agentId = "agent_issue_20";
+  const groupId = "group_issue_20";
+  const agentResult = await uploadEntity({
+    id: agentId,
+    type: "agent",
+    data: { name: "Mobile Agent" },
+    appDataPath: directory,
+  });
+  const groupResult = await uploadEntity({
+    id: groupId,
+    type: "group",
+    data: { name: "Mobile Group", members: [] },
+    appDataPath: directory,
+  });
+
+  assert.deepEqual(agentResult, { success: true, id: agentId });
+  assert.deepEqual(groupResult, { success: true, id: groupId });
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(
+        path.join(directory, "Agents", agentId, "config.json"),
+        "utf8",
+      ),
+    ).name,
+    "Mobile Agent",
+  );
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(
+        path.join(directory, "AgentGroups", groupId, "config.json"),
+        "utf8",
+      ),
+    ).name,
+    "Mobile Group",
+  );
+});
+
+test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () => {
+  const hash = "a".repeat(64);
+  const database = fakeManifestDatabase({
+    entities: [
+      {
+        id: "topic-a",
+        type: "topic",
+        file_path: "/app/Agents/agent-a/config.json",
+        hash,
+        aggregated_hash: "",
+        updated_at: 1,
+        deleted_at: null,
+      },
+      {
+        id: "topic-b",
+        type: "topic",
+        file_path: "/app/Agents/agent-aa/config.json",
+        hash,
+        aggregated_hash: "",
+        updated_at: 1,
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    getLocalManifest("topic", ["agent-a"], database).map((item) => item.id),
+    ["topic-a"],
+  );
+  const result = handleSyncManifest(
+    {
+      dataType: "topic",
+      phase: 2,
+      targetedOwners: ["agent-a"],
+      data: [{
+        id: "topic-a",
+        hash,
+        configHash: hash,
+        contentHash: "",
+        ts: 1,
+        ownerType: "agent",
+        ownerId: "agent-a",
+      }],
+    },
+    database,
+  );
+  assert.deepEqual(result.data, []);
+
+  assert.throws(
+    () => handleSyncManifest(
+      {
+        dataType: "topic",
+        phase: 2,
+        targetedOwners: ["agent-a", "agent-b"],
+        data: [{
+          id: "topic-a",
+          hash,
+          configHash: hash,
+          contentHash: "",
+          ts: 1,
+          ownerType: "agent",
+          ownerId: "agent-b",
+        }],
+      },
+      database,
+    ),
+    (error) => error.code === "SYNC_OWNER_CONFLICT",
+  );
+});
+
+test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () => {
+  const hash = "b".repeat(64);
+  const database = fakeManifestDatabase();
+  assert.throws(
+    () => handleSyncManifest({ dataType: "agent", phase: 1, data: {} }, database),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  const item = {
+    id: "agent-a",
+    hash,
+    configHash: hash,
+    contentHash: "",
+    ts: 1,
+  };
+  assert.throws(
+    () => handleSyncManifest(
+      { dataType: "agent", phase: 1, data: [item, item] },
+      database,
+    ),
+    /duplicate id/,
+  );
+  const result = handleSyncManifest(
+    {
+      dataType: "agent",
+      phase: 1,
+      data: [{ ...item, deletedAt: 0 }],
+    },
+    database,
+  );
+  assert.deepEqual(result.data, [
+    { id: "agent-a", action: "DELETE", deletedAt: 0 },
+  ]);
+});
+
+test("损坏 history 的旧索引不能走 topic hash 或消息 manifest 快速成功", () => {
+  const topicId = "topic-unhealthy";
+  markHistoryTopicUnhealthy(topicId, new Error("invalid JSON"));
+  try {
+    assert.throws(
+      () => handleSyncTopicHashBatch(
+        { hashes: { [topicId]: "" } },
+        fakeDiffDatabase({ topics: { [topicId]: { aggregated_hash: "" } } }),
+      ),
+      (error) => error.code === "HISTORY_SOURCE_INVALID",
+    );
+    assert.throws(
+      () => handleMessageManifest(
+        { topicId },
+        fakeManifestDatabase(),
+      ),
+      (error) => error.code === "HISTORY_SOURCE_INVALID",
+    );
+  } finally {
+    clearHistoryTopicUnhealthy(topicId);
+  }
+});
+
+test("幂等失败重放保留原 HTTP 状态", () => {
+  const operationId = `failure-${process.pid}-${Date.now()}`;
+  recordOperation(operationId, { success: false, error: "durable failure" }, 409);
+  assert.deepEqual(checkIdempotency(operationId), {
+    duplicate: true,
+    result: { success: false, error: "durable failure" },
+    statusCode: 409,
+  });
+});
+
+test("history.json 只有不存在可视为空，损坏内容绝不被覆盖", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-history-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const historyPath = path.join(directory, "history.json");
+
+  assert.deepEqual(await readHistoryStrict(historyPath), {
+    history: [],
+    sourceHash: null,
+  });
+
+  fs.writeFileSync(historyPath, "", "utf8");
+  await assert.rejects(() => readHistoryStrict(historyPath), /Invalid history JSON/);
+  fs.writeFileSync(historyPath, '{"messages":[]}', "utf8");
+  await assert.rejects(() => readHistoryStrict(historyPath), /expected an array/);
+});
+
+test("history 原子提交在 source hash 变化时保留并发写入", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-cas-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const historyPath = path.join(directory, "history.json");
+  fs.writeFileSync(historyPath, '[{"id":"base"}]', "utf8");
+  const snapshot = await readHistoryStrict(historyPath);
+  fs.writeFileSync(historyPath, '[{"id":"chat-writer"}]', "utf8");
+
+  await assert.rejects(
+    () =>
+      writeHistoryAtomic(
+        historyPath,
+        [{ id: "mobile-writer" }],
+        snapshot.sourceHash,
+      ),
+    /changed concurrently/,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(historyPath, "utf8")), [
+    { id: "chat-writer" },
+  ]);
+  assert.equal(
+    fs.readdirSync(directory).some((name) => name.includes("mobile-sync")),
+    false,
+  );
+});

@@ -1,0 +1,511 @@
+/*
+ * VCP Loom · Bing 轻量移动首页
+ * 自建首页样式全部限定在 data-vcp-bing-home 下，不影响 Bing 搜索结果页。
+ */
+
+html[data-vcp-bing-home="true"] {
+    color-scheme: dark;
+    background: #06111f;
+}
+
+html[data-vcp-bing-home="true"],
+html[data-vcp-bing-home="true"] body {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+html[data-vcp-bing-home="true"] body {
+    overflow-x: hidden;
+    background: #06111f;
+    color: #f7fbff;
+    font-family:
+        Inter,
+        "Segoe UI",
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+        system-ui,
+        sans-serif;
+}
+
+html[data-vcp-bing-home="true"] *,
+html[data-vcp-bing-home="true"] *::before,
+html[data-vcp-bing-home="true"] *::after {
+    box-sizing: border-box;
+}
+
+.vcp-bing-home {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow: hidden;
+    background:
+        linear-gradient(160deg, rgba(13, 44, 68, 0.22), transparent 45%),
+        #06111f;
+}
+
+.vcp-bing-backdrop {
+    position: absolute;
+    z-index: -2;
+    inset: 0;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 50% 20%, rgba(45, 181, 173, 0.1), transparent 35%),
+        linear-gradient(180deg, #071725 0%, #07131f 55%, #050d17 100%);
+}
+
+.vcp-bing-backdrop::before {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size: 30px 30px;
+    mask-image: linear-gradient(to bottom, black, transparent 75%);
+    content: "";
+}
+
+.vcp-bing-glow {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(2px);
+    opacity: 0.68;
+}
+
+.vcp-bing-glow-primary {
+    top: -120px;
+    left: -125px;
+    width: 310px;
+    height: 310px;
+    background: radial-gradient(circle, rgba(20, 184, 166, 0.24), transparent 68%);
+}
+
+.vcp-bing-glow-secondary {
+    right: -155px;
+    bottom: 10%;
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(37, 99, 235, 0.18), transparent 68%);
+}
+
+.vcp-bing-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding:
+        max(18px, env(safe-area-inset-top))
+        max(20px, env(safe-area-inset-right))
+        10px
+        max(20px, env(safe-area-inset-left));
+}
+
+.vcp-bing-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #f6fbff;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.vcp-bing-mark {
+    position: relative;
+    display: block;
+    width: 25px;
+    height: 30px;
+    transform: skewY(-9deg);
+}
+
+.vcp-bing-mark i {
+    position: absolute;
+    display: block;
+    background: linear-gradient(145deg, #35d6c8, #0c9a93);
+    box-shadow: 0 5px 18px rgba(25, 201, 187, 0.25);
+}
+
+.vcp-bing-mark i:nth-child(1) {
+    top: 0;
+    left: 3px;
+    width: 8px;
+    height: 21px;
+    border-radius: 2px 3px 1px 2px;
+}
+
+.vcp-bing-mark i:nth-child(2) {
+    right: 2px;
+    bottom: 2px;
+    width: 17px;
+    height: 8px;
+    transform: rotate(-24deg);
+    transform-origin: left center;
+    border-radius: 2px 5px 5px 2px;
+}
+
+.vcp-bing-mark i:nth-child(3) {
+    bottom: 1px;
+    left: 6px;
+    width: 8px;
+    height: 15px;
+    transform: rotate(42deg);
+    transform-origin: bottom center;
+    border-radius: 2px;
+}
+
+.vcp-bing-brand-text {
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.3px;
+}
+
+.vcp-bing-account {
+    padding: 8px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(235, 246, 252, 0.78);
+    font-size: 13px;
+    text-decoration: none;
+    backdrop-filter: blur(12px);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.vcp-bing-hero {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: clamp(74px, 13vh, 108px) 20px 30px;
+}
+
+.vcp-bing-eyebrow {
+    margin: 0 0 13px;
+    color: #4ed4c8;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.vcp-bing-title {
+    margin: 0;
+    color: #f5f9fc;
+    font-size: clamp(30px, 8.4vw, 40px);
+    font-weight: 720;
+    letter-spacing: -1.3px;
+    line-height: 1.16;
+    text-align: center;
+}
+
+.vcp-bing-subtitle {
+    margin: 14px 0 30px;
+    color: rgba(202, 218, 230, 0.58);
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.vcp-bing-search {
+    position: relative;
+    display: grid;
+    grid-template-columns: 23px minmax(0, 1fr) 45px;
+    align-items: center;
+    width: 100%;
+    height: 58px;
+    padding: 0 7px 0 18px;
+    border: 1px solid rgba(119, 222, 213, 0.24);
+    border-radius: 19px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.045));
+    box-shadow:
+        0 18px 48px rgba(0, 0, 0, 0.26),
+        inset 0 1px rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(20px);
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.vcp-bing-search:focus-within {
+    border-color: rgba(68, 218, 205, 0.62);
+    box-shadow:
+        0 20px 54px rgba(0, 0, 0, 0.3),
+        0 0 0 3px rgba(33, 194, 181, 0.1),
+        inset 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.vcp-bing-search-icon {
+    position: relative;
+    display: block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(199, 225, 232, 0.62);
+    border-radius: 50%;
+}
+
+.vcp-bing-search-icon::after {
+    position: absolute;
+    right: -5px;
+    bottom: -3px;
+    width: 7px;
+    height: 2px;
+    border-radius: 2px;
+    background: rgba(199, 225, 232, 0.62);
+    transform: rotate(47deg);
+    content: "";
+}
+
+.vcp-bing-input {
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0 11px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #f7fbff;
+    font: inherit;
+    font-size: 16px;
+    line-height: normal;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.vcp-bing-input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.vcp-bing-input::placeholder {
+    color: rgba(202, 220, 230, 0.43);
+}
+
+.vcp-bing-submit {
+    position: relative;
+    display: grid;
+    width: 43px;
+    height: 43px;
+    margin: 0;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 14px;
+    outline: 0;
+    background: linear-gradient(145deg, #26c7ba, #118f8b);
+    box-shadow:
+        0 8px 20px rgba(12, 154, 147, 0.28),
+        inset 0 1px rgba(255, 255, 255, 0.25);
+    cursor: pointer;
+    transition:
+        transform 120ms ease,
+        filter 120ms ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.vcp-bing-submit:active {
+    transform: scale(0.94);
+    filter: brightness(0.94);
+}
+
+.vcp-bing-submit span {
+    position: relative;
+    width: 15px;
+    height: 15px;
+    border: 2px solid white;
+    border-radius: 50%;
+}
+
+.vcp-bing-submit span::after {
+    position: absolute;
+    right: -5px;
+    bottom: -3px;
+    width: 7px;
+    height: 2px;
+    border-radius: 2px;
+    background: white;
+    transform: rotate(47deg);
+    content: "";
+}
+
+.vcp-bing-search-shake {
+    animation: vcp-bing-shake 320ms ease;
+}
+
+@keyframes vcp-bing-shake {
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-5px);
+    }
+
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+.vcp-bing-quick-links {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 15px;
+}
+
+.vcp-bing-quick-links a {
+    padding: 10px 3px;
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    color: rgba(215, 229, 238, 0.66);
+    font-size: 12px;
+    text-align: center;
+    text-decoration: none;
+    transition:
+        border-color 140ms ease,
+        background 140ms ease,
+        color 140ms ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.vcp-bing-quick-links a:active {
+    border-color: rgba(66, 205, 193, 0.28);
+    background: rgba(37, 190, 177, 0.09);
+    color: #c9f5f1;
+}
+
+.vcp-bing-suggestions {
+    margin-top: clamp(55px, 10vh, 84px);
+}
+
+.vcp-bing-suggestions h2 {
+    margin: 0 0 13px 2px;
+    color: rgba(211, 225, 234, 0.45);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.vcp-bing-suggestion-list {
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 17px;
+    background: rgba(255, 255, 255, 0.027);
+    backdrop-filter: blur(12px);
+}
+
+.vcp-bing-suggestion-list a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 47px;
+    padding: 0 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.052);
+    color: rgba(222, 234, 241, 0.75);
+    font-size: 13px;
+    text-decoration: none;
+    transition: background 120ms ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.vcp-bing-suggestion-list a:last-child {
+    border-bottom: 0;
+}
+
+.vcp-bing-suggestion-list a:active {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.vcp-bing-suggestion-list i {
+    width: 7px;
+    height: 7px;
+    border-top: 1.5px solid rgba(89, 211, 201, 0.7);
+    border-right: 1.5px solid rgba(89, 211, 201, 0.7);
+    transform: rotate(45deg);
+}
+
+.vcp-bing-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding:
+        8px
+        20px
+        max(18px, env(safe-area-inset-bottom));
+    color: rgba(185, 204, 215, 0.3);
+    font-size: 10px;
+}
+
+.vcp-bing-footer a {
+    color: inherit;
+    text-decoration: none;
+}
+
+/* 搜索结果页只隐藏遮挡性推广，不改变 Bing 原生页面布局。 */
+html:not([data-vcp-bing-home="true"]) #bnp_container,
+html:not([data-vcp-bing-home="true"]) .bnp_container,
+html:not([data-vcp-bing-home="true"]) #fbpgbt,
+html:not([data-vcp-bing-home="true"]) .feedback-binded,
+html:not([data-vcp-bing-home="true"]) a[href*="bingapp"],
+html:not([data-vcp-bing-home="true"]) a[href*="Microsoft.Bing"] {
+    display: none !important;
+}
+
+html {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(112, 120, 132, 0.55) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: rgba(112, 120, 132, 0.55);
+    background-clip: padding-box;
+}
+
+@media (max-height: 620px) {
+    .vcp-bing-hero {
+        padding-top: 40px;
+    }
+
+    .vcp-bing-suggestions {
+        margin-top: 34px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vcp-bing-search,
+    .vcp-bing-submit,
+    .vcp-bing-quick-links a,
+    .vcp-bing-suggestion-list a {
+        transition: none;
+    }
+
+    .vcp-bing-search-shake {
+        animation: none;
+    }
+}

@@ -10,6 +10,53 @@ window.itemListManager = (() => {
     let uiHelper;
     let activeLoadItemsToken = 0;
 
+    const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+    const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
+    const OPENHER_PERSONA_LABELS = Object.freeze({
+        cognitive: {
+            seek: '求知',
+            discern: '分辨',
+            reject: '拒绝',
+            observe: '观测',
+            infer: '推演',
+            remember: '记忆'
+        },
+        drive: {
+            curiosity: '好奇',
+            fear: '恐惧',
+            libido: '性欲',
+            pleasure: '享乐',
+            attachment: '依恋',
+            control: '控制'
+        },
+        affective: {
+            positive: '正性',
+            negative: '负性',
+            arousal: '唤醒'
+        },
+        subAxis: {
+            loss_control: '失序',
+            exposure: '暴露',
+            novelty: '新奇',
+            intimacy: '亲近',
+            challenge: '挑战',
+            comfort: '舒适',
+            conflict: '冲突',
+            ambiguity: '暧昧',
+            safety: '安全',
+            dominance: '支配',
+            submission: '顺从'
+        }
+    });
+
+    let personaStatusCache = {
+        agents: [],
+        fetchedAt: 0,
+        pending: null,
+        unavailable: false
+    };
+    let personaAutoRefreshTimer = null;
+
     /**
      * Initializes the ItemListManager module.
      * @param {object} config - The configuration object.
@@ -51,6 +98,7 @@ window.itemListManager = (() => {
         mainRendererFunctions = config.mainRendererFunctions;
         uiHelper = config.uiHelper; // Store uiHelper
 
+        ensureOpenHerPersonaAutoRefresh();
         console.log('[ItemListManager] Initialized successfully.');
     }
 
@@ -133,6 +181,564 @@ window.itemListManager = (() => {
 
     // To hold the loaded items in memory for quick access
     let loadedItemsCache = [];
+    function escapeHtml(str) {
+        return (str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function normalizePersonaMatchText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .replace(/[^\p{L}\p{N}_-]/gu, '');
+    }
+
+    function stripVcpChatEndpoint(url) {
+        const base = String(url || '').trim().replace(/\/v1\/chat\/completions\/?$/, '');
+        return base ? `${base.replace(/\/+$/, '')}/` : '';
+    }
+
+    function resolveAxisLabel(groupName, key) {
+        const group = OPENHER_PERSONA_LABELS[groupName] || {};
+        return group[key] || key;
+    }
+
+    function toPercent(value) {
+        const num = Number(value) || 0;
+        return Math.round(Math.max(0, Math.min(1, num)) * 100);
+    }
+
+    function getMoodColor(mood = {}) {
+        const positive = Number(mood.positive) || 0;
+        const negative = Number(mood.negative) || 0;
+        const arousal = Number(mood.arousal) || 0;
+        const hue = Math.round(210 + (positive - negative) * 125 + arousal * 30);
+        const saturation = Math.round(62 + arousal * 34);
+        const lightness = Math.round(48 + positive * 14 - negative * 9);
+        return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    }
+
+    function axisItems(axisState, groupName) {
+        if (!axisState || typeof axisState !== 'object') return [];
+        return Object.entries(axisState)
+            .map(([key, value]) => ({
+                key,
+                label: resolveAxisLabel(groupName, key),
+                value: Number(value?.value ?? value?.activation ?? 0) || 0,
+                subAxes: value?.subAxes || {}
+            }))
+            .sort((a, b) => b.value - a.value);
+    }
+
+    function residualItems(state) {
+        const groups = [
+            ...axisItems(state?.drive, 'drive'),
+            ...axisItems(state?.cognitive, 'cognitive'),
+            ...axisItems(state?.affective, 'affective')
+        ];
+
+        return groups
+            .flatMap(axis => Object.entries(axis.subAxes || {}).map(([subAxis, score]) => ({
+                axis: axis.key,
+                axisLabel: axis.label,
+                subAxis,
+                subAxisLabel: OPENHER_PERSONA_LABELS.subAxis[subAxis] || subAxis,
+                weight: Number(score?.weight) || 0,
+                similarity: Number(score?.similarity) || 0
+            })))
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, 5);
+    }
+
+    function normalizeEmotionLabel(label) {
+        const text = String(label || '').trim();
+        if (!text || text === '暂无观测') return '';
+        return text.split(/[\/·,，。|｜]/)[0].trim();
+    }
+
+    function getConciseMoodLabel(persona) {
+        const picked = pickPersonaEmotionLabel(persona);
+        if (picked) return picked.slice(0, 4);
+
+        const candidates = [
+            persona?.primaryArchetype,
+            persona?.moodLabel,
+            persona?.shortLabel
+        ].filter(Boolean);
+
+        for (const label of candidates) {
+            const firstSegment = normalizeEmotionLabel(label);
+            if (firstSegment) {
+                return firstSegment.slice(0, 4);
+            }
+        }
+
+        return '观测中';
+    }
+
+    function addEmotionDistributionCandidate(map, label, score, confidence = 0) {
+        const normalizedLabel = normalizeEmotionLabel(label);
+        const numericScore = Number(score);
+        if (!normalizedLabel || !Number.isFinite(numericScore) || numericScore <= 0) return;
+
+        const numericConfidence = Number(confidence);
+        const confidenceBoost = Number.isFinite(numericConfidence) && numericConfidence > 0
+            ? 1 + Math.min(numericConfidence, 1) * 0.35
+            : 1;
+        map.set(normalizedLabel, (map.get(normalizedLabel) || 0) + numericScore * confidenceBoost);
+    }
+
+    function buildEmotionDistribution(mood = {}, expression = {}) {
+        const archetypes = mood.archetypes || {};
+        const weightedMap = new Map();
+
+        addEmotionDistributionCandidate(
+            weightedMap,
+            archetypes.primary?.label || mood.label,
+            archetypes.primary?.score ?? mood.archetypeScore ?? 1,
+            archetypes.primary?.confidence
+        );
+        addEmotionDistributionCandidate(
+            weightedMap,
+            archetypes.secondary?.label,
+            archetypes.secondary?.score,
+            archetypes.secondary?.confidence
+        );
+
+        if (Array.isArray(archetypes.candidates)) {
+            archetypes.candidates.forEach(candidate => {
+                addEmotionDistributionCandidate(
+                    weightedMap,
+                    candidate?.label,
+                    candidate?.score ?? candidate?.weight ?? candidate?.activation,
+                    candidate?.confidence
+                );
+            });
+        }
+
+        if (Array.isArray(archetypes.families)) {
+            archetypes.families.forEach(family => {
+                addEmotionDistributionCandidate(
+                    weightedMap,
+                    family?.primary?.label,
+                    family?.primary?.score ?? family?.activation ?? family?.gate,
+                    family?.confidence
+                );
+            });
+        }
+
+        // expression.shortLabel 是复合表达，可能包含驱动层/性别轴体（如“好奇上扬”“混合态”），
+        // 悬停随机标签只使用 mood.archetypes 与 mood.label 里的情绪原型，避免性别极向混入。
+        const totalWeight = Array.from(weightedMap.values()).reduce((sum, value) => sum + value, 0);
+        if (totalWeight <= 0) return [];
+
+        return Array.from(weightedMap.entries())
+            .map(([label, weight]) => ({
+                label,
+                weight,
+                probability: weight / totalWeight
+            }))
+            .sort((a, b) => b.probability - a.probability);
+    }
+
+    function pickPersonaEmotionLabel(persona) {
+        const distribution = Array.isArray(persona?.emotionDistribution) ? persona.emotionDistribution : [];
+        if (!distribution.length) return '';
+
+        const totalWeight = distribution.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+        if (totalWeight <= 0) return distribution[0]?.label || '';
+
+        let cursor = Math.random() * totalWeight;
+        for (const item of distribution) {
+            cursor -= Number(item.weight) || 0;
+            if (cursor <= 0) {
+                return item.label || '';
+            }
+        }
+
+        return distribution[distribution.length - 1]?.label || '';
+    }
+
+    function setPersonaEmotionText(li, persona) {
+        if (!li || !persona) return;
+        const nameSpan = li.querySelector('.agent-name');
+        if (!nameSpan) return;
+
+        nameSpan.dataset.defaultName = nameSpan.dataset.defaultName || nameSpan.textContent;
+        nameSpan.dataset.emotionText = `${persona.agentLabel}正在｢${getConciseMoodLabel(persona)}｣`;
+    }
+
+    function createPersonaViewModel(rawAgent) {
+        const summary = rawAgent?.summary || {};
+        const state = rawAgent?.status?.state || rawAgent?.state || {};
+        const mood = state.mood || {};
+        const expression = mood.expression || {};
+        const archetypes = mood.archetypes || {};
+
+        const topCognitive = axisItems(state.cognitive, 'cognitive').slice(0, 2);
+        const topDrive = axisItems(state.drive, 'drive').slice(0, 2);
+        const residuals = residualItems(state);
+
+        // 提取新版情绪算法暴露的复合心境字段
+        const shortLabel = expression.shortLabel || mood.label || '暂无观测';
+        const sentence = expression.sentence || '';
+        const primaryArchetype = archetypes.primary?.label || '';
+        const topArchetypes = Array.isArray(archetypes.candidates) ? archetypes.candidates : [];
+        const emotionDistribution = buildEmotionDistribution(mood, expression);
+        const genderLabel = expression.gender?.label || '';
+        const driveLabel = expression.drive?.label || '';
+
+        let counterPressureLabel = '';
+        if (expression.drive?.counterPressure) {
+            const cp = expression.drive.counterPressure;
+            if (cp.label && cp.pressure !== undefined) {
+                counterPressureLabel = `${cp.label}受压${Math.round(cp.pressure * 100)}%`;
+            }
+        } else if (state.coupling?.lastCounterbalance) {
+            const lcb = state.coupling.lastCounterbalance;
+            if (lcb.axis && lcb.pressure !== undefined) {
+                const axisLabel = OPENHER_PERSONA_LABELS.drive[lcb.axis] || lcb.axis;
+                counterPressureLabel = `${axisLabel}受压${Math.round(lcb.pressure * 100)}%`;
+            }
+        }
+
+        return {
+            agentKey: summary.agentKey || state.agentKey || '',
+            agentLabel: state.agentLabel || summary.agentLabel || summary.agentKey || 'Agent',
+            moodLabel: mood.label || '暂无观测',
+            shortLabel,
+            sentence,
+            primaryArchetype,
+            topArchetypes,
+            emotionDistribution,
+            genderLabel,
+            driveLabel,
+            counterPressureLabel,
+            modeLabel: rawAgent?.status?.mode || '纯异步观察',
+            positive: Number(mood.positive) || 0,
+            negative: Number(mood.negative) || 0,
+            arousal: Number(mood.arousal) || 0,
+            color: getMoodColor(mood),
+            topCognitive,
+            topDrive,
+            residuals,
+            observationCount: Number(summary.observationCount) || 0,
+            updatedAt: summary.updatedAt || state.updatedAt || null,
+            lastObservedAt: summary.lastObservedAt || state.lastObservedAt || state.lastObservation?.at || null
+        };
+    }
+
+    function findPersonaForItem(item) {
+        if (!item || item.type !== 'agent') {
+            return null;
+        }
+
+        let matchedAgent = null;
+
+        if (Array.isArray(personaStatusCache.agents) && personaStatusCache.agents.length > 0) {
+            const itemKeys = [
+                item.id,
+                item.name,
+                item.config?.name,
+                item.config?.agentKey,
+                item.config?.agentLabel
+            ].map(normalizePersonaMatchText).filter(Boolean);
+
+            if (itemKeys.length > 0) {
+                let bestScore = 0;
+
+                personaStatusCache.agents.forEach(rawAgent => {
+                    const summary = rawAgent?.summary || {};
+                    const state = rawAgent?.status?.state || rawAgent?.state || {};
+                    const personaKeys = [
+                        summary.agentKey,
+                        summary.agentLabel,
+                        state.agentKey,
+                        state.agentLabel
+                    ].map(normalizePersonaMatchText).filter(Boolean);
+
+                    let score = 0;
+                    itemKeys.forEach(itemKey => {
+                        personaKeys.forEach(personaKey => {
+                            if (!itemKey || !personaKey) return;
+                            if (itemKey === personaKey) score = Math.max(score, 100);
+                            else if (itemKey.includes(personaKey) || personaKey.includes(itemKey)) {
+                                score = Math.max(score, Math.min(itemKey.length, personaKey.length));
+                            }
+                        });
+                    });
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        matchedAgent = rawAgent;
+                    }
+                });
+            }
+        }
+
+        return matchedAgent ? createPersonaViewModel(matchedAgent) : null;
+    }
+
+    async function fetchOpenHerPersonaStatus({ force = false } = {}) {
+        const now = Date.now();
+        if (!force && personaStatusCache.agents.length && now - personaStatusCache.fetchedAt < OPENHER_PERSONA_CACHE_TTL_MS) {
+            return personaStatusCache.agents;
+        }
+
+        if (personaStatusCache.pending) {
+            return personaStatusCache.pending;
+        }
+
+        personaStatusCache.pending = (async () => {
+            try {
+                const settings = await electronAPI.loadSettings();
+                const baseUrl = stripVcpChatEndpoint(settings?.vcpServerUrl);
+                if (!baseUrl) throw new Error('VCP Server URL not configured');
+
+                let username = settings?.adminUsername || '';
+                let password = settings?.adminPassword || '';
+                if ((!username || !password) && typeof electronAPI.loadForumConfig === 'function') {
+                    const forumConfig = await electronAPI.loadForumConfig();
+                    username = username || forumConfig?.username || '';
+                    password = password || forumConfig?.password || '';
+                }
+
+                if (!username || !password) {
+                    throw new Error('Admin credentials not configured');
+                }
+
+                const response = await fetch(`${baseUrl}admin_api/openher-persona/status`, {
+                    headers: {
+                        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+                        Accept: 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`OpenHerPersona status ${response.status}`);
+                }
+
+                const data = await response.json();
+                personaStatusCache.agents = Array.isArray(data?.agents) ? data.agents : [];
+                personaStatusCache.fetchedAt = Date.now();
+                personaStatusCache.unavailable = false;
+                updateVisiblePersonaCards();
+                return personaStatusCache.agents;
+            } catch (error) {
+                personaStatusCache.unavailable = true;
+                console.debug('[ItemListManager] OpenHerPersona status unavailable:', error?.message || error);
+                return personaStatusCache.agents;
+            } finally {
+                personaStatusCache.pending = null;
+            }
+        })();
+
+        return personaStatusCache.pending;
+    }
+
+    function ensureOpenHerPersonaAutoRefresh() {
+        if (personaAutoRefreshTimer) return;
+        fetchOpenHerPersonaStatus({ force: false });
+        personaAutoRefreshTimer = setInterval(() => {
+            fetchOpenHerPersonaStatus({ force: true });
+        }, OPENHER_PERSONA_REFRESH_INTERVAL_MS);
+    }
+
+    function updateVisiblePersonaCards() {
+        if (!itemListUl) return;
+        itemListUl.querySelectorAll('li[data-item-type="agent"]').forEach(li => {
+            const item = findItemById(li.dataset.itemId, li.dataset.itemType);
+            hydratePersonaElement(li, item);
+        });
+    }
+
+    function buildPersonaCard(persona) {
+        // 组装主弹幕词汇 (Primary Barrage) - 优先使用新版情绪算法的高级表达
+        const primaryWords = [];
+        if (persona.primaryArchetype) primaryWords.push(persona.primaryArchetype);
+        if (persona.driveLabel) primaryWords.push(persona.driveLabel);
+        if (persona.genderLabel) primaryWords.push(persona.genderLabel);
+        if (persona.counterPressureLabel) primaryWords.push(persona.counterPressureLabel);
+
+        // 补充候选原型
+        if (Array.isArray(persona.topArchetypes)) {
+            persona.topArchetypes.forEach(arch => {
+                const label = typeof arch === 'string' ? arch : arch?.label;
+                if (label && label !== persona.primaryArchetype && !primaryWords.includes(label)) {
+                    primaryWords.push(label);
+                }
+            });
+        }
+
+        // 如果主弹幕词汇不够，用旧版的认知和驱力轴补充
+        if (primaryWords.length < 4) {
+            const cognitive = persona.topCognitive.map(item => item.label);
+            const drive = persona.topDrive.map(item => item.label);
+            const backupWords = [...cognitive, ...drive];
+            for (const word of backupWords) {
+                if (!primaryWords.includes(word)) {
+                    primaryWords.push(word);
+                }
+                if (primaryWords.length >= 4) break;
+            }
+        }
+
+        // 组装次弹幕词汇 (Secondary Barrage) - 使用二级残差和轴体
+        const secondaryWords = [];
+        persona.residuals.forEach(item => {
+            secondaryWords.push(`${item.axisLabel}/${item.subAxisLabel}`);
+        });
+
+        // 补充轴体标签到次弹幕
+        const cognitive = persona.topCognitive.map(item => item.label);
+        const drive = persona.topDrive.map(item => item.label);
+        [...cognitive, ...drive].forEach(word => {
+            if (!primaryWords.includes(word) && !secondaryWords.includes(word)) {
+                secondaryWords.push(word);
+            }
+        });
+
+        const finalPrimary = primaryWords.slice(0, 5);
+        const finalSecondary = secondaryWords.slice(0, 5);
+
+        const card = document.createElement('div');
+        card.className = 'agent-emotion-card';
+        card.style.setProperty('--agent-emotion-color', persona.color);
+        card.setAttribute('aria-hidden', 'true');
+
+        const chips = finalPrimary.map((label, index) => (
+            `<span class="agent-emotion-barrage agent-emotion-barrage-primary" style="--emotion-index:${index};--emotion-track:${index % 5};">${escapeHtml(label)}</span>`
+        )).join('');
+
+        const residualHtml = finalSecondary.map((label, index) => {
+            const absoluteIndex = index + finalPrimary.length;
+            return `<span class="agent-emotion-barrage agent-emotion-barrage-secondary" style="--emotion-index:${absoluteIndex};--emotion-track:${absoluteIndex % 5};">${escapeHtml(label)}</span>`;
+        }).join('');
+
+        card.innerHTML = `
+            <div class="agent-emotion-title">
+                <span class="agent-emotion-agent">${escapeHtml(persona.agentLabel)}</span>
+                <span class="agent-emotion-mood">「${escapeHtml(persona.moodLabel)}」</span>
+            </div>
+            <div class="agent-emotion-metrics">
+                <span>正性 ${toPercent(persona.positive)}%</span>
+                <span>负性 ${toPercent(persona.negative)}%</span>
+                <span>唤醒 ${toPercent(persona.arousal)}%</span>
+            </div>
+            <div class="agent-emotion-barrage-layer">${chips}${residualHtml}</div>
+        `;
+
+        return card;
+    }
+
+    function removePersonaCard(li) {
+        if (!li) return;
+        const existing = li.querySelector('.agent-emotion-card');
+        if (existing) existing.remove();
+    }
+
+    function getPersonaRenderKey(persona) {
+        if (!persona) return '';
+        return [
+            persona.agentKey,
+            persona.agentLabel,
+            persona.moodLabel,
+            persona.shortLabel,
+            persona.sentence,
+            persona.primaryArchetype,
+            persona.emotionDistribution.map(item => `${item.label}:${item.weight}:${item.probability}`).join('|'),
+            persona.genderLabel,
+            persona.driveLabel,
+            persona.counterPressureLabel,
+            persona.modeLabel,
+            persona.positive,
+            persona.negative,
+            persona.arousal,
+            persona.color,
+            persona.updatedAt,
+            persona.lastObservedAt,
+            persona.observationCount,
+            persona.topCognitive.map(item => `${item.key}:${item.value}`).join('|'),
+            persona.topDrive.map(item => `${item.key}:${item.value}`).join('|'),
+            persona.residuals.map(item => `${item.axis}:${item.subAxis}:${item.weight}:${item.similarity}`).join('|')
+        ].join('::');
+    }
+
+    function showPersonaCard(li) {
+        if (!li || !li._personaViewModel) return;
+        const existing = li.querySelector('.agent-emotion-card');
+        if (existing && existing.dataset.renderKey === li._personaRenderKey) return;
+
+        removePersonaCard(li);
+        const card = buildPersonaCard(li._personaViewModel);
+        card.dataset.renderKey = li._personaRenderKey || '';
+        li.appendChild(card);
+    }
+
+    function bindPersonaHoverHandlers(li) {
+        if (!li || li._personaHoverHandlersBound) return;
+        li._personaHoverHandlersBound = true;
+
+        li.addEventListener('mouseenter', () => {
+            if (!li.classList.contains('has-agent-emotion')) return;
+            setPersonaEmotionText(li, li._personaViewModel);
+            showPersonaCard(li);
+        });
+
+        li.addEventListener('mouseleave', () => {
+            removePersonaCard(li);
+        });
+    }
+
+    function hydratePersonaElement(li, item) {
+        if (!li || !item || item.type !== 'agent') return;
+
+        const persona = findPersonaForItem(item);
+        const avatarWrapper = li.querySelector('.avatar-wrapper');
+        let avatarEmotionRing = avatarWrapper?.querySelector('.agent-emotion-avatar-ring');
+
+        if (!persona) {
+            li.classList.toggle('has-agent-emotion', false);
+            li.classList.toggle('agent-emotion-unavailable', personaStatusCache.unavailable);
+            li._personaViewModel = null;
+            li._personaRenderKey = '';
+            delete li.dataset.personaRenderKey;
+            avatarEmotionRing?.remove();
+            removePersonaCard(li);
+            return;
+        }
+
+        if (avatarWrapper && !avatarEmotionRing) {
+            avatarEmotionRing = document.createElement('span');
+            avatarEmotionRing.className = 'agent-emotion-avatar-ring';
+            avatarEmotionRing.setAttribute('aria-hidden', 'true');
+            avatarWrapper.insertBefore(avatarEmotionRing, avatarWrapper.firstChild);
+        }
+
+        const renderKey = getPersonaRenderKey(persona);
+        li._personaViewModel = persona;
+        li._personaRenderKey = renderKey;
+        li.dataset.personaRenderKey = renderKey;
+        li.classList.add('has-agent-emotion');
+        li.classList.remove('agent-emotion-unavailable');
+        li.style.setProperty('--agent-emotion-color', persona.color);
+
+        // 主显示保持轻量：仍使用“xx正在 + 4字心境”，但每次悬停会按情绪分布概率重新抽取标签
+        setPersonaEmotionText(li, persona);
+
+        bindPersonaHoverHandlers(li);
+
+        if (!li.matches(':hover')) {
+            removePersonaCard(li);
+            return;
+        }
+
+        showPersonaCard(li);
+    }
 
     function createItemElement(item) {
         const li = document.createElement('li');
@@ -195,6 +801,13 @@ window.itemListManager = (() => {
         li.appendChild(avatarWrapper);
         li.appendChild(nameSpan);
 
+        // Agent 列表可能被未读数或配置刷新重建；从 Flowlock 状态机恢复持久指示器。
+        if (item.type === 'agent' && window.flowlockManager?.isAgentLocked?.(item.id)) {
+            avatarWrapper.classList.add('flowlock-active-ring');
+        }
+
+        hydratePersonaElement(li, item);
+
         // 为每个项目添加独立的状态管理
         li._lastClickTime = 0;
         li._middleClickHandled = false;
@@ -239,12 +852,29 @@ window.itemListManager = (() => {
             li._lastClickTime = currentTime;
         });
 
-        // 防止中键点击的默认行为
-        li.addEventListener('contextmenu', (e) => {
-            // 不阻止右键菜单，但记录中键状态
-            if (e.button === 1) {
-                console.log('[ItemListManager] 中键contextmenu事件');
+        // 窄侧栏中右键头像：选择该助手/群组并直接打开其话题浮层。
+        li.addEventListener('contextmenu', async (e) => {
+            if (!li.closest('.sidebar.avatar-only')) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+                await mainRendererFunctions.selectItem(
+                    item.id,
+                    item.type,
+                    item.name,
+                    item.avatarUrl,
+                    item.config || item
+                );
             }
+
+            document.dispatchEvent(new CustomEvent('compact-sidebar-open-topics', {
+                detail: {
+                    itemId: item.id,
+                    itemType: item.type
+                }
+            }));
         });
 
         return li;
@@ -359,6 +989,7 @@ window.itemListManager = (() => {
             renderItems([], '<li>没有找到Agent或群组。请创建一个。</li>');
         }
 
+        fetchOpenHerPersonaStatus({ force: false });
         // Asynchronously fetch and update unread counts to avoid blocking initial render
         refreshUnreadCounts();
     }

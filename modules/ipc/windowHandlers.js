@@ -1,5 +1,6 @@
 // modules/ipc/windowHandlers.js
-const { ipcMain, app, BrowserWindow } = require('electron');
+const { ipcMain, app, BrowserWindow, clipboard } = require('electron');
+const crypto = require('crypto');
 const path = require('path');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 
@@ -13,6 +14,23 @@ let forumWindowInstance = null;
 let memoWindowInstance = null;
 let logWindowInstance = null;
 let taskWindowInstance = null;
+
+/**
+ * 大体积 payload（如截图 dataURL/Blob）通过 token 在主进程内一次性缓存，
+ * 由目标窗口通过 IPC 拉取，避免走 URL 参数（Chromium 对 URL 长度有上限，
+ * 长截图会被截断或彻底打不开窗口）。
+ */
+const imageViewerPayloads = new Map(); // token -> { src, title, theme, createdAt }
+const IMAGE_PAYLOAD_TTL_MS = 10 * 60 * 1000; // 10 分钟兜底过期
+const generateImagePayloadToken = () => `imgpld_${Date.now().toString(36)}_${crypto.randomBytes(8).toString('hex')}`;
+const cleanupExpiredImagePayloads = () => {
+    const now = Date.now();
+    for (const [token, payload] of imageViewerPayloads.entries()) {
+        if (now - payload.createdAt > IMAGE_PAYLOAD_TTL_MS) {
+            imageViewerPayloads.delete(token);
+        }
+    }
+};
 
 function initialize(mainWindow, openChildWindows) {
     if (ipcHandlersRegistered) {
@@ -48,6 +66,13 @@ function initialize(mainWindow, openChildWindows) {
     ipcMain.on('close-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win) {
+            // BrowserWindow.fromWebContents() may resolve a WebContentsView to
+            // its owner window. A child surface must never be allowed to close
+            // that owner through the generic window-control channel.
+            if (event.sender !== win.webContents) {
+                console.warn('[WindowHandlers] Ignored close-window from non-window webContents.');
+                return;
+            }
             // If it's the main window, check if the desktop window is alive.
             // If so, hide the main window to tray instead of quitting.
             if (win === mainWindow) {
@@ -98,7 +123,89 @@ function initialize(mainWindow, openChildWindows) {
         }
     });
 
-    ipcMain.on('open-image-viewer', (event, { src, title, theme }) => {
+    /**
+     * 渲染进程把大 payload（如完整 dataURL/Blob 转成的 dataURL）注册到主进程，
+     * 拿到一个一次性 token，用于在打开图片预览窗口时跨进程取数据，
+     * 避免把超长字符串塞到 BrowserWindow.loadURL 的 query 参数里。
+     */
+    ipcMain.handle('image-viewer:register-payload', (event, payload = {}) => {
+        cleanupExpiredImagePayloads();
+        const { src, title = '图片预览', theme = 'dark' } = payload || {};
+        if (typeof src !== 'string' || !src) {
+            throw new Error('image-viewer:register-payload requires a non-empty "src" string.');
+        }
+        const token = generateImagePayloadToken();
+        imageViewerPayloads.set(token, {
+            src,
+            title,
+            theme,
+            createdAt: Date.now(),
+        });
+        return token;
+    });
+
+    /**
+     * 图片预览窗口加载完毕后通过此通道一次性拉走 payload，主进程随即清理引用。
+     */
+    ipcMain.handle('image-viewer:consume-payload', (event, token) => {
+        if (!token || typeof token !== 'string') return null;
+        const payload = imageViewerPayloads.get(token);
+        if (!payload) return null;
+        imageViewerPayloads.delete(token);
+        return {
+            src: payload.src,
+            title: payload.title,
+            theme: payload.theme,
+        };
+    });
+
+    /**
+     * Chromium 的 Async Clipboard API 在部分版本中不接受 image/gif。
+     * 将原始 GIF 字节交给 Electron 主进程写入原生剪贴板格式，保留全部动画帧。
+     */
+    ipcMain.handle('image-viewer:copy-gif', (event, gifBytes) => {
+        const buffer = Buffer.from(gifBytes || []);
+        const isGif = buffer.length >= 6
+            && (buffer.subarray(0, 6).toString('ascii') === 'GIF87a'
+                || buffer.subarray(0, 6).toString('ascii') === 'GIF89a');
+
+        if (!isGif) {
+            throw new Error('拒绝写入剪贴板：数据不是有效的 GIF。');
+        }
+
+        const MAX_GIF_CLIPBOARD_BYTES = 100 * 1024 * 1024;
+        if (buffer.length > MAX_GIF_CLIPBOARD_BYTES) {
+            throw new Error('GIF 超过 100 MB，无法复制到剪贴板。');
+        }
+
+        const format = process.platform === 'darwin' ? 'public.gif' : 'image/gif';
+        clipboard.writeBuffer(format, buffer);
+        return { success: true, format, size: buffer.length };
+    });
+
+    ipcMain.on('open-image-viewer', (event, payload = {}) => {
+        const { src, title, theme } = payload || {};
+        if (!src) {
+            console.error('[WindowHandlers] open-image-viewer received empty src.');
+            return;
+        }
+
+        // 自动判断是否需要走 token：dataURL/超长 URL 一律不进 query string，避免被截断。
+        const isLargePayload = typeof src === 'string'
+            && (src.startsWith('data:') || src.length > 1500);
+
+        let token = null;
+        if (isLargePayload) {
+            cleanupExpiredImagePayloads();
+            token = generateImagePayloadToken();
+            imageViewerPayloads.set(token, {
+                src,
+                title: title || '图片预览',
+                theme: theme || 'dark',
+                createdAt: Date.now(),
+            });
+        }
+
         const imageViewerWindow = new BrowserWindow({
             width: 1000,
             height: 800,
@@ -119,10 +226,20 @@ function initialize(mainWindow, openChildWindows) {
 
         imageViewerWindow.setMenu(null);
 
-        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}&theme=${encodeURIComponent(theme || 'dark')}`;
+        const queryParts = [];
+        if (token) {
+            queryParts.push(`token=${encodeURIComponent(token)}`);
+            queryParts.push(`title=${encodeURIComponent(title || '图片预览')}`);
+            queryParts.push(`theme=${encodeURIComponent(theme || 'dark')}`);
+        } else {
+            queryParts.push(`src=${encodeURIComponent(src)}`);
+            queryParts.push(`title=${encodeURIComponent(title || '图片预览')}`);
+            queryParts.push(`theme=${encodeURIComponent(theme || 'dark')}`);
+        }
+        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?${queryParts.join('&')}`;
         imageViewerWindow.loadURL(url);
- 
-         imageViewerWindow.once('ready-to-show', () => {
+
+        imageViewerWindow.once('ready-to-show', () => {
             imageViewerWindow.show();
         });
 
@@ -130,7 +247,10 @@ function initialize(mainWindow, openChildWindows) {
         openChildWindows.push(imageViewerWindow);
 
         imageViewerWindow.on('closed', () => {
-            // Remove from the list when closed
+            // 兜底清理：万一渲染进程没拉走 payload，窗口关闭时也释放掉。
+            if (token && imageViewerPayloads.has(token)) {
+                imageViewerPayloads.delete(token);
+            }
             const index = openChildWindows.indexOf(imageViewerWindow);
             if (index > -1) {
                 openChildWindows.splice(index, 1);

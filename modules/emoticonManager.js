@@ -3,7 +3,7 @@
 var emoticonManagerApi = window.chatAPI || window.utilityAPI || window.electronAPI;
 
 const emoticonManager = (() => {
-    let userEmoticons = [];
+    let availableEmoticons = [];
     let isInitialized = false;
     let emoticonPanel = null;
     let messageInput = null;
@@ -33,7 +33,7 @@ const emoticonManager = (() => {
     }
 
     async function loadUserEmoticons() {
-        userEmoticons = [];
+        availableEmoticons = [];
         setLoadStatus('loading');
 
         try {
@@ -44,26 +44,30 @@ const emoticonManager = (() => {
 
             const settings = await emoticonManagerApi.loadSettings();
             const userName = settings?.userName?.trim();
-            if (!userName) {
-                setLoadStatus('empty', 'user name unavailable');
-                return;
-            }
-
             const emoticonLibrary = await emoticonManagerApi.getEmoticonLibrary();
             if (!Array.isArray(emoticonLibrary)) {
                 setLoadStatus('degraded', 'emoticon library unavailable');
                 return;
             }
 
-            const userCategory = `${userName}表情包`;
-            userEmoticons = emoticonLibrary.filter((emoticon) => emoticon.category === userCategory);
+            const commonCategory = '通用表情包';
+            const categories = new Set([commonCategory]);
+            if (userName) {
+                categories.add(`${userName}表情包`);
+            }
+
+            availableEmoticons = emoticonLibrary.filter((emoticon) => categories.has(emoticon.category));
             setLoadStatus(
-                userEmoticons.length > 0 ? 'ready' : 'empty',
-                userEmoticons.length > 0 ? '' : `no emoticons for ${userCategory}`
+                availableEmoticons.length > 0 ? 'ready' : 'empty',
+                availableEmoticons.length > 0
+                    ? ''
+                    : `no emoticons for ${Array.from(categories).join(', ')}`
             );
-            console.log(`[EmoticonManager] Loaded ${userEmoticons.length} emoticons for user "${userName}".`);
+            console.log(
+                `[EmoticonManager] Loaded ${availableEmoticons.length} emoticons from "${Array.from(categories).join('" and "')}".`
+            );
         } catch (error) {
-            userEmoticons = [];
+            availableEmoticons = [];
             setLoadStatus('degraded', error?.message || 'unknown error');
         }
     }
@@ -82,10 +86,10 @@ const emoticonManager = (() => {
         grid.className = 'emoticon-grid';
         emoticonPanel.appendChild(grid);
 
-        if (userEmoticons.length === 0) {
-            grid.innerHTML = '<div class="emoticon-item-placeholder">没有找到您的表情包</div>';
+        if (availableEmoticons.length === 0) {
+            grid.innerHTML = '<div class="emoticon-item-placeholder">没有找到可用的表情包</div>';
         } else {
-            userEmoticons.forEach((emoticon) => {
+            availableEmoticons.forEach((emoticon) => {
                 const img = document.createElement('img');
                 img.src = emoticon.url;
                 img.title = emoticon.filename;
@@ -169,7 +173,7 @@ const emoticonManager = (() => {
             isInitialized,
             lastLoadStatus,
             lastLoadReason,
-            emoticonCount: userEmoticons.length
+            emoticonCount: availableEmoticons.length
         })
     };
 })();

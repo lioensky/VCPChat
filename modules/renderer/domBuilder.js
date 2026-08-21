@@ -99,9 +99,9 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
         if (message.isGroupMessage) {
             avatarUrlToUse = message.avatarUrl || 'assets/default_avatar.png';
             senderNameToUse = message.name || '群成员';
-        } else if (currentSelectedItem && currentSelectedItem.avatarUrl) {
-            avatarUrlToUse = currentSelectedItem.avatarUrl;
-            senderNameToUse = message.name || currentSelectedItem.name || 'AI';
+        } else if (message.avatarUrl || currentSelectedItem?.avatarUrl) {
+            avatarUrlToUse = message.avatarUrl || currentSelectedItem.avatarUrl;
+            senderNameToUse = message.name || currentSelectedItem?.name || 'AI';
         } else {
             avatarUrlToUse = 'assets/default_avatar.png';
             senderNameToUse = message.name || 'AI';

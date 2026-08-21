@@ -259,11 +259,6 @@ pub struct ConfigureNormalizationRequest {
 }
 
 #[derive(Deserialize)]
-pub struct PreloadGainRequest {
-    tracks: Vec<String>,  // List of file paths to preload
-}
-
-#[derive(Deserialize)]
 pub struct ScanBackgroundRequest {
     path: String,
     store: Option<bool>,  // Whether to store in database (default: true)
@@ -556,7 +551,7 @@ fn get_player_state(player: &AudioPlayer) -> StateResponse {
     StateResponse {
         is_playing: state == PlayerState::Playing,
         is_paused: state == PlayerState::Paused,
-        is_loading: shared.is_loading.load(std::sync::atomic::Ordering::Relaxed),
+        is_loading: shared.is_loading.load(std::sync::atomic::Ordering::Acquire),
         duration: shared.duration_secs(),
         current_time: shared.current_time_secs(),
         file_path,

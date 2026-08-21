@@ -6,6 +6,7 @@ class PresetPromptModule {
         this.electronAPI = options.electronAPI;
         this.agentId = null;
         this.config = null;
+        this.contextVersion = 0;
         
         this.textarea = null;
         this.presetSelect = null;
@@ -26,12 +27,14 @@ class PresetPromptModule {
      * @param {Object} config 
      */
     async updateContext(agentId, config) {
+        const contextVersion = ++this.contextVersion;
         this.agentId = agentId;
         this.config = config;
         this.cachedContent = config.presetSystemPrompt || '';
         this.cachedSelectedPreset = config.selectedPreset || '';
         this.presetPath = this.config.presetPromptPath || this.defaultPresetPath;
         await this.loadPresets();
+        return contextVersion === this.contextVersion && this.agentId === agentId;
     }
 
     /**
@@ -169,10 +172,16 @@ class PresetPromptModule {
         }
 
         this.presetSelect.onchange = async () => {
-            await this.loadSelectedPreset();
-            // 选择预设后自动触发保存
-            if (window.settingsManager && typeof window.settingsManager.triggerAgentSave === 'function') {
-                await window.settingsManager.triggerAgentSave();
+            const targetAgentId = this.agentId;
+            const loaded = await this.loadSelectedPreset();
+            // 只有预设确实加载到原上下文后才触发保存；显式 ID 也会由 SettingsManager
+            // 与当前表单上下文复核，旧回调无法把新表单写回旧 Agent。
+            if (
+                loaded !== false &&
+                window.settingsManager &&
+                typeof window.settingsManager.triggerAgentSave === 'function'
+            ) {
+                await window.settingsManager.triggerAgentSave(targetAgentId);
             }
         };
 
@@ -258,6 +267,8 @@ class PresetPromptModule {
      * 加载选中的预设
      */
     async loadSelectedPreset() {
+        const targetAgentId = this.agentId;
+        const contextVersion = this.contextVersion;
         const presetPath = this.presetSelect.value;
         
         if (!presetPath) {
@@ -267,23 +278,32 @@ class PresetPromptModule {
                 this.autoResize();
             }
             await this.save();
-            return;
+            return this.agentId === targetAgentId && this.contextVersion === contextVersion;
         }
 
         try {
             const result = await this.electronAPI.loadPresetContent(presetPath);
+            if (this.agentId !== targetAgentId || this.contextVersion !== contextVersion) {
+                console.debug(`[PresetPromptModule] Ignoring stale preset load for agent ${targetAgentId}.`);
+                return false;
+            }
             if (result.success && this.textarea) {
                 this.textarea.value = result.content || '';
                 // 使用setTimeout确保内容已渲染
                 setTimeout(() => {
-                    this.autoResize();
+                    if (this.agentId === targetAgentId && this.contextVersion === contextVersion) {
+                        this.autoResize();
+                    }
                 }, 0);
                 await this.save();
+                return true;
             } else {
                 console.error('Failed to load preset content:', result.error);
+                return false;
             }
         } catch (error) {
             console.error('Error loading preset content:', error);
+            return false;
         }
     }
 
@@ -302,6 +322,9 @@ class PresetPromptModule {
     async save() {
         if (!this.textarea) return;
 
+        // 在调用 IPC 前冻结目标与数据，后续上下文切换不会改变本次写入归属。
+        const targetAgentId = this.agentId;
+        if (!targetAgentId) return;
         const content = this.textarea.value.trim();
         const selectedPreset = this.presetSelect ? this.presetSelect.value : '';
 
@@ -309,7 +332,7 @@ class PresetPromptModule {
         this.cachedContent = content;
         this.cachedSelectedPreset = selectedPreset;
 
-        await this.electronAPI.updateAgentConfig(this.agentId, {
+        await this.electronAPI.updateAgentConfig(targetAgentId, {
             presetSystemPrompt: content,
             selectedPreset: selectedPreset
         });

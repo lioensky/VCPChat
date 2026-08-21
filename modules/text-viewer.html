@@ -6,6 +6,7 @@
     <title>文本阅读模式</title>
     <link rel="stylesheet" href="../styles/themes.css"> <!-- 引用主题样式 -->
     <link rel="stylesheet" href="../style.css"> <!-- 复用主项目的样式 -->
+    <link rel="stylesheet" href="../styles/messageRenderer.css">
     <link rel="stylesheet" href="../vendor/katex.min.css" crossorigin="anonymous">
     <script defer src="../vendor/katex.min.js" crossorigin="anonymous"></script>
     <script defer src="../vendor/auto-render.min.js" crossorigin="anonymous"></script>
@@ -173,6 +174,32 @@
             color: #e36209; /* Dark Orange */
         }
 
+        /* Markdown horizontal rule: make --- render as a subtle fading separator */
+        .content-container hr {
+            height: 1px;
+            border: 0;
+            margin: 1.6em auto;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                color-mix(in srgb, var(--viewer-primary-text) 18%, transparent) 18%,
+                color-mix(in srgb, var(--viewer-primary-text) 28%, transparent) 50%,
+                color-mix(in srgb, var(--viewer-primary-text) 18%, transparent) 82%,
+                transparent 100%
+            );
+        }
+
+        body.light-theme .content-container hr {
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                color-mix(in srgb, var(--viewer-primary-text) 14%, transparent) 18%,
+                color-mix(in srgb, var(--viewer-primary-text) 22%, transparent) 50%,
+                color-mix(in srgb, var(--viewer-primary-text) 14%, transparent) 82%,
+                transparent 100%
+            );
+        }
+
         /* Defensive wrapping rules (mirror chat bubble fixes) */
         /* 1) Only flex-center paragraphs when they contain images only */
         .content-container p[style*="text-align: center"] {
@@ -327,7 +354,8 @@
         .html-preview-container {
             position: relative;
             width: 100%;
-            height: 85vh; /* 85% of the viewport height */
+            height: min(92vh, 980px); /* 阅读模式：HTML 预览更宽松，尽量提供完整视口 */
+            min-height: 520px;
             margin-top: 10px;
             margin-bottom: 10px;
         }
@@ -336,7 +364,7 @@
             width: 100%;
             height: 100%;
             border: 1px solid var(--viewer-code-bg-hover);
-            border-radius: 5px;
+            border-radius: 8px;
             background-color: #fff; /* Set a default background for the iframe content */
         }
 
@@ -582,27 +610,30 @@
             transform: translateX(20px);
         }
 
-        /* --- Start: Ported Styles from messageRenderer.css --- */
+        /* --- Start: Viewer-specific overrides for messageRenderer.css --- */
 
-        /* VCP ToolUse Bubble */
-        .vcp-tool-use-bubble {
-            background: linear-gradient(145deg, #3a7bd5 0%, #00d2ff 100%) !important;
-            background-size: 200% 200% !important;
-            animation: vcp-bubble-background-flow-kf 20s ease-in-out infinite;
-            border-radius: 10px !important;
-            padding: 8px 15px 8px 35px !important;
-            color: #ffffff !important;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-            margin-top: 5px !important; /* Add space above the tool bubble */
-            margin-bottom: 10px !important;
-            position: relative;
-            overflow: hidden;
-            line-height: 1.6;
-            display: block !important; /* Block display to show full content */
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
-            font-size: 0.95em !important;
-            white-space: pre-wrap;
-            word-break: break-all;
+        /* 阅读模式：工具调用块始终展开，不依赖 hover，不收纳。 */
+        .content-container .vcp-tool-use-bubble {
+            width: 100%;
+            max-width: 100% !important;
+            box-sizing: border-box;
+        }
+
+        .content-container .vcp-tool-summary {
+            cursor: default;
+        }
+
+        .content-container .vcp-tool-details {
+            max-height: none !important;
+            opacity: 1 !important;
+            overflow: auto !important;
+            font-size: initial !important;
+            margin-top: 10px !important;
+            content-visibility: visible !important;
+        }
+
+        .content-container .vcp-tool-use-bubble:hover .vcp-tool-details {
+            max-height: none !important;
         }
         .vcp-tool-use-bubble::before {
             content: "⚙️";
@@ -636,11 +667,11 @@
         }
 
         /* Maid Diary Bubble Redesign */
-        .maid-diary-bubble {
+        .content-container .maid-diary-bubble {
             background: #fdfaf6 !important;
             border: 1px solid #eaddd0;
             border-radius: 8px !important;
-            padding: 12px 18px 15px 48px !important;
+            padding: 12px 18px 15px 18px !important;
             color: #5d4037 !important;
             box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
             margin-top: 10px !important;
@@ -652,16 +683,8 @@
             font-family: 'Georgia', 'Times New Roman', serif !important;
             font-size: 1em !important;
         }
-        .maid-diary-bubble::before {
-            content: "✒️";
-            position: absolute;
-            top: 14px;
-            left: 16px;
-            font-size: 22px;
-            opacity: 0.6;
-            z-index: 2;
-            transform: rotate(-15deg);
-            animation: none !important;
+        .content-container .maid-diary-bubble::before {
+            display: none !important;
         }
         .diary-header {
             display: flex;
@@ -699,7 +722,7 @@
         .diary-content {
             font-size: 0.95em;
             color: #4e342e;
-            white-space: pre-wrap;
+            white-space: normal;
             word-break: break-word;
         }
         /* --- Maid Diary Dark Theme Overrides --- */
@@ -750,7 +773,40 @@
             50% { background-position: 150% 50%; }
             100% { background-position: 0% 50%; }
         }
-        /* --- End: Ported Styles --- */
+        /* 阅读模式：工具返回块默认折叠，点击头部展开。 */
+        .content-container .vcp-tool-result-bubble.collapsible .vcp-tool-result-header {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .content-container .vcp-tool-result-bubble.collapsible .vcp-tool-result-collapsible-content {
+            max-height: 0;
+            opacity: 0;
+            overflow: auto;
+            margin-top: 0;
+            transition: max-height 0.45s ease, opacity 0.32s ease, margin-top 0.32s ease;
+            content-visibility: hidden;
+        }
+
+        .content-container .vcp-tool-result-bubble.collapsible.expanded .vcp-tool-result-collapsible-content {
+            max-height: min(70vh, 720px);
+            opacity: 1;
+            margin-top: 10px;
+            content-visibility: visible;
+        }
+
+        .content-container .vcp-tool-result-markdown-content {
+            max-height: none;
+        }
+
+        .content-container .vcp-tool-call-summary-bubble,
+        .content-container .vcp-thought-chain-bubble,
+        .content-container .vcp-role-divider,
+        .content-container .vcp-desktop-push-placeholder {
+            max-width: 100%;
+        }
+
+        /* --- End: Viewer-specific overrides --- */
 
         /* --- VCP Tool Result Bubble --- */
         .vcp-tool-result-bubble {
@@ -1058,7 +1114,7 @@
     <script src="../vendor/mermaid.min.js"></script>
     <script src="../vendor/marked.min.js"></script>
     <script src="../vendor/highlight.min.js"></script>
-    <script src="../vendor/html2canvas.min.js"></script>
+    <!-- modern-screenshot 是 ESM 模块，由 text-viewer.js 中通过 import 加载，这里不需要再用 <script> 引入 -->
     <!-- draw.io viewer for embedding diagrams -->
     <script src="https://app.diagrams.net/js/viewer.min.js"></script>
     <!-- Pretext 文本布局引擎 -->

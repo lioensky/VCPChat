@@ -1,6 +1,6 @@
 ﻿const fs = require('fs').promises;
 const path = require('path');
-const dotenv = require('dotenv');
+const crypto = require('crypto');
 
 // --- 主逻辑 ---
 async function main() {
@@ -13,7 +13,7 @@ async function main() {
 
         // 2. 获取命令名称（优先使用 command，兼容旧版 tool_name）
         const commandName = args.command || args.tool_name;
-        
+
         if (!commandName) {
             throw new Error("请求中缺少 'command' 参数。");
         }
@@ -23,6 +23,9 @@ async function main() {
         switch (commandName) {
             case 'CreateTopic':
                 result = await handleCreateTopic(VchatDataURL, args);
+                break;
+            case 'CreateFlowlockTopic':
+                result = await handleCreateFlowlockTopic(VchatDataURL, args);
                 break;
             case 'ReadUnlockedTopics':
                 result = await handleReadUnlockedTopics(VchatDataURL, args);
@@ -94,6 +97,64 @@ async function handleCreateTopic(vchatPath, args) {
             initial_message: initialMessage
         }
     };
+}
+
+async function handleCreateFlowlockTopic(vchatPath, args) {
+    const maidName = args.maid;
+    const topicName = args.topic_name;
+    const initialMessage = args.initial_message;
+    const heartbeatSeconds = normalizeHeartbeatSeconds(args.flowlock_heartbeat);
+    const prompt = typeof args.flowlock_prompt === 'string' ? args.flowlock_prompt.trim() : '';
+
+    if (!maidName) throw new Error("请求中缺少 'maid' 参数。");
+    if (!topicName) throw new Error("请求中缺少 'topic_name' 参数。");
+    if (!initialMessage) throw new Error("请求中缺少 'initial_message' 参数。");
+
+    const agentInfo = await findAgentInfo(vchatPath, maidName);
+    if (!agentInfo) {
+        throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+    }
+
+    const flowlockRequest = {
+        requestId: crypto.randomUUID(),
+        requestedByAgentId: agentInfo.uuid,
+        createdAt: Date.now(),
+        heartbeatSeconds,
+        prompt,
+        status: 'pending'
+    };
+
+    const topicId = await createTopic(
+        vchatPath,
+        agentInfo,
+        topicName,
+        initialMessage,
+        { flowlockRequest, setCurrentTopic: false }
+    );
+
+    return {
+        status: 'success',
+        result: {
+            message: `成功创建了新的 Flowlock 话题：${topicName}`,
+            topic_id: topicId,
+            topic_name: topicName,
+            agent_name: agentInfo.name,
+            agent_id: agentInfo.uuid,
+            request_id: flowlockRequest.requestId,
+            flowlock_status: flowlockRequest.status,
+            heartbeat_seconds: heartbeatSeconds,
+            initial_message: initialMessage
+        }
+    };
+}
+
+function normalizeHeartbeatSeconds(value) {
+    if (value === undefined || value === null || value === '') return 5;
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) {
+        throw new Error("'flowlock_heartbeat' 必须是有效的秒数。");
+    }
+    return Math.max(1, Math.min(86400, parsed));
 }
 
 async function handleReadUnlockedTopics(vchatPath, args) {
@@ -280,9 +341,10 @@ function generateRandomString(length) {
     return result;
 }
 
-async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
+async function createTopic(vchatPath, agentInfo, topicName, initialMessage, options = {}) {
     const agentUuid = agentInfo.uuid;
-    
+    const { flowlockRequest = null, setCurrentTopic = true } = options;
+
     // 定义正确的路径
     const agentConfigDir = path.join(vchatPath, 'Agents', agentUuid);
     const agentConfigPath = path.join(agentConfigDir, 'config.json');
@@ -306,17 +368,18 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
             }
         }
 
-        // 2. 在 UserData 目录下创建话题文件夹和 history.json
-        const newTopicId = `topic_${Date.now()}`;
-        const newTopicPath = path.join(topicsDir, newTopicId);
-        await fs.mkdir(newTopicPath, { recursive: true });
-
+        // 2. 在 UserData 目录下创建话题文件夹和 history.json。
+        // UUID 后缀消除同毫秒并发创建时的 Topic ID 冲突。
         const timestamp = Date.now();
+        const newTopicId = `topic_${timestamp}_${crypto.randomUUID()}`;
+        const newTopicPath = path.join(topicsDir, newTopicId);
+        await fs.mkdir(newTopicPath, { recursive: false });
+
         const messageId = `msg_${timestamp}_assistant_${generateRandomString(7)}`;
         const avatarPath = path.join(agentConfigDir, 'avatar.png');
         const avatarUrl = `file://${avatarPath.replace(/\\/g, '/')}`; // 确保是 file URL 兼容的路径
         const historyFilePath = path.join(newTopicPath, 'history.json');
-        
+
         // 创建带有元数据的初始消息
         const initialHistory = [
             {
@@ -345,27 +408,35 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
         if (!agentConfig.topics) {
             agentConfig.topics = [];
         }
-        
-        // 添加带有扩展元数据的话题
-        agentConfig.topics.unshift({
+
+        // 添加带有扩展元数据的话题。持久化 Topic 锁与 Flowlock 请求严格分离。
+        const newTopic = {
             id: newTopicId,
             name: topicName,
             createdAt: timestamp,
-            locked: false,           // 插件创建的话题默认未锁定
-            unread: true,            // 插件创建的话题默认未读
-            creatorSource: "plugin:TopicCreator",
+            locked: false,
+            unread: true,
+            creatorSource: "plugin:TopicSponsor",
             _creator: {
                 agentName: agentInfo.name,
                 agentId: agentUuid,
                 timestamp: timestamp
             }
-        });
-        
-        // 4. 设置新话题为当前话题
-        agentConfig.current_topic_id = newTopicId;
+        };
+        if (flowlockRequest) {
+            newTopic.flowlockRequest = flowlockRequest;
+        }
+        agentConfig.topics.unshift(newTopic);
 
-        // 5. 将更新后的配置写回到 Agents 目录
-        await fs.writeFile(agentConfigPath, JSON.stringify(agentConfig, null, 2), 'utf-8');
+        // 普通创建保留旧行为；Flowlock 创建不能在当前回复尚未结束时切换当前话题。
+        if (setCurrentTopic) {
+            agentConfig.current_topic_id = newTopicId;
+        }
+
+        // 5. 临时文件 + rename，避免读者观察到半写入 JSON。
+        const tempConfigPath = `${agentConfigPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+        await fs.writeFile(tempConfigPath, JSON.stringify(agentConfig, null, 2), 'utf-8');
+        await fs.rename(tempConfigPath, agentConfigPath);
 
         // 6. 返回新话题ID
         return newTopicId;
@@ -380,7 +451,7 @@ async function createTopic(vchatPath, agentInfo, topicName, initialMessage) {
 async function readUnlockedTopics(vchatPath, agentInfo, includeRead = false) {
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
-    
+
     const unlockedTopics = (config.topics || []).filter(topic => {
         if (topic.locked) return false;
         if (!includeRead && !topic.unread) return false;
@@ -420,7 +491,7 @@ async function readUnlockedTopics(vchatPath, agentInfo, includeRead = false) {
 async function checkNewTopics(vchatPath, agentInfo, days = 3) {
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
-    
+
     const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
     const newUnlockedTopics = (config.topics || []).filter(topic => {
         return !topic.locked && topic.createdAt > cutoffTime;
@@ -446,7 +517,7 @@ async function checkNewTopics(vchatPath, agentInfo, days = 3) {
 async function checkUnreadMessages(vchatPath, agentInfo) {
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
-    
+
     const unreadTopics = (config.topics || []).filter(topic => topic.unread);
 
     const unreadTopicsInfo = [];
@@ -483,11 +554,11 @@ async function replyToTopic(vchatPath, agentInfo, topicId, message, senderName) 
     const agentConfigDir = path.join(vchatPath, 'Agents', agentInfo.uuid);
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
     const topic = config.topics.find(t => t.id === topicId);
-    
+
     if (!topic) {
         throw new Error(`话题 ${topicId} 不存在。`);
     }
-    
+
     if (topic.locked && !topic.unread) {
         throw new Error(`话题 ${topicId} 已锁定且未标记为未读，无法添加回复。`);
     }
@@ -500,7 +571,7 @@ async function replyToTopic(vchatPath, agentInfo, topicId, message, senderName) 
     const timestamp = Date.now();
     const avatarPath = path.join(agentConfigDir, 'avatar.png');
     const avatarUrl = `file://${avatarPath.replace(/\\/g, '/')}`;
-    
+
     const newMessage = {
         role: 'assistant',
         name: senderName,
@@ -547,7 +618,7 @@ async function checkTopicOwnership(vchatPath, agentInfo, topicId, callerName) {
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
     const topic = config.topics.find(t => t.id === topicId);
-    
+
     if (!topic) {
         throw new Error(`话题 ${topicId} 不存在。`);
     }
@@ -586,7 +657,7 @@ async function checkTopicOwnership(vchatPath, agentInfo, topicId, callerName) {
 async function listUnlockedTopics(vchatPath, agentInfo) {
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
-    
+
     // 筛选出所有未锁定的话题
     const unlockedTopics = (config.topics || []).filter(topic => topic.locked === false);
 
@@ -601,7 +672,7 @@ async function listUnlockedTopics(vchatPath, agentInfo) {
         } catch (e) {
             console.error(`Failed to read history for topic ${topic.id}:`, e);
         }
-        
+
         topicsInfo.push({
             topic_id: topic.id,
             topic_name: topic.name,
@@ -628,7 +699,7 @@ async function readTopicContent(vchatPath, agentInfo, topicId) {
     // 1. 读取 Agent 配置，获取话题信息
     const agentConfigPath = path.join(vchatPath, 'Agents', agentInfo.uuid, 'config.json');
     const config = JSON.parse(await fs.readFile(agentConfigPath, 'utf-8'));
-    
+
     // 2. 查找指定的话题
     const topic = (config.topics || []).find(t => t.id === topicId);
     if (!topic) {

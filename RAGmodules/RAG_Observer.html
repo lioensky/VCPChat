@@ -490,6 +490,50 @@
         margin-top: 12px;
       }
 
+      .tool-approval-reason {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 10px;
+      }
+
+      .tool-approval-reason-input {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        min-height: 56px;
+        max-height: 160px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--primary-text);
+        font: inherit;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        outline: none;
+      }
+
+      .tool-approval-reason-input::placeholder {
+        color: rgba(255, 255, 255, 0.4);
+      }
+
+      .tool-approval-reason-input:focus {
+        border-color: rgba(255, 159, 67, 0.7);
+        box-shadow: 0 0 0 2px rgba(255, 159, 67, 0.18);
+      }
+
+      .tool-approval-reason-input:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .tool-approval-reason-hint {
+        font-size: 0.72rem;
+        color: rgba(255, 255, 255, 0.5);
+        line-height: 1.35;
+      }
+
       .approval-btn {
         border: 1px solid rgba(255, 255, 255, 0.2);
         color: #fff;
@@ -684,6 +728,214 @@
         min-width: 42px;
         text-align: right;
         color: rgba(255, 255, 255, 0.9);
+      }
+
+      /* --- BM25 Retrieval Details --- */
+      .bm25-details-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+        padding: 10px;
+        background: rgba(52, 152, 219, 0.06);
+        border-radius: 10px;
+        border: 1px dashed rgba(52, 152, 219, 0.28);
+      }
+
+      .bm25-token-list {
+        display: contents;
+      }
+
+      .bm25-token-list.is-collapsed .bm25-token-extra {
+        display: none;
+      }
+
+      .bm25-token-pill {
+        font-size: 0.75rem;
+        padding: 4px 9px;
+        background: rgba(52, 152, 219, 0.16);
+        color: #cfe9ff;
+        border-radius: 8px;
+        border: 1px solid rgba(52, 152, 219, 0.34);
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .bm25-token-pill.is-matched {
+        color: #fff;
+        background: rgba(46, 204, 113, 0.2);
+        border-color: rgba(46, 204, 113, 0.55);
+      }
+
+      .bm25-token-toggle {
+        font-size: 0.75rem;
+        padding: 4px 9px;
+        background: rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.78);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .bm25-token-toggle:hover {
+        background: rgba(52, 152, 219, 0.22);
+        color: #fff;
+        border-color: rgba(52, 152, 219, 0.55);
+      }
+
+      .bm25-score-row {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      /* --- RiverMemo V10 Topology Metrics --- */
+      .rivermemo-panel {
+        position: relative;
+        margin-bottom: 12px;
+        padding: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(26, 188, 156, 0.34);
+        border-radius: 12px;
+        background:
+          linear-gradient(135deg, rgba(26, 188, 156, 0.12), rgba(52, 152, 219, 0.06)),
+          rgba(0, 0, 0, 0.12);
+      }
+
+      .rivermemo-panel::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 34%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(80, 227, 194, 0.9));
+      }
+
+      .rivermemo-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .rivermemo-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #8ff5dc;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.35px;
+      }
+
+      .rivermemo-regime {
+        padding: 2px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+      }
+
+      .rivermemo-regime.regime-sparse {
+        color: #ffd180;
+        border-color: rgba(255, 152, 0, 0.45);
+        background: rgba(255, 152, 0, 0.12);
+      }
+
+      .rivermemo-regime.regime-dense {
+        color: #9be7a5;
+        border-color: rgba(76, 175, 80, 0.45);
+        background: rgba(76, 175, 80, 0.12);
+      }
+
+      .rivermemo-regime.regime-balanced,
+      .rivermemo-regime.regime-unknown {
+        color: #9dd8ff;
+        border-color: rgba(52, 152, 219, 0.45);
+        background: rgba(52, 152, 219, 0.12);
+      }
+
+      .rivermemo-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .rivermemo-metric {
+        min-width: 0;
+        padding: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.16);
+      }
+
+      .rivermemo-metric-label {
+        margin-bottom: 4px;
+        overflow: hidden;
+        color: rgba(255, 255, 255, 0.48);
+        font-size: 0.66rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .rivermemo-metric-value {
+        overflow: hidden;
+        color: #f4fffc;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.84rem;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .rivermemo-funnel {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 9px;
+        color: rgba(255, 255, 255, 0.62);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.72rem;
+      }
+
+      .rivermemo-funnel-node {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 7px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.055);
+        text-align: center;
+      }
+
+      .rivermemo-funnel-arrow {
+        flex: 0 0 auto;
+        color: rgba(80, 227, 194, 0.72);
+      }
+
+      .rivermemo-identifiers {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.34);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.62rem;
+      }
+
+      .rivermemo-identifiers span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 620px) {
+        .rivermemo-metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
       }
 
       /* --- Core Tag Highlighting --- */
@@ -1356,6 +1608,13 @@
         return str.replace(_escapeRe, (ch) => _escapeMap[ch]);
       }
 
+      function encodeURIComponentForInlineAttribute(str) {
+        return encodeURIComponent(String(str || "")).replace(
+          /[!'()*]/g,
+          (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`
+        );
+      }
+
       // 性能优化：预编译所有正则表达式（避免每次调用都重新创建）
       const _sanitizeRegexes = [
         new RegExp("<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>", "gi"),
@@ -1722,6 +1981,99 @@
         }, delay);
       }
 
+      // 从 vcp_log 的 content 中尽量提取友好可读消息（参考主程序 notificationRenderer.js 的逻辑）
+      function extractFriendlyVcpLogContent(vcpData) {
+        if (!vcpData || typeof vcpData !== "object") {
+          return { title: "", content: "", level: "info" };
+        }
+
+        const toolName = vcpData.tool_name || "";
+        const statusRaw = String(vcpData.status || "").toLowerCase();
+        const level =
+          statusRaw === "error" || statusRaw === "failed"
+            ? "error"
+            : statusRaw === "success" || statusRaw === "ok"
+            ? "success"
+            : "info";
+
+        let title = toolName
+          ? `${toolName} ${vcpData.status || ""}`.trim()
+          : "VCP 日志";
+        let content = "";
+
+        if (typeof vcpData.content === "undefined") {
+          return { title, content: "(无内容)", level };
+        }
+
+        const rawContentString = String(vcpData.content);
+        content = rawContentString;
+
+        // 错误情况下尝试提取 plugin_error / error / message
+        if (statusRaw === "error" && rawContentString.includes("{")) {
+          const jsonStart = rawContentString.indexOf("{");
+          const prefix = rawContentString.substring(0, jsonStart);
+          const jsonPart = rawContentString.substring(jsonStart);
+          try {
+            const parsed = JSON.parse(jsonPart);
+            const displayError =
+              parsed.plugin_error || parsed.error || parsed.message;
+            if (displayError) {
+              content =
+                prefix.trim() +
+                (prefix.trim().endsWith(":") ? " " : ": ") +
+                displayError;
+              return { title, content, level };
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // 尝试解析为 JSON，提取友好字段
+        try {
+          const parsedInner = JSON.parse(rawContentString);
+          let titleSuffix = "";
+          if (parsedInner.MaidName) titleSuffix += ` by ${parsedInner.MaidName}`;
+          if (
+            parsedInner.timestamp &&
+            typeof parsedInner.timestamp === "string" &&
+            parsedInner.timestamp.length >= 16
+          ) {
+            titleSuffix += `${parsedInner.MaidName ? " " : ""}@ ${parsedInner.timestamp.substring(11, 16)}`;
+          }
+          if (titleSuffix) title += ` (${titleSuffix.trim()})`;
+
+          if (typeof parsedInner.original_plugin_output !== "undefined") {
+            const pluginOutput = parsedInner.original_plugin_output;
+            if (typeof pluginOutput === "object" && pluginOutput !== null) {
+              if (toolName === "DailyNote" && pluginOutput.message) {
+                const statusIcon =
+                  pluginOutput.status === "success" ? "✅" : "❌";
+                content = `${statusIcon} ${pluginOutput.message}`;
+              } else if (
+                pluginOutput.message &&
+                typeof pluginOutput.message === "string"
+              ) {
+                content = pluginOutput.message;
+              } else {
+                content = JSON.stringify(pluginOutput, null, 2);
+              }
+            } else {
+              content = String(pluginOutput);
+            }
+          } else if (toolName === "DailyNote") {
+            const statusIcon = vcpData.status === "success" ? "✅" : "❌";
+            content = parsedInner.message
+              ? `${statusIcon} ${parsedInner.message}`
+              : `${statusIcon} 日记内容已成功记录到本地知识库。`;
+          }
+        } catch (e) {
+          // 非 JSON 内容，保持原样
+        }
+
+        return { title, content, level };
+      }
+
       function buildOverlayPayload(data) {
         const now = new Date().toLocaleTimeString();
         const type = data?.type || "unknown";
@@ -1749,16 +2101,27 @@
         } else if (type === "tool_approval_response") {
           const resp = data?.data || {};
           title = "工具审核结果";
+          const reasonHint = typeof resp.reason === "string" && resp.reason.trim()
+            ? `\n理由: ${resp.reason.trim()}`
+            : "";
           content = `${resp.approved ? "已允许" : "已拒绝"} ${
             resp.requestId ? `(ID: ${resp.requestId})` : ""
-          }`.trim();
+          }`.trim() + reasonHint;
           level = resp.approved ? "success" : "error";
+        } else if (type === "tool_auto_approval" && data?.data) {
+          const auto = data.data || {};
+          title = `✅ 已自动允许: ${auto.toolName || "未知工具"}`;
+          content = `助手: ${auto.maid || "未知"}\n规则: ${
+            auto.ruleName || "未命名规则"
+          }\n请求ID: ${auto.requestId || "N/A"}\n状态: ${
+            auto.sent ? "已发送允许响应" : "发送失败"
+          }`;
+          level = auto.sent ? "success" : "warning";
         } else if (type === "vcp_log" && data?.data) {
-          title = "VCP 日志";
-          content =
-            typeof data.data.content === "string"
-              ? data.data.content
-              : JSON.stringify(data.data, null, 2);
+          const friendly = extractFriendlyVcpLogContent(data.data);
+          title = friendly.title || "VCP 日志";
+          content = friendly.content;
+          level = friendly.level || "info";
         } else if (
           type === "notification" ||
           type === "error" ||
@@ -2058,12 +2421,27 @@
         }
       }
 
+      function toggleBM25Tokens(button) {
+        const container = button
+          ?.closest(".bm25-details-container")
+          ?.querySelector(".bm25-token-list");
+        if (!container) return;
+
+        const isCollapsed = container.classList.toggle("is-collapsed");
+        const extraCount = Number(button.getAttribute("data-extra-count") || 0);
+        button.textContent = isCollapsed
+          ? `展开 ${extraCount} 个`
+          : "收起 BM25 词";
+        button.setAttribute("aria-expanded", String(!isCollapsed));
+      }
+
       // --- Block Generators ---
 
       // Helper to create generic toggle-able text
       // 性能优化：长文本延迟渲染markdown，只在展开时才解析
       function createContentHTML(text) {
-        if (!text) return "";
+        if (text === undefined || text === null) return "";
+        text = String(text);
         const isLong = text.length > 150;
 
         if (!isLong) {
@@ -2072,7 +2450,7 @@
         }
 
         // 长文本：snippet用纯文本，full-text标记为lazy，展开时才渲染markdown
-        const encodedText = encodeURIComponent(text);
+        const encodedText = encodeURIComponentForInlineAttribute(text);
 
         return `
                       <div class="content-wrapper">
@@ -2090,6 +2468,93 @@
                           </div>
                       </div>
                   `;
+      }
+
+      function formatRiverMemoNumber(value, digits = 0) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return "N/A";
+        return digits > 0 ? numeric.toFixed(digits) : numeric.toLocaleString();
+      }
+
+      function createRiverMemoHTML(data) {
+        if (!data?.useRiverMemo || !data.riverMemo || typeof data.riverMemo !== "object") {
+          return "";
+        }
+
+        const memo = data.riverMemo;
+        const omega = Number(memo.omega);
+        const omegaDisplay = Number.isFinite(omega) ? omega.toFixed(4) : "N/A";
+        const omegaPercent = Number.isFinite(omega)
+          ? `${Math.max(0, Math.min(100, omega * 100)).toFixed(1)}%`
+          : "N/A";
+        const offered = Number(memo.offeredCandidates);
+        const ranked = Number(memo.rankedCandidates);
+        const returned = Number(memo.returnedCandidates);
+        const rankRate =
+          Number.isFinite(offered) && offered > 0 && Number.isFinite(ranked)
+            ? `${((ranked / offered) * 100).toFixed(1)}%`
+            : "N/A";
+        const returnRate =
+          Number.isFinite(ranked) && ranked > 0 && Number.isFinite(returned)
+            ? `${((returned / ranked) * 100).toFixed(1)}%`
+            : "N/A";
+        const rawRegime = String(memo.regime || "unknown").toLowerCase();
+        const regimeClass = ["sparse", "dense", "balanced"].includes(rawRegime)
+          ? rawRegime
+          : "unknown";
+        const regimeLabels = {
+          sparse: "稀疏地形",
+          dense: "致密地形",
+          balanced: "均衡地形",
+          unknown: "未知地形",
+        };
+        const artifactSig = String(memo.artifactSig || "");
+        const queryId = String(memo.queryId || "");
+
+        return `
+          <div class="rivermemo-panel" title="RiverMemo 动态置信度与候选河网统计">
+            <div class="rivermemo-header">
+              <div class="rivermemo-title">
+                <span>≋</span>
+                <span>RiverMemo · Ω 动态置信度场</span>
+              </div>
+              <span class="rivermemo-regime regime-${regimeClass}">${regimeLabels[regimeClass]}</span>
+            </div>
+            <div class="rivermemo-metrics">
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">Ω 可观测性</div>
+                <div class="rivermemo-metric-value">${escapeHTML(omegaDisplay)}</div>
+              </div>
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">三维置信度</div>
+                <div class="rivermemo-metric-value">${escapeHTML(omegaPercent)}</div>
+              </div>
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">排序保留率</div>
+                <div class="rivermemo-metric-value">${escapeHTML(rankRate)}</div>
+              </div>
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">最终收束率</div>
+                <div class="rivermemo-metric-value">${escapeHTML(returnRate)}</div>
+              </div>
+            </div>
+            <div class="rivermemo-funnel" title="候选供给 → 拓扑排序 → 最终返回">
+              <span class="rivermemo-funnel-node">供给 ${escapeHTML(formatRiverMemoNumber(offered))}</span>
+              <span class="rivermemo-funnel-arrow">→</span>
+              <span class="rivermemo-funnel-node">排序 ${escapeHTML(formatRiverMemoNumber(ranked))}</span>
+              <span class="rivermemo-funnel-arrow">→</span>
+              <span class="rivermemo-funnel-node">返回 ${escapeHTML(formatRiverMemoNumber(returned))}</span>
+            </div>
+            ${
+              artifactSig || queryId
+                ? `<div class="rivermemo-identifiers">
+                    ${artifactSig ? `<span title="${escapeHTML(artifactSig)}">SIG ${escapeHTML(artifactSig.slice(0, 12))}…</span>` : ""}
+                    ${queryId ? `<span title="${escapeHTML(queryId)}">QID ${escapeHTML(queryId)}</span>` : ""}
+                  </div>`
+                : ""
+            }
+          </div>
+        `;
       }
 
       // 1. RAG BLOCK
@@ -2139,12 +2604,103 @@
                               ${data.coreTags
                                 .map(
                                   (tag) =>
-                                    `<span class="core-tag-pill">${tag}</span>`
+                                    `<span class="core-tag-pill">${escapeHTML(
+                                      String(tag)
+                                    )}</span>`
                                 )
                                 .join("")}
                           </div>
                       `;
         }
+
+        // BM25 Details
+        let bm25DetailsHTML = "";
+        if (data.useBM25) {
+          const bm25ModeLabel =
+            data.bm25Mode === "tag"
+              ? "标签模式"
+              : data.bm25Mode === "text"
+              ? "全文模式"
+              : data.bm25Mode
+              ? String(data.bm25Mode)
+              : "未知模式";
+          const rawBM25Tokens = Array.isArray(data.bm25QueryTokens)
+            ? data.bm25QueryTokens.map((token) => String(token).trim()).filter(Boolean)
+            : [];
+          const seenBM25TokenKeys = new Set();
+          const bm25Tokens = [];
+          rawBM25Tokens.forEach((token) => {
+            const normalizedKey = token.toLowerCase();
+            if (!normalizedKey || seenBM25TokenKeys.has(normalizedKey)) return;
+            seenBM25TokenKeys.add(normalizedKey);
+            bm25Tokens.push(token);
+          });
+
+          const resultTextForBM25 = (data.results || [])
+            .map((result) => `${result?.text || ""} ${result?.source || ""}`)
+            .join("\n")
+            .toLowerCase();
+          const matchedBM25Tokens = [];
+          const matchedBM25TokenKeys = new Set();
+          const otherBM25Tokens = [];
+          bm25Tokens.forEach((token) => {
+            const normalizedToken = token.toLowerCase();
+            if (normalizedToken && resultTextForBM25.includes(normalizedToken)) {
+              matchedBM25Tokens.push(token);
+              matchedBM25TokenKeys.add(normalizedToken);
+            } else {
+              otherBM25Tokens.push(token);
+            }
+          });
+
+          const orderedBM25Tokens = [...matchedBM25Tokens, ...otherBM25Tokens];
+          const bm25PreviewLimit = Math.max(
+            8,
+            Math.min(16, matchedBM25Tokens.length || 8)
+          );
+          const shouldCollapseBM25Tokens =
+            orderedBM25Tokens.length > bm25PreviewLimit;
+          const bm25TokenHTML = orderedBM25Tokens
+            .map((token, index) => {
+              const isMatched = matchedBM25TokenKeys.has(token.toLowerCase());
+              const extraClass =
+                shouldCollapseBM25Tokens && index >= bm25PreviewLimit
+                  ? " bm25-token-extra"
+                  : "";
+              return `<span class="bm25-token-pill${
+                isMatched ? " is-matched" : ""
+              }${extraClass}">${escapeHTML(String(token))}</span>`;
+            })
+            .join("");
+          const bm25ExtraCount = Math.max(
+            0,
+            orderedBM25Tokens.length - bm25PreviewLimit
+          );
+          const bm25TokenToggleHTML = shouldCollapseBM25Tokens
+            ? `<button class="bm25-token-toggle" type="button" aria-expanded="false" data-extra-count="${bm25ExtraCount}" onclick="toggleBM25Tokens(this)">展开 ${bm25ExtraCount} 个</button>`
+            : "";
+          bm25DetailsHTML = `
+                          <div class="bm25-details-container" title="BM25 查询词与命中统计">
+                              <span class="bm25-token-pill" style="color:#fff; background:rgba(52,152,219,0.28); border-color:rgba(52,152,219,0.65);">BM25: ${escapeHTML(
+                                bm25ModeLabel
+                              )}</span>
+                              <span class="bm25-token-pill">Matched: ${escapeHTML(
+                                String(data.bm25MatchedCount ?? 0)
+                              )}</span>
+                              <span class="bm25-token-pill">Tokens: ${escapeHTML(
+                                rawBM25Tokens.length === orderedBM25Tokens.length
+                                  ? String(orderedBM25Tokens.length)
+                                  : `${orderedBM25Tokens.length}/${rawBM25Tokens.length}`
+                              )}</span>
+                              <span class="bm25-token-list${
+                                shouldCollapseBM25Tokens ? " is-collapsed" : ""
+                              }">${bm25TokenHTML}</span>
+                              ${bm25TokenToggleHTML}
+                          </div>
+                      `;
+        }
+
+        const riverMemoHTML = createRiverMemoHTML(data);
 
         // Header
         // 用于复制原始数据：存入 Map，按 ID 索引，避免内联字符串转义问题
@@ -2157,17 +2713,46 @@
                       </button>
                       <h3>
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                          ${data.dbName}
+                          ${escapeHTML(String(data.dbName || "Unknown"))}
                       </h3>
                       <div class="meta-info">
-                          <span class="meta-pill">K: ${data.k}</span>
-                          <span class="meta-pill">Time: ${data.useTime}</span>
-                          <span class="meta-pill">ReRank: ${
-                            data.useRerank
-                          }</span>
+                          <span class="meta-pill">K: ${escapeHTML(
+                            String(data.k ?? "N/A")
+                          )}</span>
+                          <span class="meta-pill">Time: ${escapeHTML(
+                            String(!!data.useTime)
+                          )}</span>
+                          <span class="meta-pill">Group: ${escapeHTML(
+                            String(!!data.useGroup)
+                          )}</span>
+                          <span class="meta-pill">VirtualIndex: ${escapeHTML(
+                            String(!!data.virtualIndex)
+                          )}</span>
+                          <span class="meta-pill">ReRank: ${escapeHTML(
+                            String(!!data.useRerank)
+                          )}</span>
+                          ${
+                            data.useRiverMemo
+                              ? `<span class="meta-pill" style="color:#8ff5dc; border-color:rgba(26,188,156,0.65);">RiverMemo: ON</span>`
+                              : ""
+                          }
+                          ${
+                            data.fromCache
+                              ? `<span class="meta-pill" style="color:#b8c7ff; border-color:rgba(155,89,182,0.6);">Cache Hit</span>`
+                              : ""
+                          }
+                          ${
+                            data.useBM25
+                              ? `<span class="meta-pill" style="color:#8fd3ff; border-color:#3498db;">BM25: ${escapeHTML(
+                                  String(data.bm25Mode || "on")
+                                )}</span>`
+                              : ""
+                          }
                           ${
                             data.useTagMemo
-                              ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${data.tagWeight}</span>`
+                              ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${escapeHTML(
+                                  String(data.tagWeight)
+                                )}</span>`
                               : ""
                           }
                           ${
@@ -2178,17 +2763,21 @@
                           ${
                             data.geoAlpha !== undefined &&
                             data.geoAlpha !== null
-                              ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">geoAlpha: ${data.geoAlpha}</span>`
+                              ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">geoAlpha: ${escapeHTML(
+                                  String(data.geoAlpha)
+                                )}</span>`
                               : ""
                           }
                       </div>
+                      ${riverMemoHTML}
+                      ${bm25DetailsHTML}
                       ${coreTagsHTML}
                       ${createContentHTML(data.query)}
                   `;
 
         // Results
         let resultsHTML = "";
-        data.results.forEach((r) => {
+        (data.results || []).forEach((r) => {
           // BUG FIX: Check if r.score is a valid number before calling toFixed().
           // Time-based results from the backend don't have a score, which was causing a rendering crash.
           const hasScore = typeof r.score === "number";
@@ -2202,6 +2791,30 @@
             : "score-med";
           const isBoosted =
             data.useTagMemo && r.originalScore && r.originalScore !== r.score;
+
+          let bm25ScoresHTML = "";
+          if (data.useBM25 || r.source === "bm25" || r.source === "bm25_tag") {
+            const bm25ScoreParts = [];
+            if (typeof r.bm25Score === "number") {
+              bm25ScoreParts.push(
+                `<span class="meta-pill">BM25: ${r.bm25Score.toFixed(
+                  4
+                )}</span>`
+              );
+            }
+            if (typeof r.normalizedBM25Score === "number") {
+              bm25ScoreParts.push(
+                `<span class="meta-pill">Norm: ${r.normalizedBM25Score.toFixed(
+                  4
+                )}</span>`
+              );
+            }
+            if (bm25ScoreParts.length > 0) {
+              bm25ScoresHTML = `<div class="bm25-score-row" style="margin-bottom:6px;">${bm25ScoreParts.join(
+                ""
+              )}</div>`;
+            }
+          }
 
           let tagsHTML = "";
           // 时间召回的结果（source === 'time'）不显示标签区域
@@ -2234,9 +2847,11 @@
             const renderedTags = sortedTags
               .map((tag) => {
                 if (resultMatchedTags.has(tag)) {
-                  return `<span class="tag-match-highlight">${tag}</span>`;
+                  return `<span class="tag-match-highlight">${escapeHTML(
+                    String(tag)
+                  )}</span>`;
                 }
-                return tag;
+                return escapeHTML(String(tag));
               })
               .join(", ");
 
@@ -2256,10 +2871,11 @@
                                   }">
                                       ${scoreDisplay} ${isBoosted ? "⚡" : ""}
                                   </span>
-                                  <span style="font-size:0.75em; opacity:0.6;">${
-                                    r.source || "Unknown"
-                                  }</span>
+                                  <span style="font-size:0.75em; opacity:0.6;">${escapeHTML(
+                                    String(r.source || "Unknown")
+                                  )}</span>
                               </div>
+                              ${bm25ScoresHTML}
                               ${createContentHTML(r.text)}
                               ${tagsHTML}
                           </div>
@@ -2539,6 +3155,7 @@
           "video_generation_status",
           "tool_approval_request",
           "tool_approval_response",
+          "tool_auto_approval",
           "connection_ack",
           "notification",
         ]);
@@ -2561,18 +3178,31 @@
           typeof data.data === "object"
         ) {
           const payload = data.data;
-          const title = payload.tool_name
-            ? `${payload.tool_name} ${payload.status || ""}`.trim()
-            : "VCP 日志通知";
-          const source = payload.source || "VCPLog";
-          const status = payload.status || "info";
-          const content =
-            typeof payload.content === "undefined"
-              ? JSON.stringify(payload, null, 2)
-              : typeof payload.content === "string"
-              ? payload.content
-              : JSON.stringify(payload.content, null, 2);
-          return { title, source, status, content };
+          const friendly = extractFriendlyVcpLogContent(payload);
+          return {
+            title: friendly.title || "VCP 日志通知",
+            source: payload.source || "VCPLog",
+            status: payload.status || "info",
+            content: friendly.content || "",
+          };
+        }
+
+        if (
+          data.type === "tool_auto_approval" &&
+          data.data &&
+          typeof data.data === "object"
+        ) {
+          const auto = data.data;
+          return {
+            title: `✅ 已自动允许: ${auto.toolName || "未知工具"}`,
+            source: "FilterManager",
+            status: auto.sent ? "success" : "warning",
+            content:
+              `助手: ${auto.maid || "未知"}\n` +
+              `规则: ${auto.ruleName || "未命名规则"}\n` +
+              `请求ID: ${auto.requestId || "N/A"}\n` +
+              `状态: ${auto.sent ? "已发送允许响应" : "发送失败"}`,
+          };
         }
 
         if (
@@ -2669,18 +3299,26 @@
         prependCard(block);
       }
 
-      function submitToolApproval(requestId, approved, btnElement = null) {
+      function submitToolApproval(requestId, approved, btnElement = null, reason = "") {
         if (!requestId) {
           console.error("[RAG Observer] 工具审核缺少 requestId，无法提交。");
           return false;
         }
 
+        const trimmedReason =
+          typeof reason === "string" ? reason.trim().slice(0, 1000) : "";
+
+        const responseData = {
+          requestId,
+          approved: !!approved,
+        };
+        if (trimmedReason) {
+          responseData.reason = trimmedReason;
+        }
+
         const payload = {
           type: "tool_approval_response",
-          data: {
-            requestId,
-            approved: !!approved,
-          },
+          data: responseData,
         };
 
         let sendOk = false;
@@ -2737,7 +3375,10 @@
         btnElement
       ) {
         const requestId = decodeURIComponent(encodedRequestId || "");
-        submitToolApproval(requestId, approved, btnElement);
+        const card = btnElement?.closest(".card-base");
+        const reasonInput = card?.querySelector(".tool-approval-reason-input");
+        const reason = reasonInput?.value || "";
+        submitToolApproval(requestId, approved, btnElement, reason);
       }
 
       // 9. TOOL APPROVAL REQUEST BLOCK
@@ -3072,7 +3713,8 @@
             submitToolApproval(
               String(payload.requestId),
               !!payload.approved,
-              null
+              null,
+              typeof payload.reason === "string" ? payload.reason : ""
             );
           });
         }

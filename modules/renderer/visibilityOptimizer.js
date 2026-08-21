@@ -149,8 +149,12 @@ export function observeMessage(messageItem) {
             svgElements: [],         // SVG SMIL 动画
             gifImages: [],           // GIF/WebP 动图
             mutationObserver: null,  // 动态元素监听
+            pausedRAFCallbacks: [],  // 暂停期间被挂起的 rAF 回调，resume 时事件唤醒
+            activePausableTimers: new Set(), // 由 animation.js 注入的可暂停 timeout/interval
             isPaused: false,
-            isInitialized: false
+            isInitialized: false,
+            isHydrated: false,
+            isHeavyActivated: false
         });
     }
 
@@ -188,10 +192,12 @@ export function observeMessage(messageItem) {
     }
 
     visibilityObserver.observe(messageItem);
+    rememberMessageHeight(messageItem);
 
     // 🔑 延迟扫描，确保脚本已执行完毕
     setTimeout(() => {
         scanAnimatedElements(messageItem);
+        rememberMessageHeight(messageItem);
     }, CONFIG.scanDelay);
 }
 
@@ -267,6 +273,82 @@ function scanAnimatedElements(messageItem) {
     }
 }
 
+function rememberMessageHeight(messageItem) {
+    if (!messageItem || !messageItem.isConnected) return;
+    const messageId = messageItem.dataset?.messageId || messageItem.id;
+    let height = 0;
+    try {
+        height = messageItem.offsetHeight;
+    } catch (e) {
+        height = 0;
+    }
+    if (height > 0) {
+        messageItem.dataset.vcpMeasuredHeight = String(height);
+        messageItem.style.containIntrinsicSize = `auto ${height}px`;
+        if (window.pretextBridge && typeof window.pretextBridge.rememberHeight === 'function' && messageId) {
+            try {
+                window.pretextBridge.rememberHeight(messageId, height);
+            } catch (e) {
+                // 高度回写失败不影响墓碑冻结主流程
+            }
+        }
+    }
+}
+
+function activateHeavyIfNeeded(messageItem, state) {
+    if (!messageItem || !state || state.isHeavyActivated) return;
+    if (typeof messageItem._vcp_activateHeavy === 'function') {
+        state.isHeavyActivated = true;
+        messageItem.dataset.vcpHeavyActivating = 'true';
+        try {
+            const result = messageItem._vcp_activateHeavy();
+            if (result && typeof result.then === 'function') {
+                result
+                    .then(() => {
+                        delete messageItem.dataset.vcpHeavyActivating;
+                    })
+                    .catch(error => {
+                        state.isHeavyActivated = false;
+                        delete messageItem.dataset.vcpHeavyActivating;
+                        console.error('[VisibilityOptimizer] Heavy activation failed:', error);
+                    });
+            } else {
+                delete messageItem.dataset.vcpHeavyActivating;
+            }
+        } catch (error) {
+            state.isHeavyActivated = false;
+            delete messageItem.dataset.vcpHeavyActivating;
+            console.error('[VisibilityOptimizer] Heavy activation failed:', error);
+        }
+    }
+}
+
+function flushPausedRAFCallbacks(messageItem, state) {
+    if (!state?.pausedRAFCallbacks?.length || !messageItem?.isConnected) return;
+    const callbacks = state.pausedRAFCallbacks.splice(0);
+    callbacks.forEach(callback => {
+        requestAnimationFrame((timestamp) => {
+            const latestState = messageAnimationStates.get(messageItem);
+            if (!latestState || latestState.isPaused || !messageItem.isConnected) {
+                if (latestState && !latestState.isPaused) {
+                    latestState.pausedRAFCallbacks.push(callback);
+                }
+                return;
+            }
+            callback(timestamp);
+        });
+    });
+}
+
+function resumePausableTimers(state) {
+    if (!state?.activePausableTimers?.size) return;
+    state.activePausableTimers.forEach(timer => {
+        if (timer && typeof timer.resume === 'function') {
+            timer.resume();
+        }
+    });
+}
+
 /**
  * 🧹 清理已结束的动画，避免内存泄漏
  */
@@ -310,17 +392,8 @@ export function pauseMessageAnimations(messageItem) {
     // [新增] 清理已结束的动画，防止数组无限膨胀
     cleanupFinishedAnimations(state);
 
-    // [新增] 固化高度，辅助 content-visibility 更好地工作
-    // [Pretext集成] 优先使用预算高度，避免 offsetHeight 触发 reflow
-    if (!messageItem.style.containIntrinsicSize || messageItem.style.containIntrinsicSize === 'auto 100px') {
-        var cachedHeight = (window.pretextBridge && window.pretextBridge.getCachedHeight)
-            ? window.pretextBridge.getCachedHeight(messageItem.dataset && messageItem.dataset.messageId || messageItem.id)
-            : null;
-        const height = cachedHeight != null ? cachedHeight : messageItem.offsetHeight;
-        if (height > 0) {
-            messageItem.style.containIntrinsicSize = `auto ${height}px`;
-        }
-    }
+    // [新增] 固化实测高度，辅助 content-visibility / 后续墓碑占位更好地工作
+    rememberMessageHeight(messageItem);
 
     applyPauseToState(messageItem, state);
     state.isPaused = true;
@@ -414,7 +487,15 @@ function applyPauseToState(messageItem, state) {
  */
 export function resumeMessageAnimations(messageItem) {
     const state = messageAnimationStates.get(messageItem);
-    if (!state || !state.isPaused) return;
+    if (!state) return;
+
+    activateHeavyIfNeeded(messageItem, state);
+    rememberMessageHeight(messageItem);
+
+    if (!state.isPaused) {
+        scanAnimatedElements(messageItem);
+        return;
+    }
 
     // 1. 恢复 CSS 动画：移除暂停类
     messageItem.classList.remove('vcp-paused');
@@ -482,6 +563,8 @@ export function resumeMessageAnimations(messageItem) {
     });
 
     state.isPaused = false;
+    flushPausedRAFCallbacks(messageItem, state);
+    resumePausableTimers(state);
 }
 
 /**
@@ -577,27 +660,137 @@ export function isMessagePaused(messageItem) {
  * 供 animation.js 在执行用户脚本时使用
  */
 export function createPausableRAF(messageItem) {
-    let rafId = null;
-
     const wrappedRAF = (callback) => {
+        const state = messageAnimationStates.get(messageItem);
+        if (!state || !messageItem?.isConnected) {
+            return 0;
+        }
+
+        if (state.isPaused) {
+            // 墓碑冻结：暂停态不再每帧轮询，等 resumeMessageAnimations() 事件唤醒。
+            state.pausedRAFCallbacks.push(callback);
+            return state.pausedRAFCallbacks.length;
+        }
+
         return requestAnimationFrame((timestamp) => {
-            const state = messageAnimationStates.get(messageItem);
+            const latestState = messageAnimationStates.get(messageItem);
 
             // [Fix] 防止元素被移除后仍在运行动画导致 crash
-            if (!state || !messageItem.isConnected) {
+            if (!latestState || !messageItem.isConnected) {
                 return;
             }
 
-            if (state.isPaused) {
-                // 暂停时轮询
-                rafId = requestAnimationFrame(() => wrappedRAF(callback));
-            } else {
-                callback(timestamp);
+            if (latestState.isPaused) {
+                latestState.pausedRAFCallbacks.push(callback);
+                return;
             }
+
+            callback(timestamp);
         });
     };
 
     return wrappedRAF;
+}
+
+export function createPausableTimerAPI(messageItem) {
+    const getState = () => messageAnimationStates.get(messageItem);
+
+    const createTimerRecord = (type, callback, delay, args, repeat) => {
+        const state = getState();
+        const record = {
+            type,
+            callback,
+            delay: Math.max(0, Number(delay) || 0),
+            args,
+            repeat,
+            nativeId: null,
+            canceled: false,
+            pendingFire: false,
+            resume() {
+                if (record.canceled) return;
+                if (record.pendingFire) {
+                    record.pendingFire = false;
+                    record.fire();
+                } else if (record.repeat && !record.nativeId) {
+                    record.schedule();
+                }
+            },
+            schedule() {
+                if (record.canceled) return;
+                const latestState = getState();
+                if (!latestState || !messageItem?.isConnected) {
+                    record.cancel();
+                    return;
+                }
+                if (latestState.isPaused) {
+                    record.pendingFire = true;
+                    return;
+                }
+                record.nativeId = window.setTimeout(() => {
+                    record.nativeId = null;
+                    record.fire();
+                }, record.delay);
+            },
+            fire() {
+                if (record.canceled) return;
+                const latestState = getState();
+                if (!latestState || !messageItem?.isConnected) {
+                    record.cancel();
+                    return;
+                }
+                if (latestState.isPaused) {
+                    record.pendingFire = true;
+                    return;
+                }
+                try {
+                    record.callback(...record.args);
+                } finally {
+                    if (record.repeat && !record.canceled) {
+                        record.schedule();
+                    } else if (!record.repeat) {
+                        latestState.activePausableTimers.delete(record);
+                    }
+                }
+            },
+            cancel() {
+                record.canceled = true;
+                record.pendingFire = false;
+                if (record.nativeId) {
+                    window.clearTimeout(record.nativeId);
+                    record.nativeId = null;
+                }
+                const latestState = getState();
+                latestState?.activePausableTimers?.delete(record);
+            }
+        };
+
+        state?.activePausableTimers?.add(record);
+        record.schedule();
+        return record;
+    };
+
+    return {
+        setTimeout(callback, delay, ...args) {
+            return createTimerRecord('timeout', callback, delay, args, false);
+        },
+        clearTimeout(record) {
+            if (record && typeof record.cancel === 'function') {
+                record.cancel();
+            } else {
+                window.clearTimeout(record);
+            }
+        },
+        setInterval(callback, delay, ...args) {
+            return createTimerRecord('interval', callback, delay, args, true);
+        },
+        clearInterval(record) {
+            if (record && typeof record.cancel === 'function') {
+                record.cancel();
+            } else {
+                window.clearInterval(record);
+            }
+        }
+    };
 }
 
 /**
@@ -614,6 +807,19 @@ export function unobserveMessage(messageItem) {
         if (state.mutationObserver) {
             state.mutationObserver.disconnect();
             state.mutationObserver = null;
+        }
+
+        if (state.pausedRAFCallbacks) {
+            state.pausedRAFCallbacks.length = 0;
+        }
+
+        if (state.activePausableTimers) {
+            state.activePausableTimers.forEach(timer => {
+                if (timer && typeof timer.cancel === 'function') {
+                    timer.cancel();
+                }
+            });
+            state.activePausableTimers.clear();
         }
 
         // 清理 Three.js 资源
@@ -634,6 +840,22 @@ export function unobserveMessage(messageItem) {
     pendingResume.delete(messageItem);
 }
 
+export function isMessageInHotZone(messageItem, margin = 200) {
+    if (!messageItem || !chatContainerRef || !messageItem.isConnected) return false;
+
+    try {
+        const containerRect = chatContainerRef.getBoundingClientRect();
+        const rect = messageItem.getBoundingClientRect();
+
+        return (
+            rect.bottom > containerRect.top - margin &&
+            rect.top < containerRect.bottom + margin
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
 /**
  * 🔄 手动触发可见性检查
  */
@@ -646,10 +868,7 @@ export function recheckVisibility() {
     chatContainerRef.querySelectorAll('.message-item').forEach(item => {
         const rect = item.getBoundingClientRect();
 
-        const isVisible = (
-            rect.bottom > containerRect.top - margin &&
-            rect.top < containerRect.bottom + margin
-        );
+        const isVisible = isMessageInHotZone(item, margin);
 
         if (isVisible) {
             resumeMessageAnimations(item);

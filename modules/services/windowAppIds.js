@@ -13,4 +13,6 @@ module.exports = Object.freeze({
     MUSIC: 'music',
     THEMES: 'themes',
     TASK: 'task',
+    PLUGIN_MANAGER: 'plugin-manager',
+    DOCX: 'docx-editor',
 });

@@ -102,64 +102,8 @@ function showContextMenu(event, messageItem, message) {
                             contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
                         }
                         
-                        // --- Flowlock: 中止失败后恢复心流锁自动续写 ---
-                        if (window.flowlockManager) {
-                            const flowlockState = window.flowlockManager.getState();
-                            console.log('[Flowlock] Interrupt failed, checking if flowlock should recover. State:', flowlockState);
-                            
-                            // 重置processing状态
-                            if (window.flowlockManager.isProcessing) {
-                                console.log('[Flowlock] Resetting isProcessing state after interrupt failure');
-                                window.flowlockManager.isProcessing = false;
-                            }
-                            
-                            // 如果心流锁激活，触发下一次续写
-                            if (flowlockState.isActive) {
-                                console.log('[Flowlock] Flowlock active after interrupt failure, will trigger next continue writing');
-                                
-                                setTimeout(() => {
-                                    if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                                        console.log('[Flowlock] Triggering continue writing after interrupt failure recovery...');
-                                        
-                                        // 触发心跳动画
-                                        const chatNameElement = document.getElementById('currentChatAgentName');
-                                        if (chatNameElement) {
-                                            chatNameElement.classList.add('flowlock-heartbeat');
-                                            setTimeout(() => {
-                                                chatNameElement.classList.remove('flowlock-heartbeat');
-                                            }, 800);
-                                        }
-                                        
-                                        // 获取输入框内容作为提示词
-                                        const messageInput = document.getElementById('messageInput');
-                                        const customPrompt = messageInput ? messageInput.value.trim() : '';
-                                        console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
-                                        
-                                        // 触发续写
-                                        if (window.handleContinueWriting) {
-                                            window.flowlockManager.isProcessing = true;
-                                            window.handleContinueWriting(customPrompt).then(() => {
-                                                console.log('[Flowlock] Continue writing completed after interrupt failure recovery');
-                                                window.flowlockManager.isProcessing = false;
-                                                window.flowlockManager.retryCount = 0;
-                                            }).catch((error) => {
-                                                console.error('[Flowlock] Continue writing failed after interrupt failure recovery:', error);
-                                                window.flowlockManager.isProcessing = false;
-                                                window.flowlockManager.retryCount++;
-                                                
-                                                if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
-                                                    console.error('[Flowlock] Max retries reached, stopping flowlock');
-                                                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                        window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
-                                                    }
-                                                    window.flowlockManager.stop();
-                                                }
-                                            });
-                                        }
-                                    }
-                                }, 5000);
-                            }
-                        }
+                        // Flowlock 不在此处直接恢复。中止/错误后的重试由对应 Agent Session
+                        // 基于 messageId/context 的最终事件统一调度，避免读取其他 Agent 的输入框。
                     }
                 } else {
                     console.error("[ContextMenu] Interrupt handler not available. Manually cancelling.");
@@ -202,7 +146,7 @@ function showContextMenu(event, messageItem, message) {
                 const contentClone = contentDiv.cloneNode(true);
                 // 移除不应参与复制的渲染辅助节点，避免把附件删除按钮的 × 一起复制进去
                 contentClone.querySelectorAll(
-                    '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .message-attachments, .message-attachment-remove-btn, style, script'
+                    '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .message-attachments, .message-attachment-remove-btn, style, script'
                 ).forEach(el => el.remove());
                 // 修复：清理多余的空行，确保最多只有一个空行
                 textToCopy = contentClone.innerText.replace(/\n{3,}/g, '\n\n').trim();
@@ -571,19 +515,33 @@ function toggleEditMode(messageItem, message) {
             // 🔧 保存原始状态以便回滚
             const originalContent = currentChatHistoryArray[messageIndex].content;
             const originalMessageContent = message.content;
-            
+            let watcherLeaseToken = null;
+
+            // Watching is ancillary to the edit transaction. Failure to pause
+            // or resume it must not turn a durable save into an apparent
+            // failure or roll the renderer back behind disk state.
             try {
-                // 🔧 先临时禁用文件监控，避免竞态条件
-                if (electronAPI.watcherStop) {
+                if (electronAPI.watcherBegin) {
+                    console.log('[EditMode] Claiming file watcher lease to prevent race condition');
+                    const lease = await electronAPI.watcherBegin();
+                    if (lease?.stale) return;
+                    if (lease?.success === false) {
+                        console.warn('[EditMode] History watcher unavailable; continuing with edit:', lease.error || lease);
+                    } else {
+                        watcherLeaseToken = lease?.token || null;
+                    }
+                } else if (electronAPI.watcherStop) {
                     console.log('[EditMode] Temporarily stopping file watcher to prevent race condition');
                     await electronAPI.watcherStop();
                 }
+            } catch (watcherError) {
+                console.warn('[EditMode] Failed to pause history watcher; continuing with edit:', watcherError);
+            }
 
-                // 🔧 更新内存状态
-                currentChatHistoryArray[messageIndex].content = newContent;
-                message.content = newContent;
-                
-                // 🔧 尝试保存到文件
+            currentChatHistoryArray[messageIndex].content = newContent;
+            message.content = newContent;
+
+            try {
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
                     let saveResult;
                     if (currentSelectedItemVal.type === 'agent') {
@@ -597,34 +555,7 @@ function toggleEditMode(messageItem, message) {
                         throw new Error(saveResult.error || '保存失败');
                     }
                 }
-                
-                // 🔧 保存成功后更新UI
-                mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-                
-                // 🟢 修复：使用 updateMessageContent 确保正则规则被应用
-                if (contextMenuDependencies.updateMessageContent) {
-                    contextMenuDependencies.updateMessageContent(message.id, newContent);
-                } else {
-                    // Fallback for safety
-                    const ppResult2 = contextMenuDependencies.preprocessFullContent(newContent);
-                    const rawHtml = markedInstance.parse(ppResult2.text || ppResult2);
-                    contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
-                    contextMenuDependencies.processRenderedContent(contentDiv);
-                    contextMenuDependencies.renderAttachments(message, contentDiv);
-                }
-                
-                // 🔧 重新启动文件监控
-                if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
-                    const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
-                    await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
-                }
-                
-                if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
-                    uiHelper.showToastNotification("消息编辑已保存。", "success");
-                }
-                
             } catch (error) {
-                // 🔧 保存失败时回滚状态
                 console.error('[EditMode] Save failed, rolling back:', error);
                 currentChatHistoryArray[messageIndex].content = originalContent;
                 message.content = originalMessageContent;
@@ -634,7 +565,7 @@ function toggleEditMode(messageItem, message) {
                 if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
                     try {
                         const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
-                        await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
+                        await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal, watcherLeaseToken);
                     } catch (watcherError) {
                         console.error('[EditMode] Failed to restart watcher after save failure:', watcherError);
                     }
@@ -645,7 +576,40 @@ function toggleEditMode(messageItem, message) {
                 }
                 return; // 不退出编辑模式，让用户重试
             }
-            
+
+            mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
+            if (contextMenuDependencies.updateMessageContent) {
+                contextMenuDependencies.updateMessageContent(message.id, newContent);
+            } else {
+                const ppResult2 = contextMenuDependencies.preprocessFullContent(newContent);
+                const rawHtml = markedInstance.parse(ppResult2.text || ppResult2);
+                contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
+                contextMenuDependencies.processRenderedContent(contentDiv);
+                contextMenuDependencies.renderAttachments(message, contentDiv);
+            }
+
+            if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
+                try {
+                    const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
+                    const watcherResult = await electronAPI.watcherStart(
+                        historyFilePath,
+                        currentSelectedItemVal.id,
+                        currentTopicIdVal,
+                        watcherLeaseToken
+                    );
+                    if (watcherResult?.success === false && !watcherResult?.stale) {
+                        console.warn('[EditMode] Failed to restart watcher after successful save:', watcherResult.error || watcherResult);
+                    }
+                } catch (watcherError) {
+                    console.warn('[EditMode] Failed to restart watcher after successful save:', watcherError);
+                }
+            }
+
+            if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                uiHelper.showToastNotification("消息编辑已保存。", "success");
+            }
+
             // 🔧 只有在保存成功后才退出编辑模式
             toggleEditMode(messageItem, message);
         };
@@ -677,6 +641,20 @@ function toggleEditMode(messageItem, message) {
             }
         });
     }
+}
+
+function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
+    if (!vcpMessage || !historyMessage || !historyMessage.id || typeof historyMessage.timestamp !== 'number') {
+        return vcpMessage;
+    }
+    return {
+        ...vcpMessage,
+        __vcpchatTimestampMeta: {
+            messageId: historyMessage.id,
+            role: historyMessage.role,
+            timestamp: historyMessage.timestamp
+        }
+    };
 }
 
 async function handleRegenerateResponse(originalAssistantMessage) {
@@ -779,18 +757,38 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 let historicalAppendedText = "";
                 for (const att of msg.attachments) {
                     const fileManagerData = att._fileManagerData || {};
-                    // 🟢 同步：重新生成时的多级路径探测。优先使用 internalPath (物理路径)
-                    // 兼容两种附件结构：通过正常发送的附件（数据在 _fileManagerData 中）
-                    // 和通过 addAttachmentsToMessage 添加的附件（数据直接在 att 顶层）
-                    const filePathForContext = (fileManagerData && fileManagerData.internalPath) ||
-                                               att.internalPath ||
-                                               att.localPath ||
-                                               att.src ||
-                                               (att.name || '未知文件');
-
-                    // 兼容读取：优先从 _fileManagerData 读取，回退到 att 顶层字段
+                    // 兼容两种附件结构：正常发送的附件数据位于 _fileManagerData，
+                    // 后续添加到消息的附件数据则可能直接位于 att 顶层。
+                    const attachmentSourcePath = fileManagerData.internalPath ||
+                                                 att.internalPath ||
+                                                 att.localPath ||
+                                                 att.src;
+                    const filePathForContext = attachmentSourcePath || att.name || '未知文件';
+                    const effectiveType = fileManagerData.type || att.type || '';
                     const effectiveImageFrames = fileManagerData.imageFrames || att.imageFrames;
-                    const effectiveExtractedText = fileManagerData.extractedText || att.extractedText;
+                    let effectiveExtractedText = fileManagerData.extractedText || att.extractedText;
+
+                    // 历史记录可能缓存了旧版固定按 UTF-8 解码后产生的乱码。
+                    // 重新回复时从原始附件重新提取，确保使用当前的编码检测逻辑。
+                    if (!effectiveImageFrames &&
+                        attachmentSourcePath &&
+                        electronAPI &&
+                        typeof electronAPI.getTextContent === 'function') {
+                        try {
+                            const refreshedContent = await electronAPI.getTextContent(
+                                attachmentSourcePath,
+                                effectiveType
+                            );
+                            if (refreshedContent && typeof refreshedContent.text === 'string') {
+                                effectiveExtractedText = refreshedContent.text;
+                            }
+                        } catch (extractionError) {
+                            console.warn(
+                                `[ContextMenu] Failed to refresh attachment text for ${att.name || attachmentSourcePath}; using cached text:`,
+                                extractionError
+                            );
+                        }
+                    }
 
                     if (effectiveImageFrames && effectiveImageFrames.length > 0) {
                          historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
@@ -921,7 +919,10 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                  finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
             }
             
-            return { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content };
+            return attachTimestampMetaToVcpMessage(
+                { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content },
+                msg
+            );
         }));
 
         if (agentConfig.systemPrompt) {

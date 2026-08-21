@@ -33,6 +33,116 @@
     color: white;
 }
 
+/* 主题商店入口下方的聊天显示模式快捷选择器 */
+.title-bar-view-switcher {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    -webkit-app-region: no-drag;
+}
+
+.chat-presentation-quick-switcher {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    width: max-content;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 68%, transparent);
+    border-radius: 12px;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.12), transparent 46%),
+        color-mix(in srgb, var(--secondary-bg) 93%, var(--panel-bg-dark));
+    color: var(--primary-text);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate(-50%, -5px) scale(0.97);
+    transform-origin: center top;
+    transition:
+        opacity 0.14s ease,
+        visibility 0.14s ease,
+        transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 1004;
+}
+
+/* 透明悬停桥：保证鼠标从主题按钮移向浮层时不会意外收起。 */
+.chat-presentation-quick-switcher::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    width: 42px;
+    height: 8px;
+    transform: translateX(-50%);
+}
+
+.title-bar-view-switcher:hover .chat-presentation-quick-switcher,
+.title-bar-view-switcher:focus-within .chat-presentation-quick-switcher {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate(-50%, 0) scale(1);
+}
+
+.chat-presentation-quick-option {
+    min-width: 46px;
+    height: 27px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--secondary-text);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.chat-presentation-quick-option:hover {
+    background: color-mix(in srgb, var(--accent-bg) 78%, transparent);
+    color: var(--primary-text);
+}
+
+.chat-presentation-quick-option.active {
+    background: color-mix(in srgb, var(--highlight-text) 18%, var(--accent-bg));
+    color: var(--highlight-text);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+    font-weight: 600;
+}
+
+.chat-presentation-quick-option:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--highlight-text) 66%, transparent);
+    outline-offset: 1px;
+}
+body.light-theme .chat-presentation-quick-switcher {
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.76), transparent 46%),
+        color-mix(in srgb, var(--secondary-bg) 95%, var(--panel-bg-light));
+    box-shadow:
+        0 10px 26px rgba(45, 55, 75, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-presentation-quick-switcher {
+        transition: none;
+    }
+}
+
 .sidebar-button {
     background-color: var(--button-bg);
     color: var(--secondary-text);
@@ -313,6 +423,14 @@ body:not(.light-theme) .chat-actions .header-button {
     padding: 0 10px;
 }
 
+#toggleSidebarModeBtn {
+    display: none;
+}
+
+.assistant-control-icon-next {
+    display: none;
+}
+
 .chat-actions .header-button#voiceChatBtn {
     padding: 0 10px;
 }
@@ -409,117 +527,6 @@ body.light-theme .chat-actions .header-button:hover {
     color: #ffffff;
 }
 
-#sendMessageBtn, #attachFileBtn, #quickNewTopicBtn, #emoticonTriggerBtn {
-    border: none;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
-    padding: 0;
-}
-#sendMessageBtn svg, #attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
-    width: 24px;
-    height: 24px;
-    stroke: var(--secondary-text);
-    color: var(--secondary-text);
-}
-
-#sendMessageBtn svg {
-    fill: none;
-}
-
-body:not(.light-theme) #sendMessageBtn svg {
-    stroke: rgba(255, 255, 255, 0.92);
-    color: rgba(255, 255, 255, 0.92);
-}
-
-#attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
-    width: 16px;
-    height: 16px;
-    fill: none;
-}
-
-body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
-    stroke: #ffffff; 
-}
-
-body.light-theme #sendMessageBtn svg {
-    fill: none;
-}
-
-body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
-    fill: none; 
-}
-
-body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
-    stroke: var(--button-bg);
-    fill: none;
-}
-
-#sendMessageBtn:hover {
-    background-color: var(--button-hover-bg);
-}
-
-#sendMessageBtn {
-    position: static;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border-radius: 50%;
-    background-color: var(--button-bg);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-    margin-left: auto;
-}
-
-#sendMessageBtn.interrupt-mode {
-    background-color: var(--button-bg);
-    background-image: linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
-}
-
-#sendMessageBtn.interrupt-mode svg {
-    width: 16px;
-    height: 16px;
-    stroke: none;
-    color: #ffffff;
-}
-
-#sendMessageBtn.interrupt-mode:hover:not(:disabled) {
-    background-image: linear-gradient(rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.24));
-}
-
-#sendMessageBtn:hover:not(:disabled) {
-    transform: translateY(-1px);
-}
-
-#attachFileBtn, #quickNewTopicBtn, #emoticonTriggerBtn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background-color: transparent;
-    border: none;
-    margin-left: 0;
-    flex-shrink: 0;
-}
-
-#quickNewTopicBtn, #attachFileBtn {
-    margin-right: 4px;
-}
-
-#attachFileBtn:hover:not(:disabled), #quickNewTopicBtn:hover:not(:disabled), #emoticonTriggerBtn:hover:not(:disabled) {
-    background-color: rgba(128, 128, 128, 0.12);
-}
-
-#sendMessageBtn:disabled,
-#attachFileBtn:disabled,
-#quickNewTopicBtn:disabled,
-#emoticonTriggerBtn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
 /* --- Modals --- */
 .modal {
     display: none; 
@@ -561,8 +568,57 @@ body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, bod
     color: var(--primary-text);
 }
 
+.avatar-cropper-modal-content {
+    max-width: 420px;
+}
+
+.avatar-cropper-stage {
+    width: 360px;
+    height: 360px;
+    margin: 10px auto;
+    position: relative;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    background-color: #ccc;
+}
+
+.avatar-cropper-overlay {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+}
+
+.avatar-cropper-overlay-svg {
+    pointer-events: none;
+}
+
+.avatar-cropper-help {
+    margin: 0 0 15px;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    text-align: center;
+}
+
+.avatar-cropper-actions {
+    margin-top: 10px;
+}
+
+.avatar-cropper-cancel {
+    background-color: var(--button-bg);
+    color: var(--primary-text);
+}
+
+.avatar-cropper-confirm {
+    background-color: var(--user-bubble-bg);
+    color: white;
+}
+
 #modelSelectModal, #avatarCropperModal, #forwardMessageModal, #regexRuleModal, #filterRulesModal, #filterRuleEditorModal, #createGroupModal {
     z-index: 1100; /* 确保子模态框在全局设置模态框之上 */
+}
+
+#toolAutoApprovalRuleEditorModal {
+    z-index: 1200; /* 确保默认允许工具编辑器在通知栏行为设置模态框之上 */
 }
 .modal-content h2 {
     margin-top: 0;
@@ -772,11 +828,40 @@ body.light-theme .context-menu {
                 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .context-menu-item {
-    padding: 8px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
+    padding: 8px 9px;
     color: var(--primary-text);
     cursor: pointer;
     font-size: 0.9em;
+    text-align: left;
 }
+
+/* 消息右键菜单按内容收缩，避免移除全局模式入口后残留过宽的右侧空白。 */
+#chatContextMenu {
+    width: max-content;
+    min-width: 108px;
+    max-width: min(260px, calc(100vw - 12px));
+}
+
+/* 消息菜单图标较密集，左侧略多留白以维持视觉平衡。 */
+#chatContextMenu > .context-menu-item {
+    gap: 5px;
+    padding-left: 12px;
+    padding-right: 9px;
+}
+
+.context-menu-item > i:first-child {
+    display: inline-flex;
+    width: 14px;
+    margin: 0;
+    flex: 0 0 14px;
+    align-items: center;
+    justify-content: center;
+}
+
 .context-menu-item:hover {
     background-color: var(--accent-bg);
     color: var(--highlight-text);
@@ -804,6 +889,12 @@ body.light-theme .context-menu {
 
 .context-menu-item-speak:hover {
     color: #F0B840 !important; /* A slightly lighter gold for hover */
+}
+
+.context-menu-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--highlight-text) 58%, transparent);
+    outline-offset: -2px;
+    background-color: var(--accent-bg);
 }
 
 
@@ -869,17 +960,20 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 /* --- Toggle Assistant Button --- */
-#toggleAssistantBtn.active {
+#toggleAssistantBtn.active,
+#toggleSidebarModeBtn.active {
     background-color: var(--highlight-text);
     color: var(--text-on-accent);
     border-color: var(--highlight-text);
 }
 
-#toggleAssistantBtn.active svg {
+#toggleAssistantBtn.active svg,
+#toggleSidebarModeBtn.active svg {
     stroke: var(--text-on-accent);
 }
 
-body:not(.light-theme) #toggleAssistantBtn.active {
+body:not(.light-theme) #toggleAssistantBtn.active,
+body:not(.light-theme) #toggleSidebarModeBtn.active {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
@@ -887,7 +981,8 @@ body:not(.light-theme) #toggleAssistantBtn.active {
     -webkit-backdrop-filter: none;
 }
 
-body.light-theme #toggleAssistantBtn.active {
+body.light-theme #toggleAssistantBtn.active,
+body.light-theme #toggleSidebarModeBtn.active {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.78),
@@ -902,7 +997,8 @@ body.light-theme #toggleAssistantBtn.active {
     color: var(--button-bg);
 }
 
-body.light-theme #toggleAssistantBtn.active svg {
+body.light-theme #toggleAssistantBtn.active svg,
+body.light-theme #toggleSidebarModeBtn.active svg {
     stroke: currentColor;
 }
 

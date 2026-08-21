@@ -176,16 +176,14 @@ impl Resampler {
 }
 
 /// Stateful streaming resampler that maintains SoX instances across chunks.
-/// This is used by AudioPipeline for memory-efficient streaming resampling.
-/// 
+/// Used by the current chunked decoder/playback path for memory-efficient resampling.
+///
 /// FIX for Defect 33: Pre-allocate all buffers to avoid heap allocation in process_chunk
 pub struct StreamingResampler {
     soxr_instances: Vec<Soxr<Mono<f64>>>,
     channels: usize,
     from_rate: u32,
     to_rate: u32,
-    phase: PhaseResponse,
-    quality: ResampleQuality,
     /// Pre-allocated output scratch buffer (per channel, reused)
     output_scratch: Vec<f64>,
     /// Pre-allocated channel input buffers (Defect 33 fix)
@@ -194,8 +192,6 @@ pub struct StreamingResampler {
     channel_outputs: Vec<Vec<f64>>,
     /// Pre-allocated interleaved output buffer (Defect 33 fix)
     interleaved_output: Vec<f64>,
-    /// Maximum input frames expected (for buffer sizing)
-    max_input_frames: usize,
 }
 
 impl StreamingResampler {
@@ -277,13 +273,10 @@ impl StreamingResampler {
             channels,
             from_rate,
             to_rate,
-            phase,
-            quality,
             output_scratch: vec![0.0; max_output_per_channel],
             channel_inputs,
             channel_outputs,
             interleaved_output,
-            max_input_frames,
         })
     }
     

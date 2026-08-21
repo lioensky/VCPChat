@@ -130,13 +130,9 @@ function initialize(paths) {
             } = settings;
 
             // 确保 flowlockContinueDelay 是一个有效的数字
-            if (typeof settingsToSave.flowlockContinueDelay !== 'number' || isNaN(settingsToSave.flowlockContinueDelay)) {
+            if ('flowlockContinueDelay' in settingsToSave
+                && (typeof settingsToSave.flowlockContinueDelay !== 'number' || isNaN(settingsToSave.flowlockContinueDelay))) {
                 settingsToSave.flowlockContinueDelay = 5; // 如果无效，则设置为默认值
-            }
-
-            // 确保必需的默认字段存在
-            if (settingsToSave.enableDistributedServerLogs === undefined) {
-                settingsToSave.enableDistributedServerLogs = false;
             }
 
             const result = await settingsManager.updateSettings(settingsToSave);

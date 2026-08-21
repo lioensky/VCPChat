@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>VCP Loom</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <style>
+        :root {
+            --line: color-mix(in srgb, var(--border-color, #3b4449) 72%, transparent);
+            --muted: var(--secondary-text, #a7afb1);
+            --accent: var(--highlight-text, #f2a900);
+            --text: var(--primary-text, #f2f0e9);
+            --bar-bg: color-mix(in srgb, var(--secondary-bg, #20252a) 92%, transparent);
+            --control-hover: color-mix(in srgb, var(--accent) 11%, transparent);
+            --shell-shadow: rgba(0, 0, 0, .35);
+        }
+        body.light-theme { --shell-shadow: rgba(27, 33, 31, .16); }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--primary-bg, #171a1d); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; }
+        .bar {
+            position: fixed; inset: 0 0 auto 0; height: 44px; display: flex; align-items: center; gap: 5px;
+            padding: 0 5px 0 9px; border-bottom: 1px solid var(--line);
+            background: var(--bar-bg); color: var(--text);
+            backdrop-filter: blur(14px) saturate(112%); -webkit-backdrop-filter: blur(14px) saturate(112%);
+            user-select: none; -webkit-app-region: drag;
+        }
+        button, input { -webkit-app-region: no-drag; }
+        .mark {
+            width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center; margin-right: 3px;
+            background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--success-color, #76bfae)));
+            color: var(--text-on-accent, #171a1d); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent);
+            font-size: 13px; line-height: 1; padding-bottom: 1px;
+        }
+        .nav { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+        .tool {
+            width: 30px; height: 29px; border: 0; border-radius: 7px; background: transparent; color: var(--muted);
+            cursor: pointer; display: grid; place-items: center; font-size: 14px;
+        }
+        .tool:hover:not(:disabled) { background: var(--control-hover); color: var(--accent); }
+        .tool:disabled { opacity: .3; cursor: default; }
+        .identity { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; padding-left: 5px; }
+        .name { flex: 0 1 auto; font-size: 12px; font-weight: 650; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+        .url {
+            min-width: 80px; flex: 1; height: 27px; padding: 0 8px; border: 1px solid transparent; border-radius: 7px;
+            outline: none; background: transparent; color: var(--muted); font: 10px/1 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+            opacity: .85; transition: .15s ease;
+        }
+        .url:hover { border-color: var(--line); background: color-mix(in srgb, var(--primary-bg, #171a1d) 32%, transparent); opacity: 1; }
+        .url:focus {
+            border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+            background: color-mix(in srgb, var(--primary-bg, #171a1d) 55%, transparent);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); opacity: 1;
+        }
+        .loading { display: none; width: 13px; height: 13px; border: 2px solid color-mix(in srgb, var(--muted) 28%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+        .loading.show { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .share {
+            width: auto; padding: 0 10px; gap: 5px; display: flex; font-size: 11px; border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+            background: color-mix(in srgb, var(--accent) 9%, transparent);
+        }
+        .device-center { position: relative; -webkit-app-region: no-drag; }
+        .device-button.active { background: var(--control-hover); color: var(--accent); }
+        .windows { height: 44px; display: flex; margin-left: 3px; -webkit-app-region: no-drag; }
+        .windows button { width: 43px; height: 43px; border: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 15px; }
+        .windows button:hover { background: var(--control-hover); color: var(--accent); }
+        .windows .close:hover { background: var(--danger-color, #e06c5f); color: var(--text-on-accent, white); }
+        .error {
+            display: none; position: fixed; z-index: 3; top: 49px; left: 50%; transform: translateX(-50%);
+            max-width: calc(100% - 30px); padding: 8px 12px; border-radius: 8px;
+            border: 1px solid color-mix(in srgb, var(--danger-color, #e06c5f) 45%, transparent);
+            background: color-mix(in srgb, var(--notification-bg, var(--secondary-bg)) 88%, var(--danger-color, #e06c5f) 12%);
+            color: var(--danger-color, #e06c5f); font-size: 11px;
+            box-shadow: 0 9px 28px var(--shell-shadow);
+        }
+        .error.show { display: block; }
+        .toast {
+            position: fixed; z-index: 4; top: 50px; right: 10px; padding: 8px 11px; border-radius: 8px;
+            background: var(--notification-bg, var(--secondary-bg, #20252a)); border: 1px solid var(--line); color: var(--text); font-size: 11px;
+            box-shadow: 0 9px 28px var(--shell-shadow);
+            opacity: 0; transform: translateY(-5px); transition: .18s ease; pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body>
+    <header class="bar">
+        <span class="mark">🕸</span>
+        <nav class="nav">
+            <button class="tool" id="back" title="后退">←</button>
+            <button class="tool" id="forward" title="前进">→</button>
+            <button class="tool" id="home" title="主页">⌂</button>
+            <button class="tool" id="reload" title="刷新">↻</button>
+        </nav>
+        <div class="identity">
+            <span class="loading" id="loading"></span>
+            <span class="name" id="name">VCP Loom</span>
+            <input class="url" id="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="网址" placeholder="输入网址并按 Enter">
+        </div>
+        <button class="tool" id="external" title="在系统浏览器中打开">↗</button>
+        <div class="device-center">
+            <button class="tool device-button" id="devices" title="设备中心">◉</button>
+        </div>
+        <button class="tool share" id="share" title="将当前页面已渲染文本分享到 VChat 输入框"><span>◇</span><span>分享文本</span></button>
+        <div class="windows">
+            <button id="minimize" title="最小化">─</button>
+            <button id="maximize" title="最大化">□</button>
+            <button id="close" class="close" title="关闭">×</button>
+        </div>
+    </header>
+    <div class="error" id="error"></div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+        'use strict';
+        const api = window.loomAPI;
+        const $ = (id) => document.getElementById(id);
+        let toastTimer = null;
+        let currentUrl = '';
+        let deviceMenuOpen = false;
+
+        function applyTheme(theme) {
+            document.body.classList.toggle('light-theme', theme === 'light');
+        }
+
+        async function initializeTheme() {
+            try {
+                if (api?.getCurrentTheme) applyTheme(await api.getCurrentTheme());
+            } catch (error) {
+                console.warn('[Loom Shell] 无法读取当前主题：', error);
+            }
+            api?.onThemeUpdated?.(applyTheme);
+        }
+
+        function unwrap(result) {
+            if (!result || result.success !== true) throw new Error(result?.error || '操作失败');
+            return result.data;
+        }
+
+        function applyState(state = {}) {
+            $('name').textContent = state.name || 'VCP Loom';
+            currentUrl = state.url || currentUrl;
+            if (document.activeElement !== $('url')) $('url').value = currentUrl;
+            $('url').title = currentUrl;
+            $('loading').classList.toggle('show', state.loading === true);
+            $('back').disabled = !state.canGoBack;
+            $('forward').disabled = !state.canGoForward;
+            const error = state.error || '';
+            $('error').textContent = error;
+            $('error').classList.toggle('show', Boolean(error));
+            document.title = state.name ? `VCP Loom · ${state.name}` : 'VCP Loom';
+        }
+
+        function toast(message) {
+            $('toast').textContent = message;
+            $('toast').classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2400);
+        }
+
+        async function action(name, payload) {
+            try {
+                const state = unwrap(await api.shellAction(name, payload));
+                if (state?.appId) applyState(state);
+                return state;
+            } catch (error) {
+                toast(error.message);
+                return null;
+            }
+        }
+
+        $('url').addEventListener('focus', (event) => event.currentTarget.select());
+        $('url').addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const value = event.currentTarget.value.trim();
+                if (!value) return;
+                event.currentTarget.blur();
+                await action('navigate', value);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.currentTarget.value = currentUrl;
+                event.currentTarget.blur();
+            }
+        });
+        $('url').addEventListener('blur', (event) => {
+            if (!event.currentTarget.value.trim()) event.currentTarget.value = currentUrl;
+        });
+        async function setDeviceMenu(open) {
+            const requestedState = Boolean(open);
+            const result = await action('device-menu', requestedState);
+            if (!result) return;
+            deviceMenuOpen = result.deviceMenuOpen === true;
+            $('devices').classList.toggle('active', deviceMenuOpen);
+        }
+
+        $('devices').addEventListener('click', () => setDeviceMenu(!deviceMenuOpen));
+        $('back').addEventListener('click', () => action('back'));
+        $('forward').addEventListener('click', () => action('forward'));
+        $('home').addEventListener('click', () => action('home'));
+        $('reload').addEventListener('click', () => action('reload'));
+        $('external').addEventListener('click', () => action('open-external'));
+        $('share').addEventListener('click', async () => {
+            const result = await action('share-text');
+            if (result?.success) toast('页面文本已分享到 VChat 输入框');
+        });
+        $('minimize').addEventListener('click', () => api.minimizeWindow());
+        $('maximize').addEventListener('click', () => api.maximizeWindow());
+        $('close').addEventListener('click', () => api.closeWindow());
+
+        initializeTheme();
+        api.onShellState(applyState);
+        api.shellReady()
+            .then((result) => applyState(unwrap(result)))
+            .catch((error) => toast(error.message));
+    </script>
+</body>
+</html>

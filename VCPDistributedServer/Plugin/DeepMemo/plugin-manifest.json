@@ -1,23 +1,41 @@
 {
   "name": "DeepMemo",
   "displayName": "深度回忆插件",
-  "version": "1.0.0",
-  "description": "根据关键词从Vchat聊天记录中检索相关上下文，实现AI的深度回忆功能。",
-  "pluginType": "synchronous",
+  "version": "2.0.0",
+  "description": "通过 VCP-CDS 中央聊天数据服务检索历史上下文的常驻薄适配器。",
+  "pluginType": "hybridservice",
   "communication": {
-    "protocol": "stdio",
-    "timeout": 180000
+    "protocol": "direct",
+    "timeout": 30000
   },
   "entryPoint": {
-    "type": "executable",
-    "command": "deepmemo_rust.exe"
+    "type": "nodejs",
+    "script": "DeepMemoService.js"
+  },
+  "configSchema": {
+    "DeepMemoBackend": "string",
+    "DeepMemoLegacyFallback": "boolean",
+    "DeepMemoExcludeCurrentTopic": "boolean",
+    "DeepMemoCandidateLimit": "integer",
+    "DeepMemoResultLimit": "integer",
+    "DeepMemoTimeoutMs": "integer",
+    "MaxMemoTokens": "integer",
+    "QueryPreset": "string",
+    "RerankSearch": "boolean",
+    "RerankUrl": "string",
+    "RerankApi": "string",
+    "RerankModel": "string",
+    "RerankCandidateMultiplier": "integer",
+    "RerankMaxDocumentsPerBatch": "integer",
+    "RerankMaxTokensPerBatch": "integer",
+    "RerankTimeoutMs": "integer"
   },
   "capabilities": {
     "invocationCommands": [
       {
         "command": "DeepMemo",
-        "description": "调用此工具进行深度回忆，以获取与特定关键词相关的历史对话上下文。\n\n**重要提示：**\n- 本工具会根据关键词在指定女仆的记忆库中进行搜索。\n- 返回的内容是经过格式化的对话片段，可以直接在回复中使用。\n\n**参数说明 (请严格按照以下格式和参数名提供):**\n1. `tool_name`:「始」DeepMemo「末」 (必需)\n2. `maid`:「始」[发起请求的AI女仆的中文名]「末」 (必需, 例如：小克, 小吉, 小娜。通过名字匹配你的记忆！)\n3. `keyword`:「始」[用于搜索的关键词]「末」 (必需, 多个关键词可以用英文逗号、中文逗号或空格分隔)\n4. `window_size`:「始」[上下文窗口大小]「末」 (可选, 范围1-20的整数, 默认10。代表以匹配到的对话为中心，向前和向后各取多少轮对话)\n\n**高级搜索语法 (keyword参数):**\n#   - 普通词:           VCP\n#   - 精确短语:         \"VCP服务器\"\n#   - 正向加权 (0.0-2.0): (重要概念:1.5)\n#   - 负向排除 :         [闲聊] //不支持权重\n#   - OR 逻辑:          {破解|渗透|测试} //支持正向权重\n#\n# 示例: 假设我们希望所有搜索都更关注技术性内容，同时排除日常闲聊和特定项目。\n# 查询预设: [闲聊],[日常对话],(技术:1.2),(代码:1.1),{bug|修复|问题:1.3}\n\n**成功时返回:**\n一个包含多个回忆片段的格式化字符串，例如：\n`[回忆片段1：\n莱恩: 你好\n小克: 主人你好喵！]\n\n[回忆片段2：\n莱恩: 今天天气不错\n小克: 是呀主人，很适合晒太阳呢！]`\n\n**失败时返回:**\n包含错误信息的字符串，例如：`[DeepMemo] 未找到与关键词“xxx”相关的回忆。`",
-        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」小克「末」\ntool_name:「始」DeepMemo「末」,\nkeyword:「始」深度回忆,系统,构想「末」,\nwindow_size:「始」6「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "调用此工具进行深度回忆，以获取与特定关键词相关的历史对话上下文。\n\n**重要提示：**\n- 本工具会根据关键词在指定女仆的记忆库中进行搜索。\n- 返回的内容是经过格式化的对话片段，可以直接在回复中使用。\n\n**参数说明 (请严格按照以下格式和参数名提供):**\n1. `tool_name`:「始」DeepMemo「末」 (必需)\n2. `maid`:「始」[发起请求的AI女仆的中文名]「末」 (必需, 例如：小克, 小吉, 小娜。通过名字匹配你的记忆！)\n3. `keyword`:「始」[用于搜索的关键词]「末」 (必需, 多个关键词可以用英文逗号、中文逗号或空格分隔)\n4. `window_size`:「始」[上下文窗口大小]「末」 (可选, 范围1-20的整数, 默认10。代表以匹配到的对话为中心，向前和向后各取多少轮对话)\n5. `rerank`:「始」true 或 false「末」 (可选。true 表示本次请求精排，false 表示本次强制跳过；省略时遵循服务端 RerankSearch 配置)\n\n**高级搜索语法 (keyword参数):**\n#   - 普通词:           VCP\n#   - 精确短语:         \"VCP服务器\"\n#   - 正向加权 (0.0-2.0): (重要概念:1.5)\n#   - 负向排除 :         [闲聊] //不支持权重\n#   - OR 逻辑:          {破解|渗透|测试} //支持正向权重\n#\n# 示例: 假设我们希望所有搜索都更关注技术性内容，同时排除日常闲聊和特定项目。\n# 查询预设: [闲聊],[日常对话],(技术:1.2),(代码:1.1),{bug|修复|问题:1.3}\n\n**成功时返回:**\n一个包含多个回忆片段的格式化字符串，例如：\n`[回忆片段1：\n莱恩: 你好\n小克: 主人你好喵！]\n\n[回忆片段2：\n莱恩: 今天天气不错\n小克: 是呀主人，很适合晒太阳呢！]`\n\n**失败时返回:**\n包含错误信息的字符串，例如：`[DeepMemo] 未找到与关键词“xxx”相关的回忆。`",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」小克「末」\ntool_name:「始」DeepMemo「末」,\nkeyword:「始」深度回忆,系统,构想「末」,\nwindow_size:「始」6「末」,\nrerank:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

@@ -8,50 +8,48 @@ const tavernEngine = require('../tavernRulesEngine');
 
 let TAVERN_CONFIG_FILE = null;
 let ipcHandlersRegistered = false;
-let cachedStore = null;
+let cachedUserStore = null;
 let cachedMtime = 0;
 
 function ensureFile() {
     if (!TAVERN_CONFIG_FILE) return;
     fs.ensureDirSync(path.dirname(TAVERN_CONFIG_FILE));
     if (!fs.existsSync(TAVERN_CONFIG_FILE)) {
-        fs.writeJsonSync(TAVERN_CONFIG_FILE, { version: 1, rules: [] }, { spaces: 2 });
+        fs.writeJsonSync(TAVERN_CONFIG_FILE, { version: 2, rules: [] }, { spaces: 2 });
     }
 }
 
 async function readStore() {
-    if (!TAVERN_CONFIG_FILE) return { version: 1, rules: [] };
+    if (!TAVERN_CONFIG_FILE) return tavernEngine.mergeBuiltinRules({ version: 2, rules: [] });
     try {
         ensureFile();
         const stat = await fs.stat(TAVERN_CONFIG_FILE);
-        if (cachedStore && stat.mtimeMs === cachedMtime) {
-            return cachedStore;
+        if (!cachedUserStore || stat.mtimeMs !== cachedMtime) {
+            const raw = await fs.readJson(TAVERN_CONFIG_FILE);
+            cachedUserStore = tavernEngine.compactRuleStore(raw);
+            cachedMtime = stat.mtimeMs;
         }
-        const raw = await fs.readJson(TAVERN_CONFIG_FILE);
-        cachedStore = tavernEngine.normalizeRuleStore(raw);
-        cachedMtime = stat.mtimeMs;
-        return cachedStore;
+        return tavernEngine.mergeBuiltinRules(cachedUserStore);
     } catch (error) {
         console.error('[TavernHandlers] Failed to read tavern store:', error);
-        return { version: 1, rules: [] };
+        return tavernEngine.mergeBuiltinRules({ version: 2, rules: [] });
     }
 }
 
 function readStoreSync() {
-    if (!TAVERN_CONFIG_FILE) return { version: 1, rules: [] };
+    if (!TAVERN_CONFIG_FILE) return tavernEngine.mergeBuiltinRules({ version: 2, rules: [] });
     try {
         ensureFile();
         const stat = fs.statSync(TAVERN_CONFIG_FILE);
-        if (cachedStore && stat.mtimeMs === cachedMtime) {
-            return cachedStore;
+        if (!cachedUserStore || stat.mtimeMs !== cachedMtime) {
+            const raw = fs.readJsonSync(TAVERN_CONFIG_FILE);
+            cachedUserStore = tavernEngine.compactRuleStore(raw);
+            cachedMtime = stat.mtimeMs;
         }
-        const raw = fs.readJsonSync(TAVERN_CONFIG_FILE);
-        cachedStore = tavernEngine.normalizeRuleStore(raw);
-        cachedMtime = stat.mtimeMs;
-        return cachedStore;
+        return tavernEngine.mergeBuiltinRules(cachedUserStore);
     } catch (error) {
         console.error('[TavernHandlers] Failed to read tavern store (sync):', error);
-        return { version: 1, rules: [] };
+        return tavernEngine.mergeBuiltinRules({ version: 2, rules: [] });
     }
 }
 
@@ -60,15 +58,15 @@ async function writeStore(store) {
         return { success: false, error: 'Tavern config path not initialized.' };
     }
     try {
-        const normalized = tavernEngine.normalizeRuleStore(store);
+        const compacted = tavernEngine.compactRuleStore(store);
         await fs.ensureDir(path.dirname(TAVERN_CONFIG_FILE));
-        await fs.writeJson(TAVERN_CONFIG_FILE, normalized, { spaces: 2 });
-        cachedStore = normalized;
+        await fs.writeJson(TAVERN_CONFIG_FILE, compacted, { spaces: 2 });
+        cachedUserStore = compacted;
         try {
             const stat = await fs.stat(TAVERN_CONFIG_FILE);
             cachedMtime = stat.mtimeMs;
         } catch (_) { /* ignore */ }
-        return { success: true, store: normalized };
+        return { success: true, store: tavernEngine.mergeBuiltinRules(compacted) };
     } catch (error) {
         console.error('[TavernHandlers] Failed to write tavern store:', error);
         return { success: false, error: error.message };

@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chrome 系统字体原生匹配测试</title>
+<style>
+* {
+    box-sizing: border-box;
+}
+:root {
+    color-scheme: light;
+    font-family: "Microsoft YaHei", sans-serif;
+    background: #eeeae2;
+    color: #20231f;
+}
+body {
+    width: min(1180px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0 80px;
+}
+h1 {
+    margin: 0 0 8px;
+    font-size: 26px;
+}
+.intro {
+    margin: 0 0 24px;
+    color: #596057;
+    line-height: 1.7;
+}
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-bottom: 18px;
+    padding: 12px 16px;
+    border: 1px solid #cbc5b9;
+    border-radius: 10px;
+    background: #fff;
+    font-size: 13px;
+}
+.test-card {
+    margin: 14px 0;
+    border: 1px solid #cbc5b9;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 5px 18px rgba(40, 34, 25, .06);
+}
+.test-head {
+    display: grid;
+    grid-template-columns: minmax(210px, 1fr) minmax(260px, 2fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #f6f2ea;
+    border-bottom: 1px solid #ddd6ca;
+}
+.test-head strong {
+    font-size: 14px;
+}
+.family {
+    overflow-wrap: anywhere;
+    color: #655d51;
+    font: 12px/1.45 Consolas, monospace;
+}
+.status {
+    min-width: 82px;
+    padding: 4px 8px;
+    border-radius: 99px;
+    text-align: center;
+    font: 700 11px/1.4 system-ui;
+}
+.status.yes {
+    color: #116645;
+    background: #dff4e9;
+}
+.status.no {
+    color: #923d35;
+    background: #f9dfdc;
+}
+.sample {
+    padding: 16px 18px 19px;
+    font-size: 30px;
+    line-height: 1.65;
+    word-break: break-all;
+}
+.sample small {
+    display: block;
+    margin-top: 5px;
+    color: #79736b;
+    font: 12px/1.5 system-ui;
+}
+.baseline {
+    border-color: #9d968a;
+}
+@media (max-width: 720px) {
+    .test-head {
+        grid-template-columns: 1fr;
+    }
+    .status {
+        width: max-content;
+    }
+    .sample {
+        font-size: 24px;
+    }
+}
+</style>
+</head>
+<body>
+<h1>Chrome 系统字体原生匹配测试</h1>
+<p class="intro">
+    本页不使用 @font-face、不读取字体文件、不使用 URL，只通过 CSS font-family
+    请求 Windows 已安装字体。上半部分测试新生成的规范化 family，下半部分保留
+    原字体的中文、英文和 PostScript 名作为对照。请先安装 font-compat-output
+    中的 7 个兼容副本，并完全退出、重新启动 Chrome；若外观与“必定不存在字体”
+    一致，说明 Chrome 已静默回退。
+</p>
+<div class="legend">
+    <span><strong>测试文字：</strong>天地玄黄 宇宙洪荒 中文字体测试 ABCabc 012345</span>
+    <span><strong>检查：</strong>document.fonts.check('30px "字体名"', 测试文字)</span>
+</div>
+<main id="tests"></main>
+<script>
+(() => {
+    const sampleText = '天地玄黄 宇宙洪荒 中文字体测试 ABCabc 012345';
+    const tests = [
+        {
+            label: '基线：微软雅黑',
+            family: '"Microsoft YaHei"',
+            baseline: true,
+        },
+        {
+            label: '负基线：必定不存在',
+            family: '"VCP Font That Must Not Exist 987654"',
+            baseline: true,
+        },
+
+        {
+            label: '兼容副本：方正舒体',
+            family: '"方正舒体（兼容）"',
+        },
+        {
+            label: '兼容副本：方正姚体',
+            family: '"方正姚体（兼容）"',
+        },
+        {
+            label: '兼容副本：方正粗黑宋',
+            family: '"方正粗黑宋简体（兼容）"',
+        },
+        {
+            label: '兼容副本：方正清刻本悦宋',
+            family: '"方正清刻本悦宋简体（兼容）"',
+        },
+        {
+            label: '兼容副本：方正宋刻本秀楷',
+            family: '"方正宋刻本秀楷简体（兼容）"',
+        },
+        {
+            label: '兼容副本：方正隶变',
+            family: '"方正隶变简体（兼容）"',
+        },
+        {
+            label: '兼容副本：方正粗雅宋 GBK',
+            family: '"方正粗雅宋_GBK（兼容）"',
+        },
+
+        { label: '原字体：方正舒体 · 中文名', family: '"方正舒体"' },
+        { label: '原字体：方正舒体 · 英文名', family: '"FZShuTi"' },
+        { label: '原字体：方正舒体 · PostScript', family: '"FZSTK--GBK1-0"' },
+
+        { label: '原字体：方正姚体 · 中文名', family: '"方正姚体"' },
+        { label: '原字体：方正姚体 · 英文名', family: '"FZYaoTi"' },
+        { label: '原字体：方正姚体 · PostScript', family: '"FZYTK--GBK1-0"' },
+
+        { label: '原字体：方正粗黑宋 · 中文名', family: '"方正粗黑宋简体"' },
+        { label: '原字体：方正粗黑宋 · 英文名', family: '"FZCuHeiSongS-B-GB"' },
+        { label: '原字体：方正粗黑宋 · PostScript', family: '"FZCHSJW--GB1-0"' },
+
+        { label: '原字体：方正清刻本悦宋 · 中文名', family: '"方正清刻本悦宋简体"' },
+        { label: '原字体：方正清刻本悦宋 · 英文名', family: '"FZQingKeBenYueSongS-R-GB"' },
+        { label: '原字体：方正清刻本悦宋 · PostScript', family: '"FZQKBYSJW--GB1-0"' },
+
+        { label: '原字体：方正宋刻本秀楷 · 中文名', family: '"方正宋刻本秀楷简体"' },
+        { label: '原字体：方正宋刻本秀楷 · 英文名', family: '"FZSongKeBenXiuKaiS-R-GB"' },
+        { label: '原字体：方正宋刻本秀楷 · PostScript', family: '"FZSKBXKJW--GB1-0"' },
+
+        { label: '原字体：方正隶变 · 中文名', family: '"方正隶变简体"' },
+        { label: '原字体：方正隶变 · 英文名', family: '"FZLiBian-S02S"' },
+        { label: '原字体：方正隶变 · PostScript', family: '"FZLBJW--GB1-0"' },
+
+        { label: '原字体：方正粗雅宋 GBK · 中文名', family: '"方正粗雅宋_GBK"' },
+        { label: '原字体：方正粗雅宋 GBK · 英文名', family: '"FZYaSong-B-GBK"' },
+        { label: '原字体：方正粗雅宋 GBK · PostScript', family: '"FZCYSK--GBK1-0"' },
+    ];
+
+    const host = document.getElementById('tests');
+    const cards = tests.map((test) => {
+        const card = document.createElement('section');
+        card.className = `test-card${test.baseline ? ' baseline' : ''}`;
+
+        const head = document.createElement('div');
+        head.className = 'test-head';
+
+        const label = document.createElement('strong');
+        label.textContent = test.label;
+
+        const family = document.createElement('code');
+        family.className = 'family';
+        family.textContent = `font-family: ${test.family}`;
+
+        const status = document.createElement('span');
+        status.className = 'status';
+        status.textContent = '检查中';
+
+        const sample = document.createElement('div');
+        sample.className = 'sample';
+        sample.style.fontFamily = test.family;
+        sample.append(document.createTextNode(sampleText));
+
+        const detail = document.createElement('small');
+        detail.textContent = '等待 Chrome Font Loading API 返回';
+        sample.appendChild(detail);
+
+        head.append(label, family, status);
+        card.append(head, sample);
+        host.appendChild(card);
+        return { test, status, detail };
+    });
+
+    document.fonts.ready.then(() => {
+        cards.forEach(({ test, status, detail }) => {
+            let available = false;
+            try {
+                available = document.fonts.check(`30px ${test.family}`, sampleText);
+            } catch (error) {
+                detail.textContent = `检查异常：${error.message}`;
+            }
+            status.textContent = available ? 'API：可用' : 'API：不可用';
+            status.className = `status ${available ? 'yes' : 'no'}`;
+            if (!detail.textContent.startsWith('检查异常')) {
+                detail.textContent = available
+                    ? 'Chrome 声明该 family 可用于完整测试文字；仍请与负基线肉眼对照。'
+                    : 'Chrome 未确认该 family 可覆盖完整测试文字，当前显示可能来自回退字体。';
+            }
+        });
+    });
+})();
+</script>
+</body>
+</html>

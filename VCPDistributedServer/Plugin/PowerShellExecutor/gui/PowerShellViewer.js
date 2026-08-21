@@ -4,6 +4,7 @@
 const terminalContainer = document.getElementById('terminal-container');
 const commandInput = document.getElementById('command-input');
 const sendButton = document.getElementById('send-button');
+const contextMenu = document.getElementById('terminal-context-menu');
 
 // 创建 FitAddon 实例
 const fitAddon = new FitAddon.FitAddon();
@@ -32,6 +33,8 @@ term.open(terminalContainer);
 
 // --- 功能函数 ---
 
+let fitTimer = null;
+
 function fitTerminal() {
     try {
         fitAddon.fit();
@@ -44,21 +47,157 @@ function fitTerminal() {
     }
 }
 
+function scheduleFitTerminal(delay = 100) {
+    if (fitTimer) {
+        clearTimeout(fitTimer);
+    }
+
+    fitTimer = setTimeout(() => {
+        fitTimer = null;
+        fitTerminal();
+    }, delay);
+}
+
 function sendCommand() {
     const command = commandInput.value;
     if (command.trim() && window.electronAPI) {
-        term.write(command + '\r\n');
+        // 真实 PTY 会自行回显输入；前端本地 echo 会导致重复字符和 TUI 状态错位。
         window.electronAPI.send('powershell-command', command);
         commandInput.value = '';
-        commandInput.focus();
+        term.focus();
     }
+}
+
+function copySelection() {
+    const selection = term.getSelection();
+    if (selection && window.electronAPI) {
+        window.electronAPI.send('copy-to-clipboard', selection);
+        return true;
+    }
+    return false;
+}
+
+async function pasteFromClipboard() {
+    if (!window.electronAPI || typeof window.electronAPI.invoke !== 'function') {
+        return;
+    }
+
+    try {
+        const text = await window.electronAPI.invoke('read-from-clipboard');
+        if (text) {
+            window.electronAPI.send('powershell-input', text);
+            term.focus();
+        }
+    } catch (error) {
+        console.error('Failed to paste from clipboard:', error);
+    }
+}
+
+function clearTerminal() {
+    term.clear();
+    term.focus();
+}
+
+function selectAllTerminal() {
+    term.selectAll();
+    term.focus();
+}
+
+function interruptCommand() {
+    if (window.electronAPI) {
+        window.electronAPI.send('powershell-input', '\x03');
+        term.focus();
+    }
+}
+
+function extractVisibleText(maxLines) {
+    const buffer = term.buffer.active;
+    const lines = [];
+    const totalLines = buffer.length;
+    const startLine = maxLines ? Math.max(0, totalLines - maxLines) : 0;
+    
+    for (let i = startLine; i < totalLines; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+            lines.push(line.translateToString(true));
+        }
+    }
+    return lines.join('\n').trim();
+}
+
+function hideContextMenu() {
+    if (contextMenu) {
+        contextMenu.hidden = true;
+    }
+}
+
+function updateContextMenuState() {
+    if (!contextMenu) {
+        return;
+    }
+
+    const copyButton = contextMenu.querySelector('[data-action="copy"]');
+    if (copyButton) {
+        copyButton.disabled = !term.hasSelection();
+    }
+}
+
+function showContextMenu(event) {
+    if (!contextMenu) {
+        return;
+    }
+
+    event.preventDefault();
+    updateContextMenuState();
+
+    contextMenu.hidden = false;
+    const menuRect = contextMenu.getBoundingClientRect();
+    const left = Math.min(event.clientX, window.innerWidth - menuRect.width - 8);
+    const top = Math.min(event.clientY, window.innerHeight - menuRect.height - 8);
+
+    contextMenu.style.left = `${Math.max(8, left)}px`;
+    contextMenu.style.top = `${Math.max(8, top)}px`;
+}
+
+function handleContextMenuAction(action) {
+    switch (action) {
+        case 'copy':
+            copySelection();
+            break;
+        case 'paste':
+            pasteFromClipboard();
+            break;
+        case 'selectAll':
+            selectAllTerminal();
+            break;
+        case 'clear':
+            clearTerminal();
+            break;
+        case 'interrupt':
+            interruptCommand();
+            break;
+        case 'refit':
+            fitTerminal();
+            term.focus();
+            break;
+        default:
+            break;
+    }
+
+    hideContextMenu();
 }
 
 // --- IPC 与事件监听 ---
 
 if (window.electronAPI) {
+    // --- 查询可见文本 ---
+    window.electronAPI.on('query-visible-text', ({ maxLines }) => {
+        const text = extractVisibleText(maxLines);
+        window.electronAPI.send('visible-text-response', text);
+    });
+
     // --- 数据、清屏与主题 ---
-    // 前端现在是一个纯粹的渲染器，所有状态和内容都由后端主导。
+    // 前端现在是一个纯粹的渲染器,所有状态和内容都由后端主导。
     window.electronAPI.on('powershell-data', (data) => {
         // 后端现在负责所有数据清理，前端只需直接写入即可。
         if (data) {
@@ -102,25 +241,75 @@ if (window.electronAPI) {
         }, 100);
     });
 
-    // --- 原生复制逻辑 ---
-    // 监听右键点击事件，用于复制
-    terminalContainer.addEventListener('contextmenu', (e) => {
-        e.preventDefault(); // 阻止默认的右键菜单
-        const selection = term.getSelection();
-        if (selection) {
-            window.electronAPI.send('copy-to-clipboard', selection);
+    // --- 真实终端输入透传 ---
+    term.onData((data) => {
+        window.electronAPI.send('powershell-input', data);
+    });
+
+    terminalContainer.addEventListener('mousedown', () => {
+        term.focus();
+    });
+
+    // --- 右键菜单与快捷键 ---
+    terminalContainer.addEventListener('contextmenu', showContextMenu);
+
+    document.addEventListener('click', (event) => {
+        if (contextMenu && !contextMenu.hidden && !contextMenu.contains(event.target)) {
+            hideContextMenu();
         }
     });
 
-    // 监听键盘复制事件 (Ctrl+C)
-    term.attachCustomKeyEventHandler((arg) => {
-        if (arg.ctrlKey && arg.code === 'KeyC' && arg.type === 'keydown') {
-            const selection = term.getSelection();
-            if (selection) {
-                window.electronAPI.send('copy-to-clipboard', selection);
-                return false; // 阻止事件进一步传播，避免终端解释为中断信号
-            }
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            hideContextMenu();
         }
+    });
+
+    if (contextMenu) {
+        contextMenu.addEventListener('click', (event) => {
+            const menuItem = event.target.closest('.context-menu-item');
+            if (!menuItem || menuItem.disabled) {
+                return;
+            }
+
+            handleContextMenuAction(menuItem.dataset.action);
+        });
+    }
+
+    term.attachCustomKeyEventHandler((arg) => {
+        if (arg.type !== 'keydown') {
+            return true;
+        }
+
+        if (arg.ctrlKey && arg.shiftKey && arg.code === 'KeyC') {
+            copySelection();
+            return false;
+        }
+
+        if (arg.ctrlKey && arg.shiftKey && arg.code === 'KeyV') {
+            pasteFromClipboard();
+            return false;
+        }
+
+        if (arg.ctrlKey && arg.code === 'KeyC') {
+            if (term.hasSelection()) {
+                copySelection();
+                return false;
+            }
+
+            return true; // 无选区时保留终端原生 Ctrl+C 中断行为
+        }
+
+        if (arg.ctrlKey && arg.code === 'KeyV') {
+            pasteFromClipboard();
+            return false;
+        }
+
+        if (arg.ctrlKey && arg.code === 'KeyL') {
+            clearTerminal();
+            return false;
+        }
+
         return true;
     });
 
@@ -132,6 +321,7 @@ if (window.electronAPI) {
 // --- 窗口与输入监听 ---
 window.addEventListener('DOMContentLoaded', () => {
     fitTerminal();
+    term.focus();
     if (window.electronAPI) {
         window.electronAPI.send('powershell-gui-ready');
     }
@@ -153,13 +343,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (window.electronAPI) window.electronAPI.closeWindow();
     });
 });
-window.addEventListener('resize', () => setTimeout(fitTerminal, 0));
-sendButton.addEventListener('click', sendCommand);
-commandInput.addEventListener('keydown', (event) => {
-    // 当用户按下 Enter 键但没有同时按下 Shift 键时，发送命令
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault(); // 阻止默认的 Enter 行为（例如，在 textarea 中换行）
-        sendCommand();
-    }
-    // Shift+Enter 的默认行为就是在 textarea 中换行，所以我们不需要为它编写特殊逻辑
-});
+window.addEventListener('resize', () => scheduleFitTerminal(100));
+if (sendButton && commandInput) {
+    sendButton.addEventListener('click', sendCommand);
+    commandInput.addEventListener('keydown', (event) => {
+        // 当用户按下 Enter 键但没有同时按下 Shift 键时，发送命令
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault(); // 阻止默认的 Enter 行为（例如，在 textarea 中换行）
+            sendCommand();
+        }
+        // Shift+Enter 的默认行为就是在 textarea 中换行，所以我们不需要为它编写特殊逻辑
+    });
+}

@@ -170,13 +170,12 @@ function ensureNewlineAfterCodeBlock(text) {
  */
 function ensureSpaceAfterTilde(text) {
     if (typeof text !== 'string') return text;
-    // Replace a tilde `~` with `~ ` to prevent it from being interpreted as a strikethrough marker.
-    // This should not affect tildes in URLs (e.g., `.../~user/`) or code (e.g., `var_~a`).
-    // The regex matches a tilde if it's:
-    // 1. At the start of the string (`^`).
-    // 2. Preceded by a character that is NOT a word character (`\w`), path separator (`/`, `\`), or equals sign (`=`).
-    // It also ensures it's not already followed by a space or another tilde `(?![\s~])`.
-    return text.replace(/(^|[^\w/\\=])~(?![\s~])/g, '$1~ ');
+    // Replace a single tilde `~` with `~ ` to prevent it from being interpreted as a strikethrough marker.
+    // This should not affect tildes in URLs (e.g., `.../~user/`), home paths (`~/file`), or common code operators (`~=`, `~=`).
+    // The previous rule excluded tildes preceded by ASCII word chars, so the closing marker in `~text~`
+    // remained untouched (`~ text~`) and marked could still treat the pair as strikethrough in the main chat.
+    // Keep only the URL/path/operator exclusions and protect both the opening and closing single tilde.
+    return text.replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ');
 }
 
 /**
@@ -355,11 +354,12 @@ function prettifySinglePreElement(preElement, type, relevantContent) {
 
 const TAG_REGEX = /@([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
 const ALERT_TAG_REGEX = /@!([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
-const BOLD_REGEX = /\*\*([^\*]+)\*\*/g;
 const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." and Chinese “...”
 
 /**
- * 一次性高亮所有文本模式（标签、粗体、引号），替换旧的多次遍历方法
+ * 一次性高亮所有文本模式（标签、引号），替换旧的多次遍历方法。
+ * Markdown 加粗必须先由 marked 解析成 <strong>/<b>，这里不再二次解析 **...**，
+ * 避免后处理拆分文本节点后破坏 Markdown 粗体边界。
  * @param {HTMLElement} messageElement The message content element.
  */
 function highlightAllPatternsInMessage(messageElement) {
@@ -371,8 +371,11 @@ function highlightAllPatternsInMessage(messageElement) {
         (node) => {
             let parent = node.parentElement;
             while (parent && parent !== messageElement) {
-                if (['PRE', 'CODE', 'STYLE', 'SCRIPT', 'STRONG', 'B'].includes(parent.tagName) ||
+                // 只跳过不应改写的技术内容和已高亮节点；不要跳过 STRONG/B。
+                // 这样 Markdown 先完成加粗后，引号高亮仍可进入加粗文本内部执行。
+                if (['PRE', 'CODE', 'STYLE', 'SCRIPT'].includes(parent.tagName) ||
                     parent.classList.contains('highlighted-tag') ||
+                    parent.classList.contains('highlighted-alert-tag') ||
                     parent.classList.contains('highlighted-quote')) {
                     return NodeFilter.FILTER_REJECT;
                 }
@@ -399,9 +402,6 @@ function highlightAllPatternsInMessage(messageElement) {
             }
             while ((match = ALERT_TAG_REGEX.exec(text)) !== null) {
                 matches.push({ type: 'alert-tag', index: match.index, length: match[0].length, content: match[0] });
-            }
-            while ((match = BOLD_REGEX.exec(text)) !== null) {
-                matches.push({ type: 'bold', index: match.index, length: match[0].length, content: match[1] });
             }
             while ((match = QUOTE_REGEX.exec(text)) !== null) {
                 // 确保引号内有内容
@@ -450,7 +450,7 @@ function highlightAllPatternsInMessage(messageElement) {
             }
 
             // 创建高亮元素
-            const span = document.createElement(match.type === 'bold' ? 'strong' : 'span');
+            const span = document.createElement('span');
             if (match.type === 'tag') {
                 span.className = 'highlighted-tag';
                 span.textContent = match.content;
@@ -459,8 +459,6 @@ function highlightAllPatternsInMessage(messageElement) {
                 span.textContent = match.content;
             } else if (match.type === 'quote') {
                 span.className = 'highlighted-quote';
-                span.textContent = match.content;
-            } else { // bold
                 span.textContent = match.content;
             }
             fragment.appendChild(span);
@@ -475,6 +473,115 @@ function highlightAllPatternsInMessage(messageElement) {
 
         node.parentNode.replaceChild(fragment, node);
     }
+}
+
+function countCodeBlockLines(text) {
+    if (typeof text !== 'string') return 0;
+    const normalized = text.replace(/\r\n?/g, '\n').replace(/\n$/, '');
+    if (!normalized) return 0;
+    return normalized.split('\n').length;
+}
+
+async function writeTextToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    try {
+        document.execCommand('copy');
+    } finally {
+        textarea.remove();
+    }
+}
+
+function setupSingleCodeCopyButton(preElement, rawText) {
+    if (!preElement || !preElement.parentElement || preElement.dataset.vcpCodeCopy === 'true') return;
+    if (preElement.dataset.vcpPrettified === "true" ||
+        preElement.dataset.maidDiaryPrettified === "true" ||
+        preElement.dataset.vcpHtmlPreview === "blocked") {
+        return;
+    }
+
+    const isInsideVcpBubble = preElement.closest('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble');
+    if (isInsideVcpBubble) return;
+
+    const codeText = typeof rawText === 'string'
+        ? rawText
+        : (preElement.getAttribute('data-raw-content') || preElement.textContent || '');
+    if (countCodeBlockLines(codeText) <= 4) return;
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'vcp-code-copy-button';
+    copyButton.dataset.vcpInteractive = 'true';
+    copyButton.title = '复制代码';
+    copyButton.setAttribute('aria-label', '复制代码');
+    copyButton.innerHTML = '<span class="vcp-code-copy-icon">📋</span><span class="vcp-code-copy-text">复制</span>';
+
+    copyButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        const originalHtml = copyButton.innerHTML;
+        copyButton.disabled = true;
+
+        try {
+            await writeTextToClipboard(codeText);
+            copyButton.classList.add('copied');
+            copyButton.innerHTML = '<span class="vcp-code-copy-icon">✅</span><span class="vcp-code-copy-text">已复制</span>';
+        } catch (error) {
+            console.error('[ContentProcessor] Copy code failed:', error);
+            copyButton.classList.add('failed');
+            copyButton.innerHTML = '<span class="vcp-code-copy-icon">⚠️</span><span class="vcp-code-copy-text">失败</span>';
+        }
+
+        setTimeout(() => {
+            if (!copyButton.isConnected) return;
+            copyButton.disabled = false;
+            copyButton.classList.remove('copied', 'failed');
+            copyButton.innerHTML = originalHtml;
+        }, 1400);
+    });
+
+    const previewContainer = preElement.closest('.vcp-html-preview-container');
+    if (previewContainer) {
+        let actions = previewContainer.querySelector(':scope > .vcp-codeblock-actions');
+        if (!actions) {
+            actions = document.createElement('div');
+            actions.className = 'vcp-codeblock-actions';
+            previewContainer.appendChild(actions);
+        }
+        actions.insertBefore(copyButton, actions.firstChild);
+        previewContainer.classList.add('has-code-copy');
+    } else {
+        preElement.classList.add('vcp-codeblock-with-copy');
+        preElement.appendChild(copyButton);
+    }
+
+    preElement.dataset.vcpCodeCopy = 'true';
+}
+
+function setupCodeCopyButtons(contentDiv) {
+    if (!contentDiv) return;
+
+    contentDiv.querySelectorAll('pre').forEach(preElement => {
+        if (!preElement || !preElement.parentElement) return;
+        const codeElement = preElement.querySelector('code');
+        const blockText = preElement.getAttribute('data-raw-content') ||
+            (codeElement ? (codeElement.textContent || '') : (preElement.textContent || ''));
+        setupSingleCodeCopyButton(preElement, blockText);
+    });
 }
 
 /**
@@ -563,6 +670,10 @@ function setupHtmlPreview(preElement, htmlContent) {
     preElement.parentNode.insertBefore(container, preElement);
     container.appendChild(preElement);
 
+    const actions = document.createElement('div');
+    actions.className = 'vcp-codeblock-actions';
+    container.appendChild(actions);
+
     // Create the toggle button
     const actionBtn = document.createElement('button');
     actionBtn.className = 'vcp-html-preview-toggle';
@@ -570,7 +681,7 @@ function setupHtmlPreview(preElement, htmlContent) {
     actionBtn.title = '在气泡内预览 HTML';
     actionBtn.dataset.vcpInteractive = 'true';
     actionBtn.type = 'button';
-    container.appendChild(actionBtn);
+    actions.appendChild(actionBtn);
 
     let previewFrame = null;
     let messageHandler = null;
@@ -918,6 +1029,62 @@ function showErrorNotification(message) {
     }, 3000);
 }
 
+function looksLikeSafeSingleDollarMath(content) {
+    const trimmedContent = (content || '').trim();
+    if (!trimmedContent) return false;
+
+    const hasExplicitMathSignal = /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|text|mathrm|mathbf|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
+    const isSimpleNumericMath = /^[+-]?(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s*(?:%|\\%|‰|°))?$/.test(trimmedContent);
+    const isSimpleIdentifierMath = /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent);
+
+    // 数字开头的候选仍需严格检查，避免把价格与价格单位误当作公式。
+    // 此函数只处理单个 DOM 文本节点，不会跨 HTML 元素配对美元符号。
+    if (/^\d/.test(trimmedContent) && !hasExplicitMathSignal && !isSimpleNumericMath) return false;
+
+    // 路径、模板表达式与 Markdown 表格跨列候选继续排除。
+    // 闭合的 `$x$`、`$n$`、`$abc$` 是标准行内数学；不闭合的 `$PATH` 不会匹配。
+    if (trimmedContent.startsWith('/')) return false;
+    if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) return false;
+    if (trimmedContent.includes('|')) return false;
+
+    return hasExplicitMathSignal || isSimpleNumericMath || isSimpleIdentifierMath;
+}
+
+function normalizeSafeSingleDollarMathInTextNodes(root) {
+    if (!root) return;
+
+    const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT,
+        (node) => {
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+
+            if (parent.closest('pre, code, script, style, textarea, .katex')) {
+                return NodeFilter.FILTER_REJECT;
+            }
+
+            return node.nodeValue && node.nodeValue.includes('$')
+                ? NodeFilter.FILTER_ACCEPT
+                : NodeFilter.FILTER_REJECT;
+        },
+        false
+    );
+
+    const nodes = [];
+    let node;
+    while ((node = walker.nextNode())) {
+        nodes.push(node);
+    }
+
+    nodes.forEach((textNode) => {
+        textNode.nodeValue = textNode.nodeValue.replace(/(^|[^\w\\$])\$([^\$\n]{1,1200}?)\$(?![\w])/g, (match, prefix, content) => {
+            if (!looksLikeSafeSingleDollarMath(content)) return match;
+            return `${prefix}\\(${content.trim()}\\)`;
+        });
+    });
+}
+
 /**
  * Applies synchronous post-render processing to the message content.
  * This handles tasks like KaTeX, code highlighting, and button processing
@@ -927,19 +1094,29 @@ function showErrorNotification(message) {
 function processRenderedContent(contentDiv, settings = {}) {
     if (!contentDiv) return;
 
+    // 将经严格判定的单美元公式转换为 \(...\)；普通价格保持原始 `$` 文本。
+    normalizeSafeSingleDollarMathInTextNodes(contentDiv);
+
     // KaTeX rendering
     if (window.renderMathInElement) {
         window.renderMathInElement(contentDiv, {
             delimiters: [
-                {left: "$$", right: "$$", display: true}, {left: "$", right: "$", display: false},
-                {left: "\\(", right: "\\)", display: false}, {left: "\\[", right: "\\]", display: true}
+                {left: "$$", right: "$$", display: true},
+                // 不在此处注册宽松的 `$...$`：否则两个价格会绕过上面的安全判断被强制配对。
+                // 合法单美元公式已经由预解析保护器或 DOM 文本节点规范器转换为 \(...\)。
+                {left: "\\(", right: "\\)", display: false},
+                {left: "\\[", right: "\\]", display: true}
             ],
+            ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
             throwOnError: false
         });
     }
 
     // Special block formatting (VCP/Diary)
     processAllPreBlocksInContentDiv(contentDiv);
+
+    // 为超过 4 行的普通代码块添加复制按钮；HTML 预览块会与播放/返回按钮共用右上角工具栏
+    setupCodeCopyButtons(contentDiv);
 
     // Process interactive buttons, passing settings
     processInteractiveButtons(contentDiv, settings);
@@ -1061,7 +1238,7 @@ function applyContentProcessors(text) {
         // ensureNewlineAfterCodeBlock
         .replace(/^(\s*```)(?![\r\n])/gm, '$1\n')
         // ensureSpaceAfterTilde
-        .replace(/(^|[^\w/\\=])~(?![\s~])/g, '$1~ ')
+        .replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ')
         // removeSpeakerTags - Simplified regex to remove all occurrences at the start
         .replace(/^(\[(?:(?!\]:\s).)*的发言\]:\s*)+/g, '')
         // ensureSeparatorBetweenImgAndCode
@@ -1090,8 +1267,16 @@ function deIndentMisinterpretedCodeBlocks(text) {
     // 匹配 Markdown 列表标记，例如 *, -, 1.
     const listRegex = /^\s*([-*]|\d+\.)\s+/;
     
-    // 匹配可能导致Markdown解析问题的HTML标签
-    const htmlTagRegex = /^\s*<\/?(div|p|img|span|a|h[1-6]|ul|ol|li|table|tr|td|th|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|style|script|button|form|input|textarea|select|label|iframe|video|audio|canvas|svg)[\s>\/]/i;
+    // 匹配可能导致 Markdown 解析问题的 HTML/XML 标签行。
+    // 不再维护固定白名单：AI 常输出 SVG/MathML/自定义元素片段（如 </g>、<path>、<linearGradient>），
+    // 4+ 空格或 tab 缩进会触发 Markdown indented code block，导致这些标签被渲染成代码块。
+    // 这里只接受“行首缩进后立即是合法标签起始”的行，避免误处理普通缩进文本。
+    const htmlTagRegex = /^\s*<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s>\/])/;
+
+    // 匹配缩进的 HTML 注释行。流式渲染 div 动画块时，AI 常输出缩进注释作为分段标记；
+    // 4+ 空格 / tab 会触发 Markdown indented code block，导致注释短暂闪成代码块。
+    // 允许未闭合注释，覆盖 token 尚未流完的中间态；代码围栏内由 inFence 保护。
+    const indentedHtmlCommentRegex = /^(?: {4,}|\t+)<!--/;
 
     // 匹配中文字符开头，用于识别首行缩进的段落
     const chineseParagraphRegex = /^[\u4e00-\u9fa5]/;
@@ -1119,8 +1304,8 @@ function deIndentMisinterpretedCodeBlocks(text) {
                 return line;
             }
             
-            // 🟢 如果是HTML标签或中文段落，则移除缩进
-            if (htmlTagRegex.test(line) || chineseParagraphRegex.test(trimmedStartLine)) {
+            // 🟢 如果是HTML标签、HTML注释或中文段落，则移除会触发 Markdown 缩进代码块的缩进
+            if (htmlTagRegex.test(line) || indentedHtmlCommentRegex.test(line) || chineseParagraphRegex.test(trimmedStartLine)) {
                 return trimmedStartLine;
             }
         }

@@ -12,10 +12,7 @@
     flex-shrink: 0;
     padding: 10px 8px 10px 17px; /* 整体向右边距增加2px，由6px变为8px */
 }
-/* 为亮色主题添加对应样式 */
-body.light-theme .notifications-header {
-    background: transparent !important;
-}
+/* 经典 UI 的亮色标题栏保持透明；新版标题栏由 UI System 的主题材质接管。 */
 
 .notification-header-actions {
     display: grid;
@@ -275,17 +272,22 @@ body:not(.light-theme) .notes-section > button {
     color: var(--accent-bg) !important;
 }
 
-.notes-section > button:hover {
+.notes-section > button:hover,
+.app-tray-pinned-apps > button:hover,
+.app-tray-drawer-item:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    color: var(--primary-text);
+    color: var(--primary-text) !important;
 }
 
-body:not(.light-theme) .notes-section > button:hover {
-    color: var(--text-on-accent);
+body:not(.light-theme) .notes-section > button:hover,
+body:not(.light-theme) .app-tray-pinned-apps > button:hover,
+body:not(.light-theme) .app-tray-drawer-item:hover {
+    color: var(--text-on-accent) !important;
 }
 
-.notes-section > button svg {
+.notes-section > button svg,
+.app-tray-pinned-apps > button svg {
     stroke: currentColor;
     width: 18px;
     height: 18px;
@@ -298,16 +300,24 @@ body:not(.light-theme) .notes-section > button:hover {
     text-overflow: ellipsis;
 }
 
-body.light-theme .notes-section > button {
+/*
+ * 固定应用按钮由 trayManager 动态插入到 .app-tray-pinned-apps 中，
+ * 并不是 .notes-section 的直接子元素；必须与“更多”按钮共同声明，
+ * 才能在浅色主题下继承同一套 currentColor。
+ */
+body.light-theme .notes-section > button,
+body.light-theme .app-tray-pinned-apps > button {
     background-color: var(--highlight-text);
-    color: #ffffff;
+    color: #ffffff !important;
     border: 1px solid var(--highlight-text);
 }
 
-body.light-theme .notes-section > button:hover {
-    background-color: var(--button-hover-bg);
-    color: #ffffff;
-    border-color: var(--button-hover-bg);
+body.light-theme .notes-section > button:hover,
+body.light-theme .app-tray-pinned-apps > button:hover,
+body.light-theme .app-tray-drawer-item:hover {
+    background-color: var(--secondary-bg);
+    color: var(--highlight-text) !important;
+    border-color: var(--highlight-text);
 }
 
 @container notifications-sidebar (max-width: 280px) {
@@ -401,8 +411,8 @@ body.light-theme .notes-section > button:hover {
     padding: 4px;
 }
 
-/* 统一胶囊按钮内样式 */
-.header-button.capsule-button {
+/* 统一胶囊按钮内样式；使用 Dock 自身作用域，避免依赖全局 Header 类。 */
+.notes-section .capsule-button {
     border-radius: 999px !important; /* Force capsule shape */
     padding: 0 10px !important; /* Compact padding */
     justify-content: center !important; /* Center icon + text */
@@ -429,6 +439,30 @@ body.light-theme .notes-section > button:hover {
     width: 100%;
 }
 
+/* A narrow notification rail is an icon dock, not a compressed text list.
+ * Keep this in the legacy layer beside the original !important capsule
+ * geometry so the Next layer cannot lose the cascade to those declarations. */
+@container notifications-sidebar (max-width: 280px) {
+    html #vchatAppTray #appTrayPinnedApps > .capsule-button {
+        min-width: 0;
+        padding: 0 !important;
+        gap: 0 !important;
+    }
+
+    html #vchatAppTray #appTrayPinnedApps .notes-button-label {
+        display: none !important;
+    }
+
+    html #vchatAppTray #appTrayPinnedApps svg,
+    html #vchatAppTray > .app-tray-more-btn svg {
+        display: block;
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+    }
+}
+
 /* "更多" 按钮样式 */
 .app-tray-more-btn {
     flex: 0 0 34px;
@@ -449,13 +483,13 @@ body.light-theme .notes-section > button:hover {
 
 .app-tray-more-btn:hover {
     background: var(--button-hover-bg);
-    color: var(--primary-text);
+    color: var(--primary-text) !important;
     transform: scale(1.05);
 }
 
 .app-tray-more-btn.active {
     background: var(--highlight-text);
-    color: var(--text-on-accent);
+    color: var(--text-on-accent) !important;
 }
 
 .app-tray-settings-btn {
@@ -698,7 +732,49 @@ body.light-theme .floating-toast-notification {
     margin-top: 8px;
 }
 
-/* Filter Rules Management Styles */
+/* Notification Behavior / Filter Rules Management Styles */
+.notification-behavior-section {
+    margin-bottom: 22px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--secondary-bg) 72%, transparent);
+}
+
+.notification-behavior-section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.notification-behavior-section-heading h3 {
+    margin: 0 0 5px 0;
+    color: var(--primary-text);
+    font-size: 1.05em;
+}
+
+.notification-behavior-section-heading p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.notification-behavior-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--primary-text);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.notification-behavior-toggle input {
+    margin: 0;
+}
+
 .filter-rules-header {
     display: flex;
     justify-content: space-between;
@@ -772,9 +848,68 @@ body.light-theme .floating-toast-notification {
 }
 
 .filter-rule-actions .small-button {
-    padding: 4px 8px;
-    font-size: 0.8em;
-    min-width: auto;
+    width: auto;
+    min-width: 54px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 42%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
+        color-mix(in srgb, var(--button-bg) 72%, transparent);
+    color: var(--highlight-text);
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1;
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14);
+}
+
+.filter-rule-actions .small-button:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+}
+
+.filter-rule-actions .small-button.success-button {
+    border-color: color-mix(in srgb, var(--success-color, #28a745) 62%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04)),
+        color-mix(in srgb, var(--success-color, #28a745) 22%, transparent);
+    color: var(--success-color, #28a745);
+}
+
+.filter-rule-actions .small-button.success-button:hover {
+    background: var(--success-color, #28a745);
+    border-color: var(--success-color, #28a745);
+    color: #ffffff;
+}
+
+.filter-rule-actions .small-button.secondary-button {
+    border-color: color-mix(in srgb, var(--secondary-text) 38%, transparent);
+    background: color-mix(in srgb, var(--tertiary-bg) 88%, transparent);
+    color: var(--secondary-text);
+}
+
+.filter-rule-actions .small-button.secondary-button:hover {
+    background: var(--secondary-text);
+    border-color: var(--secondary-text);
+    color: var(--secondary-bg);
+}
+
+.filter-rule-actions .small-button.danger-button {
+    border-color: color-mix(in srgb, var(--danger-color) 58%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02)),
+        color-mix(in srgb, var(--danger-color) 18%, transparent);
+    color: var(--danger-color);
+}
+
+.filter-rule-actions .small-button.danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
 }
 
 .filter-rule-details {
@@ -854,12 +989,37 @@ body.light-theme .floating-toast-notification {
     box-shadow: 0 0 0 2px rgba(var(--highlight-text-rgb, 0, 123, 255), 0.25);
 }
 
-#filterRuleEditorModal textarea {
+#toolAutoApprovalRuleEditorModal input[type="text"],
+#toolAutoApprovalRuleEditorModal input[type="number"],
+#toolAutoApprovalRuleEditorModal select,
+#toolAutoApprovalRuleEditorModal textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+
+#toolAutoApprovalRuleEditorModal input[type="text"]:focus,
+#toolAutoApprovalRuleEditorModal input[type="number"]:focus,
+#toolAutoApprovalRuleEditorModal select:focus,
+#toolAutoApprovalRuleEditorModal textarea:focus {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px rgba(var(--highlight-text-rgb, 0, 123, 255), 0.25);
+}
+
+#filterRuleEditorModal textarea,
+#toolAutoApprovalRuleEditorModal textarea {
     resize: vertical;
     min-height: 60px;
 }
 
-#filterRuleEditorModal .form-actions {
+#filterRuleEditorModal .form-actions,
+#toolAutoApprovalRuleEditorModal .form-actions {
     margin-top: 20px;
     display: flex;
     gap: 10px;
@@ -886,6 +1046,52 @@ body.light-theme .floating-toast-notification {
 }
 
 /* Tool Approval Notification Actions */
+.notification-approval-reason {
+    margin-top: 10px;
+    position: relative;
+    z-index: 2;
+}
+
+.notification-approval-reason-input {
+    width: 100%;
+    min-height: 58px;
+    max-height: 160px;
+    box-sizing: border-box;
+    resize: vertical;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 32%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--secondary-bg) 82%, transparent);
+    color: var(--primary-text);
+    font: inherit;
+    font-size: 0.85em;
+    line-height: 1.4;
+    outline: none;
+}
+
+.notification-approval-reason-input::placeholder {
+    color: var(--secondary-text);
+    opacity: 0.8;
+}
+
+.notification-approval-reason-input:focus {
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+.notification-approval-reason-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.notification-approval-reason-hint {
+    margin-top: 4px;
+    color: var(--secondary-text);
+    font-size: 0.75em;
+    line-height: 1.35;
+    opacity: 0.86;
+}
+
 .notification-actions {
     display: flex;
     gap: 8px;
@@ -905,9 +1111,15 @@ body.light-theme .floating-toast-notification {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.vcp-btn:hover {
+.vcp-btn:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.vcp-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+    transform: none;
 }
 
 .vcp-btn:active {

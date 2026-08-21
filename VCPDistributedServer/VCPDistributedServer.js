@@ -8,9 +8,11 @@ const fsSync = require('fs');
 const dotenv = require('dotenv');
 const os = require('os');
 const mime = require('mime-types');
+const chokidar = require('chokidar');
  // const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
  const pluginManager = require('./Plugin.js');
 const GENERATED_LISTS_CONFIG_PATH = path.join(__dirname, '..', 'AppData', 'generated_lists', 'config.env');
+const MUSIC_PLAYLIST_FILE_PATH = path.join(__dirname, '..', 'AppData', 'songlist.json');
 
 // DEBUG_MODE is now passed in config
 // const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
@@ -53,18 +55,36 @@ class DistributedServer {
         this.handleCanvasControl = config.handleCanvasControl; // Inject the canvas control handler
         this.handleFlowlockControl = config.handleFlowlockControl; // Inject the flowlock control handler
         this.handleDesktopRemoteControl = config.handleDesktopRemoteControl; // Inject the desktop remote control handler
+        this.chatDataService = config.chatDataService || null; // Shared VCP-CDS facade owned by Electron.
+        this.loomManager = config.loomManager || null; // Shared VCP Loom manager owned by Electron.
+        this.scriptoriumAgentControl = config.scriptoriumAgentControl || null;
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
         this.reconnectInterval = 5000;
-        this.app.use(express.json({ limit: '2mb' }));
-        this.app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+        const defaultJsonParser = express.json({ limit: '2mb' });
+        const defaultUrlencodedParser = express.urlencoded({ extended: false, limit: '2mb' });
+        const isMobileSyncPath = req => req.path === '/api/mobile-sync'
+            || req.path.startsWith('/api/mobile-sync/');
+        // MobileSync owns strict per-route parsers and NDJSON/raw streaming
+        // budgets. Bypassing the generic parser here prevents it from
+        // buffering or rejecting the sync body before the plugin can apply
+        // those limits; every other Chat route keeps the existing 2 MiB cap.
+        this.app.use((req, res, next) => isMobileSyncPath(req)
+            ? next()
+            : defaultJsonParser(req, res, next));
+        this.app.use((req, res, next) => isMobileSyncPath(req)
+            ? next()
+            : defaultUrlencodedParser(req, res, next));
         this.maxReconnectInterval = 60000;
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
         this.stopped = false; // Flag to prevent reconnection when stopped manually
         this.stopPromise = null;
         this.initialConnection = true; // Flag to handle one-time actions on first connect
         this.staticPlaceholderUpdateInterval = null; // 新增：静态占位符更新定时器
+        this.musicPlaylistWatcher = null;
+        this.musicPlaylistUpdateTimeout = null;
+        this.lastMusicPlaylistSignature = null;
     }
 
     async bindHttpServer(preferredPort) {
@@ -119,8 +139,12 @@ class DistributedServer {
         pluginManager.setProjectBasePath(basePath);
         await pluginManager.loadPlugins();
 
-        // 初始化服务类插件
-        await pluginManager.initializeServices(this.app, null, basePath);
+        // 初始化服务类插件，并将主进程持有的共享服务依赖注入 direct 模块。
+        await pluginManager.initializeServices(this.app, null, basePath, {
+            chatDataService: this.chatDataService,
+            loomManager: this.loomManager,
+            scriptoriumAgentControl: this.scriptoriumAgentControl,
+        });
         this.registerDiagnosticRoutes();
 
         const address = await this.bindHttpServer(this.port);
@@ -146,6 +170,9 @@ class DistributedServer {
                 this.sendMessage(payload);
                 res.status(200).json({ status: 'success', message: 'Callback forwarded to main server.' });
             });
+
+            // 由分布式服务器自身监听本地音乐列表，无需 IPC。
+            this.setupMusicPlaylistWatcher();
 
             // 在 HTTP 服务器启动后，再连接到主服务器
             this.connect();
@@ -250,6 +277,7 @@ class DistributedServer {
             this.reconnectInterval = 5000;
             this.registerTools();
             await this.reportIPAddress();
+            await this.pushMusicPlaylistUpdate('websocket_open');
             
             // 新增：设置静态占位符定期推送
             this.setupStaticPlaceholderUpdates();
@@ -418,6 +446,136 @@ class DistributedServer {
         }
     }
 
+    setupMusicPlaylistWatcher() {
+        if (this.musicPlaylistWatcher) {
+            return;
+        }
+
+        this.musicPlaylistWatcher = chokidar.watch(MUSIC_PLAYLIST_FILE_PATH, {
+            persistent: true,
+            ignoreInitial: false,
+            awaitWriteFinish: {
+                stabilityThreshold: 500,
+                pollInterval: 100
+            }
+        });
+
+        const schedulePush = (reason) => {
+            if (this.musicPlaylistUpdateTimeout) {
+                clearTimeout(this.musicPlaylistUpdateTimeout);
+            }
+            this.musicPlaylistUpdateTimeout = setTimeout(() => {
+                this.musicPlaylistUpdateTimeout = null;
+                this.pushMusicPlaylistUpdate(reason).catch(error => {
+                    console.error(`[${this.serverName}] Failed to push music playlist update:`, error.message);
+                });
+            }, 500);
+        };
+
+        this.musicPlaylistWatcher
+            .on('add', () => schedulePush('file_added'))
+            .on('change', () => schedulePush('file_changed'))
+            .on('unlink', () => schedulePush('file_removed'))
+            .on('error', error => {
+                console.error(`[${this.serverName}] Music playlist watcher error:`, error.message);
+            });
+
+        console.log(`[${this.serverName}] Watching local music playlist: ${MUSIC_PLAYLIST_FILE_PATH}`);
+    }
+
+    async readMusicPlaylistSnapshot() {
+        if (!fsSync.existsSync(MUSIC_PLAYLIST_FILE_PATH)) {
+            return {
+                exists: false,
+                tracks: [],
+                count: 0,
+                updatedAt: new Date().toISOString()
+            };
+        }
+
+        const rawContent = await fs.readFile(MUSIC_PLAYLIST_FILE_PATH, 'utf8');
+        const parsed = JSON.parse(rawContent);
+        if (!Array.isArray(parsed)) {
+            throw new Error('songlist.json root value must be an array.');
+        }
+
+        const tracks = parsed
+            .filter(track => track && typeof track === 'object')
+            .map(track => ({
+                path: typeof track.path === 'string' ? track.path : '',
+                title: typeof track.title === 'string' ? track.title : '',
+                artist: typeof track.artist === 'string' ? track.artist : '',
+                album: typeof track.album === 'string' ? track.album : '',
+                albumArt: typeof track.albumArt === 'string' ? track.albumArt : null,
+                bitrate: typeof track.bitrate === 'number' ? track.bitrate : null,
+                isRemote: track.isRemote === true,
+                serverId: typeof track.serverId === 'string' ? track.serverId : undefined
+            }));
+
+        return {
+            exists: true,
+            tracks,
+            count: tracks.length,
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    async pushMusicPlaylistUpdate(reason = 'manual') {
+        let snapshot;
+        try {
+            snapshot = await this.readMusicPlaylistSnapshot();
+        } catch (error) {
+            console.error(`[${this.serverName}] Failed to read local music playlist:`, error.message);
+            snapshot = {
+                exists: fsSync.existsSync(MUSIC_PLAYLIST_FILE_PATH),
+                tracks: [],
+                count: 0,
+                updatedAt: new Date().toISOString(),
+                error: error.message
+            };
+        }
+
+        const signature = JSON.stringify({
+            exists: snapshot.exists,
+            count: snapshot.count,
+            tracks: snapshot.tracks,
+            error: snapshot.error || null
+        });
+
+        if (signature === this.lastMusicPlaylistSignature && reason !== 'websocket_open') {
+            if (this.debugMode) console.log(`[${this.serverName}] Music playlist unchanged, skip update.`);
+            return;
+        }
+        this.lastMusicPlaylistSignature = signature;
+
+        const payload = {
+            type: 'music_playlist_update',
+            data: {
+                serverName: this.serverName,
+                reason,
+                playlistPath: MUSIC_PLAYLIST_FILE_PATH,
+                ...snapshot
+            }
+        };
+
+        this.sendMessage(payload);
+        console.log(`[${this.serverName}] Reported local music playlist to main server. Count: ${snapshot.count}, Reason: ${reason}`);
+    }
+
+    async closeMusicPlaylistWatcher() {
+        if (this.musicPlaylistUpdateTimeout) {
+            clearTimeout(this.musicPlaylistUpdateTimeout);
+            this.musicPlaylistUpdateTimeout = null;
+        }
+
+        if (this.musicPlaylistWatcher) {
+            const watcher = this.musicPlaylistWatcher;
+            this.musicPlaylistWatcher = null;
+            await watcher.close();
+            if (this.debugMode) console.log(`[${this.serverName}] Music playlist watcher closed.`);
+        }
+    }
+
     // 新增：检查是否应该记录静态插件日志
     async shouldLogStaticPlugins() {
         try {
@@ -447,7 +605,7 @@ class DistributedServer {
     }
 
     async handleToolExecutionRequest(data) {
-        const { requestId, toolName, toolArgs } = data;
+        const { requestId, toolName, toolArgs, _vcpContext } = data;
         if (!requestId || !toolName) {
             console.error(`[${this.serverName}] Invalid tool execution request received.`);
             return;
@@ -500,7 +658,13 @@ class DistributedServer {
             }
             // --- 结束：处理内部文件请求 ---
 
-            const result = await pluginManager.processToolCall(toolName, toolArgs);
+            // _vcpContext 来自受信任的 execute_tool 传输层，与模型生成的 toolArgs 隔离。
+            const result = await pluginManager.processToolCall(toolName, toolArgs, {
+                requestId,
+                vcpContext: _vcpContext && typeof _vcpContext === 'object'
+                    ? { ..._vcpContext, requestId }
+                    : { requestId }
+            });
             let finalResult;
 
             // --- Special Handling for MusicController ---
@@ -589,8 +753,12 @@ class DistributedServer {
 
             } else {
                 // --- Default Handling for all other plugins ---
-                if (typeof result === 'object' && result !== null) {
-                    // Result is already an object from a direct call (e.g., hybrid service)
+                const plugin = pluginManager.getPlugin(toolName);
+                const isDirectPlugin = plugin?.pluginType === 'hybridservice'
+                    && plugin?.communication?.protocol === 'direct';
+                if (isDirectPlugin || (typeof result === 'object' && result !== null)) {
+                    // direct 插件的字符串也必须原样返回；回忆正文可能包含 JSON 花括号，
+                    // 不能误走旧 stdio 插件的 JSON 提取逻辑。
                     finalResult = result;
                 } else {
                     // Result is a string from stdio, needs parsing
@@ -689,6 +857,7 @@ class DistributedServer {
         
         // 新增：清理静态占位符更新定时器
         this.clearStaticPlaceholderUpdates();
+        await this.closeMusicPlaylistWatcher();
         
         if (this.reconnectTimeoutId) {
             clearTimeout(this.reconnectTimeoutId);

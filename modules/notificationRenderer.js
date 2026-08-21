@@ -33,6 +33,41 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
     vcpLogConnectionStatusDiv.className = `notifications-status status-${status || 'unknown'}`;
 }
 
+const handledToolApprovalRequestIds = new Set();
+
+function clearPersistentNotifications({ container = document.getElementById('notificationsList') } = {}) {
+    if (!container) return { success: false, removed: 0 };
+    let removed = 0;
+    container.querySelectorAll('.notification-item').forEach(item => {
+        if (item.dataset.protectedNotification === 'tool-approval') return;
+        item.remove();
+        removed += 1;
+    });
+    return { success: true, removed };
+}
+
+function sendToolApprovalResponse(requestId, approved, reason = '') {
+    if (!requestId || !notificationRendererApi || typeof notificationRendererApi.sendVCPLogMessage !== 'function') {
+        return false;
+    }
+
+    const responseData = {
+        requestId,
+        approved: approved === true
+    };
+
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+    if (trimmedReason) {
+        responseData.reason = trimmedReason;
+    }
+
+    notificationRendererApi.sendVCPLogMessage({
+        type: 'tool_approval_response',
+        data: responseData
+    });
+    return true;
+}
+
 /**
  * Renders a VCPLog notification in the notifications list.
  * @param {VCPLogData|string} logData - The parsed JSON log data or a raw string message.
@@ -41,6 +76,31 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
  * @param {Object} themeColors - An object containing theme colors (largely unused now with CSS variables).
  */
 function renderVCPLogNotification(logData, originalRawMessage = null, notificationsListUl, themeColors = {}) {
+    if (logData && typeof logData === 'object' && logData.type === 'tool_approval_request' && logData.data && typeof logData.data === 'object') {
+        const autoApprovalResult = window.filterManager?.checkToolAutoApproval?.(logData.data);
+        if (autoApprovalResult && autoApprovalResult.action === 'approve') {
+            const sent = sendToolApprovalResponse(logData.data.requestId, true);
+            const autoApprovalLog = {
+                type: 'tool_auto_approval',
+                data: {
+                    toolName: logData.data.toolName,
+                    maid: logData.data.maid,
+                    requestId: logData.data.requestId,
+                    ruleName: autoApprovalResult.rule?.name || '未命名规则',
+                    sent,
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            if (notificationsListUl) {
+                renderVCPLogNotification(autoApprovalLog, JSON.stringify(autoApprovalLog), notificationsListUl, themeColors);
+            }
+
+            console.log('[NotificationRenderer] 工具调用已按规则自动允许:', autoApprovalLog.data);
+            return;
+        }
+    }
+
     // Suppress the generic English connection success message for VCPLog
     if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message === 'WebSocket connection successful for VCPLog.') {
         return; // Do not render this notification
@@ -169,6 +229,11 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     } else if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message) {
         titleText = 'VCP 连接:';
         mainContent = String(logData.message);
+    } else if (logData && typeof logData === 'object' && logData.type === 'tool_auto_approval' && logData.data && typeof logData.data === 'object') {
+        const approvalLog = logData.data;
+        titleText = `✅ 已自动允许: ${approvalLog.toolName || '未知工具'}`;
+        mainContent = `助手: ${approvalLog.maid || '未知'}\n规则: ${approvalLog.ruleName || '未命名规则'}\n请求ID: ${approvalLog.requestId || 'N/A'}\n状态: ${approvalLog.sent ? '已发送允许响应' : '发送失败'}`;
+        contentIsPreformatted = true;
     } else if (logData && typeof logData === 'object' && logData.type && logData.message) { // Generic type + message
         titleText = `类型: ${logData.type}`;
         mainContent = String(logData.message);
@@ -188,8 +253,16 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     }
     // --- End Content Parsing ---
 
+    const isToolApprovalRequest = logData && logData.type === 'tool_approval_request';
+
     // Function to populate a notification element (either toast or list item)
     const populateNotificationElement = (element, isToast) => {
+        if (isToolApprovalRequest) {
+            element.dataset.protectedNotification = 'tool-approval';
+            element.dataset.toolApprovalRequestId = logData.data?.requestId || '';
+            element.classList.add('notification-protected', 'notification-tool-approval');
+        }
+
         const strongTitle = document.createElement('strong');
         strongTitle.textContent = titleText;
         element.appendChild(strongTitle);
@@ -213,27 +286,46 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         element.appendChild(contentDiv);
 
         // Special handling for approval requests - Moved here to be before timestamp
-        if (logData && logData.type === 'tool_approval_request') {
+        if (isToolApprovalRequest) {
+            const approvalReasonWrapper = document.createElement('div');
+            approvalReasonWrapper.classList.add('notification-approval-reason');
+
+            const reasonInput = document.createElement('textarea');
+            reasonInput.classList.add('notification-approval-reason-input');
+            reasonInput.placeholder = '可选：告诉 AI 为什么通过或拒绝';
+            reasonInput.maxLength = 1000;
+            reasonInput.rows = isToast ? 2 : 3;
+            reasonInput.addEventListener('click', (e) => e.stopPropagation());
+            reasonInput.addEventListener('keydown', (e) => e.stopPropagation());
+
+            const reasonHint = document.createElement('div');
+            reasonHint.classList.add('notification-approval-reason-hint');
+            reasonHint.textContent = '拒绝时建议填写可执行的修正建议，最多 1000 字。';
+
+            approvalReasonWrapper.appendChild(reasonInput);
+            approvalReasonWrapper.appendChild(reasonHint);
+            element.appendChild(approvalReasonWrapper);
+
             const approvalActions = document.createElement('div');
             approvalActions.classList.add('notification-actions');
+
+            const finishApproval = (approved) => {
+                const requestId = logData.data.requestId;
+                if (handledToolApprovalRequestIds.has(requestId)) return;
+
+                const sent = sendToolApprovalResponse(requestId, approved, reasonInput.value);
+                if (!sent) return;
+
+                handledToolApprovalRequestIds.add(requestId);
+                dismissToolApprovalNotifications(requestId);
+            };
 
             const allowBtn = document.createElement('button');
             allowBtn.textContent = '允许';
             allowBtn.classList.add('vcp-btn', 'vcp-btn-success');
             allowBtn.onclick = (e) => {
                 e.stopPropagation();
-                notificationRendererApi.sendVCPLogMessage({
-                    type: 'tool_approval_response',
-                    data: {
-                        requestId: logData.data.requestId,
-                        approved: true
-                    }
-                });
-                if (isToast) closeToastNotification(element);
-                else {
-                    element.style.opacity = '0';
-                    setTimeout(() => element.remove(), 500);
-                }
+                finishApproval(true);
             };
 
             const rejectBtn = document.createElement('button');
@@ -241,18 +333,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             rejectBtn.classList.add('vcp-btn', 'vcp-btn-danger');
             rejectBtn.onclick = (e) => {
                 e.stopPropagation();
-                notificationRendererApi.sendVCPLogMessage({
-                    type: 'tool_approval_response',
-                    data: {
-                        requestId: logData.data.requestId,
-                        approved: false
-                    }
-                });
-                if (isToast) closeToastNotification(element);
-                else {
-                    element.style.opacity = '0';
-                    setTimeout(() => element.remove(), 500);
-                }
+                finishApproval(false);
             };
 
             approvalActions.appendChild(allowBtn);
@@ -266,22 +347,18 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         element.appendChild(timestampSpan);
 
         if (isToast) {
-            // const closeButton = document.createElement('button'); // Removed close button
-            // closeButton.classList.add('toast-close-btn');
-            // closeButton.innerHTML = '&times;';
-            // closeButton.title = '关闭通知';
-            // closeButton.onclick = (e) => {
-            //     e.stopPropagation();
-            //     closeToastNotification(element);
-            // };
-            // element.appendChild(closeButton);
-            element.onclick = () => {
-                // 清除自动消失的timeout（如果有的话）
-                if (element.dataset.autoDismissTimeout) {
-                    clearTimeout(parseInt(element.dataset.autoDismissTimeout));
-                }
-                closeToastNotification(element);
-            }; // Click on bubble itself still closes it
+            if (isToolApprovalRequest) {
+                // 审核请求防误触：悬浮通知本体点击不关闭，必须点“允许/拒绝”。
+                element.onclick = null;
+            } else {
+                element.onclick = () => {
+                    // 清除自动消失的timeout（如果有的话）
+                    if (element.dataset.autoDismissTimeout) {
+                        clearTimeout(parseInt(element.dataset.autoDismissTimeout));
+                    }
+                    closeToastNotification(element);
+                }; // Click on bubble itself still closes it
+            }
         } else { // For persistent list item
             const copyButton = document.createElement('button');
             copyButton.className = 'notification-copy-btn';
@@ -347,6 +424,27 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         }, { once: true });
     };
 
+    const dismissToolApprovalNotifications = (requestId) => {
+        if (!requestId) return;
+
+        const escapedRequestId = CSS.escape(String(requestId));
+        const approvalElements = document.querySelectorAll(`.notification-tool-approval[data-tool-approval-request-id="${escapedRequestId}"]`);
+
+        approvalElements.forEach((approvalElement) => {
+            approvalElement.querySelectorAll('button, textarea').forEach((control) => {
+                control.disabled = true;
+            });
+
+            if (approvalElement.classList.contains('floating-toast-notification')) {
+                closeToastNotification(approvalElement);
+            } else {
+                approvalElement.style.opacity = '0';
+                approvalElement.style.transform = 'translateX(100%)';
+                setTimeout(() => approvalElement.remove(), 500);
+            }
+        });
+    };
+
     // 初始化焦点清理机制
     initializeFocusCleanup();
 
@@ -366,28 +464,6 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         toastBubble.dataset.createdAt = Date.now().toString();
         populateNotificationElement(toastBubble, true);
 
-        // For approval requests, add a manual close button and disable auto-dismiss/click-to-close
-        if (logData && logData.type === 'tool_approval_request') {
-            const closeBtn = document.createElement('button');
-            closeBtn.innerHTML = '&times;';
-            closeBtn.classList.add('toast-manual-close');
-            closeBtn.style.position = 'absolute';
-            closeBtn.style.right = '5px';
-            closeBtn.style.top = '2px';
-            closeBtn.style.background = 'none';
-            closeBtn.style.border = 'none';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontSize = '16px';
-            closeBtn.onclick = (e) => {
-                e.stopPropagation();
-                closeToastNotification(toastBubble);
-            };
-            toastBubble.appendChild(closeBtn);
-            
-            // Override the default onclick provided by populateNotificationElement (which is applied when isToast=true)
-            toastBubble.onclick = null; 
-        }
-
         toastContainer.prepend(toastBubble);
         setTimeout(() => toastBubble.classList.add('visible'), 50);
         
@@ -395,7 +471,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         let autoDismissDelay = 7000; // 默认7秒
 
         // 审核类通知永不自动消失
-        if (logData && logData.type === 'tool_approval_request') {
+        if (isToolApprovalRequest) {
             autoDismissDelay = Infinity;
         } else if (typeof window.checkMessageFilter === 'function') {
             const filterResult = window.checkMessageFilter(titleText);
@@ -464,6 +540,8 @@ function initializeFocusCleanup() {
             // 清理超时的通知元素（显示超过10秒的）
             const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
             allToasts.forEach(toast => {
+                if (toast.dataset.protectedNotification === 'tool-approval') return;
+
                 // 检查元素创建时间，如果没有时间戳则设置一个
                 if (!toast.dataset.createdAt) {
                     toast.dataset.createdAt = Date.now().toString();
@@ -487,6 +565,8 @@ function initializeFocusCleanup() {
         if (toastContainer) {
             const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
             allToasts.forEach(toast => {
+                if (toast.dataset.protectedNotification === 'tool-approval') return;
+
                 if (toast.dataset.createdAt) {
                     const createdAt = parseInt(toast.dataset.createdAt);
                     const now = Date.now();
@@ -506,7 +586,8 @@ function initializeFocusCleanup() {
 window.notificationRenderer = {
     updateVCPLogStatus,
     renderVCPLogNotification,
-    initializeFocusCleanup
+    initializeFocusCleanup,
+    clearPersistentNotifications
 };
 
 // Make globalSettings accessible for do not disturb mode check

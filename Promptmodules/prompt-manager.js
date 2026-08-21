@@ -6,6 +6,7 @@ class PromptManager {
     this.currentMode = "original"; // 'original' | 'modular' | 'preset'
     this.agentId = null;
     this.config = null;
+    this.contextVersion = 0;
 
     // 模块实例
     this.originalModule = null;
@@ -29,6 +30,7 @@ class PromptManager {
     this.isInitialized = false;
     this.containerElement = null;
     this.electronAPI = null;
+    this.boundContainerListeners = [];
   }
 
   /**
@@ -41,6 +43,7 @@ class PromptManager {
     const { containerElement, electronAPI } = options;
     this.containerElement = containerElement;
     this.electronAPI = electronAPI;
+    this.bindContainerEvents();
 
     // 初始化三个模块（仅实例化，不加载数据）
     this.initModules();
@@ -49,26 +52,64 @@ class PromptManager {
     console.log('[PromptManager] Global initialization complete.');
   }
 
+  bindContainerEvents() {
+    if (!this.containerElement || this.boundContainerListeners.length) return;
+    const listen = (type, handler) => {
+      this.containerElement.addEventListener(type, handler);
+      this.boundContainerListeners.push([type, handler]);
+    };
+    const modeButton = (event) => event.target.closest?.('.prompt-mode-button');
+    listen('click', (event) => {
+      const button = modeButton(event);
+      if (button) this.switchMode(button.dataset.mode);
+    });
+    listen('dblclick', (event) => {
+      const button = modeButton(event);
+      if (!button) return;
+      event.preventDefault();
+      this.enterEditMode(button, button.dataset.mode);
+    });
+    listen('contextmenu', (event) => {
+      const button = modeButton(event);
+      if (!button) return;
+      event.preventDefault();
+      this.startRightClickTimer(button.dataset.mode);
+    });
+    listen('mouseup', (event) => {
+      if (event.button === 2 && modeButton(event)) this.cancelRightClickTimer();
+    });
+    listen('mouseout', (event) => {
+      const button = modeButton(event);
+      if (button && !button.contains(event.relatedTarget)) this.cancelRightClickTimer();
+    });
+  }
+
   /**
    * 更新当前 Agent 上下文并切换显示
    * @param {string} agentId 
    * @param {Object} config 
    */
   async updateAgentContext(agentId, config) {
+    const contextVersion = ++this.contextVersion;
     this.agentId = agentId;
     this.config = config;
     this.currentMode = config.promptMode || "original";
 
     // 加载自定义模式名称 (这步可以异步)
     await this.loadCustomModeNames();
+    if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
 
-    // 更新各个子模块的上下文
+    // 更新各个子模块的上下文。调用方会串行执行上下文切换；版本检查仍用于
+    // 防止模式切换等并发操作在异步边界后继续刷新错误 Agent 的 UI。
     if (this.originalModule) this.originalModule.updateContext(agentId, config);
     if (this.modularModule) await this.modularModule.updateContext(agentId, config);
+    if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
     if (this.presetModule) await this.presetModule.updateContext(agentId, config);
+    if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
 
     // 重新渲染主框架
     this.render();
+    return true;
   }
 
   /**
@@ -99,21 +140,30 @@ class PromptManager {
    */
   render() {
     if (!this.containerElement) return;
+    let modeSelector = this.containerElement.querySelector(':scope > .prompt-mode-selector');
+    if (!modeSelector) {
+      modeSelector = this.createModeSelector();
+      this.containerElement.appendChild(modeSelector);
+    } else {
+      modeSelector.querySelectorAll('.prompt-mode-button').forEach((button) => {
+        const modeId = button.dataset.mode;
+        button.innerHTML = `
+          <span class="prompt-mode-button-icon" aria-hidden="true">${this.getModeIcon(modeId)}</span>
+          <span class="prompt-mode-button-label">${this.getModeName(modeId)}</span>
+        `;
+      });
+    }
 
-    // 清空容器
-    this.containerElement.innerHTML = "";
-
-    // 创建模式切换按钮区域
-    const modeSelector = this.createModeSelector();
-    this.containerElement.appendChild(modeSelector);
-
-    // 创建内容容器
-    const contentContainer = document.createElement("div");
-    contentContainer.className = "prompt-content-container";
-    contentContainer.id = "promptContentContainer";
-    this.containerElement.appendChild(contentContainer);
+    let contentContainer = this.containerElement.querySelector(':scope > .prompt-content-container');
+    if (!contentContainer) {
+      contentContainer = document.createElement("div");
+      contentContainer.className = "prompt-content-container";
+      contentContainer.id = "promptContentContainer";
+      this.containerElement.appendChild(contentContainer);
+    }
 
     // 渲染当前模式的内容
+    this.updateModeButtons();
     this.renderCurrentMode();
   }
 
@@ -142,32 +192,6 @@ class PromptManager {
       if (this.currentMode === mode.id) {
         button.classList.add("active");
       }
-
-      // 左键单击：切换模式
-      button.addEventListener("click", () => this.switchMode(mode.id));
-
-      // 双击：进入编辑模式
-      button.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        this.enterEditMode(button, mode.id);
-      });
-
-      // 右键长按：恢复默认名称
-      button.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        this.startRightClickTimer(mode.id);
-      });
-
-      button.addEventListener("mouseup", (e) => {
-        if (e.button === 2) {
-          // 右键
-          this.cancelRightClickTimer();
-        }
-      });
-
-      button.addEventListener("mouseleave", () => {
-        this.cancelRightClickTimer();
-      });
 
       container.appendChild(button);
     });
@@ -331,43 +355,53 @@ class PromptManager {
   }
 
   /**
+   * 解绑容器事件监听（仅销毁时调用；正常运行期间解绑会导致模式按钮失效）
+   */
+  unbindContainerEvents() {
+    this.boundContainerListeners.forEach(([type, handler]) => {
+      this.containerElement?.removeEventListener(type, handler);
+    });
+    this.boundContainerListeners = [];
+  }
+
+  /**
    * 切换模式
    * @param {string} mode - 目标模式
    */
   async switchMode(mode) {
-    if (this.currentMode === mode) return;
+    if (this.currentMode === mode || !this.agentId) return;
 
-    // 【防竞态】在切换开始时锁定agentId，防止异步操作期间用户切换Agent导致写入错误目标
+    // 在任何 await 之前冻结操作上下文。不能在异步恢复后再从共享实例/DOM读取身份。
     const lockedAgentId = this.agentId;
-
-    // 1. 获取最新提示词内容
+    const lockedContextVersion = this.contextVersion;
+    const sourceMode = this.currentMode;
     const systemPrompt = await this.getCurrentSystemPrompt();
 
-    // 2. 更新模式
-    this.currentMode = mode;
+    if (
+      this.agentId !== lockedAgentId ||
+      this.contextVersion !== lockedContextVersion ||
+      this.currentMode !== sourceMode
+    ) {
+      console.debug(`[PromptManager] Ignoring stale mode switch for agent ${lockedAgentId}.`);
+      return;
+    }
 
-    // 3. 执行合并保存：一次性更新模式和系统提示词，避免多次磁盘操作
-    // 注意：这里我们主动更新 agentConfig 里的 promptMode 和 systemPrompt 两个关键字段
+    // 一次性只更新模式和该操作所捕获的提示词。子模块数据由各子模块自己的、
+    // 已绑定 Agent ID 的保存负责；禁止再从共享设置表单进行整份配置补保存。
     await this.electronAPI.updateAgentConfig(lockedAgentId, {
       promptMode: mode,
       systemPrompt: systemPrompt,
     });
 
-    // 4. 更新UI
+    // 写入可安全完成到原 Agent，但若用户已经切换上下文，不得改动新 Agent 的 UI。
+    if (this.agentId !== lockedAgentId || this.contextVersion !== lockedContextVersion) {
+      console.debug(`[PromptManager] Mode saved for ${lockedAgentId}; skipped stale UI update.`);
+      return;
+    }
+
+    this.currentMode = mode;
     this.updateModeButtons();
     this.renderCurrentMode();
-
-    // 5. 偶尔可能需要触发全面保存（例如子模块有自己的特殊配置项需要同步）
-    // 但我们在上面已经更新了最关键的 mode+prompt，这里可以异步进行或由子模块自行负责
-    if (
-      window.settingsManager &&
-      typeof window.settingsManager.triggerAgentSave === "function"
-    ) {
-      // 注意：这里不再 await，减少阻塞感，因为关键数据已经通过 updateAgentConfig 落地了
-      window.settingsManager.triggerAgentSave(lockedAgentId).catch((err) => {
-        console.error("[PromptManager] Trigger full save failed:", err);
-      });
-    }
   }
 
   /**
@@ -468,6 +502,14 @@ class PromptManager {
   }
 
   /**
+   * 外部接口：获取当前绑定的 Agent。
+   * @returns {string|null}
+   */
+  getAgentId() {
+    return this.agentId;
+  }
+
+  /**
    * 外部接口：获取当前模式
    * @returns {string} 当前模式
    */
@@ -491,15 +533,15 @@ class PromptManager {
     }
 
     // 2. 清理计时器
-    if (this.rightClickTimer) {
-      clearTimeout(this.rightClickTimer);
-      this.rightClickTimer = null;
-    }
+    this.cancelRightClickTimer();
 
-    // 3. 清理 DOM 引用
+    // 3. 解绑容器事件监听
+    this.unbindContainerEvents();
+
+    // 4. 清理 DOM 引用
     this.containerElement = null;
 
-    // 4. 重置模块引用
+    // 5. 重置模块引用
     this.originalModule = null;
     this.modularModule = null;
     this.presetModule = null;

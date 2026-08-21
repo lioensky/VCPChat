@@ -1,0 +1,48 @@
+[package]
+name = "vcp_chat_data_service"
+version = "0.1.0"
+edition = "2021"
+description = "VCP Central Chat Data Service"
+license = "CC-BY-NC-SA-4.0"
+
+[dependencies]
+ammonia = "4"
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+blake3 = "1"
+clap = { version = "4", features = ["derive", "env"] }
+fs2 = "0.4"
+futures = "0.3"
+hex = "0.4"
+html-escape = "0.2"
+jieba-rs = "0.7"
+notify = "8"
+parking_lot = "0.12"
+rand = "0.9"
+regex = "1"
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+tantivy = "0.25"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tower-http = { version = "0.6", features = ["limit", "timeout", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

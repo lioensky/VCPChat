@@ -156,10 +156,41 @@
     transition: transform 0.18s ease;
 }
 .tavern-switch input:checked + .tavern-slider {
-    background: var(--user-bubble-bg, #4a90e2);
+    background: var(--button-bg, #4a90e2);
 }
 .tavern-switch input:checked + .tavern-slider::before {
     transform: translateX(16px);
+}
+
+/* 浅色主题：避免半透明开关和标题栏按钮融入白色背景。 */
+body.light-theme .tavern-switch .tavern-slider {
+    background: var(--accent-bg);
+    border: 1px solid var(--border-color);
+    box-sizing: border-box;
+    box-shadow: inset 0 1px 2px rgba(27, 33, 31, 0.08);
+}
+
+body.light-theme .tavern-switch .tavern-slider::before {
+    top: 2px;
+    left: 2px;
+    background: #ffffff;
+    border: 1px solid rgba(27, 33, 31, 0.16);
+    box-sizing: border-box;
+    box-shadow: 0 1px 3px rgba(27, 33, 31, 0.24);
+}
+
+body.light-theme .tavern-switch input:checked + .tavern-slider {
+    background: var(--button-bg);
+    border-color: var(--button-bg);
+}
+
+body.light-theme .tavern-popover-header .tavern-icon-btn {
+    color: var(--text-on-accent);
+}
+
+body.light-theme .tavern-popover-header .tavern-icon-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
 }
 
 /* 大号开关（仅在独立行如"包裹标记"中使用） */

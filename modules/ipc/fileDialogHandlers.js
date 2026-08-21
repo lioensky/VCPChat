@@ -1,5 +1,7 @@
 // modules/ipc/fileDialogHandlers.js
 const { ipcMain, dialog, shell, clipboard, net, nativeImage, BrowserWindow, Menu, app } = require('electron');
+const { spawn } = require('child_process');
+const { fileURLToPath } = require('url');
 const fs = require('fs-extra');
 const path = require('path');
 const fileManager = require('../fileManager');
@@ -220,12 +222,65 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.on('open-external-link', (event, url) => {
+        if (typeof url === 'string' && url.toLowerCase().startsWith('file:')) {
+            try {
+                const localPath = fileURLToPath(url);
+                if (path.extname(localPath).toLowerCase() === '.py') {
+                    console.warn('[Main Process] Blocked Python file from generic system-associated opening:', localPath);
+                    return;
+                }
+            } catch (error) {
+                console.warn('[Main Process] Received invalid local file URL, ignoring:', url);
+                return;
+            }
+        }
+
         if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('file:') || url.startsWith('magnet:'))) {
             shell.openExternal(url).catch(err => {
                 console.error('Failed to open external link:', err);
             });
         } else {
             console.warn(`[Main Process] Received request to open non-standard link externally, ignoring: ${url}`);
+        }
+    });
+
+    // Python 附件不能经过系统文件关联打开：在部分 Windows 环境中，打开 .py
+    // 会直接交给 Python 解释器执行。此接口只接受本地 .py 普通文件，并显式启动记事本。
+    ipcMain.handle('open-python-attachment-in-text-editor', async (event, fileUrl) => {
+        try {
+            if (process.platform !== 'win32') {
+                return { success: false, error: '当前安全文本编辑器接口仅支持 Windows。' };
+            }
+            if (typeof fileUrl !== 'string' || !fileUrl.toLowerCase().startsWith('file:')) {
+                return { success: false, error: '只允许打开本地 Python 附件。' };
+            }
+
+            let filePath;
+            try {
+                filePath = fileURLToPath(fileUrl);
+            } catch (error) {
+                return { success: false, error: '无效的本地附件地址。' };
+            }
+
+            if (path.extname(filePath).toLowerCase() !== '.py') {
+                return { success: false, error: '该接口只允许打开 .py 文件。' };
+            }
+
+            const stat = await fs.stat(filePath);
+            if (!stat.isFile()) {
+                return { success: false, error: '附件路径不是普通文件。' };
+            }
+
+            const editorProcess = spawn('notepad.exe', [filePath], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: false
+            });
+            editorProcess.unref();
+            return { success: true };
+        } catch (error) {
+            console.error('[Main Process] Failed to open Python attachment in Notepad:', error);
+            return { success: false, error: error.message };
         }
     });
 

@@ -15,6 +15,9 @@ const trayManager = (function () {
     // 常用应用 ID 列表（默认 4 个）
     let pinnedAppIds = ['vchat-app-translator', 'vchat-app-notes', 'vchat-app-music', 'vchat-app-canvas'];
     let outsideClickListenerBound = false;
+    let outsideClickBindTimer = null;
+    let drawerKeydownListenerBound = false;
+    let drawerCloseTimer = null;
 
     // VChat 系统应用注册表 (从 vchatApps.js 复制的核心定义)
     const VCHAT_APPS = [
@@ -23,6 +26,7 @@ const trayManager = (function () {
         { id: 'vchat-app-translator', name: '翻译', icon: 'translator', action: 'open-translator-window' },
         { id: 'vchat-app-music', name: '音乐', icon: 'music', action: 'open-music-window' },
         { id: 'vchat-app-canvas', name: '协同', icon: 'canvas', action: 'open-canvas-window' },
+        { id: 'vchat-app-scriptorium', name: '文坊', icon: 'scriptorium', action: 'open-scriptorium-window' },
         { id: 'vchat-app-main', name: 'VChat', icon: 'chat', action: 'show-main-window' },
         { id: 'vchat-app-memo', name: '记忆', icon: 'memo', action: 'open-memo-window' },
         { id: 'vchat-app-forum', name: '论坛', icon: 'forum', action: 'open-forum-window' },
@@ -30,9 +34,12 @@ const trayManager = (function () {
         { id: 'vchat-app-dice', name: '骰子', icon: 'dice', action: 'open-dice-window' },
         { id: 'vchat-app-rag-observer', name: '监听', icon: 'rag', action: 'open-rag-observer-window' },
         { id: 'vchat-app-themes', name: '主题', icon: 'themes', action: 'open-themes-window' },
+        { id: 'vchat-app-loom-manager', name: 'Loom', icon: 'loom', action: 'open-loom-manager' },
         { id: 'vchat-app-toolbox', name: '工具', icon: 'toolbox', action: 'launch-human-toolbox' },
         { id: 'vchat-app-dbmanager', name: '数据', icon: 'database', action: 'launch-vchat-manager' },
         { id: 'vchat-app-task', name: '任务', icon: 'task', action: 'open-task-window' },
+        { id: 'vchat-app-plugin-manager', name: '插件', icon: 'plugin', action: 'open-plugin-manager-window' },
+        { id: 'vchat-app-terminal', name: '终端', icon: 'terminal', action: 'open-powershell-executor-terminal' },
         { id: 'vchat-app-desktop', name: '桌面', icon: 'desktop', action: 'open-desktop-window' }
     ];
 
@@ -50,10 +57,14 @@ const trayManager = (function () {
         translator: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-languages"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`,
         music: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list-music"><path d="M16 5H3"/><path d="M11 12H3"/><path d="M11 19H3"/><path d="M21 16V5"/><circle cx="18" cy="16" r="3"/></svg>`,
         themes: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-palette"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.5-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H17c2.8 0 5-2.2 5-5 0-3.9-4.5-7-10-7Z"/></svg>`,
+        loom: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-network"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v8M12 15v8M1 12h8M15 12h8M4.2 4.2l5.7 5.7M14.1 14.1l5.7 5.7M19.8 4.2l-5.7 5.7M9.9 14.1l-5.7 5.7"/></svg>`,
         toolbox: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wrench"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></svg>`,
         database: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-database"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>`,
         task: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
-        desktop: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`
+        desktop: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+        terminal: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-terminal-square"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>`,
+        scriptorium: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h11.5A2.5 2.5 0 0 1 20 5.5V21H6a2 2 0 0 1-2-1.5Z"/><path d="M8 7h7M8 11h5"/><path d="M17.8 7.2c-2.1 1.2-3.6 3.3-4.2 6.3l2-1 1 2c1.8-2 2.7-4.4 2.7-7.2Z"/></svg>`,
+        plugin: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-puzzle"><path d="M15.39 4.39a1.5 1.5 0 1 0-2.78 1.12A2 2 0 0 1 10.76 8H5a1 1 0 0 0-1 1v5.76a2 2 0 0 0 2.49 1.85 1.5 1.5 0 1 1 1.12 2.78A2 2 0 0 0 9.24 22H15a1 1 0 0 0 1-1v-5.76a2 2 0 0 1 2.49-1.85 1.5 1.5 0 1 0 1.12-2.78A2 2 0 0 1 22 9.24V5a1 1 0 0 0-1-1h-4.24a2 2 0 0 1-1.37.39Z"/></svg>`
     };
 
     /**
@@ -105,11 +116,15 @@ const trayManager = (function () {
             if (!app || app.id === 'vchat-app-main') return;
 
             const btn = document.createElement('button');
-            btn.className = 'header-button capsule-button';
-            btn.title = app.name;
+            // 托盘按钮不属于页面 Header，避免被全局 .header-button 主题规则覆盖，
+            // 确保其普通态与 Hover 态始终和“更多”按钮使用同一套 Dock 配色。
+            btn.className = 'capsule-button';
+            btn.type = 'button';
+            btn.setAttribute('aria-label', app.name);
+            btn.dataset.tooltip = app.name;
             btn.innerHTML = `
                 ${SVG_ICONS[app.icon] || ''}
-                <span class="notes-button-label">${app.name}</span>
+                <span class="notes-button-label" aria-hidden="true">${app.name}</span>
             `;
             btn.onclick = () => launchApp(app);
             container.appendChild(btn);
@@ -131,7 +146,7 @@ const trayManager = (function () {
 
         drawerApps.forEach(app => {
             const item = document.createElement('button');
-            item.className = 'header-button capsule-button app-tray-drawer-item';
+            item.className = 'capsule-button app-tray-drawer-item';
             item.title = app.name;
             item.innerHTML = `
                 ${SVG_ICONS[app.icon] || ''}
@@ -155,7 +170,16 @@ const trayManager = (function () {
         // 动态获取最新的 API 引用
         const currentApi = window.chatAPI || window.electronAPI;
 
-        if (currentApi?.desktopLaunchVchatApp) {
+        if (app.action === 'open-loom-manager' && currentApi?.loomOpenManager) {
+            try {
+                const result = await currentApi.loomOpenManager();
+                if (!result?.success) {
+                    console.error('[TrayManager] Loom manager launch failed:', result?.error);
+                }
+            } catch (err) {
+                console.error('[TrayManager] Loom manager IPC error:', err);
+            }
+        } else if (currentApi?.desktopLaunchVchatApp) {
             try {
                 const result = await currentApi.desktopLaunchVchatApp(app.action);
                 if (!result?.success) {
@@ -184,24 +208,71 @@ const trayManager = (function () {
         const isActive = force !== undefined ? force : !drawer.classList.contains('active');
         
         if (isActive) {
+            if (drawerCloseTimer) {
+                clearTimeout(drawerCloseTimer);
+                drawerCloseTimer = null;
+            }
+            drawer.classList.remove('is-closing');
             drawer.classList.add('active');
+            drawer.setAttribute('aria-hidden', 'false');
+            drawer.inert = false;
             btn.classList.add('active');
+            btn.setAttribute('aria-expanded', 'true');
 
             // 防止重复打开时叠加全局点击监听
             if (!outsideClickListenerBound) {
                 outsideClickListenerBound = true;
-                setTimeout(() => {
+                outsideClickBindTimer = setTimeout(() => {
+                    outsideClickBindTimer = null;
+                    if (!outsideClickListenerBound) return;
                     document.addEventListener('click', closeOnOutsideClick, true);
                 }, 0);
             }
+            if (!drawerKeydownListenerBound) {
+                document.addEventListener('keydown', closeDrawerOnEscape, true);
+                drawerKeydownListenerBound = true;
+            }
         } else {
+            if (!drawer.classList.contains('active') && !drawer.classList.contains('is-closing')) return;
+            drawer.classList.add('is-closing');
             drawer.classList.remove('active');
+            drawer.setAttribute('aria-hidden', 'true');
+            // Keep the exit transition visual, but remove the drawer from
+            // keyboard and assistive-technology navigation immediately.
+            drawer.inert = true;
             btn.classList.remove('active');
+            btn.setAttribute('aria-expanded', 'false');
             if (outsideClickListenerBound) {
+                if (outsideClickBindTimer) {
+                    clearTimeout(outsideClickBindTimer);
+                    outsideClickBindTimer = null;
+                }
                 document.removeEventListener('click', closeOnOutsideClick, true);
                 outsideClickListenerBound = false;
             }
+            if (drawerKeydownListenerBound) {
+                document.removeEventListener('keydown', closeDrawerOnEscape, true);
+                drawerKeydownListenerBound = false;
+            }
+
+            // Keep the notification rail unclipped for the entire exit motion.
+            // Without a separate closing state, removing `.active` restores the
+            // rail's overflow immediately and visibly chops the popover first.
+            if (drawerCloseTimer) clearTimeout(drawerCloseTimer);
+            drawerCloseTimer = setTimeout(() => {
+                drawer.classList.remove('is-closing');
+                drawerCloseTimer = null;
+            }, 320);
         }
+    }
+
+    function closeDrawerOnEscape(event) {
+        if (event.key !== 'Escape') return;
+        const btn = document.getElementById('appTrayMoreBtn');
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleDrawer(false);
+        btn?.focus();
     }
 
     function closeOnOutsideClick(e) {
@@ -218,6 +289,7 @@ const trayManager = (function () {
     function setupEventListeners() {
         const moreBtn = document.getElementById('appTrayMoreBtn');
         if (moreBtn) {
+            moreBtn.setAttribute('aria-expanded', 'false');
             moreBtn.onclick = (e) => {
                 e.stopPropagation();
                 toggleDrawer();
@@ -231,6 +303,7 @@ const trayManager = (function () {
                 console.log('[TrayManager] Settings button clicked (Capture Phase)');
                 e.stopPropagation();
                 e.preventDefault();
+                toggleDrawer(false);
                 showSettingsModal();
             }, true);
         }
@@ -246,11 +319,15 @@ const trayManager = (function () {
         const modal = document.createElement('div');
         modal.id = modalId;
         modal.className = 'modal active';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'appTraySettingsTitle');
+        modal.tabIndex = -1;
         modal.style.zIndex = '20001'; 
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 400px;">
-                <span class="close-button" onclick="this.closest('.modal').remove()">×</span>
-                <h2 style="margin-top: 0; font-size: 1.2em;">优先显示的按钮</h2>
+                <button type="button" class="close-button" data-tray-settings-close aria-label="关闭">×</button>
+                <h2 id="appTraySettingsTitle" style="margin-top: 0; font-size: 1.2em;">优先显示的按钮</h2>
                 <p style="font-size: 0.85em; opacity: 0.7; margin-bottom: 15px;">请选择 4 个要在底栏直接显示的应用：</p>
                 <div class="settings-app-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 400px; overflow-y: auto; padding: 5px;">
                     ${VCHAT_APPS.map(app => `
@@ -261,13 +338,66 @@ const trayManager = (function () {
                     `).join('')}
                 </div>
                 <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
-                    <button class="vcp-btn" onclick="this.closest('.modal').remove()" style="background: rgba(255,255,255,0.1); color: var(--primary-text);">取消</button>
+                    <button type="button" class="vcp-btn" data-tray-settings-close style="background: rgba(255,255,255,0.1); color: var(--primary-text);">取消</button>
                     <button id="saveTraySettingsBtn" class="vcp-btn vcp-btn-success">保存修改</button>
                 </div>
             </div>
         `;
         const container = document.getElementById('modal-container') || document.body;
+        const focusReturnTarget = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : document.getElementById('appTraySettingsBtn');
+        const overlayOwner = Symbol('app-tray-settings-overlay');
+        let closed = false;
+        let overlayAcquired = false;
+        const focusable = () => [...modal.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')]
+            .filter(node => !node.disabled && node.offsetParent !== null);
+        const handleKeydown = event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                closeModal();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const nodes = focusable();
+            if (!nodes.length) return;
+            const first = nodes[0];
+            const last = nodes[nodes.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        const closeModal = () => {
+            if (closed) return;
+            closed = true;
+            document.removeEventListener('keydown', handleKeydown, true);
+            modal.remove();
+            if (overlayAcquired) window.topTabManager?.releaseOverlay?.(overlayOwner);
+            focusReturnTarget?.focus();
+        };
+        Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).then(() => {
+            overlayAcquired = true;
+            if (closed) {
+                window.topTabManager?.releaseOverlay?.(overlayOwner);
+                overlayAcquired = false;
+            }
+        }).catch(error => {
+            console.warn('[TrayManager] Failed to hide embedded app for tray settings:', error);
+        });
         container.appendChild(modal);
+        document.addEventListener('keydown', handleKeydown, true);
+        modal.querySelectorAll('[data-tray-settings-close]').forEach(button => {
+            button.addEventListener('click', closeModal);
+        });
+        modal.addEventListener('click', event => {
+            if (event.target === modal) closeModal();
+        });
+        requestAnimationFrame(() => focusable()[0]?.focus() || modal.focus());
 
         // 限制选择数量为 4
         const checkboxes = modal.querySelectorAll('input[type="checkbox"]');
@@ -297,7 +427,7 @@ const trayManager = (function () {
             saveSettings();
             renderPinnedApps();
             renderDrawerGrid();
-            modal.remove();
+            closeModal();
             if (window.uiHelperFunctions?.showToastNotification) {
                 window.uiHelperFunctions.showToastNotification('常用应用设置已保存', 'success');
             }
@@ -305,7 +435,13 @@ const trayManager = (function () {
     }
 
     return {
-        init: init
+        init: init,
+        getApps: () => VCHAT_APPS.map(app => ({
+            ...app,
+            embed: window.VCPEmbeddedAppAllowlist?.isEmbeddable?.(app.action) === true,
+        })),
+        getIcon: (iconName) => SVG_ICONS[iconName] || '',
+        launchApp: launchApp
     };
 })();
 

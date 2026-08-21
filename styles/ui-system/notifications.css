@@ -1,0 +1,469 @@
+@layer vcp-ui.components {
+    html .vcp-ui-scope.chat-header,
+    html .vcp-ui-scope .notifications-header {
+        height: var(--vcp-ui-shell-header-height);
+        min-height: var(--vcp-ui-shell-header-height);
+        box-sizing: border-box;
+    }
+
+    html .vcp-ui-scope .notifications-header {
+        position: relative;
+        padding: 0 20px 0 var(--vcp-ui-space-3);
+        gap: var(--vcp-ui-space-2);
+        border-bottom: 1px solid var(--vcp-ui-border);
+        background: var(--next-header-bg);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope .next-ui-notification-toggle-host {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+    }
+
+    html .vcp-ui-scope #toggleNotificationsBtn {
+        width: var(--vcp-ui-control-md);
+        min-width: var(--vcp-ui-control-md);
+        height: var(--vcp-ui-control-md);
+        margin: 0;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+        box-shadow: none;
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope #toggleNotificationsBtn:hover,
+    html .vcp-ui-scope #toggleNotificationsBtn.notification-panel-active {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope #toggleNotificationsBtn:focus-visible {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    html .vcp-ui-scope #toggleNotificationsBtn svg {
+        width: var(--vcp-ui-icon-md);
+        height: var(--vcp-ui-icon-md);
+        stroke: currentColor;
+    }
+
+    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar {
+        position: relative;
+        isolation: isolate;
+    }
+
+    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar::before {
+        position: absolute;
+        z-index: 0;
+        inset: var(--vcp-ui-shell-header-height) 0 0;
+        content: "";
+        pointer-events: none;
+        background: var(--chat-presentation-surface);
+        backdrop-filter: var(--chat-presentation-surface-filter);
+        -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    }
+
+    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope .notifications-header {
+        background: var(--chat-presentation-surface);
+        backdrop-filter: var(--chat-presentation-surface-filter);
+        -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    }
+
+    html .vcp-ui-scope .datetime-container {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: baseline;
+        flex-direction: row;
+        gap: var(--vcp-ui-space-2);
+        transform: none;
+    }
+
+    html .vcp-ui-scope .digital-clock {
+        color: var(--vcp-ui-text-0);
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-emphasis);
+        font-weight: 650;
+        letter-spacing: 0;
+        line-height: var(--vcp-ui-line-compact);
+    }
+
+    html .vcp-ui-scope .date-display {
+        position: static;
+        color: var(--vcp-ui-text-3);
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 500;
+        line-height: var(--vcp-ui-line-compact);
+    }
+
+    html .vcp-ui-scope .notification-header-actions {
+        display: none;
+    }
+
+    html .vcp-ui-scope .next-ui-notification-actions {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-trigger {
+        width: var(--vcp-ui-control-md);
+        height: var(--vcp-ui-control-md);
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-trigger:hover,
+    html .vcp-ui-scope .next-ui-notification-menu-trigger[aria-expanded="true"] {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-trigger svg {
+        width: var(--vcp-ui-icon-md);
+        height: var(--vcp-ui-icon-md);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu {
+        position: absolute;
+        z-index: 90;
+        top: calc(100% + var(--vcp-ui-space-2));
+        right: 0;
+        width: 196px;
+        padding: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu:not([hidden]) {
+        display: grid;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-item {
+        width: 100%;
+        min-height: var(--vcp-ui-control-md);
+        padding: 0 var(--vcp-ui-space-2);
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-1);
+        background: transparent;
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-item:hover {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-item.danger:hover {
+        color: var(--vcp-ui-danger);
+        background: var(--vcp-ui-danger-bg);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-item > .vcp-ui-icon:first-child {
+        --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-state {
+        margin-left: auto;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-item[aria-checked="true"] .next-ui-notification-menu-state {
+        color: var(--vcp-ui-success);
+    }
+
+    html .vcp-ui-scope .next-ui-notification-menu-divider {
+        height: 1px;
+        margin: var(--vcp-ui-space-1) 0;
+        background: var(--vcp-ui-border);
+    }
+
+    html .vcp-ui-scope :is(.next-ui-notification-menu-trigger, .next-ui-notification-menu-item):focus-visible {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    html .vcp-ui-scope .notifications-status {
+        min-height: var(--vcp-ui-control-sm);
+        padding: var(--vcp-ui-space-1) var(--vcp-ui-space-3);
+        display: grid;
+        place-items: center;
+        border-bottom: 1px solid var(--vcp-ui-border);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-bg-2);
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 500;
+    }
+
+    html .vcp-ui-scope .notifications-status.status-open {
+        color: var(--vcp-ui-success);
+        background: color-mix(in srgb, var(--vcp-ui-success) 10%, var(--vcp-ui-bg-2));
+    }
+
+    html .vcp-ui-scope .notifications-status:is(.status-closed, .status-error) {
+        color: var(--vcp-ui-danger);
+        background: color-mix(in srgb, var(--vcp-ui-danger) 10%, var(--vcp-ui-bg-2));
+    }
+
+    html .vcp-ui-scope .notifications-status.status-connecting {
+        color: var(--vcp-ui-warning);
+        background: color-mix(in srgb, var(--vcp-ui-warning) 10%, var(--vcp-ui-bg-2));
+    }
+
+    html .vcp-ui-scope.notifications-sidebar > .section-divider {
+        display: block;
+        height: 1px;
+        padding: 0;
+        background: var(--vcp-ui-border);
+    }
+
+    /* The all-apps popover may be wider than a resized notification rail.
+     * Relax clipping only while it is open; notification rows keep their own
+     * scroll containment and the closed rail retains its original boundary. */
+    html .vcp-ui-scope.notifications-sidebar:has(#appTrayDrawer:is(.active, .is-closing)) {
+        z-index: calc(var(--vcp-ui-z-dropdown) - 1);
+        overflow: visible;
+    }
+
+    html .vcp-ui-scope #vchatAppTray {
+        display: flex;
+        min-height: calc(var(--vcp-ui-control-md) + var(--vcp-ui-space-4));
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3) 15px;
+        gap: var(--vcp-ui-space-2);
+        border-top: 0;
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #appTrayPinnedApps {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--vcp-ui-space-2);
+    }
+
+    html .vcp-ui-scope #vchatAppTray :is(.capsule-button, .app-tray-more-btn) {
+        position: relative;
+        width: 100%;
+        min-width: 0;
+        height: var(--vcp-ui-control-md);
+        padding: 0;
+        gap: 0;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        background: transparent;
+        box-shadow: none;
+    }
+
+    /* The compact dock intentionally omits visible labels. Keep its hint local
+     * to the dock so it is available before optional component runtimes load. */
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]::before,
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]::after {
+        position: absolute;
+        z-index: calc(var(--vcp-ui-z-dropdown) + 1);
+        left: 50%;
+        bottom: calc(100% + var(--vcp-ui-space-2));
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition:
+            opacity var(--vcp-ui-transition-fast) 120ms,
+            visibility var(--vcp-ui-transition-fast) 120ms,
+            transform var(--vcp-ui-transition-fast) 120ms;
+    }
+
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]::before {
+        min-width: max-content;
+        max-width: 180px;
+        padding: var(--vcp-ui-space-1) var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        content: attr(data-tooltip);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-4);
+        box-shadow: var(--vcp-ui-shadow-md);
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 500;
+        line-height: var(--vcp-ui-line-compact);
+        white-space: nowrap;
+        transform: translate(-50%, 3px);
+    }
+
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]::after {
+        width: 7px;
+        height: 7px;
+        border-right: 1px solid var(--vcp-ui-border);
+        border-bottom: 1px solid var(--vcp-ui-border);
+        content: "";
+        background: var(--vcp-ui-bg-4);
+        transform: translate(-50%, calc(50% + 3px)) rotate(45deg);
+    }
+
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]:is(:hover, :focus-visible):not(.active)::before,
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]:is(:hover, :focus-visible):not(.active)::after {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]:is(:hover, :focus-visible):not(.active)::before {
+        transform: translate(-50%, 0);
+    }
+
+    html .vcp-ui-scope #vchatAppTray [data-tooltip]:is(:hover, :focus-visible):not(.active)::after {
+        transform: translate(-50%, 50%) rotate(45deg);
+    }
+
+    html .vcp-ui-scope #vchatAppTray > .app-tray-more-btn[data-tooltip]::before {
+        right: 0;
+        left: auto;
+        transform: translateY(3px);
+    }
+
+    html .vcp-ui-scope #vchatAppTray > .app-tray-more-btn[data-tooltip]::after {
+        right: calc(var(--vcp-ui-control-md) / 2 - 4px);
+        left: auto;
+        transform: translateY(calc(50% + 3px)) rotate(45deg);
+    }
+
+    html .vcp-ui-scope #vchatAppTray > .app-tray-more-btn[data-tooltip]:is(:hover, :focus-visible):not(.active)::before {
+        transform: translateY(0);
+    }
+
+    html .vcp-ui-scope #vchatAppTray > .app-tray-more-btn[data-tooltip]:is(:hover, :focus-visible):not(.active)::after {
+        transform: translateY(50%) rotate(45deg);
+    }
+
+    html .vcp-ui-scope #vchatAppTray :is(.notes-button-label, svg) {
+        color: var(--vcp-ui-text-1);
+        stroke: currentColor;
+    }
+
+    html .vcp-ui-scope #vchatAppTray :is(.capsule-button, .app-tray-more-btn):is(:hover, :focus-visible), html .vcp-ui-scope #vchatAppTray .app-tray-more-btn.active {
+        background: var(--vcp-ui-fill-0);
+        transform: none;
+    }
+
+    html .vcp-ui-scope #vchatAppTray :is(.capsule-button, .app-tray-more-btn):is(:hover, :focus-visible) :is(.notes-button-label, svg), html .vcp-ui-scope #vchatAppTray .app-tray-more-btn.active svg {
+        color: var(--vcp-ui-accent);
+    }
+
+    html .vcp-ui-scope #appTrayPinnedApps .notes-button-label {
+        display: none;
+    }
+
+    html .vcp-ui-scope #appTrayDrawerGrid .notes-button-label {
+        display: block;
+        width: auto;
+        min-width: 0;
+        overflow: hidden;
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-body);
+        font-weight: 500;
+        line-height: var(--vcp-ui-line-compact);
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    html .vcp-ui-scope #appTrayDrawerGrid .app-tray-drawer-item {
+        min-height: var(--vcp-ui-control-md);
+    }
+
+    html .vcp-ui-scope #appTrayDrawerGrid .app-tray-drawer-item svg {
+        width: var(--vcp-ui-icon-md);
+        min-width: var(--vcp-ui-icon-md);
+        height: var(--vcp-ui-icon-md);
+        flex: 0 0 var(--vcp-ui-icon-md);
+    }
+
+    html .vcp-ui-scope #appTrayDrawer {
+        right: var(--vcp-ui-space-5);
+        bottom: calc(100% + var(--vcp-ui-space-2));
+        left: auto;
+        width: min(288px, calc(100vw - var(--vcp-ui-space-6)));
+        max-width: calc(100vw - var(--vcp-ui-space-6));
+        box-sizing: border-box;
+        padding: var(--vcp-ui-space-3);
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+        backdrop-filter: var(--next-surface-backdrop-filter);
+        -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
+    }
+
+    html .vcp-ui-scope #appTrayDrawer .app-tray-drawer-header {
+        margin-bottom: var(--vcp-ui-space-3);
+    }
+
+    html .vcp-ui-scope #appTrayDrawer .app-tray-drawer-title {
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-emphasis);
+        line-height: var(--vcp-ui-line-compact);
+        opacity: 1;
+    }
+
+    html .vcp-ui-scope #appTrayDrawer .app-tray-settings-btn {
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        padding: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-1);
+    }
+
+    html .vcp-ui-scope #appTrayDrawer .app-tray-settings-btn:is(:hover, :focus-visible) {
+        color: var(--vcp-ui-accent);
+        background: var(--vcp-ui-fill-0);
+        transform: none;
+    }
+
+    html .vcp-ui-scope #appTrayDrawer .app-tray-settings-btn svg {
+        width: var(--vcp-ui-icon-md);
+        height: var(--vcp-ui-icon-md);
+    }
+
+    html .vcp-ui-scope #appTrayDrawer::after {
+        right: -2px;
+        background: var(--vcp-ui-bg-1);
+    }
+
+    html .vcp-ui-scope #appTrayDrawer::before {
+        right: -3px;
+    }
+}

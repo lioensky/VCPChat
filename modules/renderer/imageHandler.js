@@ -25,7 +25,7 @@ export function initializeImageHandler(refs) {
 export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
     // 🟢 直接设置 HTML，不做替换
     contentDiv.innerHTML = rawHtml;
-    
+
     // 🟢 然后对所有 <img> 添加事件监听
     const images = contentDiv.querySelectorAll('img');
     images.forEach((img, index) => {

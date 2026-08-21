@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 use tokio::time::interval;
 
 use crate::player::{
-    EVENT_LOAD_COMPLETE, EVENT_TRACK_CHANGED,
+    EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR, EVENT_TRACK_CHANGED,
     EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD_RESET,
 };
 
@@ -84,20 +84,24 @@ async fn websocket(
                     let events = shared_state.event_flags.swap(0, std::sync::atomic::Ordering::AcqRel);
 
                     if events & EVENT_LOAD_COMPLETE != 0 {
-                        let error = shared_state.load_error.read().clone();
                         let file_path = shared_state.file_path.read().clone();
-                        let msg = if let Some(err) = error {
-                            serde_json::json!({
-                                "type": "load_error",
-                                "error": err,
-                            })
-                        } else {
-                            serde_json::json!({
-                                "type": "load_complete",
-                                "file_path": file_path,
-                                "duration": shared_state.duration_secs(),
-                            })
-                        };
+                        let msg = serde_json::json!({
+                            "type": "load_complete",
+                            "file_path": file_path,
+                            "duration": shared_state.duration_secs(),
+                        });
+                        if session.text(msg.to_string()).await.is_err() {
+                            break;
+                        }
+                    }
+
+                    if events & EVENT_LOAD_ERROR != 0 {
+                        let error = shared_state.load_error.read().clone()
+                            .unwrap_or_else(|| "Unknown load error".to_string());
+                        let msg = serde_json::json!({
+                            "type": "load_error",
+                            "error": error,
+                        });
                         if session.text(msg.to_string()).await.is_err() {
                             break;
                         }

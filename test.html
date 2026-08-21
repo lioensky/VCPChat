@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>test</title>
+<style>
+
+:root {
+    display: block;
+    min-height: 100%;
+    --vdoc-page-width: 210mm;
+    --vdoc-page-height: 297mm;
+    --vdoc-page-gap: 24px;
+    --vdoc-page-padding-block: 24mm 26mm;
+    --vdoc-page-padding-inline: 22mm;
+    --vdoc-zoom: 1;
+}
+.vdoc-runtime {
+    display: block;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.vdoc-runtime [data-vdoc-island] {
+    user-select: text;
+    -webkit-user-select: text;
+}
+.vdoc-runtime-paused *,
+.vdoc-runtime-paused *::before,
+.vdoc-runtime-paused *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+}
+[data-vdoc-atomic] { caret-color: transparent !important; }
+[data-vdoc-atomic="math"],
+[data-vdoc-atomic="mermaid"],
+[data-vdoc-atomic="media"] {
+    user-select: all;
+    -webkit-user-select: all;
+}
+::highlight(scriptorium-find-match) {
+    color: inherit;
+    background: rgba(242, 169, 0, .36);
+    text-decoration: underline rgba(184, 117, 0, .72) 1px;
+}
+::highlight(scriptorium-find-current) {
+    color: #171c1a;
+    background: #ffc94a;
+    text-decoration: underline #8b5e00 2px;
+}
+
+.vdoc-runtime table {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100% !important;
+    margin: 1.25em 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 10px;
+    background: color-mix(in srgb, currentColor 3%, transparent);
+    table-layout: fixed;
+}
+.vdoc-runtime th,
+.vdoc-runtime td {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    padding: .62em .78em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    border-right: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    text-align: left;
+    vertical-align: top;
+}
+.vdoc-runtime th {
+    font-weight: 700;
+    background: color-mix(in srgb, currentColor 9%, transparent);
+}
+.vdoc-runtime tr > :last-child { border-right: 0; }
+.vdoc-runtime tbody tr:last-child > td { border-bottom: 0; }
+.vdoc-runtime tbody tr:nth-child(even) {
+    background: color-mix(in srgb, currentColor 3.5%, transparent);
+}
+.vdoc-runtime table code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+
+:root {
+    color-scheme: light;
+    --vdoc-ink: #1d2421;
+    --vdoc-muted: #66706b;
+    --vdoc-accent: #8b5e34;
+    --vdoc-paper: #fffdf8;
+    --vdoc-serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    color: var(--vdoc-ink);
+    background: transparent;
+    font-family: var(--vdoc-serif);
+    font-size: 12pt;
+    line-height: 1.8;
+    text-autospace: normal;
+}
+.vdoc-manuscript { width: 100%; max-width: 100%; }
+.vdoc-hero { padding: 22mm 0 16mm; border-bottom: 1px solid rgba(139, 94, 52, .28); }
+.vdoc-eyebrow { color: var(--vdoc-accent); font: 700 9pt/1.4 system-ui, sans-serif; letter-spacing: .22em; }
+h1, h2, h3, h4, h5, h6 {
+    margin: 1.5em 0 .65em;
+    line-height: 1.28;
+    text-wrap: balance;
+    break-after: avoid;
+}
+h1 { margin-top: 0; font-size: 32pt; letter-spacing: -.03em; }
+h2 { font-size: 21pt; }
+h3 { font-size: 16pt; }
+p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wrap: pretty; orphans: 2; widows: 2; }
+.vdoc-lead { color: var(--vdoc-muted); font-size: 14pt; }
+[data-vdoc-text] { outline: none; }
+[data-vdoc-text]:focus { border-radius: 3px; box-shadow: 0 0 0 3px rgba(139, 94, 52, .13); }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+}
+@page {
+    size: 210mm 297mm;
+    margin: 0;
+}
+html,body{
+    min-width:100%;
+    min-height:100%;
+    margin:0;
+    background:#202426;
+}
+body{
+    overflow-x:auto;
+}
+.vdoc-paged-runtime{
+    box-sizing:border-box;
+    width:100%;
+    min-width:calc(var(--vdoc-page-width) + 48px);
+    padding:32px 24px 64px;
+}
+.vdoc-page{
+    box-sizing:border-box;
+    width:var(--vdoc-page-width)!important;
+    height:var(--vdoc-page-height)!important;
+    margin:0 auto var(--vdoc-page-gap)!important;
+    overflow:hidden;
+    color:#1d2421;
+    background:#fffdf8;
+    transform:none!important;
+    box-shadow:0 18px 55px rgba(0,0,0,.32);
+    break-after:page;
+}
+.vdoc-page-content{
+    box-sizing:border-box;
+    width:100%;
+    height:100%;
+    min-width:0;
+    padding-block:var(--vdoc-page-padding-block);
+    padding-inline:var(--vdoc-page-padding-inline);
+    overflow:hidden;
+}
+.vdoc-page-body{
+    display:flow-root;
+    box-sizing:border-box;
+    width:100%;
+    height:100%;
+    min-width:0;
+    overflow:visible;
+}
+.vdoc-page-content .vdoc-pagination-shell{
+    display:flow-root;
+    min-width:0;
+    max-width:100%;
+}
+.vdoc-page-content img,
+.vdoc-page-content svg,
+.vdoc-page-content video,
+.vdoc-page-content canvas,
+.vdoc-page-content iframe,
+.vdoc-page-content object,
+.vdoc-page-content embed{
+    box-sizing:border-box;
+    max-width:100%!important;
+}
+.vdoc-page-content img,
+.vdoc-page-content svg,
+.vdoc-page-content video{
+    width:auto;
+    height:auto;
+    max-height:calc(var(--vdoc-page-height) - 50mm)!important;
+    object-fit:contain;
+}
+.vdoc-page-content figure{
+    box-sizing:border-box;
+    max-width:100%;
+    margin-inline:0;
+}
+.vdoc-page-content figure > img,
+.vdoc-page-content figure > svg,
+.vdoc-page-content figure > video{
+    display:block;
+    margin-inline:auto;
+}
+@media print{
+    html,body{
+        min-width:0;
+        min-height:0;
+        background:#fff;
+    }
+    body{
+        overflow:visible;
+    }
+    .vdoc-paged-runtime{
+        min-width:0;
+        padding:0;
+    }
+    .vdoc-page{
+        margin:0!important;
+        box-shadow:none!important;
+    }
+}
+html[data-vdoc-pdf="true"] *,
+html[data-vdoc-pdf="true"] *::before,
+html[data-vdoc-pdf="true"] *::after {
+    animation-play-state:paused!important;
+    transition:none!important;
+}</style>
+<script data-vdoc-embedded-library="anime">
+/*
+ * anime.js v3.2.2
+ * (c) 2023 Julian Garnier
+ * Released under the MIT license
+ * animejs.com
+ */
+
+!function(n,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):n.anime=e()}(this,function(){"use strict";var i={update:null,begin:null,loopBegin:null,changeBegin:null,change:null,changeComplete:null,loopComplete:null,complete:null,loop:1,direction:"normal",autoplay:!0,timelineOffset:0},M={duration:1e3,delay:0,endDelay:0,easing:"easeOutElastic(1, .5)",round:0},j=["translateX","translateY","translateZ","rotate","rotateX","rotateY","rotateZ","scale","scaleX","scaleY","scaleZ","skew","skewX","skewY","perspective","matrix","matrix3d"],l={CSS:{},springs:{}};function C(n,e,t){return Math.min(Math.max(n,e),t)}function u(n,e){return-1<n.indexOf(e)}function o(n,e){return n.apply(null,e)}var w={arr:function(n){return Array.isArray(n)},obj:function(n){return u(Object.prototype.toString.call(n),"Object")},pth:function(n){return w.obj(n)&&n.hasOwnProperty("totalLength")},svg:function(n){return n instanceof SVGElement},inp:function(n){return n instanceof HTMLInputElement},dom:function(n){return n.nodeType||w.svg(n)},str:function(n){return"string"==typeof n},fnc:function(n){return"function"==typeof n},und:function(n){return void 0===n},nil:function(n){return w.und(n)||null===n},hex:function(n){return/(^#[0-9A-F]{6}$)|(^#[0-9A-F]{3}$)/i.test(n)},rgb:function(n){return/^rgb/.test(n)},hsl:function(n){return/^hsl/.test(n)},col:function(n){return w.hex(n)||w.rgb(n)||w.hsl(n)},key:function(n){return!i.hasOwnProperty(n)&&!M.hasOwnProperty(n)&&"targets"!==n&&"keyframes"!==n}};function d(n){n=/\(([^)]+)\)/.exec(n);return n?n[1].split(",").map(function(n){return parseFloat(n)}):[]}function c(r,t){var n=d(r),e=C(w.und(n[0])?1:n[0],.1,100),a=C(w.und(n[1])?100:n[1],.1,100),o=C(w.und(n[2])?10:n[2],.1,100),n=C(w.und(n[3])?0:n[3],.1,100),u=Math.sqrt(a/e),i=o/(2*Math.sqrt(a*e)),c=i<1?u*Math.sqrt(1-i*i):0,s=i<1?(i*u-n)/c:-n+u;function f(n){var e=t?t*n/1e3:n,e=i<1?Math.exp(-e*i*u)*(+Math.cos(c*e)+s*Math.sin(c*e)):(1+s*e)*Math.exp(-e*u);return 0===n||1===n?n:1-e}return t?f:function(){var n=l.springs[r];if(n)return n;for(var e=0,t=0;;)if(1===f(e+=1/6)){if(16<=++t)break}else t=0;return n=e*(1/6)*1e3,l.springs[r]=n}}function q(e){return void 0===e&&(e=10),function(n){return Math.ceil(C(n,1e-6,1)*e)*(1/e)}}var H=function(b,e,M,t){if(0<=b&&b<=1&&0<=M&&M<=1){var x=new Float32Array(11);if(b!==e||M!==t)for(var n=0;n<11;++n)x[n]=k(.1*n,b,M);return function(n){return b===e&&M===t||0===n||1===n?n:k(r(n),e,t)}}function r(n){for(var e=0,t=1;10!==t&&x[t]<=n;++t)e+=.1;var r=e+.1*((n-x[--t])/(x[t+1]-x[t])),a=O(r,b,M);if(.001<=a){for(var o=n,u=r,i=b,c=M,s=0;s<4;++s){var f=O(u,i,c);if(0===f)return u;u-=(k(u,i,c)-o)/f}return u}if(0===a)return r;for(var l,d,p=n,h=e,g=e+.1,m=b,v=M,y=0;0<(l=k(d=h+(g-h)/2,m,v)-p)?g=d:h=d,1e-7<Math.abs(l)&&++y<10;);return d}};function r(n,e){return 1-3*e+3*n}function k(n,e,t){return((r(e,t)*n+(3*t-6*e))*n+3*e)*n}function O(n,e,t){return 3*r(e,t)*n*n+2*(3*t-6*e)*n+3*e}e={linear:function(){return function(n){return n}}},t={Sine:function(){return function(n){return 1-Math.cos(n*Math.PI/2)}},Expo:function(){return function(n){return n?Math.pow(2,10*n-10):0}},Circ:function(){return function(n){return 1-Math.sqrt(1-n*n)}},Back:function(){return function(n){return n*n*(3*n-2)}},Bounce:function(){return function(n){for(var e,t=4;n<((e=Math.pow(2,--t))-1)/11;);return 1/Math.pow(4,3-t)-7.5625*Math.pow((3*e-2)/22-n,2)}},Elastic:function(n,e){void 0===e&&(e=.5);var t=C(n=void 0===n?1:n,1,10),r=C(e,.1,2);return function(n){return 0===n||1===n?n:-t*Math.pow(2,10*(n-1))*Math.sin((n-1-r/(2*Math.PI)*Math.asin(1/t))*(2*Math.PI)/r)}}},["Quad","Cubic","Quart","Quint"].forEach(function(n,e){t[n]=function(){return function(n){return Math.pow(n,e+2)}}}),Object.keys(t).forEach(function(n){var r=t[n];e["easeIn"+n]=r,e["easeOut"+n]=function(e,t){return function(n){return 1-r(e,t)(1-n)}},e["easeInOut"+n]=function(e,t){return function(n){return n<.5?r(e,t)(2*n)/2:1-r(e,t)(-2*n+2)/2}},e["easeOutIn"+n]=function(e,t){return function(n){return n<.5?(1-r(e,t)(1-2*n))/2:(r(e,t)(2*n-1)+1)/2}}});var e,t,s=e;function P(n,e){if(w.fnc(n))return n;var t=n.split("(")[0],r=s[t],a=d(n);switch(t){case"spring":return c(n,e);case"cubicBezier":return o(H,a);case"steps":return o(q,a);default:return o(r,a)}}function a(n){try{return document.querySelectorAll(n)}catch(n){}}function I(n,e){for(var t,r=n.length,a=2<=arguments.length?e:void 0,o=[],u=0;u<r;u++)u in n&&(t=n[u],e.call(a,t,u,n))&&o.push(t);return o}function f(n){return n.reduce(function(n,e){return n.concat(w.arr(e)?f(e):e)},[])}function p(n){return w.arr(n)?n:(n=w.str(n)?a(n)||n:n)instanceof NodeList||n instanceof HTMLCollection?[].slice.call(n):[n]}function h(n,e){return n.some(function(n){return n===e})}function g(n){var e,t={};for(e in n)t[e]=n[e];return t}function x(n,e){var t,r=g(n);for(t in n)r[t]=(e.hasOwnProperty(t)?e:n)[t];return r}function D(n,e){var t,r=g(n);for(t in e)r[t]=(w.und(n[t])?e:n)[t];return r}function V(n){var e,t,r,a,o,u,i;return w.rgb(n)?(e=/rgb\((\d+,\s*[\d]+,\s*[\d]+)\)/g.exec(t=n))?"rgba("+e[1]+",1)":t:w.hex(n)?(e=(e=n).replace(/^#?([a-f\d])([a-f\d])([a-f\d])$/i,function(n,e,t,r){return e+e+t+t+r+r}),e=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(e),"rgba("+parseInt(e[1],16)+","+parseInt(e[2],16)+","+parseInt(e[3],16)+",1)"):w.hsl(n)?(t=/hsl\((\d+),\s*([\d.]+)%,\s*([\d.]+)%\)/g.exec(t=n)||/hsla\((\d+),\s*([\d.]+)%,\s*([\d.]+)%,\s*([\d.]+)\)/g.exec(t),n=parseInt(t[1],10)/360,u=parseInt(t[2],10)/100,i=parseInt(t[3],10)/100,t=t[4]||1,0==u?r=a=o=i:(r=c(u=2*i-(i=i<.5?i*(1+u):i+u-i*u),i,n+1/3),a=c(u,i,n),o=c(u,i,n-1/3)),"rgba("+255*r+","+255*a+","+255*o+","+t+")"):void 0;function c(n,e,t){return t<0&&(t+=1),1<t&&--t,t<1/6?n+6*(e-n)*t:t<.5?e:t<2/3?n+(e-n)*(2/3-t)*6:n}}function B(n){n=/[+-]?\d*\.?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(%|px|pt|em|rem|in|cm|mm|ex|ch|pc|vw|vh|vmin|vmax|deg|rad|turn)?$/.exec(n);if(n)return n[1]}function m(n,e){return w.fnc(n)?n(e.target,e.id,e.total):n}function v(n,e){return n.getAttribute(e)}function y(n,e,t){var r,a,o;return h([t,"deg","rad","turn"],B(e))?e:(r=l.CSS[e+t],w.und(r)?(a=document.createElement(n.tagName),(n=n.parentNode&&n.parentNode!==document?n.parentNode:document.body).appendChild(a),a.style.position="absolute",a.style.width=100+t,o=100/a.offsetWidth,n.removeChild(a),n=o*parseFloat(e),l.CSS[e+t]=n):r)}function $(n,e,t){var r;if(e in n.style)return r=e.replace(/([a-z])([A-Z])/g,"$1-$2").toLowerCase(),e=n.style[e]||getComputedStyle(n).getPropertyValue(r)||"0",t?y(n,e,t):e}function b(n,e){return w.dom(n)&&!w.inp(n)&&(!w.nil(v(n,e))||w.svg(n)&&n[e])?"attribute":w.dom(n)&&h(j,e)?"transform":w.dom(n)&&"transform"!==e&&$(n,e)?"css":null!=n[e]?"object":void 0}function W(n){if(w.dom(n)){for(var e,t=n.style.transform||"",r=/(\w+)\(([^)]*)\)/g,a=new Map;e=r.exec(t);)a.set(e[1],e[2]);return a}}function X(n,e,t,r){var a=u(e,"scale")?1:0+(u(a=e,"translate")||"perspective"===a?"px":u(a,"rotate")||u(a,"skew")?"deg":void 0),o=W(n).get(e)||a;return t&&(t.transforms.list.set(e,o),t.transforms.last=e),r?y(n,o,r):o}function T(n,e,t,r){switch(b(n,e)){case"transform":return X(n,e,r,t);case"css":return $(n,e,t);case"attribute":return v(n,e);default:return n[e]||0}}function E(n,e){var t=/^(\*=|\+=|-=)/.exec(n);if(!t)return n;var r=B(n)||0,a=parseFloat(e),o=parseFloat(n.replace(t[0],""));switch(t[0][0]){case"+":return a+o+r;case"-":return a-o+r;case"*":return a*o+r}}function Y(n,e){var t;return w.col(n)?V(n):/\s/g.test(n)?n:(t=(t=B(n))?n.substr(0,n.length-t.length):n,e?t+e:t)}function F(n,e){return Math.sqrt(Math.pow(e.x-n.x,2)+Math.pow(e.y-n.y,2))}function Z(n){for(var e,t=n.points,r=0,a=0;a<t.numberOfItems;a++){var o=t.getItem(a);0<a&&(r+=F(e,o)),e=o}return r}function G(n){if(n.getTotalLength)return n.getTotalLength();switch(n.tagName.toLowerCase()){case"circle":return 2*Math.PI*v(n,"r");case"rect":return 2*v(t=n,"width")+2*v(t,"height");case"line":return F({x:v(t=n,"x1"),y:v(t,"y1")},{x:v(t,"x2"),y:v(t,"y2")});case"polyline":return Z(n);case"polygon":return e=n.points,Z(n)+F(e.getItem(e.numberOfItems-1),e.getItem(0))}var e,t}function Q(n,e){var e=e||{},n=e.el||function(n){for(var e=n.parentNode;w.svg(e)&&w.svg(e.parentNode);)e=e.parentNode;return e}(n),t=n.getBoundingClientRect(),r=v(n,"viewBox"),a=t.width,t=t.height,e=e.viewBox||(r?r.split(" "):[0,0,a,t]);return{el:n,viewBox:e,x:+e[0],y:+e[1],w:a,h:t,vW:e[2],vH:e[3]}}function z(n,e){var t=/[+-]?\d*\.?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,r=Y(w.pth(n)?n.totalLength:n,e)+"";return{original:r,numbers:r.match(t)?r.match(t).map(Number):[0],strings:w.str(n)||e?r.split(t):[]}}function A(n){return I(n?f(w.arr(n)?n.map(p):p(n)):[],function(n,e,t){return t.indexOf(n)===e})}function _(n){var t=A(n);return t.map(function(n,e){return{target:n,id:e,total:t.length,transforms:{list:W(n)}}})}function R(e){for(var t=I(f(e.map(function(n){return Object.keys(n)})),function(n){return w.key(n)}).reduce(function(n,e){return n.indexOf(e)<0&&n.push(e),n},[]),a={},n=0;n<t.length;n++)!function(n){var r=t[n];a[r]=e.map(function(n){var e,t={};for(e in n)w.key(e)?e==r&&(t.value=n[e]):t[e]=n[e];return t})}(n);return a}function J(n,e){var t,r=[],a=e.keyframes;for(t in e=a?D(R(a),e):e)w.key(t)&&r.push({name:t,tweens:function(n,t){var e,r=g(t),a=(/^spring/.test(r.easing)&&(r.duration=c(r.easing)),w.arr(n)&&(2===(e=n.length)&&!w.obj(n[0])?n={value:n}:w.fnc(t.duration)||(r.duration=t.duration/e)),w.arr(n)?n:[n]);return a.map(function(n,e){n=w.obj(n)&&!w.pth(n)?n:{value:n};return w.und(n.delay)&&(n.delay=e?0:t.delay),w.und(n.endDelay)&&(n.endDelay=e===a.length-1?t.endDelay:0),n}).map(function(n){return D(n,r)})}(e[t],n)});return r}function K(i,c){var s;return i.tweens.map(function(n){var n=function(n,e){var t,r={};for(t in n){var a=m(n[t],e);w.arr(a)&&1===(a=a.map(function(n){return m(n,e)})).length&&(a=a[0]),r[t]=a}return r.duration=parseFloat(r.duration),r.delay=parseFloat(r.delay),r}(n,c),e=n.value,t=w.arr(e)?e[1]:e,r=B(t),a=T(c.target,i.name,r,c),o=s?s.to.original:a,u=w.arr(e)?e[0]:o,a=B(u)||B(a),r=r||a;return w.und(t)&&(t=o),n.from=z(u,r),n.to=z(E(t,u),r),n.start=s?s.end:0,n.end=n.start+n.delay+n.duration+n.endDelay,n.easing=P(n.easing,n.duration),n.isPath=w.pth(e),n.isPathTargetInsideSVG=n.isPath&&w.svg(c.target),n.isColor=w.col(n.from.original),n.isColor&&(n.round=1),s=n})}var U={css:function(n,e,t){return n.style[e]=t},attribute:function(n,e,t){return n.setAttribute(e,t)},object:function(n,e,t){return n[e]=t},transform:function(n,e,t,r,a){var o;r.list.set(e,t),e!==r.last&&!a||(o="",r.list.forEach(function(n,e){o+=e+"("+n+") "}),n.style.transform=o)}};function nn(n,u){_(n).forEach(function(n){for(var e in u){var t=m(u[e],n),r=n.target,a=B(t),o=T(r,e,a,n),t=E(Y(t,a||B(o)),o),a=b(r,e);U[a](r,e,t,n.transforms,!0)}})}function en(n,e){return I(f(n.map(function(o){return e.map(function(n){var e,t,r=o,a=b(r.target,n.name);if(a)return t=(e=K(n,r))[e.length-1],{type:a,property:n.name,animatable:r,tweens:e,duration:t.end,delay:e[0].delay,endDelay:t.endDelay}})})),function(n){return!w.und(n)})}function tn(n,e){function t(n){return n.timelineOffset||0}var r=n.length,a={};return a.duration=r?Math.max.apply(Math,n.map(function(n){return t(n)+n.duration})):e.duration,a.delay=r?Math.min.apply(Math,n.map(function(n){return t(n)+n.delay})):e.delay,a.endDelay=r?a.duration-Math.max.apply(Math,n.map(function(n){return t(n)+n.duration-n.endDelay})):e.endDelay,a}var rn=0;var N,S=[],an=("undefined"!=typeof document&&document.addEventListener("visibilitychange",function(){L.suspendWhenDocumentHidden&&(n()?N=cancelAnimationFrame(N):(S.forEach(function(n){return n._onDocumentVisibility()}),an()))}),function(){!(N||n()&&L.suspendWhenDocumentHidden)&&0<S.length&&(N=requestAnimationFrame(on))});function on(n){for(var e=S.length,t=0;t<e;){var r=S[t];r.paused?(S.splice(t,1),e--):(r.tick(n),t++)}N=0<t?requestAnimationFrame(on):void 0}function n(){return document&&document.hidden}function L(n){var c,s=0,f=0,l=0,d=0,p=null;function h(n){var e=window.Promise&&new Promise(function(n){return p=n});return n.finished=e}e=x(i,n=n=void 0===n?{}:n),t=J(r=x(M,n),n),n=_(n.targets),r=tn(t=en(n,t),r),a=rn,rn++;var e,t,r,a,k=D(e,{id:a,children:[],animatables:n,animations:t,duration:r.duration,delay:r.delay,endDelay:r.endDelay});h(k);function g(){var n=k.direction;"alternate"!==n&&(k.direction="normal"!==n?"normal":"reverse"),k.reversed=!k.reversed,c.forEach(function(n){return n.reversed=k.reversed})}function m(n){return k.reversed?k.duration-n:n}function o(){s=0,f=m(k.currentTime)*(1/L.speed)}function v(n,e){e&&e.seek(n-e.timelineOffset)}function y(e){for(var n=0,t=k.animations,r=t.length;n<r;){for(var a=t[n],o=a.animatable,u=a.tweens,i=u.length-1,c=u[i],i=(i&&(c=I(u,function(n){return e<n.end})[0]||c),C(e-c.start-c.delay,0,c.duration)/c.duration),s=isNaN(i)?1:c.easing(i),f=c.to.strings,l=c.round,d=[],p=c.to.numbers.length,h=void 0,g=0;g<p;g++){var m=void 0,v=c.to.numbers[g],y=c.from.numbers[g]||0,m=c.isPath?function(e,t,n){function r(n){return e.el.getPointAtLength(1<=t+(n=void 0===n?0:n)?t+n:0)}var a=Q(e.el,e.svg),o=r(),u=r(-1),i=r(1),c=n?1:a.w/a.vW,s=n?1:a.h/a.vH;switch(e.property){case"x":return(o.x-a.x)*c;case"y":return(o.y-a.y)*s;case"angle":return 180*Math.atan2(i.y-u.y,i.x-u.x)/Math.PI}}(c.value,s*v,c.isPathTargetInsideSVG):y+s*(v-y);!l||c.isColor&&2<g||(m=Math.round(m*l)/l),d.push(m)}var b=f.length;if(b)for(var h=f[0],M=0;M<b;M++){f[M];var x=f[M+1],w=d[M];isNaN(w)||(h+=x?w+x:w+" ")}else h=d[0];U[a.type](o.target,a.property,h,o.transforms),a.currentValue=h,n++}}function b(n){k[n]&&!k.passThrough&&k[n](k)}function u(n){var e=k.duration,t=k.delay,r=e-k.endDelay,a=m(n);if(k.progress=C(a/e*100,0,100),k.reversePlayback=a<k.currentTime,c){var o=a;if(k.reversePlayback)for(var u=d;u--;)v(o,c[u]);else for(var i=0;i<d;i++)v(o,c[i])}!k.began&&0<k.currentTime&&(k.began=!0,b("begin")),!k.loopBegan&&0<k.currentTime&&(k.loopBegan=!0,b("loopBegin")),a<=t&&0!==k.currentTime&&y(0),(r<=a&&k.currentTime!==e||!e)&&y(e),t<a&&a<r?(k.changeBegan||(k.changeBegan=!0,k.changeCompleted=!1,b("changeBegin")),b("change"),y(a)):k.changeBegan&&(k.changeCompleted=!0,k.changeBegan=!1,b("changeComplete")),k.currentTime=C(a,0,e),k.began&&b("update"),e<=n&&(f=0,k.remaining&&!0!==k.remaining&&k.remaining--,k.remaining?(s=l,b("loopComplete"),k.loopBegan=!1,"alternate"===k.direction&&g()):(k.paused=!0,k.completed||(k.completed=!0,b("loopComplete"),b("complete"),!k.passThrough&&"Promise"in window&&(p(),h(k)))))}return k.reset=function(){var n=k.direction;k.passThrough=!1,k.currentTime=0,k.progress=0,k.paused=!0,k.began=!1,k.loopBegan=!1,k.changeBegan=!1,k.completed=!1,k.changeCompleted=!1,k.reversePlayback=!1,k.reversed="reverse"===n,k.remaining=k.loop,c=k.children;for(var e=d=c.length;e--;)k.children[e].reset();(k.reversed&&!0!==k.loop||"alternate"===n&&1===k.loop)&&k.remaining++,y(k.reversed?k.duration:0)},k._onDocumentVisibility=o,k.set=function(n,e){return nn(n,e),k},k.tick=function(n){u(((l=n)+(f-(s=s||l)))*L.speed)},k.seek=function(n){u(m(n))},k.pause=function(){k.paused=!0,o()},k.play=function(){k.paused&&(k.completed&&k.reset(),k.paused=!1,S.push(k),o(),an())},k.reverse=function(){g(),k.completed=!k.reversed,o()},k.restart=function(){k.reset(),k.play()},k.remove=function(n){cn(A(n),k)},k.reset(),k.autoplay&&k.play(),k}function un(n,e){for(var t=e.length;t--;)h(n,e[t].animatable.target)&&e.splice(t,1)}function cn(n,e){var t=e.animations,r=e.children;un(n,t);for(var a=r.length;a--;){var o=r[a],u=o.animations;un(n,u),u.length||o.children.length||r.splice(a,1)}t.length||r.length||e.pause()}return L.version="3.2.2",L.speed=1,L.suspendWhenDocumentHidden=!0,L.running=S,L.remove=function(n){for(var e=A(n),t=S.length;t--;)cn(e,S[t])},L.get=T,L.set=nn,L.convertPx=y,L.path=function(n,e){var t=w.str(n)?a(n)[0]:n,r=e||100;return function(n){return{property:n,el:t,svg:Q(t),totalLength:G(t)*(r/100)}}},L.setDashoffset=function(n){var e=G(n);return n.setAttribute("stroke-dasharray",e),e},L.stagger=function(n,e){var i=(e=void 0===e?{}:e).direction||"normal",c=e.easing?P(e.easing):null,s=e.grid,f=e.axis,l=e.from||0,d="first"===l,p="center"===l,h="last"===l,g=w.arr(n),m=g?parseFloat(n[0]):parseFloat(n),v=g?parseFloat(n[1]):0,y=B(g?n[1]:n)||0,b=e.start||0+(g?m:0),M=[],x=0;return function(n,e,t){if(d&&(l=0),p&&(l=(t-1)/2),h&&(l=t-1),!M.length){for(var r,a,o,u=0;u<t;u++)s?(r=p?(s[0]-1)/2:l%s[0],a=p?(s[1]-1)/2:Math.floor(l/s[0]),r=r-u%s[0],a=a-Math.floor(u/s[0]),o=Math.sqrt(r*r+a*a),"x"===f&&(o=-r),M.push(o="y"===f?-a:o)):M.push(Math.abs(l-u)),x=Math.max.apply(Math,M);c&&(M=M.map(function(n){return c(n/x)*x})),"reverse"===i&&(M=M.map(function(n){return f?n<0?-1*n:-n:Math.abs(x-n)}))}return b+(g?(v-m)/x:m)*(Math.round(100*M[e])/100)+y}},L.timeline=function(u){var i=L(u=void 0===u?{}:u);return i.duration=0,i.add=function(n,e){var t=S.indexOf(i),r=i.children;function a(n){n.passThrough=!0}-1<t&&S.splice(t,1);for(var o=0;o<r.length;o++)a(r[o]);t=D(n,x(M,u)),t.targets=t.targets||u.targets,n=i.duration,t.autoplay=!1,t.direction=i.direction,t.timelineOffset=w.und(e)?n:E(e,n),a(i),i.seek(t.timelineOffset),e=L(t),a(e),r.push(e),n=tn(r,u);return i.delay=n.delay,i.endDelay=n.endDelay,i.duration=n.duration,i.seek(0),i.reset(),i.autoplay&&i.play(),i},i},L.easing=P,L.penner=s,L.random=function(n,e){return Math.floor(Math.random()*(e-n+1))+n},L});
+</script>
+</head>
+<body>
+<div class="vdoc-runtime vdoc-paged-runtime" data-scene-kind="flow-document" style="--vdoc-zoom: 1;"><style>
+@import url("https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;800&display=swap");
+
+#ultimate-test-title {
+    position: relative;
+    margin: 1.2em 0;
+    padding: 0.72em 1em;
+    overflow: hidden;
+    color: #fffdf7;
+    font-family: "Ma Shan Zheng", "STKaiti", cursive;
+    font-size: clamp(2rem, 7vw, 4.8rem);
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-shadow: 0 3px 18px rgba(20, 28, 26, 0.42);
+    background:
+        radial-gradient(circle at 20% 30%, rgba(255, 226, 144, 0.92), transparent 23%),
+        linear-gradient(120deg, #2e7567, #945f85, #d97745, #2e7567);
+    background-size: 220% 220%;
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    border-radius: 24px;
+    box-shadow: 0 20px 70px rgba(46, 117, 103, 0.24);
+    animation: ultimate-title-background 9s ease-in-out infinite;
+}
+
+#ultimate-test-title::after {
+    content: "";
+    position: absolute;
+    inset: -60% -20%;
+    background: linear-gradient(
+        100deg,
+        transparent 38%,
+        rgba(255, 255, 255, 0.48),
+        transparent 62%
+    );
+    transform: translateX(-70%) rotate(8deg);
+    animation: ultimate-title-shine 4.6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes ultimate-title-background {
+    0%, 100% { background-position: 0% 45%; }
+    50% { background-position: 100% 55%; }
+}
+
+@keyframes ultimate-title-shine {
+    0%, 35% { transform: translateX(-75%) rotate(8deg); }
+    75%, 100% { transform: translateX(75%) rotate(8deg); }
+}
+
+.vdoc-inline-magic {
+    padding: 0.08em 0.34em;
+    color: #704227;
+    font-weight: 800;
+    background: linear-gradient(90deg, #ffe4a8, #ffd1df, #c9f4e8, #ffe4a8);
+    background-size: 260% 100%;
+    border-radius: 0.35em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    animation: inline-magic-flow 4s linear infinite;
+}
+
+@keyframes inline-magic-flow {
+    to { background-position: 260% 0; }
+}
+
+.vdoc-test-signature {
+    margin-top: 3rem;
+    padding: 1.2rem 1.4rem;
+    color: #f9f4e8;
+    font-family: "Ma Shan Zheng", "STKaiti", cursive;
+    font-size: 1.35rem;
+    text-align: right;
+    background: linear-gradient(135deg, #243d37, #5e4268);
+    border-radius: 18px;
+}
+</style><section class="vdoc-page" data-page-index="0" style="--vdoc-zoom: 1; --vdoc-zoom-height-compensation: 0px;"><div class="vdoc-page-content"><div class="vdoc-page-body"><h1 id="ultimate-test-title">Scriptorium 混合富文档终极测试</h1><blockquote class="vdoc-pagination-shell"><p>这是一份用于验证 Markdown-first、原生 HTML、LaTeX、Mermaid、网络媒体、Anime.js、CSS 3D、动态表格与局部文字特效能否在同一份源码中稳定共存的测试文档。</p></blockquote><blockquote class="vdoc-pagination-shell"><p><strong>岛闭合规则：</strong> 每个可编程岛从带有 <code>data-vdoc-island</code> 的根 <code>&lt;div&gt;</code> 开始，到与该根匹配的最后一个 <code>&lt;/div&gt;</code> 结束。岛的结构、局部样式、依赖声明和执行脚本必须全部位于这个范围内，任何岛内状态都不得泄漏到后续 Markdown 正文。</p></blockquote></div></div></section><section class="vdoc-page" data-page-index="1" style="--vdoc-zoom: 1; --vdoc-zoom-height-compensation: 0px;"><div class="vdoc-page-content"><div class="vdoc-page-body"><h2>1. 网络图片与普通 Markdown</h2><p>下面的猫咪图片直接使用远程 <code>src</code>，用于测试网络资源解析、缓存、导出本地化、离线降级和图片说明语义。</p><p><img src="https://img.magnific.com/free-photo/close-up-portrait-beautiful-cat_23-2149214373.jpg" alt="一只近距离面对镜头的漂亮猫咪" title="猫咪肖像"></p><p><strong>图片说明：</strong> 猫咪的近距离肖像。渲染器应保留替代文字，并在网络不可用时提供可读降级。</p><p>这一段完全由 Markdown 编写。它包含 <strong>粗体</strong>、<em>斜体</em>、<del>删除线</del>、<code>行内代码</code> 和一个 <a href="https://example.com">示例链接</a>。</p><ul><li>第一项用于测试无序列表。</li><li>第二项包含 <strong>嵌套强调</strong>。</li><li>第三项提醒我们：普通正文不需要永久 DOM ID。</li></ul></div></div></section><section class="vdoc-page" data-page-index="2" style="--vdoc-zoom: 1; --vdoc-zoom-height-compensation: 0px;"><div class="vdoc-page-content"><div class="vdoc-page-body"><h2>2. LaTeX 公式</h2><p>行内公式展示质能关系：<span class="vdoc-math vdoc-math-inline" data-vdoc-math="E%20%3D%20mc%5E2" data-vdoc-display="false" data-vdoc-atomic="math" data-vdoc-stable-id="math-697a86ad" aria-label="E = mc^2"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">E = mc^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 0.6833em;"></span><span class="mord mathnormal" style="margin-right: 0.0576em;">E</span><span class="mspace" style="margin-right: 0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right: 0.2778em;"></span></span><span class="base"><span class="strut" style="height: 0.8141em;"></span><span class="mord mathnormal">m</span><span class="mord"><span class="mord mathnormal">c</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height: 0.8141em;"><span class="" style="top: -3.063em; margin-right: 0.05em;"><span class="pstrut" style="height: 2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span></span>。</p><p>块级公式展示高斯积分：</p><div class="vdoc-math vdoc-math-display" data-vdoc-math="%5Cint_%7B-%5Cinfty%7D%5E%7B%2B%5Cinfty%7D%20e%5E%7B-x%5E2%7D%5C%2Cdx%20%3D%20%5Csqrt%7B%5Cpi%7D" data-vdoc-display="true" data-vdoc-atomic="math" data-vdoc-stable-id="math-dfd48b3b" aria-label="\int_{-\infty}^{+\infty} e^{-x^2}\,dx = \sqrt{\pi}"><span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msubsup><mo>∫</mo><mrow><mo>−</mo><mi mathvariant="normal">∞</mi></mrow><mrow><mo>+</mo><mi mathvariant="normal">∞</mi></mrow></msubsup><msup><mi>e</mi><mrow><mo>−</mo><msup><mi>x</mi><mn>2</mn></msup></mrow></msup> <mi>d</mi><mi>x</mi><mo>=</mo><msqrt><mi>π</mi></msqrt></mrow><annotation encoding="application/x-tex">\int_{-\infty}^{+\infty} e^{-x^2}\,dx = \sqrt{\pi}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 2.4915em; vertical-align: -0.9703em;"></span><span class="mop"><span class="mop op-symbol large-op" style="margin-right: 0.4445em; position: relative; top: -0.0011em;">∫</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height: 1.5212em;"><span class="" style="top: -1.7881em; margin-left: -0.4445em; margin-right: 0.05em;"><span class="pstrut" style="height: 2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">∞</span></span></span></span><span class="" style="top: -3.8129em; margin-right: 0.05em;"><span class="pstrut" style="height: 2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">+</span><span class="mord mtight">∞</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height: 0.9703em;"><span class=""></span></span></span></span></span></span><span class="mspace" style="margin-right: 0.1667em;"></span><span class="mord"><span class="mord mathnormal">e</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height: 1.0369em;"><span class="" style="top: -3.113em; margin-right: 0.05em;"><span class="pstrut" style="height: 2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight"><span class="mord mathnormal mtight">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height: 0.8913em;"><span class="" style="top: -2.931em; margin-right: 0.0714em;"><span class="pstrut" style="height: 2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right: 0.1667em;"></span><span class="mord mathnormal">d</span><span class="mord mathnormal">x</span><span class="mspace" style="margin-right: 0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right: 0.2778em;"></span></span><span class="base"><span class="strut" style="height: 1.04em; vertical-align: -0.1908em;"></span><span class="mord sqrt"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height: 0.8492em;"><span class="svg-align" style="top: -3em;"><span class="pstrut" style="height: 3em;"></span><span class="mord" style="padding-left: 0.833em;"><span class="mord mathnormal" style="margin-right: 0.0359em;">π</span></span></span><span class="" style="top: -2.8092em;"><span class="pstrut" style="height: 3em;"></span><span class="hide-tail" style="min-width: 0.853em; height: 1.08em;"><svg width="400em" height="1.08em" viewBox="0 0 400000 1080" preserveAspectRatio="xMinYMin slice"><path d="M95,702
+c-2.7,0,-7.17,-2.7,-13.5,-8c-5.8,-5.3,-9.5,-10,-9.5,-14
+c0,-2,0.3,-3.3,1,-4c1.3,-2.7,23.83,-20.7,67.5,-54
+c44.2,-33.3,65.8,-50.3,66.5,-51c1.3,-1.3,3,-2,5,-2c4.7,0,8.7,3.3,12,10
+s173,378,173,378c0.7,0,35.3,-71,104,-213c68.7,-142,137.5,-285,206.5,-429
+c69,-144,104.5,-217.7,106.5,-221
+l0 -0
+c5.3,-9.3,12,-14,20,-14
+H400000v40H845.2724
+s-225.272,467,-225.272,467s-235,486,-235,486c-2.7,4.7,-9,7,-19,7
+c-6,0,-10,-1,-12,-3s-194,-422,-194,-422s-65,47,-65,47z
+M834 80h400000v40h-400000z"></path></svg></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height: 0.1908em;"><span class=""></span></span></span></span></span></span></span></span></span></div><p>再测试一个矩阵：</p><div class="vdoc-math vdoc-math-display" data-vdoc-math="A%20%3D%0D%0A%5Cbegin%7Bbmatrix%7D%0D%0A1%20%26%202%20%5C%5C%0D%0A3%20%26%204%0D%0A%5Cend%7Bbmatrix%7D%2C%0D%0A%5Cqquad%0D%0A%5Cdet(A)%20%3D%20-2" data-vdoc-display="true" data-vdoc-atomic="math" data-vdoc-stable-id="math-e888204a" aria-label="A =
+\begin{bmatrix}
+1 &amp; 2 \\
+3 &amp; 4
+\end{bmatrix},
+\qquad
+\det(A) = -2"><span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mi>A</mi><mo>=</mo><mrow><mo fence="true">[</mo><mtable rowspacing="0.16em" columnalign="center center" columnspacing="1em"><mtr><mtd><mstyle scriptlevel="0" displaystyle="false"><mn>1</mn></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="false"><mn>2</mn></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="false"><mn>3</mn></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="false"><mn>4</mn></mstyle></mtd></mtr></mtable><mo fence="true">]</mo></mrow><mo separator="true">,</mo><mspace width="2em"></mspace><mi>det</mi><mo>⁡</mo><mo stretchy="false">(</mo><mi>A</mi><mo stretchy="false">)</mo><mo>=</mo><mo>−</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">A =
+\begin{bmatrix}
+1 &amp; 2 \\
+3 &amp; 4
+\end{bmatrix},
+\qquad
+\det(A) = -2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 0.6833em;"></span><span class="mord mathnormal">A</span><span class="mspace" style="margin-right: 0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right: 0.2778em;"></span></span><span class="base"><span class="strut" style="height: 2.4em; vertical-align: -0.95em;"></span><span class="minner"><span class="mopen delimcenter" style="top: 0em;"><span class="delimsizing size3">[</span></span><span class="mord"><span class="mtable"><span class="col-align-c"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height: 1.45em;"><span class="" style="top: -3.61em;"><span class="pstrut" style="height: 3em;"></span><span class="mord"><span class="mord">1</span></span></span><span class="" style="top: -2.41em;"><span class="pstrut" style="height: 3em;"></span><span class="mord"><span class="mord">3</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height: 0.95em;"><span class=""></span></span></span></span></span><span class="arraycolsep" style="width: 0.5em;"></span><span class="arraycolsep" style="width: 0.5em;"></span><span class="col-align-c"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height: 1.45em;"><span class="" style="top: -3.61em;"><span class="pstrut" style="height: 3em;"></span><span class="mord"><span class="mord">2</span></span></span><span class="" style="top: -2.41em;"><span class="pstrut" style="height: 3em;"></span><span class="mord"><span class="mord">4</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height: 0.95em;"><span class=""></span></span></span></span></span></span></span><span class="mclose delimcenter" style="top: 0em;"><span class="delimsizing size3">]</span></span></span><span class="mspace" style="margin-right: 0.1667em;"></span><span class="mpunct">,</span><span class="mspace" style="margin-right: 2em;"></span><span class="mspace" style="margin-right: 0.1667em;"></span><span class="mop">det</span><span class="mopen">(</span><span class="mord mathnormal">A</span><span class="mclose">)</span><span class="mspace" style="margin-right: 0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right: 0.2778em;"></span></span><span class="base"><span class="strut" style="height: 0.7278em; vertical-align: -0.0833em;"></span><span class="mord">−</span><span class="mord">2</span></span></span></span></span></div><h2>3. Mermaid 图</h2><figure class="vdoc-mermaid" data-vdoc-mermaid="flowchart%20LR%0D%0A%20%20%20%20A%5BMarkdown%20%E5%8E%9F%E5%A7%8B%E6%BA%90%E7%A0%81%5D%20--%3E%20B%7B%E6%B7%B7%E5%90%88%E8%AF%AD%E6%B3%95%E4%BB%B2%E8%A3%81%E5%99%A8%7D%0D%0A%20%20%20%20B%20--%3E%20C%5BMarkdown%20%E5%9D%97%5D%0D%0A%20%20%20%20B%20--%3E%20D%5BLaTeX%20%E5%9D%97%5D%0D%0A%20%20%20%20B%20--%3E%20E%5BMermaid%20%E5%9D%97%5D%0D%0A%20%20%20%20B%20--%3E%20F%5BHTML%20%E5%8A%A8%E7%94%BB%E5%B2%9B%5D%0D%0A%20%20%20%20C%20--%3E%20G%5B%E7%A8%B3%E5%AE%9A%20HTML%5D%0D%0A%20%20%20%20D%20--%3E%20G%0D%0A%20%20%20%20E%20--%3E%20G%0D%0A%20%20%20%20F%20--%3E%20H%5B%E5%8F%97%E6%8E%A7%E8%BF%90%E8%A1%8C%E6%97%B6%5D%0D%0A%20%20%20%20G%20--%3E%20I%5B%E7%8B%AC%E7%AB%8B%20HTML%20%E5%AF%BC%E5%87%BA%5D%0D%0A%20%20%20%20H%20--%3E%20I" data-vdoc-atomic="mermaid" data-vdoc-stable-id="mermaid-0f452741" data-vdoc-mermaid-rendered="true"><svg aria-roledescription="flowchart-v2" role="img" viewBox="0 0 1048.3125 382" style="max-width: 100%; height: auto;" class="flowchart" xmlns="http://www.w3.org/2000/svg" width="100%" id="vdoc-mermaid-msr49cs3-8" aria-label="Mermaid 图表"><style>#vdoc-mermaid-msr49cs3-8{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#vdoc-mermaid-msr49cs3-8 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#vdoc-mermaid-msr49cs3-8 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#vdoc-mermaid-msr49cs3-8 .error-icon{fill:#552222;}#vdoc-mermaid-msr49cs3-8 .error-text{fill:#552222;stroke:#552222;}#vdoc-mermaid-msr49cs3-8 .edge-thickness-normal{stroke-width:1px;}#vdoc-mermaid-msr49cs3-8 .edge-thickness-thick{stroke-width:3.5px;}#vdoc-mermaid-msr49cs3-8 .edge-pattern-solid{stroke-dasharray:0;}#vdoc-mermaid-msr49cs3-8 .edge-thickness-invisible{stroke-width:0;fill:none;}#vdoc-mermaid-msr49cs3-8 .edge-pattern-dashed{stroke-dasharray:3;}#vdoc-mermaid-msr49cs3-8 .edge-pattern-dotted{stroke-dasharray:2;}#vdoc-mermaid-msr49cs3-8 .marker{fill:#666;stroke:#666;}#vdoc-mermaid-msr49cs3-8 .marker.cross{stroke:#666;}#vdoc-mermaid-msr49cs3-8 svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#vdoc-mermaid-msr49cs3-8 p{margin:0;}#vdoc-mermaid-msr49cs3-8 .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#000000;}#vdoc-mermaid-msr49cs3-8 .cluster-label text{fill:#333;}#vdoc-mermaid-msr49cs3-8 .cluster-label span{color:#333;}#vdoc-mermaid-msr49cs3-8 .cluster-label span p{background-color:transparent;}#vdoc-mermaid-msr49cs3-8 .label text,#vdoc-mermaid-msr49cs3-8 span{fill:#000000;color:#000000;}#vdoc-mermaid-msr49cs3-8 .node rect,#vdoc-mermaid-msr49cs3-8 .node circle,#vdoc-mermaid-msr49cs3-8 .node ellipse,#vdoc-mermaid-msr49cs3-8 .node polygon,#vdoc-mermaid-msr49cs3-8 .node path{fill:#eee;stroke:#999;stroke-width:1px;}#vdoc-mermaid-msr49cs3-8 .rough-node .label text,#vdoc-mermaid-msr49cs3-8 .node .label text,#vdoc-mermaid-msr49cs3-8 .image-shape .label,#vdoc-mermaid-msr49cs3-8 .icon-shape .label{text-anchor:middle;}#vdoc-mermaid-msr49cs3-8 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#vdoc-mermaid-msr49cs3-8 .rough-node .label,#vdoc-mermaid-msr49cs3-8 .node .label,#vdoc-mermaid-msr49cs3-8 .image-shape .label,#vdoc-mermaid-msr49cs3-8 .icon-shape .label{text-align:center;}#vdoc-mermaid-msr49cs3-8 .node.clickable{cursor:pointer;}#vdoc-mermaid-msr49cs3-8 .root .anchor path{fill:#666!important;stroke-width:0;stroke:#666;}#vdoc-mermaid-msr49cs3-8 .arrowheadPath{fill:#333333;}#vdoc-mermaid-msr49cs3-8 .edgePath .path{stroke:#666;stroke-width:2.0px;}#vdoc-mermaid-msr49cs3-8 .flowchart-link{stroke:#666;fill:none;}#vdoc-mermaid-msr49cs3-8 .edgeLabel{background-color:white;text-align:center;}#vdoc-mermaid-msr49cs3-8 .edgeLabel p{background-color:white;}#vdoc-mermaid-msr49cs3-8 .edgeLabel rect{opacity:0.5;background-color:white;fill:white;}#vdoc-mermaid-msr49cs3-8 .labelBkg{background-color:rgba(255, 255, 255, 0.5);}#vdoc-mermaid-msr49cs3-8 .cluster rect{fill:hsl(0, 0%, 98.9215686275%);stroke:#707070;stroke-width:1px;}#vdoc-mermaid-msr49cs3-8 .cluster text{fill:#333;}#vdoc-mermaid-msr49cs3-8 .cluster span{color:#333;}#vdoc-mermaid-msr49cs3-8 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(-160, 0%, 93.3333333333%);border:1px solid #707070;border-radius:2px;pointer-events:none;z-index:100;}#vdoc-mermaid-msr49cs3-8 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#vdoc-mermaid-msr49cs3-8 rect.text{fill:none;stroke-width:0;}#vdoc-mermaid-msr49cs3-8 .icon-shape,#vdoc-mermaid-msr49cs3-8 .image-shape{background-color:white;text-align:center;}#vdoc-mermaid-msr49cs3-8 .icon-shape p,#vdoc-mermaid-msr49cs3-8 .image-shape p{background-color:white;padding:2px;}#vdoc-mermaid-msr49cs3-8 .icon-shape rect,#vdoc-mermaid-msr49cs3-8 .image-shape rect{opacity:0.5;background-color:white;fill:white;}#vdoc-mermaid-msr49cs3-8 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#vdoc-mermaid-msr49cs3-8 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#vdoc-mermaid-msr49cs3-8 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="5" viewBox="0 0 10 10" class="marker flowchart-v2" id="vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd"><path style="stroke-width: 1; stroke-dasharray: 1, 0;" class="arrowMarkerPath" d="M 0 0 L 10 5 L 0 10 z"></path></marker><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="4.5" viewBox="0 0 10 10" class="marker flowchart-v2" id="vdoc-mermaid-msr49cs3-8_flowchart-v2-pointStart"><path style="stroke-width: 1; stroke-dasharray: 1, 0;" class="arrowMarkerPath" d="M 0 5 L 10 10 L 10 0 z"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="11" viewBox="0 0 10 10" class="marker flowchart-v2" id="vdoc-mermaid-msr49cs3-8_flowchart-v2-circleEnd"><circle style="stroke-width: 1; stroke-dasharray: 1, 0;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="-1" viewBox="0 0 10 10" class="marker flowchart-v2" id="vdoc-mermaid-msr49cs3-8_flowchart-v2-circleStart"><circle style="stroke-width: 1; stroke-dasharray: 1, 0;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="12" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="vdoc-mermaid-msr49cs3-8_flowchart-v2-crossEnd"><path style="stroke-width: 2; stroke-dasharray: 1, 0;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="-1" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="vdoc-mermaid-msr49cs3-8_flowchart-v2-crossStart"><path style="stroke-width: 2; stroke-dasharray: 1, 0;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_A_B_0" d="M209.025,191L213.192,191C217.358,191,225.692,191,233.442,191.07C241.192,191.141,248.359,191.281,251.942,191.351L255.526,191.422"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_B_C_0" d="M376.48,142.455L388.737,124.545C400.995,106.636,425.51,70.818,441.267,52.909C457.025,35,464.025,35,467.525,35L471.025,35"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_B_D_0" d="M398.55,164.525L407.129,160.271C415.708,156.017,432.867,147.508,447.509,143.254C462.152,139,474.279,139,480.343,139L486.406,139"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_B_E_0" d="M398.55,218.475L407.129,222.563C415.708,226.65,432.867,234.825,445.841,238.913C458.815,243,467.604,243,471.999,243L476.394,243"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_B_F_0" d="M376.48,240.545L388.737,258.288C400.995,276.03,425.51,311.515,441.4,329.258C457.29,347,464.554,347,468.186,347L471.819,347"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_C_G_0" d="M628.05,35L632.217,35C636.383,35,644.717,35,660.156,47.341C675.596,59.682,698.143,84.364,709.416,96.706L720.689,109.047"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_D_G_0" d="M612.669,139L619.399,139C626.129,139,639.59,139,650.15,139C660.71,139,668.371,139,672.201,139L676.031,139"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_E_G_0" d="M622.681,243L627.743,243C632.804,243,642.927,243,659.262,230.659C675.596,218.318,698.143,193.636,709.416,181.294L720.689,168.953"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_F_H_0" d="M627.256,347L631.555,347C635.854,347,644.452,347,652.251,347C660.05,347,667.05,347,670.55,347L674.05,347"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_G_I_0" d="M816.069,139L820.566,139C825.063,139,834.056,139,851.78,151.378C869.503,163.756,895.956,188.511,909.183,200.889L922.409,213.267"></path><path marker-end="url(#vdoc-mermaid-msr49cs3-8_flowchart-v2-pointEnd)" style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_H_I_0" d="M818.05,347L822.217,347C826.383,347,834.717,347,852.11,334.622C869.503,322.244,895.956,297.489,909.183,285.111L922.409,272.733"></path></g><g class="edgeLabels"><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" class="labelBkg" xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel"></span></div></foreignObject></g></g></g><g class="nodes"><g transform="translate(108.51250457763672, 191)" id="flowchart-A-0" class="node default"><rect height="54" width="201.02500915527344" y="-27" x="-100.51250457763672" style="" class="basic label-container"></rect><g transform="translate(-70.51250457763672, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="141.02500915527344"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>Markdown 原始源码</p></span></div></foreignObject></g></g><g transform="translate(342.02500915527344, 191)" id="flowchart-B-1" class="node default"><polygon transform="translate(-83,83)" class="label-container" points="83,0 166,-83 83,-166 0,-83"></polygon><g transform="translate(-56, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="112"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>混合语法仲裁器</p></span></div></foreignObject></g></g><g transform="translate(551.5375061035156, 35)" id="flowchart-C-3" class="node default"><rect height="54" width="153.0250015258789" y="-27" x="-76.51250076293945" style="" class="basic label-container"></rect><g transform="translate(-46.51250076293945, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="93.0250015258789"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>Markdown 块</p></span></div></foreignObject></g></g><g transform="translate(551.5375061035156, 139)" id="flowchart-D-5" class="node default"><rect height="54" width="122.26250076293945" y="-27" x="-61.13125038146973" style="" class="basic label-container"></rect><g transform="translate(-31.131250381469727, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="62.26250076293945"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>LaTeX 块</p></span></div></foreignObject></g></g><g transform="translate(551.5375061035156, 243)" id="flowchart-E-7" class="node default"><rect height="54" width="142.2874984741211" y="-27" x="-71.14374923706055" style="" class="basic label-container"></rect><g transform="translate(-41.14374923706055, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="82.2874984741211"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>Mermaid 块</p></span></div></foreignObject></g></g><g transform="translate(551.5375061035156, 347)" id="flowchart-F-9" class="node default"><rect height="54" width="151.4375" y="-27" x="-75.71875" style="" class="basic label-container"></rect><g transform="translate(-45.71875, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="91.4375"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>HTML 动画岛</p></span></div></foreignObject></g></g><g transform="translate(748.0500030517578, 139)" id="flowchart-G-11" class="node default"><rect height="54" width="136.0374984741211" y="-27" x="-68.01874923706055" style="" class="basic label-container"></rect><g transform="translate(-38.01874923706055, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="76.0374984741211"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>稳定 HTML</p></span></div></foreignObject></g></g><g transform="translate(748.0500030517578, 347)" id="flowchart-H-17" class="node default"><rect height="54" width="140" y="-27" x="-70" style="" class="basic label-container"></rect><g transform="translate(-40, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="80"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>受控运行时</p></span></div></foreignObject></g></g><g transform="translate(954.1812515258789, 243)" id="flowchart-I-19" class="node default"><rect height="54" width="172.26250457763672" y="-27" x="-86.13125228881836" style="" class="basic label-container"></rect><g transform="translate(-56.13125228881836, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="112.26250457763672"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel"><p>独立 HTML 导出</p></span></div></foreignObject></g></g></g></g></g></svg></figure><h2>4. 原生 Anime.js 动画岛</h2><p>下面整个根元素是一个完整动画岛。外部依赖声明和初始化脚本都位于岛根内部，最后的根闭合标签是生命周期边界。</p></div></div></section><section class="vdoc-page" data-page-index="3" style="--vdoc-zoom: 1; --vdoc-zoom-height-compensation: 0px;"><div class="vdoc-page-content"><div class="vdoc-page-body"><div data-vdoc-island="anime-orbit-garden" id="anime-orbit-garden" class="">
+    <style>
+        [data-vdoc-island="anime-orbit-garden"] {
+            position: relative;
+            min-height: 310px;
+            margin: 2rem 0;
+            overflow: hidden;
+            border-radius: 24px;
+            background:
+                radial-gradient(circle at center, #254f49 0%, #172724 62%, #0c1513 100%);
+            box-shadow: 0 24px 80px rgba(20, 50, 44, 0.28);
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-orbit-title {
+            position: absolute;
+            top: 22px;
+            right: 0;
+            left: 0;
+            color: #fff;
+            font: 700 1.1rem system-ui;
+            letter-spacing: 0.16em;
+            text-align: center;
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-core {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 70px;
+            height: 70px;
+            margin: -35px;
+            border-radius: 50%;
+            background: radial-gradient(
+                circle at 32% 28%,
+                #fff8c8,
+                #ffb86b 36%,
+                #d65d57 72%
+            );
+            box-shadow: 0 0 44px rgba(255, 184, 107, 0.78);
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-petal {
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            border-radius: 70% 20% 70% 20%;
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-petal:nth-of-type(1) {
+            background: #8de5c4;
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-petal:nth-of-type(2) {
+            width: 18px;
+            height: 18px;
+            background: #ffd38a;
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-petal:nth-of-type(3) {
+            width: 26px;
+            height: 26px;
+            background: #eca8d6;
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-petal:nth-of-type(4) {
+            width: 16px;
+            height: 16px;
+            background: #9ec9ff;
+        }
+
+        [data-vdoc-island="anime-orbit-garden"] .anime-replay {
+            position: absolute;
+            right: 18px;
+            bottom: 16px;
+            padding: 0.65rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.34);
+            border-radius: 999px;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+    </style>
+
+    <div class="anime-orbit-title">ANIME.JS ORBIT GARDEN</div>
+    <div class="anime-core" style="transform: scale(0.88); box-shadow: rgba(255, 184, 107, 0.45) 0px 0px 24px;"></div>
+    <div class="anime-petal" style="left: 50%; top: 50%; transform: translateX(48px) translateY(0px) rotate(0.000312062turn) scale(0.999088); opacity: 0.998596;"></div>
+    <div class="anime-petal" style="left: 50%; top: 50%; transform: translateX(2.93915e-15px) translateY(48px) rotate(0turn) scale(1); opacity: 1;"></div>
+    <div class="anime-petal" style="left: 50%; top: 50%; transform: translateX(-48px) translateY(5.8783e-15px) rotate(0turn) scale(1); opacity: 1;"></div>
+    <div class="anime-petal" style="left: 50%; top: 50%; transform: translateX(-8.81746e-15px) translateY(-48px) rotate(0turn) scale(1); opacity: 1;"></div>
+    <button type="button" class="anime-replay">重新绽放</button>
+
+    
+
+    <script>
+    (() => {
+        const island = document.querySelector(
+            '[data-vdoc-island="anime-orbit-garden"]'
+        );
+        if (!island || island.dataset.vdocInitialized === 'true') return;
+        island.dataset.vdocInitialized = 'true';
+
+        const petals = [...island.querySelectorAll('.anime-petal')];
+        const core = island.querySelector('.anime-core');
+
+        const play = () => {
+            if (!globalThis.anime) return;
+
+            anime.remove([...petals, core]);
+
+            petals.forEach((petal, index) => {
+                const angle = index * Math.PI / 2;
+                petal.style.left = '50%';
+                petal.style.top = '50%';
+
+                anime({
+                    targets: petal,
+                    translateX: [
+                        Math.cos(angle) * 48,
+                        Math.cos(angle + Math.PI * 2) * 112
+                    ],
+                    translateY: [
+                        Math.sin(angle) * 48,
+                        Math.sin(angle + Math.PI * 2) * 112
+                    ],
+                    rotate: '2turn',
+                    scale: [0.35, 1.18, 0.72],
+                    opacity: [0, 1, 0.78],
+                    duration: 4200 + index * 260,
+                    delay: index * 160,
+                    easing: 'easeInOutSine',
+                    direction: 'alternate',
+                    loop: true
+                });
+            });
+
+            anime({
+                targets: core,
+                scale: [0.88, 1.12],
+                boxShadow: [
+                    '0 0 24px rgba(255,184,107,.45)',
+                    '0 0 72px rgba(255,184,107,.95)'
+                ],
+                direction: 'alternate',
+                duration: 1300,
+                easing: 'easeInOutQuad',
+                loop: true
+            });
+        };
+
+        island.querySelector('.anime-replay')?.addEventListener('click', play);
+        play();
+    })();
+    </script>
+</div><p>上一个动画岛已经在根闭合标签处结束。这一行必须重新由 Markdown 解析器解释，不能被视为动画岛的一部分。</p><h2>5. 基于 Div 的 3D 文本块</h2><div data-vdoc-island="three-dimensional-text-card" id="three-dimensional-text-card" class="">
+    <style>
+        [data-vdoc-island="three-dimensional-text-card"] {
+            display: grid;
+            min-height: 300px;
+            margin: 2rem 0;
+            overflow: hidden;
+            place-items: center;
+            perspective: 1100px;
+            border-radius: 24px;
+            background: linear-gradient(145deg, #e8f5ef, #f9e8dc);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-card {
+            position: relative;
+            width: min(80%, 620px);
+            padding: 3rem 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.78);
+            border-radius: 22px;
+            background: linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.86),
+                rgba(255, 255, 255, 0.42)
+            );
+            box-shadow: 34px 34px 55px rgba(65, 87, 79, 0.25);
+            transform: rotateX(10deg) rotateY(-14deg);
+            transform-style: preserve-3d;
+            transition: transform 0.22s ease;
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-title {
+            color: #254f49;
+            font: 800 clamp(1.8rem, 5vw, 3.8rem) / 1.08 "Noto Serif SC", serif;
+            text-shadow: 0 12px 18px rgba(37, 79, 73, 0.2);
+            transform: translateZ(72px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-copy {
+            margin: 1rem 0 0;
+            color: #624e45;
+            font-size: 1.05rem;
+            transform: translateZ(38px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-depth {
+            position: absolute;
+            inset: 18px;
+            border: 2px solid rgba(217, 119, 69, 0.34);
+            border-radius: 18px;
+            transform: translateZ(-28px);
+        }
+    </style>
+
+    <div class="three-d-card" tabindex="0">
+        <div class="three-d-title">文字也可以拥有空间</div>
+        <p class="three-d-copy">
+            移动鼠标观察景深；离屏后它应保持静态且不产生后台 I/O。
+        </p>
+        <div class="three-d-depth"></div>
+    </div>
+
+    <script>
+    (() => {
+        const island = document.querySelector(
+            '[data-vdoc-island="three-dimensional-text-card"]'
+        );
+        const card = island?.querySelector('.three-d-card');
+
+        if (!island || !card || island.dataset.vdocInitialized === 'true') {
+            return;
+        }
+
+        island.dataset.vdocInitialized = 'true';
+
+        const move = (event) => {
+            const rect = island.getBoundingClientRect();
+            const x = (event.clientX - rect.left) / rect.width - 0.5;
+            const y = (event.clientY - rect.top) / rect.height - 0.5;
+            card.style.transform =
+                `rotateX(${-y * 22}deg) rotateY(${x * 28}deg)`;
+        };
+
+        const reset = () => {
+            card.style.transform = 'rotateX(10deg) rotateY(-14deg)';
+        };
+
+        island.addEventListener('pointermove', move);
+        island.addEventListener('pointerleave', reset);
+    })();
+    </script>
+</div><p>3D 岛也已闭合。后续标题和正文不属于 3D 岛。</p></div></div></section><section class="vdoc-page" data-page-index="4" style="--vdoc-zoom: 1; --vdoc-zoom-height-compensation: 0px;"><div class="vdoc-page-content"><div class="vdoc-page-body"><h2>6. 动态高级表格</h2><div data-vdoc-island="interactive-paginated-table" id="interactive-paginated-table" class="">
+    <style>
+        [data-vdoc-island="interactive-paginated-table"] {
+            margin: 2rem 0;
+            padding: 1.25rem;
+            border: 1px solid #d8d0c2;
+            border-radius: 20px;
+            background: #fffdf8;
+            box-shadow: 0 18px 55px rgba(61, 50, 41, 0.12);
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-header {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-title {
+            font: 800 1.25rem "Noto Serif SC", serif;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-description {
+            margin-top: 0.2rem;
+            color: #756a61;
+            font: 13px system-ui;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-status {
+            padding: 0.4rem 0.7rem;
+            border-radius: 999px;
+            color: #27594e;
+            background: #e7f3ee;
+            font: 700 12px system-ui;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-scroll {
+            overflow: auto;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: system-ui, sans-serif;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] thead {
+            color: #fff;
+            background: #315f54;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] th,
+        [data-vdoc-island="interactive-paginated-table"] td {
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] td {
+            border-bottom: 1px solid #e8dfd2;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-pagination {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] button {
+            padding: 0.6rem 0.9rem;
+            border: 0;
+            border-radius: 10px;
+            color: #fff;
+            background: #315f54;
+            cursor: pointer;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] button:disabled {
+            cursor: not-allowed;
+            opacity: 0.42;
+        }
+
+        [data-vdoc-island="interactive-paginated-table"] .table-page {
+            min-width: 90px;
+            text-align: center;
+            font: 700 13px system-ui;
+        }
+    </style>
+
+    <div class="table-header">
+        <div>
+            <strong class="table-title">猫咪观测数据</strong>
+            <div class="table-description">
+                按钮、分页、状态和动态 DOM 的综合测试
+            </div>
+        </div>
+        <span class="table-status" aria-live="polite">第 1 页 · 共 10 条</span>
+    </div>
+
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>编号</th>
+                    <th>名字</th>
+                    <th>毛色</th>
+                    <th>状态</th>
+                    <th>评分</th>
+                </tr>
+            </thead>
+            <tbody class="table-body"><tr data-vdoc-runtime-generated="true" style="background: rgb(255, 253, 248);"><td>C-001</td><td>琥珀</td><td>橘白</td><td>正在观察窗外</td><td>98</td></tr><tr data-vdoc-runtime-generated="true" style="background: rgb(247, 241, 231);"><td>C-002</td><td>墨墨</td><td>纯黑</td><td>藏在纸箱中</td><td>94</td></tr><tr data-vdoc-runtime-generated="true" style="background: rgb(255, 253, 248);"><td>C-003</td><td>雪球</td><td>纯白</td><td>正在晒太阳</td><td>97</td></tr><tr data-vdoc-runtime-generated="true" style="background: rgb(247, 241, 231);"><td>C-004</td><td>花卷</td><td>狸花</td><td>巡视书架</td><td>96</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="table-pagination">
+        <button type="button" data-table-action="previous" disabled="">← 上一页</button>
+        <span class="table-page">1 / 3</span>
+        <button type="button" data-table-action="next">下一页 →</button>
+    </div>
+
+    <script>
+    (() => {
+        const island = document.querySelector(
+            '[data-vdoc-island="interactive-paginated-table"]'
+        );
+
+        if (!island || island.dataset.vdocInitialized === 'true') return;
+        island.dataset.vdocInitialized = 'true';
+
+        const rows = [
+            ['C-001', '琥珀', '橘白', '正在观察窗外', 98],
+            ['C-002', '墨墨', '纯黑', '藏在纸箱中', 94],
+            ['C-003', '雪球', '纯白', '正在晒太阳', 97],
+            ['C-004', '花卷', '狸花', '巡视书架', 96],
+            ['C-005', '芝麻', '奶牛色', '等待零食', 93],
+            ['C-006', '银杏', '银渐层', '轻拍键盘', 95],
+            ['C-007', '栗子', '金渐层', '趴在文档旁', 99],
+            ['C-008', '云朵', '布偶色', '认真打哈欠', 92],
+            ['C-009', '团子', '三花', '追逐光点', 97],
+            ['C-010', '可可', '巧克力色', '守护显示器', 96]
+        ];
+
+        const pageSize = 4;
+        let page = 0;
+
+        const body = island.querySelector('.table-body');
+        const status = island.querySelector('.table-status');
+        const pageLabel = island.querySelector('.table-page');
+        const previous = island.querySelector('[data-table-action="previous"]');
+        const next = island.querySelector('[data-table-action="next"]');
+
+        const render = () => {
+            const pageCount = Math.ceil(rows.length / pageSize);
+            page = Math.max(0, Math.min(pageCount - 1, page));
+
+            const visible = rows.slice(
+                page * pageSize,
+                (page + 1) * pageSize
+            );
+
+            body.replaceChildren(...visible.map((row, rowIndex) => {
+                const tr = document.createElement('tr');
+                tr.style.background = rowIndex % 2 ? '#f7f1e7' : '#fffdf8';
+
+                row.forEach((value) => {
+                    const td = document.createElement('td');
+                    td.textContent = String(value);
+                    tr.appendChild(td);
+                });
+
+                return tr;
+            }));
+
+            pageLabel.textContent = `${page + 1} / ${pageCount}`;
+            status.textContent = `第 ${page + 1} 页 · 共 ${rows.length} 条`;
+            previous.disabled = page === 0;
+            next.disabled = page === pageCount - 1;
+        };
+
+        island.addEventListener('click', (event) => {
+            const action = event.target
+                .closest('[data-table-action]')
+                ?.dataset.tableAction;
+
+            if (action === 'previous') page -= 1;
+            if (action === 'next') page += 1;
+            if (action) render();
+        });
+
+        render();
+    })();
+    </script>
+</div><p>动态表格岛在上一个根闭合标签处结束。表格的按钮、脚本和动态行不得吞入下面的 Markdown 段落。</p><h2>7. Markdown 正文与 HTML 文字特效混排</h2><p>这是一段普通 Markdown 正文，前半部分应当保持朴素、稳定并且易于编辑；<span class="vdoc-inline-magic">这一小段文字由 HTML 加入流动背景、粗体和局部颜色特效</span>；随后文本重新回到 Markdown 的自然书写方式。编辑器应只修改被操作的最小源码区间，而不是把整个段落转换成冗长 HTML。</p></div></div></section><section class="vdoc-page" data-page-index="5" style="--vdoc-zoom: 1; --vdoc-zoom-height-compensation: 0px;"><div class="vdoc-page-content"><div class="vdoc-page-body"><h3>继续测试普通正文</h3><p>当复杂组件离开视口时，它们的动画、计时器、媒体和主动测量应被冻结，但已经完成渲染的静态结构仍然可以供全文搜索和 AI 语义阅读使用。</p><p>AI 阅读这份文档时，应当能够理解：</p><ol><li>猫咪图片的地址、替代文字和说明。</li><li>公式的原始 LaTeX 语义。</li><li>Mermaid 图表达的处理流程。</li><li>Anime.js 岛是一个绕核心运动的花瓣动画。</li><li>3D 文本块表达“文字也可以拥有空间”。</li><li>动态表格拥有十条数据和分页交互。</li><li>局部文字特效不改变周围 Markdown 的可读性。</li></ol><blockquote class="vdoc-pagination-shell"><p>终极测试的目标不是让所有语法进入同一解析器，而是验证每个语法域都拥有确定边界、完整闭合、局部生命周期和可读降级。</p></blockquote><h2>8. 最后一段 Markdown</h2><p>文档的最后一段仍然是普通 Markdown。它用于验证经过多个完整闭合的 HTML 岛、局部样式和岛内脚本之后，Markdown 解析器仍能恢复到正确的正文状态。</p><p>如果这句话可以被直接选中、修改、保存、撤销、重新渲染和导出，且前面的动画岛不被无关地重新启动，那么新的源码范式就通过了最关键的一项测试。</p><div class="vdoc-test-signature">
+    作者：VCP Scriptorium 架构测试组<br>
+    <span style="font-family:'Noto Serif SC',serif;font-size:.8em;opacity:.76;">
+        Human × AI · Markdown-first Programmable Document
+    </span>
+</div></div></div></section></div>
+
+</body></html>

@@ -1,8 +1,6 @@
 ﻿// renderer_modules/config.js
 // VCPHumanToolBox工具定义
-// 最后更新: 2026-04-21by CodeCC &赵枫
-// 备份: config.js.bak.20260421
-// 工具总数: 45 (原39+ 新增6)
+// author:lionsky & infinite-vector
 
 // --- 工具定义 ---
 export const tools = {
@@ -61,7 +59,7 @@ export const tools = {
         }
     },
     'FluxGen': {
-        displayName:'Flux 图片生成',
+        displayName: 'Flux 图片生成',
         description: '艺术风格多变，仅支持英文提示词。[后端插件: FluxGen]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
@@ -120,7 +118,7 @@ export const tools = {
         }
     },
     'GeminiImageGen': {
-        displayName:'Gemini 图像生成',
+        displayName: 'Gemini 图像生成',
         description: '使用 Google Gemini 模型进行图像生成和编辑，支持英文提示词。[后端插件: GeminiImageGen]',
         commands: {
             'generate': {
@@ -198,7 +196,7 @@ export const tools = {
         }
     },
     'WanVideoGen': {
-        displayName:'Wan视频生成',
+        displayName: 'Wan视频生成',
         description: '基于强大的Wan系列模型生成视频。[后端插件: VideoGenerator]',
         commands: {
             'submit': {
@@ -347,6 +345,25 @@ export const tools = {
             { name: 'expression', type: 'textarea', required: true, placeholder: "例如: integral('x**2', 0, 1)" }
         ]
     },
+    'DomainSafetyChecker': {
+        displayName: '域名/URL 安全核查',
+        description: '对 URL 或域名执行低交互、静态、非侵入式安全核查，返回适合直接展示给用户的 Markdown 报告，并附完整 JSON 证据。不会执行 JavaScript、提交表单、爆破、端口扫描或绕过访问控制。[后端插件: DomainSafetyChecker]',
+        params: [
+            { name: 'target', type: 'text', required: true, placeholder: 'https://example.com/login 或 example.com', description: '要核查的 URL 或域名；也兼容 url/domain 字段。' },
+            { name: 'timeout', type: 'number', required: false, default: 12, min: 1, max: 60, placeholder: '12', description: '网络请求超时秒数；普通检查建议 8-15，网络较慢可用 20-30。' },
+            { name: 'maxBytes', type: 'number', required: false, default: 2000000, placeholder: '2000000', description: '单次 HTTP 最多读取字节数；也兼容 max_bytes。' },
+            { name: 'defaultScheme', type: 'select', required: false, options: ['https', 'http'], default: 'https', description: '裸域名输入时默认协议；也兼容 default_scheme。' },
+            { name: 'fetchScripts', type: 'checkbox', required: false, default: false, description: '是否额外下载外部 JS 做静态扫描；更全面但更慢，也兼容 fetch_scripts。' },
+            { name: 'noTls', type: 'checkbox', required: false, default: false, description: '跳过 TLS 证书检查；也兼容 no_tls。' },
+            { name: 'noHttp', type: 'checkbox', required: false, default: false, description: '跳过明文 HTTP 探测；也兼容 no_http。' },
+            { name: 'getHttp', type: 'checkbox', required: false, default: false, description: '明文 HTTP 也使用 GET；默认只用 HEAD 以降低交互，也兼容 get_http。' },
+            { name: 'whois', type: 'checkbox', required: false, default: false, description: '尝试调用系统 whois 命令；未安装时会在报告中记录不可用。' },
+            { name: 'includeJson', type: 'checkbox', required: false, default: true, description: '在 Markdown 报告末尾附加完整原始 JSON 结构化结果；建议保留，也兼容 include_json。' },
+            { name: 'proxyEnabled', type: 'checkbox', required: false, default: false, description: '仅本次调用覆盖代理启用状态；也兼容 proxy_enabled。' },
+            { name: 'proxyUrl', type: 'text', required: false, placeholder: 'http://127.0.0.1:7890', description: '仅本次调用覆盖 config.env 中的代理地址；也兼容 proxy_url。' },
+            { name: 'proxyRetryOnFailure', type: 'checkbox', required: false, default: true, description: '直连失败或遇到 403/407/408/429/5xx 时自动代理重试；也兼容 proxy_retry_on_failure。' }
+        ]
+    },
 
     // ========================================
     // 联网搜索类
@@ -463,7 +480,7 @@ export const tools = {
         ]
     },
     'BilibiliFetch': {
-        displayName:'B站内容获取',
+        displayName: 'B站内容获取',
         description: '获取B站视频文本、弹幕、评论及快照。[后端插件: BilibiliFetch]',
         commands: {
             'fetch': {
@@ -625,7 +642,7 @@ export const tools = {
     // 学术研究
     // ========================================
     'PubMedSearch': {
-        displayName:'PubMed 文献检索',
+        displayName: 'PubMed 文献检索',
         description: '基于NCBI E-utilities的PubMed学术文献检索，支持关键词/作者/期刊/MeSH搜索、全文获取、引用分析和引用导出。[后端插件: PubMedSearch]',
         commands: {
             'search_articles': {
@@ -876,17 +893,45 @@ export const tools = {
         ]
     },
     'LightMemo': {
-        displayName: '快速回忆',
-        description: '主动检索日记本或知识库。[后端插件: LightMemo]',
-        params: [
-            { name: 'maid', type: 'text', required: true, placeholder:'Nova' },
-            { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
-            { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
-            { name: 'k', type: 'number', required: false, default: 5 },
-            { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / 0.6(RRF融合)' },
-            { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6或 0.6+ (浪潮V8)' },
-            { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
-        ]
+        displayName: '快速回忆 / 生产构型 A/B 对比',
+        description: '检索日记或 TDB 冷知识库，并支持 KNN、TagMemo V9 与 RiverMemo Topology V3 生产构型 A/B 对比。[后端插件: LightMemo]',
+        commands: {
+            'query': {
+                description: '快速回忆 — 检索日记或 TDB 冷知识库',
+                params: [
+                    { name: 'query', type: 'textarea', required: true, placeholder: '检索内容；可嵌入 [日期~日期]、[音乐检索] 或 [知识库:库名] 语法' },
+                    { name: 'enginemode', type: 'select', required: false, options: ['rivermemo', 'tagmemo', 'knn'], optionLabels: { rivermemo: 'RiverMemo — 固定 Topology V3 生产管线（默认）', tagmemo: 'TagMemo — V9.1 向量增强', knn: 'KNN — 纯向量 / BM25 混合检索' }, default: 'rivermemo', description: '普通回忆内核；冷知识库检索时忽略' },
+                    { name: 'maid', type: 'text', required: false, placeholder: '署名，或使用 [文件夹1,文件夹2]署名 限定作用域', description: '非全库日记检索的署名及作用域；可与 folder 合并目标文件夹' },
+                    { name: 'folder', type: 'text', required: false, placeholder: '一个或多个日记文件夹，以逗号、中文逗号或 | 分隔' },
+                    { name: 'knowledge_base', type: 'text', required: false, placeholder: '一个或多个 TDB 冷知识库名称，以逗号分隔', description: '显式检索 knowledge/ 下的冷知识库；也可在 query 中使用 [知识库] 语法' },
+                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '返回结果数量' },
+                    { name: 'rerank', type: 'text', required: false, default: 'false', placeholder: 'false / true / rrf / rrf0.7 / 0.7', description: 'Rerank 精排或 RRF 融合；数字表示 Reranker 权重' },
+                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '启用日记检索的 BM25 初筛与混合打分；冷知识库检索时忽略' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: false, description: '搜索所有未屏蔽的日记本；关闭时按 maid/folder 定位' },
+                    { name: 'tag_boost', type: 'text', required: false, default: '0.5', placeholder: '0.5 或 0.6+', description: 'RiverMemo：V9 降噪源强度；TagMemo：V9.1 增强，+ 后缀开启势能场；KNN 与冷知识库忽略' },
+                    { name: 'core_tags', type: 'textarea', required: false, placeholder: 'JSON 字符串数组，例如 ["TagMemo","RAG"]', description: 'TagMemo 优先聚焦的核心标签' },
+                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心标签额外加权因子' },
+                    { name: 'aimemo', type: 'text', required: false, default: 'false', placeholder: 'false / true / aimemo+ / 预设名', description: '对最终候选执行 AI 总结；非布尔字符串可作为 MoreAIMemoPresets 预设名' },
+                    { name: 'aimemo_preset', type: 'text', required: false, placeholder: 'RAGDiaryPlugin AIMemo 预设名', description: '显式指定预设并自动开启 AIMemo，优先于 aimemo 中的预设名' }
+                ]
+            },
+            'tagmemo_ab': {
+                description: '生产构型 A/B 对比 — 在同一 SQL 权限作用域、查询向量和候选事实域中固定比较原始 KNN、标准 TagMemo V9、Rust/Rayon RiverMemo Topology V3，并默认增加独立 Rerank。输出包含重合率和统一排名表的紧凑 Markdown；不运行任何 V10 实验构型。',
+                params: [
+                    { name: 'query', type: 'textarea', required: true, placeholder: '输入生产构型对比查询，例如：TagMemo 如何恢复连续记忆中的逻辑链' },
+                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记文件夹，例如：VCP开发', description: '作用域：必须提供 folder/maid，或显式开启全库搜索；可与 maid 同时使用' },
+                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：必须提供 maid/folder，或显式开启全库搜索；可与 folder 同时使用' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '显式开启全库对比；启用后可不填 folder/maid' },
+                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '每条轨道展示的 Top-K 数量' },
+                    { name: 'candidate_k', type: 'number', required: false, min: 1, step: 1, placeholder: '留空使用 max(30, k×5)', description: 'TagMemo V9、Rust V3 与 Rerank 共用的对称候选窗口；后端也兼容 candidateK' },
+                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 增强及 Rust V3 共享 V9 观测源的强度' },
+                    { name: 'core_tags', type: 'textarea', required: false, placeholder: 'JSON 数组或逗号、空格分隔的核心 Tag', description: '核心 Tag' },
+                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心 Tag 额外增强系数' },
+                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '向 Rust V3 候选超集提供 BM25 来源；后端也兼容 bm25/use_bm25' },
+                    { name: 'compare_rerank', type: 'checkbox', required: false, default: true, description: '增加独立 Rerank 轨道；未配置服务时报告会明确标记不可用' }
+                ]
+            },
+        }
     },
     'ThoughtClusterManager': {
         displayName: '思维簇管理器',
@@ -907,6 +952,14 @@ export const tools = {
                     { name: 'clusterName', type: 'text', required: false, placeholder: '指定簇文件夹' },
                     { name: 'targetText', type: 'textarea', required: true, placeholder: '需要被替换的旧内容（至少15字）' },
                     { name: 'replacementText', type: 'textarea', required: true, placeholder: '更新后的新内容' }
+                ]
+            },
+            'ListClusters': {
+                description: '查看思维簇内容（支持按链名/簇名/全量查看）',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'chainName', type: 'text', required: false, placeholder: '链名如 default, coding, disco（逗号分隔多个）' },
+                    { name: 'clusterName', type: 'text', required: false, placeholder: '簇文件夹名（逗号分隔多个）' }
                 ]
             }
         }
@@ -944,7 +997,7 @@ export const tools = {
                 description: '读取未锁定话题及消息历史',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'include_read', type: 'select', options: ['false','true'], description: '是否包含已读' }
+                    { name: 'include_read', type: 'select', options: ['false', 'true'], description: '是否包含已读' }
                 ]
             },
             'CheckNewTopics': {
@@ -1008,7 +1061,7 @@ export const tools = {
                 description: '控制台灯',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'power', type: 'select', options: ['','True', 'False'], description: '电源' },
+                    { name: 'power', type: 'select', options: ['', 'True', 'False'], description: '电源' },
                     { name: 'brightness', type: 'number', min: 1, max: 100, placeholder: '1-100', description: '亮度' },
                     { name: 'color_temperature', type: 'number', min: 2500, max: 4800, placeholder: '2500-4800', description: '色温' }
                 ]
@@ -1016,7 +1069,7 @@ export const tools = {
         }
     },
     'VCPAlarm': {
-        displayName:'Vchat闹钟',
+        displayName: 'Vchat闹钟',
         description: '设置一个闹钟。[前端分布式: VCPAlarm]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
@@ -1057,7 +1110,7 @@ export const tools = {
         }
     },
     'PowerShellExecutor': {
-        displayName:'PowerShell (前端)',
+        displayName: 'PowerShell (前端)',
         description: '在前端执行PowerShell命令。[前端分布式: PowerShellExecutor]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },

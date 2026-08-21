@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data: https:;">
+    <title>VCP Scriptorium · 共笔文坊</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="scriptorium.css">
+</head>
+<body class="home-state">
+    <header class="scriptorium-titlebar">
+        <div class="brand-lockup">
+            <div class="brand-sigil" aria-hidden="true">S</div>
+            <div class="brand-copy">
+                <strong>Scriptorium</strong>
+                <span>VCP 共笔文坊</span>
+            </div>
+        </div>
+
+        <div class="document-identity">
+            <span id="document-state-dot" class="state-dot"></span>
+            <button id="document-title" class="document-title" title="查看文档位置">未命名文稿</button>
+            <span id="save-state" class="save-state">等待落笔</span>
+        </div>
+
+        <div class="titlebar-actions">
+            <button id="outline-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起篇章导航" aria-label="切换篇章导航" aria-pressed="true">
+                <svg viewBox="0 0 24 24"><path d="M4 5h3M4 12h3M4 19h3M10 5h10M10 12h7M10 19h10"/></svg>
+            </button>
+            <button id="focus-mode-btn" class="icon-button titlebar-tool" title="进入纯文专注模式"
+                aria-label="专注模式" aria-pressed="false" hidden>
+                <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            </button>
+            <button id="lineage-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起文脉" aria-label="切换文脉" aria-pressed="true">
+                <svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            </button>
+            <button id="settings-btn" class="icon-button titlebar-tool"
+                type="button" title="Scriptorium 设置" aria-label="打开设置"
+                aria-haspopup="dialog" aria-expanded="false">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+            </button>
+            <span class="titlebar-divider"></span>
+            <button id="minimize-btn" class="window-button" title="最小化" aria-label="最小化">
+                <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+            </button>
+            <button id="maximize-btn" class="window-button" title="最大化" aria-label="最大化">
+                <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
+            </button>
+            <button id="close-btn" class="window-button close-button" title="关闭" aria-label="关闭">
+                <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <div id="focus-mode-dock" class="focus-mode-dock" aria-label="专注模式控制" hidden>
+        <span id="focus-document-title" class="focus-document-title">未命名文稿</span>
+        <button id="focus-exit-btn" type="button" title="退出专注模式（Esc）" aria-label="退出专注模式">
+            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+            <span>返回</span>
+        </button>
+    </div>
+
+    <section class="command-deck" aria-label="文档工具">
+        <div class="command-cluster file-cluster">
+            <div id="start-menu" class="start-menu">
+                <button id="start-menu-btn" class="deck-button emphasized start-menu-trigger"
+                    type="button" title="开始创作" aria-haspopup="menu"
+                    aria-expanded="false" aria-controls="start-menu-dropdown">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>开始</span>
+                    <svg class="start-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                </button>
+            </div>
+            <button id="open-btn" class="deck-button" title="打开 VDOCX 或 VPPTX 工程">
+                <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="m3 19 3-7h15"/></svg>
+                <span>打开</span>
+            </button>
+            <button id="import-btn" class="deck-button" title="导入 HTML、Markdown、TXT、RTF 或 DOCX">
+                <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg>
+                <span>导入</span>
+            </button>
+            <button id="save-btn" class="deck-button" title="保存 Ctrl+S">
+                <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-8h8v8"/></svg>
+                <span>保存</span>
+            </button>
+            <label class="resource-collection-toggle"
+                title="保存时尝试将可确认的外部媒体与字体收纳进工程；网页和未知 URL 保持原样">
+                <input id="collect-external-resources" type="checkbox">
+                <span>收纳外链</span>
+            </label>
+            <button id="save-as-btn" class="deck-button compact" title="另存为">
+                <svg viewBox="0 0 24 24"><path d="M12 16v-9M8 11l4-4 4 4"/><path d="M5 15v5h14v-5"/></svg>
+            </button>
+            <button id="export-flow-html-btn" class="deck-button compact" title="导出连续流语义 HTML">
+                <svg viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/></svg>
+            </button>
+            <button id="export-paged-html-btn" class="deck-button compact" title="导出逐页富文档 HTML">
+                <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>
+            </button>
+            <button id="export-pdf-btn" class="deck-button compact" title="从阅读预览导出 PDF">
+                <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M9 14h6M9 10h2M9 18h4"/></svg>
+            </button>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster surface-cluster" role="group" aria-label="文档工作面">
+            <button id="render-mode-btn" class="deck-button surface-mode active" type="button" aria-pressed="true">
+                <span>连续编辑</span>
+            </button>
+            <button id="read-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
+                <span>阅读预览</span>
+            </button>
+            <button id="html-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
+                <span>混合源码</span>
+            </button>
+            <button id="css-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
+                <span>CSS 源码</span>
+            </button>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster history-cluster">
+            <button class="format-button" data-command="undo" title="撤销 Ctrl+Z">
+                <svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M5 12h8a6 6 0 0 1 6 6"/></svg>
+            </button>
+            <button class="format-button" data-command="redo" title="重做 Ctrl+Y">
+                <svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5"/><path d="M19 12h-8a6 6 0 0 0-6 6"/></svg>
+            </button>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster typography-cluster">
+            <label class="control-shell font-shell" title="字体">
+                <span class="sr-only">字体</span>
+                <select id="font-family-select" aria-label="字体">
+                    <option value="">系统字体</option>
+                </select>
+            </label>
+            <label class="control-shell size-shell" title="字号">
+                <span class="sr-only">字号</span>
+                <select id="font-size-select" aria-label="字号">
+                    <option value="9pt">9</option>
+                    <option value="10pt">10</option>
+                    <option value="10.5pt">10.5</option>
+                    <option value="11pt">11</option>
+                    <option value="12pt" selected>12</option>
+                    <option value="14pt">14</option>
+                    <option value="16pt">16</option>
+                    <option value="18pt">18</option>
+                    <option value="22pt">22</option>
+                    <option value="26pt">26</option>
+                    <option value="32pt">32</option>
+                    <option value="42pt">42</option>
+                </select>
+            </label>
+            <button class="format-button typographic" data-command="bold" title="粗体 Ctrl+B"><strong>B</strong></button>
+            <button class="format-button typographic italic" data-command="italic" title="斜体 Ctrl+I"><strong>I</strong></button>
+            <button class="format-button typographic underline" data-command="underline" title="下划线 Ctrl+U"><strong>U</strong></button>
+            <button class="format-button typographic strike" data-command="strikethrough" title="删除线"><strong>S</strong></button>
+            <label class="color-control" title="文字颜色">
+                <span class="color-letter">A</span>
+                <input id="text-color-input" type="color" value="#1b211f" aria-label="文字颜色">
+            </label>
+            <label class="color-control highlight-control" title="高亮颜色">
+                <svg viewBox="0 0 24 24"><path d="m9 11-6 6v4h4l6-6M14 4l6 6-7 7-6-6z"/></svg>
+                <input id="highlight-color-input" type="color" value="#f2a900" aria-label="高亮颜色">
+            </label>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster paragraph-cluster">
+            <button class="format-button" data-command="text-align" data-value="left" title="左对齐">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h10M4 14h16M4 18h10"/></svg>
+            </button>
+            <button class="format-button" data-command="text-align" data-value="center" title="居中">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M7 10h10M4 14h16M7 18h10"/></svg>
+            </button>
+            <button class="format-button" data-command="text-align" data-value="right" title="右对齐">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M10 10h10M4 14h16M10 18h10"/></svg>
+            </button>
+            <button class="format-button" data-command="text-align" data-value="justify" title="两端对齐">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+            </button>
+            <button class="format-button" data-command="bullet-list" title="项目符号">
+                <svg viewBox="0 0 24 24"><circle cx="5" cy="7" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="17" r="1"/><path d="M9 7h11M9 12h11M9 17h11"/></svg>
+            </button>
+            <button class="format-button" data-command="numbered-list" title="编号列表">
+                <svg viewBox="0 0 24 24"><path d="M3 6h2v4M3 10h3M3 14h3l-3 4h3M9 7h11M9 12h11M9 17h11"/></svg>
+            </button>
+            <label class="control-shell line-height-shell" title="行距">
+                <svg viewBox="0 0 24 24"><path d="M6 5v14M3 8l3-3 3 3M3 16l3 3 3-3M12 6h9M12 12h9M12 18h9"/></svg>
+                <select id="line-height-select" aria-label="行距">
+                    <option value="1">1.0</option>
+                    <option value="1.15">1.15</option>
+                    <option value="1.5" selected>1.5</option>
+                    <option value="1.75">1.75</option>
+                    <option value="2">2.0</option>
+                </select>
+            </label>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster insert-cluster">
+            <label class="control-shell block-type-shell" title="插入结构块">
+                <span class="sr-only">结构块类型</span>
+                <select id="block-type-select" aria-label="结构块类型">
+                    <option value="paragraph">裸文本</option>
+                    <option value="heading-1">一级标题</option>
+                    <option value="heading-2">二级标题</option>
+                    <option value="heading-3">三级标题</option>
+                    <option value="blockquote">引文</option>
+                    <option value="table">表格</option>
+                </select>
+            </label>
+            <button id="insert-block-btn" class="deck-button compact" type="button" title="在当前块后插入">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><path d="M4 3h16M4 21h16"/></svg>
+            </button>
+            <button id="insert-media-btn" class="deck-button compact"
+                type="button" title="插入图片或媒体（可添加描述）"
+                aria-label="插入图片或媒体，可添加内容描述">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
+            </button>
+            <button id="svg-asset-picker-btn" class="deck-button compact"
+                type="button" title="打开 SVG 图形资产库"
+                aria-label="插入 SVG 图形资产" aria-haspopup="dialog"
+                aria-expanded="false">
+                <svg viewBox="0 0 24 24"><circle cx="7" cy="8" r="3"/><rect x="12" y="5" width="7" height="7" rx="1"/><path d="m5 19 4-7 4 7zM14 16h6M17 13v6"/></svg>
+            </button>
+            <button id="insert-table-btn" class="deck-button compact" title="插入 3 × 3 表格">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>
+            </button>
+            <button id="find-btn" class="deck-button compact" title="查找 Ctrl+F">
+                <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+            </button>
+        </div>
+    </section>
+
+    <div id="start-menu-dropdown" class="start-menu-dropdown" role="menu"
+        aria-label="开始创作" hidden>
+        <button id="new-btn" type="button" role="menuitem" title="新建连续流文稿">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 12h6M9 16h6"/></svg>
+            </span>
+            <span><strong>新文档</strong><small>连续流文稿</small></span>
+        </button>
+        <button id="new-deck-btn" type="button" role="menuitem" title="新建 AI-native VPPTX 演示">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M8 22h8M12 18v4M8 9h8M8 13h5"/></svg>
+            </span>
+            <span><strong>新演示</strong><small>VPPTX 演示</small></span>
+        </button>
+        <span class="start-menu-separator" aria-hidden="true"></span>
+        <button id="home-btn" type="button" role="menuitem" title="回到 Scriptorium 首页">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></svg>
+            </span>
+            <span><strong>回到首页</strong><small>起始与最近文档</small></span>
+        </button>
+    </div>
+
+    <main class="scriptorium-stage">
+        <aside id="outline-panel" class="outline-panel" aria-label="文档导航">
+            <section id="document-library" class="document-library"
+                aria-label="文档系统">
+                <header class="library-header">
+                    <div>
+                        <span class="outline-kicker">DOCUMENT SYSTEM</span>
+                        <h2>文档</h2>
+                    </div>
+                    <button id="library-refresh-btn" class="library-refresh"
+                        type="button" title="刷新文档目录"
+                        aria-label="刷新文档目录">
+                        <svg viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.6-2.6L20 9M4 15l2.3 2.6A7 7 0 0 0 17.9 15"/></svg>
+                    </button>
+                </header>
+                <p class="library-intro">集中访问笔记、文档与演示。展开目录，选择文件即可载入。</p>
+                <div id="document-library-tree" class="document-library-tree"
+                    role="tree" aria-label="笔记、文档和演示目录">
+                    <div class="library-loading" role="status">
+                        正在整理文档目录…
+                    </div>
+                </div>
+                <footer class="library-formats">
+                    VDOCX · DOCX · VPPTX · PPTX · MD · TXT · HTML
+                </footer>
+            </section>
+
+            <div class="outline-header">
+                <div>
+                    <span class="outline-kicker">DOCUMENT MAP</span>
+                    <h2>篇章</h2>
+                </div>
+                <span id="outline-count" class="outline-count">0 节</span>
+            </div>
+
+            <div id="slide-navigator-header" class="slide-navigator-header" hidden>
+                <button id="add-slide-btn" type="button">＋ 新页面</button>
+                <button id="delete-slide-btn" type="button" title="删除当前页面">删除当前页</button>
+                <span id="slide-count">0 页</span>
+            </div>
+
+            <div class="outline-tabs" role="tablist" aria-label="导航类型">
+                <button id="outline-headings-tab" class="outline-tab active" type="button" role="tab" aria-selected="true" aria-controls="outline-headings-view">标题</button>
+                <button id="outline-paragraphs-tab" class="outline-tab" type="button" role="tab" aria-selected="false" aria-controls="outline-paragraphs-view">段落</button>
+            </div>
+
+            <div class="outline-body">
+                <nav id="outline-headings-view" class="outline-view active" role="tabpanel" aria-labelledby="outline-headings-tab">
+                    <div id="outline-tree" class="outline-tree"></div>
+                </nav>
+                <nav id="outline-paragraphs-view" class="outline-view" role="tabpanel" aria-labelledby="outline-paragraphs-tab" hidden>
+                    <div id="paragraph-index" class="paragraph-index"></div>
+                </nav>
+            </div>
+
+            <nav id="slide-navigator" class="slide-navigator" aria-label="演示页面导航" hidden></nav>
+
+            <div id="outline-empty" class="outline-empty">
+                <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h5M8 16h7"/></svg>
+                <strong>等待文稿结构</strong>
+                <p>使用“标题 1–6”样式组织篇章；普通正文会自动进入段落索引。</p>
+            </div>
+        </aside>
+
+        <div id="outline-resizer" class="panel-resizer panel-resizer-left" role="separator" aria-orientation="vertical" aria-label="调整篇章栏宽度"></div>
+
+        <section class="writing-chamber">
+            <div class="chamber-aura" aria-hidden="true"></div>
+            <div id="welcome-state" class="welcome-state">
+                <div class="welcome-mark">S</div>
+                <p class="welcome-kicker">A document is a place, not a file.</p>
+                <h1>让文字成为<br><em>共同抵达的地方</em></h1>
+                <p class="welcome-description">人类执笔思想与文化，AI 面向源码完成润色与排版。以 HTML/CSS 共建一份真正属于我们的文档。</p>
+                <div class="welcome-actions">
+                    <button id="welcome-new-btn" class="welcome-primary">开始新稿</button>
+                    <button id="welcome-open-btn" class="welcome-secondary">打开文档</button>
+                </div>
+                <div id="recent-documents" class="recent-documents" aria-label="最近文档"></div>
+            </div>
+            <div id="document-workspace" class="document-workspace" hidden>
+                <div id="render-host" class="render-host" aria-label="连续流文档编辑面">
+                    <div id="page-stream" class="page-stream"></div>
+                </div>
+                <div id="read-host" class="render-host read-host" aria-label="只读分页预览" hidden>
+                    <div id="read-page-stream" class="page-stream"></div>
+                </div>
+                <section id="source-right-host" class="source-host source-right-host"
+                    aria-label="右侧文档源码编辑面" hidden>
+                    <header class="source-header">
+                        <div>
+                            <strong id="source-right-title">Markdown-first 混合源码</strong>
+                            <span id="source-right-description">实时连接唯一文档源码；修改进入渲染队列</span>
+                        </div>
+                        <div class="source-tools">
+                            <span id="source-right-diagnostics" class="source-diagnostics">等待检查</span>
+                            <span class="source-live-sync" role="status">实时同步</span>
+                        </div>
+                    </header>
+                    <div class="source-editor-shell">
+                        <textarea id="source-editor-right"
+                            spellcheck="false" autocomplete="off"
+                            aria-label="右侧文档源码"></textarea>
+                    </div>
+                </section>
+                <section id="source-host" class="source-host" hidden aria-label="文档源码编辑面">
+                    <header class="source-header">
+                        <div>
+                            <strong id="source-title">Markdown-first 混合源码</strong>
+                            <span id="source-description">实时连接唯一文档源码；修改立即进入渲染模型</span>
+                        </div>
+                        <div class="source-tools">
+                            <span id="source-diagnostics" class="source-diagnostics">等待检查</span>
+                            <label class="source-wrap-tool" title="仅改变显示，不修改源码内容">
+                                <input id="source-wrap-toggle" type="checkbox" checked>
+                                <span>自动换行</span>
+                            </label>
+                            <label class="source-color-tool" title="选择或替换颜色">
+                                <span id="source-color-swatch" class="source-color-swatch"></span>
+                                <input id="source-color-input" type="color" value="#8b5e34" aria-label="源码颜色选择器">
+                            </label>
+                            <button id="format-source-btn" type="button">格式化</button>
+                            <span class="source-live-sync" role="status">实时同步</span>
+                        </div>
+                    </header>
+                    <div class="source-editor-shell">
+                        <textarea id="source-editor" spellcheck="false" autocomplete="off" aria-label="文档源码"></textarea>
+                    </div>
+                </section>
+            </div>
+            <div id="loading-state" class="loading-state" hidden>
+                <span class="loading-glyph"></span>
+                <strong>正在展开文稿</strong>
+                <small>解析文档结构、字体与样式…</small>
+            </div>
+        </section>
+
+        <div id="lineage-resizer" class="panel-resizer panel-resizer-right" role="separator" aria-orientation="vertical" aria-label="调整文脉栏宽度"></div>
+
+        <aside id="lineage-panel" class="lineage-panel">
+            <div class="lineage-header">
+                <div>
+                    <span class="lineage-kicker">DOCUMENT LINEAGE</span>
+                    <h2>文脉</h2>
+                </div>
+                <button id="create-checkpoint-btn" class="checkpoint-add" title="创建手动保存点" disabled>
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+            </div>
+
+            <div class="lineage-summary">
+                <span><strong id="checkpoint-count">0</strong> 个刻点</span>
+                <span><strong id="pending-pr-count">0</strong> 个待审</span>
+                <span class="lineage-live"><i></i> 本地文脉</span>
+            </div>
+
+            <div id="lineage-flow" class="lineage-flow">
+                <div class="lineage-empty">
+                    <span class="empty-orbit"></span>
+                    <strong>文脉尚未开始</strong>
+                    <p>每次手动创建的文档保存点，以及未来 Agent 提交的修改保存点，都会在这里形成可回望的创作轨迹。</p>
+                </div>
+            </div>
+
+            <section class="agent-approval-policy" aria-label="Agent 自动允许策略">
+                <div class="auto-approval-master">
+                    <label class="auto-approval-master-copy">
+                        <input id="auto-approval-enabled" type="checkbox">
+                        <span>
+                            <strong>自动允许</strong>
+                            <small>仅按下方已勾选类型自动合并</small>
+                        </span>
+                    </label>
+                    <button id="auto-approval-collapse-btn"
+                        class="auto-approval-collapse-btn"
+                        type="button"
+                        aria-expanded="true"
+                        aria-controls="auto-approval-types"
+                        title="折叠自动允许类型"
+                        aria-label="折叠自动允许类型">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="auto-approval-types" class="auto-approval-types">
+                    <label><input type="checkbox" value="source-replace">源码替换</label>
+                    <label><input type="checkbox" value="slide-add">新增末页</label>
+                    <label><input type="checkbox" value="slide-insert">插入页面</label>
+                    <label><input type="checkbox" value="slide-delete">删除页面</label>
+                </div>
+            </section>
+        </aside>
+    </main>
+
+    <footer class="document-statusbar">
+        <div class="status-group">
+            <span id="page-status">连续编辑</span>
+            <span id="selection-status" class="selection-status" hidden>已选 0 块</span>
+            <span class="status-separator"></span>
+            <span id="word-count">0 字</span>
+            <span id="character-count">0 字符</span>
+        </div>
+        <div class="status-group status-center">
+            <span id="font-status">字体就绪</span>
+        </div>
+        <div class="status-group zoom-group">
+            <button id="security-review-toggle" class="security-review-toggle" type="button"
+                aria-pressed="true" title="安全审查已开启；点击可申请关闭">
+                <i></i><span>安全审查</span>
+            </button>
+            <span class="status-separator"></span>
+            <button id="zoom-out-btn" aria-label="缩小">−</button>
+            <input id="zoom-range" type="range" min="50" max="200" step="10" value="100" aria-label="页面缩放">
+            <button id="zoom-in-btn" aria-label="放大">＋</button>
+            <span id="zoom-value">100%</span>
+        </div>
+    </footer>
+
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+    <section id="find-panel" class="find-panel" role="search"
+        aria-label="在当前工作面中查找" hidden>
+        <div class="find-input-shell">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="10.5" cy="10.5" r="6.5"/>
+                <path d="m16 16 5 5"/>
+            </svg>
+            <input id="find-input" type="search" placeholder="查找文字"
+                autocomplete="off" spellcheck="false" aria-label="查找内容">
+            <span id="find-scope" class="find-scope">文字</span>
+        </div>
+        <span id="find-status" class="find-status" role="status"
+            aria-live="polite">输入以查找</span>
+        <div class="find-actions">
+            <button id="find-previous-btn" type="button" title="上一个（Shift+Enter）"
+                aria-label="上一个匹配" disabled>
+                <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>
+            </button>
+            <button id="find-next-btn" type="button" title="下一个（Enter）"
+                aria-label="下一个匹配" disabled>
+                <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <button id="find-close-btn" type="button" class="find-close"
+                title="关闭（Esc）" aria-label="关闭查找">×</button>
+        </div>
+    </section>
+
+    <section id="svg-asset-picker" class="svg-asset-picker" role="dialog"
+        aria-label="SVG 图形资产选择器" hidden>
+        <header class="svg-asset-picker-header">
+            <div>
+                <strong>图形资产</strong>
+                <small id="svg-asset-picker-count">0 个资产</small>
+            </div>
+            <button id="svg-asset-manage-btn" type="button">管理</button>
+        </header>
+        <div class="svg-asset-picker-tools">
+            <input id="svg-asset-picker-search" type="search"
+                placeholder="搜索图形" autocomplete="off">
+            <select id="svg-asset-picker-category" aria-label="图形分类">
+                <option value="">全部分类</option>
+            </select>
+        </div>
+        <div id="svg-asset-picker-grid" class="svg-asset-grid"
+            role="listbox" aria-label="可插入 SVG 资产"></div>
+        <button id="svg-asset-import-card" class="svg-asset-import-card"
+            type="button">
+            <span>＋</span>
+            <strong>批量导入 SVG</strong>
+        </button>
+        <input id="svg-asset-import-input" type="file"
+            accept=".svg,image/svg+xml" multiple hidden>
+    </section>
+
+    <div id="svg-asset-manager-dialog"
+        class="dialog-backdrop svg-asset-manager-backdrop"
+        role="dialog" aria-modal="true"
+        aria-labelledby="svg-asset-manager-title" hidden>
+        <section class="svg-asset-manager-dialog">
+            <header class="svg-asset-manager-header">
+                <div>
+                    <span class="dialog-kicker">SVG VISUAL ASSET LIBRARY</span>
+                    <h2 id="svg-asset-manager-title">图形资产管理</h2>
+                    <p>管理导入与 Agent 创建的静态或动画 SVG 资产；内置资产只读。</p>
+                </div>
+                <button id="svg-asset-manager-close-btn" type="button"
+                    aria-label="关闭">×</button>
+            </header>
+            <div class="svg-asset-manager-toolbar">
+                <input id="svg-asset-manager-search" type="search"
+                    placeholder="搜索名称、分类或标签" autocomplete="off">
+                <select id="svg-asset-manager-kind">
+                    <option value="">静态与动画</option>
+                    <option value="static">静态 SVG</option>
+                    <option value="animated">动画 SVG</option>
+                </select>
+                <button id="svg-asset-manager-import-btn"
+                    type="button">批量导入</button>
+                <button id="svg-asset-manager-export-btn"
+                    type="button">导出资产包</button>
+            </div>
+            <div class="svg-asset-manager-body">
+                <div id="svg-asset-manager-list"
+                    class="svg-asset-manager-list"></div>
+                <form id="svg-asset-editor-form" class="svg-asset-editor">
+                    <div class="svg-asset-editor-meta">
+                        <span id="svg-asset-editor-origin">选择一个资产</span>
+                        <h3 id="svg-asset-editor-heading">资产预览</h3>
+                    </div>
+                    <iframe id="svg-asset-preview-frame"
+                        class="svg-asset-preview-frame" sandbox=""
+                        title="SVG 资产隔离预览"></iframe>
+                    <div class="svg-asset-editor-fields">
+                        <label>
+                            <span>资产名称</span>
+                            <input id="svg-asset-name-input" maxlength="120">
+                        </label>
+                        <label>
+                            <span>分类</span>
+                            <input id="svg-asset-category-input" maxlength="80">
+                        </label>
+                        <label class="svg-asset-editor-wide">
+                            <span>内容描述</span>
+                            <textarea id="svg-asset-description-input"
+                                maxlength="1200"></textarea>
+                        </label>
+                        <label class="svg-asset-editor-wide">
+                            <span>标签（逗号分隔）</span>
+                            <input id="svg-asset-tags-input">
+                        </label>
+                        <label>
+                            <span>默认宽度</span>
+                            <input id="svg-asset-width-input" type="number"
+                                min="24" max="4096">
+                        </label>
+                        <label>
+                            <span>默认高度</span>
+                            <input id="svg-asset-height-input" type="number"
+                                min="24" max="4096">
+                        </label>
+                        <label class="svg-asset-editor-wide">
+                            <span>SVG 源码</span>
+                            <textarea id="svg-asset-source-input"
+                                class="object-code-input"
+                                spellcheck="false"></textarea>
+                        </label>
+                    </div>
+                    <div id="svg-asset-editor-diagnostics"
+                        class="object-source-diagnostics">
+                        等待选择资产
+                    </div>
+                    <footer class="svg-asset-editor-actions">
+                        <button id="svg-asset-delete-btn" type="button"
+                            class="dialog-danger" disabled>删除资产包</button>
+                        <button id="svg-asset-save-btn" type="submit"
+                            class="dialog-confirm" disabled>保存资产</button>
+                    </footer>
+                </form>
+            </div>
+        </section>
+    </div>
+
+    <div id="style-library-dialog" class="style-library-backdrop" role="dialog" aria-modal="true" aria-labelledby="style-library-title" hidden>
+        <section class="style-library-dialog">
+            <header class="style-library-header">
+                <div>
+                    <span class="dialog-kicker">VCP ADVANCED STYLE LIBRARY</span>
+                    <h2 id="style-library-title">高级样式库</h2>
+                    <p>为选中文字或段落应用可移植的 HTML/CSS 样式配方。</p>
+                </div>
+                <button id="style-library-close-btn" type="button" class="style-library-close" aria-label="关闭">×</button>
+            </header>
+            <div class="style-library-toolbar">
+                <input id="style-search-input" type="search" placeholder="搜索名称、分类或标签" autocomplete="off">
+                <select id="style-category-select" aria-label="高级样式分类">
+                    <option value="">全部分类</option>
+                </select>
+                <button id="style-import-btn" type="button">导入样式包</button>
+                <button id="style-export-btn" type="button">导出样式包</button>
+                <input id="style-import-input" type="file" accept=".json,.vstyle.json,application/json" hidden>
+            </div>
+            <div class="style-library-body">
+                <div id="style-library-list" class="style-library-list" role="listbox" aria-label="高级样式"></div>
+                <aside class="style-preview-panel">
+                    <div class="style-preview-meta">
+                        <span id="style-preview-category">选择样式</span>
+                        <h3 id="style-preview-name">预览</h3>
+                        <p id="style-preview-description">样式将在隔离预览画布中呈现，不会修改文档。</p>
+                    </div>
+                    <iframe id="style-preview-frame" class="style-preview-frame" sandbox="" title="高级样式安全预览"></iframe>
+                    <div class="style-preview-actions">
+                        <span id="style-preview-targets">适用：—</span>
+                        <button id="style-apply-btn" type="button" disabled>应用到选区</button>
+                    </div>
+                </aside>
+            </div>
+        </section>
+    </div>
+
+    <div id="unsaved-dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title" hidden>
+        <section class="unsaved-dialog">
+            <div class="unsaved-dialog-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><path d="M10.3 4.6 3.5 17a2 2 0 0 0 1.8 3h13.4a2 2 0 0 0 1.8-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/></svg>
+            </div>
+            <span class="dialog-kicker">UNSAVED MANUSCRIPT</span>
+            <h2 id="unsaved-dialog-title">墨迹尚未落定</h2>
+            <p id="unsaved-dialog-message">当前文稿仍有未保存修改。保存后继续，或舍弃这些修改。</p>
+            <div class="unsaved-document-name" id="unsaved-document-name">未命名文稿.vdocx</div>
+            <div class="dialog-actions unsaved-dialog-actions">
+                <button type="button" id="unsaved-cancel-btn">留在此处</button>
+                <button type="button" id="unsaved-discard-btn" class="dialog-danger">舍弃修改</button>
+                <button type="button" id="unsaved-save-btn" class="dialog-confirm">保存并继续</button>
+            </div>
+        </section>
+    </div>
+
+    <div id="media-dialog" class="dialog-backdrop" role="dialog" aria-modal="true"
+        aria-labelledby="media-dialog-title" hidden>
+        <form id="media-form" class="checkpoint-dialog media-dialog">
+            <span class="dialog-kicker">INSERT MEDIA FROM SRC</span>
+            <h2 id="media-dialog-title">插入媒体</h2>
+            <p>输入单个媒体 src，或从本地一次选择多个文件。批量模式可为每个素材分别填写 description，插入时自动读取原生分辨率与音视频时长。</p>
+            <div class="media-local-picker">
+                <button type="button" id="media-local-select-btn">选择本地媒体文件</button>
+                <span id="media-local-count">尚未选择本地文件</span>
+                <input id="media-local-input" type="file"
+                    accept="image/*,video/*,audio/*" multiple hidden>
+            </div>
+            <div id="media-local-list" class="media-local-list" hidden
+                aria-label="待插入本地媒体及描述"></div>
+            <div id="media-src-fields">
+                <div class="media-source-separator"><span>或者插入单个 src</span></div>
+                <label class="media-field">
+                    <span>媒体类型</span>
+                    <select id="media-kind-select" aria-label="媒体类型">
+                        <option value="auto">自动识别</option>
+                        <option value="image">图片</option>
+                        <option value="video">视频</option>
+                        <option value="audio">音频</option>
+                    </select>
+                </label>
+                <label class="media-field">
+                    <span>媒体 src</span>
+                    <input id="media-src-input" type="text" required
+                        placeholder="https://example.com/media.png 或 data:image/..."
+                        autocomplete="off" spellcheck="false">
+                </label>
+                <label class="media-field">
+                    <span>内容描述</span>
+                    <textarea id="media-description-input"
+                        placeholder="描述媒体内容，供无障碍工具与 AI 理解"></textarea>
+                </label>
+            </div>
+            <div id="media-dialog-status" class="media-dialog-status" role="status">
+                等待输入媒体地址
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="media-cancel-btn">取消</button>
+                <button type="submit" id="media-insert-btn" class="dialog-confirm">读取信息并插入</button>
+            </div>
+        </form>
+    </div>
+
+    <nav id="text-context-menu" class="text-context-menu" role="menu"
+        aria-label="文字与文档操作" hidden>
+        <div id="selection-format-bar" class="selection-format-bar" role="toolbar"
+            aria-label="选中文字快捷格式" hidden>
+            <label class="selection-format-control selection-font-control" title="字体">
+                <span class="sr-only">字体</span>
+                <select id="selection-font-family" aria-label="快捷字体"></select>
+            </label>
+            <label class="selection-format-control selection-size-control" title="字号">
+                <span class="sr-only">字号</span>
+                <select id="selection-font-size" aria-label="快捷字号">
+                    <option value="9pt">9</option>
+                    <option value="10pt">10</option>
+                    <option value="10.5pt">10.5</option>
+                    <option value="11pt">11</option>
+                    <option value="12pt" selected>12</option>
+                    <option value="14pt">14</option>
+                    <option value="16pt">16</option>
+                    <option value="18pt">18</option>
+                    <option value="22pt">22</option>
+                    <option value="26pt">26</option>
+                    <option value="32pt">32</option>
+                    <option value="42pt">42</option>
+                </select>
+            </label>
+            <span class="selection-format-divider"></span>
+            <button type="button" data-selection-command="bold" title="粗体"><strong>B</strong></button>
+            <button type="button" data-selection-command="italic" class="quick-italic"
+                title="斜体"><strong>I</strong></button>
+            <button type="button" data-selection-command="underline" class="quick-underline"
+                title="下划线"><strong>U</strong></button>
+            <label class="selection-color-control" title="文字颜色">
+                <span>A</span>
+                <input id="selection-text-color" type="color" value="#1b211f"
+                    aria-label="快捷文字颜色">
+            </label>
+            <span class="selection-format-divider"></span>
+            <button id="advanced-style-btn" type="button" class="advanced-style-trigger"
+                title="应用高级样式">高级样式</button>
+        </div>
+        <span class="text-menu-separator text-format-separator" data-format-separator hidden></span>
+        <button type="button" data-text-action="cut" data-requires-selection role="menuitem">
+            <span>剪切</span><kbd>Ctrl+X</kbd>
+        </button>
+        <button type="button" data-text-action="copy" data-requires-selection role="menuitem">
+            <span>复制</span><kbd>Ctrl+C</kbd>
+        </button>
+        <span class="text-menu-separator"></span>
+        <button type="button" data-text-action="paste" role="menuitem">
+            <span>粘贴</span><small>仅文字</small>
+        </button>
+        <button type="button" data-text-action="paste-formatted" role="menuitem">
+            <span>粘贴（维持格式）</span><small>新建元素与 ID</small>
+        </button>
+        <span class="text-menu-separator"></span>
+        <button type="button" data-text-action="select-block" data-requires-block role="menuitem">
+            <span>选择当前块</span>
+        </button>
+        <button type="button" data-text-action="select-all" role="menuitem">
+            <span>全选文档</span><kbd>Ctrl+A</kbd>
+        </button>
+        <button type="button" data-text-action="insert-paragraph" role="menuitem">
+            <span>在此插入裸文本</span>
+        </button>
+    </nav>
+
+    <nav id="island-context-menu" class="object-context-menu" role="menu"
+        aria-label="编程岛操作" hidden>
+        <button type="button" data-island-action="source" role="menuitem">
+            定位到源码
+        </button>
+    </nav>
+
+    <nav id="object-context-menu" class="object-context-menu" role="menu"
+        aria-label="视觉对象操作" hidden>
+        <button type="button" data-object-action="edit" role="menuitem">编辑对象属性…</button>
+        <span class="object-menu-separator"></span>
+        <button type="button" data-object-action="layout-block"
+            data-object-flow-only role="menuitem">独占一行</button>
+        <button type="button" data-object-action="layout-float-left"
+            data-object-flow-only role="menuitem">左侧文字环绕</button>
+        <button type="button" data-object-action="layout-float-right"
+            data-object-flow-only role="menuitem">右侧文字环绕</button>
+        <button type="button" data-object-action="front"
+            data-object-deck-only role="menuitem">置于顶层</button>
+        <button type="button" data-object-action="forward"
+            data-object-deck-only role="menuitem">上移一层</button>
+        <button type="button" data-object-action="backward"
+            data-object-deck-only role="menuitem">下移一层</button>
+        <button type="button" data-object-action="back"
+            data-object-deck-only role="menuitem">置于底层</button>
+        <span class="object-menu-separator"></span>
+        <button type="button" data-object-action="delete"
+            class="object-menu-danger" role="menuitem">删除对象</button>
+    </nav>
+
+    <div id="object-inspector-dialog" class="dialog-backdrop object-inspector-backdrop"
+        role="dialog" aria-modal="true" aria-labelledby="object-inspector-title" hidden>
+        <form id="object-inspector-form" class="object-inspector-dialog">
+            <header class="object-inspector-header">
+                <div>
+                    <span class="dialog-kicker">VISUAL OBJECT INSPECTOR</span>
+                    <h2 id="object-inspector-title">编辑视觉对象</h2>
+                    <p>属性修改会在画布中实时预览；应用后才写入源码并建立历史。</p>
+                </div>
+            </header>
+            <div class="object-inspector-body">
+                <section class="object-inspector-fields">
+                    <h3>对象语义</h3>
+                    <label>
+                        <span>对象名称</span>
+                        <input id="object-name-input" type="text" maxlength="120">
+                    </label>
+                    <label>
+                        <span>内容描述</span>
+                        <textarea id="object-description-input" maxlength="1200"
+                            placeholder="供无障碍工具与 AI 理解"></textarea>
+                    </label>
+                    <h3>尺寸与布局</h3>
+                    <div class="object-field-pair">
+                        <label>
+                            <span>宽度（px）</span>
+                            <input id="object-width-input" type="number" min="24" max="4096" step="1">
+                        </label>
+                        <label>
+                            <span>高度（px）</span>
+                            <input id="object-height-input" type="number" min="24" max="4096" step="1">
+                        </label>
+                    </div>
+                    <label id="object-layout-field">
+                        <span>文档排版</span>
+                        <select id="object-layout-select">
+                            <option value="block">独占一行</option>
+                            <option value="float-left">左侧文字环绕</option>
+                            <option value="float-right">右侧文字环绕</option>
+                        </select>
+                    </label>
+                    <label id="object-rotation-field">
+                        <span>旋转角度</span>
+                        <input id="object-rotation-input" type="number" min="-360" max="360" step="1">
+                    </label>
+                    <section id="object-shape-fields" class="object-shape-fields">
+                        <h3>SVG 图形</h3>
+                        <div class="object-field-pair">
+                            <label>
+                                <span>填充颜色</span>
+                                <input id="object-fill-input" type="color" value="#4f8f80">
+                            </label>
+                            <label>
+                                <span>边框颜色</span>
+                                <input id="object-stroke-input" type="color" value="#245c50">
+                            </label>
+                        </div>
+                        <div class="object-field-pair">
+                            <label>
+                                <span>边框粗细</span>
+                                <input id="object-stroke-width-input" type="number"
+                                    min="0" max="24" step=".5">
+                            </label>
+                            <label>
+                                <span>圆角</span>
+                                <input id="object-radius-input" type="number"
+                                    min="0" max="50" step="1">
+                            </label>
+                        </div>
+                        <label>
+                            <span>描边形态</span>
+                            <select id="object-dash-select">
+                                <option value="solid">实线</option>
+                                <option value="dash">虚线</option>
+                                <option value="dot">点线</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>整体透明度</span>
+                            <input id="object-opacity-input" type="range"
+                                min="0" max="100" step="1" value="100">
+                        </label>
+                        <label class="object-source-field">
+                            <span>SVG 源码</span>
+                            <textarea id="object-svg-source-input" class="object-code-input"
+                                spellcheck="false" autocomplete="off"
+                                placeholder="粘贴一个以 <svg> 为根的图标或图形"></textarea>
+                            <small>仅接受单一 SVG 根；脚本、事件属性和外部执行宿主会被移除。</small>
+                        </label>
+                    </section>
+                    <section class="object-css-fields">
+                        <h3>对象附加 CSS</h3>
+                        <label class="object-source-field">
+                            <span>CSS 规则</span>
+                            <textarea id="object-css-source-input" class="object-code-input"
+                                spellcheck="false" autocomplete="off"
+                                placeholder="svg { filter: drop-shadow(0 8px 12px #0005); }&#10;path:hover { opacity: .75; }"></textarea>
+                            <small>普通选择器会自动限定到当前对象；可用 :object 显式代表对象外壳。</small>
+                        </label>
+                    </section>
+                </section>
+                <aside class="object-inspector-help">
+                    <strong>隔离实时预览</strong>
+                    <div id="object-source-diagnostics" class="object-source-diagnostics"
+                        role="status">等待对象源码</div>
+                    <iframe id="object-preview-frame" class="object-preview-frame"
+                        sandbox="" title="视觉对象隔离预览"></iframe>
+                    <p>文稿对象只保存文字环绕关系；演示对象使用自由坐标与图层。</p>
+                    <p>源码和 CSS 只在点击“应用到源码”后进入文档历史。</p>
+                </aside>
+            </div>
+            <footer class="object-inspector-actions">
+                <button id="object-inspector-cancel-btn" type="button">取消并还原</button>
+                <button id="object-inspector-apply-btn" type="submit"
+                    class="dialog-confirm">应用到源码</button>
+            </footer>
+        </form>
+    </div>
+
+    <div id="checkpoint-dialog" class="dialog-backdrop" hidden>
+        <form class="checkpoint-dialog">
+            <span class="dialog-kicker">CREATE CHECKPOINT</span>
+            <h2>为这一刻留下名字</h2>
+            <p>刻点会记录当前 VDOCX 源码与排版状态，成为人机共建文脉中的可回望节点。</p>
+            <input id="checkpoint-name-input" type="text" maxlength="80" placeholder="例如：第二章结构定稿" autocomplete="off">
+            <textarea id="checkpoint-note-input" maxlength="240" placeholder="可选：记下这一版发生了什么"></textarea>
+            <div class="dialog-actions">
+                <button type="button" id="checkpoint-cancel-btn">取消</button>
+                <button type="submit" class="dialog-confirm">保存刻点</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="pr-review-dialog" class="dialog-backdrop pr-review-backdrop" role="dialog" aria-modal="true" aria-labelledby="pr-review-title" hidden>
+        <section class="pr-review-dialog">
+            <header class="pr-review-header">
+                <div>
+                    <span class="dialog-kicker">AGENT CHANGE REVIEW</span>
+                    <h2 id="pr-review-title">协作变更审阅</h2>
+                    <p id="pr-review-meta">等待选择提案</p>
+                </div>
+                <button id="pr-review-close-btn" type="button" aria-label="关闭">×</button>
+            </header>
+            <div class="pr-review-body">
+                <section class="pr-review-pane">
+                    <h3>局部渲染差异</h3>
+                    <div id="pr-render-diff" class="pr-render-diff"></div>
+                </section>
+                <section class="pr-review-pane">
+                    <h3>局部源码差异</h3>
+                    <pre id="pr-source-diff" class="pr-source-diff"></pre>
+                </section>
+            </div>
+            <footer class="pr-review-footer">
+                <label>
+                    <span>给 Agent 的回执</span>
+                    <textarea id="pr-review-receipt" maxlength="1200" placeholder="可说明批准或拒绝原因，也可提出下一轮修改建议。"></textarea>
+                </label>
+                <div class="pr-review-actions">
+                    <button id="pr-review-reject-btn" type="button" class="dialog-danger">拒绝</button>
+                    <button id="pr-review-approve-btn" type="button" class="dialog-confirm">允许并合并</button>
+                </div>
+            </footer>
+        </section>
+    </div>
+
+    <div id="settings-dialog" class="dialog-backdrop" role="dialog"
+        aria-modal="true" aria-labelledby="settings-dialog-title" hidden>
+        <section class="settings-dialog">
+            <header class="settings-dialog-header">
+                <div>
+                    <span class="dialog-kicker">SCRIPTORIUM PREFERENCES</span>
+                    <h2 id="settings-dialog-title">设置</h2>
+                    <p>这些偏好只保存在本机，不会写入文档工程。</p>
+                </div>
+                <button id="settings-close-btn" type="button"
+                    aria-label="关闭设置">×</button>
+            </header>
+            <div class="settings-dialog-body">
+                <section class="settings-group">
+                    <span class="settings-group-kicker">网络与字体</span>
+                    <label class="settings-toggle-row">
+                        <span class="settings-toggle-copy">
+                            <strong>信任网络字体</strong>
+                            <small>直接加载文档中的 HTTPS 字体 URL，不下载、不建立本地字体索引，HTML 导出也保留网络 URL。</small>
+                        </span>
+                        <input id="trust-network-fonts-toggle"
+                            type="checkbox" role="switch">
+                    </label>
+                    <div id="network-font-trust-status"
+                        class="settings-status" role="status">
+                        受控模式：下载字体并收纳到本地工程
+                    </div>
+                    <p class="settings-risk-note">
+                        开启后渲染与离线可用性依赖字体服务器，服务器也可能获知网络请求信息。仅对可信文档与可信字体提供方启用。
+                    </p>
+                </section>
+            </div>
+        </section>
+    </div>
+
+    <div id="security-review-dialog" class="dialog-backdrop" role="dialog"
+        aria-modal="true" aria-labelledby="security-review-dialog-title" hidden>
+        <section class="security-review-dialog">
+            <div class="security-review-dialog-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><path d="M10.3 4.6 3.5 17a2 2 0 0 0 1.8 3h13.4a2 2 0 0 0 1.8-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/></svg>
+            </div>
+            <span class="dialog-kicker">DISABLE PROGRAMMABLE CONTENT REVIEW</span>
+            <h2 id="security-review-dialog-title">确认关闭安全审查？</h2>
+            <p>关闭后，文档内脚本将不再因 Node.js、动态求值、宿主导航等 refuse 规则而停止执行。恶意文档可能读取页面状态、持续占用资源或尝试逃逸运行边界。</p>
+            <ul>
+                <li>此设置只保存在本机，不写入文档工程。</li>
+                <li>Agent PR 与人工审批流程仍然保留。</li>
+                <li>公网脚本仍不会直接载入；受支持依赖继续映射到本地。</li>
+            </ul>
+            <label class="security-confirm-check">
+                <input id="security-review-confirm-check" type="checkbox">
+                <span>我理解关闭审查会允许高风险脚本执行，并愿意承担当前文档的运行风险。</span>
+            </label>
+            <div class="dialog-actions">
+                <button type="button" id="security-review-cancel-btn">保持开启</button>
+                <button type="button" id="security-review-disable-btn" class="dialog-danger" disabled>确认关闭</button>
+            </div>
+        </section>
+    </div>
+
+    <div id="lineage-detail-dialog" class="dialog-backdrop lineage-detail-backdrop"
+        role="dialog" aria-modal="true" aria-labelledby="lineage-detail-title" hidden>
+        <section class="lineage-detail-dialog">
+            <header class="lineage-detail-header">
+                <div>
+                    <span class="dialog-kicker">DOCUMENT VERSION RECORD</span>
+                    <h2 id="lineage-detail-title">文脉节点详情</h2>
+                    <p id="lineage-detail-meta">等待选择节点</p>
+                </div>
+                <button id="lineage-detail-close-btn" type="button" aria-label="关闭">×</button>
+            </header>
+            <nav class="lineage-detail-tabs" role="tablist" aria-label="文脉复核视图">
+                <button id="lineage-review-tab" class="active" type="button"
+                    role="tab" aria-selected="true"
+                    aria-controls="lineage-review-view">人类复核</button>
+                <button id="lineage-technical-tab" type="button"
+                    role="tab" aria-selected="false"
+                    aria-controls="lineage-technical-view">技术记录</button>
+            </nav>
+            <div id="lineage-review-view" class="lineage-detail-review"
+                role="tabpanel" aria-labelledby="lineage-review-tab">
+                <section class="lineage-review-pane">
+                    <h3>渲染差异</h3>
+                    <div id="lineage-render-diff" class="pr-render-diff"></div>
+                </section>
+                <section class="lineage-review-pane">
+                    <h3>源码差异</h3>
+                    <pre id="lineage-source-diff" class="pr-source-diff"></pre>
+                </section>
+            </div>
+            <div id="lineage-technical-view" class="lineage-detail-body"
+                role="tabpanel" aria-labelledby="lineage-technical-tab" hidden>
+                <section>
+                    <h3>提交记录与审批</h3>
+                    <pre id="lineage-detail-record" class="lineage-detail-record"></pre>
+                </section>
+                <section>
+                    <h3>修改内容</h3>
+                    <pre id="lineage-detail-change" class="lineage-detail-record"></pre>
+                </section>
+            </div>
+            <footer class="lineage-detail-footer">
+                <div>
+                    <strong id="lineage-snapshot-status">检查内部版本快照…</strong>
+                    <span>回溯会先保存当前版本，再基于该节点的工程内嵌快照建立一个新的文脉节点，不删除后续历史。</span>
+                </div>
+                <button id="lineage-restore-btn" type="button" class="dialog-danger" disabled>回溯到此节点</button>
+            </footer>
+        </section>
+    </div>
+
+    <div id="lineage-restore-dialog" class="dialog-backdrop" role="dialog"
+        aria-modal="true" aria-labelledby="lineage-restore-title" hidden>
+        <section class="security-review-dialog lineage-restore-dialog">
+            <span class="dialog-kicker">RESTORE INTERNAL DOCUMENT VERSION</span>
+            <h2 id="lineage-restore-title">确认回溯文档版本？</h2>
+            <p id="lineage-restore-message">当前内容会先写入一个安全刻点，然后载入所选文脉节点的 `.vdocx/.vpptx` 内嵌快照。</p>
+            <div class="dialog-actions">
+                <button type="button" id="lineage-restore-cancel-btn">取消</button>
+                <button type="button" id="lineage-restore-confirm-btn" class="dialog-danger">保存当前版并回溯</button>
+            </div>
+        </section>
+    </div>
+
+    <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
+    <script src="../node_modules/codemirror/lib/codemirror.js"></script>
+    <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
+    <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
+    <script src="../node_modules/codemirror/mode/css/css.js"></script>
+    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
+    <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+    <script src="../node_modules/codemirror/addon/edit/closebrackets.js"></script>
+    <script src="../node_modules/codemirror/addon/edit/closetag.js"></script>
+    <script src="../vendor/katex.min.js"></script>
+    <script src="../vendor/mermaid.min.js"></script>
+    <script src="../vendor/anime.min.js"></script>
+    <script src="../vendor/three.min.js"></script>
+    <script src="../node_modules/marked/lib/marked.umd.js"></script>
+    <script src="../modules/renderer/pretext.bundle.js"></script>
+    <script src="../node_modules/jszip/dist/jszip.min.js"></script>
+    <script src="scriptorium-pretext-bridge.js"></script>
+    <script src="scriptorium-programmable-content.js"></script>
+    <script src="vdoc-core.js"></script>
+    <script src="vdoc-hybrid-compiler.js"></script>
+    <script src="vdoc-container.js"></script>
+    <script src="vdoc-style-library.js"></script>
+    <script src="scriptorium-pagination.js"></script>
+    <script src="scriptorium-visibility.js"></script>
+    <script src="scriptorium-async.js"></script>
+    <script src="scriptorium-input-sync.js"></script>
+    <script src="scriptorium-export-resources.js"></script>
+    <script src="scriptorium-objects.js"></script>
+    <script src="vdoc-svg-asset-library.js"></script>
+    <script src="scriptorium-svg-assets.js"></script>
+    <script src="scriptorium-rendered-text.js"></script>
+
+    <script src="scriptorium-settings.js"></script>
+    <script src="scriptorium-document-store.js"></script>
+    <script src="scriptorium-dom-selection.js"></script>
+    <script src="scriptorium-edit-history.js"></script>
+
+    <script src="scriptorium-render-primitives.js"></script>
+    <script src="scriptorium-flow-editor.js"></script>
+    <script src="scriptorium-deck-editor.js"></script>
+    <script src="scriptorium-formatting.js"></script>
+    <script src="scriptorium-flow-renderer.js"></script>
+    <script src="scriptorium-deck-renderer.js"></script>
+    <script src="scriptorium-render-coordinator.js"></script>
+
+    <script src="scriptorium-flow-export.js"></script>
+    <script src="scriptorium-deck-export.js"></script>
+    <script src="scriptorium-export.js"></script>
+    <script src="scriptorium-media.js"></script>
+    <script src="scriptorium-find.js"></script>
+    <script src="scriptorium-navigation.js"></script>
+    <script src="scriptorium-style-ui.js"></script>
+
+    <script src="scriptorium-lineage-store.js"></script>
+    <script src="scriptorium-pr-diff.js"></script>
+    <script src="scriptorium-agent-port.js"></script>
+    <script src="scriptorium-lineage-ui.js"></script>
+
+    <script src="scriptorium-runtime.js"></script>
+    <script src="scriptorium-network-fonts.js"></script>
+    <script src="scriptorium-source-editor.js"></script>
+    <script src="scriptorium-library.js"></script>
+    <script src="scriptorium-session.js"></script>
+    <script src="scriptorium-flow-adapter.js"></script>
+    <script src="scriptorium-deck-adapter.js"></script>
+    <script src="scriptorium-shell.js"></script>
+    <script src="scriptorium.js"></script>
+</body>
+</html>

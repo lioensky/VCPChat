@@ -12,8 +12,6 @@ body:not(.light-theme) {
     --text-primary: var(--primary-text, #E0E6E9);
     --text-secondary: var(--secondary-text, #d8e6ec);
     --accent-color: var(--button-bg, #DAA520);
-    --text-on-accent: var(--text-on-accent, #1A1A1A);
-    --danger-color: var(--danger-color, #e57373);
 }
 
 body.light-theme {
@@ -24,9 +22,12 @@ body.light-theme {
     --text-primary: var(--primary-text, #34495E);
     --text-secondary: var(--secondary-text, #6C7A89);
     --accent-color: var(--button-bg, #4A90E2);
-    --text-on-accent: var(--text-on-accent, #FFFFFF);
-    --danger-color: var(--danger-color, #e74c3c);
 }
+
+/*
+ * --text-on-accent 与 --danger-color 直接继承 themes.css。
+ * 不在这里将变量定义为 var(--自身)，避免 CSS 自定义属性循环失效。
+ */
 
 * {
     box-sizing: border-box;
@@ -315,7 +316,7 @@ body.light-theme #board-filter:focus {
     border: none;
     border-radius: 12px;
     background: var(--accent-color);
-    color: var(--secondary-text);
+    color: var(--text-on-accent);
     font-size: 1rem;
     font-weight: bold;
     cursor: pointer;
@@ -387,7 +388,7 @@ body.light-theme #board-filter:focus {
 }
 .post-badge {
     background: var(--accent-color);
-    color: var(--secondary-text);
+    color: var(--text-on-accent);
     font-size: 0.7rem;
     padding: 3px 8px;
     border-radius: 10px;
@@ -777,7 +778,7 @@ img[src*="file://"] {
 
 .delete-floor-btn:hover {
     background: var(--danger-color);
-    color: white;
+    color: var(--text-on-accent);
     opacity: 1;
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(229, 115, 115, 0.4);
@@ -789,7 +790,7 @@ img[src*="file://"] {
     padding: 8px 20px;
     margin-top: 0;
     background: var(--danger-color, #e57373); /* Provide a fallback color */
-    color: white;
+    color: var(--text-on-accent);
     font-size: 0.9rem;
     border-radius: 8px;
 }
@@ -930,7 +931,7 @@ img[src*="file://"] {
 
 .edit-btn:hover {
     background: var(--accent-color);
-    color: white;
+    color: var(--text-on-accent);
     opacity: 1;
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);

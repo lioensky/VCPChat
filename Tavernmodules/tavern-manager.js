@@ -206,7 +206,7 @@
                 const scopeTagClass = `tag-scope-${rule.scope || 'global'}`;
                 row.innerHTML = `
                     <div class="tavern-rule-info">
-                        <div class="tavern-rule-name">${escapeHtml(rule.name || '未命名规则')}</div>
+                        <div class="tavern-rule-name">${escapeHtml(rule.name || '未命名规则')}${rule.isBuiltin ? ' <span class="tavern-rule-tag">官方预置</span>' : ''}</div>
                         <div class="tavern-rule-meta">
                             <span class="tavern-rule-tag ${typeTagClass}">${TYPE_LABELS[rule.type] || rule.type}</span>
                             <span class="tavern-rule-tag ${scopeTagClass}">${SCOPE_LABELS[rule.scope || 'global']}</span>
@@ -342,6 +342,7 @@
                                     : rule.type === 'user_suffix' ? 'tag-user' : 'tag-context';
                 item.innerHTML = `
                     <span class="tavern-rule-tag ${typeTagClass}" style="flex-shrink:0;">${TYPE_LABELS[rule.type] || rule.type}</span>
+                    ${rule.isBuiltin ? '<span class="tavern-rule-tag" style="flex-shrink:0;">官方</span>' : ''}
                     <span class="item-name">${escapeHtml(rule.name || '未命名规则')}</span>
                     <div class="tavern-drag-handle" title="长按整行或拖拽手柄排序">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -425,6 +426,11 @@
             const isContext = rule.type === 'context_inject';
             const wrapEnabled = rule.wrap !== false;
             panel.innerHTML = `
+                ${rule.isBuiltin ? `
+                <div class="tavern-help-text" style="margin-bottom:12px;">
+                    官方预置能力开关。除基础输出能力外，权限默认关闭；修改后会保存为用户覆盖，恢复默认不会删除官方定义。
+                </div>
+                ` : ''}
                 <div class="tavern-form-row">
                     <label>规则名称</label>
                     <input type="text" data-field="name" value="${escapeHtml(rule.name || '')}">
@@ -489,7 +495,7 @@
                 <div class="tavern-edit-actions">
                     <button type="button" class="save-button" data-action="save">保存</button>
                     <button type="button" class="secondary-button" data-action="cancel">取消</button>
-                    <button type="button" class="danger-button" data-action="delete">删除</button>
+                    <button type="button" class="${rule.isBuiltin ? 'secondary-button' : 'danger-button'}" data-action="delete">${rule.isBuiltin ? '恢复官方默认' : '删除'}</button>
                 </div>
             `;
 
@@ -582,14 +588,36 @@
                 : null;
             let confirmed;
             if (confirmFn) {
-                confirmed = await confirmFn(`确定要删除规则 "${rule.name}" 吗？`, '删除规则', '删除', '取消', true);
+                const message = rule.isBuiltin
+                    ? `确定要将官方预置 "${rule.name}" 恢复为官方默认设置吗？`
+                    : `确定要删除规则 "${rule.name}" 吗？`;
+                confirmed = await confirmFn(
+                    message,
+                    rule.isBuiltin ? '恢复官方默认' : '删除规则',
+                    rule.isBuiltin ? '恢复' : '删除',
+                    '取消',
+                    !rule.isBuiltin
+                );
             } else {
-                confirmed = window.confirm(`确定要删除规则 "${rule.name}" 吗？`);
+                confirmed = window.confirm(rule.isBuiltin
+                    ? `确定要将官方预置 "${rule.name}" 恢复为官方默认设置吗？`
+                    : `确定要删除规则 "${rule.name}" 吗？`);
             }
             if (!confirmed) return;
 
-            this.store.rules = (this.store.rules || []).filter(r => r.id !== rule.id);
-            this.selectedRuleId = (this.store.rules[0] && this.store.rules[0].id) || null;
+            if (rule.isBuiltin && window.TavernRulesEngine?.BUILTIN_RULES) {
+                const official = window.TavernRulesEngine.BUILTIN_RULES.find(
+                    candidate => candidate.builtinKey === rule.builtinKey
+                );
+                if (official) {
+                    const index = this.store.rules.findIndex(r => r.id === rule.id);
+                    this.store.rules[index] = { ...official };
+                    this.selectedRuleId = official.id;
+                }
+            } else {
+                this.store.rules = (this.store.rules || []).filter(r => r.id !== rule.id);
+                this.selectedRuleId = (this.store.rules[0] && this.store.rules[0].id) || null;
+            }
             await this.saveStore();
             this._renderManagerList();
             this._renderManagerEditPanel();

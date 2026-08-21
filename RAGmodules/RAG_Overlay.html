@@ -146,6 +146,54 @@
         display: flex;
       }
 
+      .approval-reason {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        -webkit-app-region: no-drag;
+      }
+
+      .approval-reason.visible {
+        display: flex;
+      }
+
+      .approval-reason textarea {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        min-height: 46px;
+        max-height: 120px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        line-height: 1.4;
+        outline: none;
+      }
+
+      .approval-reason textarea::placeholder {
+        color: rgba(235, 240, 255, 0.45);
+      }
+
+      .approval-reason textarea:focus {
+        border-color: rgba(90, 178, 255, 0.7);
+        box-shadow: 0 0 0 2px rgba(90, 178, 255, 0.18);
+      }
+
+      .approval-reason textarea:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .approval-reason-hint {
+        font-size: 10px;
+        color: rgba(235, 240, 255, 0.5);
+        line-height: 1.35;
+      }
+
       .btn {
         border: 1px solid rgba(255, 255, 255, 0.26);
         border-radius: 8px;
@@ -317,6 +365,11 @@
           <span class="nav-counter" id="navCounter">1/2</span>
           <button class="nav-btn" id="navNextBtn">▶</button>
         </div>
+        <div class="approval-reason" id="approvalReasonWrapper">
+          <textarea id="approvalReasonInput" maxlength="1000" rows="2"
+            placeholder="可选：告诉 AI 为什么通过或拒绝"></textarea>
+          <div class="approval-reason-hint">拒绝时建议填写可执行的修正建议，最多 1000 字。</div>
+        </div>
         <div class="approval-actions" id="approvalActions">
           <button class="btn approve" id="approveBtn">允许</button>
           <button class="btn reject" id="rejectBtn">拒绝</button>
@@ -343,6 +396,8 @@
       const approvalActions = document.getElementById("approvalActions");
       const approveBtn = document.getElementById("approveBtn");
       const rejectBtn = document.getElementById("rejectBtn");
+      const approvalReasonWrapper = document.getElementById("approvalReasonWrapper");
+      const approvalReasonInput = document.getElementById("approvalReasonInput");
 
       const state = {
         passThrough: true,
@@ -350,7 +405,22 @@
         approvalRequestIds: [], // ordered keys for navigation
         currentApprovalIndex: 0,
         processedApprovalIds: new Set(), // 已审核的 requestId，用于过滤下次 payload
+        approvalReasons: new Map(), // Map<requestId, reasonText> 草稿留存
       };
+
+      // 阻止冒泡，避免拖动/穿透切换影响输入
+      if (approvalReasonInput) {
+        approvalReasonInput.addEventListener("mousedown", (e) => e.stopPropagation());
+        approvalReasonInput.addEventListener("click", (e) => e.stopPropagation());
+        approvalReasonInput.addEventListener("keydown", (e) => e.stopPropagation());
+        approvalReasonInput.addEventListener("input", () => {
+          const ids = state.approvalRequestIds;
+          const currentId = ids[state.currentApprovalIndex];
+          if (currentId) {
+            state.approvalReasons.set(currentId, approvalReasonInput.value);
+          }
+        });
+      }
 
       function setDotColor(level) {
         let color = "#5ab2ff";
@@ -372,6 +442,7 @@
         if (ids.length === 0) {
           approvalActions.classList.remove("visible");
           document.getElementById("approvalNav").classList.remove("visible");
+          if (approvalReasonWrapper) approvalReasonWrapper.classList.remove("visible");
           return;
         }
 
@@ -416,6 +487,16 @@
         rejectBtn.disabled = isProcessed;
         approveBtn.textContent = isProcessed ? "已允许" : "允许";
         rejectBtn.textContent = isProcessed ? "已拒绝" : "拒绝";
+
+        // 切换 reason 输入框并恢复对应草稿
+        if (approvalReasonWrapper && approvalReasonInput) {
+          approvalReasonWrapper.classList.add("visible");
+          approvalReasonInput.value = state.approvalReasons.get(currentId) || "";
+          approvalReasonInput.disabled = isProcessed;
+          approvalReasonInput.placeholder = isProcessed
+            ? "本次审核已提交"
+            : "可选：告诉 AI 为什么通过或拒绝";
+        }
       }
 
       function renderPayload(payload) {
@@ -508,6 +589,7 @@
           state.currentApprovalIndex = 0;
           approvalActions.classList.remove("visible");
           document.getElementById("approvalNav").classList.remove("visible");
+          if (approvalReasonWrapper) approvalReasonWrapper.classList.remove("visible");
         }
       }
 
@@ -530,14 +612,22 @@
         if (!currentId || !window.electronAPI?.sendRagOverlayApprovalAction)
           return;
 
+        const reasonRaw =
+          (approvalReasonInput && approvalReasonInput.value) ||
+          state.approvalReasons.get(currentId) ||
+          "";
+        const reason = String(reasonRaw).trim().slice(0, 1000);
+
         window.electronAPI.sendRagOverlayApprovalAction({
           requestId: currentId,
           approved: !!approved,
+          reason,
         });
 
         // ── 记录已审核并立即从本地列表中移除 ──
         state.processedApprovalIds.add(currentId);
         state.approvalRequests.delete(currentId);
+        state.approvalReasons.delete(currentId);
         state.approvalRequestIds = state.approvalRequestIds.filter(
           (id) => id !== currentId
         );
@@ -553,6 +643,8 @@
           state.currentApprovalIndex = 0;
           approvalActions.classList.remove("visible");
           document.getElementById("approvalNav").classList.remove("visible");
+          if (approvalReasonWrapper) approvalReasonWrapper.classList.remove("visible");
+          if (approvalReasonInput) approvalReasonInput.value = "";
           titleText.textContent = "全部审核完毕";
           messageText.textContent = "所有待审批的工具调用请求已处理。";
           setDotColor("success");

@@ -1,0 +1,15 @@
+{
+  "Button": { "source": ["modules/ui-system/next-shell/creation-controller.js", "create('Button'"], "electron": ["scripts/test-electron-ui-apps-smoke.mjs", "next-ui-create-dialog-host"] },
+  "Input": { "source": ["modules/ui-system/settings-bridge.js", "enhance('Input'"], "electron": ["scripts/test-settings-wa-electron.mjs", "vcp-ui-settings-search"] },
+  "Textarea": { "source": ["modules/ui-system/settings-bridge.js", "enhance('Textarea'"], "electron": ["scripts/test-settings-wa-electron.mjs", "globalSettingsModal"] },
+  "Select": { "source": ["modules/ui-system/settings-bridge.js", "enhance('Select'"], "electron": ["scripts/test-settings-wa-electron.mjs", "globalSettingsModal"] },
+  "Range": { "source": ["modules/ui-system/settings-bridge.js", "enhance('Range'"], "electron": ["scripts/test-settings-wa-electron.mjs", "globalSettingsModal"] },
+  "Switch": { "source": ["modules/ui-system/settings-bridge.js", "enhance('Switch'"], "electron": ["scripts/test-settings-wa-electron.mjs", "globalSettingsModal"] },
+  "Field": { "source": ["modules/ui-system/settings-bridge.js", "enhance('Field'"], "electron": ["scripts/test-settings-wa-electron.mjs", "globalSettingsModal"] },
+  "SettingsSection": { "source": ["modules/ui-system/settings-bridge.js", "enhance('SettingsSection'"], "electron": ["scripts/test-settings-wa-electron.mjs", "settings-section"] },
+  "SettingsActionBar": { "source": ["modules/ui-system/settings-bridge.js", "enhance('SettingsActionBar'"], "electron": ["scripts/test-settings-wa-electron.mjs", "vcp-ui-settings-action-bar"] },
+  "SegmentedControl": { "source": ["modules/ui-system/next-shell/creation-controller.js", "create('SegmentedControl'"], "electron": ["scripts/test-electron-ui-apps-smoke.mjs", "next-ui-create-dialog-host"] },
+  "List": { "source": ["modules/ui-system/settings-bridge.js", "VCPUI.create('List'"], "electron": ["scripts/test-settings-wa-electron.mjs", "vcp-ui-list-item"] },
+  "Modal": { "source": ["modules/ui-system/ask-nova-modal.js", "VCPUI.create('Modal'"], "electron": ["scripts/test-electron-ui-apps-smoke.mjs", "ask-nova-modal-host"] },
+  "Toast": { "source": ["modules/ui-helpers.js", "VCPUI.feedback.toast"], "electron": ["scripts/test-electron-ui-apps-smoke.mjs", "vcp-ui-toast"] }
+}

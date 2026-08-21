@@ -1,0 +1,1325 @@
+@layer vcp-ui.components {
+    html.vcp-appearance-studio-host .vcp-ui-scope.vcp-appearance-studio-overlay,
+    html.vcp-appearance-studio-host .vcp-ui-scope.vcp-appearance-studio-overlay * {
+        box-sizing: border-box;
+        letter-spacing: 0;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay {
+        position: fixed;
+        z-index: var(--vcp-ui-z-overlay);
+        inset: var(--next-topbar-height, 44px) 0 0;
+        display: flex;
+        justify-content: flex-end;
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-backdrop);
+        opacity: 0;
+        transition: opacity var(--vcp-ui-transition-fast);
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay[hidden] { display: none; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay.active { opacity: 1; }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio {
+        width: min(448px, calc(100vw - var(--vcp-ui-space-4)));
+        min-width: 0;
+        height: 100%;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        border-left: 1px solid var(--vcp-ui-border);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+        outline: 0;
+        transform: translateX(20px);
+        transition: transform var(--vcp-ui-transition-normal);
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay.active .vcp-appearance-studio { transform: translateX(0); }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-header, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-footer {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-4) var(--vcp-ui-space-5);
+        background: color-mix(in srgb, var(--vcp-ui-bg-1) 88%, transparent);
+        backdrop-filter: blur(14px);
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-header {
+        justify-content: space-between;
+        border-bottom: 1px solid var(--vcp-ui-border);
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-heading, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-header-actions { min-width: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-heading p, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section-heading p {
+        margin: 4px 0 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: 1.35;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-heading h2, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section h3, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section h4 { margin: 0; letter-spacing: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-heading h2 {
+        font-size: var(--vcp-ui-font-title);
+        line-height: var(--vcp-ui-line-compact);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-header-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-state {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        white-space: nowrap;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-state.is-dirty { color: var(--vcp-ui-text-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-icon-button, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-reset {
+        width: var(--vcp-ui-control-md);
+        height: var(--vcp-ui-control-md);
+        padding: 0;
+        display: grid;
+        place-items: center;
+        flex: 0 0 var(--vcp-ui-control-md);
+        border: 0;
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-3);
+        background: transparent;
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-icon-button:hover, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-reset:hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-content {
+        min-width: 0;
+        overflow: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section {
+        min-width: 0;
+        padding: var(--vcp-ui-space-4) var(--vcp-ui-space-5);
+        border-bottom: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section-featured {
+        background: color-mix(in srgb, var(--vcp-ui-accent) 4%, var(--vcp-ui-bg-1));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section-heading {
+        min-width: 0;
+        margin-bottom: var(--vcp-ui-space-3);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section h3 { font-size: var(--vcp-ui-font-emphasis); line-height: var(--vcp-ui-line-compact); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section h4 {
+        margin-bottom: var(--vcp-ui-space-2);
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 600;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-grid, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option-grid {
+        display: grid;
+        gap: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-grid, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button {
+        min-width: 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 5px;
+        padding: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-2);
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        text-align: left;
+        cursor: pointer;
+        transition: border-color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast), transform var(--vcp-ui-transition-fast);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile:hover, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option:hover, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button:hover { border-color: var(--vcp-ui-border-strong); background: var(--vcp-ui-selection-hover); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile.active, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option.active, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button.active {
+        border-color: var(--vcp-ui-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 8%, var(--vcp-ui-bg-2));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--vcp-ui-accent) 46%, transparent), var(--vcp-ui-shadow-sm);
+        color: var(--vcp-ui-text-0);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile-check {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        opacity: 0;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile.active .vcp-appearance-tile-check, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option.active .vcp-appearance-option-check, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button.active .vcp-appearance-option-check { opacity: 1; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile-check .vcp-ui-icon { font-size: var(--vcp-ui-font-micro); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile-label { color: inherit; font-size: var(--vcp-ui-font-caption); line-height: 1.2; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile-description { color: var(--vcp-ui-text-3); font-size: var(--vcp-ui-font-micro); line-height: 1.2; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option { align-items: stretch; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option::after, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button::after {
+        content: none;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option-check, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button .vcp-appearance-option-check {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        opacity: 0;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option-check .vcp-ui-icon { font-size: var(--vcp-ui-font-micro); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option-preview, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-preview, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview {
+        min-height: 48px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border: 1px solid var(--vcp-ui-border-subtle);
+        border-radius: min(calc(var(--vcp-ui-radius-card) - 2px), 6px);
+        background: var(--vcp-ui-fill-0);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode-row {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode-row h4, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-palette-heading h4 { margin: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2px;
+        padding: 2px;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-control);
+        background: var(--vcp-ui-fill-0);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode button {
+        min-width: 72px;
+        height: 30px;
+        padding: 0 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        border: 0;
+        border-radius: max(4px, calc(var(--vcp-ui-radius-control) - 3px));
+        color: var(--vcp-ui-text-3);
+        background: transparent;
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        white-space: nowrap;
+        cursor: pointer;
+        transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode button:hover {
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-selection-hover);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode button.active {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-2);
+        box-shadow: var(--vcp-ui-shadow-sm);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-mode .vcp-ui-icon { font-size: var(--vcp-ui-icon-sm); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-palette-heading {
+        min-width: 0;
+        margin-top: var(--vcp-ui-space-4);
+        margin-bottom: var(--vcp-ui-space-2);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-palette-heading > div {
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        gap: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-palette-heading [data-theme-load-state] {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-micro);
+        white-space: nowrap;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-palette-heading .vcp-appearance-studio-link {
+        min-height: 26px;
+        padding: 0 7px;
+        gap: 4px;
+        border: 0;
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-palette-grid {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch {
+        min-width: 0;
+        padding: 4px;
+        display: grid;
+        gap: 5px;
+        border: 1px solid transparent;
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+        font: inherit;
+        cursor: pointer;
+        transition: border-color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), color var(--vcp-ui-transition-fast);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch:hover {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-selection-hover);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch.active {
+        border-color: color-mix(in srgb, var(--vcp-ui-accent) 72%, var(--vcp-ui-border));
+        color: var(--vcp-ui-text-0);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 7%, var(--vcp-ui-bg-2));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch-preview {
+        height: 38px;
+        position: relative;
+        display: block;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-border-strong) 76%, transparent);
+        border-radius: max(4px, calc(var(--vcp-ui-radius-card) - 3px));
+        background: linear-gradient(135deg, var(--theme-preview-primary) 0 54%, var(--theme-preview-secondary) 54% 100%);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch-preview > i {
+        width: 7px;
+        height: 7px;
+        position: absolute;
+        left: 6px;
+        bottom: 5px;
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-bg-0) 62%, transparent);
+        border-radius: 50%;
+        background: var(--theme-preview-accent);
+        box-shadow: 9px 0 0 -1px var(--theme-preview-secondary), 18px 0 0 -1px var(--theme-preview-primary);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch-preview > i:nth-child(n+2) { display: none; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch-preview > .vcp-ui-icon {
+        width: 15px;
+        height: 15px;
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        font-size: var(--vcp-ui-font-micro);
+        opacity: 0;
+        transform: scale(.78);
+        transition: opacity var(--vcp-ui-transition-fast), transform var(--vcp-ui-transition-fast);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch.active .vcp-appearance-theme-swatch-preview > .vcp-ui-icon {
+        opacity: 1;
+        transform: scale(1);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-swatch-name {
+        min-width: 0;
+        overflow: hidden;
+        color: inherit;
+        font-size: var(--vcp-ui-font-micro);
+        line-height: 1.2;
+        text-align: center;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-theme-skeleton {
+        height: 62px;
+        border-radius: var(--vcp-ui-radius-card);
+        background: linear-gradient(100deg, var(--vcp-ui-fill-0) 20%, var(--vcp-ui-fill-2) 45%, var(--vcp-ui-fill-0) 70%);
+        background-size: 220% 100%;
+        animation: vcp-appearance-theme-loading 1.2s ease-in-out infinite;
+    }
+    @keyframes vcp-appearance-theme-loading {
+        from { background-position: 100% 0; }
+        to { background-position: -100% 0; }
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview { min-height: 54px; align-items: flex-end; gap: 3px; padding: 8px; background: var(--vcp-ui-bg-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview span { display: block; height: 65%; flex: 1; border-radius: 3px 3px 1px 1px; background: var(--vcp-ui-accent); opacity: .78; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview span:nth-child(2) { height: 85%; background: var(--vcp-ui-text-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview span:nth-child(3) { height: 48%; background: var(--vcp-ui-success); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview-focus { background: var(--vcp-ui-text-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview-focus span { background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview-reading { background: var(--vcp-ui-bg-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-preview-reading span { background: var(--vcp-ui-warning); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-subsection + .vcp-appearance-subsection { margin-top: var(--vcp-ui-space-4); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-subsection, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-subsection {
+        margin-top: var(--vcp-ui-space-5);
+        padding-top: var(--vcp-ui-space-4);
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-option {
+        min-height: 116px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview {
+        height: 64px;
+        position: relative;
+        display: block;
+        overflow: hidden;
+        border: 1px solid var(--vcp-ui-border-subtle);
+        border-radius: 6px;
+        background: var(--vcp-ui-bg-0);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview i {
+        position: absolute;
+        display: block;
+        background: var(--vcp-ui-fill-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview i:nth-child(1) {
+        inset: 0 0 auto;
+        height: 9px;
+        border-bottom: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview i:nth-child(2) {
+        inset: 9px auto 0 0;
+        width: 30%;
+        border-right: 1px solid var(--vcp-ui-border);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 10%, var(--vcp-ui-bg-2));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview i:nth-child(3) {
+        top: 17px;
+        right: 8px;
+        width: 55%;
+        height: 7px;
+        border-radius: 2px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview i:nth-child(4) {
+        right: 8px;
+        bottom: 8px;
+        width: 58%;
+        height: 13px;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: 3px;
+        background: var(--vcp-ui-bg-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview.next i:nth-child(1) {
+        height: 12px;
+        background: color-mix(in srgb, var(--vcp-ui-accent) 9%, var(--vcp-ui-bg-2));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview.next i:nth-child(2) {
+        inset-block-start: 12px;
+        width: 27%;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview.next i:nth-child(3) {
+        top: 12px;
+        right: 0;
+        width: 73%;
+        height: 52px;
+        border: 1px solid var(--vcp-ui-border);
+        border-right: 0;
+        border-bottom: 0;
+        border-radius: 7px 0 0;
+        background: transparent;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-preview.next i:nth-child(4) {
+        width: 56%;
+        border-radius: 7px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-copy {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-copy strong {
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-copy small, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-note {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-micro);
+        line-height: 1.35;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-note {
+        margin: var(--vcp-ui-space-2) 0 0;
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-1);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-shell-note .vcp-ui-icon {
+        font-size: var(--vcp-ui-icon-sm);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-preview { align-items: center; flex-direction: column; justify-content: center; gap: 4px; padding: 7px 18px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-preview i { display: block; width: 100%; height: 2px; border-radius: 2px; background: var(--vcp-ui-text-2); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-preview.relaxed { gap: 9px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-preview.compact { gap: 2px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-preview { align-items: flex-start; justify-content: flex-start; padding: 9px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-preview i { width: 24px; height: 24px; border: 2px solid var(--vcp-ui-accent); border-top-left-radius: 0; border-bottom-right-radius: 4px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-preview.small i { border-top-left-radius: 3px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-preview.medium i { border-top-left-radius: 7px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-preview.round i { border-top-left-radius: 12px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-preview.custom i { border-top-left-radius: var(--vcp-appearance-custom-radius, 10px); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-custom-radius-row {
+        display: grid;
+        grid-template-columns: 104px minmax(0, 1fr);
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        margin-top: var(--vcp-ui-space-3);
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-preview { font-size: calc(var(--vcp-ui-font-body) * 1.45); font-weight: 600; color: var(--vcp-ui-text-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-preview.system { font-family: system-ui, sans-serif; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-preview.humanist { font-family: "Maven Pro", system-ui, sans-serif; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-preview.serif { font-family: "Noto Serif SC", Georgia, serif; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-menu {
+        margin-top: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+        overflow: hidden;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-menu > summary {
+        min-height: 54px;
+        padding: 0 var(--vcp-ui-space-3);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        color: var(--vcp-ui-text-1);
+        cursor: pointer;
+        list-style: none;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-menu > summary::-webkit-details-marker { display: none; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-menu > summary:hover { background: var(--vcp-ui-fill-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-menu > summary > .vcp-ui-icon:first-child {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-icon-md);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-summary-copy {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-summary-copy strong, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row strong {
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+        font-weight: 600;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-summary-copy small, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row small {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: 1.35;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-status {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        white-space: nowrap;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-chevron {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-icon-sm);
+        transition: transform var(--vcp-ui-transition-fast);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-menu[open] .vcp-appearance-detail-chevron { transform: rotate(180deg); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-body {
+        padding: var(--vcp-ui-space-1) var(--vcp-ui-space-3) var(--vcp-ui-space-3);
+        display: grid;
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row {
+        min-width: 0;
+        min-height: 54px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 128px;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        border-bottom: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row:last-child { border-bottom: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row > span { min-width: 0; display: grid; gap: 2px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row select {
+        width: 100%;
+        height: var(--vcp-ui-control-md);
+        min-width: 0;
+        padding: 0 var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row select:focus-visible {
+        border-color: var(--vcp-ui-control-focus);
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 1px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-menu {
+        margin-top: var(--vcp-ui-space-3);
+        overflow: hidden;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-menu > summary {
+        min-height: 54px;
+        padding: 0 var(--vcp-ui-space-3);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        color: var(--vcp-ui-text-1);
+        cursor: pointer;
+        list-style: none;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-menu > summary::-webkit-details-marker { display: none; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-menu > summary:hover { background: var(--vcp-ui-fill-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-menu > summary > .vcp-ui-icon:first-child { color: var(--vcp-ui-text-2); font-size: var(--vcp-ui-icon-md); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-menu[open] .vcp-appearance-detail-chevron { transform: rotate(180deg); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-body {
+        padding: var(--vcp-ui-space-3);
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-overview {
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-toolbar {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-toolbar button {
+        min-height: 28px;
+        padding: 0 var(--vcp-ui-space-2);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-bg-1);
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-toolbar button:hover { color: var(--vcp-ui-text-0); border-color: var(--vcp-ui-border-strong); background: var(--vcp-ui-selection-hover); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-toolbar .vcp-ui-icon { font-size: var(--vcp-ui-icon-sm); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect {
+        min-width: 0;
+        min-height: 52px;
+        position: relative;
+        padding: 6px 7px;
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr);
+        align-items: center;
+        gap: 6px;
+        overflow: hidden;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-bg-1);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect:hover { color: var(--vcp-ui-text-0); border-color: var(--vcp-ui-border-strong); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect.active {
+        color: var(--vcp-ui-text-0);
+        border-color: var(--vcp-ui-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 8%, var(--vcp-ui-bg-1));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--vcp-ui-accent) 34%, transparent);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-icon {
+        width: 26px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-border-strong) 72%, transparent);
+        border-radius: 6px;
+        color: var(--vcp-ui-text-1);
+        background: linear-gradient(145deg, color-mix(in srgb, var(--vcp-ui-bg-0) 38%, transparent), color-mix(in srgb, var(--vcp-ui-accent) 22%, var(--vcp-ui-bg-2)));
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-vibrancy .vcp-appearance-material-effect-icon { background: color-mix(in srgb, var(--vcp-ui-bg-1) 62%, transparent); backdrop-filter: blur(12px) saturate(145%); -webkit-backdrop-filter: blur(12px) saturate(145%); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-mica .vcp-appearance-material-effect-icon { background: color-mix(in srgb, var(--vcp-ui-bg-1) 92%, var(--vcp-ui-accent)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-acrylic .vcp-appearance-material-effect-icon { background-color: color-mix(in srgb, var(--vcp-ui-bg-1) 76%, transparent); background-image: url('../../assets/svg/acrylic-noise.svg'); background-blend-mode: soft-light; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-liquid {
+        background: color-mix(in srgb, var(--vcp-ui-text-0) 2%, var(--vcp-ui-bg-1));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-liquid .vcp-appearance-material-effect-icon {
+        background: linear-gradient(135deg, color-mix(in srgb, var(--vcp-ui-text-0) 20%, transparent), transparent 44%, color-mix(in srgb, var(--vcp-ui-accent) 10%, transparent));
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-text-0) 28%, transparent), inset 1px 0 0 color-mix(in srgb, var(--vcp-ui-accent) 18%, transparent);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-icon .vcp-ui-icon { font-size: var(--vcp-ui-icon-sm); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect > span:nth-child(2) { min-width: 0; display: grid; gap: 1px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect strong, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect strong { color: inherit; font-size: var(--vcp-ui-font-caption); font-weight: 600; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect small { color: var(--vcp-ui-text-3); font-size: var(--vcp-ui-font-micro); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect-check {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        color: var(--vcp-ui-accent);
+        font-size: var(--vcp-ui-font-micro);
+        opacity: 0;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-effect.active .vcp-appearance-material-effect-check { opacity: 1; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview {
+        height: 92px;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-0);
+        isolation: isolate;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-scene {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(circle at 74% 20%, color-mix(in srgb, var(--vcp-ui-accent) 28%, transparent), transparent 34%),
+            linear-gradient(145deg, var(--vcp-ui-bg-0), var(--vcp-ui-bg-2));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-topbar, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-sidebar {
+        position: absolute;
+        z-index: 1;
+        border-color: color-mix(in srgb, var(--vcp-ui-border-strong) var(--vcp-material-border), transparent);
+        background-color: color-mix(in srgb, var(--vcp-ui-bg-1) var(--vcp-material-opacity), transparent);
+        background-image: var(--vcp-material-texture);
+        backdrop-filter: blur(var(--vcp-material-blur)) saturate(var(--vcp-material-saturation)) brightness(var(--vcp-material-brightness));
+        -webkit-backdrop-filter: blur(var(--vcp-material-blur)) saturate(var(--vcp-material-saturation)) brightness(var(--vcp-material-brightness));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-topbar {
+        inset: 0 0 auto;
+        height: 20px;
+        border-bottom-style: solid;
+        border-bottom-width: 1px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-sidebar {
+        inset: 20px auto 0 0;
+        width: 86px;
+        padding: 13px 10px;
+        display: grid;
+        align-content: start;
+        gap: 8px;
+        border-right-style: solid;
+        border-right-width: 1px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview[data-surface="solid"] .vcp-appearance-material-preview-topbar, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview[data-surface="solid"] .vcp-appearance-material-preview-sidebar {
+        border-color: var(--vcp-ui-border);
+        background: var(--vcp-ui-bg-1);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview[data-surface="translucent"] .vcp-appearance-material-preview-topbar, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview[data-surface="translucent"] .vcp-appearance-material-preview-sidebar {
+        border-color: var(--vcp-ui-border);
+        background: color-mix(in srgb, var(--vcp-ui-bg-1) 72%, transparent);
+        backdrop-filter: blur(18px) saturate(128%);
+        -webkit-backdrop-filter: blur(18px) saturate(128%);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-sidebar i {
+        width: 100%;
+        height: 5px;
+        display: block;
+        border-radius: var(--vcp-ui-radius-full);
+        background: color-mix(in srgb, var(--vcp-ui-text-1) 38%, transparent);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-sidebar i:nth-child(2) { width: 72%; background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-sidebar i:nth-child(3) { width: 84%; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-content {
+        position: absolute;
+        z-index: 2;
+        inset: 31px 14px 12px 100px;
+        padding: var(--vcp-ui-space-3);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 7px;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-sm);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-content i {
+        width: 84%;
+        height: 5px;
+        display: block;
+        border-radius: var(--vcp-ui-radius-full);
+        background: color-mix(in srgb, var(--vcp-ui-text-1) 52%, transparent);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-content i:nth-child(2) { width: 62%; background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-preview-content i:nth-child(3) { width: 72%; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-controls { display: grid; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-row {
+        min-width: 0;
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 174px;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        border-bottom: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-row:last-child { border-bottom: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-copy { min-width: 0; display: grid; gap: 2px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-copy strong { color: var(--vcp-ui-text-1); font-size: var(--vcp-ui-font-helper); font-weight: 600; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-copy small { color: var(--vcp-ui-text-3); font-size: var(--vcp-ui-font-caption); line-height: 1.3; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-control {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 38px;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-control input[type="range"] { width: 100%; min-width: 0; accent-color: var(--vcp-ui-accent); cursor: pointer; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-material-control output {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-micro);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mini-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vcp-ui-space-3); margin-top: var(--vcp-ui-space-4); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mini-item { min-width: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mini-item-wide { grid-column: 1 / -1; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-inline-range {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 42px;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        min-height: var(--vcp-ui-control-md);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-inline-range input[type="range"] {
+        width: 100%;
+        min-width: 0;
+        accent-color: var(--vcp-ui-accent);
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-inline-range output {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-micro);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-sidebar-geometry {
+        margin-top: var(--vcp-ui-space-5);
+        padding-top: var(--vcp-ui-space-4);
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-sidebar-geometry-heading {
+        margin-bottom: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-sidebar-geometry-heading p, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-sidebar-geometry-note {
+        margin: var(--vcp-ui-space-1) 0 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-micro);
+        line-height: var(--vcp-ui-line-body);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-geometry-row {
+        display: grid;
+        grid-template-columns: 104px minmax(0, 1fr);
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        min-height: var(--vcp-ui-control-lg);
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-geometry-row select {
+        width: 100%;
+        min-width: 0;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-geometry-radius {
+        display: grid;
+        gap: var(--vcp-ui-space-2);
+        margin-top: var(--vcp-ui-space-4);
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-choice-grid, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-choice-grid button, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid label > span {
+        min-width: 0;
+        min-height: var(--vcp-ui-control-lg);
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        font: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-choice-grid button small, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid label small {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-micro);
+        white-space: nowrap;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-choice-grid button:hover, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-choice-grid button.active, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid label:hover > span, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid label:has(input:checked) > span {
+        border-color: var(--vcp-ui-accent);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-selection-bg);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid label {
+        position: relative;
+        min-width: 0;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-radius-choice-grid label:has(input:focus-visible) > span {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mini-helper { margin: var(--vcp-ui-space-1) 0 0; color: var(--vcp-ui-text-3); font-size: var(--vcp-ui-font-micro); line-height: 1.35; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-scale { margin-top: var(--vcp-ui-space-4); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-segmented { min-width: 0; padding: 2px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; border: 1px solid var(--vcp-ui-border); border-radius: var(--vcp-ui-radius-control); background: var(--vcp-ui-bg-2); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-segmented button {
+        min-width: 0; min-height: var(--vcp-ui-control-md); padding: 0 var(--vcp-ui-space-2); border: 0; border-radius: calc(var(--vcp-ui-radius-control) - 2px); color: var(--vcp-ui-text-2); background: transparent; font: inherit; font-size: var(--vcp-ui-font-caption); white-space: nowrap; cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-segmented button:hover, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-segmented button.active { color: var(--vcp-ui-text-0); background: var(--vcp-ui-selection-hover); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--vcp-ui-space-2); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button { min-height: 86px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview { min-height: 54px; align-items: flex-start; justify-content: center; flex-direction: column; gap: 5px; padding: 10px 14px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview i { display: block; height: 7px; border-radius: 4px; background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview i:nth-child(1) { width: 68%; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview i:nth-child(2) { width: 48%; background: var(--vcp-ui-text-3); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.panel { gap: 3px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.panel i { width: 100%; height: 5px; border-radius: 1px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.immersive { align-items: center; background: color-mix(in srgb, var(--vcp-ui-accent) 14%, var(--vcp-ui-bg-0)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-chat-preview.immersive i { width: 78%; height: 12px; border-radius: 6px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section-inline-action { margin-top: var(--vcp-ui-space-3); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-link { padding: 0; display: inline-flex; align-items: center; gap: var(--vcp-ui-space-1); border: 0; color: var(--vcp-ui-text-accent); background: transparent; font: inherit; font-size: var(--vcp-ui-font-helper); cursor: pointer; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-actions { padding-top: var(--vcp-ui-space-2); padding-bottom: var(--vcp-ui-space-2); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-actions > button { width: 100%; min-height: var(--vcp-ui-row-height); padding: 0 var(--vcp-ui-space-2); display: flex; align-items: center; gap: var(--vcp-ui-space-2); border: 0; border-radius: var(--vcp-ui-radius-control); color: var(--vcp-ui-text-1); background: transparent; font: inherit; font-size: var(--vcp-ui-font-helper); cursor: pointer; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-actions > button:hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-actions > button > .vcp-ui-icon:last-child { margin-left: auto; color: var(--vcp-ui-text-3); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-footer { justify-content: flex-end; border-top: 1px solid var(--vcp-ui-border); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-footer button { min-height: var(--vcp-ui-control-lg); padding: 0 var(--vcp-ui-space-3); display: inline-flex; align-items: center; justify-content: center; gap: var(--vcp-ui-space-1); border-radius: var(--vcp-ui-radius-control); font: inherit; font-size: var(--vcp-ui-font-helper); cursor: pointer; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-reset-all { margin-right: auto; border: 0; color: var(--vcp-ui-text-3); background: transparent; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-reset-all:hover { color: var(--vcp-ui-danger); background: color-mix(in srgb, var(--vcp-ui-danger) 8%, transparent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-secondary { border: 1px solid var(--vcp-ui-border); color: var(--vcp-ui-text-1); background: var(--vcp-ui-bg-2); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-primary { border: 1px solid var(--vcp-ui-accent); color: var(--vcp-ui-on-accent); background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-primary:hover { background: var(--vcp-ui-accent-hover); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio button:focus-visible { outline: 2px solid var(--vcp-ui-focus-ring); outline-offset: 2px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio button:disabled { cursor: default; opacity: .48; }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-backdrop {
+        position: absolute;
+        z-index: 2;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: var(--vcp-ui-space-5);
+        background: color-mix(in srgb, var(--vcp-ui-backdrop) 82%, transparent);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-backdrop[hidden] { display: none; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-dialog {
+        width: min(390px, calc(100vw - 40px));
+        padding: var(--vcp-ui-space-5);
+        display: grid;
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border-strong);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+        outline: 0;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-icon {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 12%, transparent);
+        font-size: var(--vcp-ui-icon-md);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-copy { min-width: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-copy h3 {
+        margin: 1px 0 var(--vcp-ui-space-1);
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-emphasis);
+        line-height: var(--vcp-ui-line-compact);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-copy p {
+        margin: 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-actions {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--vcp-ui-space-2);
+        margin-top: var(--vcp-ui-space-2);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-actions button {
+        min-height: var(--vcp-ui-control-lg);
+        padding: 0 var(--vcp-ui-space-3);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-ui-space-1);
+        border-radius: var(--vcp-ui-radius-control);
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-continue { border: 0; color: var(--vcp-ui-text-2); background: transparent; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-discard { border: 1px solid var(--vcp-ui-border); color: var(--vcp-ui-text-1); background: var(--vcp-ui-bg-2); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-save { border: 1px solid var(--vcp-ui-accent); color: var(--vcp-ui-on-accent); background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-actions button:focus-visible { outline: 2px solid var(--vcp-ui-focus-ring); outline-offset: 2px; }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-card {
+        min-width: 0;
+        margin-bottom: var(--vcp-ui-space-4);
+        padding: var(--vcp-ui-space-3);
+        display: grid;
+        grid-template-columns: 104px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 24%, var(--vcp-ui-border));
+        border-radius: var(--vcp-ui-radius-card);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 5%, var(--vcp-ui-fill-0));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview {
+        height: 68px;
+        min-width: 0;
+        padding: 7px;
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr);
+        gap: 6px;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-0);
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-theme="dark"] { background: var(--vcp-ui-text-0); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-radius="square"] { border-radius: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-radius="small"] { border-radius: 4px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-radius="round"] { border-radius: 14px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview-rail {
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--vcp-ui-accent) 64%, var(--vcp-ui-bg-2));
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview-content {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-density="compact"] .appearance-workbench-preview-content { gap: 2px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-density="relaxed"] .appearance-workbench-preview-content { gap: 9px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview-content i {
+        display: block;
+        width: 82%;
+        height: 6px;
+        border-radius: 4px;
+        background: var(--vcp-ui-text-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview-content i:nth-child(2) { width: 62%; background: var(--vcp-ui-accent); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview-content i:nth-child(3) { width: 74%; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-presentation="panel"] .appearance-workbench-preview-content i { width: 100%; border-radius: 1px; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-presentation="immersive"] .appearance-workbench-preview-content { align-items: center; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview[data-presentation="immersive"] .appearance-workbench-preview-content i { width: 72%; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-copy { min-width: 0; }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-eyebrow {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--vcp-ui-text-accent);
+        font-size: var(--vcp-ui-font-micro);
+        font-weight: 600;
+        letter-spacing: .04em;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-copy strong {
+        display: block;
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-emphasis);
+        line-height: var(--vcp-ui-line-compact);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-copy p {
+        margin: 4px 0 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: 1.35;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-chips {
+        margin-top: var(--vcp-ui-space-2);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--vcp-ui-space-1);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-chips span {
+        padding: 2px var(--vcp-ui-space-2);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-fill-1);
+        font-size: var(--vcp-ui-font-micro);
+        white-space: nowrap;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open {
+        min-height: var(--vcp-ui-control-lg);
+        padding: 0 var(--vcp-ui-space-3);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-ui-space-1);
+        border: 1px solid var(--vcp-ui-accent);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open:hover { background: var(--vcp-ui-accent-hover); }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-selector {
+        min-width: 0;
+        margin: var(--vcp-ui-space-4) 0;
+        padding: var(--vcp-ui-space-4);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-fill-0);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-selector legend {
+        padding: 0 var(--vcp-ui-space-2);
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-body);
+        font-weight: 650;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-options {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option {
+        position: relative;
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr) 20px;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        min-width: 0;
+        padding: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-bg-1);
+        cursor: pointer;
+        transition: border-color var(--vcp-ui-transition-fast), background-color var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:hover {
+        border-color: var(--vcp-ui-border-strong);
+        background: var(--vcp-ui-fill-1);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:checked) {
+        border-color: var(--vcp-ui-accent);
+        background: var(--vcp-ui-selection-bg);
+        box-shadow: 0 0 0 1px var(--vcp-ui-accent);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:focus-visible) {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option > input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview {
+        display: grid;
+        grid-template-columns: 18px 1fr 14px;
+        grid-template-rows: 12px 40px;
+        width: 72px;
+        height: 52px;
+        overflow: hidden;
+        border: 1px solid var(--vcp-ui-border-strong);
+        border-radius: 7px;
+        background: var(--vcp-ui-bg-0);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i { display: block; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(1) { grid-column: 1 / -1; background: var(--vcp-ui-fill-2); }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(2) { background: color-mix(in srgb, var(--vcp-ui-accent) 45%, var(--vcp-ui-fill-1)); }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(3) { margin: 5px 4px; border-radius: 4px; background: var(--vcp-ui-fill-1); }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview i:nth-child(4) { background: var(--vcp-ui-fill-1); }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview.classic { border-radius: 3px; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-preview.next i:nth-child(3) { margin: 3px; border-radius: 7px; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.appearance-layout-copy, .appearance-home-visual-copy) {
+        display: grid;
+        min-width: 0;
+        gap: 3px;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.appearance-layout-copy, .appearance-home-visual-copy) strong {
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-body);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.appearance-layout-copy, .appearance-home-visual-copy) small, :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-helper {
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-check { width: var(--vcp-ui-icon-sm); height: var(--vcp-ui-icon-sm); color: transparent; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open-icon { width: var(--vcp-ui-icon-sm); height: var(--vcp-ui-icon-sm); flex: 0 0 auto; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:checked) .appearance-layout-check { color: var(--vcp-ui-accent); }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-helper { margin: var(--vcp-ui-space-3) 0 0; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-visual-setting {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-4);
+        margin: 0 0 var(--vcp-ui-space-4);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-fill-0);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting {
+        margin-bottom: var(--vcp-ui-space-4);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-fill-0);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .appearance-home-visual-setting {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .settings-form-group { margin: 0; }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor {
+        margin-top: var(--vcp-ui-space-4);
+        padding-top: var(--vcp-ui-space-4);
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-heading p {
+        margin: 3px 0 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor > input {
+        width: 100%;
+        min-height: var(--vcp-ui-control-lg);
+        padding: 0 var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-2);
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        outline: 0;
+    }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor > input:focus {
+        border-color: var(--vcp-ui-accent);
+        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-range-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-range-heading output {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-caption);
+        font-variant-numeric: tabular-nums;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-sidebar-geometry-controls {
+        display: grid;
+        gap: var(--vcp-ui-space-4);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control {
+        width: 100%;
+        margin: 0;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control input[type="range"] {
+        width: 100%;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        accent-color: var(--vcp-ui-accent);
+        cursor: pointer;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-helper {
+        display: block;
+        margin-top: var(--vcp-ui-space-3);
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+
+    @media (max-width: 560px) {
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio { width: 100vw; }
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio-section { padding-left: var(--vcp-ui-space-4); padding-right: var(--vcp-ui-space-4); }
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mini-options { grid-template-columns: 1fr; }
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-detail-row { grid-template-columns: minmax(0, 1fr) 116px; }
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-card { grid-template-columns: 82px minmax(0, 1fr); }
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open { grid-column: 1 / -1; width: 100%; }
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-options { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option { transition: none; }
+    }
+}

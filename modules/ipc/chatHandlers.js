@@ -2,7 +2,120 @@
 const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
+const crypto = require('crypto');
 const contextSanitizer = require('../contextSanitizer');
+const { SenderTaskRegistry } = require('../services/senderTaskRegistry');
+
+function stableStringify(value) {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(item => stableStringify(item)).join(',')}]`;
+    }
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+function extractTextForHash(content) {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (Array.isArray(content)) {
+        return content
+            .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+            .map(part => part.text)
+            .join('\n');
+    }
+    if (content && typeof content.text === 'string') {
+        return content.text;
+    }
+    return '';
+}
+
+function hashSentMessage(message) {
+    return `sha256:${crypto.createHash('sha256').update(extractTextForHash(message.content), 'utf8').digest('hex')}`;
+}
+
+function buildVcpChatExtensionsFromMessages(messages, context = null, requestId = null) {
+    const messageTimestampBindings = [];
+    messages.forEach((message, index) => {
+        const meta = message && message.__vcpchatTimestampMeta;
+        if (!meta || !meta.messageId || typeof meta.timestamp !== 'number') {
+            return;
+        }
+        messageTimestampBindings.push({
+            messageId: meta.messageId,
+            role: message.role || meta.role,
+            timestamp: meta.timestamp,
+            timestampIso: new Date(meta.timestamp).toISOString(),
+            source: 'client_history',
+            sentMessageHash: hashSentMessage(message),
+            sentMessageIndex: index
+        });
+    });
+
+    const requestContext = buildRequestContext(context, requestId);
+    if (messageTimestampBindings.length === 0 && !requestContext) {
+        return null;
+    }
+
+    return {
+        schemaVersion: 1,
+        messageMetadataMode: 'hash_only',
+        ...(messageTimestampBindings.length > 0 ? { messageTimestampBindings } : {}),
+        ...(requestContext ? { requestContext } : {})
+    };
+}
+
+function buildRequestContext(context, requestId) {
+    if (!context || typeof context !== 'object') return null;
+    const agentId = typeof context.agentId === 'string' ? context.agentId.trim() : '';
+    const agentName = typeof context.agentName === 'string' ? context.agentName.trim() : '';
+    const topicId = typeof context.topicId === 'string' ? context.topicId.trim() : '';
+    if (!agentId && !topicId) return null;
+
+    return {
+        requestId: typeof requestId === 'string' ? requestId : undefined,
+        agentId: agentId || undefined,
+        agentName: agentName || undefined,
+        topicId: topicId || undefined,
+        ownerType: context.isGroupMessage === true ? 'group' : 'agent',
+        isGroupMessage: context.isGroupMessage === true
+    };
+}
+
+function stripInternalMessageMetadata(messages) {
+    return messages.map(message => {
+        if (!message || typeof message !== 'object') return message;
+        const { __vcpchatTimestampMeta, ...cleanMessage } = message;
+        return cleanMessage;
+    });
+}
+
+function omitUnsetOptionalModelParams(modelConfig = {}) {
+    const normalizedConfig = { ...modelConfig };
+    const optionalParamKeys = [
+        'temperature',
+        'contextTokenLimit',
+        'max_tokens',
+        'top_p',
+        'top_k'
+    ];
+
+    optionalParamKeys.forEach(key => {
+        const value = normalizedConfig[key];
+        if (
+            value === null ||
+            value === undefined ||
+            value === '' ||
+            (typeof value === 'number' && !Number.isFinite(value))
+        ) {
+            delete normalizedConfig[key];
+        }
+    });
+
+    return normalizedConfig;
+}
 
 /**
  * Initializes chat and topic related IPC handlers.
@@ -17,6 +130,41 @@ const contextSanitizer = require('../contextSanitizer');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 let ipcHandlersRegistered = false;
+const flowlockClaimLocks = new Map();
+const vcpStreamTasks = new SenderTaskRegistry({ label: 'vcp-stream-tasks' });
+
+function getVcpStreamTaskSnapshot() {
+    return vcpStreamTasks.snapshot();
+}
+
+async function withFlowlockClaimLock(agentId, task) {
+    const previous = flowlockClaimLocks.get(agentId) || Promise.resolve();
+    let release;
+    const current = new Promise(resolve => { release = resolve; });
+    flowlockClaimLocks.set(agentId, previous.then(() => current));
+
+    await previous;
+    try {
+        return await task();
+    } finally {
+        release();
+        if (flowlockClaimLocks.get(agentId) === current) {
+            flowlockClaimLocks.delete(agentId);
+        }
+    }
+}
+
+function sanitizeFlowlockRequest(request) {
+    if (!request || typeof request !== 'object') return null;
+    return {
+        requestId: request.requestId,
+        requestedByAgentId: request.requestedByAgentId,
+        createdAt: request.createdAt,
+        heartbeatSeconds: Math.max(1, Math.min(86400, Number.parseInt(request.heartbeatSeconds, 10) || 5)),
+        prompt: typeof request.prompt === 'string' ? request.prompt : '',
+        status: request.status
+    };
+}
 
 function initialize(mainWindow, context) {
     const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher, agentConfigManager } = context;
@@ -29,6 +177,176 @@ function initialize(mainWindow, context) {
     if (ipcHandlersRegistered) {
         return;
     }
+
+    ipcMain.handle('claim-pending-flowlock-topic', async (event, agentId, constraints = {}) => {
+        if (!agentId) {
+            return { success: false, code: 'INVALID_AGENT', error: '缺少 agentId。' };
+        }
+
+        return withFlowlockClaimLock(agentId, async () => {
+            try {
+                if (!agentConfigManager) {
+                    return { success: false, code: 'MANAGER_UNAVAILABLE', error: 'AgentConfigManager 未初始化。' };
+                }
+
+                const config = await agentConfigManager.readAgentConfig(agentId);
+                const topics = Array.isArray(config.topics) ? config.topics : [];
+                const requestId = typeof constraints.requestId === 'string' ? constraints.requestId : null;
+                const createdAfter = Number.isFinite(constraints.createdAfter) ? constraints.createdAfter : null;
+                const candidates = [];
+
+                for (const topic of topics) {
+                    const request = sanitizeFlowlockRequest(topic.flowlockRequest);
+                    if (!request || request.status !== 'pending') continue;
+                    if (request.requestedByAgentId !== agentId) continue;
+                    if (requestId && request.requestId !== requestId) continue;
+                    if (createdAfter !== null && request.createdAt < createdAfter) continue;
+
+                    const historyPath = path.join(USER_DATA_DIR, agentId, 'topics', topic.id, 'history.json');
+                    if (!await fs.pathExists(historyPath)) {
+                        await agentConfigManager.updateAgentConfig(agentId, existing => ({
+                            ...existing,
+                            topics: (existing.topics || []).map(item => item.id === topic.id
+                                ? {
+                                    ...item,
+                                    flowlockRequest: {
+                                        ...item.flowlockRequest,
+                                        status: 'rejected',
+                                        rejectedAt: Date.now(),
+                                        rejectionReason: 'topic_history_missing'
+                                    }
+                                }
+                                : item)
+                        }));
+                        continue;
+                    }
+                    candidates.push({ topic, request });
+                }
+
+                if (candidates.length === 0) {
+                    return { success: false, code: 'NOT_FOUND', error: '没有符合约束的 pending Flowlock 请求。' };
+                }
+                if (candidates.length > 1) {
+                    return {
+                        success: false,
+                        code: 'CONFLICT',
+                        error: '存在多个 pending Flowlock 请求，拒绝隐式选择。',
+                        conflicts: candidates.map(({ topic, request }) => ({
+                            topicId: topic.id,
+                            requestId: request.requestId,
+                            createdAt: request.createdAt
+                        }))
+                    };
+                }
+
+                const [{ topic, request }] = candidates;
+                let claimed = false;
+                await agentConfigManager.updateAgentConfig(agentId, existing => ({
+                    ...existing,
+                    topics: (existing.topics || []).map(item => {
+                        if (item.id !== topic.id) return item;
+                        const current = item.flowlockRequest;
+                        if (!current || current.requestId !== request.requestId || current.status !== 'pending') {
+                            return item;
+                        }
+                        claimed = true;
+                        return {
+                            ...item,
+                            flowlockRequest: {
+                                ...current,
+                                status: 'consumed',
+                                consumedAt: Date.now()
+                            }
+                        };
+                    })
+                }));
+
+                if (!claimed) {
+                    return { success: false, code: 'ALREADY_CLAIMED', error: '请求已被消费或状态已变化。' };
+                }
+
+                return {
+                    success: true,
+                    claim: {
+                        agentId,
+                        topicId: topic.id,
+                        topicName: topic.name,
+                        requestId: request.requestId,
+                        heartbeatSeconds: request.heartbeatSeconds,
+                        prompt: request.prompt,
+                        createdAt: request.createdAt
+                    }
+                };
+            } catch (error) {
+                console.error(`[Flowlock Claim] Failed for agent ${agentId}:`, error);
+                return { success: false, code: 'CLAIM_FAILED', error: error.message };
+            }
+        });
+    });
+
+    ipcMain.handle('restore-flowlock-claim', async (event, agentId, requestId, reason = 'session_creation_failed') => {
+        if (!agentId || !requestId || !agentConfigManager) {
+            return { success: false, error: '缺少恢复认领所需参数。' };
+        }
+
+        return withFlowlockClaimLock(agentId, async () => {
+            let restored = false;
+            await agentConfigManager.updateAgentConfig(agentId, existing => ({
+                ...existing,
+                topics: (existing.topics || []).map(topic => {
+                    const request = topic.flowlockRequest;
+                    if (!request || request.requestId !== requestId || request.status !== 'consumed') {
+                        return topic;
+                    }
+                    restored = true;
+                    return {
+                        ...topic,
+                        flowlockRequest: {
+                            ...request,
+                            status: 'pending',
+                            consumedAt: undefined,
+                            lastRestoreAt: Date.now(),
+                            lastRestoreReason: reason
+                        }
+                    };
+                })
+            }));
+            return restored
+                ? { success: true }
+                : { success: false, error: '未找到可恢复的 consumed 请求。' };
+        });
+    });
+
+    ipcMain.handle('list-pending-flowlock-topics', async () => {
+        const result = [];
+        try {
+            const agentIds = await fs.readdir(AGENT_DIR);
+            for (const agentId of agentIds) {
+                try {
+                    const config = agentConfigManager
+                        ? await agentConfigManager.readAgentConfig(agentId)
+                        : await fs.readJson(path.join(AGENT_DIR, agentId, 'config.json'));
+                    for (const topic of (config.topics || [])) {
+                        const request = sanitizeFlowlockRequest(topic.flowlockRequest);
+                        if (request?.status === 'pending' && request.requestedByAgentId === agentId) {
+                            result.push({
+                                agentId,
+                                topicId: topic.id,
+                                topicName: topic.name,
+                                requestId: request.requestId,
+                                createdAt: request.createdAt
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`[Flowlock Recovery] Skipping invalid agent ${agentId}:`, error.message);
+                }
+            }
+            return { success: true, requests: result };
+        } catch (error) {
+            return { success: false, error: error.message, requests: [] };
+        }
+    });
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         if (!agentId || !Array.isArray(orderedTopicIds)) {
@@ -544,8 +862,31 @@ function initialize(mainWindow, context) {
         console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`, context);
         const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
 
+        let streamTask = null;
+        let streamTaskDetached = false;
+        const finishStreamTask = () => {
+            if (!streamTask) return;
+            vcpStreamTasks.finish(event.sender, messageId);
+            streamTask = null;
+        };
+        const sendStreamPayload = payload => {
+            if (streamTask?.controller.signal.aborted || event.sender.isDestroyed()) return false;
+            try {
+                event.sender.send(streamChannel, payload);
+                return true;
+            } catch (error) {
+                console.warn(`[Main - sendToVCP] Dropped stream event for ${messageId}:`, error.message);
+                return false;
+            }
+        };
+
         // 🔧 数据验证和规范化
         try {
+            if (modelConfig?.stream === true) {
+                streamTask = vcpStreamTasks.begin(event.sender, messageId, 'chat:stream', {
+                    cancelOnNavigation: true,
+                });
+            }
             // 确保messages数组中的content都是正确的格式
             messages = messages.map(msg => {
                 if (!msg || typeof msg !== 'object') {
@@ -588,7 +929,9 @@ function initialize(mainWindow, context) {
                 if (msg.name) sanitizedMsg.name = msg.name;
                 if (msg.tool_calls) sanitizedMsg.tool_calls = msg.tool_calls;
                 if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
-                
+                // 内部元数据仅用于最终请求体生成 vcpchatExtensions，不会进入 messages[]。
+                if (msg.__vcpchatTimestampMeta) sanitizedMsg.__vcpchatTimestampMeta = msg.__vcpchatTimestampMeta;
+
                 return sanitizedMsg;
             });
         } catch (validationError) {
@@ -672,27 +1015,6 @@ function initialize(mainWindow, context) {
                 }
             }
 
-            // --- Agent Bubble Theme Injection ---
-            try {
-                // Settings already loaded, just check the flag
-                if (settings.enableAgentBubbleTheme) {
-                    let systemMsgIndex = messages.findIndex(m => m.role === 'system');
-                    if (systemMsgIndex === -1) {
-                        messages.unshift({ role: 'system', content: '' });
-                        systemMsgIndex = 0;
-                    }
-
-                    const injection = '输出规范要求：{{VarDivRender}}';
-                    if (!messages[systemMsgIndex].content.includes(injection)) {
-                        messages[systemMsgIndex].content += `\n\n${injection}`;
-                        messages[systemMsgIndex].content = messages[systemMsgIndex].content.trim();
-                    }
-                }
-            } catch (e) {
-                console.error('[Agent Bubble Theme] Failed to inject bubble theme info:', e);
-            }
-            // --- End of Injection ---
-
             // --- VCP Thought Chain Stripping ---
             try {
                 // 默认不注入元思考链，除非明确开启
@@ -747,10 +1069,15 @@ function initialize(mainWindow, context) {
             }
             // --- End of Context Sanitizer Integration ---
 
+            modelConfig = omitUnsetOptionalModelParams(modelConfig);
+
             console.log(`发送到VCP服务器: ${finalVcpUrl} for messageId: ${messageId}`);
             console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
             console.log('模型配置:', modelConfig);
             if (context) console.log('上下文:', context);
+
+            const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messages, context, messageId);
+            messages = stripInternalMessageMetadata(messages);
 
             // 🔧 在发送前验证请求体
             const requestBody = {
@@ -759,6 +1086,9 @@ function initialize(mainWindow, context) {
                 stream: modelConfig.stream === true,
                 requestId: messageId
             };
+            if (vcpchatExtensions) {
+                requestBody.vcpchatExtensions = vcpchatExtensions;
+            }
 
             // 🔥 记录模型使用频率
             try {
@@ -788,7 +1118,8 @@ function initialize(mainWindow, context) {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${vcpApiKey}`
                 },
-                body: serializedBody
+                body: serializedBody,
+                signal: streamTask?.controller.signal,
             });
 
             if (!response.ok) {
@@ -838,7 +1169,7 @@ function initialize(mainWindow, context) {
 
                     const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
                     if (context) errorPayload.context = context;
-                    event.sender.send(streamChannel, errorPayload);
+                    sendStreamPayload(errorPayload);
                     // 为函数返回值构造统一的 errorDetail.message
                     const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorMessage}`;
                     return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
@@ -879,7 +1210,7 @@ function initialize(mainWindow, context) {
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
                                         const donePayload = { type: 'end', messageId: messageId, context };
-                                        event.sender.send(streamChannel, donePayload);
+                                        sendStreamPayload(donePayload);
                                         return; // [DONE] 是明确的结束信号，退出函数
                                     }
                                     // 如果 jsonData 为空，则忽略该行，这可能是网络波动或心跳信号
@@ -889,11 +1220,11 @@ function initialize(mainWindow, context) {
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
-                                        event.sender.send(streamChannel, dataPayload);
+                                        sendStreamPayload(dataPayload);
                                     } catch (e) {
                                         console.error(`解析VCP流数据块JSON失败 for messageId: ${messageId}:`, e, '原始数据:', jsonData);
                                         const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId, context };
-                                        event.sender.send(streamChannel, errorChunkPayload);
+                                        sendStreamPayload(errorChunkPayload);
                                     }
                                 }
                             }
@@ -903,7 +1234,7 @@ function initialize(mainWindow, context) {
                                 // 缓冲区已被处理，现在发送最终的 'end' 信号。
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
                                 const endPayload = { type: 'end', messageId: messageId, context };
-                                event.sender.send(streamChannel, endPayload);
+                                sendStreamPayload(endPayload);
                                 break; // 退出 while 循环
                             }
                         }
@@ -911,15 +1242,21 @@ function initialize(mainWindow, context) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
                         const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
                         if (context) streamErrPayload.context = context;
-                        event.sender.send(streamChannel, streamErrPayload);
+                        sendStreamPayload(streamErrPayload);
                     } finally {
-                        reader.releaseLock();
+                        finishStreamTask();
+                        try {
+                            reader.releaseLock();
+                        } catch (releaseError) {
+                            console.warn(`[Main - sendToVCP] Failed to release stream reader for ${messageId}:`, releaseError.message);
+                        }
                         console.log(`ReadableStream's lock released for messageId: ${messageId}`);
                     }
                 }
 
                 // 将 reader 和 decoder 作为参数传递给 processStream
                 // 并且我们依然需要 await 来等待流处理完成
+                streamTaskDetached = true;
                 processStream(reader, decoder).then(() => {
                     console.log(`[Main - sendToVCP] 流处理函数 processStream 已正常结束 for ${messageId}`);
                 }).catch(err => {
@@ -939,10 +1276,12 @@ function initialize(mainWindow, context) {
             console.error('VCP请求错误 (catch block):', error);
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
                 const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
-                event.sender.send(streamChannel, catchErrorPayload);
+                sendStreamPayload(catchErrorPayload);
                 return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
             }
             return { error: `VCP请求错误: ${error.message}` };
+        } finally {
+            if (!streamTaskDetached) finishStreamTask();
         }
     });
 
@@ -995,52 +1334,56 @@ function initialize(mainWindow, context) {
     });
 
     /**
-     * Part C: 智能计数逻辑辅助函数
-     * 判断是否应该激活计数
-     * 规则：上下文（排除系统消息）有且只有一个 AI 的回复，且没有用户回复
-     * @param {Array} history - 消息历史
-     * @returns {boolean}
-     */
-    function shouldActivateCount(history) {
-        if (!history || history.length === 0) return false;
-
-        // 过滤掉系统消息
-        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
-
-        // 必须有且只有一条消息，且该消息是 AI 回复
-        return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
-    }
-
-    /**
-     * Part C: 计算未读消息数量
+     * 统计完全由 Agent 主动发起、尚无用户参与的话题消息数。
+     * 系统消息和思考占位不参与判断；历史中只要出现过用户消息就返回 0。
      * @param {Array} history - 消息历史
      * @returns {number}
      */
     function countUnreadMessages(history) {
-        return shouldActivateCount(history) ? 1 : 0;
+        if (!Array.isArray(history) || history.length === 0) return 0;
+
+        const effectiveMessages = history.filter(message =>
+            message &&
+            message.role !== 'system' &&
+            message.isThinking !== true
+        );
+
+        if (effectiveMessages.some(message => message.role === 'user')) {
+            return 0;
+        }
+
+        return effectiveMessages.filter(message => message.role === 'assistant').length;
     }
 
     /**
-     * Part C: 计算单个话题的未读消息数
-     * @param {Object} topic - 话题对象
-     * @param {Array} history - 话题历史消息
-     * @returns {number} - 未读消息数，-1 表示仅显示小点
-     */
-    function calculateTopicUnreadCount(topic, history) {
-        // 优先检查自动计数条件（AI回复了但用户没回）
-        if (shouldActivateCount(history)) {
-            const count = countUnreadMessages(history);
-            if (count > 0) return count;
-        }
-
-        // 如果不满足自动计数条件，但被手动标记为未读，则显示小点
-        if (topic.unread === true) {
-            return -1; // 仅显示小点，不显示数字
-        }
-
-        return 0; // 不显示
-    }
-
+     function hasUserParticipation(history) {
+         return Array.isArray(history) && history.some(message =>
+             message &&
+             message.role === 'user' &&
+             message.isThinking !== true
+         );
+     }
+ 
+     /**
+      * Part C: 计算单个话题的未读消息数
+      * @param {Object} topic - 话题对象
+      * @param {Array} history - 话题历史消息
+      * @returns {number} - 未读消息数，-1 表示仅显示小点
+      */
+     function calculateTopicUnreadCount(topic, history) {
+         const count = countUnreadMessages(history);
+         if (count > 0) return count;
+ 
+         // 明确的手动未读始终保留；Agent/TopicSponsor 旧标记在用户参与后失效。
+         if (
+             topic.unread === true &&
+             (topic.unreadSource === 'manual' || !hasUserParticipation(history))
+         ) {
+             return -1; // 仅显示小点，不显示数字
+         }
+ 
+         return 0; // 不显示
+     }
     ipcMain.handle('get-unread-topic-counts', async () => {
         const counts = {};
         try {
@@ -1175,6 +1518,12 @@ function initialize(mainWindow, context) {
             }
 
             topic.unread = unread;
+            if (unread) {
+                // 该 IPC 入口用于用户右键手动标记；Agent 自动未读由创建方直接写入配置。
+                topic.unreadSource = 'manual';
+            } else {
+                delete topic.unreadSource;
+            }
 
             if (agentConfigManager) {
                 await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
@@ -1185,7 +1534,11 @@ function initialize(mainWindow, context) {
                 await fs.writeJson(agentConfigPath, config, { spaces: 2 });
             }
 
-            return { success: true, unread: topic.unread };
+            return {
+                success: true,
+                unread: topic.unread,
+                unreadSource: topic.unreadSource || null
+            };
         } catch (error) {
             console.error('[setTopicUnread] Error:', error);
             return { success: false, error: error.message };
@@ -1196,5 +1549,6 @@ function initialize(mainWindow, context) {
 }
 
 module.exports = {
-    initialize
+    initialize,
+    getVcpStreamTaskSnapshot,
 };

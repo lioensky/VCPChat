@@ -117,8 +117,6 @@ body.light-theme #moon-icon {
     content-visibility: auto;
     /* 閰嶅悎 content-visibility 闃叉婊氬姩鏉℃姈鍔紝榛樿缁欎竴涓浼板€?*/
     contain-intrinsic-size: auto 100px;
-    /* 杩涗竴姝ヤ紭鍖栵細鎻愬崌涓虹嫭绔嬪眰锛岄伩鍏嶅眬閮ㄥ埛鏂板紩璧峰叏灞€閲嶇粯 */
-    will-change: transform;
 }
 
 .message-item:last-child {
@@ -267,11 +265,29 @@ body.light-theme #moon-icon {
     max-width: var(--chat-bubble-max-width, 82%); /* Default width when sidebar is closed */
     word-wrap: break-word;
     line-height: 1.5;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    /* Bubble surfaces are defined by their clipped fill and border.  A
+     * generic outer shadow here creates a dark halo on translucent themes
+     * (especially while the list is scrolling), so keep emphasis inside the
+     * rounded boundary instead. */
+    box-shadow: none;
     position: relative;
+    /* Keep animated/colored descendants and backdrop compositing inside the
+     * rounded bubble.  Without an explicit clipping/isolation boundary,
+     * Chromium may paint translucent bubble layers into the surrounding
+     * scrolling surface during fast scrolls. */
+    overflow: hidden;
+    isolation: isolate;
     backdrop-filter: blur(8px); /* Keep if desired */
     -webkit-backdrop-filter: blur(8px); /* Keep if desired */
-    transition: max-width 0.4s ease-in-out, background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease; /* Smooth transition for width and surface changes */
+    /* Theme backgrounds can be multi-layer color-mix() gradients over a
+     * backdrop-filter. Interpolating them on every visible message is much
+     * more expensive than committing the target surface once. Keep layout,
+     * text, border and shadow feedback smooth without animating background. */
+    transition:
+        max-width 0.4s ease-in-out,
+        color 0.16s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
 }
 
 /* When notifications sidebar is active, make bubbles wider to fill more of the narrower space */
@@ -484,61 +500,6 @@ body.light-theme .message-item.system.welcome-bubble {
     border-radius: 8px;
     margin-top: 8px;
 }
-.message-item .md-content pre {
-    background-color: rgba(42, 45, 53, 0.85); /* Slightly transparent, bluish-dark background */
-    padding: 10px;
-    border-radius: 6px;
-    white-space: pre-wrap;
-    word-break: break-all;
-    overflow-x: auto;
-    font-size: 0.9em;
-    margin-top: 8px;
-    border: 1px solid var(--border-color);
-    color: #abb2bf; /* Default text color for dark theme code blocks (soft white) */
-    font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
-}
-.message-item .md-content pre code {
-    padding: 0;
-    background: none;
-    color: #abb2bf; /* Ensure code text is visible (soft white) */
-    font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
-}
-
-/* Dark Theme Syntax Highlighting Overrides (inspired by Atom One Dark / Dracula) */
-.message-item .md-content pre .hljs-comment {
-    color: #5c6370; /* Soft grey for comments */
-    font-style: italic;
-}
-
-.message-item .md-content pre .hljs-keyword {
-    color: #c678dd; /* Soft purple */
-}
-
-.message-item .md-content pre .hljs-built_in {
-    color: #e06c75; /* Soft red/pink */
-}
-
-.message-item .md-content pre .hljs-string {
-    color: #98c379; /* Soft green */
-}
-
-.message-item .md-content pre .hljs-number {
-    color: #d19a66; /* Soft orange */
-}
-
-.message-item .md-content pre .hljs-title,
-.message-item .md-content pre .hljs-class .hljs-title {
-    color: #61afef; /* Soft blue */
-}
-
-.message-item .md-content pre .hljs-params {
-    color: #abb2bf; /* Soft white */
-}
-
-.message-item .md-content pre .hljs-meta {
-    color: #e5c07b; /* Soft yellow/orange */
-}
-
 /* Attachments inside the bubble */
 .message-item .md-content .message-attachments {
     display: flex;
@@ -781,7 +742,7 @@ body.light-theme .message-item.system.welcome-bubble {
 }
 
 
-#messageInput {
+:is(#messageInput, .chat-message-input) {
     display: block;
     width: 100%;
     box-sizing: border-box;
@@ -800,7 +761,7 @@ body.light-theme .message-item.system.welcome-bubble {
     overflow-y: auto;
     line-height: 1.4;
 }
-#messageInput:focus {
+:is(#messageInput, .chat-message-input):focus {
     outline: none;
     box-shadow: none;
 }
@@ -810,8 +771,6 @@ body.light-theme .message-item.system.welcome-bubble {
 .message-item .md-content h1, .message-item .md-content h2, .message-item .md-content h3 { margin-top: 0.8em; margin-bottom: 0.4em; color: var(--highlight-text); }
 .message-item .md-content ul, .message-item .md-content ol { margin-left: 20px; padding-left: 0; }
 .message-item .md-content blockquote { border-left: 3px solid var(--user-bubble-bg); margin-left: 0; padding-left: 1em; color: var(--secondary-text); }
-.message-item .md-content code { background-color: rgba(0,0,0,0.2); padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace); }
-.message-item .md-content pre code { padding: 0; background: none; } 
 
 .message-edit-textarea {
     /* width: 500px;  No longer fixed width */
@@ -1126,60 +1085,6 @@ body.light-theme .suggestion-item {
     text-overflow: ellipsis;  
     flex-shrink: 1;  
 }
-/* --- Light Theme Code Block Styles --- */
-body.light-theme .message-item .md-content pre {
-    background-color: rgba(255, 250, 240, 0.85); /* 绫崇櫧纾ㄧ爞鑳屾櫙 */
-    color: #333333; /* 娣辩伆鑹插熀纭€鏂囧瓧 */
-    border-color: rgba(0, 0, 0, 0.1);
-}
-
-/* --- Light Theme Syntax Highlighting Overrides --- */
-/* Default code color */
-body.light-theme .message-item .md-content pre code {
-    color: #333333;
-}
-
-/* Keywords (e.g., def, if, return) */
-body.light-theme .message-item .md-content pre .hljs-keyword {
-    color: #d73a49; /* Dark Red */
-}
-
-/* Built-ins, types (e.g., print, True) */
-body.light-theme .message-item .md-content pre .hljs-built_in {
-    color: #6f42c1; /* Dark Purple */
-}
-
-/* Strings */
-body.light-theme .message-item .md-content pre .hljs-string {
-    color: #032f62; /* Dark Blue */
-}
-
-/* Comments */
-body.light-theme .message-item .md-content pre .hljs-comment {
-    color: #6a737d; /* Grey */
-    font-style: italic;
-}
-
-/* Numbers */
-body.light-theme .message-item .md-content pre .hljs-number {
-    color: #005cc5; /* Blue */
-}
-
-/* Function/Class names */
-body.light-theme .message-item .md-content pre .hljs-title,
-body.light-theme .message-item .md-content pre .hljs-class .hljs-title {
-    color: #6f42c1; /* Dark Purple */
-}
-
-/* Function parameters */
-body.light-theme .message-item .md-content pre .hljs-params {
-    color: #24292e; /* Almost black */
-}
-
-/* Python decorators, annotations */
-body.light-theme .message-item .md-content pre .hljs-meta {
-    color: #e36209; /* Dark Orange */
-}
 /*
  * Final, more robust fix for centering images.
  * Only turn the paragraph into a flex container WHEN it contains images only.
@@ -1342,3 +1247,399 @@ body.light-theme .message-item .md-content pre .hljs-meta {
    outline-offset: 2px;
 }
 
+/* --- Chat presentation modes --- */
+body {
+    --chat-presentation-edge-gap: clamp(6px, 1.1vw, 14px);
+    --chat-immersive-column-width: 880px;
+    --chat-presentation-surface:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-dark) 82%, rgba(255, 255, 255, 0.06)),
+            color-mix(in srgb, var(--panel-bg-dark) 70%, transparent)
+        );
+    --chat-presentation-surface-filter: blur(16px) saturate(112%);
+    /* Slightly stronger than Markdown <hr>, while remaining theme-aware. */
+    --chat-presentation-divider-color: color-mix(
+        in srgb,
+        var(--border-color) 72%,
+        var(--highlight-text) 28%
+    );
+}
+
+body.light-theme {
+    --chat-presentation-surface:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-light) 86%, rgba(255, 255, 255, 0.54)),
+            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18))
+        );
+}
+
+/* Panel and immersive use a full-chat-area frosted surface.
+ * Edge gaps constrain message content only, never the background surface. */
+body.chat-presentation-panel .chat-messages-container,
+body.chat-presentation-immersive .chat-messages-container {
+    background: var(--chat-presentation-surface);
+    backdrop-filter: var(--chat-presentation-surface-filter);
+    -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+}
+
+body.chat-presentation-panel .chat-messages,
+body.chat-presentation-immersive .chat-messages {
+    width: auto;
+    margin: 0 var(--chat-presentation-edge-gap);
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .chat-messages {
+    padding: 8px clamp(10px, 1.5vw, 18px);
+}
+
+body.chat-presentation-panel .message-item,
+body.chat-presentation-immersive .message-item {
+    width: 100%;
+    max-width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+}
+
+body.chat-presentation-panel .message-item {
+    gap: 14px;
+    margin: 0;
+    padding: 18px 0;
+    border-bottom: 0;
+}
+
+body.chat-presentation-panel .message-item ~ .message-item {
+    border-top: 1px solid var(--chat-presentation-divider-color);
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .message-item .details-and-bubble-wrapper,
+body.chat-presentation-panel .message-item.user .details-and-bubble-wrapper,
+body.chat-presentation-panel .message-item.assistant .details-and-bubble-wrapper {
+    width: 100%;
+    max-width: none;
+    align-items: stretch;
+    margin: 0;
+    gap: 8px;
+}
+
+body.chat-presentation-panel .message-item .name-time-block,
+body.chat-presentation-panel .message-item.user .name-time-block,
+body.chat-presentation-panel .message-item.assistant .name-time-block {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 1px;
+    text-align: left;
+}
+
+body.chat-presentation-panel .message-item .sender-name,
+body.chat-presentation-panel .message-item .message-timestamp {
+    order: initial;
+}
+
+body.chat-presentation-panel .message-item .md-content,
+body.chat-presentation-panel .message-item.user .md-content,
+body.chat-presentation-panel .message-item.assistant .md-content,
+body.chat-presentation-panel .message-item.user.user-bubble-ui-disabled .md-content,
+body.chat-presentation-panel .main-content.notifications-sidebar-active .message-item .md-content,
+body.chat-presentation-panel.chat-wide-layout .message-item .md-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: var(--agent-text);
+}
+
+body.chat-presentation-panel .message-item.user.user-bubble-meta-hidden .chat-avatar,
+body.chat-presentation-panel .message-item.user.user-bubble-meta-hidden .name-time-block {
+    display: initial;
+}
+
+body.chat-presentation-panel .message-item.user.user-bubble-meta-hidden .chat-avatar {
+    display: block;
+}
+
+body.chat-presentation-panel .message-item.system.system-message-layout {
+    width: min(100%, 720px);
+    margin: 12px auto;
+    padding: 9px 14px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 22%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-bg) 72%, transparent);
+}
+
+/* Immersive: a centered reading column over the same full-area frosted surface. */
+body.chat-presentation-immersive .chat-messages {
+    padding: clamp(20px, 3vw, 36px) 12px;
+}
+
+body.chat-presentation-immersive .message-item {
+    margin: 0 auto clamp(30px, 4vw, 44px);
+    padding: 0 0 clamp(20px, 2.4vw, 28px);
+    gap: 0;
+}
+
+body.chat-presentation-immersive .message-item ~ .message-item .details-and-bubble-wrapper {
+    padding-top: clamp(20px, 2.4vw, 28px);
+    border-top: 1px solid var(--chat-presentation-divider-color);
+    box-shadow: none;
+}
+
+body.chat-presentation-immersive .message-item:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+body.chat-presentation-immersive .message-item .chat-avatar {
+    display: none !important;
+}
+
+body.chat-presentation-immersive .message-item .details-and-bubble-wrapper,
+body.chat-presentation-immersive .message-item.user .details-and-bubble-wrapper,
+body.chat-presentation-immersive .message-item.assistant .details-and-bubble-wrapper {
+    width: min(100%, var(--chat-immersive-column-width));
+    max-width: var(--chat-immersive-column-width);
+    margin: 0 auto;
+    align-items: stretch;
+    gap: 12px;
+}
+
+body.chat-presentation-immersive .message-item .name-time-block,
+body.chat-presentation-immersive .message-item.user .name-time-block,
+body.chat-presentation-immersive .message-item.assistant .name-time-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 2px;
+    text-align: left;
+}
+
+body.chat-presentation-immersive .message-item .sender-name {
+    order: initial;
+    font-size: 1.12em;
+    letter-spacing: 0.015em;
+}
+
+body.chat-presentation-immersive .message-item .message-timestamp {
+    order: initial;
+    font-size: 0.76em;
+    opacity: 0.62;
+}
+
+body.chat-presentation-immersive .message-item .md-content,
+body.chat-presentation-immersive .message-item.user .md-content,
+body.chat-presentation-immersive .message-item.assistant .md-content,
+body.chat-presentation-immersive .message-item.user.user-bubble-ui-disabled .md-content,
+body.chat-presentation-immersive .main-content.notifications-sidebar-active .message-item .md-content,
+body.chat-presentation-immersive.chat-wide-layout .message-item .md-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: var(--agent-text);
+    line-height: 1.78;
+}
+
+body.chat-presentation-immersive .message-item .md-content p {
+    margin-bottom: 0.85em;
+}
+
+body.chat-presentation-immersive .message-item.user .sender-name {
+    color: color-mix(in srgb, var(--highlight-text) 76%, var(--secondary-text));
+}
+
+body.chat-presentation-immersive .message-item.system.system-message-layout {
+    width: min(calc(100% - 24px), 680px);
+    margin: 10px auto 28px;
+    padding: 8px 14px;
+    background: color-mix(in srgb, var(--accent-bg) 52%, transparent);
+}
+
+/* Mode shells are flat; internal structured content retains its own surfaces. */
+body.chat-presentation-panel .message-item .md-content > pre,
+body.chat-presentation-panel .message-item .md-content .vcp-tool-use-bubble,
+body.chat-presentation-panel .message-item .md-content .vcp-tool-result-bubble,
+body.chat-presentation-panel .message-item .md-content .maid-diary-bubble,
+body.chat-presentation-panel .message-item .md-content .vcp-thought-chain-bubble,
+body.chat-presentation-panel .message-item .md-content .vcp-flowlock-bubble,
+body.chat-presentation-panel .message-item .md-content .mermaid-viewer,
+body.chat-presentation-panel .message-item .md-content .vcp-html-preview-container,
+body.chat-presentation-immersive .message-item .md-content > pre,
+body.chat-presentation-immersive .message-item .md-content .vcp-tool-use-bubble,
+body.chat-presentation-immersive .message-item .md-content .vcp-tool-result-bubble,
+body.chat-presentation-immersive .message-item .md-content .maid-diary-bubble,
+body.chat-presentation-immersive .message-item .md-content .vcp-thought-chain-bubble,
+body.chat-presentation-immersive .message-item .md-content .vcp-flowlock-bubble,
+body.chat-presentation-immersive .message-item .md-content .mermaid-viewer,
+body.chat-presentation-immersive .message-item .md-content .vcp-html-preview-container {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    body {
+        --chat-presentation-edge-gap: 4px;
+        --chat-immersive-column-width: 100%;
+    }
+
+    body.chat-presentation-panel .chat-messages {
+        padding: 6px 9px;
+    }
+
+    body.chat-presentation-panel .message-item {
+        gap: 10px;
+        padding: 15px 0;
+    }
+
+    body.chat-presentation-panel .chat-avatar {
+        width: 34px;
+        height: 34px;
+    }
+
+    body.chat-presentation-immersive .chat-messages {
+        padding: 18px 4px;
+    }
+body.chat-presentation-immersive .message-item {
+    margin-bottom: 30px;
+}
+}
+
+/* The initial welcome bubble is a compact standalone notice, not a message row.
+* Restore its intrinsic width and centering after the mode-wide message rules. */
+body.chat-presentation-panel .message-item.system.welcome-bubble,
+body.chat-presentation-immersive .message-item.system.welcome-bubble {
+width: fit-content;
+max-width: min(500px, calc(100% - 24px));
+margin: 30px auto;
+padding: 8px 20px;
+box-sizing: border-box;
+display: block;
+text-align: center;
+}
+
+
+
+/* Panel / immersive input composer: full-width, flat and continuous with the chat surface. */
+body.chat-presentation-panel .chat-input-area,
+body.chat-presentation-immersive .chat-input-area {
+    padding: 0;
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-dark) 72%, transparent),
+            color-mix(in srgb, var(--panel-bg-dark) 84%, rgba(255, 255, 255, 0.04))
+        );
+    backdrop-filter: blur(16px) saturate(112%);
+    -webkit-backdrop-filter: blur(16px) saturate(112%);
+}
+
+body.light-theme.chat-presentation-panel .chat-input-area,
+body.light-theme.chat-presentation-immersive .chat-input-area {
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18)),
+            color-mix(in srgb, var(--panel-bg-light) 88%, rgba(255, 255, 255, 0.5))
+        );
+}
+
+body.chat-presentation-panel .chat-input-card,
+body.chat-presentation-immersive .chat-input-card {
+    width: 100%;
+    padding: 13px clamp(12px, 1.8vw, 22px) 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: background-color 0.2s ease;
+}
+
+body.chat-presentation-panel .chat-input-card:hover:not(:focus-within):not(.drag-over),
+body.chat-presentation-immersive .chat-input-card:hover:not(:focus-within):not(.drag-over) {
+    border: 0;
+    background: color-mix(in srgb, var(--accent-bg) 12%, transparent);
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .chat-input-card:focus-within,
+body.chat-presentation-immersive .chat-input-card:focus-within {
+    border: 0;
+    background: color-mix(in srgb, var(--accent-bg) 18%, transparent);
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .chat-input-card.drag-over,
+body.chat-presentation-immersive .chat-input-card.drag-over {
+    border: 0;
+    background: color-mix(in srgb, var(--button-bg) 14%, transparent);
+    box-shadow: inset 0 3px 0 color-mix(in srgb, var(--button-bg) 68%, transparent);
+}
+
+@media (max-width: 768px) {
+    body.chat-presentation-panel .chat-input-card,
+    body.chat-presentation-immersive .chat-input-card {
+        padding: 11px 10px 8px;
+    }
+}
+
+/* Panel / immersive message editor: keep the editor wide and actions below it.
+ * These rules intentionally follow the presentation-mode layout so editing
+ * cannot be forced back into the mode-wide horizontal message row. */
+body.chat-presentation-panel .message-item.message-item-editing,
+body.chat-presentation-immersive .message-item.message-item-editing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+body.chat-presentation-panel .message-item.message-item-editing {
+    width: 100%;
+}
+
+body.chat-presentation-immersive .message-item.message-item-editing {
+    width: min(100%, var(--chat-immersive-column-width));
+    max-width: var(--chat-immersive-column-width);
+    margin-right: auto;
+    margin-left: auto;
+}
+
+body.chat-presentation-panel .message-item.message-item-editing .message-edit-textarea,
+body.chat-presentation-immersive .message-item.message-item-editing .message-edit-textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 120px;
+    margin: 0;
+    resize: vertical;
+    flex: 1 1 auto;
+}
+
+body.chat-presentation-panel .message-item.message-item-editing .message-edit-controls,
+body.chat-presentation-immersive .message-item.message-item-editing .message-edit-controls {
+    width: 100%;
+    margin-top: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}

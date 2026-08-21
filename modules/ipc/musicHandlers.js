@@ -87,7 +87,7 @@ function createOrFocusMusicWindow() {
         musicWindow = new BrowserWindow({
             width: 1280,
             height: 700,
-            minWidth: 900,
+            minWidth: 420,
             minHeight: 600,
             title: '音乐播放器',
             frame: false, // 移除原生窗口框架

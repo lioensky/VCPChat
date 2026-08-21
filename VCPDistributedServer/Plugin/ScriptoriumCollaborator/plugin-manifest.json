@@ -1,0 +1,156 @@
+{
+  "name": "ScriptoriumCollaborator",
+  "displayName": "Scriptorium 协作编辑器",
+  "version": "3.4.0",
+  "description": "供 Agent 感知并协作编辑当前 Scriptorium VDOCX/VPPTX 文档、管理高级样式主题包和 SVG 图形/动画资产包，也支持直接创建并落盘完整工程。VDOCX v2 的正文真源是 sourceKind=markdown-hybrid：普通正文优先使用 CommonMark/GFM Markdown，支持 Mermaid 围栏与行内/块级 LaTeX；复杂静态布局可嵌入 HTML，脚本、Canvas/WebGL、运行时依赖或需长期寻址的可编程内容必须放在具有唯一语义 ID 的 <div data-vdoc-island=\"...\">...</div> 岛中。普通标题、段落、列表等不得添加永久随机 ID；岛 CSS 必须以岛根选择器限定作用域；岛的内联 <script> 必须写在该岛根 div 内部，并在闭包/IIFE 内绑定当前岛根、仅从该根查询节点，禁止将函数、状态或临时引用挂到 window/globalThis 等全局对象；修改已有岛必须复用原岛 ID。VDOCX 文档级样式是独立 sourceKind=document-css，不应把全局 style 混入 Markdown 正文。VPPTX 继续使用 HTML Scene 范式：每页只有一份包含 style、页面 HTML、依赖声明和内联 script 的完整 source，演示共享样式使用 sourceKind=deck-css。VPPTX 页内脚本执行时，Scriptorium 会注入当前页场景根参数 scene、演示控制参数 deck、生命周期参数 runtime、页内作用域 document 和本地动画参数 anime；脚本必须直接以 scene 为根查询节点，例如 const root=scene，禁止依赖 document.currentScript、脚本标签物理位置或全局 document 查询来识别当前页。所有面向 Agent 的 VPPTX slideIndex、activeSlideIndex 与页面 index 均是从 1 开始的人类页码，不使用从 0 开始的数组索引。文档写操作通过带 maid 署名、人工审批回执、幂等 requestId 与修订冲突保护的 PR 协议执行；样式包和 SVG 资产包管理要求 maid 与幂等 requestId，但直接作用于全局运行期资产库。内置样式包 vcp.scriptorium.classics 和内置 SVG 包 vcp.scriptorium.basic-shapes 永久只读；Agent 可查询完整源码，但只能创建、整体替换和删除其他导入包。SVG 资产支持安全静态 SVG、SMIL 和内部 CSS 动画，不允许脚本、事件属性、foreignObject 或危险外部 URL。content 中 type=text 使用标准 Markdown；源码和替换片段以对应语言代码块原样返回，type=image_url 可与文本同时存在，details 保留结构化数据。",
+  "author": "VCPToolBox",
+  "license": "MIT",
+  "pluginType": "hybridservice",
+  "communication": {
+    "protocol": "direct",
+    "timeout": 330000
+  },
+  "entryPoint": {
+    "type": "nodejs",
+    "script": "ScriptoriumCollaboratorService.js"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "ListFonts",
+        "description": "列出当前系统已安装的字体，返回纯 Markdown 平铺列表，AI 可直接使用这些名称作为 CSS font-family 值。可通过 language 限制返回范围：zh-CN 仅返回中文字体，en 仅返回英文/拉丁字体，all 或省略返回全部。\n参数：command 固定为 ListFonts；language 可选 zh-CN/en/all，默认 all；forceRefresh 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListFonts「末」,\nlanguage:「始」zh-CN「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListFonts「末」,\nlanguage:「始」zh-CN「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetDocumentInfo",
+        "description": "获取当前 Scriptorium 窗口文档的标题、类型、修订号、保存状态、当前幻灯片和总页数。\n参数：command 固定为 GetDocumentInfo；endpoint 可选 docx、pptx 或 common。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetDocumentInfo「末」,\nendpoint:「始」common「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetDocumentInfo「末」,\nendpoint:「始」common「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetRenderedText",
+        "description": "绕过 CSS，直接获取当前文档或指定幻灯片渲染内容对应的纯文本语义。DOCX 可用于全文读取；PPTX 可通过 slideIndex 指定从 1 开始的人类页码，回执中的页面 index 同样从 1 开始。\n参数：command 固定为 GetRenderedText；endpoint 可选 docx/pptx；slideIndex 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetRenderedText「末」,\nendpoint:「始」pptx「末」,\nslideIndex:「始」1「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetRenderedText「末」,\nendpoint:「始」docx「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetOutline",
+        "description": "获取与 Scriptorium UI 标题导航完全一致的分层目录。VDOCX 目录统一识别 Markdown ATX 标题、Setext 标题、原生 HTML h1-h6 和可编程岛内的真实 HTML 标题，并排除代码围栏、style、script 中的伪标题。返回章节总数、文档总字符数，以及每章的临时 ID、索引、标题级别、起止行、标题/章节源码范围、章节字符数和正文字数；文本回执采用每章一行的紧凑树形列表，适合数十万字小说。推荐长文档流程：先调用 GetOutline，根据标题层级与字符量选择开篇、转折、高潮、结局等少量关键章节；再用 GetSection 按 ID 分章读取；最后用 SearchSource 搜索人物、地点、事件和细节。章节 ID 由当前修订的标题位置和内容生成，只用于本次修订寻址，不得写回正文，也不得当作永久对象 ID。VPPTX 返回页面目录、稳定页面 ID与标题，其中页面 index 是从 1 开始的人类页码。参数：command 固定为 GetOutline；endpoint 可选 docx/pptx。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetOutline「末」,\nendpoint:「始」docx「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetOutline「末」,\nendpoint:「始」docx「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetSection",
+        "description": "按 GetOutline 返回的临时章节 ID 或目录索引读取 VDOCX 单个语义章节，适用于无法一次放入上下文的长篇小说、报告和书稿。目标既可以是 Markdown 标题，也可以是原生 HTML 或可编程岛内的 h1-h6 标题。章节范围从目标标题开始，到下一个同级或更高级标题之前结束，因此读取上级章节时会包含其下属小节。返回原始 markdown-hybrid source、章节字符数与正文字数、源码范围、实际行号、编译后可读文本和诊断。理解长文档时应从 GetOutline 选择少量关键章节分别调用本命令，不应直接请求完整渲染全文；需要核对跨章节细节时再配合 SearchSource。编辑前也应使用本命令取得原文，再用 SubmitSourcePr 精确替换；章节 ID 在文档修订后可能变化。参数：command 固定为 GetSection；id 或 index 二选一，优先使用 id。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSection「末」,\nid:「始」heading-1234-abcd5678「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSection「末」,\nindex:「始」0「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetSource",
+        "description": "按行查询当前文档真源，返回实际起止行、总行数和原样源码，单次最多 2000 行。VDOCX 默认 sourceKind=markdown-hybrid，返回原始 Markdown-first 混合正文；sourceKind=document-css 返回独立文档级 CSS。Markdown 正文可直接包含 GFM、Mermaid 围栏、LaTeX、静态 HTML 和以 <div data-vdoc-island=\"语义化唯一ID\"> 为根的可编程岛；岛的内联 <script> 必须位于该 div 内部，并以闭包绑定岛根，不得污染 window/globalThis。VPPTX 默认 sourceKind=html，返回指定页面完整 HTML Scene 源码；sourceKind=deck-css 返回演示共享 CSS。VPPTX 的 slideIndex 是从 1 开始的人类页码；页内脚本应直接使用运行时注入的 scene 根，禁止通过 document.currentScript 或全局 document 查询推断当前页。回执中的 source 使用 markdown/html/css 代码块原样返回，不进行 JSON 字符串转义。参数：command 固定为 GetSource；endpoint 可选 docx/pptx；sourceKind 对 DOCX 可选 markdown-hybrid/document-css，对 PPTX 可选 html/deck-css；slideIndex、startLine、endLine 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSource「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nstartLine:「始」1「末」,\nendLine:「始」2000「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSource「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nstartLine:「始」20「末」,\nendLine:「始」80「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SearchSource",
+        "description": "对源码执行全文检索，可使用普通字符串或正则表达式并返回命中行。VDOCX 支持 markdown-hybrid、document-css 或 all；VPPTX 支持 html、deck-css 或 all，省略 slideIndex 时检索所有页面。对于数十万字小说或书稿，应先用 GetOutline 获得分层章节列表、用 GetSection 阅读少量关键章节，再用本命令搜索人物、地点、物件、事件和关键词以补齐跨章节细节；不要为理解长文档而直接请求全部源码或全部渲染文本。应通过源码文本、章节范围和上下文定位普通正文，不得依赖渲染时临时块 key。参数：command 固定为 SearchSource；query 必填；sourceKind 可选 markdown-hybrid/document-css/html/deck-css/all；slideIndex、regex、caseSensitive 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SearchSource「末」,\nendpoint:「始」docx「末」,\nquery:「始」项目背景「末」,\nsourceKind:「始」all「末」,\nregex:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SearchSource「末」,\nquery:「始」项目背景「末」,\nsourceKind:「始」all「末」,\nregex:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetViewportSource",
+        "description": "查询当前人类阅读窗口附近的源码，返回实际 startLine/endLine、总行数和当前可见编译块的临时 key。VDOCX 默认返回 markdown-hybrid；VPPTX 默认返回当前页 html，也可读取 document-css/deck-css。visibleBlockIds 仅是当前编译修订的临时索引，可辅助理解视口，但不得写入源码、不得作为长期 PR 身份；普通正文编辑仍应使用原文、行号、章节和 expectedRevision 定位。参数：command 固定为 GetViewportSource；endpoint 可选 docx/pptx；sourceKind 对 DOCX 可选 markdown-hybrid/document-css，对 PPTX 可选 html/deck-css；radius 可选，范围 1-200。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetViewportSource「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nradius:「始」40「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetViewportSource「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nradius:「始」40「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetVisualContext",
+        "description": "获取当前人类可见阅读区域或指定 PPTX 页面的渲染后多模态信息。严格返回 OpenAI content 数组：先返回 type=text 且 text 为标准 Markdown 的语义摘要，再返回 type=image_url 且 image_url.url=data:image/...;base64,... 的实际截图；Markdown 文本与图片字段同时存在、互不冲突，AI 可直接阅读文本和图像。PPTX 的 slideIndex 与回执 activeSlideIndex 均是从 1 开始的人类页码。\n参数：command 固定为 GetVisualContext；endpoint 可选 docx/pptx；scope 可选 viewport/slide；slideIndex 可选；format 可选 jpeg/png；quality 可选 1-100。\n支持 VCP 标准编号串行格式 command1/参数1、command2/参数2，并按编号严格顺序执行；未编号的 endpoint、maid 等字段由各步骤继承。支持 wait/sleep/delay 显式等待，waitMs 默认 1000ms、最大 30000ms。指定 PPTX 页面后，运行时完成页面选择，按 stabilizationMs/renderStabilizationMs/visualDelayMs/captureDelayMs/screenshotDelayMs 指定的时长等待，并经过最后两帧布局稳定后截图；默认由调用示例显式使用 750ms。复杂网络图片、字体或长动画若需要更长时间，应在串行指令中增加 wait 步骤，不能把截图视为所有异步资源已永久稳定的证明。任一步失败会停止后续步骤，但响应会保留此前所有成功步骤的完整 Markdown 文本和图片回执，并以 partial_failure 和 failedStep 标明失败位置与原因。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetVisualContext「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nslideIndex:「始」2「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "连续获取多页 PPT 图片：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」,\nvisualDelayMs:「始」750「末」,\ncommand1:「始」GetVisualContext「末」,\nslideIndex1:「始」1「末」,\ncommand2:「始」GetVisualContext「末」,\nslideIndex2:「始」2「末」,\ncommand3:「始」GetVisualContext「末」,\nslideIndex3:「始」3「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetPrHistory",
+        "description": "查询当前文档的历史 PR 与刻点，包含 maid/author 署名、摘要、状态、基础修订、操作和人工或自动审批回执。\n参数：command 固定为 GetPrHistory；limit 可选；status 可选 pending/applied/rejected/conflict/failed。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetPrHistory「末」,\nlimit:「始」50「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetPrHistory「末」,\nlimit:「始」50「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "SubmitSourcePr",
+        "description": "向当前窗口文档提交源码变更 PR。按编辑意图选择一种写法即可：末尾续写用 append；指定行插入用 insert+line；修改已有内容用 target+replace。最常见的末尾续写只需传 append，系统会自动在当前源码最后一个字符后建立行边界并追加内容，Agent 无需查询总行数或计算最终行号；源码已经以换行结尾时不会重复补换行，append 自身包含的空行会原样保留。精确行插入的 line 是 1-based，并表示 insert 内容最终占据的起始行号；若 line 超出文档末尾，系统会自动补齐中间空行。多个相同 target 会依据 startLine 就近匹配。VDOCX 普通正文默认编辑 sourceKind=markdown-hybrid：保持 Markdown-first，标题、段落、列表、表格优先用 Markdown，Mermaid 保留为 mermaid 围栏，LaTeX 保留原始公式，不得替换为派生 SVG/KaTeX DOM；仅在 Markdown 无法无损表达时使用静态 HTML。需要脚本、Canvas/WebGL、运行时依赖或长期精确引用的内容必须放入 <div data-vdoc-island=\"语义化唯一ID\"> 岛；新增岛 ID 必须文档内唯一且稳定，修改已有岛必须复用 ID，岛 CSS 限定到该根。创建动画或交互岛时，内联 <script> 必须作为岛根 div 的子节点写在其闭合标签之前；脚本必须使用闭包/IIFE 获取并绑定该岛根，所有 DOM 查询均从该根开始，函数、状态、计时器引用不得挂载到 window/globalThis 或以其他方式污染全局作用域。禁止把岛脚本写在 div 外部，禁止给普通正文添加随机 data-vdoc-* ID。VDOCX 全局样式使用 sourceKind=document-css。VPPTX 页面使用 sourceKind=html，共享样式使用 deck-css。命令不会立即修改文档，而会同步等待人工或预先启用的 UI 自动允许策略审批；超时返回 PR_RECEIPT_TIMEOUT 且提案保留。参数：command 固定为 SubmitSourcePr；maid、summary 必填；requestId、expectedRevision 强烈建议提供；sourceKind 对 DOCX 可选 markdown-hybrid/document-css，对 PPTX 可选 html/deck-css；slideIndex 可选；单项变更提供 append，或 insert、line，或 target、replace、startLine；三种写法应互斥。也可通过 replacements JSON 数组混合提交多项操作，其中每项同样使用 append、insert+line 或 target+replace。\n调用格式（推荐：无需行号，直接在末尾续写）：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nsummary:「始」在文档末尾续写新段落「末」,\nexpectedRevision:「始」12「末」,\nappend:「始」## 新增小节\\n\\n这里是续写内容。「末」\n<<<[END_TOOL_REQUEST]>>>\n\n调用格式（指定行插入）：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsummary:「始」在第 86 行插入说明「末」,\nexpectedRevision:「始」12「末」,\ninsert:「始」补充说明。「末」,\nline:「始」86「末」\n<<<[END_TOOL_REQUEST]>>>\n\n调用格式（精确替换）：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nsummary:「始」修正第二章标题「末」,\nexpectedRevision:「始」12「末」,\ntarget:「始」## 旧标题「末」,\nreplace:「始」## 新标题「末」,\nstartLine:「始」86「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」markdown-hybrid「末」,\nsummary:「始」在文档末尾续写新段落「末」,\nexpectedRevision:「始」12「末」,\nappend:「始」## 新增小节\\n\\n这里是续写内容。「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "AddSlide",
+        "description": "向当前窗口 PPTX 末尾提交新增页面 PR。必须通过 source 一次提交该页完整源码，其中可同时包含 style、页面 HTML、Three.js/Anime.js 依赖标签与内联交互 script；受支持 CDN 会在进入审批前转换为本地链接。不再接受 html、css、script 分离参数。页内脚本运行时会注入当前页根参数 scene、演示参数 deck、生命周期参数 runtime、作用域 document 和 anime；必须使用 scene.querySelector(...) 查询本页节点，禁止重新声明 scene，禁止依赖 document.currentScript、脚本物理位置或全局 document 查询识别当前页。同步等待人类或 UI 自动允许策略审批并返回回执；超时后提案仍保留。\n参数：command 固定为 AddSlide；maid、summary 必填；source 必填；name、notes、transition、resources、expectedRevision 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」AddSlide「末」,\nsummary:「始」新增完整交互页「末」,\nname:「始」Mini 3D「末」,\nsource:「始」<style>.stage{width:100%;height:100%}</style><section class=\"vdoc-slide-scene\"><script src=\"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js\"></script><div class=\"stage\"></div></section><script>(()=>{const stage=scene.querySelector('.stage');const world=new THREE.Scene();stage.dataset.ready=String(Boolean(world));})();</script>「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」AddSlide「末」,\nsummary:「始」新增结论页「末」,\nname:「始」结论「末」,\nsource:「始」<style>.vdoc-slide-scene{display:grid;place-items:center}</style><section class=\"vdoc-slide-scene\"><h1>结论</h1></section>「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "InsertSlide",
+        "description": "向当前窗口 PPTX 指定页码前提交插入页面 PR。slideIndex 是从 1 开始的人类页码，例如 slideIndex=3 表示插到当前第 3 页之前。必须使用 source 提交包含 style、页面结构、依赖声明和内联交互 script 的完整单页源码；受支持 CDN 会在进入审批前转换为本地链接。不再接受 html、css、script 分离参数。页内脚本必须使用运行时注入的 scene 根查询本页节点，禁止依赖 document.currentScript 或全局 document 查询。同步等待审批并返回回执；超时后提案仍保留。\n参数：command 固定为 InsertSlide；maid、summary、slideIndex 必填；source 必填；name、notes、transition、resources、expectedRevision 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」InsertSlide「末」,\nslideIndex:「始」3「末」,\nsummary:「始」在第三页前插入完整交互页「末」,\nname:「始」第二部分「末」,\nsource:「始」<section class=\"vdoc-slide-scene\"><h1>第二部分</h1></section><script>(()=>{scene.dataset.ready='true';})();</script>「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」InsertSlide「末」,\nslideIndex:「始」3「末」,\nsummary:「始」在第三页前插入过渡页「末」,\nname:「始」第二部分「末」,\nsource:「始」<section class=\"vdoc-slide-scene\"><h1>第二部分</h1></section>「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "DeleteSlide",
+        "description": "提交删除当前窗口 PPTX 指定页面的 PR。slideIndex 是从 1 开始的人类页码；省略时删除当前页。演示至少保留一页。同步等待审批并返回回执；超时后提案仍保留。\n参数：command 固定为 DeleteSlide；maid、summary 必填；slideIndex 可选，省略时为当前页；expectedRevision 建议提供。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」DeleteSlide「末」,\nslideIndex:「始」4「末」,\nsummary:「始」删除重复页面「末」,\nexpectedRevision:「始」18「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」DeleteSlide「末」,\nslideIndex:「始」4「末」,\nsummary:「始」删除重复页面「末」,\nexpectedRevision:「始」18「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "UpdatePresentationConfig",
+        "description": "向当前窗口 PPTX 提交演示场景配置 PR，用于覆盖画布尺寸、宽高比、主题和默认转场。该命令不会直接修改文档，而是同步等待人类或 UI 自动允许策略审批。GetDocumentInfo 会返回当前 scene 配置，建议先读取修订号与现有配置。\n参数：command 固定为 UpdatePresentationConfig；maid、summary 必填；expectedRevision 建议提供。支持扁平参数 width、height、aspectRatio、theme、defaultTransition，也支持 page 与 presentation JSON 对象。纯数字 width/height 按 CSS px 处理；defaultTransition 为包含 type 与 duration（毫秒）的 JSON 对象。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpdatePresentationConfig「末」,\nendpoint:「始」pptx「末」,\nsummary:「始」统一演示画布和默认转场「末」,\nexpectedRevision:「始」6「末」,\nwidth:「始」1600「末」,\nheight:「始」900「末」,\naspectRatio:「始」16:9「末」,\ntheme:「始」vcp-dark-gold「末」,\ndefaultTransition:「始」{\"type\":\"fade\",\"duration\":700}「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpdatePresentationConfig「末」,\nendpoint:「始」pptx「末」,\nsummary:「始」将演示设置为 1600×900 深色金主题「末」,\nwidth:「始」1600「末」,\nheight:「始」900「末」,\naspectRatio:「始」16:9「末」,\ntheme:「始」vcp-dark-gold「末」,\ndefaultTransition:「始」{\"type\":\"fade\",\"duration\":700}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CreateProject",
+        "description": "让 Scriptorium v2 内核规范化并直接创建完整 VDOCX 或 VPPTX 工程，分别写入 AppData/ScriptoriumDocument/VDOCX 与 AppData/ScriptoriumDocument/VPPTX。VDOCX 的 source 必须是 Markdown-first 混合源码，documentCss 提供独立文档级 CSS；普通正文优先 Markdown，Mermaid 使用围栏，LaTeX 保存原文，复杂可编程内容使用具有唯一 data-vdoc-island 的 div 岛，不得为普通段落生成永久 ID。VDOCX 动画或交互岛的内联 <script> 必须放在岛根 div 内部、位于其闭合标签之前，并通过闭包/IIFE 绑定该岛根；DOM 查询必须限定于岛根，禁止向 window/globalThis 暴露函数、状态或临时引用。VPPTX 的 slides JSON 数组中每页必须提供完整 HTML Scene source，共享样式通过 deckCss 提供。VPPTX 页内脚本必须直接使用运行时注入的当前页根参数 scene，例如 scene.querySelector('.target')；禁止依赖 document.currentScript、脚本标签物理位置或全局 document 查询识别当前页。内核会校验混合源码与岛 ID，并审查可编程内容。物理文件创建直接落盘，不进入当前窗口 PR，也不替换当前窗口文档；默认重名自动改名，覆盖必须显式使用 overwrite 并提供 expectedFileHash。参数：command 固定为 CreateProject；projectType 必填 docx/pptx；maid 必填；title、fileName、source（DOCX 必填）、documentCss（DOCX 可选）、deckCss（PPTX 可选）、slides（PPTX 必填，每项含 source）、page、presentation 可选；conflictPolicy 可选 rename/error/overwrite，默认 rename；expectedFileHash 仅覆盖时必填；openAfterCreate 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」CreateProject「末」,\nprojectType:「始」pptx「末」,\ntitle:「始」交互演示「末」,\nslides:「始」[{\"name\":\"第一页\",\"source\":\"<style>.vdoc-slide-scene{width:100%;height:100%}</style><section class=\\\"vdoc-slide-scene\\\"><h1>第一页</h1></section><script>(()=>{scene.dataset.ready='true';})();</script>\"}]「末」,\ndeckCss:「始」html,body{margin:0}「末」,\nconflictPolicy:「始」rename「末」,\nopenAfterCreate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」CreateProject「末」,\nprojectType:「始」docx「末」,\ntitle:「始」研究报告「末」,\nfileName:「始」研究报告.vdocx「末」,\nsource:「始」# 研究报告\\n\\n## 摘要\\n\\n报告正文。\\n\\n```mermaid\\ngraph LR\\nA-->B\\n```\\n「末」,\ndocumentCss:「始」h1{color:#315f55}「末」,\nconflictPolicy:「始」rename「末」,\nopenAfterCreate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListStylePacks",
+        "description": "查询当前 Scriptorium 运行期已注册的高级样式主题包和样式列表。返回包清单、是否内置只读、是否允许编辑、样式数量，以及每个样式的 ID、名称、分类、目标和 className；列表不会展开完整 CSS。内置包 vcp.scriptorium.classics 只能读取，不能替换或删除。参数：command 固定为 ListStylePacks；query 可选，可按包或样式元数据检索；editableOnly 可选 true/false，仅返回可编辑导入包。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListStylePacks「末」,\neditableOnly:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListStylePacks「末」,\nquery:「始」标题「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetStylePack",
+        "description": "按 packId 读取一个高级样式主题包的完整规范化源码，包括 manifest、每个样式的元数据、targets、className 和完整 CSS。编辑导入样式前必须先读取整包，再将修改后的完整包交给 UpsertStylePack；不要遗漏未修改样式，否则整体替换时它们会被移除。内置包也可读取，但不可写。参数：command 固定为 GetStylePack；packId 必填。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetStylePack「末」,\npackId:「始」vcp.user.brand-theme「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetStylePack「末」,\npackId:「始」vcp.user.brand-theme「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "UpsertStylePack",
+        "description": "批量创建或整体替换一个高级样式主题包。maid 必填。pack 可传 JSON 对象或 source 可传完整 JSON 字符串；根格式必须为 format=vcp-vdoc-style-pack、version=1，并包含有效 manifest.id 与非空 styles 数组。每个样式必须有全局唯一 id、非空 css，targets 仅允许 inline、block、heading、paragraph。相同 manifest.id 表示整体替换：新包未包含的旧样式会被删除，因此编辑前应先调用 GetStylePack 并提交修改后的完整包。不能创建、替换内置包 vcp.scriptorium.classics，也不能复用其他包或内置样式的 ID。适合 Agent 一次批量生成整套标题、段落、强调和容器样式。参数：command 固定为 UpsertStylePack；maid 必填；pack 或 source 二选一。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpsertStylePack「末」,\npack:「始」{\"format\":\"vcp-vdoc-style-pack\",\"version\":1,\"manifest\":{\"id\":\"vcp.user.brand-theme\",\"name\":\"品牌主题\",\"author\":\"Nova\"},\"styles\":[{\"id\":\"vcp.user.brand-accent\",\"version\":1,\"name\":\"品牌强调\",\"category\":\"品牌\",\"targets\":[\"inline\"],\"className\":\"vds-brand-accent\",\"css\":\".vds-brand-accent{color:#7651c9;font-weight:700}\"}]}「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpsertStylePack「末」,\npack:「始」{\"format\":\"vcp-vdoc-style-pack\",\"version\":1,\"manifest\":{\"id\":\"vcp.user.brand-theme\",\"name\":\"品牌主题\"},\"styles\":[{\"id\":\"vcp.user.brand-accent\",\"name\":\"品牌强调\",\"targets\":[\"inline\"],\"className\":\"vds-brand-accent\",\"css\":\".vds-brand-accent{color:#7651c9;font-weight:700}\"}]}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "DeleteStylePack",
+        "description": "删除一个非内置导入样式主题包及其全部样式。maid 与 packId 必填。内置包 vcp.scriptorium.classics 永久只读，不能删除。删除前建议调用 GetStylePack 留存源码；当前文档中已写入的 className 不会被自动移除，但对应运行期 CSS 将不再可用。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」DeleteStylePack「末」,\npackId:「始」vcp.user.brand-theme「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」DeleteStylePack「末」,\npackId:「始」vcp.user.brand-theme「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListSvgAssetPacks",
+        "description": "列出全局 SVG 图形与动画资产包。返回包元数据、内置只读状态、可编辑状态、资产数量和动画资产数量；不会展开每项完整 SVG 源码。内置包 vcp.scriptorium.basic-shapes 永久只读。参数：command 固定为 ListSvgAssetPacks；query 可按包或资产元数据检索；editableOnly 可选 true/false。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListSvgAssetPacks「末」,\neditableOnly:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListSvgAssetPacks「末」,\nquery:「始」箭头「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListSvgAssets",
+        "description": "检索全局 SVG 资产元数据，不返回体积较大的 SVG source。可按 query、packId、category 和 kind 组合过滤；kind 使用 static 或 animated。需要读取或编辑源码时，再调用 GetSvgAsset 或 GetSvgAssetPack。参数：command 固定为 ListSvgAssets；query、packId、category、kind 均可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListSvgAssets「末」,\nkind:「始」animated「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListSvgAssets「末」,\ncategory:「始」流程图「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetSvgAsset",
+        "description": "按 assetId 读取单个 SVG 资产的完整元数据和安全清洗后的 SVG 源码，并返回所属包是否内置及是否可编辑。参数：command 固定为 GetSvgAsset；assetId 必填。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSvgAsset「末」,\nassetId:「始」vcp.user.motion-loader「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSvgAsset「末」,\nassetId:「始」vcp.user.motion-loader「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetSvgAssetPack",
+        "description": "按 packId 读取一个 SVG 资产包的完整规范化 JSON 源码。编辑导入资产前必须先读取整包，再将修改后的完整包交给 UpsertSvgAssetPack；整体替换时未包含的旧资产会被删除。内置包可读但不可写。参数：command 固定为 GetSvgAssetPack；packId 必填。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSvgAssetPack「末」,\npackId:「始」vcp.user.diagram-kit「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSvgAssetPack「末」,\npackId:「始」vcp.user.diagram-kit「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "UpsertSvgAssetPack",
+        "description": "创建或整体替换一个全局 SVG 图形/动画资产包。maid 必填；pack 可传 JSON 对象，或 source 可传完整 JSON 字符串。根格式必须为 format=vcp-vdoc-svg-asset-pack、version=1，并包含有效 manifest.id 和非空 assets。每个资产必须有全局唯一 id、名称及以 svg 为根的 source；允许静态 SVG、SMIL 和 SVG 内部 CSS 动画，拒绝脚本、on* 事件、foreignObject、执行宿主和危险外部 URL，并受源码字节、节点及动画数量配额限制。相同 manifest.id 表示整包原子替换，因此编辑前应先读取完整包。不能替换内置包 vcp.scriptorium.basic-shapes，也不能抢占其他包资产 ID。参数：command 固定为 UpsertSvgAssetPack；maid 必填；pack 或 source 二选一。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpsertSvgAssetPack「末」,\npack:「始」{\"format\":\"vcp-vdoc-svg-asset-pack\",\"version\":1,\"manifest\":{\"id\":\"vcp.user.diagram-kit\",\"name\":\"流程图资产\",\"author\":\"Nova\"},\"assets\":[{\"id\":\"vcp.user.diagram-start\",\"name\":\"开始节点\",\"category\":\"流程图\",\"source\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" viewBox=\\\"0 0 160 80\\\"><rect x=\\\"2\\\" y=\\\"2\\\" width=\\\"156\\\" height=\\\"76\\\" rx=\\\"38\\\" fill=\\\"#daf5ea\\\" stroke=\\\"#24745e\\\" stroke-width=\\\"4\\\"/></svg>\"}]}「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpsertSvgAssetPack「末」,\npack:「始」{\"format\":\"vcp-vdoc-svg-asset-pack\",\"version\":1,\"manifest\":{\"id\":\"vcp.user.diagram-kit\",\"name\":\"流程图资产\"},\"assets\":[{\"id\":\"vcp.user.diagram-start\",\"name\":\"开始节点\",\"source\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" viewBox=\\\"0 0 160 80\\\"><rect width=\\\"160\\\" height=\\\"80\\\" rx=\\\"40\\\" fill=\\\"#daf5ea\\\"/></svg>\"}]}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "DeleteSvgAssetPack",
+        "description": "删除一个非内置 SVG 资产包及其全部资产。maid 与 packId 必填。内置包 vcp.scriptorium.basic-shapes 永久只读。已插入 VDOCX/VPPTX 的图形保存的是自包含 SVG 快照，删除全局资产包不会破坏历史文档中的既有实例。参数：command 固定为 DeleteSvgAssetPack；maid、packId 必填。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」DeleteSvgAssetPack「末」,\npackId:「始」vcp.user.diagram-kit「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」DeleteSvgAssetPack「末」,\npackId:「始」vcp.user.diagram-kit「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetStorageInfo",
+        "description": "获取完整工程直接落盘的分类目录、默认重名策略和覆盖哈希要求。\n参数：command 固定为 GetStorageInfo。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetStorageInfo「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetStorageInfo「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

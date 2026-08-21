@@ -611,8 +611,12 @@ impl DynamicLoudnessProcessor {
         if self.params.has_update() {
             self.cached = self.params.read();
             self.params.clear_dirty();
+            self.dynamic_loudness.set_reference_volume_db(self.cached.reference_volume_db);
+            self.dynamic_loudness.set_transition_db(self.cached.transition_db);
+            self.dynamic_loudness.set_pre_gain_db(self.cached.pre_gain_db);
             self.dynamic_loudness.set_volume(self.cached.volume);
             self.dynamic_loudness.set_strength(self.cached.strength);
+            self.dynamic_loudness.set_enabled(self.cached.enabled);
         }
     }
 }

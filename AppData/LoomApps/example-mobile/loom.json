@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "example-mobile",
+  "name": "Bing 搜索",
+  "description": "使用 VCP 轻量移动首页进行搜索，提交后进入 Bing 原生搜索结果页。",
+  "startUrl": "https://www.bing.com/",
+  "enabled": true,
+  "exposeInAppDrawer": true,
+  "exposeManagerInAppDrawer": true,
+  "icon": "",
+  "emoji": "🕸️",
+  "window": {
+    "width": 430,
+    "height": 800,
+    "minWidth": 340,
+    "minHeight": 520,
+    "maxWidth": null,
+    "maxHeight": null,
+    "resizable": true
+  },
+  "viewport": {
+    "width": 390,
+    "height": 720,
+    "autoResize": false
+  },
+  "request": {
+    "profile": "mobile",
+    "userAgent": "",
+    "headers": {}
+  },
+  "navigation": {
+    "allowPopups": false,
+    "openExternalOriginsInBrowser": false
+  },
+  "injection": {
+    "css": "inject.css",
+    "js": "inject.js"
+  }
+}

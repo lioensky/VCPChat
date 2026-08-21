@@ -1,0 +1,104 @@
+{
+  "version": 2,
+  "rules": [
+    {
+      "id": "rule_1779002172846_zad64y",
+      "name": "开启AIMEMO",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "[[AIMemo=True]]",
+      "scope": "agent",
+      "wrap": false
+    },
+    {
+      "id": "rule_1779004027532_nj2eum",
+      "name": "浏览器权限",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "优先使用vcp自己的浏览器，当用户开启bridge功能则调用用户浏览器。\n用户正在浏览的页面信息:\n{{VCPChromePageInfo}}\n浏览器控制器(支持串语法)：\n{{VCPChromeBridge}}\ntarget字段支持一定的模糊文本匹配功能（直接输入名字而非id，如果id里没有对应内容直接输入对象名字即可）\n运行步进式串指令可以避免并发指令引发的顺序竟态，还能通过wait指令来手动等待页面或者模态窗刷新。\n",
+      "scope": "agent",
+      "wrap": false
+    },
+    {
+      "id": "rule_1779003974243_pbfbtm",
+      "name": "新闻权限",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "今日新闻\n{{VCPDailyHot}}",
+      "scope": "agent",
+      "wrap": false
+    },
+    {
+      "id": "rule_1779003997928_ao0al0",
+      "name": "全球金融数据权限",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "全球金融监控(支持串命令)\n{{VCPDigitalOracle}}",
+      "scope": "agent",
+      "wrap": false
+    },
+    {
+      "id": "rule_1779214595227_ke0qfg",
+      "name": "文件管理权限",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "{{VarFileTool}}",
+      "scope": "global",
+      "wrap": false
+    },
+    {
+      "id": "rule_1779214623480_iynt72",
+      "name": "多媒体生成权限",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "{{VCPMediaToolBox}}",
+      "scope": "global",
+      "wrap": false
+    },
+    {
+      "id": "rule_1779385072173_d47k47",
+      "name": "开启上下文折叠",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "[[ContextFoldingV2]]",
+      "scope": "agent",
+      "wrap": false
+    },
+    {
+      "id": "rule_1780653502027_0fv14f",
+      "name": "OneRing关闭注入",
+      "type": "system_suffix",
+      "enabled": true,
+      "content": "[[OneRing::Only]]",
+      "scope": "global",
+      "wrap": false
+    },
+    {
+      "id": "rule_1780903832029_xf5es6",
+      "name": "管理我的git仓库",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "管理用户的 GitHub 仓库，例如 https://github.com/example-user/example-repo\n\n支持以下14个统一命令：\n1. repo_get — 获取仓库/项目信息\n2. repo_list_files — 获取文件内容或目录列表\n3. repo_list_branches — 列出分支\n4. repo_list_commits — 列出提交历史\n5. repo_search_code — 搜索代码（仅GitHub支持）\n6. repo_list_releases — 列出Releases\n7. issue_list — 列出Issues\n8. issue_get — 获取Issue详情\n9. issue_search — 搜索Issues（仅GitHub支持）\n10. pr_list — 列出Pull Requests / Merge Requests\n11. pr_get — 获取PR/MR详情\n12. pr_get_diff — 获取PR/MR文件变更列表\n13. user_get_me — 获取当前用户信息（GitHub/Gitee支持，GitLab不支持）\n14. user_search — 搜索用户\n\n通用参数：\n- platform (必需): 平台名称，值为 github、gitlab 或 gitee\n- command (必需): 统一命令名，见上方列表\n- repo_owner (仓库相关命令必需): 仓库所有者\n- repo_name (仓库相关命令必需): 仓库名称\n- path (repo_list_files可选): 文件路径，省略则列出根目录\n- ref (repo_list_files/repo_list_commits可选): 分支/tag/SHA\n- issue_number (issue_get必需): Issue编号\n- pr_number (pr_get/pr_get_diff必需): PR/MR编号\n- query (搜索类命令必需): 搜索关键词\n- state (列表类可选): 状态筛选\n- page/per_page (列表类可选): 分页\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GitSearch「末」,\nplatform:「始」github「末」,\ncommand:「始」repo_get「末」,\nrepo_owner:「始」facebook「末」,\nrepo_name:「始」react「末」\n<<<[END_TOOL_REQUEST]>>>\n\n批量调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」GitSearch「末」,\ncommand1:「始」repo_get「末」,\nplatform1:「始」github「末」,\nrepo_owner1:「始」facebook「末」,\nrepo_name1:「始」react「末」,\ncommand2:「始」issue_list「末」,\nplatform2:「始」github「末」,\nrepo_owner2:「始」facebook「末」,\nrepo_name2:「始」react「末」\n<<<[END_TOOL_REQUEST]>>>",
+      "scope": "agent",
+      "wrap": true
+    },
+    {
+      "id": "rule_1784145330314_lt34g3",
+      "name": "浪潮测绘权限",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "浪潮测绘方法\nTagMemo V9.1单轨记忆寻址对照测试。保留TagMemoAB命令名以兼容既有工具调用，但不再加载V8.3资产；固定比较原始KNN、请求开始时捕获的不可变V9.1 ArtifactBundle，以及可选的独立Rerank。\n参数:\n- command (字符串, 必需): 固定传入 tagmemo_ab；也支持tagmemo_compare、v91_compare。旧别名tagmemo-ab、memory_address_ab、双轨寻址、双轨测绘仅作为协议兼容入口。\n- ab_mode (字符串, 可选, 默认 A): A/kernel/mode_a 为固定对称候选超集对照；B/product/mode_b 为端到端Top-K对照。\n- query (字符串, 必需): 记忆寻址输入。\n- maid / folder / search_all_knowledge_bases: 与普通 LightMemo 搜索作用域相同；必须提供 maid/folder，或显式开启全库搜索。\n- k (整数, 可选, 默认5): 模式B每条路径的返回数量，也是模式A表格的基础展示量。\n- top_l / topL (整数, 可选): 模式A每条召回路径进入对称超集的候选数，默认 max(20,k×4)。\n- tag_boost (数字, 可选, 默认0.6): V9.1 TagMemo增强强度。\n- potential_field / use_potential_field (布尔, 可选, 默认true): 是否在V9.1查询级能量场上执行Potential Field重排。\n- BM25 / bm25 / use_bm25 (布尔, 可选, 默认true): 模式A是否将BM25 Top-L纳入对称候选超集。\n- compare_rerank / compareRerank / rerank_compare (布尔, 可选, 默认false): 是否增加独立Rerank横向基线。开启前需配置RerankUrl、RerankApi、RerankModel；未配置或调用失败时报告会明确标记不可用。\n- core_tags、core_boost_factor: 与普通TagMemo搜索一致。\n\n模式A输出: KNN∪V9.1∪BM25固定超集、候选进入路径、KNN/V9.1排名与V9.1相对KNN的排名变化；开启compare_rerank后增加同池Rerank排名及V9.1相对Rerank变化。\n模式B输出: KNN与V9.1独立Top-K、重合率、KNN独占与V9.1独占召回；开启compare_rerank后，在两路Top-K并集上执行Rerank并显示第三路结果。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LightMemo「末」,\ncommand:「始」tagmemo_ab「末」,\nab_mode:「始」A「末」,\nfolder:「始」VCP开发「末」,\nquery:「始」TagMemo传播稳定性与虫洞预算「末」,\nk:「始」8「末」,\ntop_l:「始」30「末」,\ntag_boost:「始」0.6「末」,\npotential_field:「始」true「末」,\nBM25:「始」true「末」,\ncompare_rerank:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>\n\n\n开发测绘指令：用于比较一个起点A到一个或多个目标B/C/D/E在原始KNN与TagMemo V9.1拓扑空间中的距离差异，返回Markdown表格。适合AI开发、RAG调参和观察V9.1增强偏移。\n参数:\n- command (字符串, 必需): 固定传入 map_distance。也兼容 MapDistance、mapping、tagmemo_map、wave_map、测绘。\n- start / origin / a / start_query / query (字符串, 必需): 起点A文本。\n- targets / target / b / goal / goals (字符串或数组, 必需): 一个或多个目标文本。字符串支持英文逗号、中文逗号、顿号、| 或 ｜ 分隔；也可传JSON数组字符串。\n- tag_boost (数字或字符串, 可选, 默认0.6): 用于两端V9.1 TagMemo增强的权重。可传0关闭增强；测绘模式不需要加+号。\n- alpha / geo_alpha (数字, 可选): V9.1势能场加权距离中的Tag能量场权重。未提供时读取系统 geodesicRerank.alpha，仍未配置则默认0.35。\n- core_tags (字符串数组或分隔字符串, 可选): 核心标签列表，参与两端TagMemo增强。\n- core_boost_factor (数字, 可选, 默认1.33): 核心标签额外加权因子。\n\n输出列:\n- 纯KNN距离/相似度: 原始embedding余弦距离与相似度。\n- V9.1 TagMemo距离/相似度: 起点和目标都经过V9.1增强后的向量距离与相似度。\n- V9.1势能场加权距离/相似度: 将纯KNN相似度与A/B各自Tag能量场相似度按alpha融合。\n- Tag能量场相似度: 直接比较两端Spike Propagation能量场的余弦相似度。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LightMemo「末」,\ncommand:「始」map_distance「末」,\nstart:「始」GraphRAG中的标签拓扑如何影响召回「末」,\ntargets:「始」纯向量KNN召回, V9.1 TagMemo增强, V9.1势能场重排「末」,\ntag_boost:「始」0.6「末」,\nalpha:「始」0.35「末」,\ncore_tags:「始」TagMemo, RAG, 势能场「末」\n<<<[END_TOOL_REQUEST]>>>",
+      "scope": "global",
+      "wrap": true
+    },
+    {
+      "id": "rule_wave_benchmark_tagmemo_ab",
+      "name": "浪潮系统一键跑分",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "LightMemo生产构型A/B对比。所有轨道共享同一SQL权限作用域、同一查询向量与同一候选事实域；固定比较原始KNN、标准TagMemo V9、下沉到Rust/Rayon的RiverMemo Topology V3，并默认在三轨候选并集上增加独立Rerank。该入口不再加载或运行任何V10实验构型。\n参数:\n- command (字符串, 必需): 固定传入 tagmemo_ab；兼容tagmemo-ab、tagmemo_compare、memory_address_ab、v91_compare、寻址对照。\n- query (字符串, 必需): 检索查询。\n- maid / folder / search_all_knowledge_bases: 与普通搜索一致；必须提供maid/folder，或显式开启全库搜索。\n- k (整数, 可选, 默认5): 每条轨道展示的Top-K。\n- candidate_k / candidateK (整数, 可选, 默认max(30,k×5)): TagMemo V9、Rust V3与Rerank使用的对称候选窗口。\n- tag_boost (数字, 可选, 默认0.6): V9增强及Rust V3共享V9观测源的强度。\n- core_tags / core_boost_factor: 核心Tag及额外增强系数。\n- BM25 / bm25 / use_bm25 (布尔, 可选, 默认true): 是否向Rust V3候选超集提供BM25来源。\n- compare_rerank / compareRerank / rerank_compare (布尔, 可选, 默认true): 是否增加独立Rerank轨道；未配置服务时报告会明确标记不可用。\n输出为紧凑Markdown，包括三组Top-K重合率及KNN、TagMemo V9、Rust Topology V3、Rerank统一排名表。",
+      "scope": "agent",
+      "wrap": false
+    }
+  ]
+}

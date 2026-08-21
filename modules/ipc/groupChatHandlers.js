@@ -2,6 +2,7 @@
 const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const { pathToFileURL } = require('url');
 const groupChat = require('../../Groupmodules/groupchat');
 
 /**
@@ -15,6 +16,18 @@ const groupChat = require('../../Groupmodules/groupchat');
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 let ipcHandlersRegistered = false;
+const AVATAR_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+
+async function findAvatarUrl(agentDir, cacheBust = false) {
+    for (const ext of AVATAR_EXTENSIONS) {
+        const avatarPath = path.join(agentDir, `avatar${ext}`);
+        if (await fs.pathExists(avatarPath)) {
+            const url = pathToFileURL(avatarPath).toString();
+            return cacheBust ? `${url}?t=${Date.now()}` : url;
+        }
+    }
+    return null;
+}
 
 function initialize(mainWindow, context) {
     const { AGENT_DIR, USER_DATA_DIR, getSelectionListenerStatus, stopSelectionListener, startSelectionListener, fileWatcher } = context;
@@ -29,21 +42,7 @@ function initialize(mainWindow, context) {
         const configPath = path.join(agentDir, 'config.json');
         if (await fs.pathExists(configPath)) {
             const config = await fs.readJson(configPath);
-            // Construct avatarUrl by checking for file existence, which is more robust
-            const avatarPathPng = path.join(agentDir, 'avatar.png');
-            const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
-            const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
-            const avatarPathGif = path.join(agentDir, 'avatar.gif');
-            config.avatarUrl = null;
-            if (await fs.pathExists(avatarPathPng)) {
-                config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
-            } else if (await fs.pathExists(avatarPathJpg)) {
-                config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
-            } else if (await fs.pathExists(avatarPathJpeg)) {
-                config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
-            } else if (await fs.pathExists(avatarPathGif)) {
-                config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
-            }
+            config.avatarUrl = await findAvatarUrl(agentDir, true);
             config.id = agentId; // Ensure ID is part of the returned config
             return config;
         }

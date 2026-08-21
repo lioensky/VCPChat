@@ -89,6 +89,48 @@
                      <div style="text-align:center; padding:20px; opacity: 0.6;">诊断数据读取中...</div>
                 </div>
 
+                <!-- AgentAssistant Delegation Tracker -->
+                <section class="delegation-tracker glass">
+                    <div class="delegation-tracker-header">
+                        <div>
+                            <h3>异步委托任务追踪</h3>
+                            <p>实时查看 AgentAssistant 后台委托状态、最近回复与取消管线。</p>
+                        </div>
+                        <div class="delegation-tracker-actions">
+                            <span id="delegation-status-message" class="delegation-status-message">等待读取...</span>
+                            <button id="refresh-delegations-btn" class="glass-btn primary">刷新委托</button>
+                        </div>
+                    </div>
+                    <div class="delegation-summary" id="delegation-summary">
+                        <div class="delegation-summary-item">
+                            <span class="stat-value">0</span>
+                            <span class="stat-label">运行中</span>
+                        </div>
+                        <div class="delegation-summary-item">
+                            <span class="stat-value">0</span>
+                            <span class="stat-label">最近记录</span>
+                        </div>
+                    </div>
+                    <div class="delegation-section">
+                        <div class="delegation-section-title">
+                            <h4>运行中任务</h4>
+                            <span>running / waiting / cancelling</span>
+                        </div>
+                        <div class="delegation-grid" id="active-delegations-container">
+                            <div class="empty-state">暂无运行中的异步委托。</div>
+                        </div>
+                    </div>
+                    <div class="delegation-section">
+                        <div class="delegation-section-title">
+                            <h4>最近完成 / 失败 / 取消</h4>
+                            <span>completed / failed / cancelled</span>
+                        </div>
+                        <div class="delegation-grid" id="recent-delegations-container">
+                            <div class="empty-state">暂无最近委托记录。</div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Task List Grid -->
                 <div class="task-grid" id="task-list-container">
                     <!-- Cards will be populated here -->
@@ -129,6 +171,26 @@
                 <div style="display: flex; gap: 10px;">
                      <button id="task-modal-save" class="glass-btn primary">保存任务更改</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delegation Detail Modal -->
+    <div id="delegation-modal" class="modal-overlay">
+        <div class="modal-content glass delegation-modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 id="delegation-modal-title">异步委托详情</h3>
+                    <div id="delegation-modal-subtitle" class="delegation-modal-subtitle"></div>
+                </div>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body delegation-modal-body" id="delegation-modal-body">
+                <!-- Delegation detail will be populated here -->
+            </div>
+            <div class="modal-footer delegation-modal-footer">
+                <button id="delegation-modal-cancel" class="glass-btn warning">请求取消任务</button>
+                <button id="delegation-modal-close" class="glass-btn primary">关闭</button>
             </div>
         </div>
     </div>

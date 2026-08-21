@@ -1,0 +1,30 @@
+#vchat-auto-tts-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.vchat-auto-tts-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.vchat-auto-tts-row > label:first-child {
+    margin: 0;
+    color: var(--primary-text);
+    font-weight: 600;
+}
+
+.vchat-auto-tts-row .switch {
+    margin: 0;
+}
+
+.vchat-auto-tts-row input:disabled + .slider {
+    cursor: not-allowed;
+    opacity: .45;
+}

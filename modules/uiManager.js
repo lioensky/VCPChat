@@ -1,17 +1,16 @@
 /**
  * uiManager.js
- * 
+ *
  * Manages general UI functionalities like the title bar, resizers, theme, and clock.
  */
 const uiManager = (() => {
     // --- Private Variables ---
     let globalSettingsRef = { get: () => ({}) }; // Reference to global settings
     let electronAPI = null;
+    const themeChannel = window.VCPStateChannels?.create('theme', Object.freeze({ ready: false, effective: 'light' })) || null;
 
     // DOM Elements (will be initialized in init)
     let leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight;
-    let minimizeBtn, maximizeBtn, restoreBtn, closeBtn, settingsBtn;
-    let themeToggleBtn;
     let digitalClockElement, dateDisplayElement, notificationTitleElement;
     let sidebarTabButtons, sidebarTabContents;
 
@@ -19,121 +18,53 @@ const uiManager = (() => {
     // --- Private Functions ---
 
     /**
-     * Sets up the custom title bar controls (minimize, maximize, close).
-     */
-    function setupTitleBarControls() {
-        if (minimizeBtn) minimizeBtn.addEventListener('click', () => electronAPI.minimizeWindow());
-        if (maximizeBtn) maximizeBtn.addEventListener('click', () => electronAPI.maximizeWindow());
-        if (restoreBtn) restoreBtn.addEventListener('click', () => electronAPI.unmaximizeWindow());
-        if (closeBtn) closeBtn.addEventListener('click', () => electronAPI.closeWindow());
-        // if (settingsBtn) settingsBtn.addEventListener('click', () => electronAPI.openDevTools()); // This is now handled by the theme module
-
-        if (electronAPI && typeof electronAPI.onWindowMaximized === 'function') {
-            electronAPI.onWindowMaximized(() => {
-                if (maximizeBtn) maximizeBtn.style.display = 'none';
-                if (restoreBtn) restoreBtn.style.display = 'flex';
-            });
-        }
-        if (electronAPI && typeof electronAPI.onWindowUnmaximized === 'function') {
-            electronAPI.onWindowUnmaximized(() => {
-                if (maximizeBtn) maximizeBtn.style.display = 'flex';
-                if (restoreBtn) restoreBtn.style.display = 'none';
-            });
-        }
-    }
-
-    /**
      * Initializes the resizable sidebars.
      */
     function initializeResizers() {
-        let isResizingLeft = false;
-        let isResizingRight = false;
-        let startX = 0;
-
-        if (resizerLeft && leftSidebar) {
-            resizerLeft.addEventListener('mousedown', (e) => {
-                isResizingLeft = true;
-                startX = e.clientX;
-                document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none';
-                if (leftSidebar) leftSidebar.style.transition = 'none';
+        const getWidthConstraints = (element, fallbackMin) => {
+            const computed = getComputedStyle(element);
+            return {
+                min: parseFloat(computed.minWidth) || fallbackMin,
+                max: parseFloat(computed.maxWidth) || 600
+            };
+        };
+        const createResizer = (handle, element, fallbackMin, direction, settingKey, beforeBegin) => {
+            if (!handle || !element || !window.VCPSidebarResizer) return null;
+            return window.VCPSidebarResizer.create({
+                handle,
+                getValue: () => element.getBoundingClientRect().width,
+                getBounds: () => getWidthConstraints(element, fallbackMin),
+                applyValue: (width) => { element.style.width = `${width}px`; },
+                direction,
+                step: 1,
+                beforeBegin,
+                onActiveChange: (active) => {
+                    document.body.style.cursor = active ? 'col-resize' : '';
+                    document.body.style.userSelect = active ? 'none' : '';
+                    document.body.classList.toggle('vcp-sidebar-resizing', active);
+                    element.style.transition = active ? 'none' : '';
+                },
+                onCommit: async (width) => {
+                    const currentSettings = globalSettingsRef.get();
+                    const roundedWidth = Math.round(width);
+                    if (currentSettings[settingKey] === roundedWidth) return;
+                    currentSettings[settingKey] = roundedWidth;
+                    try {
+                        await electronAPI.saveSettings(currentSettings);
+                        console.log('Sidebar width saved to settings.');
+                    } catch (error) {
+                        console.error('Failed to save sidebar width:', error);
+                    }
+                },
             });
-        }
+        };
 
-        if (resizerRight && rightNotificationsSidebar) {
-            resizerRight.addEventListener('mousedown', (e) => {
-                if (!rightNotificationsSidebar.classList.contains('active')) {
-                    electronAPI.sendToggleNotificationsSidebar();
-                    requestAnimationFrame(() => {
-                        isResizingRight = true;
-                        startX = e.clientX;
-                        document.body.style.cursor = 'col-resize';
-                        document.body.style.userSelect = 'none';
-                        rightNotificationsSidebar.style.transition = 'none';
-                    });
-                } else {
-                    isResizingRight = true;
-                    startX = e.clientX;
-                    document.body.style.cursor = 'col-resize';
-                    document.body.style.userSelect = 'none';
-                    rightNotificationsSidebar.style.transition = 'none';
-                }
-            });
-        }
-
-        document.addEventListener('mousemove', (e) => {
-            if (isResizingLeft && leftSidebar) {
-                const deltaX = e.clientX - startX;
-                const currentWidth = leftSidebar.offsetWidth;
-                let newWidth = currentWidth + deltaX;
-                newWidth = Math.max(parseInt(getComputedStyle(leftSidebar).minWidth, 10) || 180, Math.min(newWidth, parseInt(getComputedStyle(leftSidebar).maxWidth, 10) || 600));
-                leftSidebar.style.width = `${newWidth}px`;
-                startX = e.clientX;
-            }
-            if (isResizingRight && rightNotificationsSidebar && rightNotificationsSidebar.classList.contains('active')) {
-                const deltaX = e.clientX - startX;
-                const currentWidth = rightNotificationsSidebar.offsetWidth;
-                let newWidth = currentWidth - deltaX;
-                newWidth = Math.max(parseInt(getComputedStyle(rightNotificationsSidebar).minWidth, 10) || 220, Math.min(newWidth, parseInt(getComputedStyle(rightNotificationsSidebar).maxWidth, 10) || 600));
-                rightNotificationsSidebar.style.width = `${newWidth}px`;
-                startX = e.clientX;
-            }
-        });
-
-        document.addEventListener('mouseup', async () => {
-            let settingsChanged = false;
-            const currentSettings = globalSettingsRef.get();
-
-            if (isResizingLeft && leftSidebar) {
-                leftSidebar.style.transition = '';
-                const newSidebarWidth = leftSidebar.offsetWidth;
-                if (currentSettings.sidebarWidth !== newSidebarWidth) {
-                    currentSettings.sidebarWidth = newSidebarWidth;
-                    settingsChanged = true;
-                }
-            }
-            if (isResizingRight && rightNotificationsSidebar && rightNotificationsSidebar.classList.contains('active')) {
-                rightNotificationsSidebar.style.transition = '';
-                const newNotificationsWidth = rightNotificationsSidebar.offsetWidth;
-                if (currentSettings.notificationsSidebarWidth !== newNotificationsWidth) {
-                    currentSettings.notificationsSidebarWidth = newNotificationsWidth;
-                    settingsChanged = true;
-                }
-            }
-
-            isResizingLeft = false;
-            isResizingRight = false;
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-
-            if (settingsChanged) {
-                try {
-                    await electronAPI.saveSettings(currentSettings);
-                    console.log('Sidebar widths saved to settings.');
-                } catch (error) {
-                    console.error('Failed to save sidebar widths:', error);
-                }
-            }
+        createResizer(resizerLeft, leftSidebar, 180, 1, 'sidebarWidth');
+        createResizer(resizerRight, rightNotificationsSidebar, 220, -1, 'notificationsSidebarWidth', (event, resume) => {
+            if (rightNotificationsSidebar.classList.contains('active')) return true;
+            electronAPI.sendToggleNotificationsSidebar();
+            requestAnimationFrame(resume);
+            return false;
         });
     }
 
@@ -147,20 +78,40 @@ const uiManager = (() => {
             // As a fallback, we'll default to light, but the initial theme should come from the main process.
             theme = 'light';
         }
-        
-        // Apply class to body for CSS styling
-        document.body.classList.remove('light-theme', 'dark-theme');
-        document.body.classList.add(`${theme}-theme`);
 
-        // Update the toggle button icon
-        if (themeToggleBtn) {
-            const themeIcon = themeToggleBtn.querySelector('i');
-            if (themeIcon) {
-                // Assuming sun for light theme, moon for dark theme
-                themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
-            }
+        const body = document.body;
+        if (!body) return false;
+
+        const shouldUseLight = theme === 'light';
+        const domAlreadyApplied = body.classList.contains('light-theme') === shouldUseLight
+            && body.classList.contains('dark-theme') !== shouldUseLight;
+        const channelState = themeChannel?.get();
+        const channelAlreadyApplied = channelState?.ready === true
+            && channelState.effective === theme;
+
+        // setThemeMode() performs an optimistic renderer-side update and the main
+        // process broadcasts the persisted value afterwards. Keep this operation
+        // idempotent so that the echo cannot invalidate and repaint the whole tree.
+        if (domAlreadyApplied && channelAlreadyApplied) {
+            return false;
         }
+
+        // Express the final state directly. Removing both classes before adding the
+        // target class creates an avoidable unthemed intermediate style state.
+        if (!domAlreadyApplied) {
+            body.classList.toggle('light-theme', shouldUseLight);
+            body.classList.toggle('dark-theme', !shouldUseLight);
+        }
+
+        if (!channelAlreadyApplied) {
+            themeChannel?.publish(
+                Object.freeze({ ready: true, effective: theme }),
+                { source: 'ui-manager' }
+            );
+        }
+
         console.log(`[UIManager] Theme applied: ${theme}`);
+        return true;
     }
 
     /**
@@ -294,13 +245,13 @@ const uiManager = (() => {
                     switchToTab(nextButton.dataset.tab);
                     nextButton.focus();
                 });
-                
+
                 // 中键点击 - 如果是设置标签，直接打开全局设置
                 button.addEventListener('mousedown', (e) => {
                     if (e.button === 1 && button.dataset.tab === 'settings') {
                         e.preventDefault();
                         e.stopPropagation();
-                        
+
                         // 打开全局设置模态框
                         if (window.uiHelperFunctions && window.uiHelperFunctions.openModal) {
                             console.log('[UIManager] Middle click on settings tab - opening global settings modal');
@@ -317,10 +268,145 @@ const uiManager = (() => {
     }
 
     /**
+     * Initializes the compact sidebar hover menu and topic drawer.
+     */
+    function setupCompactSidebarNavigation() {
+        if (!leftSidebar) return;
+
+        const navigation = leftSidebar.querySelector('.sidebar-compact-navigation');
+        const trigger = navigation?.querySelector('.sidebar-compact-trigger');
+        const menu = navigation?.querySelector('.sidebar-compact-menu');
+        const compactItems = navigation?.querySelectorAll('.sidebar-compact-menu-item');
+        const topicsPanel = document.getElementById('tabContentTopics');
+        const topicList = document.getElementById('topicList');
+        if (!navigation || !trigger || !menu || !compactItems?.length || !topicsPanel) return;
+
+        let closeMenuTimer = null;
+
+        const setCompactMenuOpen = (open) => {
+            if (closeMenuTimer) {
+                clearTimeout(closeMenuTimer);
+                closeMenuTimer = null;
+            }
+            navigation.classList.toggle('menu-open', open);
+            trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        };
+
+        const scheduleCompactMenuClose = () => {
+            if (closeMenuTimer) clearTimeout(closeMenuTimer);
+            closeMenuTimer = setTimeout(() => setCompactMenuOpen(false), 200);
+        };
+
+        const closeTopicDrawer = () => {
+            leftSidebar.classList.remove('compact-topics-open');
+            topicsPanel.classList.remove('compact-drawer-open');
+            topicsPanel.setAttribute('aria-hidden', 'true');
+            compactItems.forEach(item => {
+                item.classList.toggle('active', item.dataset.compactAction === 'agents');
+            });
+        };
+
+        const openTopicDrawer = () => {
+            if (!leftSidebar.classList.contains('avatar-only')) return;
+
+            leftSidebar.classList.add('compact-topics-open');
+            topicsPanel.classList.add('compact-drawer-open');
+            topicsPanel.setAttribute('aria-hidden', 'false');
+            compactItems.forEach(item => {
+                item.classList.toggle('active', item.dataset.compactAction === 'topics');
+            });
+
+            window.topicListManager?.loadTopicList?.();
+            window.topicListManager?.setupTopicSearch?.();
+            refreshUnreadCounts();
+            setCompactMenuOpen(false);
+        };
+
+        navigation.addEventListener('mouseenter', () => setCompactMenuOpen(true));
+        navigation.addEventListener('mouseleave', scheduleCompactMenuClose);
+        trigger.addEventListener('focus', () => setCompactMenuOpen(true));
+        navigation.addEventListener('focusout', (event) => {
+            if (!navigation.contains(event.relatedTarget)) scheduleCompactMenuClose();
+        });
+
+        document.addEventListener('compact-sidebar-open-topics', () => {
+            if (!leftSidebar.classList.contains('avatar-only')) return;
+            openTopicDrawer();
+        });
+
+        compactItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const action = item.dataset.compactAction;
+                if (action === 'agents') {
+                    closeTopicDrawer();
+                    setCompactMenuOpen(false);
+                    return;
+                }
+
+                if (action === 'topics') {
+                    if (leftSidebar.classList.contains('compact-topics-open')) {
+                        closeTopicDrawer();
+                    } else {
+                        openTopicDrawer();
+                    }
+                    return;
+                }
+
+                if (action === 'settings') {
+                    closeTopicDrawer();
+                    leftSidebar.classList.remove('avatar-only');
+                    const settings = globalSettingsRef.get();
+                    settings.sidebarAvatarOnly = false;
+                    electronAPI?.saveSettings?.(settings).catch(error => {
+                        console.error('[UIManager] Failed to save compact sidebar state:', error);
+                    });
+                    switchToTab('settings');
+                }
+            });
+        });
+
+        topicList?.addEventListener('click', (event) => {
+            if (leftSidebar.classList.contains('compact-topics-open') && event.target.closest('.topic-item')) {
+                closeTopicDrawer();
+            }
+        });
+
+        document.addEventListener('pointerdown', (event) => {
+            if (!leftSidebar.classList.contains('compact-topics-open')) return;
+            if (topicsPanel.contains(event.target) || navigation.contains(event.target)) return;
+            closeTopicDrawer();
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && leftSidebar.classList.contains('compact-topics-open')) {
+                closeTopicDrawer();
+                trigger.focus();
+            }
+        });
+
+        leftSidebar.addEventListener('transitionend', () => {
+            if (!leftSidebar.classList.contains('avatar-only')) {
+                closeTopicDrawer();
+                setCompactMenuOpen(false);
+            }
+        });
+    }
+
+    /**
      * Switches to the specified tab.
      * @param {string} targetTab - The tab to switch to.
      */
     function switchToTab(targetTab) {
+        // “仅头像”是助手列表专属布局；进入话题或设置时恢复完整侧栏。
+        if (targetTab !== 'agents' && leftSidebar?.classList.contains('avatar-only')) {
+            leftSidebar.classList.remove('avatar-only');
+            const settings = globalSettingsRef.get();
+            settings.sidebarAvatarOnly = false;
+            electronAPI?.saveSettings?.(settings).catch(error => {
+                console.error('[UIManager] Failed to save avatar-only sidebar state:', error);
+            });
+        }
+
         if (sidebarTabButtons) {
             sidebarTabButtons.forEach(btn => {
                 const isActive = btn.dataset.tab === targetTab;
@@ -403,12 +489,6 @@ const uiManager = (() => {
             rightNotificationsSidebar = options.elements.rightNotificationsSidebar;
             resizerLeft = options.elements.resizerLeft;
             resizerRight = options.elements.resizerRight;
-            minimizeBtn = options.elements.minimizeBtn;
-            maximizeBtn = options.elements.maximizeBtn;
-            restoreBtn = options.elements.restoreBtn;
-            closeBtn = options.elements.closeBtn;
-            settingsBtn = options.elements.settingsBtn;
-            themeToggleBtn = options.elements.themeToggleBtn;
             digitalClockElement = options.elements.digitalClockElement;
             dateDisplayElement = options.elements.dateDisplayElement;
             notificationTitleElement = options.elements.notificationTitleElement;
@@ -416,28 +496,17 @@ const uiManager = (() => {
             sidebarTabContents = options.elements.sidebarTabContents;
 
             // Initialize all features
-            setupTitleBarControls();
             initializeResizers();
             await initializeTheme(); // Replaces loadAndApplyThemePreference
             initializeDigitalClock();
             setupSidebarTabs();
-
-            // Setup theme toggle button listener
-            if (themeToggleBtn) {
-                themeToggleBtn.addEventListener('click', () => {
-                    // Determine the new theme based on the current one
-                    const isCurrentlyDark = document.body.classList.contains('dark-theme');
-                    const newTheme = isCurrentlyDark ? 'light' : 'dark';
-                    
-                    // Just tell the main process to set the theme.
-                    // The UI update will happen automatically when we receive the 'theme-updated' event.
-                    electronAPI.setTheme(newTheme);
-                });
-            }
+            setupCompactSidebarNavigation();
 
             console.log('uiManager initialized.');
         },
         applyTheme: applyTheme, // Expose applyTheme if needed externally
+        getThemeState: () => themeChannel?.get() || Object.freeze({ ready: true, effective: document.body.classList.contains('dark-theme') ? 'dark' : 'light' }),
+        subscribeTheme: (listener, options) => themeChannel?.subscribe(listener, options) || (() => false),
         switchToTab: switchToTab // Expose switchToTab for external use
     };
 })();
