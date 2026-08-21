@@ -851,6 +851,20 @@ function createTray() {
 const gotTheLock = process.argv.includes('--allow-multiple-instances') || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
+    // Tell the managed bootstrapper why this child exits before publishing
+    // ready. This is an expected single-instance handoff, not a crash.
+    if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR) {
+        try {
+            const bootstrapFs = require('fs');
+            const bootstrapPath = require('path');
+            const markerPath = bootstrapPath.join(process.env.VCPCHAT_STATE_DIR, `already-running-${process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID}.json`);
+            bootstrapFs.mkdirSync(process.env.VCPCHAT_STATE_DIR, { recursive: true });
+            bootstrapFs.writeFileSync(markerPath, JSON.stringify({
+                operationId: process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID,
+                at: new Date().toISOString(),
+            }), { encoding: 'utf8', flag: 'wx' });
+        } catch { /* single-instance exit remains authoritative */ }
+    }
     // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
     const isInternalLaunch = process.argv.includes('--desktop-only') || process.argv.includes('--rag-observer-only');
 

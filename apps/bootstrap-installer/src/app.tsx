@@ -110,15 +110,16 @@ function Success() {
   const mode = useStore($mode)
   const launch = useStore($launchProgress)
   const [error, setError] = useState<string | null>(null)
+  const alreadyRunning = error?.includes('已经在运行中') ?? false
   async function handleLaunch() {
     setError(null)
     try { await launchVcpchat() } catch (value) { setError(String(value)) }
   }
-  return <Terminal icon={<Check />} title={mode === 'update' ? 'VCPChat 已更新完成' : 'VCPChat 已准备完成'} message={launch.running ? launch.message : '依赖和运行环境均已通过检查。'}>
+  return <Terminal icon={<Check />} title={alreadyRunning ? 'VCPChat 已经在运行' : mode === 'update' ? 'VCPChat 已更新完成' : 'VCPChat 已准备完成'} message={alreadyRunning ? '检测到电脑上已有 VCPChat 窗口。请切回任务栏中的已有窗口继续使用，无需重复启动。' : launch.running ? launch.message : '依赖和运行环境均已通过检查。'}>
     {launch.running && <div className="launch-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(launch.progress * 100)}><i style={{ width: `${Math.max(3, launch.progress * 100)}%` }} /></div>}
     <button className="primary-action" disabled={launch.running} onClick={() => void handleLaunch()}>{launch.running ? '正在启动' : '打开 VCPChat'} <ChevronRight size={17} /></button>
     {launch.running && <button className="text-action centered" onClick={() => void cancelInstall()}>取消启动</button>}
-    {error && <p className="inline-error" role="alert">{error}</p>}
+    {error && <p className="inline-error" role="alert">{alreadyRunning ? '启动请求已安全取消：已有实例正在使用中。' : error}</p>}
   </Terminal>
 }
 

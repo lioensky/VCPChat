@@ -967,6 +967,9 @@ async fn launch_vcpchat(app: AppHandle, state: State<'_, AppState>) -> Result<()
         })
         .await
         .map_err(|error| format!("VCPChat handoff worker failed: {error}"))??;
+        if status.code() == Some(42) {
+            return Err("VCPChat 已经在运行中。请切回已有的 VCPChat 窗口继续使用。".into());
+        }
         if !status.success() {
             return Err(format!("VCPChat ready handoff 失败，退出状态 {status}"));
         }

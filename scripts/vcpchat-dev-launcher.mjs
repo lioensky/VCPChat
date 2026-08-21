@@ -19,6 +19,7 @@ const { writeDiagnosticReport } = require('../modules/bootstrap/diagnostic-repor
 const { managedSpawnOptions, terminateManagedProcess } = require('../modules/bootstrap/platform-process');
 
 const DEFAULT_READY_TIMEOUT_MS = 60_000;
+const ALREADY_RUNNING_EXIT_CODE = 42;
 
 function parseArguments(argv) {
     const options = {
@@ -94,6 +95,15 @@ async function waitForReady({ stateRoot, operationId, child, timeoutMs, sleep = 
                 if (pidMatches && checksReady) return { ok: true, record };
             }
             if (childExit) {
+                const markerPath = path.join(stateRoot, `already-running-${operationId}.json`);
+                if (fs.existsSync(markerPath)) {
+                    return {
+                        ok: false,
+                        code: 'E_APP_ALREADY_RUNNING',
+                        message: 'VCPChat 已经在运行中。请切回已有的 VCPChat 窗口继续使用。',
+                        childExit,
+                    };
+                }
                 return {
                     ok: false,
                     code: 'E_ELECTRON_CRASH_BEFORE_READY',
@@ -252,7 +262,7 @@ export async function runManagedLauncher({
             });
             io.stderr.write(`诊断报告：${diagnostic.path}\n`);
             terminateChild(child);
-            return 1;
+            return ready.code === 'E_APP_ALREADY_RUNNING' ? ALREADY_RUNNING_EXIT_CODE : 1;
         }
         lock.updateStage('running');
         lock.release();
@@ -288,6 +298,7 @@ export async function runManagedLauncher({
         process.removeListener('SIGINT', onInterrupt);
         process.removeListener('SIGTERM', onInterrupt);
         lock?.release();
+        try { fs.rmSync(path.join(stateRoot, `already-running-${operationId}.json`), { force: true }); } catch { /* best effort */ }
         removeReadyRecord({ stateRoot, operationId });
     }
 }
@@ -300,4 +311,4 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
     });
 }
 
-export { createElectronChildEnv, detachChildForHandoff, managedElectronSpawnOptions, parseArguments, waitForReady, formatDoctorFailure };
+export { ALREADY_RUNNING_EXIT_CODE, createElectronChildEnv, detachChildForHandoff, managedElectronSpawnOptions, parseArguments, waitForReady, formatDoctorFailure };
