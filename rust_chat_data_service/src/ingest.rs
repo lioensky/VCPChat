@@ -159,36 +159,7 @@ impl Reconciler {
     }
 
     fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
-        let topics_directory = self
-            .config
-            .user_data_dir
-            .join(&configured_owner.key.owner_id)
-            .join("topics");
-        let mut physical_topic_ids = Vec::new();
-        match fs::metadata(&topics_directory) {
-            Ok(metadata) => {
-                anyhow::ensure!(
-                    metadata.is_dir(),
-                    "physical topics path is not a directory: {}",
-                    topics_directory.display()
-                );
-                for entry in fs::read_dir(&topics_directory)
-                    .with_context(|| format!("failed to read {}", topics_directory.display()))?
-                {
-                    let entry = entry?;
-                    if !entry.file_type()?.is_dir() {
-                        continue;
-                    }
-                    physical_topic_ids.push(entry.file_name().to_string_lossy().to_string());
-                }
-            }
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to inspect {}", topics_directory.display()));
-            }
-        }
-        physical_topic_ids.sort();
+        let physical_topic_ids = self.physical_topic_ids(&configured_owner.key.owner_id)?;
 
         let physical_topic_id_set = physical_topic_ids
             .iter()
@@ -238,6 +209,35 @@ impl Reconciler {
         Ok(effective)
     }
 
+    fn physical_topic_ids(&self, owner_id: &str) -> Result<Vec<String>> {
+        let topics_directory = self.config.user_data_dir.join(owner_id).join("topics");
+        let metadata = match fs::metadata(&topics_directory) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to inspect {}", topics_directory.display()));
+            }
+        };
+        anyhow::ensure!(
+            metadata.is_dir(),
+            "physical topics path is not a directory: {}",
+            topics_directory.display()
+        );
+
+        let mut topic_ids = Vec::new();
+        for entry in fs::read_dir(&topics_directory)
+            .with_context(|| format!("failed to read {}", topics_directory.display()))?
+        {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                topic_ids.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+        topic_ids.sort();
+        Ok(topic_ids)
+    }
+
     pub fn scan_owner_registry(&self) -> Result<(HashMap<OwnerKey, OwnerRecord>, usize)> {
         let mut owners = HashMap::new();
         self.scan_owner_directory(OwnerType::Agent, &self.config.agents_dir, &mut owners)?;
@@ -282,10 +282,11 @@ impl Reconciler {
                     owner_type = %owner_type,
                     owner_id,
                     config_path = %config_path.display(),
-                    "owner config is missing; retaining owner from its physical directory"
+                    "owner config is missing; checking physical topics for recovery"
                 );
-                let owner = self.recovery_owner(owner_type, owner_id, config_path)?;
-                owners.insert(owner.key.clone(), owner);
+                if let Some(owner) = self.recovery_owner(owner_type, owner_id, config_path)? {
+                    owners.insert(owner.key.clone(), owner);
+                }
                 continue;
             }
 
@@ -299,10 +300,11 @@ impl Reconciler {
                         owner_id,
                         config_path = %config_path.display(),
                         error = ?error,
-                        "owner config is invalid; retaining owner from its physical directory"
+                        "owner config is invalid; checking physical topics for recovery"
                     );
-                    let owner = self.recovery_owner(owner_type, owner_id, config_path)?;
-                    owners.insert(owner.key.clone(), owner);
+                    if let Some(owner) = self.recovery_owner(owner_type, owner_id, config_path)? {
+                        owners.insert(owner.key.clone(), owner);
+                    }
                 }
             }
         }
@@ -314,13 +316,16 @@ impl Reconciler {
         owner_type: OwnerType,
         owner_id: String,
         config_path: impl Into<std::path::PathBuf>,
-    ) -> Result<OwnerRecord> {
+    ) -> Result<Option<OwnerRecord>> {
+        if self.physical_topic_ids(&owner_id)?.is_empty() {
+            return Ok(None);
+        }
         let display_name = self
             .database
             .owner_by_id(owner_type, &owner_id)?
             .map(|(_, display_name)| display_name)
             .unwrap_or_else(|| owner_id.clone());
-        Ok(OwnerRecord {
+        Ok(Some(OwnerRecord {
             key: OwnerKey {
                 owner_type,
                 owner_id,
@@ -329,7 +334,7 @@ impl Reconciler {
             config_path: config_path.into(),
             config_hash: "physical-owner-recovery".to_string(),
             topics: Vec::new(),
-        })
+        }))
     }
 
     fn topic_source(&self, owner: &OwnerRecord, topic: &TopicDefinition) -> TopicSource {
@@ -1203,6 +1208,35 @@ mod tests {
             )
             .expect("load recovered deletion state");
         assert_eq!(deleted_state, (None, None, None));
+    }
+
+    #[tokio::test]
+    async fn missing_or_invalid_config_without_physical_topics_is_not_recovered() {
+        let (_temp, config, database, reconciler) = fixture();
+        fs::create_dir_all(config.agents_dir.join("agent_missing"))
+            .expect("create missing-config owner directory");
+        let invalid_owner = config.groups_dir.join("group_invalid");
+        fs::create_dir_all(&invalid_owner).expect("create invalid-config owner directory");
+        fs::write(invalid_owner.join("config.json"), br#"{"name":"broken""#)
+            .expect("write invalid config");
+
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile empty owners");
+        assert_eq!(stats.owners_seen, 0);
+        assert_eq!(stats.owners_deleted, 0);
+
+        let connection = database.connection.lock();
+        let owners: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM owners
+                 WHERE owner_id IN ('agent_missing', 'group_invalid')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count ghost owners");
+        assert_eq!(owners, 0);
     }
 
     #[tokio::test]

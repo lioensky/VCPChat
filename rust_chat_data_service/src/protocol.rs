@@ -206,11 +206,8 @@ struct EntityDeleteRequest {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct EntityDeleteResponse {
     success: bool,
-    changed: bool,
-    revision: i64,
 }
 
 enum EntityDeleteTarget {
@@ -514,32 +511,21 @@ async fn sync_entity_delete(
 ) -> ServiceResult<Json<EntityDeleteResponse>> {
     let (target, deleted_at) = validate_entity_delete_request(request)?;
     let _guard = state.reconcile_lock.lock().await;
-    let commit =
-        match target {
-            EntityDeleteTarget::Owner(owner_type, owner_id) => state
+    match target {
+        EntityDeleteTarget::Owner(owner_type, owner_id) => state
+            .reconciler
+            .database()
+            .apply_sync_owner_tombstone(owner_type, &owner_id, deleted_at, "mobile_sync"),
+        EntityDeleteTarget::Topic(key) => {
+            state
                 .reconciler
                 .database()
-                .apply_sync_owner_tombstone(owner_type, &owner_id, deleted_at, "mobile_sync"),
-            EntityDeleteTarget::Topic(key) => state
-                .reconciler
-                .database()
-                .apply_sync_topic_tombstone(&key, deleted_at, "mobile_sync"),
+                .apply_sync_topic_tombstone(&key, deleted_at, "mobile_sync")
         }
-        .map_err(ServiceError::internal)?;
-
-    // Reconcile even on an idempotent retry: the SQLite commit may have
-    // succeeded while a previous request failed during the Tantivy update.
-    if let Some(search) = &state.search {
-        search
-            .reconcile_revisions()
-            .map_err(ServiceError::internal)?;
     }
+    .map_err(ServiceError::internal)?;
 
-    Ok(Json(EntityDeleteResponse {
-        success: true,
-        changed: commit.changed,
-        revision: commit.revision,
-    }))
+    Ok(Json(EntityDeleteResponse { success: true }))
 }
 
 fn validate_entity_delete_request(
@@ -1012,5 +998,14 @@ mod tests {
             validate_entity_delete_request(request("message", "message-a", 1)),
             Err(ServiceError::InvalidRequest(_))
         ));
+    }
+
+    #[test]
+    fn entity_delete_response_exposes_only_success() {
+        assert_eq!(
+            serde_json::to_value(EntityDeleteResponse { success: true })
+                .expect("serialize entity delete response"),
+            serde_json::json!({ "success": true })
+        );
     }
 }

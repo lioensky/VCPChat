@@ -722,13 +722,7 @@ class CentralSyncAdapter {
     };
     try {
       const result = await this.requireClient().syncEntityDelete(request);
-      if (
-        !isRecord(result) ||
-        result.success !== true ||
-        typeof result.changed !== "boolean" ||
-        !Number.isSafeInteger(result.revision) ||
-        result.revision < 0
-      ) {
+      if (!isRecord(result) || result.success !== true) {
         throw cdsProtocolError(
           "CDS returned an invalid entity delete response",
           stage,

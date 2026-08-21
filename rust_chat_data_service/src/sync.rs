@@ -1273,7 +1273,15 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
         "SELECT owner_id, config_path, updated_at, deleted_at
          FROM owners
          WHERE owner_type=?1
-           AND NOT (config_path='' AND deleted_at IS NULL)",
+         UNION ALL
+         SELECT t.owner_id, '', t.deleted_at, t.deleted_at
+         FROM tombstones t
+         LEFT JOIN owners o
+           ON o.owner_type=t.owner_type AND o.owner_id=t.owner_id
+         WHERE t.entity_type='owner' AND t.owner_type=?1
+           AND t.topic_id='' AND t.entity_id=t.owner_id
+           AND o.owner_id IS NULL
+         ORDER BY owner_id",
     )?;
     let rows = statement
         .query_map([owner_type.as_str()], |row| {
@@ -1351,7 +1359,18 @@ fn topic_manifests(
         "SELECT owner_type, owner_id, topic_id
          FROM topics
          WHERE topic_id <> 'default'
-         ORDER BY owner_type, owner_id, topic_ordinal",
+         UNION ALL
+         SELECT t.owner_type, t.owner_id, t.topic_id
+         FROM tombstones t
+         LEFT JOIN topics topic
+           ON topic.owner_type=t.owner_type
+          AND topic.owner_id=t.owner_id
+          AND topic.topic_id=t.topic_id
+         WHERE t.entity_type='topic'
+           AND t.topic_id <> 'default'
+           AND t.entity_id=t.topic_id
+           AND topic.topic_id IS NULL
+         ORDER BY owner_type, owner_id, topic_id",
     )?;
     let keys = statement
         .query_map([], |row| {
@@ -1413,8 +1432,22 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     let connection = database.connection.lock();
     let (metadata_json, updated_at, deleted_at): (String, i64, Option<i64>) = connection
         .query_row(
-            "SELECT metadata_json, updated_at, deleted_at FROM topics
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+            "SELECT metadata_json, updated_at, deleted_at
+             FROM topics
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+             UNION ALL
+             SELECT '{}', t.deleted_at, t.deleted_at
+             FROM tombstones t
+             WHERE t.entity_type='topic'
+               AND t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
+               AND t.entity_id=?3
+               AND NOT EXISTS (
+                   SELECT 1 FROM topics topic
+                   WHERE topic.owner_type=t.owner_type
+                     AND topic.owner_id=t.owner_id
+                     AND topic.topic_id=t.topic_id
+               )
+             LIMIT 1",
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
@@ -3118,12 +3151,12 @@ mod tests {
         assert_eq!(alive.config_hash.len(), 64);
     }
 
-    #[test]
-    fn structural_topic_tombstone_owner_is_hidden_until_it_becomes_real_or_deleted() {
-        let (_temp, _config, database, _reconciler) = sync_fixture();
+    #[tokio::test]
+    async fn tombstone_only_topic_does_not_create_or_delete_an_owner() {
+        let (_temp, _config, database, reconciler) = sync_fixture();
         let key = TopicKey {
             owner_type: OwnerType::Group,
-            owner_id: "group-structural".to_string(),
+            owner_id: "group-missing".to_string(),
             topic_id: "topic-deleted".to_string(),
         };
         database
@@ -3131,15 +3164,43 @@ mod tests {
             .expect("persist missing topic tombstone");
 
         let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
-        assert!(items.iter().all(|item| item.id != "group-structural"));
+        assert!(items.iter().all(|item| item.id != "group-missing"));
+        let topics = topic_manifests(&database, None).expect("topic manifest");
+        let tombstone = topics
+            .iter()
+            .find(|item| item.id == "topic-deleted")
+            .expect("tombstone-only topic must be visible");
+        assert_eq!(tombstone.deleted_at, Some(321));
+        assert_eq!(tombstone.owner_type, Some(OwnerType::Group));
+        assert_eq!(tombstone.owner_id.as_deref(), Some("group-missing"));
+
+        reconciler
+            .reconcile()
+            .await
+            .expect("reconcile missing owner");
+        let connection = database.connection.lock();
+        let state: (i64, i64) = connection
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM owners
+                     WHERE owner_type='group' AND owner_id='group-missing'),
+                    (SELECT COUNT(*) FROM tombstones
+                     WHERE entity_type='owner' AND owner_type='group'
+                       AND owner_id='group-missing')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query missing owner state");
+        assert_eq!(state, (0, 0));
+        drop(connection);
 
         database
-            .apply_sync_owner_tombstone(OwnerType::Group, "group-structural", 400, "mobile_sync")
-            .expect("promote structural owner to owner tombstone");
+            .apply_sync_owner_tombstone(OwnerType::Group, "group-missing", 400, "mobile_sync")
+            .expect("persist missing owner tombstone");
         let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
         let tombstone = items
             .iter()
-            .find(|item| item.id == "group-structural")
+            .find(|item| item.id == "group-missing")
             .expect("owner tombstone must be visible");
         assert_eq!(tombstone.deleted_at, Some(400));
     }

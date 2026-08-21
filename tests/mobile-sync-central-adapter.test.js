@@ -36,7 +36,7 @@ function createClient(overrides = {}) {
       type: "SYNC_DIFF_RESULTS_BATCH",
       results: {},
     }),
-    syncEntityDelete: async () => ({ success: true, changed: true, revision: 1 }),
+    syncEntityDelete: async () => ({ success: true }),
     syncMessagesPush: async () => ({ results: [] }),
     changes: async () => ({ changes: [], nextSequence: 0, hasMore: false }),
     ...overrides,
@@ -418,7 +418,7 @@ test("中央适配器按复合 owner 身份转发 topic 实体墓碑", async () 
     client: createClient({
       syncEntityDelete: async (request) => {
         captured = request;
-        return { success: true, changed: true, revision: 7 };
+        return { success: true };
       },
     }),
   });
@@ -438,7 +438,7 @@ test("中央适配器按复合 owner 身份转发 topic 实体墓碑", async () 
     ownerId: "group-a",
     deletedAt: 123,
   });
-  assert.deepEqual(result, { success: true, changed: true, revision: 7 });
+  assert.deepEqual(result, { success: true });
 });
 
 test("中央适配器转发 owner 墓碑时不携带 topic owner 字段", async () => {
@@ -447,7 +447,7 @@ test("中央适配器转发 owner 墓碑时不携带 topic owner 字段", async 
     client: createClient({
       syncEntityDelete: async (request) => {
         captured = request;
-        return { success: true, changed: false, revision: 0 };
+        return { success: true };
       },
     }),
   });
@@ -463,7 +463,7 @@ test("中央适配器转发 owner 墓碑时不携带 topic owner 字段", async 
     id: "agent-a",
     deletedAt: 456,
   });
-  assert.deepEqual(result, { success: true, changed: false, revision: 0 });
+  assert.deepEqual(result, { success: true });
 });
 
 test("中央适配器在调用 CDS 前拒绝缺失 owner 身份的 topic 墓碑", async () => {
@@ -491,7 +491,7 @@ test("中央适配器在调用 CDS 前拒绝缺失 owner 身份的 topic 墓碑"
 test("中央适配器把畸形 CDS 墓碑响应归为协议错误", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncEntityDelete: async () => ({ success: true, changed: true }),
+      syncEntityDelete: async () => ({ success: false }),
     }),
   });
 
@@ -510,7 +510,7 @@ test("CDS Node client 使用受保护的实体墓碑端点", async () => {
   let captured;
   client.request = async (...args) => {
     captured = args;
-    return { success: true, changed: true, revision: 1 };
+    return { success: true };
   };
   const request = {
     dataType: "topic",
