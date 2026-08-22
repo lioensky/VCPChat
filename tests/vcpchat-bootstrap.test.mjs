@@ -22,7 +22,7 @@ function tempDir(prefix) {
 
 test('M0 protocol resolves platform state roots and publishes operation-scoped ready records', () => {
     const root = tempDir('vcpchat-bootstrap-protocol-');
-    assert.equal(protocol.resolveStateRoot({ platform: 'win32', homeDirectory: 'C:/Users/test', env: {} }), path.join('C:', 'Users', 'test', 'AppData', 'Local', 'VCPChat', 'bootstrap'));
+    assert.equal(protocol.resolveStateRoot({ platform: 'win32', homeDirectory: 'C:/Users/test', env: {} }), path.win32.join('C:', 'Users', 'test', 'AppData', 'Local', 'VCPChat', 'bootstrap'));
     assert.match(protocol.resolveStateRoot({ platform: 'darwin', homeDirectory: '/Users/test', env: {} }), /Library\/Application Support\/VCPChat\/bootstrap$/);
     const projectA = protocol.resolveProjectStateRoot({ projectRoot: '/tmp/vcpchat-a', platform: 'darwin', homeDirectory: '/Users/test', env: {} });
     const projectB = protocol.resolveProjectStateRoot({ projectRoot: '/tmp/vcpchat-b', platform: 'darwin', homeDirectory: '/Users/test', env: {} });
