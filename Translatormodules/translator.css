@@ -416,3 +416,60 @@ body {
 .secondary-btn {
     min-width: 92px;
 }
+
+/* Embedded Translator follows the main-chat shell: the host owns the top
+   chrome, while this page paints one full-height work surface beneath it.
+   Standalone windows retain the original gutter/card presentation. */
+html[data-vcp-embedded-app="true"] {
+    height: 100% !important;
+    min-height: 100% !important;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface {
+    height: 100%;
+    min-height: 100%;
+    padding: 0;
+    background: var(--secondary-bg, var(--vcp-app-bg));
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface > .translator-container {
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    border: 0;
+    border-radius: 12px 0 0 0;
+    border-left: 1px solid var(--border-color, var(--vcp-app-border-subtle));
+    border-top: 1px solid var(--border-color, var(--vcp-app-border-subtle));
+    background: var(--secondary-bg, var(--vcp-app-bg-raised));
+    box-shadow: var(--vcp-app-shadow-sm);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .translator-header {
+    min-height: 44px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color, var(--vcp-app-border-subtle));
+    background: transparent;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .translator-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 12px;
+    gap: 12px;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .translator-main > textarea,
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .translator-main .output-area {
+    min-width: 0;
+    min-height: 0;
+    background: var(--input-bg, var(--vcp-app-bg-input));
+    border-color: var(--border-color, var(--vcp-app-border));
+    border-radius: 8px;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .translator-main .output-area > textarea {
+    height: 100%;
+    border-color: transparent;
+    border-radius: 8px;
+}
