@@ -562,6 +562,10 @@ fn normalize_message(
         content_raw,
         content_text,
         timestamp: integer_value(object.get("timestamp")),
+        updated_at: object
+            .get("updatedAt")
+            .and_then(Value::as_i64)
+            .filter(|value| (0..=9_007_199_254_740_991).contains(value)),
         message_hash,
         metadata_json,
         attachments,

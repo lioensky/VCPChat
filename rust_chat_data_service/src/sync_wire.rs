@@ -227,6 +227,13 @@ pub fn canonicalize_message(
             &format!("Message {message_id} timestamp"),
         )?),
     );
+    if let Some(updated_at) = object
+        .get("updatedAt")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=9_007_199_254_740_991).contains(value))
+    {
+        canonical.insert("updatedAt".to_string(), Value::from(updated_at));
+    }
 
     for (key, expected) in [
         ("isThinking", "boolean"),
@@ -355,7 +362,7 @@ mod tests {
     const GOLDEN: &[u8] = include_bytes!(
         "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
     );
-    const GOLDEN_SHA256: &str = "187d599d33ef660de299aae77a68eb92313af3d603efe72f7f06ecb6ac1e0c1f";
+    const GOLDEN_SHA256: &str = "0aae238ea2699b4246cf78ecd4ee044b820a0586d3821224ad59b925e531f6c0";
 
     #[test]
     fn protocol_1_2_golden_bundle_matches_mobile() {

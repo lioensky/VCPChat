@@ -12,6 +12,7 @@
             "role": "user",
             "content": "你好 <section data-raw=\"yes\">raw html</section>",
             "timestamp": "1700000000",
+            "updatedAt": 1700000100,
             "topicId": "topic-golden",
             "attachments": [
               {
@@ -73,7 +74,8 @@
             "name": "Nova",
             "agentId": "agent-nova",
             "content": "",
-            "timestamp": 1700000001
+            "timestamp": 1700000001,
+            "updatedAt": 1700000101
           }
         ]
       },
@@ -93,6 +95,7 @@
             "role": "user",
             "content": "你好 <section data-raw=\"yes\">raw html</section>",
             "timestamp": 1700000000,
+            "updatedAt": 1700000100,
             "isThinking": null,
             "agentId": null,
             "groupId": null,
@@ -126,6 +129,7 @@
             "name": "Nova",
             "content": "",
             "timestamp": 1700000001,
+            "updatedAt": 1700000101,
             "isThinking": null,
             "agentId": "agent-nova",
             "groupId": null,
@@ -149,6 +153,7 @@
             "role": "user",
             "content": "owner conflict",
             "timestamp": 1700000002,
+            "updatedAt": 1700000102,
             "topicId": "topic-owner-b"
           }
         ]
@@ -164,6 +169,7 @@
             "role": "user",
             "content": "owner conflict",
             "timestamp": 1700000002,
+            "updatedAt": 1700000102,
             "isThinking": null,
             "agentId": null,
             "groupId": null,
@@ -188,6 +194,7 @@
             "role": "user",
             "content": "must not resurrect",
             "timestamp": 1700000003,
+            "updatedAt": 1700000103,
             "status": "removed",
             "deletedAt": 1700000004
           }

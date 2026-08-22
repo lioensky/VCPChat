@@ -515,6 +515,8 @@ function toggleEditMode(messageItem, message) {
             // 🔧 保存原始状态以便回滚
             const originalContent = currentChatHistoryArray[messageIndex].content;
             const originalMessageContent = message.content;
+            const originalUpdatedAt = currentChatHistoryArray[messageIndex].updatedAt;
+            const originalMessageUpdatedAt = message.updatedAt;
             
             try {
                 // 🔧 先临时禁用文件监控，避免竞态条件
@@ -526,6 +528,9 @@ function toggleEditMode(messageItem, message) {
                 // 🔧 更新内存状态
                 currentChatHistoryArray[messageIndex].content = newContent;
                 message.content = newContent;
+                const updatedAt = Date.now();
+                currentChatHistoryArray[messageIndex].updatedAt = updatedAt;
+                message.updatedAt = updatedAt;
                 
                 // 🔧 尝试保存到文件
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
@@ -572,6 +577,8 @@ function toggleEditMode(messageItem, message) {
                 console.error('[EditMode] Save failed, rolling back:', error);
                 currentChatHistoryArray[messageIndex].content = originalContent;
                 message.content = originalMessageContent;
+                currentChatHistoryArray[messageIndex].updatedAt = originalUpdatedAt;
+                message.updatedAt = originalMessageUpdatedAt;
                 mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
                 
                 // 🔧 重新启动文件监控（即使保存失败）

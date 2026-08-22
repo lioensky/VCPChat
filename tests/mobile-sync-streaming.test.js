@@ -265,6 +265,7 @@ test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash"
           role: "user",
           content: "mobile",
           timestamp: 2,
+          updatedAt: 3,
           attachments: [
             {
               type: "text/plain",
@@ -287,6 +288,7 @@ test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash"
   ]);
   assert.equal(pushedTopic.ownerType, "agent");
   assert.equal(pushedTopic.ownerId, "agent-a");
+  assert.equal(pushedTopic.messages[0].updatedAt, 3);
   const desktopAttachment = pushedTopic.messages[0].attachments[0];
   assert.equal(desktopAttachment.hash, undefined);
   assert.equal(desktopAttachment._fileManagerData.hash, hash);

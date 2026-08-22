@@ -26,7 +26,7 @@ const FIXTURE_PATH = path.join(
   "protocol_1_2_golden.json",
 );
 const EXPECTED_FIXTURE_SHA256 =
-  "187d599d33ef660de299aae77a68eb92313af3d603efe72f7f06ecb6ac1e0c1f";
+  "0aae238ea2699b4246cf78ecd4ee044b820a0586d3821224ad59b925e531f6c0";
 
 test("协议 1.2 golden bundle 与 Mobile 字节一致", () => {
   const bytes = fs.readFileSync(FIXTURE_PATH);

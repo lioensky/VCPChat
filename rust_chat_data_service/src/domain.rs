@@ -107,6 +107,7 @@ pub struct NormalizedMessage {
     pub content_raw: String,
     pub content_text: String,
     pub timestamp: Option<i64>,
+    pub updated_at: Option<i64>,
     pub message_hash: String,
     pub metadata_json: String,
     pub attachments: Vec<NormalizedAttachment>,

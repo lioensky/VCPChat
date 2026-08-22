@@ -246,7 +246,7 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
 
 /**
  * 处理 SYNC_MESSAGE_DIFF_BATCH
- * @param {object} payload - { topics: { topicId: { topicHash, messages: { msgId: hash } } } }
+ * @param {object} payload - { topics: { topicId: { topicHash, messages: { msgId: {hash,updatedAt} } } } }
  * @returns {object} strict discriminated results: `{ok:true,toPull,toPush,toDelete}` or `{ok:false,error}`
  */
 function handleSyncMessageDiffBatch(payload, database = getDb()) {
@@ -315,11 +315,16 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
         code: "SYNC_BUDGET_EXCEEDED",
       });
     }
-    for (const [msgId, hash] of localEntries) {
+    for (const [msgId, state] of localEntries) {
       if (
         !msgId ||
-        typeof hash !== "string" ||
-        (hash !== "DELETED" && !/^[a-f0-9]{64}$/.test(hash))
+        !state ||
+        typeof state !== "object" ||
+        Array.isArray(state) ||
+        typeof state.hash !== "string" ||
+        (state.hash !== "DELETED" && !/^[a-f0-9]{64}$/.test(state.hash)) ||
+        !Number.isSafeInteger(state.updatedAt) ||
+        state.updatedAt < 0
       ) {
         throw Object.assign(
           new Error(`Invalid message diff entry ${topicId}/${msgId}`),
@@ -361,7 +366,7 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       }
 
       const mobileHasTombstones = Object.values(localState.messages).some(
-        (hash) => hash === "DELETED",
+        (state) => state.hash === "DELETED",
       );
       if (
         topicRow.aggregated_hash !== null &&
@@ -381,7 +386,7 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
 
       // 2. 详细比较：墓碑必须参与四象限裁决，不能被 live-only 查询吞掉。
       const remoteRows = db
-        .prepare("SELECT msg_id, hash, deleted_at FROM message_index WHERE topic_id = ?")
+        .prepare("SELECT msg_id, hash, updated_at, deleted_at FROM message_index WHERE topic_id = ?")
         .all(topicId);
 
       const remoteMap = new Map(remoteRows.map((row) => [row.msg_id, row]));
@@ -392,7 +397,8 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       let toPush = false;
 
       for (const [msgId, remote] of remoteMap) {
-        const localHash = localMap[msgId];
+        const local = localMap[msgId];
+        const localHash = local?.hash;
         const remoteDeleted = remote.deleted_at !== null && remote.deleted_at !== undefined;
         if (
           remoteDeleted &&
@@ -402,7 +408,7 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
         }
 
         if (remoteDeleted) {
-          if (localHash && localHash !== "DELETED") {
+          if (local && localHash !== "DELETED") {
             toDelete.push({ msgId, deletedAt: remote.deleted_at });
           }
           continue;
@@ -415,10 +421,20 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
           continue;
         }
 
-        if (!localHash) {
+        if (!local) {
           toPull.push(msgId);
         } else if (localHash !== remote.hash) {
-          toPull.push(msgId);
+          if (!Number.isSafeInteger(remote.updated_at) || remote.updated_at < 0) {
+            throw new Error(`Invalid desktop update time for ${topicId}/${msgId}`);
+          }
+          if (
+            remote.updated_at > local.updatedAt ||
+            (remote.updated_at === local.updatedAt && remote.hash > localHash)
+          ) {
+            toPull.push(msgId);
+          } else {
+            toPush = true;
+          }
         }
       }
 

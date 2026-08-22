@@ -909,25 +909,32 @@ impl Database {
         }
 
         let revision = next_global_revision(&transaction)?;
-        let existing = load_active_message_ids(&transaction, &source.key)?;
+        let existing = load_active_message_states(&transaction, &source.key)?;
         let incoming_ids: HashSet<&str> = messages
             .iter()
             .map(|message| message.msg_id.as_str())
             .collect();
         let mut removed_row_ids = Vec::new();
 
-        for (msg_id, row_id) in existing {
+        for (msg_id, (row_id, _, _)) in &existing {
             if !incoming_ids.contains(msg_id.as_str()) {
                 transaction.execute(
                     "UPDATE messages SET deleted_at=?2, updated_at=?2 WHERE row_id=?1",
                     params![row_id, now],
                 )?;
                 upsert_message_tombstone(&transaction, &source.key, &msg_id, origin, now)?;
-                removed_row_ids.push(row_id);
+                removed_row_ids.push(*row_id);
             }
         }
 
         for message in messages {
+            let effective_updated_at = resolve_message_updated_at(
+                message,
+                existing
+                    .get(&message.msg_id)
+                    .map(|(_, hash, updated_at)| (hash.as_str(), *updated_at)),
+                now,
+            );
             transaction.execute(
                 "INSERT INTO messages(
                     owner_type, owner_id, topic_id, msg_id, ordinal, role,
@@ -960,7 +967,7 @@ impl Database {
                     message.timestamp,
                     message.message_hash,
                     message.metadata_json,
-                    now,
+                    effective_updated_at,
                 ],
             )?;
 
@@ -1458,6 +1465,41 @@ fn next_global_revision(transaction: &Transaction<'_>) -> Result<i64> {
     Ok(next)
 }
 
+fn load_active_message_states(
+    transaction: &Transaction<'_>,
+    key: &TopicKey,
+) -> Result<HashMap<String, (i64, String, i64)>> {
+    let mut statement = transaction.prepare(
+        "SELECT msg_id, row_id, message_hash, updated_at FROM messages
+         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
+    )?;
+    let rows = statement.query_map(
+        params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+        |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?, row.get(3)?))),
+    )?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+fn resolve_message_updated_at(
+    message: &NormalizedMessage,
+    previous: Option<(&str, i64)>,
+    detected_at: i64,
+) -> i64 {
+    if let Some(physical) = message.updated_at {
+        return physical;
+    }
+    match previous {
+        None => message
+            .timestamp
+            .filter(|value| *value >= 0)
+            .unwrap_or(detected_at),
+        Some((previous_hash, previous_updated_at)) if previous_hash == message.message_hash => {
+            previous_updated_at
+        }
+        Some(_) => detected_at,
+    }
+}
+
 fn load_active_message_ids(
     transaction: &Transaction<'_>,
     key: &TopicKey,
@@ -1553,11 +1595,69 @@ pub fn now_ms() -> i64 {
 mod tests {
     use super::*;
 
+    fn normalized_message(
+        hash: &str,
+        timestamp: Option<i64>,
+        updated_at: Option<i64>,
+    ) -> NormalizedMessage {
+        NormalizedMessage {
+            msg_id: "message-a".to_string(),
+            ordinal: 0,
+            role: "user".to_string(),
+            speaker_name: None,
+            speaker_agent_id: None,
+            content_raw: "content".to_string(),
+            content_text: "content".to_string(),
+            timestamp,
+            updated_at,
+            message_hash: hash.to_string(),
+            metadata_json: "{}".to_string(),
+            attachments: Vec::new(),
+        }
+    }
+
     fn test_database() -> (tempfile::TempDir, Database) {
         let directory = tempfile::tempdir().expect("create temp database directory");
         let database =
             Database::open(&directory.path().join("chat.sqlite3")).expect("open test database");
         (directory, database)
+    }
+
+    #[test]
+    fn message_update_time_uses_physical_timestamp_index_or_detection_in_order() {
+        let detected_at = 400;
+        assert_eq!(
+            resolve_message_updated_at(
+                &normalized_message("new", Some(100), Some(500)),
+                Some(("old", 200)),
+                detected_at,
+            ),
+            500
+        );
+        assert_eq!(
+            resolve_message_updated_at(
+                &normalized_message("new", Some(100), None),
+                None,
+                detected_at,
+            ),
+            100
+        );
+        assert_eq!(
+            resolve_message_updated_at(
+                &normalized_message("same", Some(100), None),
+                Some(("same", 200)),
+                detected_at,
+            ),
+            200
+        );
+        assert_eq!(
+            resolve_message_updated_at(
+                &normalized_message("new", Some(100), None),
+                Some(("old", 200)),
+                detected_at,
+            ),
+            400
+        );
     }
 
     #[test]

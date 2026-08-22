@@ -227,6 +227,14 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
     value.timestamp,
     `Message ${id} timestamp`,
   );
+  if (
+    value.updatedAt !== undefined &&
+    value.updatedAt !== null &&
+    Number.isSafeInteger(value.updatedAt) &&
+    value.updatedAt >= 0
+  ) {
+    message.updatedAt = value.updatedAt;
+  }
 
   for (const [key, type] of [
     ["isThinking", "boolean"],

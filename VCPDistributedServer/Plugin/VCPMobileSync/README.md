@@ -143,7 +143,7 @@ CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名�
 
 `SERVICE_BUSY` 会先在插件内部做有界退避；若最终仍需跨端上报，`retry=manual`，因为此时内部自动重试已经耗尽。
 
-双端通过字节一致的 `fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 验证契约；对应 SHA-256 分别为 `434279b33a86a2206c1e4f47caccb4e72f05b2f9d48e093af95d5ebae6947adb` 与 `187d599d33ef660de299aae77a68eb92313af3d603efe72f7f06ecb6ac1e0c1f`。错误 fixture 的 `registeredSemantics` 还会逐项锁定跨端 code 的 `kind/retry`，避免两端注册表静默漂移。
+双端通过字节一致的 `fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 验证契约；对应 SHA-256 分别为 `434279b33a86a2206c1e4f47caccb4e72f05b2f9d48e093af95d5ebae6947adb` 与 `0aae238ea2699b4246cf78ecd4ee044b820a0586d3821224ad59b925e531f6c0`。错误 fixture 的 `registeredSemantics` 还会逐项锁定跨端 code 的 `kind/retry`，避免两端注册表静默漂移。
 
 消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。
 

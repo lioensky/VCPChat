@@ -47,6 +47,11 @@ async function projectMobileMessage({
   db,
   appDataPath,
 }) {
+  if (!Number.isSafeInteger(rawMessage?.updatedAt) || rawMessage.updatedAt < 0) {
+    throw new SyncProtocolError(
+      "Mobile message updatedAt must be a non-negative safe integer",
+    );
+  }
   const warnings = new BoundedWarnings();
   const canonical = canonicalizeMessage(rawMessage, topicId, warnings);
   if (warnings.count > 0) {
@@ -64,6 +69,7 @@ async function projectMobileMessage({
     name: canonical.name || (isUser ? "User" : "Assistant"),
     content: canonical.content,
     timestamp: canonical.timestamp,
+    updatedAt: canonical.updatedAt,
   };
   const neededAttachmentHashes = new Set();
   const attachmentsDir = path.join(appDataPath, "UserData", "attachments");

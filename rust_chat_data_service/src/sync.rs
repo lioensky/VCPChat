@@ -176,7 +176,14 @@ pub struct MessageDiffState {
     #[serde(default)]
     pub topic_hash: String,
     #[serde(default)]
-    pub messages: HashMap<String, String>,
+    pub messages: HashMap<String, MessageVersionState>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageVersionState {
+    pub hash: String,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -852,14 +859,18 @@ pub fn message_diff(
             state.topic_hash.is_empty() || canonical_wire_hash(&state.topic_hash).is_some(),
             "message diff topicHash is invalid for {topic_id}"
         );
-        for (message_id, hash) in &state.messages {
+        for (message_id, version) in &state.messages {
             anyhow::ensure!(
                 !message_id.is_empty(),
                 "message diff message id must be non-empty"
             );
             anyhow::ensure!(
-                hash == "DELETED" || canonical_wire_hash(hash).is_some(),
+                version.hash == "DELETED" || canonical_wire_hash(&version.hash).is_some(),
                 "message diff contains an invalid content hash for {topic_id}/{message_id}"
+            );
+            anyhow::ensure!(
+                (0..=9_007_199_254_740_991).contains(&version.updated_at),
+                "message diff contains an invalid update time for {topic_id}/{message_id}"
             );
         }
         let selector = TopicSelector {
@@ -904,10 +915,19 @@ pub fn message_diff(
             if let Some(deleted_at) = item.deleted_at {
                 tombstones.insert(item.msg_id, deleted_at);
             } else {
-                active.insert(item.msg_id, item.content_hash);
+                active.insert(
+                    item.msg_id,
+                    MessageVersionState {
+                        hash: item.content_hash,
+                        updated_at: item.updated_at,
+                    },
+                );
             }
         }
-        let remote_has_tombstones = state.messages.values().any(|hash| hash == "DELETED");
+        let remote_has_tombstones = state
+            .messages
+            .values()
+            .any(|version| version.hash == "DELETED");
         if !state.topic_hash.is_empty()
             && state.topic_hash == local_topic.content_hash
             && !remote_has_tombstones
@@ -921,11 +941,20 @@ pub fn message_diff(
 
         let mut to_pull = active
             .iter()
-            .filter_map(|(id, hash)| {
+            .filter_map(|(id, desktop)| {
                 let remote = state.messages.get(id);
-                (remote.is_none()
-                    || remote.is_some_and(|value| value != hash && value != "DELETED"))
-                .then_some(id.clone())
+                match remote {
+                    None => Some(id.clone()),
+                    Some(mobile) if mobile.hash == "DELETED" || mobile.hash == desktop.hash => None,
+                    Some(mobile)
+                        if desktop.updated_at > mobile.updated_at
+                            || (desktop.updated_at == mobile.updated_at
+                                && desktop.hash > mobile.hash) =>
+                    {
+                        Some(id.clone())
+                    }
+                    Some(_) => None,
+                }
             })
             .collect::<Vec<_>>();
         to_pull.sort();
@@ -933,7 +962,7 @@ pub fn message_diff(
         let mut to_delete = tombstones
             .iter()
             .filter_map(|(id, deleted_at)| match state.messages.get(id) {
-                Some(hash) if hash != "DELETED" => Some(MessageDeleteAction {
+                Some(version) if version.hash != "DELETED" => Some(MessageDeleteAction {
                     msg_id: id.clone(),
                     deleted_at: *deleted_at,
                 }),
@@ -942,9 +971,13 @@ pub fn message_diff(
             .collect::<Vec<_>>();
         to_delete.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
 
-        let to_push = state.messages.iter().any(|(id, hash)| {
-            if hash == "DELETED" {
+        let to_push = state.messages.iter().any(|(id, mobile)| {
+            if mobile.hash == "DELETED" {
                 !tombstones.contains_key(id)
+            } else if let Some(desktop) = active.get(id) {
+                desktop.hash != mobile.hash
+                    && (mobile.updated_at > desktop.updated_at
+                        || (mobile.updated_at == desktop.updated_at && mobile.hash > desktop.hash))
             } else {
                 !active.contains_key(id) && !tombstones.contains_key(id)
             }
@@ -979,14 +1012,14 @@ pub fn pull_topic_messages(
     let wanted = topic.msg_ids.into_iter().collect::<HashSet<_>>();
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT metadata_json FROM messages
+        "SELECT metadata_json, updated_at FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
          ORDER BY ordinal ASC",
     )?;
     let rows = statement
         .query_map(
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, String>(0),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
@@ -995,7 +1028,7 @@ pub fn pull_topic_messages(
     let mut warnings = WireWarnings::default();
     let mut messages = Vec::new();
     let mut seen = HashSet::new();
-    for raw in rows {
+    for (raw, updated_at) in rows {
         let value =
             serde_json::from_str::<Value>(&raw).context("stored message JSON is invalid")?;
         let id = value
@@ -1010,7 +1043,17 @@ pub fn pull_topic_messages(
             seen.insert(id.to_string()),
             "duplicate stored message id {id}"
         );
-        messages.push(canonicalize_for_wire(value, &key.topic_id, &mut warnings)?);
+        anyhow::ensure!(
+            (0..=9_007_199_254_740_991).contains(&updated_at),
+            "stored message update time is invalid for topic {}",
+            key.topic_id
+        );
+        let mut canonical = canonicalize_for_wire(value, &key.topic_id, &mut warnings)?;
+        canonical
+            .as_object_mut()
+            .context("canonical message must be an object")?
+            .insert("updatedAt".to_string(), Value::from(updated_at));
+        messages.push(canonical);
     }
     if !wanted.is_empty() {
         anyhow::ensure!(
@@ -1106,6 +1149,14 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         anyhow::ensure!(
             !deleted.contains(id),
             "message {id} is both live and deleted"
+        );
+        let updated_at = message
+            .get("updatedAt")
+            .and_then(Value::as_i64)
+            .context("pushed message updatedAt is required")?;
+        anyhow::ensure!(
+            (0..=9_007_199_254_740_991).contains(&updated_at),
+            "pushed message {id} updatedAt must be a non-negative safe integer"
         );
         let mut warnings = WireWarnings::default();
         canonicalize_message(message.clone(), &topic.topic_id, &mut warnings)
@@ -2047,9 +2098,9 @@ mod tests {
         mobile_message_hash_from_json, owner_content_hash, owner_manifest, pull_topic_messages,
         push_messages, topic_content_hash, topic_hash_diff, topic_identity, topic_leaf_hash,
         topic_manifest, topic_manifests, unique_manifest_item_by_id, validate_manifest_request,
-        ManifestItem, ManifestRequest, MessageDiffRequest, MessageDiffState, MessagesPullTopic,
-        MessagesPushRequest, MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest,
-        TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
+        ManifestItem, ManifestRequest, MessageDiffRequest, MessageDiffState, MessageVersionState,
+        MessagesPullTopic, MessagesPushRequest, MessagesPushTopic, RemoteManifestItem,
+        TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2106,6 +2157,13 @@ mod tests {
             owner_type: Some(owner_type),
             owner_id: Some(owner_id.to_string()),
             degraded: false,
+        }
+    }
+
+    fn version(hash: impl Into<String>, updated_at: i64) -> MessageVersionState {
+        MessageVersionState {
+            hash: hash.into(),
+            updated_at,
         }
     }
 
@@ -2365,7 +2423,7 @@ mod tests {
                         owner_type: None,
                         owner_id: None,
                         topic_hash: "not-a-hash".to_string(),
-                        messages: HashMap::from([(String::new(), "not-a-hash".to_string())]),
+                        messages: HashMap::from([(String::new(), version("not-a-hash", 1))]),
                     },
                 )]),
             },
@@ -2416,6 +2474,12 @@ mod tests {
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile history");
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute("UPDATE messages SET updated_at=77 WHERE msg_id='m1'", [])
+                .expect("set indexed update time");
+        }
 
         let frame = pull_topic_messages(
             &database,
@@ -2431,6 +2495,7 @@ mod tests {
         assert_eq!(frame.owner_id, "agent-a");
         assert_eq!(frame.legacy_attachment_warnings, 1);
         assert_eq!(frame.messages.len(), 2);
+        assert_eq!(frame.messages[0]["updatedAt"], 77);
         assert_eq!(frame.messages[0]["attachments"][0]["hash"], "a".repeat(64));
         assert!(frame.messages[0]["attachments"][0]
             .get("_fileManagerData")
@@ -2449,6 +2514,7 @@ mod tests {
                         "role":"user",
                         "content":"projected native",
                         "timestamp":3,
+                        "updatedAt":4,
                         "attachments":[{
                             "type":"text/plain",
                             "src":"file:///actual/app-data/attachment.txt",
@@ -2471,6 +2537,7 @@ mod tests {
             serde_json::from_slice(&fs::read(&history_path).expect("read history"))
                 .expect("parse history");
         assert_eq!(persisted.len(), 3);
+        assert_eq!(persisted[2]["updatedAt"], 4);
         assert_eq!(
             persisted[2]["attachments"][0]["_fileManagerData"]["hash"],
             "b".repeat(64)
@@ -2623,10 +2690,13 @@ mod tests {
                         messages: HashMap::from([
                             (
                                 "desktop-deleted".to_string(),
-                                mobile_message_hash_from_json(deleted_raw, "topic-a")
-                                    .expect("mobile hash"),
+                                version(
+                                    mobile_message_hash_from_json(deleted_raw, "topic-a")
+                                        .expect("mobile hash"),
+                                    1,
+                                ),
                             ),
-                            ("desktop-live".to_string(), "DELETED".to_string()),
+                            ("desktop-live".to_string(), version("DELETED", 1)),
                         ]),
                     },
                 )]),
@@ -2692,8 +2762,8 @@ mod tests {
                         owner_id: Some("agent-a".to_string()),
                         topic_hash,
                         messages: HashMap::from([
-                            ("live".to_string(), live_hash),
-                            ("mobile-only-deleted".to_string(), "DELETED".to_string()),
+                            ("live".to_string(), version(live_hash, 1)),
+                            ("mobile-only-deleted".to_string(), version("DELETED", 1)),
                         ]),
                     },
                 )]),
@@ -2704,6 +2774,84 @@ mod tests {
         assert_eq!(decision.to_pull.as_deref(), Some(&[][..]));
         assert_eq!(decision.to_push, Some(true));
         assert_eq!(decision.to_delete.as_deref(), Some(&[][..]));
+    }
+
+    #[tokio::test]
+    async fn message_diff_uses_time_then_hash_and_can_merge_both_winners_in_one_topic() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let history_path = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &history_path,
+            br#"[
+                {"id":"mobile-newer","role":"user","content":"desktop-a","timestamp":1},
+                {"id":"desktop-newer","role":"user","content":"desktop-b","timestamp":2},
+                {"id":"mobile-tie","role":"user","content":"desktop-c","timestamp":3},
+                {"id":"desktop-tie","role":"user","content":"desktop-d","timestamp":4}
+            ]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let desktop_hashes = message_manifest(
+            &database,
+            &TopicSelector {
+                topic_id: "topic-a".to_string(),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-a".to_string()),
+            },
+        )
+        .expect("message manifest")
+        .messages
+        .into_iter()
+        .map(|message| (message.msg_id, message.content_hash))
+        .collect::<HashMap<_, _>>();
+        {
+            let connection = database.connection.lock();
+            for (message_id, updated_at) in [
+                ("mobile-newer", 10),
+                ("desktop-newer", 20),
+                ("mobile-tie", 30),
+                ("desktop-tie", 40),
+            ] {
+                connection
+                    .execute(
+                        "UPDATE messages SET updated_at=?2 WHERE msg_id=?1",
+                        rusqlite::params![message_id, updated_at],
+                    )
+                    .expect("set desktop update time");
+            }
+        }
+
+        let response = message_diff(
+            &database,
+            MessageDiffRequest {
+                topics: HashMap::from([(
+                    "topic-a".to_string(),
+                    MessageDiffState {
+                        owner_type: Some(OwnerType::Agent),
+                        owner_id: Some("agent-a".to_string()),
+                        topic_hash: String::new(),
+                        messages: HashMap::from([
+                            ("mobile-newer".to_string(), version("f".repeat(64), 20)),
+                            ("desktop-newer".to_string(), version("f".repeat(64), 10)),
+                            ("mobile-tie".to_string(), version("f".repeat(64), 30)),
+                            ("desktop-tie".to_string(), version("0".repeat(64), 40)),
+                        ]),
+                    },
+                )]),
+            },
+        )
+        .expect("message diff");
+        let decision = &response.results["topic-a"];
+        assert_eq!(
+            decision.to_pull.as_deref(),
+            Some(&["desktop-newer".to_string(), "desktop-tie".to_string()][..])
+        );
+        assert_eq!(decision.to_push, Some(true));
+        assert_ne!(desktop_hashes["mobile-newer"], "f".repeat(64));
+        assert!(desktop_hashes["desktop-tie"] > "0".repeat(64));
     }
 
     #[tokio::test]

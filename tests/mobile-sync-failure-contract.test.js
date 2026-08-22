@@ -35,6 +35,7 @@ const {
 const {
   readHistoryStrict,
   writeHistoryAtomic,
+  resolveMessageUpdatedAt,
   markHistoryTopicUnhealthy,
   clearHistoryTopicUnhealthy,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
@@ -85,6 +86,10 @@ function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {
   };
 }
 
+function version(hash, updatedAt = 1) {
+  return { hash, updatedAt };
+}
+
 test("中央索引配置优先级是插件显式值 > Facade > 默认 true", () => {
   assert.equal(
     resolveCentralIndexPreference(
@@ -116,7 +121,7 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
           topicHash: "c".repeat(64),
           ownerType: "agent",
           ownerId: "agent-a",
-          messages: { "message-1": "DELETED" },
+          messages: { "message-1": version("DELETED") },
         },
         "topic-missing": {
           topicHash: "",
@@ -177,13 +182,13 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
           ownerType: "agent",
           ownerId: "agent-a",
           messages: {
-            "desktop-live-mobile-deleted": "DELETED",
-            "desktop-deleted-mobile-live": hashes.mobileLive,
-            "both-deleted": "DELETED",
-            "hash-mismatch": hashes.mismatchMobile,
-            matched: hashes.matched,
-            "mobile-only-live": hashes.mobileLive,
-            "mobile-only-deleted": "DELETED",
+            "desktop-live-mobile-deleted": version("DELETED"),
+            "desktop-deleted-mobile-live": version(hashes.mobileLive),
+            "both-deleted": version("DELETED"),
+            "hash-mismatch": version(hashes.mismatchMobile, 1),
+            matched: version(hashes.matched),
+            "mobile-only-live": version(hashes.mobileLive),
+            "mobile-only-deleted": version("DELETED"),
           },
         },
       },
@@ -200,31 +205,37 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
           {
             msg_id: "desktop-live-mobile-deleted",
             hash: hashes.desktopLive,
+            updated_at: 1,
             deleted_at: null,
           },
           {
             msg_id: "desktop-deleted-mobile-live",
             hash: "0".repeat(64),
+            updated_at: 123,
             deleted_at: 123,
           },
           {
             msg_id: "both-deleted",
             hash: "0".repeat(64),
+            updated_at: 456,
             deleted_at: 456,
           },
           {
             msg_id: "desktop-only-live",
             hash: hashes.desktopOnly,
+            updated_at: 1,
             deleted_at: null,
           },
           {
             msg_id: "hash-mismatch",
             hash: hashes.mismatchDesktop,
+            updated_at: 2,
             deleted_at: null,
           },
           {
             msg_id: "matched",
             hash: hashes.matched,
+            updated_at: 1,
             deleted_at: null,
           },
         ],
@@ -240,6 +251,71 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
   });
 });
 
+test("Phase 3 live 冲突按时间优胜并以 Hash 打破同时间平局", () => {
+  const topicId = "topic-lww";
+  const low = "1".repeat(64);
+  const high = "e".repeat(64);
+  const result = handleSyncMessageDiffBatch(
+    {
+      topics: {
+        [topicId]: {
+          topicHash: "9".repeat(64),
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {
+            "mobile-newer": version(low, 20),
+            "desktop-newer": version(high, 10),
+            "mobile-tie-wins": version(high, 30),
+            "desktop-tie-wins": version(low, 40),
+          },
+        },
+      },
+    },
+    fakeDiffDatabase({
+      topics: {
+        [topicId]: {
+          aggregated_hash: "desktop-root",
+          file_path: "/app/Agents/agent-a/config.json",
+        },
+      },
+      messages: {
+        [topicId]: [
+          { msg_id: "mobile-newer", hash: high, updated_at: 10, deleted_at: null },
+          { msg_id: "desktop-newer", hash: low, updated_at: 20, deleted_at: null },
+          { msg_id: "mobile-tie-wins", hash: low, updated_at: 30, deleted_at: null },
+          { msg_id: "desktop-tie-wins", hash: high, updated_at: 40, deleted_at: null },
+        ],
+      },
+    }),
+  );
+
+  assert.deepEqual(result.results[topicId], {
+    ok: true,
+    toPull: ["desktop-newer", "desktop-tie-wins"],
+    toPush: true,
+    toDelete: [],
+  });
+});
+
+test("Legacy 检测更新时间覆盖物理、创建、稳定与变更四分支", () => {
+  const hash = "a".repeat(64);
+  assert.equal(resolveMessageUpdatedAt({ timestamp: 10, updatedAt: 11 }, hash, null, 99), 11);
+  assert.equal(resolveMessageUpdatedAt({ timestamp: 10 }, hash, null, 99), 10);
+  assert.equal(
+    resolveMessageUpdatedAt({ timestamp: 10 }, hash, { hash, updated_at: 12 }, 99),
+    12,
+  );
+  assert.equal(
+    resolveMessageUpdatedAt(
+      { timestamp: 10 },
+      hash,
+      { hash: "b".repeat(64), updated_at: 12 },
+      99,
+    ),
+    99,
+  );
+});
+
 test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
   const topicHash = "a".repeat(64);
   const result = handleSyncMessageDiffBatch(
@@ -249,7 +325,7 @@ test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
           topicHash,
           ownerType: "agent",
           ownerId: "agent-a",
-          messages: { "mobile-only-deleted": "DELETED" },
+          messages: { "mobile-only-deleted": version("DELETED") },
         },
       },
     },
@@ -281,7 +357,7 @@ test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成"
               topicHash: "",
               ownerType: "agent",
               ownerId: "agent-a",
-              messages: { message: "not-a-hash" },
+              messages: { message: version("not-a-hash") },
             },
           },
         },

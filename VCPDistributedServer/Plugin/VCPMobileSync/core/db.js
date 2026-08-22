@@ -180,7 +180,7 @@ function upsertMessageIndex(msgId, topicId, hash, updatedAt = Date.now()) {
     VALUES (?, ?, ?, ?)
     ON CONFLICT(topic_id, msg_id) DO UPDATE SET 
       hash = excluded.hash,
-      updated_at = CASE WHEN message_index.hash <> excluded.hash THEN excluded.updated_at ELSE message_index.updated_at END,
+      updated_at = excluded.updated_at,
       deleted_at = NULL
   `,
   ).run(msgId, topicId, hash, updatedAt);
