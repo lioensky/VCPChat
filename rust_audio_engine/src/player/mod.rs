@@ -98,13 +98,15 @@ impl AudioPlayer {
 
         let thread_state = Arc::clone(&shared_state);
 
-        let spectrum_analyzer = Arc::new(SpectrumAnalyzer::new(2048, 64));
+        let spectrum_analyzer = Arc::new(Mutex::new(
+            SpectrumAnalyzer::new(2048, 64)
+                .expect("fixed spectrum analyzer geometry is valid"),
+        ));
 
-        let loudness_normalizer = Arc::new(Mutex::new(LoudnessNormalizer::new(
-            2,
-            44100,
-            config.loudness.clone(),
-        )));
+        let loudness_normalizer = Arc::new(Mutex::new(
+            LoudnessNormalizer::new(2, 44100, config.loudness.clone())
+                .expect("validated application loudness configuration is valid"),
+        ));
         let loudness_state = loudness_normalizer.lock().atomic_state();
 
         let (spectrum_tx, spectrum_rx) = crossbeam::channel::bounded::<f64>(4096);
@@ -429,7 +431,12 @@ impl AudioPlayer {
         }
 
         if final_need_resample {
-            log::info!("Streaming SoX VHQ Resampling {} -> {} Hz", original_sr, final_target_sr);
+            log::info!(
+                "Streaming {} resampling {} -> {} Hz",
+                crate::processor::RESAMPLER_BACKEND_NAME,
+                original_sr,
+                final_target_sr
+            );
         }
 
         let estimated_output_frames = if final_need_resample {
@@ -457,7 +464,8 @@ impl AudioPlayer {
         while let Some(decoded_chunk) = decoder.decode_next().map_err(|e| e.to_string())? {
             decoded_frames += decoded_chunk.len() / channels;
             if let Some(ref mut rs) = resampler {
-                let resampled = rs.process_chunk(&decoded_chunk);
+                let resampled = rs.process_chunk(&decoded_chunk)
+                    .map_err(|e| format!("Rubato streaming process failed: {e}"))?;
                 samples.extend(resampled);
             } else {
                 samples.extend(decoded_chunk);
@@ -475,7 +483,10 @@ impl AudioPlayer {
         }
 
         if let Some(ref mut rs) = resampler {
-            samples.extend(rs.flush());
+            samples.extend(
+                rs.flush()
+                    .map_err(|e| format!("Rubato streaming finish failed: {e}"))?,
+            );
         }
 
         shared_state.load_progress.store(100, Ordering::Relaxed);
@@ -574,16 +585,22 @@ impl AudioPlayer {
     }
 
     pub fn set_target_lufs(&mut self, target_lufs: f64) {
-        self.loudness_normalizer.lock().set_target_lufs(target_lufs);
-        self.config.loudness.target_lufs = target_lufs;
+        match self.loudness_normalizer.lock().set_target_lufs(target_lufs) {
+            Ok(()) => self.config.loudness.target_lufs = target_lufs,
+            Err(error) => log::warn!("Rejected target LUFS update: {}", error),
+        }
     }
 
     pub fn set_album_gain(&self, gain_db: f64) {
-        self.loudness_normalizer.lock().set_album_gain(gain_db);
+        if let Err(error) = self.loudness_normalizer.lock().set_album_gain(gain_db) {
+            log::warn!("Rejected album gain update: {}", error);
+        }
     }
 
     pub fn set_preamp_gain(&self, gain_db: f64) {
-        self.loudness_normalizer.lock().set_preamp_gain(gain_db);
+        if let Err(error) = self.loudness_normalizer.lock().set_preamp_gain(gain_db) {
+            log::warn!("Rejected preamp gain update: {}", error);
+        }
     }
 
     pub fn set_normalization_mode(&mut self, mode: crate::config::NormalizationMode) {
@@ -597,7 +614,19 @@ impl AudioPlayer {
 
     /// Get saturation settings
     pub fn get_saturation_info(&self) -> crate::processor::SaturationSettings {
-        self.lockfree_saturation_params.get_settings()
+        let snapshot = self.lockfree_saturation_params.read();
+        crate::processor::SaturationSettings {
+            sat_type: snapshot.sat_type.into(),
+            quality: snapshot.quality.into(),
+            drive: snapshot.drive,
+            threshold: snapshot.threshold,
+            mix: snapshot.mix,
+            input_gain_db: snapshot.input_gain_db,
+            output_gain_db: snapshot.output_gain_db,
+            enabled: snapshot.enabled,
+            highpass_mode: snapshot.highpass_mode,
+            highpass_cutoff: snapshot.highpass_cutoff,
+        }
     }
 
     /// Set saturation enabled
@@ -620,7 +649,12 @@ impl AudioPlayer {
 
     /// Get crossfeed settings
     pub fn get_crossfeed_info(&self) -> crate::processor::CrossfeedSettings {
-        self.lockfree_crossfeed_params.get_settings()
+        let snapshot = self.lockfree_crossfeed_params.read();
+        crate::processor::CrossfeedSettings {
+            enabled: snapshot.enabled,
+            mix: snapshot.mix,
+            cutoff_hz: snapshot.cutoff_hz,
+        }
     }
 
     /// Set crossfeed enabled
@@ -680,7 +714,8 @@ impl AudioPlayer {
         let sample_rate = self.shared_state.sample_rate.load(Ordering::Relaxed).max(1) as u32;
         let bits = self.get_output_bits();
 
-        let mut shaper = crate::processor::NoiseShaper::new(channels, sample_rate, bits);
+        let mut shaper = crate::processor::NoiseShaper::new(channels, sample_rate, bits)
+            .expect("player state always provides valid noise-shaper geometry");
         shaper.set_enabled(self.dither_enabled);
         Arc::new(Mutex::new(shaper))
     }
@@ -708,7 +743,9 @@ impl AudioPlayer {
         let snapshot = self.lockfree_eq_params.read();
 
         let mut eq = crate::processor::Equalizer::new(channels, sample_rate);
-        eq.set_all_bands(&snapshot.gains, sample_rate);
+        if let Err(error) = eq.set_all_bands(&snapshot.gains, sample_rate) {
+            log::warn!("Failed to apply EQ snapshot: {}", error);
+        }
         eq.set_enabled(snapshot.enabled);
         Arc::new(Mutex::new(eq))
     }

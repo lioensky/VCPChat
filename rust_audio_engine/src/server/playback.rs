@@ -151,11 +151,14 @@ fn analyze_track_loudness(
 
     let sample_rate = decoder.info.sample_rate;
     let channels = decoder.info.channels;
-    let mut meter = LoudnessMeter::new(channels, sample_rate);
+    let mut meter = LoudnessMeter::new(channels, sample_rate)
+        .map_err(|e| format!("Failed to create loudness meter: {e}"))?;
 
     let mut total_samples = 0usize;
     while let Some(chunk) = decoder.decode_next().map_err(|e| e.to_string())? {
-        meter.process(&chunk);
+        meter
+            .process(&chunk)
+            .map_err(|e| format!("Loudness analysis failed: {e}"))?;
         total_samples += chunk.len();
     }
 

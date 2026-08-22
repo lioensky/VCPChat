@@ -63,7 +63,19 @@ pub mod wasapi_exclusive {
         }
     }
     
-    pub type DspCallback = Box<dyn FnMut(&mut [f32], usize) -> bool + Send>;
+    /// Operation requested from the callback-owned VChat DSP pipeline.
+    #[derive(Debug, Clone, Copy)]
+    pub enum DspCallbackOperation {
+        /// Configure final device-domain processors before the stream starts.
+        ConfigureOutput { sample_rate_hz: u32 },
+        /// Render source-domain DSP only; the WASAPI layer owns the rate boundary.
+        RenderSource,
+        /// Run final device-domain limiter and noise shaping after Rubato.
+        FinalizeOutput,
+    }
+
+    pub type DspCallback =
+        Box<dyn FnMut(&mut [f64], usize, DspCallbackOperation) -> bool + Send>;
     
     pub struct WasapiExclusivePlayer {
         shared_state: Arc<WasapiSharedState>,
@@ -392,6 +404,20 @@ pub mod wasapi_exclusive {
         let render_client = audio_client.get_audiorenderclient()
             .map_err(|e| format!("Failed to get render client: {:?}", e))?;
         
+        // Configure the callback-owned final output domain before entering the
+        // realtime playback loop. This may rebuild rate-dependent state, so it
+        // must not be deferred to the first device block.
+        let mut empty_output = [];
+        if dsp_callback(
+            &mut empty_output,
+            channels,
+            DspCallbackOperation::ConfigureOutput {
+                sample_rate_hz: actual_sample_rate as u32,
+            },
+        ) {
+            return Err("Failed to configure WASAPI device-domain DSP".to_string());
+        }
+
         // Mark as active and start stream
         shared_state.is_active.store(true, Ordering::Relaxed);
         *shared_state.state.write() = WasapiState::Playing;
@@ -403,14 +429,21 @@ pub mod wasapi_exclusive {
         
         // Playback loop
         let mut paused = false;
-        let mut resample_leftover: Vec<f32> = Vec::new();
-        let mut resample_output_f64: Vec<f64> = Vec::with_capacity(8192 * channels);
-        
-        // P1-9 fix: Pre-allocate buffers used in the hot loop to avoid per-frame heap allocation
-        let max_buffer_frames = 8192; // Typical max buffer size
-        let mut output_f32_buffer: Vec<f32> = vec![0.0; max_buffer_frames * channels];
+        let rubato_capacity_frames = resampler
+            .as_ref()
+            .and_then(|rs| rs.process_output_capacity_frames(4096).ok())
+            .unwrap_or(8192);
+        let mut resample_leftover: Vec<f64> =
+            Vec::with_capacity(rubato_capacity_frames * channels);
+        let mut resample_scratch =
+            vec![0.0f64; rubato_capacity_frames * channels];
+
+        // Pre-allocate all hot-loop storage. Audio remains f64 through source
+        // DSP, Rubato, final limiter, and noise shaping.
+        let max_buffer_frames = 8192;
+        let mut output_f64_buffer: Vec<f64> = vec![0.0; max_buffer_frames * channels];
         let mut byte_buffer: Vec<u8> = vec![0u8; max_buffer_frames * blockalign as usize];
-        let mut temp_f32_buffer: Vec<f32> = vec![0.0; 4096 * channels]; // For resampler input
+        let mut source_f64_buffer: Vec<f64> = vec![0.0; 4096 * channels];
         
         loop {
             // Check for commands (non-blocking)
@@ -484,11 +517,17 @@ pub mod wasapi_exclusive {
             let frames_to_write = buffer_frame_count as usize;
             let samples_to_write = frames_to_write * channels;
             
-            // P1-9 fix: Resize pre-allocated buffers if needed (only grows, never shrinks)
-            if output_f32_buffer.len() < samples_to_write {
-                output_f32_buffer.resize(samples_to_write, 0.0);
+            // Geometry outside the setup bound is rejected without allocating
+            // in the WASAPI hot loop.
+            if samples_to_write > output_f64_buffer.len() {
+                log::error!(
+                    "WASAPI: device requested {} samples beyond preallocated bound {}",
+                    samples_to_write,
+                    output_f64_buffer.len()
+                );
+                break;
             }
-            output_f32_buffer[..samples_to_write].fill(0.0);
+            output_f64_buffer[..samples_to_write].fill(0.0);
             let mut is_eof = false;
             
             if let Some(ref mut rs) = resampler {
@@ -496,7 +535,8 @@ pub mod wasapi_exclusive {
                 while samples_written < samples_to_write {
                     if !resample_leftover.is_empty() {
                         let take = resample_leftover.len().min(samples_to_write - samples_written);
-                        output_f32_buffer[samples_written..samples_written + take].copy_from_slice(&resample_leftover[0..take]);
+                        output_f64_buffer[samples_written..samples_written + take]
+                            .copy_from_slice(&resample_leftover[0..take]);
                         resample_leftover.drain(0..take);
                         samples_written += take;
                     }
@@ -506,41 +546,64 @@ pub mod wasapi_exclusive {
                     }
                     
                     let source_frames_to_request = 4096;
-                    // P1-9 fix: Reuse pre-allocated temp buffer instead of allocating per iteration
-                    let temp_samples = source_frames_to_request * channels;
-                    if temp_f32_buffer.len() < temp_samples {
-                        temp_f32_buffer.resize(temp_samples, 0.0);
-                    }
-                    temp_f32_buffer[..temp_samples].fill(0.0);
-                    let chunk_eof = dsp_callback(&mut temp_f32_buffer[..temp_samples], channels);
+                    let source_samples = source_frames_to_request * channels;
+                    source_f64_buffer[..source_samples].fill(0.0);
+                    let chunk_eof = dsp_callback(
+                        &mut source_f64_buffer[..source_samples],
+                        channels,
+                        DspCallbackOperation::RenderSource,
+                    );
                     if chunk_eof {
                         is_eof = true;
                     }
-                    
-                    // P1-9 fix: Convert f32 -> f64 using pre-allocated buffer
-                    resample_output_f64.clear();
-                    resample_output_f64.extend(temp_f32_buffer[..temp_samples].iter().map(|&f| f as f64));
-                    let temp_f64 = &resample_output_f64;
-                    
-                    let needed_output = temp_f64.len() * 2 + 256;
-                    let mut resample_scratch = vec![0.0f64; needed_output]; // resampler needs separate output buffer
-                    let written_frames = rs.process_chunk_into(temp_f64, &mut resample_scratch);
-                    
-                    let new_samples = written_frames * channels;
-                    for i in 0..new_samples {
-                        resample_leftover.push(resample_scratch[i] as f32);
+
+                    let progress = match rs.process_chunk_into(
+                        &source_f64_buffer[..source_samples],
+                        &mut resample_scratch,
+                    ) {
+                        Ok(progress) if progress.consumed_frames() == source_frames_to_request => {
+                            progress
+                        }
+                        Ok(_) | Err(_) => {
+                            output_f64_buffer[samples_written..samples_to_write].fill(0.0);
+                            is_eof = true;
+                            break;
+                        }
+                    };
+
+                    let new_samples = progress.produced_frames() * channels;
+                    if new_samples > resample_leftover.capacity() {
+                        output_f64_buffer[samples_written..samples_to_write].fill(0.0);
+                        is_eof = true;
+                        break;
                     }
+                    if dsp_callback(
+                        &mut resample_scratch[..new_samples],
+                        channels,
+                        DspCallbackOperation::FinalizeOutput,
+                    ) {
+                        is_eof = true;
+                    }
+                    resample_leftover.extend_from_slice(&resample_scratch[..new_samples]);
                     
                     if is_eof && new_samples == 0 {
                         break;
                     }
                 }
             } else {
-                // P1-9 fix: Only pass the exact number of samples needed, not the full pre-allocated buffer
-                is_eof = dsp_callback(&mut output_f32_buffer[..samples_to_write], channels);
+                is_eof = dsp_callback(
+                    &mut output_f64_buffer[..samples_to_write],
+                    channels,
+                    DspCallbackOperation::RenderSource,
+                );
+                is_eof |= dsp_callback(
+                    &mut output_f64_buffer[..samples_to_write],
+                    channels,
+                    DspCallbackOperation::FinalizeOutput,
+                );
             }
-            
-            if is_eof && output_f32_buffer[..samples_to_write].iter().all(|&x| x == 0.0) {
+
+            if is_eof && output_f64_buffer[..samples_to_write].iter().all(|&x| x == 0.0) {
                 log::info!("WASAPI: Playback complete (EOF)");
                 let _ = audio_client.stop_stream();
                 break;
@@ -548,10 +611,16 @@ pub mod wasapi_exclusive {
             
             let actual_frames = frames_to_write;
             
-            // P1-9 fix: Reuse pre-allocated byte buffer
+            // The device request was bounded by `max_buffer_frames` above, so
+            // terminal-format storage must never grow in the realtime loop.
             let data_len = actual_frames * blockalign as usize;
-            if byte_buffer.len() < data_len {
-                byte_buffer.resize(data_len, 0);
+            if data_len > byte_buffer.len() {
+                log::error!(
+                    "WASAPI: device byte request {} exceeds preallocated bound {}",
+                    data_len,
+                    byte_buffer.len()
+                );
+                break;
             }
             byte_buffer[..data_len].fill(0);
             let data = &mut byte_buffer[..data_len];
@@ -559,8 +628,8 @@ pub mod wasapi_exclusive {
             // P1-9 fix: Only convert the actual samples needed (samples_to_write), not the entire pre-allocated buffer
             if is_float && bits_per_sample == 32 {
                 // 32-bit float
-                for (i, sample) in output_f32_buffer[..samples_to_write].iter().enumerate() {
-                    let bytes = sample.to_le_bytes();
+                for (i, sample) in output_f64_buffer[..samples_to_write].iter().enumerate() {
+                    let bytes = (*sample as f32).to_le_bytes();
                     let offset = i * 4;
                     if offset + 4 <= data.len() {
                         data[offset..offset + 4].copy_from_slice(&bytes);
@@ -568,7 +637,7 @@ pub mod wasapi_exclusive {
                 }
             } else if bits_per_sample == 24 {
                 // 24-bit integer
-                for (i, sample) in output_f32_buffer[..samples_to_write].iter().enumerate() {
+                for (i, sample) in output_f64_buffer[..samples_to_write].iter().enumerate() {
                     let sample_i32 = (*sample as f64 * 8388607.0).clamp(-8388607.0, 8388607.0) as i32;
                     let bytes = sample_i32.to_le_bytes();
                     let offset = i * 3;
@@ -578,7 +647,7 @@ pub mod wasapi_exclusive {
                 }
             } else if bits_per_sample == 16 {
                 // 16-bit integer
-                for (i, sample) in output_f32_buffer[..samples_to_write].iter().enumerate() {
+                for (i, sample) in output_f64_buffer[..samples_to_write].iter().enumerate() {
                     let sample_i16 = (*sample as f64 * 32767.0).clamp(-32767.0, 32767.0) as i16;
                     let bytes = sample_i16.to_le_bytes();
                     let offset = i * 2;

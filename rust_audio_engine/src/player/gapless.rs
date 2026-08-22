@@ -88,9 +88,19 @@ impl GaplessManager {
                     // Use calculate_gain_with_mode() to respect ReplayGain mode.
                     // Store in pending_target_gain_db for application after buffer swap.
                     if loudness_enabled {
-                        let pending_gain_db = loudness_normalizer_clone.lock()
-                            .calculate_gain_with_mode(&samples, mode_for_thread, &metadata);
-                        shared_clone.pending_target_gain_db.store(pending_gain_db.to_bits(), Ordering::Relaxed);
+                        let pending_gain_db = loudness_normalizer_clone
+                            .lock()
+                            .calculate_gain_with_mode(&samples, mode_for_thread, &metadata)
+                            .unwrap_or_else(|error| {
+                                log::warn!(
+                                    "Gapless loudness analysis failed, using unity gain: {}",
+                                    error
+                                );
+                                0.0
+                            });
+                        shared_clone
+                            .pending_target_gain_db
+                            .store(pending_gain_db.to_bits(), Ordering::Relaxed);
                     } else {
                         shared_clone.pending_target_gain_db.store(0.0_f64.to_bits(), Ordering::Relaxed);
                     }
@@ -103,7 +113,7 @@ impl GaplessManager {
                     *shared_clone.pending_metadata.write() = Some(metadata);
 
                     // Move samples into pending buffer (lock-free atomic swap)
-                    shared_clone.pending_buffer.store(Arc::new(Some(samples)));
+                    shared_clone.pending_buffer.store(Some(Arc::new(samples)));
 
                     // Signal ready (Release ordering ensures buffer is visible)
                     shared_clone.pending_ready.store(true, Ordering::Release);
@@ -132,7 +142,7 @@ impl GaplessManager {
         // Signal the preload thread to stop (Defect 31 fix)
         shared.cancel_preload_signal.store(true, Ordering::Release);
         // Clear pending buffer (lock-free atomic swap)
-        shared.pending_buffer.store(Arc::new(None));
+        shared.pending_buffer.store(None);
         shared.pending_ready.store(false, Ordering::Relaxed);
         shared.needs_preload.store(false, Ordering::Relaxed);
         log::info!("Gapless preload cancelled");
@@ -183,14 +193,20 @@ fn decode_to_buffer_with_cancel(
         }
         
         if let Some(ref mut rs) = resampler {
-            samples.extend(rs.process_chunk(&chunk));
+            samples.extend(
+                rs.process_chunk(&chunk)
+                    .map_err(|e| format!("Gapless Rubato process failed: {e}"))?,
+            );
         } else {
             samples.extend(chunk);
         }
     }
 
     if let Some(ref mut rs) = resampler {
-        samples.extend(rs.flush());
+        samples.extend(
+            rs.flush()
+                .map_err(|e| format!("Gapless Rubato finish failed: {e}"))?,
+        );
     }
 
     // Channel normalization

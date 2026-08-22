@@ -16,7 +16,7 @@ path = "src/main.rs"
 # --- Core Audio ---
 symphonia = { version = "0.5", features = ["all"] }
 cpal = "0.15"
-soxr = "0.6.0"   # Restored for f64 Hi-Fi SoX VHQ resampling
+rubato = { version = "4.0", optional = true }
 
 # --- Parallelism ---
 rayon = "1.10"
@@ -33,6 +33,7 @@ serde_json = "1"
 
 # --- DSP ---
 rustfft = "6.2"
+realfft = "3.5"
 rand = "0.8"
 ebur128 = "0.1"           # EBU R128 loudness measurement
 atomic_float = "1.0"      # Atomic floating point types
@@ -64,7 +65,12 @@ numpy = { version = "0.23", optional = true }
 wasapi = "0.22"
 
 [features]
-default = []
+default = ["rubato", "loudness-db"]
+rubato = ["dep:rubato"]
+# Reserved only so migrated cfg expressions are recognized by Cargo. This
+# experiment provides no SoXR dependency or implementation and never enables it.
+soxr = []
+loudness-db = []
 python = ["pyo3", "numpy"]
 
 [profile.release]
@@ -76,10 +82,3 @@ opt-level = 3
 
 [profile.release.build-override]
 opt-level = 3
-
-[package.metadata.vcpkg]
-dependencies = ["soxr"]
-
-[build-dependencies]
-pkg-config = "0.3"
-vcpkg = "0.2"

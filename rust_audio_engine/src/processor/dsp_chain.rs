@@ -30,90 +30,169 @@
 //! Output Buffer
 //! ```
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use super::traits::{
+    finish_checked, process_checked, validate_sample_rate_hz, AudioBlockMut, FixedInPlaceProcessor,
+    FrameDuration, ProcessBuffers, ProcessError, ProcessProgress, ProcessState, StreamingProcessor,
+    TailSpec,
+};
 
-use super::traits::{AudioProcessor, ProcessResult};
-
-/// Processing statistics for monitoring
-#[derive(Debug, Default, Clone)]
-pub struct ChainStats {
-    /// Total number of process() calls
-    pub total_calls: u64,
-    /// Number of times any processor was bypassed
-    pub bypassed_count: u64,
-    /// Number of times stale params were used
-    pub stale_params_count: u64,
-    /// Per-processor statistics
-    pub processor_stats: Vec<ProcessorStats>,
+/// Policy used by [`DspChain::finish`] for processors with asymptotic tails.
+///
+/// The policy is copied into the chain on the first finish call. Keeping the
+/// values in frames makes the callback path independent of wall-clock units and
+/// avoids per-call allocation or policy object ownership.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChainFinishPolicy {
+    /// RMS level below which generated tail frames count as silent.
+    pub energy_threshold_dbfs: f64,
+    /// Consecutive below-threshold frames required before finishing.
+    pub silence_hold_frames: usize,
+    /// Hard limit on frames generated for an unknown or infinite tail.
+    pub max_tail_frames: usize,
 }
 
-/// Statistics for a single processor
-#[derive(Debug, Default, Clone)]
-pub struct ProcessorStats {
-    /// Processor name
-    pub name: String,
-    /// Number of successful processes
-    pub success_count: u64,
-    /// Number of times bypassed
-    pub bypassed_count: u64,
+impl ChainFinishPolicy {
+    /// Construct a finish policy from frame-domain limits.
+    pub const fn new(
+        energy_threshold_dbfs: f64,
+        silence_hold_frames: usize,
+        max_tail_frames: usize,
+    ) -> Self {
+        Self {
+            energy_threshold_dbfs,
+            silence_hold_frames,
+            max_tail_frames,
+        }
+    }
+
+    /// Reject a policy that cannot bound a tail.
+    ///
+    /// Exposed to the crate so a builder can reject a preset before any DSP
+    /// state exists; the first [`DspChain::finish_with_policy`] call still
+    /// validates, because a chain can also be driven directly.
+    pub(crate) fn validate(self) -> Result<Self, ProcessError> {
+        if !self.energy_threshold_dbfs.is_finite() || self.energy_threshold_dbfs > 0.0 {
+            return Err(ProcessError::InvalidRenderPolicy {
+                message: "chain finish energy threshold must be finite and no greater than 0 dBFS",
+            });
+        }
+        if self.silence_hold_frames == 0 {
+            return Err(ProcessError::InvalidRenderPolicy {
+                message: "chain finish silence hold must be greater than zero",
+            });
+        }
+        if self.max_tail_frames < self.silence_hold_frames {
+            return Err(ProcessError::InvalidRenderPolicy {
+                message: "chain finish maximum tail must be at least the silence hold",
+            });
+        }
+        Ok(self)
+    }
+
+    fn threshold_power(self) -> f64 {
+        // RMS dBFS is power-domain; no input-dependent work occurs here.
+        10.0_f64.powf(self.energy_threshold_dbfs / 10.0)
+    }
+}
+
+impl Default for ChainFinishPolicy {
+    fn default() -> Self {
+        Self::new(-120.0, 12_000, 1_440_000)
+    }
 }
 
 /// DSP processing chain
 ///
 /// Manages multiple audio processors in sequence.
 /// All processors share the same buffer, processed in-place.
+///
+/// # Accepted processor class
+///
+/// The chain drives one fixed in-place 1:1 topology at a single sample rate. It
+/// owns no variable-rate scratch buffer, by design: allocating one would break
+/// the callback's allocation-free contract. [`Self::add`] therefore only accepts
+/// a [`FixedInPlaceProcessor`], and defensively verifies that the stage maps the
+/// chain rate to itself, so incompatible geometry is rejected at build time
+/// instead of failing inside the audio callback. The offline
+/// [`OutputRenderChain`](super::output_chain::OutputRenderChain) owns the
+/// resampler boundary.
 pub struct DspChain {
     /// Processors in execution order
-    processors: Vec<Box<dyn AudioProcessor>>,
-    /// Chain-level statistics (atomic for lock-free updates)
-    total_calls: AtomicU64,
-    bypassed_count: AtomicU64,
-    /// Sample rate for the chain
-    sample_rate: f64,
+    processors: Vec<Box<dyn StreamingProcessor>>,
+    sample_rate_hz: u32,
+    finish_stage: usize,
+    finish_complete: bool,
+    finish_policy: Option<ChainFinishPolicy>,
+    finish_threshold_power: f64,
+    finish_unknown_stage: Option<usize>,
+    finish_observation_end_stage: usize,
+    finish_protected_frames: usize,
+    finish_quiet_frames: usize,
+    finish_generated_frames: usize,
+    finish_capped: bool,
 }
 
 impl DspChain {
-    /// Create an empty DSP chain
-    pub fn new(sample_rate: f64) -> Self {
+    /// Create an empty DSP chain in a valid sample-rate domain.
+    pub fn new(sample_rate_hz: u32) -> Result<Self, ProcessError> {
+        validate_sample_rate_hz("DspChain", sample_rate_hz)?;
+        Ok(Self {
+            processors: Vec::new(),
+            sample_rate_hz,
+            ..Self::empty_state()
+        })
+    }
+
+    /// Create a chain with pre-allocated capacity in a valid rate domain.
+    pub fn with_capacity(capacity: usize, sample_rate_hz: u32) -> Result<Self, ProcessError> {
+        validate_sample_rate_hz("DspChain", sample_rate_hz)?;
+        Ok(Self {
+            processors: Vec::with_capacity(capacity),
+            sample_rate_hz,
+            ..Self::empty_state()
+        })
+    }
+
+    const fn empty_state() -> Self {
         Self {
             processors: Vec::new(),
-            total_calls: AtomicU64::new(0),
-            bypassed_count: AtomicU64::new(0),
-            sample_rate,
+            sample_rate_hz: 0,
+            finish_stage: 0,
+            finish_complete: false,
+            finish_policy: None,
+            finish_threshold_power: 0.0,
+            finish_unknown_stage: None,
+            finish_observation_end_stage: 0,
+            finish_protected_frames: 0,
+            finish_quiet_frames: 0,
+            finish_generated_frames: 0,
+            finish_capped: false,
         }
     }
 
-    /// Create a chain with pre-allocated capacity
-    pub fn with_capacity(capacity: usize, sample_rate: f64) -> Self {
-        Self {
-            processors: Vec::with_capacity(capacity),
-            total_calls: AtomicU64::new(0),
-            bypassed_count: AtomicU64::new(0),
-            sample_rate,
+    /// Add a processor to the end of the chain.
+    ///
+    /// Rejects a processor the chain cannot honor, rather than accepting it and
+    /// failing later on the audio thread:
+    ///
+    /// - a stage that does not map the chain rate to itself, because the chain
+    ///   drives a fixed in-place 1:1 topology (see the type-level docs).
+    pub fn add<P: FixedInPlaceProcessor + 'static>(
+        &mut self,
+        processor: P,
+    ) -> Result<&mut Self, ProcessError> {
+        validate_sample_rate_hz("DspChain", self.sample_rate_hz)?;
+        let stage_output_rate = processor.output_sample_rate_hz(self.sample_rate_hz)?;
+        if stage_output_rate != self.sample_rate_hz {
+            return Err(ProcessError::UnsupportedOperation {
+                processor: processor.name(),
+                operation: "DspChain::add",
+                message: "DspChain drives a fixed in-place 1:1 topology at one rate; a \
+                          rate-transforming stage belongs in the offline OutputRenderChain",
+            });
         }
-    }
-
-    /// Add a processor to the end of the chain
-    pub fn add<P: AudioProcessor + 'static>(&mut self, processor: P) -> &mut Self {
         self.processors.push(Box::new(processor));
-        self
-    }
-
-    /// Add a processor with Box (for dynamic dispatch)
-    pub fn add_boxed(&mut self, processor: Box<dyn AudioProcessor>) -> &mut Self {
-        self.processors.push(processor);
-        self
-    }
-
-    /// Insert a processor at a specific position
-    pub fn insert<P: AudioProcessor + 'static>(&mut self, index: usize, processor: P) {
-        self.processors.insert(index, Box::new(processor));
-    }
-
-    /// Remove a processor by name
-    pub fn remove_by_name(&mut self, name: &str) -> Option<Box<dyn AudioProcessor>> {
-        let pos = self.processors.iter().position(|p| p.name() == name)?;
-        Some(self.processors.remove(pos))
+        Ok(self)
     }
 
     /// Process audio through all processors
@@ -128,31 +207,420 @@ impl DspChain {
     ///
     /// * `buffer` - Interleaved audio samples [L, R, L, R, ...]
     /// * `channels` - Number of audio channels
-    pub fn process(&mut self, buffer: &mut [f64], channels: usize) {
-        self.total_calls.fetch_add(1, Ordering::Relaxed);
+    pub fn process(
+        &mut self,
+        buffer: &mut [f64],
+        channels: usize,
+    ) -> Result<ProcessProgress, ProcessError> {
+        if self.finish_policy.is_some() || self.finish_stage > 0 || self.finish_complete {
+            return Err(ProcessError::AlreadyFinished {
+                processor: "DspChain",
+            });
+        }
+        let mut block = AudioBlockMut::new(buffer, channels)?;
+        let frames = block.frames();
+        let mut all_bypassed = true;
 
         for processor in &mut self.processors {
-            let result = processor.process(buffer, channels);
+            let progress = process_checked(
+                processor.as_mut(),
+                ProcessBuffers::in_place(block.reborrow()),
+            )?;
+            all_bypassed &= progress.is_bypassed();
+        }
 
-            if result == ProcessResult::Bypassed {
-                self.bypassed_count.fetch_add(1, Ordering::Relaxed);
+        Ok(
+            ProcessProgress::new(frames, frames, ProcessState::NeedInput)
+                .with_bypassed(all_bypassed),
+        )
+    }
+
+    /// Drain the chain's callback-facing tail into caller-owned output.
+    ///
+    /// Fixed 1:1 downstream stages are applied to each upstream finish block
+    /// before it is returned. The loop is bounded by the stage count and the
+    /// caller's output capacity; asymptotic tails are stopped by the selected
+    /// energy/hold/cap policy.
+    pub fn finish(&mut self, output: AudioBlockMut<'_>) -> Result<ProcessProgress, ProcessError> {
+        self.finish_with_policy(output, ChainFinishPolicy::default())
+    }
+
+    /// Drain with an explicit unknown-tail policy. The first call locks the
+    /// policy for the current stream; callers must reset before changing it.
+    pub fn finish_with_policy(
+        &mut self,
+        output: AudioBlockMut<'_>,
+        policy: ChainFinishPolicy,
+    ) -> Result<ProcessProgress, ProcessError> {
+        if self.finish_complete {
+            return Ok(ProcessProgress::finished(0));
+        }
+        if self.finish_policy.is_none() {
+            let policy = policy.validate()?;
+            self.finish_threshold_power = policy.threshold_power();
+            self.finish_policy = Some(policy);
+        }
+
+        if self.processors.is_empty() {
+            self.finish_complete = true;
+            return Ok(ProcessProgress::finished(0));
+        }
+
+        let channels = output.channels();
+        let capacity = output.frames();
+        if capacity == 0 {
+            return Ok(ProcessProgress::new(0, 0, ProcessState::NeedOutput));
+        }
+
+        let mut output = output;
+        let output_samples = output.samples_mut();
+        let mut produced_total = 0usize;
+
+        while self.finish_stage < self.processors.len() && produced_total < capacity {
+            let stage_index = self.finish_stage;
+            let stage_unknown = matches!(
+                self.processors[stage_index].tail(),
+                TailSpec::Unknown | TailSpec::Infinite
+            );
+            if stage_unknown && self.finish_unknown_stage != Some(stage_index) {
+                self.finish_unknown_stage = Some(stage_index);
+                self.finish_observation_end_stage =
+                    self.tail_energy_observation_end_stage(stage_index);
+                self.finish_protected_frames = self.downstream_finish_protected_frames(
+                    stage_index,
+                    self.finish_observation_end_stage,
+                )?;
+                self.finish_quiet_frames = 0;
+                self.finish_generated_frames = 0;
+            }
+
+            let mut remaining_frames = capacity - produced_total;
+            if stage_unknown {
+                let policy = self.finish_policy.ok_or(ProcessError::Backend {
+                    processor: "DspChain",
+                    operation: "finish",
+                    message: "finish policy was not initialized",
+                })?;
+                let remaining_observed = policy
+                    .max_tail_frames
+                    .saturating_sub(self.finish_generated_frames);
+                let remaining_quiet = policy
+                    .silence_hold_frames
+                    .saturating_sub(self.finish_quiet_frames);
+                let allowed = self
+                    .finish_protected_frames
+                    .saturating_add(remaining_observed.min(remaining_quiet));
+                if allowed == 0 {
+                    self.finish_capped = true;
+                    self.finish_stage += 1;
+                    self.finish_unknown_stage = None;
+                    self.finish_observation_end_stage = 0;
+                    self.finish_protected_frames = 0;
+                    self.finish_quiet_frames = 0;
+                    self.finish_generated_frames = 0;
+                    continue;
+                }
+                remaining_frames = remaining_frames.min(allowed);
+            }
+            let start_sample = produced_total * channels;
+            let end_sample = start_sample + remaining_frames * channels;
+            let finish_progress = {
+                let block =
+                    AudioBlockMut::new(&mut output_samples[start_sample..end_sample], channels)?;
+                finish_checked(self.processors[stage_index].as_mut(), block)?
+            };
+            let produced = finish_progress.produced_frames();
+
+            if produced > 0 {
+                let segment_end = start_sample + produced * channels;
+                let mut observation = None;
+                if stage_unknown && self.finish_observation_end_stage <= stage_index + 1 {
+                    observation = Some(self.observe_finish_energy(
+                        &output_samples[start_sample..segment_end],
+                        channels,
+                        produced,
+                    ));
+                }
+                for downstream_index in (stage_index + 1)..self.processors.len() {
+                    if stage_unknown
+                        && observation.is_none()
+                        && downstream_index == self.finish_observation_end_stage
+                    {
+                        observation = Some(self.observe_finish_energy(
+                            &output_samples[start_sample..segment_end],
+                            channels,
+                            produced,
+                        ));
+                    }
+                    let block = AudioBlockMut::new(
+                        &mut output_samples[start_sample..segment_end],
+                        channels,
+                    )?;
+                    let _ = process_checked(
+                        self.processors[downstream_index].as_mut(),
+                        ProcessBuffers::in_place(block),
+                    )?;
+                }
+
+                if stage_unknown {
+                    let (quiet, observed_frames) = observation.unwrap_or_else(|| {
+                        self.observe_finish_energy(
+                            &output_samples[start_sample..segment_end],
+                            channels,
+                            produced,
+                        )
+                    });
+                    self.finish_generated_frames =
+                        self.finish_generated_frames.saturating_add(observed_frames);
+                    let policy = match self.finish_policy {
+                        Some(policy) => policy,
+                        None => {
+                            return Err(ProcessError::Backend {
+                                processor: "DspChain",
+                                operation: "finish",
+                                message: "finish policy was not initialized",
+                            });
+                        }
+                    };
+                    if quiet || self.finish_generated_frames >= policy.max_tail_frames {
+                        self.finish_capped |= !quiet;
+                        self.finish_stage += 1;
+                        self.finish_unknown_stage = None;
+                        self.finish_observation_end_stage = 0;
+                        self.finish_protected_frames = 0;
+                        self.finish_quiet_frames = 0;
+                        self.finish_generated_frames = 0;
+                    }
+                }
+            }
+
+            produced_total += produced;
+
+            if finish_progress.state() == ProcessState::NeedOutput
+                && self.finish_stage == stage_index
+            {
+                // Unknown tails may receive a sub-block bounded by the quiet
+                // hold still needed. If signal energy reset the hold, consume
+                // another bounded segment while caller capacity remains.
+                if produced_total < capacity {
+                    continue;
+                }
+                break;
+            }
+            if finish_progress.state() == ProcessState::Finished && self.finish_stage == stage_index
+            {
+                self.finish_stage += 1;
+                self.finish_unknown_stage = None;
+                self.finish_observation_end_stage = 0;
+                self.finish_protected_frames = 0;
+                self.finish_quiet_frames = 0;
+                self.finish_generated_frames = 0;
             }
         }
+
+        if self.finish_stage >= self.processors.len() {
+            self.finish_complete = true;
+            return Ok(ProcessProgress::finished(produced_total));
+        }
+        if produced_total == capacity {
+            return Ok(ProcessProgress::new(
+                0,
+                produced_total,
+                ProcessState::NeedOutput,
+            ));
+        }
+
+        // A zero-output non-terminal stage should not occur under the shared
+        // finish contract. Return a typed backend error instead of spinning.
+        Err(ProcessError::Backend {
+            processor: "DspChain",
+            operation: "finish",
+            message: "stage made no finish progress",
+        })
     }
 
-    /// Reset all processors
-    pub fn reset(&mut self) {
+    fn tail_energy_observation_end_stage(&self, stage_index: usize) -> usize {
+        self.processors
+            .iter()
+            .enumerate()
+            .skip(stage_index + 1)
+            .find(|(_, processor)| processor.tail_energy_observation_barrier())
+            .map(|(index, _)| index)
+            .unwrap_or(self.processors.len())
+    }
+
+    fn downstream_finish_protected_frames(
+        &self,
+        stage_index: usize,
+        observation_end_stage: usize,
+    ) -> Result<usize, ProcessError> {
+        let mut total = 0.0;
+        for processor in &self.processors[stage_index..observation_end_stage] {
+            total += processor
+                .latency()
+                .frames_at_rate_f64(self.sample_rate_hz)?;
+            if let TailSpec::Finite(tail) = processor.tail() {
+                total += tail.frames_at_rate_f64(self.sample_rate_hz)?;
+            }
+        }
+        if !total.is_finite() || total < 0.0 || total > usize::MAX as f64 {
+            return Err(ProcessError::Backend {
+                processor: "DspChain",
+                operation: "compose finish timing",
+                message: "downstream finish protection exceeds the frame domain",
+            });
+        }
+        Ok(total.ceil() as usize)
+    }
+
+    fn observe_finish_energy(
+        &mut self,
+        samples: &[f64],
+        channels: usize,
+        frames: usize,
+    ) -> (bool, usize) {
+        let Some(policy) = self.finish_policy else {
+            return (false, 0);
+        };
+        let protected = self.finish_protected_frames.min(frames);
+        self.finish_protected_frames -= protected;
+        let observed_frames = frames - protected;
+        if observed_frames == 0 {
+            return (false, 0);
+        }
+
+        for frame in protected..frames {
+            let start = frame * channels;
+            let end = start + channels;
+            let mut power = 0.0;
+            for &sample in &samples[start..end] {
+                power += sample * sample;
+            }
+            power /= channels.max(1) as f64;
+            if !power.is_finite() || power > self.finish_threshold_power {
+                self.finish_quiet_frames = 0;
+            } else {
+                self.finish_quiet_frames = self.finish_quiet_frames.saturating_add(1);
+            }
+        }
+        (
+            self.finish_quiet_frames >= policy.silence_hold_frames,
+            observed_frames,
+        )
+    }
+
+    /// Reset all processors, returning the first error after attempting every stage.
+    pub fn reset(&mut self) -> Result<(), ProcessError> {
+        let mut first_error = None;
         for processor in &mut self.processors {
-            processor.reset();
+            if let Err(error) = processor.reset() {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        self.finish_stage = 0;
+        self.finish_complete = false;
+        self.finish_policy = None;
+        self.finish_threshold_power = 0.0;
+        self.finish_unknown_stage = None;
+        self.finish_observation_end_stage = 0;
+        self.finish_protected_frames = 0;
+        self.finish_quiet_frames = 0;
+        self.finish_generated_frames = 0;
+        self.finish_capped = false;
+        first_error.map_or(Ok(()), Err)
+    }
+
+    /// Update sample rate for all processors, returning the first stage error.
+    pub fn set_sample_rate(&mut self, sample_rate_hz: u32) -> Result<(), ProcessError> {
+        if sample_rate_hz == 0 {
+            return Err(ProcessError::InvalidSampleRate {
+                processor: "DspChain",
+                sample_rate_hz,
+            });
+        }
+
+        let mut first_error = None;
+        for processor in &mut self.processors {
+            if let Err(error) = processor.set_sample_rate(sample_rate_hz) {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        self.sample_rate_hz = sample_rate_hz;
+        self.finish_stage = 0;
+        self.finish_complete = false;
+        self.finish_policy = None;
+        self.finish_threshold_power = 0.0;
+        self.finish_unknown_stage = None;
+        self.finish_observation_end_stage = 0;
+        self.finish_protected_frames = 0;
+        self.finish_quiet_frames = 0;
+        self.finish_generated_frames = 0;
+        self.finish_capped = false;
+        first_error.map_or(Ok(()), Err)
+    }
+
+    /// Composed algorithmic latency in the chain's fixed sample-rate domain.
+    pub fn latency(&self) -> FrameDuration {
+        let total = self
+            .processors
+            .iter()
+            .filter_map(|processor| {
+                processor
+                    .latency()
+                    .frames_at_rate_f64(self.sample_rate_hz)
+                    .ok()
+            })
+            .sum::<f64>();
+        if !total.is_finite() || total < 0.0 || total == 0.0 || self.sample_rate_hz == 0 {
+            return FrameDuration::ZERO;
+        }
+        match FrameDuration::new(total.round() as usize, self.sample_rate_hz) {
+            Ok(duration) => duration,
+            Err(_) => FrameDuration::ZERO,
         }
     }
 
-    /// Update sample rate for all processors
-    pub fn set_sample_rate(&mut self, sample_rate: f64) {
-        self.sample_rate = sample_rate;
-        for processor in &mut self.processors {
-            processor.set_sample_rate(sample_rate);
+    /// Composed semantic tail. Unknown/infinite tails dominate finite sums.
+    pub fn tail(&self) -> TailSpec {
+        // A chain with no stages has no tail. Deriving this from the frame
+        // arithmetic below would instead report `Unknown` whenever the chain
+        // rate is zero, which reads as "an unbounded tail" rather than "nothing
+        // to drain".
+        if self.processors.is_empty() {
+            return TailSpec::None;
         }
+        let mut finite_frames = 0.0_f64;
+        for processor in &self.processors {
+            match processor.tail() {
+                TailSpec::None => {}
+                TailSpec::Unknown => return TailSpec::Unknown,
+                TailSpec::Infinite => return TailSpec::Infinite,
+                TailSpec::Finite(duration) => {
+                    let Some(frames) = duration
+                        .frames_at_rate_f64(self.sample_rate_hz)
+                        .ok()
+                        .filter(|frames| frames.is_finite() && *frames >= 0.0)
+                    else {
+                        return TailSpec::Unknown;
+                    };
+                    finite_frames += frames;
+                }
+            }
+        }
+        if !finite_frames.is_finite() || finite_frames > usize::MAX as f64 {
+            return TailSpec::Unknown;
+        }
+        TailSpec::finite(finite_frames.ceil() as usize, self.sample_rate_hz)
+            .unwrap_or(TailSpec::Unknown)
+    }
+
+    /// Whether an unknown tail reached the configured safety cap.
+    pub fn finish_was_capped(&self) -> bool {
+        self.finish_capped
     }
 
     /// Get number of processors
@@ -160,313 +628,37 @@ impl DspChain {
         self.processors.len()
     }
 
+    /// Return processor names in execution order.
+    ///
+    /// This is intended for setup-time diagnostics and tests. It allocates the
+    /// returned vector, so do not call it from the realtime callback.
+    pub fn processor_names(&self) -> Vec<&'static str> {
+        self.processors
+            .iter()
+            .map(|processor| processor.name())
+            .collect()
+    }
+
     /// Check if chain is empty
     pub fn is_empty(&self) -> bool {
         self.processors.is_empty()
     }
 
-    /// Find processor by name
-    pub fn find_mut(&mut self, name: &str) -> Option<&mut dyn AudioProcessor> {
-        for processor in &mut self.processors {
-            if processor.name() == name {
-                return Some(processor.as_mut());
-            }
-        }
-        None
-    }
-
-    /// Find processor by name (immutable)
-    pub fn find(&self, name: &str) -> Option<&dyn AudioProcessor> {
-        for processor in &self.processors {
-            if processor.name() == name {
-                return Some(processor.as_ref());
-            }
-        }
-        None
-    }
-
-    /// Get processor at index
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut dyn AudioProcessor> {
-        if let Some(processor) = self.processors.get_mut(index) {
-            Some(processor.as_mut())
-        } else {
-            None
-        }
-    }
-
-    /// Get chain statistics
-    pub fn stats(&self) -> ChainStats {
-        ChainStats {
-            total_calls: self.total_calls.load(Ordering::Relaxed),
-            bypassed_count: self.bypassed_count.load(Ordering::Relaxed),
-            stale_params_count: 0, // Would need per-processor tracking
-            processor_stats: self
-                .processors
-                .iter()
-                .map(|p| ProcessorStats {
-                    name: p.name().to_string(),
-                    success_count: 0, // Would need atomic per-processor
-                    bypassed_count: 0,
-                })
-                .collect(),
-        }
-    }
-
-    /// Get all processor names
-    pub fn processor_names(&self) -> Vec<&'static str> {
-        self.processors.iter().map(|p| p.name()).collect()
-    }
-
-    /// Enable/disable a processor by name
-    pub fn set_processor_enabled(&mut self, name: &str, enabled: bool) -> bool {
-        if let Some(processor) = self.find_mut(name) {
-            processor.set_enabled(enabled);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Check if a processor is enabled
-    pub fn is_processor_enabled(&self, name: &str) -> Option<bool> {
-        self.find(name).map(|p| p.is_enabled())
-    }
-
     /// Clear all processors
     pub fn clear(&mut self) {
         self.processors.clear();
-    }
-}
-
-impl Default for DspChain {
-    fn default() -> Self {
-        Self::new(44100.0)
-    }
-}
-
-/// Builder for creating DSP chains
-pub struct DspChainBuilder {
-    chain: DspChain,
-}
-
-impl DspChainBuilder {
-    /// Create a new builder
-    pub fn new(sample_rate: f64) -> Self {
-        Self {
-            chain: DspChain::new(sample_rate),
-        }
-    }
-
-    /// Add a processor
-    pub fn add<P: AudioProcessor + 'static>(mut self, processor: P) -> Self {
-        self.chain.add(processor);
-        self
-    }
-
-    /// Build the chain
-    pub fn build(self) -> DspChain {
-        self.chain
+        self.finish_stage = 0;
+        self.finish_complete = false;
+        self.finish_policy = None;
+        self.finish_threshold_power = 0.0;
+        self.finish_unknown_stage = None;
+        self.finish_observation_end_stage = 0;
+        self.finish_protected_frames = 0;
+        self.finish_quiet_frames = 0;
+        self.finish_generated_frames = 0;
+        self.finish_capped = false;
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Test processor that doubles samples
-    struct DoublerProcessor {
-        enabled: bool,
-        processed_count: u64,
-    }
-
-    impl DoublerProcessor {
-        fn new() -> Self {
-            Self {
-                enabled: true,
-                processed_count: 0,
-            }
-        }
-    }
-
-    impl AudioProcessor for DoublerProcessor {
-        fn name(&self) -> &'static str {
-            "Doubler"
-        }
-
-        fn process(&mut self, buffer: &mut [f64], _channels: usize) -> ProcessResult {
-            if !self.enabled {
-                return ProcessResult::Bypassed;
-            }
-            for sample in buffer.iter_mut() {
-                *sample *= 2.0;
-            }
-            self.processed_count += 1;
-            ProcessResult::Ok
-        }
-
-        fn reset(&mut self) {
-            self.processed_count = 0;
-        }
-
-        fn is_enabled(&self) -> bool {
-            self.enabled
-        }
-
-        fn set_enabled(&mut self, enabled: bool) {
-            self.enabled = enabled;
-        }
-    }
-
-    // Test processor that adds 1.0
-    struct AdderProcessor {
-        enabled: bool,
-    }
-
-    impl AdderProcessor {
-        fn new() -> Self {
-            Self { enabled: true }
-        }
-    }
-
-    impl AudioProcessor for AdderProcessor {
-        fn name(&self) -> &'static str {
-            "Adder"
-        }
-
-        fn process(&mut self, buffer: &mut [f64], _channels: usize) -> ProcessResult {
-            if !self.enabled {
-                return ProcessResult::Bypassed;
-            }
-            for sample in buffer.iter_mut() {
-                *sample += 1.0;
-            }
-            ProcessResult::Ok
-        }
-
-        fn reset(&mut self) {}
-
-        fn is_enabled(&self) -> bool {
-            self.enabled
-        }
-
-        fn set_enabled(&mut self, enabled: bool) {
-            self.enabled = enabled;
-        }
-    }
-
-    #[test]
-    fn test_empty_chain() {
-        let mut chain = DspChain::new(44100.0);
-        let mut buffer = vec![1.0, 2.0, 3.0];
-        chain.process(&mut buffer, 1);
-        assert_eq!(buffer, vec![1.0, 2.0, 3.0]);
-    }
-
-    #[test]
-    fn test_single_processor() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());
-
-        let mut buffer = vec![1.0, 2.0, 3.0];
-        chain.process(&mut buffer, 1);
-
-        assert_eq!(buffer, vec![2.0, 4.0, 6.0]);
-    }
-
-    #[test]
-    fn test_chain_order() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());  // Doubles first
-        chain.add(AdderProcessor::new());    // Then adds 1
-
-        // Start with 1.0 -> 2.0 (double) -> 3.0 (add 1)
-        let mut buffer = vec![1.0];
-        chain.process(&mut buffer, 1);
-        assert_eq!(buffer, vec![3.0]);
-    }
-
-    #[test]
-    fn test_bypassed_processor() {
-        let mut chain = DspChain::new(44100.0);
-        let mut doubler = DoublerProcessor::new();
-        doubler.set_enabled(false);
-        chain.add(doubler);
-
-        let mut buffer = vec![5.0];
-        chain.process(&mut buffer, 1);
-
-        // Should be unchanged (bypassed)
-        assert_eq!(buffer, vec![5.0]);
-    }
-
-    #[test]
-    fn test_find_processor() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());
-        chain.add(AdderProcessor::new());
-
-        assert!(chain.find("Doubler").is_some());
-        assert!(chain.find("Adder").is_some());
-        assert!(chain.find("NonExistent").is_none());
-    }
-
-    #[test]
-    fn test_enable_disable() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());
-
-        assert!(chain.is_processor_enabled("Doubler").unwrap());
-
-        chain.set_processor_enabled("Doubler", false);
-        assert!(!chain.is_processor_enabled("Doubler").unwrap());
-    }
-
-    #[test]
-    fn test_stats() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());
-
-        let mut buffer = vec![1.0; 100];
-        for _ in 0..10 {
-            chain.process(&mut buffer, 1);
-        }
-
-        let stats = chain.stats();
-        assert_eq!(stats.total_calls, 10);
-    }
-
-    #[test]
-    fn test_builder() {
-        let mut chain = DspChainBuilder::new(44100.0)
-            .add(DoublerProcessor::new())
-            .add(AdderProcessor::new())
-            .build();
-
-        let mut buffer = vec![1.0];
-        chain.process(&mut buffer, 1);
-        assert_eq!(buffer, vec![3.0]);
-    }
-
-    #[test]
-    fn test_remove_processor() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());
-        chain.add(AdderProcessor::new());
-
-        let removed = chain.remove_by_name("Doubler");
-        assert!(removed.is_some());
-        assert_eq!(chain.len(), 1);
-        assert!(chain.find("Doubler").is_none());
-    }
-
-    #[test]
-    fn test_reset() {
-        let mut chain = DspChain::new(44100.0);
-        chain.add(DoublerProcessor::new());
-
-        let mut buffer = vec![1.0; 100];
-        chain.process(&mut buffer, 1);
-        chain.reset();
-        // Should not panic
-    }
-}
+mod tests;

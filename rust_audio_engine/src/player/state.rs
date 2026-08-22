@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 use parking_lot::{Mutex, RwLock};
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use serde::Serialize;
 use std::path::Path;
 use std::fs;
@@ -283,7 +283,7 @@ pub struct SharedState {
     /// Pending audio buffer for gapless transition — lock-free via ArcSwap.
     /// The preload thread stores the decoded next-track samples here;
     /// the audio callback atomically swaps it into audio_buffer at track boundary.
-    pub pending_buffer: ArcSwap<Option<Vec<f64>>>,
+    pub pending_buffer: ArcSwapOption<Vec<f64>>,
     pub pending_total_frames: AtomicU64,
     pub pending_sample_rate: AtomicU64,
     pub pending_channels: AtomicU64,
@@ -344,7 +344,7 @@ impl SharedState {
             eq_type: RwLock::new("IIR".to_string()),
             noise_shaper_curve: RwLock::new(NoiseShaperCurve::Lipshitz5),
 
-            pending_buffer: ArcSwap::new(Arc::new(None)),
+            pending_buffer: ArcSwapOption::empty(),
             pending_total_frames: AtomicU64::new(0),
             pending_sample_rate: AtomicU64::new(44100),
             pending_channels: AtomicU64::new(2),

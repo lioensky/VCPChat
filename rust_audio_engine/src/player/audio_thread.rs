@@ -21,11 +21,14 @@ use crate::config::PhaseResponse;
 use crate::processor::{
     AtomicCrossfeedParams, AtomicDynamicLoudnessParams, AtomicDynamicLoudnessTelemetry,
     AtomicEqParams, AtomicLoudnessState, AtomicPeakLimiterParams, AtomicSaturationParams,
-    AtomicVolumeParams, AtomicNoiseShaperParams, StreamingResampler,
+    AtomicVolumeParams, AtomicNoiseShaperParams, ConvolverProcessor, StreamingProcessor,
+    StreamingResampler,
 };
 
 #[cfg(windows)]
-use crate::wasapi_output::{WasapiExclusivePlayer, WasapiState};
+use crate::wasapi_output::{
+    DspCallbackOperation, WasapiExclusivePlayer, WasapiState,
+};
 
 /// Main audio thread entry point
 ///
@@ -64,8 +67,9 @@ pub fn audio_thread_main(
     let initial_channels = shared_state.channels.load(Ordering::Relaxed).max(1) as usize;
     let initial_sample_rate = shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
 
-    let (dsp_ctx, initial_dsp_chain) = LockfreeDspContext::new(
+    let (dsp_ctx, _initial_pipeline) = LockfreeDspContext::new(
         initial_channels,
+        initial_sample_rate,
         initial_sample_rate,
         Arc::clone(&eq_params),
         Arc::clone(&saturation_params),
@@ -77,9 +81,6 @@ pub fn audio_thread_main(
         Arc::clone(&dynamic_loudness_telemetry),
     );
     let dsp_ctx = Arc::new(dsp_ctx);
-    // The DspChain will be moved into the callback closure below.
-    // We hold it here temporarily until stream creation.
-    let mut owned_dsp_chain = Some(initial_dsp_chain);
 
     loop {
         match cmd_rx.recv() {
@@ -266,49 +267,78 @@ pub fn audio_thread_main(
                     None
                 };
 
+                if let Err(error) = dsp_ctx.set_convolver_sample_rate(requested_sample_rate) {
+                    log::error!("Failed to configure convolver source rate: {}", error);
+                    shared_state.state.store(PlayerState::Stopped);
+                    continue;
+                }
+                dsp_ctx.reclaim_retired_convolver();
+
                 let cb_shared = Arc::clone(&shared_state);
-                let cb_convolver = Arc::clone(&dsp_ctx.merged_convolver);
                 let cb_loudness_state = Arc::clone(&loudness_state);
                 let cb_spectrum_tx = spectrum_tx.clone();
 
-                // Take ownership of DspChain — it will live exclusively inside the closure
-                let mut cb_dsp_chain = owned_dsp_chain.take().unwrap_or_else(|| {
-                    // Rebuild if chain was already consumed (e.g., second Play after Stop)
-                    let (_, chain) = LockfreeDspContext::new(
-                        channels as usize,
-                        requested_sample_rate as f64,
-                        Arc::clone(&eq_params),
-                        Arc::clone(&saturation_params),
-                        Arc::clone(&crossfeed_params),
-                        Arc::clone(&limiter_params),
-                        Arc::clone(&volume_params),
-                        Arc::clone(&noise_shaper_params),
-                        Arc::clone(&dynamic_loudness_params),
-                        Arc::clone(&dynamic_loudness_telemetry),
-                    );
-                    chain
-                });
+                // Build the callback-owned pipeline from the negotiated source
+                // and device geometry before entering the realtime thread.
+                let (_, mut cb_dsp_chain) = LockfreeDspContext::new(
+                    channels as usize,
+                    requested_sample_rate as f64,
+                    actual_sample_rate as f64,
+                    Arc::clone(&eq_params),
+                    Arc::clone(&saturation_params),
+                    Arc::clone(&crossfeed_params),
+                    Arc::clone(&limiter_params),
+                    Arc::clone(&volume_params),
+                    Arc::clone(&noise_shaper_params),
+                    Arc::clone(&dynamic_loudness_params),
+                    Arc::clone(&dynamic_loudness_telemetry),
+                );
 
                 let mut process_buffer = Vec::with_capacity(8192 * channels as usize);
                 process_buffer.resize(8192 * channels as usize, 0.0);
-                let mut resample_leftover = Vec::with_capacity(16384 * channels as usize);
+                let resample_capacity_frames = resampler
+                    .as_ref()
+                    .and_then(|rs| rs.process_output_capacity_frames(4096).ok())
+                    .unwrap_or(4096);
+                let mut resample_leftover =
+                    Vec::with_capacity(resample_capacity_frames * channels as usize);
                 let mut resample_leftover_pos = 0usize;
-                let mut resample_output = Vec::with_capacity(16384 * channels as usize);
-                let mut owned_convolver: Option<crate::processor::FFTConvolver> = None;
-                let mut convolver_output = Vec::with_capacity(8192 * channels as usize);
+                let mut resample_output =
+                    vec![0.0; resample_capacity_frames * channels as usize];
+                let mut convolver =
+                    match ConvolverProcessor::new(dsp_ctx.convolver_control.clone()) {
+                        Ok(mut processor) => {
+                            if processor.set_sample_rate(requested_sample_rate).is_err() {
+                                shared_state.state.store(PlayerState::Stopped);
+                                continue;
+                            }
+                            processor
+                        }
+                        Err(error) => {
+                            log::error!("Failed to acquire convolver consumer: {}", error);
+                            shared_state.state.store(PlayerState::Stopped);
+                            continue;
+                        }
+                    };
+                let mut callback_output_f64 = vec![0.0; 8192 * channels as usize];
 
                 log::info!("Building output stream...");
                 let new_stream = device.build_output_stream(
                     &config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        if data.len() > callback_output_f64.len() {
+                            data.fill(0.0);
+                            return;
+                        }
+                        let output = &mut callback_output_f64[..data.len()];
+
                         #[cfg(debug_assertions)]
                         assert_no_alloc(|| {
                             audio_callback_lockfree(
-                                data,
+                                output,
                                 &cb_shared,
                                 &mut cb_dsp_chain,
-                                &mut owned_convolver,
-                                &cb_convolver,
+                                &mut convolver,
                                 &cb_loudness_state,
                                 &cb_spectrum_tx,
                                 channels as usize,
@@ -317,27 +347,34 @@ pub fn audio_thread_main(
                                 &mut resample_leftover,
                                 &mut resample_leftover_pos,
                                 &mut resample_output,
-                                &mut convolver_output,
+                                true,
                             );
+                            for (destination, source) in data.iter_mut().zip(output.iter()) {
+                                *destination = *source as f32;
+                            }
                         });
 
                         #[cfg(not(debug_assertions))]
-                        audio_callback_lockfree(
-                            data,
-                            &cb_shared,
-                            &mut cb_dsp_chain,
-                            &mut owned_convolver,
-                            &cb_convolver,
-                            &cb_loudness_state,
-                            &cb_spectrum_tx,
-                            channels as usize,
-                            &mut process_buffer,
-                            &mut resampler,
-                            &mut resample_leftover,
-                            &mut resample_leftover_pos,
-                            &mut resample_output,
-                            &mut convolver_output,
-                        );
+                        {
+                            audio_callback_lockfree(
+                                output,
+                                &cb_shared,
+                                &mut cb_dsp_chain,
+                                &mut convolver,
+                                &cb_loudness_state,
+                                &cb_spectrum_tx,
+                                channels as usize,
+                                &mut process_buffer,
+                                &mut resampler,
+                                &mut resample_leftover,
+                                &mut resample_leftover_pos,
+                                &mut resample_output,
+                                true,
+                            );
+                            for (destination, source) in data.iter_mut().zip(output.iter()) {
+                                *destination = *source as f32;
+                            }
+                        }
                     },
                     |err| log::error!("Stream error: {}", err),
                     None,
@@ -391,13 +428,14 @@ pub fn audio_thread_main(
                                 None
                             };
 
+                            dsp_ctx.reclaim_retired_convolver();
                             let cb_shared = Arc::clone(&shared_state);
-                            let cb_convolver = Arc::clone(&dsp_ctx.merged_convolver);
                             let cb_loudness_state = Arc::clone(&loudness_state);
                             let cb_spectrum_tx = spectrum_tx.clone();
                             // Build a fresh DspChain for the fallback path
                             let (_, fallback_chain) = LockfreeDspContext::new(
                                 fallback_channels,
+                                requested_sample_rate as f64,
                                 fallback_sr as f64,
                                 Arc::clone(&eq_params),
                                 Arc::clone(&saturation_params),
@@ -411,24 +449,56 @@ pub fn audio_thread_main(
                             let mut fb_dsp_chain = fallback_chain;
                             let mut process_buffer = Vec::with_capacity(8192 * fallback_channels);
                             process_buffer.resize(8192 * fallback_channels, 0.0);
-                            let mut fallback_resample_leftover = Vec::with_capacity(16384 * fallback_channels);
+                            let fallback_capacity_frames = fallback_resampler
+                                .as_ref()
+                                .and_then(|rs| rs.process_output_capacity_frames(4096).ok())
+                                .unwrap_or(4096);
+                            let mut fallback_resample_leftover =
+                                Vec::with_capacity(fallback_capacity_frames * fallback_channels);
                             let mut fallback_resample_leftover_pos = 0usize;
                             let mut fallback_resample_output =
-                                Vec::with_capacity(16384 * fallback_channels);
-                            let mut fallback_owned_convolver: Option<crate::processor::FFTConvolver> = None;
-                            let mut fallback_convolver_output = Vec::with_capacity(8192 * fallback_channels);
+                                vec![0.0; fallback_capacity_frames * fallback_channels];
+                            let mut fallback_convolver =
+                                match ConvolverProcessor::new(dsp_ctx.convolver_control.clone()) {
+                                    Ok(mut processor) => {
+                                        if processor
+                                            .set_sample_rate(requested_sample_rate)
+                                            .is_err()
+                                        {
+                                            shared_state.state.store(PlayerState::Stopped);
+                                            continue;
+                                        }
+                                        processor
+                                    }
+                                    Err(error) => {
+                                        log::error!(
+                                            "Failed to acquire fallback convolver consumer: {}",
+                                            error
+                                        );
+                                        shared_state.state.store(PlayerState::Stopped);
+                                        continue;
+                                    }
+                                };
+                            let mut fallback_callback_output_f64 =
+                                vec![0.0; 8192 * fallback_channels];
 
                             match device.build_output_stream(
                                 &fallback_config,
                                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                                    if data.len() > fallback_callback_output_f64.len() {
+                                        data.fill(0.0);
+                                        return;
+                                    }
+                                    let output =
+                                        &mut fallback_callback_output_f64[..data.len()];
+
                                     #[cfg(debug_assertions)]
                                     assert_no_alloc(|| {
                                         audio_callback_lockfree(
-                                            data,
+                                            output,
                                             &cb_shared,
                                             &mut fb_dsp_chain,
-                                            &mut fallback_owned_convolver,
-                                            &cb_convolver,
+                                            &mut fallback_convolver,
                                             &cb_loudness_state,
                                             &cb_spectrum_tx,
                                             fallback_channels,
@@ -437,27 +507,38 @@ pub fn audio_thread_main(
                                             &mut fallback_resample_leftover,
                                             &mut fallback_resample_leftover_pos,
                                             &mut fallback_resample_output,
-                                            &mut fallback_convolver_output,
+                                            true,
                                         );
+                                        for (destination, source) in
+                                            data.iter_mut().zip(output.iter())
+                                        {
+                                            *destination = *source as f32;
+                                        }
                                     });
 
                                     #[cfg(not(debug_assertions))]
-                                    audio_callback_lockfree(
-                                        data,
-                                        &cb_shared,
-                                        &mut fb_dsp_chain,
-                                        &mut fallback_owned_convolver,
-                                        &cb_convolver,
-                                        &cb_loudness_state,
-                                        &cb_spectrum_tx,
-                                        fallback_channels,
-                                        &mut process_buffer,
-                                        &mut fallback_resampler,
-                                        &mut fallback_resample_leftover,
-                                        &mut fallback_resample_leftover_pos,
-                                        &mut fallback_resample_output,
-                                        &mut fallback_convolver_output,
-                                    );
+                                    {
+                                        audio_callback_lockfree(
+                                            output,
+                                            &cb_shared,
+                                            &mut fb_dsp_chain,
+                                            &mut fallback_convolver,
+                                            &cb_loudness_state,
+                                            &cb_spectrum_tx,
+                                            fallback_channels,
+                                            &mut process_buffer,
+                                            &mut fallback_resampler,
+                                            &mut fallback_resample_leftover,
+                                            &mut fallback_resample_leftover_pos,
+                                            &mut fallback_resample_output,
+                                            true,
+                                        );
+                                        for (destination, source) in
+                                            data.iter_mut().zip(output.iter())
+                                        {
+                                            *destination = *source as f32;
+                                        }
+                                    }
                                 },
                                 |err| log::error!("Stream error: {}", err),
                                 None,
@@ -590,8 +671,8 @@ pub fn audio_thread_main(
 
                 loudness_state.set_smoothing(200.0, sr_u32);
 
-                let _mode_val = loudness_state.mode.load(Ordering::Relaxed);
-                let preamp = loudness_state.preamp_gain_db.load(Ordering::Relaxed);
+                let _mode = loudness_state.get_mode();
+                let preamp = loudness_state.preamp_gain_db();
 
                 let calc_safe_gain = |rg_gain_db: f64, peak: Option<f64>, preamp_db: f64| -> f64 {
                     let requested_gain = rg_gain_db + preamp_db;
@@ -636,9 +717,12 @@ pub fn audio_thread_main(
                             );
                         } else {
                             log::warn!("No ReplayGain track gain found, falling back to EBU R128 analysis");
-                            let mut meter = crate::processor::LoudnessMeter::new(channels, sr_u32);
-                            meter.process(&samples_arc);
-                            let loudness = meter.integrated_loudness();
+                            let loudness = crate::processor::LoudnessMeter::new(channels, sr_u32)
+                                .and_then(|mut meter| {
+                                    meter.process(&samples_arc)?;
+                                    Ok(meter.integrated_loudness())
+                                })
+                                .unwrap_or(f64::NEG_INFINITY);
                             if loudness.is_finite() {
                                 let gain = target_lufs - loudness + preamp;
                                 loudness_state.set_target_gain(gain);
@@ -672,9 +756,12 @@ pub fn audio_thread_main(
                             );
                         } else {
                             log::warn!("No ReplayGain gain found, falling back to EBU R128 analysis");
-                            let mut meter = crate::processor::LoudnessMeter::new(channels, sr_u32);
-                            meter.process(&samples_arc);
-                            let loudness = meter.integrated_loudness();
+                            let loudness = crate::processor::LoudnessMeter::new(channels, sr_u32)
+                                .and_then(|mut meter| {
+                                    meter.process(&samples_arc)?;
+                                    Ok(meter.integrated_loudness())
+                                })
+                                .unwrap_or(f64::NEG_INFINITY);
                             if loudness.is_finite() {
                                 let gain = target_lufs - loudness + preamp;
                                 loudness_state.set_target_gain(gain);
@@ -743,8 +830,14 @@ fn handle_wasapi_exclusive(
         return true;
     }
 
+    if let Err(error) = dsp_ctx.set_convolver_sample_rate(sample_rate) {
+        log::error!("Failed to configure WASAPI convolver source rate: {}", error);
+        shared_state.state.store(PlayerState::Stopped);
+        return true;
+    }
+    dsp_ctx.reclaim_retired_convolver();
+
     let cb_shared = Arc::clone(shared_state);
-    let cb_convolver = Arc::clone(&dsp_ctx.merged_convolver);
     let cb_loudness_state = Arc::clone(loudness_state);
     let cb_spectrum_tx = spectrum_tx.clone();
 
@@ -754,6 +847,7 @@ fn handle_wasapi_exclusive(
     // Build a DspChain owned by the WASAPI callback
     let (_, wasapi_chain) = LockfreeDspContext::new(
         channels,
+        sample_rate as f64,
         sample_rate as f64,
         Arc::clone(&dsp_ctx.eq_params),
         Arc::clone(&dsp_ctx.saturation_params),
@@ -770,29 +864,69 @@ fn handle_wasapi_exclusive(
     let mut unused_leftover = Vec::new();
     let mut unused_leftover_pos = 0usize;
     let mut unused_output = Vec::new();
-    let mut wasapi_owned_convolver: Option<crate::processor::FFTConvolver> = None;
-    let mut wasapi_convolver_output = Vec::with_capacity(8192 * channels);
+    let mut wasapi_convolver =
+        match ConvolverProcessor::new(dsp_ctx.convolver_control.clone()) {
+            Ok(mut processor) => {
+                if processor.set_sample_rate(sample_rate).is_err() {
+                    shared_state.state.store(PlayerState::Stopped);
+                    return true;
+                }
+                processor
+            }
+            Err(error) => {
+                log::error!("Failed to acquire WASAPI convolver consumer: {}", error);
+                shared_state.state.store(PlayerState::Stopped);
+                return true;
+            }
+        };
 
-    let dsp_callback = Box::new(move |data: &mut [f32], cb_channels: usize| -> bool {
-        audio_callback_lockfree(
-            data,
-            &cb_shared,
-            &mut wasapi_dsp_chain,
-            &mut wasapi_owned_convolver,
-            &cb_convolver,
-            &cb_loudness_state,
-            &cb_spectrum_tx,
-            cb_channels,
-            &mut process_buffer,
-            &mut unused_resampler,
-            &mut unused_leftover,
-            &mut unused_leftover_pos,
-            &mut unused_output,
-            &mut wasapi_convolver_output,
-        );
-
-        cb_shared.state.load() == PlayerState::Stopped
-    });
+    let dsp_callback = Box::new(
+        move |data: &mut [f64],
+              cb_channels: usize,
+              operation: DspCallbackOperation|
+              -> bool {
+            match operation {
+                DspCallbackOperation::ConfigureOutput { sample_rate_hz } => {
+                    if wasapi_dsp_chain
+                        .set_output_sample_rate(sample_rate_hz)
+                        .is_err()
+                    {
+                        data.fill(0.0);
+                        return true;
+                    }
+                    false
+                }
+                DspCallbackOperation::RenderSource => {
+                    audio_callback_lockfree(
+                        data,
+                        &cb_shared,
+                        &mut wasapi_dsp_chain,
+                        &mut wasapi_convolver,
+                        &cb_loudness_state,
+                        &cb_spectrum_tx,
+                        cb_channels,
+                        &mut process_buffer,
+                        &mut unused_resampler,
+                        &mut unused_leftover,
+                        &mut unused_leftover_pos,
+                        &mut unused_output,
+                        false,
+                    );
+                    cb_shared.state.load() == PlayerState::Stopped
+                }
+                DspCallbackOperation::FinalizeOutput => {
+                    if wasapi_dsp_chain
+                        .process_output(data, cb_channels)
+                        .is_err()
+                    {
+                        data.fill(0.0);
+                        return true;
+                    }
+                    false
+                }
+            }
+        },
+    );
 
     let device_id_value = shared_state.device_id.load(Ordering::Relaxed);
     let wasapi_device_id = if device_id_value >= 0 {

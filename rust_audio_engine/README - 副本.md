@@ -1,46 +1,68 @@
-# Rust 音频重采样模块
+# VCPChat Rust 音频引擎（Rubato / DSP 实验分支）
 
-该模块为 VCPChat 的 Python 音频引擎提供高性能的音频重采样功能。
+该目录构建 VCPChat 的独立 Rust 音频服务。当前实验分支使用纯 Rust Rubato 4.0 f64 重采样路线，并迁入统一 DSP 阶段、流式进度、延迟、尾部、finish/reset 和实时无分配契约。
 
-## 构建说明
+## 构建要求
 
-本项目使用 `maturin` 进行构建，依赖 vcpkg 安装的 soxr 库。
+- Rust stable toolchain
+- Windows 使用 MSVC Rust target
+- 不需要 vcpkg
+- 不需要 pkg-config
+- 不链接 libsoxr
 
-### 编译命令 (Windows CMD)
+## 标准构建
+
+在该目录执行：
 
 ```cmd
-cd H:\VCP\VCPChat\rust_audio_engine
-set PATH=H:\VCP\vcpkg\installed\x64-windows-static\tools\pkgconf;%PATH%
-set "PKG_CONFIG_PATH=H:\VCP\vcpkg\installed\x64-windows-static\lib\pkgconfig"
+cargo build --release --locked --bin audio_server --no-default-features --features rubato,loudness-db
+```
+
+如需针对当前 CPU 优化：
+
+```cmd
 set RUSTFLAGS=-C target-cpu=native
-py -3.13 -m maturin build --release --interpreter python3.13
+cargo build --release --locked --bin audio_server --no-default-features --features rubato,loudness-db
 ```
 
-### 安装命令
+## 独立 A/B 产物
+
+从工作区根目录运行：
 
 ```cmd
-py -3.13 -m pip install target/wheels/rust_audio_resampler-0.1.0-cp313-cp313-win_amd64.whl --force-reinstall
+编译并部署音频引擎.bat
 ```
 
-### 一键编译安装 (Windows CMD)
+脚本输出：
 
-```cmd
-cd H:\VCP\VCPChat\rust_audio_engine && set PATH=H:\VCP\vcpkg\installed\x64-windows-static\tools\pkgconf;%PATH% && set "PKG_CONFIG_PATH=H:\VCP\vcpkg\installed\x64-windows-static\lib\pkgconfig" && set RUSTFLAGS=-C target-cpu=native && py -3.13 -m maturin build --release --interpreter python3.13 && py -3.13 -m pip install target/wheels/rust_audio_resampler-0.1.0-cp313-cp313-win_amd64.whl --force-reinstall
+```text
+audio_engine/audio_server_rubato_dsp.exe
 ```
 
-```cmd
-cd rust_audio_engine && set PATH=H:\VCP\vcpkg\installed\x64-windows-static\tools\pkgconf;%PATH% && set "PKG_CONFIG_PATH=H:\VCP\vcpkg\installed\x64-windows-static\lib\pkgconfig" && set RUSTFLAGS=-C target-cpu=native && cargo build --release
-```
-```
-$env:PATH = "H:\VCP\vcpkg\installed\x64-windows-static\tools\pkgconf;$env:PATH"; $env:PKG_CONFIG_PATH = "H:\VCP\vcpkg\installed\x64-windows-static\lib\pkgconfig"; $env:RUSTFLAGS = "-C target-cpu=native"; cargo build --release
+该文件名不会覆盖现有 SoXR 基线产物。双 CPU 构建可运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_all.ps1
 ```
 
+其输出为：
 
-## 关键技术点
+```text
+audio_engine/audio_server_rubato_dsp_avx2.exe
+audio_engine/audio_server_rubato_dsp_avx512.exe
+```
 
-- **SIMD 加速**: 通过 `target-cpu=native` 开启，显著提升 FFT 卷积和噪声整形的性能。
-- **Python 3.13**: 完美支持最新版 Python。
-- **64-bit Pipeline**: 内部处理全程保持双精度浮点。
-- **高精度相位时钟**: 启用 `QualityFlags::HighPrecisionClock`，提升无理数采样率比的精度。
-- **极高品质**: 使用 `QualityRecipe::very_high()` (= Bits28) 配置。
-- **多通道支持**: 1-2 通道使用 Stereo 格式高效处理，3+ 通道使用 Mono 逐通道处理。
+## 技术边界
+
+- 音频样本内部使用 f64。
+- 常见采样率比例优先采用 Rubato FFT。
+- 精确 2× Linear/High 上采样采用专用半带 FIR。
+- 病态比例采用窗函数 Sinc。
+- Minimum/Maximum phase 使用迁入的频谱或连续多相 FIR 扩展。
+- 重采样接口显式报告 consumed、produced 和流式状态。
+- 处理器声明 latency、tail、finish 和 reset 行为。
+- 最终目标顺序为源域 DSP、卷积、动态响度、Rubato、True-Peak Limiter、Noise Shaper、终端格式转换。
+
+## 对照解释
+
+该实验产物包含 Rubato 路线和新版 DSP 管理，因此与旧产物的听感或性能差异代表“整条新音频路线”的差异，不能全部单独归因于 Rubato。若只比较重采样算法，应关闭其他 DSP，固定相位、采样率、drain、输出长度和终端格式后进行离线对齐、null test 与 ABX。

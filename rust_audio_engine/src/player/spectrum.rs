@@ -8,6 +8,8 @@ use std::sync::atomic::Ordering;
 
 use crossbeam::channel::Receiver;
 
+use parking_lot::Mutex;
+
 use super::state::SharedState;
 use crate::processor::SpectrumAnalyzer;
 
@@ -19,7 +21,7 @@ use crate::processor::SpectrumAnalyzer;
 pub fn spectrum_thread_main(
     rx: Receiver<f64>,
     shared: Arc<SharedState>,
-    analyzer: Arc<SpectrumAnalyzer>,
+    analyzer: Arc<Mutex<SpectrumAnalyzer>>,
 ) {
     let window_size = 2048;
     let mut buffer = Vec::with_capacity(window_size);
@@ -30,8 +32,9 @@ pub fn spectrum_thread_main(
                 buffer.push(sample);
                 if buffer.len() >= window_size {
                     let sr = shared.sample_rate.load(Ordering::Relaxed) as u32;
-                    let spectrum_data = analyzer.analyze(&buffer, sr);
-                    *shared.spectrum_data.lock() = spectrum_data;
+                    if let Ok(spectrum_data) = analyzer.lock().analyze(&buffer, sr) {
+                        *shared.spectrum_data.lock() = spectrum_data.to_vec();
+                    }
                     buffer.clear();
                 }
             }

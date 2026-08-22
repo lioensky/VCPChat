@@ -190,16 +190,39 @@ impl LoudnessDatabase {
                 file_mtime      INTEGER,
                 file_size       INTEGER
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_file_path ON track_loudness(file_path);
             CREATE INDEX IF NOT EXISTS idx_scan_version ON track_loudness(scan_version);
-            
-            -- Add columns to existing databases (migration)
-            -- These will silently fail if columns already exist, which is fine
-            ALTER TABLE track_loudness ADD COLUMN file_mtime INTEGER;
-            ALTER TABLE track_loudness ADD COLUMN file_size INTEGER;
         "#).map_err(|e| format!("Failed to initialize schema: {}", e))?;
-        
+
+        // SQLite does not support `ADD COLUMN IF NOT EXISTS` on all versions
+        // deployed with VChat. Inspect the current table first so migration is
+        // idempotent for both newly created and legacy databases.
+        let existing_columns = {
+            let mut statement = conn
+                .prepare("PRAGMA table_info(track_loudness)")
+                .map_err(|e| format!("Failed to inspect loudness schema: {}", e))?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|e| format!("Failed to query loudness schema: {}", e))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("Failed to read loudness schema: {}", e))?;
+            columns
+        };
+
+        for (column, declaration) in [
+            ("file_mtime", "file_mtime INTEGER"),
+            ("file_size", "file_size INTEGER"),
+        ] {
+            if !existing_columns.iter().any(|existing| existing == column) {
+                conn.execute(
+                    &format!("ALTER TABLE track_loudness ADD COLUMN {declaration}"),
+                    [],
+                )
+                .map_err(|e| format!("Failed to migrate loudness column {column}: {}", e))?;
+            }
+        }
+
         Ok(())
     }
     
