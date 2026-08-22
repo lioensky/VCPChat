@@ -91,7 +91,11 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       providedToken = authHeader.substring(7);
     }
 
-    if (providedToken !== syncToken) {
+    if (
+      typeof syncToken !== "string" ||
+      syncToken.trim().length === 0 ||
+      providedToken !== syncToken
+    ) {
       return sendHttpError(res, 401, "Unauthorized", {
         code: "SYNC_AUTH_FAILED",
         stage: "connect",

@@ -66,6 +66,9 @@ try {
  */
 async function registerRoutes(app, pluginConfig, projectBasePath, services = {}) {
   const syncToken = pluginConfig.MobileSyncToken;
+  if (typeof syncToken !== "string" || syncToken.trim().length === 0) {
+    throw new Error("MobileSyncToken must be configured before starting VCPMobileSync");
+  }
   // 最终修正：AppData 位于 projectBasePath (VCPDistributedServer) 的上一级目录
   const appDataPath = path.resolve(projectBasePath, "..", "AppData");
   const wsPort = parseInt(pluginConfig.MobileSyncPort) || 5975;
