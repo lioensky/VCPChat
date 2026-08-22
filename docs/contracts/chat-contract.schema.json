@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vcpchat://contracts/chat-contract.schema.json",
+  "title": "VCPChat evidence contract",
+  "type": "object",
+  "required": ["id", "kind", "owner", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "kind": { "enum": ["event", "capability", "facade", "invariant", "snapshot", "artifact-smoke"] },
+    "owner": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["pass", "fail", "skipped", "manual_required", "not_applicable"] },
+    "producer": { "type": "array", "items": { "type": "string" } },
+    "consumers": { "type": "array", "items": { "type": "string" } },
+    "mode": { "enum": ["emit", "waterfall", "serial", "parallel", "command"] },
+    "durable": { "type": "boolean" },
+    "terminal": { "type": "object" },
+    "sourceEntry": { "type": "string" },
+    "artifactEntry": { "type": "string" },
+    "invalidCase": { "type": "string" },
+    "snapshot": { "type": "string" },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "retirement": { "type": "string" }
+    ,"dynamicSmoke": { "type": "string" }
+    ,"facadeName": { "type": "string" }
+    ,"dynamicSites": { "type": "array", "items": { "type": "object", "required": ["file", "line"], "properties": { "file": { "type": "string" }, "line": { "type": "integer", "minimum": 1 } }, "additionalProperties": false } }
+  },
+  "additionalProperties": true
+}
