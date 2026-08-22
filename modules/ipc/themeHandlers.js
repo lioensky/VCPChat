@@ -108,6 +108,18 @@ const handleApplyTheme = async (event, themeFileName) => {
         if (themesWindow && !themesWindow.isDestroyed()) {
             themesWindow.reload();
         }
+        // Embedded App Surface pages are WebContentsViews, not BrowserWindows,
+        // so they are not covered by the child-window reload above. A theme
+        // file replacement changes the stylesheet itself (not just the light
+        // or dark class), therefore reload each live child view so it reads
+        // the new themes.css instead of retaining the previous palette.
+        mainWindow?.contentView?.children?.forEach(view => {
+            const contents = view?.webContents;
+            if (!contents || contents.isDestroyed?.() || contents.isCrashed?.()) return;
+            try { contents.reload(); } catch (error) {
+                console.warn('[ThemeHandlers] Failed to reload embedded theme target:', error.message);
+            }
+        });
     } catch (error) {
         console.error('Failed to apply theme:', error);
     }

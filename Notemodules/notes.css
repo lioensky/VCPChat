@@ -930,6 +930,102 @@ body[data-note-view-mode="preview"] .preview-container {
   flex: 1 1 100% !important;
 }
 
+/* Embedded Notes uses the same continuous shell geometry as the main chat:
+   the host owns the top bar, the navigation rail reaches its lower edge, and
+   the document workspace is the single raised panel on the right. Standalone
+   Notes windows intentionally keep the original page gutter/card treatment. */
+html[data-vcp-embedded-app="true"] {
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface {
+  height: 100%;
+  min-height: 100%;
+  /* The native WebContentsView is intentionally transparent so integrated
+     surfaces can opt into the host material. Notes itself is a full-height
+     document surface, though: leaving its body transparent exposes the
+     host's loading/status layer below the page and looks like clipped content. */
+  --notes-shell-bg: var(--secondary-bg, var(--vcp-app-bg));
+  --notes-panel-bg: var(--secondary-bg, var(--vcp-app-bg-raised));
+  --notes-panel-border: var(--border-color, var(--vcp-app-border-subtle));
+  background: var(--notes-shell-bg);
+}
+
+html[data-vcp-embedded-app="true"] {
+  background: var(--vcp-app-bg);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface > .container {
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface > .container > .sidebar {
+  width: 260px;
+  min-width: 220px;
+  max-width: 360px;
+  border: 0;
+  border-radius: 0;
+  background: var(--notes-shell-bg);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface > .container > .sidebar .sidebar-header {
+  padding: var(--vcp-app-space-3) var(--vcp-app-space-4);
+  background: transparent;
+  border-bottom-color: var(--vcp-app-border-subtle);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface > .container > .resizer {
+  width: 4px;
+  margin: 0 -2px;
+  background: transparent;
+  border-radius: 0;
+  z-index: 5;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface > .container > .main-content {
+  min-width: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 12px 0 0 0;
+  border-left-color: var(--notes-panel-border);
+  border-top-color: var(--notes-panel-border);
+  border-right: 0;
+  border-bottom: 0;
+  background: var(--notes-panel-bg);
+  box-shadow: var(--vcp-app-shadow-sm);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .note-editor-header {
+  height: 42px;
+  min-height: 42px;
+  padding: 6px 12px;
+  background: transparent;
+  border-bottom-color: var(--notes-panel-border);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .note-workspace-toolbar {
+  min-height: 44px;
+  padding: 6px 12px;
+  background: var(--vcp-app-fill-1);
+  border-bottom: 1px solid var(--notes-panel-border);
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .note-body {
+  padding: var(--vcp-app-space-4);
+  background: transparent;
+}
+
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .editor-container,
+html[data-vcp-embedded-app="true"] body.vcp-app-surface .preview-container {
+  background: var(--vcp-app-bg-input);
+  border-color: var(--notes-panel-border);
+  border-radius: 8px;
+}
+
 /* Confirmation Modal Styles */
 .modal-overlay {
   position: fixed;

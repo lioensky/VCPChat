@@ -15,6 +15,34 @@ function installEmbeddedSurfaceContract() {
         const style = document.createElement('style');
         style.id = 'vcpEmbeddedSurfaceStyle';
         style.textContent = `
+            /* The host AppTab owns the chrome for embedded surfaces. Keep the
+               child page's header only when it is opened as a standalone
+               window, so embedded pages do not render a second title bar. */
+            html[data-vcp-embedded-app="true"] body.vcp-app-surface > .vcp-app-header {
+                display: none !important;
+            }
+
+            /* Child pages reserve space for their standalone title bar. Once
+               the host owns that chrome, reclaim the same space without
+               changing --vcp-app-header-height (Notes/Memo use that token in
+               their own editors and controls). */
+            html[data-vcp-embedded-app="true"] body.vcp-app-surface > .container {
+                padding: 0 !important;
+            }
+            html[data-vcp-embedded-app="true"] body.vcp-app-surface:has(> .translator-container) {
+                padding-top: var(--vcp-app-page-gutter) !important;
+            }
+            html[data-vcp-embedded-app="true"] body.vcp-app-surface > .app-container {
+                padding-top: var(--vcp-app-page-gutter) !important;
+            }
+            html[data-vcp-embedded-app="true"] body.vcp-app-surface > .app-layout {
+                height: 100vh !important;
+                margin-top: 0 !important;
+            }
+            html[data-vcp-embedded-app="true"] body.vcp-app-surface > .log-app {
+                padding-top: var(--vcp-app-page-gutter) !important;
+            }
+
             html[data-vcp-embedded-app="true"] :is(
                 #minimize-btn, #maximize-btn, #close-btn,
                 #minimize-theme-btn, #maximize-theme-btn, #close-theme-btn,
