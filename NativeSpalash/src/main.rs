@@ -364,9 +364,9 @@ fn main() {
                 if progress >= 1.0 && !startup_complete {
                     startup_complete = true;
                     displayed_progress = 1.0;
-                    // 保留一秒完成画面，让用户能看清“准备完成！”。
+                    // 保留 0.6 秒完成画面，让用户能看清“准备完成！”。
                     // 此期间事件循环仍按 60 FPS 工作，不阻塞窗口消息泵。
-                    completion_deadline = Some(Instant::now() + Duration::from_secs(1));
+                    completion_deadline = Some(Instant::now() + Duration::from_millis(600));
                     window_clone.request_redraw();
                 }
             }

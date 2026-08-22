@@ -307,7 +307,9 @@ let mainRendererStableTimer = null;
 let mainRendererFailurePromptOpen = false;
 const managedBootstrapOperationId = process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID?.trim() || null;
 const managedBootstrapStateRoot = process.env.VCPCHAT_STATE_DIR?.trim() || null;
+const nativeLauncherProgressEnabled = process.env.VCP_LAUNCHER_PROTOCOL === '1';
 let managedBootstrapReadyPublished = false;
+let nativeLauncherReadyReported = false;
 
 function publishManagedBootstrapReady(checks) {
     if (!managedBootstrapOperationId || !managedBootstrapStateRoot || managedBootstrapReadyPublished) return false;
@@ -328,12 +330,18 @@ function publishManagedBootstrapReady(checks) {
 }
 
 async function publishManagedBootstrapReadyAfterRenderer() {
-    if (!managedBootstrapOperationId || managedBootstrapReadyPublished || !mainWindow || mainWindow.isDestroyed()) return;
+    const managedReadyPending =
+        Boolean(managedBootstrapOperationId && managedBootstrapStateRoot) &&
+        !managedBootstrapReadyPublished;
+    const nativeLauncherReadyPending =
+        nativeLauncherProgressEnabled && !nativeLauncherReadyReported;
+    if ((!managedReadyPending && !nativeLauncherReadyPending) || !mainWindow || mainWindow.isDestroyed()) return;
+
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline && mainWindow && !mainWindow.isDestroyed()) {
         try {
             const ready = await mainWindow.webContents.executeJavaScript(
-                "document.documentElement.dataset.vcpRendererReady === 'true' && window.__vcpRendererReady === true",
+                "document.documentElement.dataset.vcpRendererReady === 'true'",
                 true
             );
             if (ready) {
@@ -345,12 +353,17 @@ async function publishManagedBootstrapReadyAfterRenderer() {
                     await new Promise(resolve => setTimeout(resolve, 100));
                     continue;
                 }
-                publishManagedBootstrapReady({
-                    mainWindow: 'visible',
-                    preload: 'ready',
-                    renderer: 'ready',
-                });
-                reportLauncherProgress('renderer-ready', 1, '准备完成');
+                if (managedReadyPending) {
+                    publishManagedBootstrapReady({
+                        mainWindow: 'visible',
+                        preload: 'ready',
+                        renderer: 'ready',
+                    });
+                }
+                if (nativeLauncherReadyPending) {
+                    nativeLauncherReadyReported = true;
+                    reportLauncherProgress('renderer-ready', 1, '准备完成');
+                }
                 return;
             }
         } catch (error) {
@@ -358,7 +371,7 @@ async function publishManagedBootstrapReadyAfterRenderer() {
         }
         await new Promise(resolve => setTimeout(resolve, 100));
     }
-    console.warn('[Main] Renderer did not reach managed bootstrap readiness before the publication deadline.');
+    console.warn('[Main] Renderer did not reach launcher readiness before the publication deadline.');
 }
 
 function clearMainRendererRecoveryTimers() {
