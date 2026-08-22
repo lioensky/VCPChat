@@ -39,7 +39,7 @@ function errorStageForPayload(payload, versionAccepted, currentStage) {
       ? "topic_metadata"
       : "owner_metadata";
   }
-  if (payload?.type === "SYNC_ENTITY_UPDATE" || payload?.type === "SYNC_ENTITY_DELETE") {
+  if (payload?.type === "SYNC_ENTITY_DELETE") {
     if (payload.dataType === "message") return "messages";
     return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
       ? "topic_metadata"

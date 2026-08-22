@@ -7,7 +7,6 @@ const path = require("path");
 const {
   initDb,
   getDb,
-  getEntityIndex,
   upsertEntityIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
@@ -189,38 +188,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           }
           logger.completePhase(phase);
           return createPhaseAck(payload, { echoFinalIdentity: true });
-        }
-        case "SYNC_ENTITY_UPDATE": {
-          const { id, dataType, hash, ts } = payload;
-          if (
-            typeof id !== "string" ||
-            sanitizeId(id) !== id ||
-            !["agent", "group", "topic", "agent_topic", "group_topic"].includes(dataType) ||
-            typeof hash !== "string" ||
-            !/^[a-f0-9]{64}$/.test(hash) ||
-            !Number.isSafeInteger(ts) ||
-            ts < 0
-          ) {
-            throw Object.assign(new Error("SYNC_ENTITY_UPDATE contains invalid fields"), {
-              code: "SYNC_PROTOCOL_INVALID",
-            });
-          }
-          logger.logOperation("websocket", "entity_update", id, "info", `type=${dataType}`);
-
-          // 旧通知只携带派生哈希，无法更新 CDS 完整数据；中央模式等待
-          // 随后的实体 HTTP 上传或消息 Push，不再双写私有数据库。
-          if (!centralSync) {
-            const existing = getEntityIndex(id, dataType);
-            if (!existing?.file_path) {
-              throw Object.assign(
-                new Error(`Cannot update missing local entity ${dataType}/${id}`),
-                { code: "SYNC_ENTITY_NOT_FOUND" },
-              );
-            }
-            upsertEntityIndex(id, dataType, existing.file_path, hash, ts);
-          }
-
-          return { type: "SYNC_ACK", id };
         }
         case "VERSION_CHECK": {
           const manifest = require("./plugin-manifest.json");
