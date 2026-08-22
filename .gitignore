@@ -77,3 +77,7 @@ loudness_cache.db-shm
 /font-compat-output/
 # Locally generated portable Windows bootstrapper (release artifact, never commit).
 VCPChat-Setup.exe
+
+
+# 独立的 VChat Music Next 音频引擎源码，不由主仓库跟踪
+/vchat_music_next/
