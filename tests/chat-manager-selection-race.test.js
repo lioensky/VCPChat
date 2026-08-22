@@ -174,6 +174,7 @@ function createFixture(options = {}) {
         uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
         modules: {
             messageRenderer,
+            streamManager: options.streamProjection || null,
             itemListManager: {
                 highlightActiveItem() {},
                 refreshUnreadCounts() {},
@@ -252,6 +253,9 @@ function createFixture(options = {}) {
         },
         setPersistedHistory(itemId, requestedTopicId, messages) {
             histories.set(`${itemId}:${requestedTopicId}`, JSON.parse(JSON.stringify(messages)));
+        },
+        setCurrentHistory(messages) {
+            history = messages;
         },
         state: () => ({
             selected,
@@ -700,5 +704,59 @@ test('a history-file sync resolving after dispose cannot mutate history or the D
     const state = fixture.state();
     assert.deepEqual(state.history, beforeDispose.history);
     assert.deepEqual(state.visibleMessageIds, beforeDispose.visibleMessageIds);
+    fixture.dom.window.close();
+});
+
+test('history load reconciles an active stream after replacing the Surface projection', async () => {
+    let reconcileCalls = [];
+    const fixture = createFixture({
+        streamProjection: {
+            async reconcileConversation(identity) {
+                reconcileCalls.push(identity);
+                return [];
+            },
+        },
+    });
+    const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selected;
+
+    assert.equal(reconcileCalls.length, 1);
+    assert.equal(reconcileCalls[0].itemType, 'agent');
+    assert.equal(reconcileCalls[0].itemId, 'agent-a');
+    assert.equal(reconcileCalls[0].topicId, 'topic-a');
+    fixture.dom.window.close();
+});
+
+test('history sync does not delete a terminal message that commits while the file read is in flight', async () => {
+    let active = true;
+    const fixture = createFixture({
+        streamProjection: {
+            getActiveStreamingMessageId: () => active ? 'tool-terminal' : null,
+        },
+    });
+    const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selected;
+
+    fixture.setPersistedHistory('agent-a', 'topic-a', [
+        { id: 'a-message', role: 'assistant', content: 'A', timestamp: 1 },
+    ]);
+    const historyRead = fixture.holdNextHistoryRead();
+    const sync = fixture.chatManager.syncHistoryFromFile('agent-a', 'agent', 'topic-a');
+    await historyRead.started.promise;
+
+    // Simulate the terminal commit arriving after the file read began.
+    active = false;
+    fixture.setCurrentHistory([
+        ...fixture.state().history,
+        { id: 'tool-terminal', role: 'assistant', content: 'tool result', timestamp: 2 },
+    ]);
+    historyRead.release.resolve();
+    await sync;
+
+    assert.ok(fixture.state().history.some(message => message.id === 'tool-terminal'));
     fixture.dom.window.close();
 });

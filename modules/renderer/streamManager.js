@@ -12,6 +12,8 @@ const {
     messageRuntimeKeys, streamingChunkQueues, streamingTimers, accumulatedStreamText,
     streamSegmentStates, activeStreamingMessages, elementContentLengthCache,
 } = runtime;
+// Renderer-local active stream facts. This is not durable history.
+const streamMessageModels = new Map();
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
 
@@ -1604,6 +1606,15 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
     }
 }
 
+function conversationIdentityMatches(context, identity = {}) {
+    if (!context || !identity) return false;
+    const itemType = context.isGroupMessage ? 'group' : 'agent';
+    const itemId = context.isGroupMessage ? context.groupId : context.agentId;
+    return itemType === identity.itemType
+        && itemId === identity.itemId
+        && context.topicId === identity.topicId;
+}
+
 async function startStreamingMessage(message, passedMessageItem = null) {
     if (disposed) return null;
     const messageId = message.id;
@@ -1622,7 +1633,8 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     const cached = getCachedMessageDom(messageId);
     const isCurrentlyThinking = cached?.messageItem?.classList.contains('thinking');
 
-    if ((currentStatus === 'pending' || currentStatus === 'ready') && (isCurrentlyThinking === !!message.isThinking)) {
+    if ((currentStatus === 'pending' || currentStatus === 'ready') && cached
+        && (isCurrentlyThinking === !!message.isThinking)) {
         console.debug(`[StreamManager] Message ${messageId} already initialized (${currentStatus}) with same thinking state, skipping re-init`);
         return cached?.messageItem || null;
     }
@@ -1646,6 +1658,15 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     }
     
     messageContextMap.set(messageId, context);
+    streamMessageModels.set(messageId, {
+        ...message,
+        id: messageId,
+        agentId: context.agentId,
+        groupId: context.groupId,
+        topicId: context.topicId,
+        isGroupMessage: context.isGroupMessage,
+        streamOperationId,
+    });
     
     // 🟢 关键修复：如果消息已经初始化过，不要重新设为 pending，避免阻塞后续 chunk
     if (!currentStatus || currentStatus === 'finalized') {
@@ -2129,6 +2150,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
     messageContextMap.delete(messageId);
     viewContextCache.delete(messageId);
     messageRuntimeKeys.delete(String(messageId));
+    streamMessageModels.delete(messageId);
 
     // 调用方（例如 Flowlock）需要基于真正落盘的完整文本解析最终控制协议。
     return {
@@ -2198,6 +2220,7 @@ async function dispose() {
         refs.transientStreamHistory.dispose?.();
         messageContextMap.clear();
         viewContextCache.clear();
+        streamMessageModels.clear();
     
         activeStreamingMessages.clear();
         messageRuntimeKeys.clear();
@@ -2220,6 +2243,42 @@ function getActiveStreamingMessageId() {
 function getActiveStreamingContext() {
     const messageId = getActiveStreamingMessageId();
     return messageId ? activeStreamingMessages.get(messageId) || null : null;
+}
+
+function snapshotConversation(identity) {
+    if (disposed) return Object.freeze([]);
+    const snapshots = [];
+    for (const [messageId, context] of activeStreamingMessages.entries()) {
+        if (!conversationIdentityMatches(context, identity)) continue;
+        snapshots.push(Object.freeze({
+            conversation: Object.freeze({
+                itemType: context.isGroupMessage ? 'group' : 'agent',
+                itemId: context.isGroupMessage ? context.groupId : context.agentId,
+                topicId: context.topicId,
+            }),
+            message: Object.freeze({ ...(streamMessageModels.get(messageId) || { id: messageId }) }),
+            messageId,
+            streamOperationId: context.streamOperationId || null,
+            context: Object.freeze({ ...context }),
+            phase: messageInitializationStatus.get(messageId) || 'active',
+            accumulatedText: accumulatedStreamText.get(messageId) || '',
+        }));
+    }
+    return Object.freeze(snapshots);
+}
+
+async function reconcileConversation(identity) {
+    if (disposed) return Object.freeze([]);
+    const snapshots = snapshotConversation(identity);
+    for (const snapshot of snapshots) {
+        const context = messageContextMap.get(snapshot.messageId) || snapshot.context;
+        viewContextCache.set(snapshot.messageId, isMessageForCurrentView(context));
+        await startStreamingMessage({ ...snapshot.message, ...context, content: snapshot.message.content || '' });
+        if (isMessageForCurrentView(context)) {
+            renderStreamFrame(snapshot.messageId);
+        }
+    }
+    return snapshots;
 }
 
 function getStreamDiagnostics() {
@@ -2252,6 +2311,8 @@ return Object.freeze({
     isMessageActive,
     getActiveStreamingMessageId,
     getActiveStreamingContext,
+    snapshotConversation,
+    reconcileConversation: (...args) => trackAsyncOperation(reconcileConversation(...args)),
     isMessageInitialized: (messageId) => {
         // Check if message is being tracked by streamManager
         return messageInitializationStatus.has(messageId);

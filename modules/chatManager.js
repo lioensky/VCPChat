@@ -1036,7 +1036,12 @@ export const chatManager = (() => {
         }
 
         if (abortIfStale()) return;
-    
+
+        // Re-project renderer-local active streams after history/DOM replacement.
+        // This never persists partial output; terminal persistence remains coordinator-owned.
+        await streamProjection?.reconcileConversation?.({ itemType, itemId, topicId });
+        if (abortIfStale()) return;
+
         if (itemId && topicId && !(historyResult && historyResult.error)) {
             localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, topicId);
         }
@@ -2270,6 +2275,11 @@ export const chatManager = (() => {
             return;
         }
 
+        // Capture active stream ownership before the async read. A stream may
+        // reach terminal while the read is in flight; that terminal must not
+        // be mistaken for a file-side deletion when the active id disappears.
+        const activeStreamingIdAtRead = streamProjection?.getActiveStreamingMessageId?.() || null;
+
         // 1. Fetch the latest history from the file
         let newHistory;
         if (itemType === 'agent') {
@@ -2293,12 +2303,15 @@ export const chatManager = (() => {
         const oldHistoryMap = new Map(oldHistory.map(msg => [msg.id, msg]));
         const newHistoryMap = new Map(newHistory.map(msg => [msg.id, msg]));
         const activeStreamingId = streamProjection?.getActiveStreamingMessageId?.() || null;
+        const protectedStreamingIds = new Set(
+            [activeStreamingIdAtRead, activeStreamingId].filter(Boolean),
+        );
 
         // --- Perform UI and Memory updates ---
 
         // 2. Handle DELETED and MODIFIED messages
         for (const oldMsg of oldHistory) {
-            if (oldMsg.id === activeStreamingId) {
+            if (protectedStreamingIds.has(oldMsg.id)) {
                 continue; // Protect the currently streaming message
             }
             
@@ -2339,8 +2352,8 @@ export const chatManager = (() => {
         // 4. If messages were added or removed, the order might be wrong. Re-sort.
         // Also ensures the streaming message (if any) is at the very end.
         historyInMem.sort((a, b) => {
-            if (a.id === activeStreamingId) return 1;
-            if (b.id === activeStreamingId) return -1;
+            if (protectedStreamingIds.has(a.id)) return 1;
+            if (protectedStreamingIds.has(b.id)) return -1;
             return a.timestamp - b.timestamp;
         });
 

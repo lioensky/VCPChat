@@ -229,6 +229,47 @@ test('StreamProjection honors an owned view authority and history capability aft
     dom.window.close();
 });
 
+test('active stream waiting for tool result can reconcile after switching away and back', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    let currentTopic = 'topic-a';
+    let history = [];
+    const projection = createStreamProjection();
+    const dependencies = createDependencies(dom, {
+        currentChatHistoryRef: { get: () => history, set: value => { history = [...value]; } },
+        currentTopicIdRef: { get: () => currentTopic },
+        viewAuthority: { isCurrent: context => context?.topicId === currentTopic },
+        renderMessage: async message => {
+            const node = dom.window.document.createElement('article');
+            node.className = 'message-item';
+            node.dataset.messageId = message.id;
+            node.innerHTML = '<div class="md-content"></div>';
+            dom.window.document.getElementById('chat').append(node);
+            return node;
+        },
+        renderPostProcessedHtml: async (content, html) => { content.innerHTML = html; },
+    });
+    projection.attachStreamProjection(dependencies);
+    await projection.startStreamingMessage({ id: 'tool-wait', agentId: 'visible-agent', topicId: 'topic-a', content: '' });
+    projection.appendStreamChunk('tool-wait', { content: 'before tool ' }, { agentId: 'visible-agent', topicId: 'topic-a' });
+    currentTopic = 'topic-b';
+    dom.window.document.getElementById('chat').replaceChildren();
+    history = [];
+    currentTopic = 'topic-a';
+
+    const snapshot = projection.snapshotConversation({ itemType: 'agent', itemId: 'visible-agent', topicId: 'topic-a' });
+    assert.equal(snapshot.length, 1);
+    await projection.reconcileConversation({ itemType: 'agent', itemId: 'visible-agent', topicId: 'topic-a' });
+    projection.appendStreamChunk('tool-wait', { content: 'after tool' }, { agentId: 'visible-agent', topicId: 'topic-a' });
+    await new Promise(resolve => setTimeout(resolve, 80));
+
+    assert.ok(history.some(message => message.id === 'tool-wait'), 'pending assistant must be restored to current history');
+    assert.match(dom.window.document.querySelector('[data-message-id="tool-wait"] .md-content')?.textContent || '', /before tool/);
+    assert.match(dom.window.document.querySelector('[data-message-id="tool-wait"] .md-content')?.textContent || '', /after tool/);
+    await projection.dispose();
+    dom.window.close();
+});
+
 test('StreamProjection rejects chunks and terminals from a different producer operation', async () => {
     const createStreamProjection = await loadFactory();
     const dom = new JSDOM('<!doctype html><div id="chat"><article class="message-item" data-message-id="operation"><div class="md-content"></div></article></div>', { url: 'https://vcpchat.local/' });
