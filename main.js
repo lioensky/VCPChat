@@ -285,6 +285,7 @@ let vcpLogWebSocket;
 let vcpLogReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
+let distributedServerStartPromise = null;
 let chatDataService = null; // Optional VCP-CDS shadow service.
 let appSettingsManager = null;
 let loomManager = null;
@@ -335,7 +336,13 @@ async function publishManagedBootstrapReadyAfterRenderer() {
         !managedBootstrapReadyPublished;
     const nativeLauncherReadyPending =
         nativeLauncherProgressEnabled && !nativeLauncherReadyReported;
-    if ((!managedReadyPending && !nativeLauncherReadyPending) || !mainWindow || mainWindow.isDestroyed()) return;
+    const distributedServerReadyPending =
+        !distributedServerStartPromise && !distributedServer;
+    if (
+        (!managedReadyPending && !nativeLauncherReadyPending && !distributedServerReadyPending) ||
+        !mainWindow ||
+        mainWindow.isDestroyed()
+    ) return;
 
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline && mainWindow && !mainWindow.isDestroyed()) {
@@ -364,6 +371,12 @@ async function publishManagedBootstrapReadyAfterRenderer() {
                     nativeLauncherReadyReported = true;
                     reportLauncherProgress('renderer-ready', 1, '准备完成');
                 }
+                // MobileSync 的首次索引可能包含大量同步 SQLite/哈希工作。
+                // 必须在真实渲染就绪和 Splash 完成信号之后再启动，避免与首屏争抢
+                // Electron 主线程；后续启动由 history_source_state 差异化跳过。
+                setImmediate(() => {
+                    void startDistributedServerAfterRenderer();
+                });
                 return;
             }
         } catch (error) {
@@ -437,6 +450,52 @@ function scheduleMainRendererRecovery(details = {}) {
             scheduleMainRendererRecovery({ reason: 'reload-failed' });
         });
     }, 250);
+}
+
+function startDistributedServerAfterRenderer() {
+    if (distributedServerStartPromise || distributedServer || isFinalizingQuit || app.isQuitting) {
+        return distributedServerStartPromise;
+    }
+
+    distributedServerStartPromise = (async () => {
+        try {
+            const settings = await appSettingsManager?.readSettings();
+            if (!settings?.enableDistributedServer) {
+                console.log('[Main] Distributed server is disabled in settings.');
+                return null;
+            }
+            if (isFinalizingQuit || app.isQuitting || !mainWindow || mainWindow.isDestroyed()) {
+                return null;
+            }
+
+            console.log('[Main] Renderer is ready. Initializing distributed server in the background...');
+            const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
+            const server = new DistributedServer({
+                mainServerUrl: settings.vcpLogUrl,
+                vcpKey: settings.vcpLogKey,
+                serverName: 'VCPChat-Desktop-Client-Distributed-Server',
+                debugMode: true,
+                rendererProcess: mainWindow.webContents,
+                handleMusicControl: musicHandlers.handleMusicControl,
+                handleDiceControl: diceHandlers.handleDiceControl,
+                handleCanvasControl: desktopRemoteHandlers.handleCanvasControl,
+                handleFlowlockControl: desktopRemoteHandlers.handleFlowlockControl,
+                handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl,
+                chatDataService,
+                loomManager,
+                scriptoriumAgentControl
+            });
+            distributedServer = server;
+            await server.initialize();
+            return server;
+        } catch (error) {
+            distributedServer = null;
+            console.error('[Main] Failed to initialize distributed server after renderer readiness:', error);
+            return null;
+        }
+    })();
+
+    return distributedServerStartPromise;
 }
 
 function toggleDevToolsForWindow(focusedWindow) {
@@ -1548,39 +1607,8 @@ if (!gotTheLock) {
             }
         });
 
-        // --- Distributed Server Initialization ---
-        (async () => {
-            try {
-                const settings = await appSettingsManager.readSettings();
-                if (settings.enableDistributedServer) {
-                    console.log('[Main] Distributed server is enabled. Initializing...');
-                    const DistributedServer = require('./VCPDistributedServer/VCPDistributedServer.js');
-                    const config = {
-                        mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
-                        vcpKey: settings.vcpLogKey,
-                        serverName: 'VCPChat-Desktop-Client-Distributed-Server',
-                        debugMode: true, // Or read from settings if you add this option
-                        rendererProcess: mainWindow.webContents, // Pass the renderer process object
-                        handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
-                        handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
-                        handleCanvasControl: desktopRemoteHandlers.handleCanvasControl, // Inject the canvas control handler
-                        handleFlowlockControl: desktopRemoteHandlers.handleFlowlockControl, // Inject the flowlock control handler
-                        handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl, // Inject the desktop remote control handler
-                        chatDataService, // Share the Electron-owned VCP-CDS facade with direct plugins.
-                        loomManager, // Share the Electron-owned VCP Loom manager with direct plugins.
-                        scriptoriumAgentControl
-                    };
-                    distributedServer = new DistributedServer(config);
-                    await distributedServer.initialize();
-                } else {
-                    console.log('[Main] Distributed server is disabled in settings.');
-                }
-            } catch (error) {
-                distributedServer = null;
-                console.error('[Main] Failed to read settings or initialize distributed server:', error);
-            }
-        })();
-        // --- End of Distributed Server Initialization ---
+        // 分布式服务由渲染器正式就绪点触发；不要在首屏关键路径中启动
+        // VCPMobileSync 索引、插件发现和网络监听。
 
         app.on('activate', () => {
             // On macOS, re-show the main window when the dock icon is clicked.

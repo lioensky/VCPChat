@@ -11,6 +11,7 @@ const {
   upsertEntityIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
+  isHistorySourceCurrent,
   cleanupOldDeletedRecords,
 } = require("./core/db");
 const {
@@ -485,6 +486,9 @@ async function reconcileLocalFiles(appDataPath) {
   let groupCount = 0;
   let topicCount = 0;
   let messageCount = 0;
+  let historyChangedCount = 0;
+  let historySkippedCount = 0;
+  let legacyAttachmentWarningCount = 0;
 
   // 1. 扫描附件
   let attachmentFiles = [];
@@ -528,13 +532,32 @@ async function reconcileLocalFiles(appDataPath) {
   groupCount = groupResult.count;
   topicCount += groupResult.topicCount;
 
-  // 4. 扫描历史记录
-  messageCount = await scanHistory(userDataDir, db, logger);
+  // 4. 增量扫描历史记录。未变化文件只做 stat，不读取和解析正文。
+  const historyResult = await scanHistory(userDataDir, db, logger);
+  messageCount = historyResult.messageCount;
+  historyChangedCount = historyResult.changedCount;
+  historySkippedCount = historyResult.skippedCount;
+  legacyAttachmentWarningCount = historyResult.warningCount;
 
   // 5. 计算层级聚合指纹
   const aggregatedCount = computeAggregatedHashes(db, logger);
 
-  logger.logOperation("reconcile", "summary", "reconcile", "success", `agents=${agentCount} groups=${groupCount} topics=${topicCount} messages=${messageCount} attachments=${attachmentCount} aggregated=${aggregatedCount}`);
+  if (legacyAttachmentWarningCount > 0) {
+    logger.logOperation(
+      "reconcile",
+      "legacy_attachment_summary",
+      "history",
+      "warn",
+      `attachments=${legacyAttachmentWarningCount} topics=${historyResult.warningTopicCount}; 旧附件缺少有效或一致的 SHA-256，同步投影已忽略，原始 history.json 未修改`,
+    );
+  }
+  logger.logOperation(
+    "reconcile",
+    "summary",
+    "reconcile",
+    "success",
+    `agents=${agentCount} groups=${groupCount} topics=${topicCount} changedHistories=${historyChangedCount} skippedHistories=${historySkippedCount} indexedMessages=${messageCount} attachments=${attachmentCount} aggregated=${aggregatedCount}`,
+  );
   logger.completePhase("reconcile");
   logger.logInfo("reconcile", "索引扫描完成。");
   logger.endSession();
@@ -652,15 +675,25 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
 }
 
 /**
- * 扫描历史记录
+ * 增量扫描历史记录。
+ *
+ * history_source_state 保存最近一次成功摄取的 mtime + size。二者未变化时
+ * 不再读取 history.json；变化文件只读取一次，并把快照传给摄取函数复用。
  */
 async function scanHistory(userDataDir, db, logger) {
-  let totalMessages = 0;
+  const result = {
+    messageCount: 0,
+    changedCount: 0,
+    skippedCount: 0,
+    warningCount: 0,
+    warningTopicCount: 0,
+  };
+  let visitedCount = 0;
   let entries;
   try {
     entries = await fs.readdir(userDataDir, { withFileTypes: true });
   } catch (error) {
-    if (error.code === "ENOENT") return 0;
+    if (error.code === "ENOENT") return result;
     throw error;
   }
   for (const entry of entries) {
@@ -680,21 +713,49 @@ async function scanHistory(userDataDir, db, logger) {
       const topicId = topicEntry.name;
       const historyPath = path.join(topicsDir, topicId, "history.json");
       try {
+        const sourceStats = await fs.stat(historyPath);
+        if (!sourceStats.isFile()) continue;
+        if (
+          isHistorySourceCurrent(
+            topicId,
+            historyPath,
+            sourceStats.size,
+            sourceStats.mtimeMs,
+          )
+        ) {
+          result.skippedCount += 1;
+          continue;
+        }
+
         const { history } = await readHistoryStrict(historyPath);
-        await ingestHistoryToDb(historyPath, topicId, "reconcile");
-        totalMessages += history.length;
+        const ingestResult = await ingestHistoryToDb(
+          historyPath,
+          topicId,
+          "reconcile",
+          { history, sourceStats },
+        );
+        result.changedCount += 1;
+        result.messageCount += ingestResult.messageCount;
+        result.warningCount += ingestResult.warningCount;
+        if (ingestResult.warningCount > 0) {
+          result.warningTopicCount += 1;
+        }
       } catch (error) {
-        // 条目级降级：孤儿话题（磁盘有历史但 config 无此话题）、损坏的
-        // history.json 等单话题故障不应中止整个 reconcile。ingest 路径已
-        // 在 message.js 中 markHistoryTopicUnhealthy；读取阶段的失败在此补标，
-        // 使该话题进入 per-topic 哨兵隔离而非整批爆炸。
+        // 条目级降级：孤儿话题、损坏 JSON 等单话题故障不应中止整批。
+        // 失败时不更新 history_source_state，保证后续启动仍会重试。
         markHistoryTopicUnhealthy(topicId, error);
         logger.logOperation("reconcile", "history", topicId, "error", error.message);
-        continue;
+      } finally {
+        visitedCount += 1;
+        // better-sqlite3、JSON 规范化和哈希均运行在 Electron 主线程。
+        // 周期性让出事件循环，避免首次全量建表长时间饿死窗口消息。
+        if (visitedCount % 25 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
       }
     }
   }
-  return totalMessages;
+  return result;
 }
 
 /**
