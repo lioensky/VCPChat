@@ -34,7 +34,6 @@ are not all release entry points.
 | --- | --- | --- | --- |
 | Tauri portable bootstrap | `npm run installer:portable` | `VCPChat-Setup.exe` at repository root | `npm run check:release-surface` |
 | Electron unpacked package | `npm run pack` | `dist/` | `npm run test:packed-install` |
-| Electron installer | `npm run dist` | `dist/` | `npm run verify:runtime-closure` |
 | Offline Web Awesome closure | `npm run pack:check` | `vendor/webawesome-runtime/` | `npm run pack:check` |
 
 Build directories, `node_modules`, user data, logs, runtime databases, and local
