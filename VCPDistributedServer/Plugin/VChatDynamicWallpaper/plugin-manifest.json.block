@@ -1,0 +1,16 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "VChatDynamicWallpaper",
+  "version": "1.1.0",
+  "displayName": "VChat 动态壁纸",
+  "description": "为 VChat 主聊天窗口提供文件夹视频壁纸、紧凑播放控制与独立显隐设置。",
+  "author": "辉宝",
+  "pluginType": "renderer",
+  "frontend": {
+    "style": "plugin.css",
+    "script": "plugin.js"
+  },
+  "capabilities": {
+    "invocationCommands": []
+  }
+}
