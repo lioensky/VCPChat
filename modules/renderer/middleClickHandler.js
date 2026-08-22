@@ -1,7 +1,12 @@
 // modules/renderer/middleClickHandler.js
 
+/** Creates one middle-click interaction owner for one MessageRenderer instance. */
+export function createMiddleClickHandler() {
 let mainRendererReferences = {};
 let callbacks = {};
+let unloadHandler = null;
+let ownerDocument = null;
+let ownerWindow = null;
 
 // --- State Variables ---
 let middleClickGrid = null;
@@ -189,9 +194,9 @@ function canPerformMiddleClickAction(message, messageItem) {
 
     // 检查消息是否在streamManager中被标记为已完成
     let isStreamManagerFinalized = false;
-    if (window.streamManager && typeof window.streamManager.isMessageInitialized === 'function') {
+    if (callbacks.streamManager && typeof callbacks.streamManager.isMessageInitialized === 'function') {
         // 如果消息不在streamManager中跟踪，说明已经完成
-        isStreamManagerFinalized = !window.streamManager.isMessageInitialized(messageId);
+        isStreamManagerFinalized = !callbacks.streamManager.isMessageInitialized(messageId);
     }
 
     // 检查消息是否有完成理由（表示已完成）
@@ -307,18 +312,18 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
             }
 
             cleanup();
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.removeEventListener('mouseleave', handleMouseLeave);
-            document.removeEventListener('mousemove', handleMouseMove);
+            ownerDocument.removeEventListener('mouseup', handleMouseUp);
+            ownerDocument.removeEventListener('mouseleave', handleMouseLeave);
+            ownerDocument.removeEventListener('mousemove', handleMouseMove);
         }
     };
 
     const handleMouseLeave = () => {
         console.log('[AdvancedMiddleClick] Mouse left element - cancelling');
         cleanup();
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.removeEventListener('mouseleave', handleMouseLeave);
-        document.removeEventListener('mousemove', handleMouseMove);
+        ownerDocument.removeEventListener('mouseup', handleMouseUp);
+        ownerDocument.removeEventListener('mouseleave', handleMouseLeave);
+        ownerDocument.removeEventListener('mousemove', handleMouseMove);
     };
 
     const handleMouseMove = (e) => {
@@ -334,7 +339,7 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
             console.log(`[AdvancedMiddleClick] Showing grid after ${delay}ms delay`);
             isAdvancedModeActive = true;
             showMiddleClickGrid(event.clientX, event.clientY, messageItem, message);
-            document.addEventListener('mousemove', handleMouseMove);
+            ownerDocument.addEventListener('mousemove', handleMouseMove);
 
             updateGridSelection(event.clientX, event.clientY);
 
@@ -346,8 +351,8 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
     }, delay);
 
     // Add immediate mouseup listener for quick release
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('mouseleave', handleMouseLeave);
+    ownerDocument.addEventListener('mouseup', handleMouseUp);
+    ownerDocument.addEventListener('mouseleave', handleMouseLeave);
 
     // Store the timer for potential cleanup
     activeMiddleClickTimers.set(timerId, {
@@ -355,6 +360,7 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
         handleMouseUp,
         handleMouseLeave,
         handleMouseMove,
+        ownerDocument,
         timeoutId
     });
 }
@@ -412,32 +418,33 @@ function startMiddleClickTimer(event, messageItem, message, quickAction) {
             }
 
             cleanup();
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.removeEventListener('mouseleave', handleMouseLeave);
+            ownerDocument.removeEventListener('mouseup', handleMouseUp);
+            ownerDocument.removeEventListener('mouseleave', handleMouseLeave);
         }
     };
 
     const handleMouseLeave = () => {
         console.log('[MiddleClick] Cancelled - mouse left element');
         cleanup();
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.removeEventListener('mouseleave', handleMouseLeave);
+        ownerDocument.removeEventListener('mouseup', handleMouseUp);
+        ownerDocument.removeEventListener('mouseleave', handleMouseLeave);
     };
 
     // Add event listeners to document to catch mouseup even if mouse moves away
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('mouseleave', handleMouseLeave);
+    ownerDocument.addEventListener('mouseup', handleMouseUp);
+    ownerDocument.addEventListener('mouseleave', handleMouseLeave);
 
     // Store the timer for potential cleanup
     activeMiddleClickTimers.set(timerId, {
         cleanup,
         handleMouseUp,
         handleMouseLeave,
+        ownerDocument,
         timeoutId: setTimeout(() => {
             console.log('[MiddleClick] Cancelled - 1 second timeout reached');
             cleanup();
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.removeEventListener('mouseleave', handleMouseLeave);
+            ownerDocument.removeEventListener('mouseup', handleMouseUp);
+            ownerDocument.removeEventListener('mouseleave', handleMouseLeave);
         }, 1000)
     });
 }
@@ -567,10 +574,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
 
                         // Now proceed with edit mode
                         try {
-                            if (typeof window.toggleEditMode === 'function') {
-                                window.toggleEditMode(messageItem, message);
-                            } else if (window.messageContextMenu && typeof window.messageContextMenu.toggleEditMode === 'function') {
-                                window.messageContextMenu.toggleEditMode(messageItem, message);
+                            if (typeof callbacks.toggleEditMode === 'function') {
+                                callbacks.toggleEditMode(messageItem, message);
                             } else {
                                 uiHelper.showToastNotification("编辑功能暂时不可用", "warning");
                             }
@@ -633,8 +638,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
 
         case 'forward':
             // 转发消息 - 执行与右键菜单完全相同的功能
-            if (typeof window.showForwardModal === 'function') {
-                window.showForwardModal(message);
+            if (typeof callbacks.showForwardModal === 'function') {
+                callbacks.showForwardModal(message);
                 uiHelper.showToastNotification("已打开转发对话框", "success");
             } else {
                 uiHelper.showToastNotification("转发功能暂时不可用", "warning");
@@ -645,8 +650,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
             // 朗读气泡
             if (message.role === 'assistant') {
                 // Ensure audio context is activated
-                if (typeof window.ensureAudioContext === 'function') {
-                    window.ensureAudioContext();
+                if (typeof callbacks.ensureAudioContext === 'function') {
+                    callbacks.ensureAudioContext();
                 }
 
                 const agentId = message.agentId || currentSelectedItemVal.id;
@@ -779,8 +784,8 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                     }
                 } else {
                     // 非群聊重新回复逻辑（原有逻辑）
-                    if (window.messageContextMenu && typeof window.messageContextMenu.handleRegenerateResponse === 'function') {
-                        window.messageContextMenu.handleRegenerateResponse(message);
+                    if (typeof callbacks.handleRegenerateResponse === 'function') {
+                        callbacks.handleRegenerateResponse(message);
                         uiHelper.showToastNotification("已开始重新生成回复", "success");
                     } else {
                         uiHelper.showToastNotification("重新回复功能暂时不可用", "warning");
@@ -1096,6 +1101,9 @@ function cleanupAllMiddleClickTimers() {
         if (timerData.timeoutId) {
             clearTimeout(timerData.timeoutId);
         }
+        timerData.ownerDocument?.removeEventListener('mouseup', timerData.handleMouseUp);
+        timerData.ownerDocument?.removeEventListener('mouseleave', timerData.handleMouseLeave);
+        timerData.ownerDocument?.removeEventListener('mousemove', timerData.handleMouseMove);
         if (timerData.cleanup) {
             timerData.cleanup();
         }
@@ -1113,8 +1121,7 @@ function cleanupAllMiddleClickTimers() {
     freezeGridCancellation = false;
 
     // 恢复原始的 showToastNotification 函数
-    if (mainRendererReferences.uiHelper.showToastNotification &&
-        mainRendererReferences.uiHelper.showToastNotification.tempShowToast) {
+    if (mainRendererReferences.uiHelper?.showToastNotification?.tempShowToast) {
         mainRendererReferences.uiHelper.showToastNotification =
             mainRendererReferences.uiHelper.showToastNotification.originalShowToast;
     }
@@ -1128,34 +1135,48 @@ function getMiddleClickState() {
         advancedModeActive: isAdvancedModeActive,
         isDeletingMessage: isDeletingMessage,
         freezeGridCancellation: freezeGridCancellation,
-        toastFunctionModified: !!(mainRendererReferences.uiHelper.showToastNotification &&
-                                 mainRendererReferences.uiHelper.showToastNotification.tempShowToast)
+        toastFunctionModified: !!mainRendererReferences.uiHelper?.showToastNotification?.tempShowToast
     };
 }
 
 function initialize(refs, cb) {
+    if (unloadHandler) ownerWindow?.removeEventListener('beforeunload', unloadHandler);
     mainRendererReferences = refs;
     callbacks = cb;
+    ownerDocument = refs.chatMessagesDiv?.ownerDocument || document;
+    ownerWindow = ownerDocument.defaultView || window;
     // Add cleanup on page unload
-    window.addEventListener('beforeunload', () => {
+    unloadHandler = () => {
         cleanupAllMiddleClickTimers();
         isDeletingMessage = false;
         freezeGridCancellation = false;
 
         // 恢复原始的 showToastNotification 函数
-        if (mainRendererReferences.uiHelper.showToastNotification &&
-            mainRendererReferences.uiHelper.showToastNotification.tempShowToast) {
+        if (mainRendererReferences.uiHelper?.showToastNotification?.tempShowToast) {
             mainRendererReferences.uiHelper.showToastNotification =
                 mainRendererReferences.uiHelper.showToastNotification.originalShowToast;
         }
-    });
+    };
+    ownerWindow.addEventListener('beforeunload', unloadHandler);
 }
 
-export {
+function dispose() {
+    if (unloadHandler) ownerWindow?.removeEventListener('beforeunload', unloadHandler);
+    unloadHandler = null;
+    cleanupAllMiddleClickTimers();
+    mainRendererReferences = {};
+    callbacks = {};
+    ownerDocument = null;
+    ownerWindow = null;
+}
+
+return Object.freeze({
     initialize,
     startMiddleClickTimer,
     startAdvancedMiddleClickTimer,
     cleanupAllMiddleClickTimers,
     showTestMiddleClickGrid,
-    getMiddleClickState
-};
+    getMiddleClickState,
+    dispose,
+});
+}

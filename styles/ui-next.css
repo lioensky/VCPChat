@@ -1307,3 +1307,11 @@ body.light-theme .next-ui-nova-panel::before {
             drop-shadow(0 0 4px var(--next-empty-flow-glow-soft));
     }
 }
+html .vcp-standalone-chat { display: flex; flex-direction: column; min-height: 100%; padding: 24px; gap: 16px; }
+html .vcp-standalone-chat > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+html .vcp-standalone-chat h1 { margin: 0; }
+html .vcp-standalone-chat__status { margin: 4px 0 0; opacity: .7; }
+html .vcp-standalone-chat__messages { flex: 1; min-height: 240px; overflow: auto; }
+html .vcp-interactive-chat__composer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; }
+html .vcp-interactive-chat__composer textarea { min-width: 0; resize: vertical; }
+html .vcp-interactive-chat__composer [role="status"] { grid-column: 1 / -1; margin: 0; min-height: 1.25em; }

@@ -148,4 +148,4 @@ npm run check:ui-system
 
 真实 Electron 验证记录与剩余矩阵见 [新版 UI Electron QA 矩阵](./ui-system-qa-matrix.md)。
 
-应用页与全局设置迁移见 [VCPChat 应用页面与全局设置 Web Awesome 全量重构计划](./ui-applications-webawesome-migration-plan.md)。
+应用页整页 Web Awesome 迁移已经停止；历史方案见 [归档路线](./archive/2026-08-chat-kernel-and-ui-roadmaps/ui-applications-webawesome-migration-plan.md)。未来只按真实业务需求在独立 PR 中同时引入页面、runtime、consumer 与测试。

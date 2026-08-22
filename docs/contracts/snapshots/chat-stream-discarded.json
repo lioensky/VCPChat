@@ -1,0 +1,22 @@
+{
+  "modelVisible": [
+    { "role": "user", "content": "dispose the reply" },
+    { "role": "assistant", "content": "partial", "terminal": "discarded" }
+  ],
+  "chatVisible": {
+    "role": "assistant",
+    "status": "discarded",
+    "content": "partial"
+  },
+  "durable": {
+    "conversationKey": "snapshot-discarded-conversation",
+    "terminal": "discarded",
+    "text": "partial"
+  },
+  "projection": {
+    "statuses": ["streaming", "discarded"],
+    "chunkCount": 1,
+    "text": "partial"
+  },
+  "wire": ["chunk:partial", "discarded"]
+}

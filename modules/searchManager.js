@@ -9,6 +9,7 @@ const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
 const searchManager = {
     // --- Properties ---
     electronAPI: null,
+    chatRepository: null,
     uiHelper: null,
     chatManager: null,
     currentSelectedItemRef: null,
@@ -29,6 +30,8 @@ const searchManager = {
     init(dependencies) {
         console.log('[SearchManager] Initializing...');
         this.electronAPI = dependencies.electronAPI;
+        this.chatRepository = dependencies.chatRepository || null;
+        if (!this.chatRepository) throw new Error('SearchManager requires ChatRepository');
         this.uiHelper = dependencies.uiHelper;
         this.chatManager = dependencies.modules.chatManager;
         this.currentSelectedItemRef = dependencies.refs.currentSelectedItemRef;
@@ -315,9 +318,7 @@ const searchManager = {
 
             const historyReadPromises = topicsToFetch.map(info => {
                 const { itemType, itemId, topicId } = info.context;
-                const promise = itemType === 'agent'
-                    ? this.electronAPI.getChatHistory(itemId, topicId)
-                    : this.electronAPI.getGroupChatHistory(itemId, topicId);
+                const promise = this.chatRepository.getHistory(itemId, itemType, topicId);
 
                 return promise.then(history => {
                     if (history && !history.error) {

@@ -1,5 +1,7 @@
 # Next UI 与 Web Awesome 低侵入建设路线
 
+> 归档说明（2026-08-21）：并行 presentation 建设阶段已经结束。当前产品拓扑见 `../../next-ui-current-state.md`，后续顺序见 `../../next-ui-development-roadmap.md`。
+
 > 状态：历史建设方案。当前 Web Awesome 已固定为 VCPUI 背后的离线可替换内核；真实完成度和后续减法分别见 [`next-ui-current-state.md`](./next-ui-current-state.md) 与 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
 
 ## 目标

@@ -1,7 +1,20 @@
 // modules/renderer/messageContextMenu.js
 
+/** Creates one context-menu state owner for one MessageRenderer instance. */
+export function createMessageContextMenu() {
 let mainRefs = {};
 let contextMenuDependencies = {};
+let ownerDocument = null;
+let ownerWindow = null;
+
+async function cancelOwnedStream(messageId, reason) {
+    const outcome = await contextMenuDependencies.cancelStream?.(messageId, reason);
+    if (!outcome) {
+        contextMenuDependencies.discardStreamingMessage?.(messageId);
+        await contextMenuDependencies.removeMessageById?.(messageId, true);
+    }
+    return outcome;
+}
 
 /**
  * Initializes the context menu module with necessary references and dependencies.
@@ -9,16 +22,18 @@ let contextMenuDependencies = {};
  * @param {object} dependencies - Functions from other modules (e.g., from messageRenderer).
  */
 function initializeContextMenu(refs, dependencies) {
+    ownerDocument?.removeEventListener('click', closeContextMenuOnClickOutside, true);
     mainRefs = refs;
     contextMenuDependencies = dependencies;
+    ownerDocument = refs.chatMessagesDiv?.ownerDocument || document;
+    ownerWindow = ownerDocument.defaultView || window;
 
     // 防止重复初始化时叠加全局点击监听，造成右键菜单关闭逻辑重复触发
-    document.removeEventListener('click', closeContextMenuOnClickOutside, true);
-    document.addEventListener('click', closeContextMenuOnClickOutside, true);
+    ownerDocument.addEventListener('click', closeContextMenuOnClickOutside, true);
 }
 
 function closeContextMenu() {
-    const existingMenu = document.getElementById('chatContextMenu');
+    const existingMenu = ownerDocument?.getElementById('chatContextMenu');
     if (existingMenu) {
         existingMenu.remove();
     }
@@ -26,16 +41,16 @@ function closeContextMenu() {
 
 // Separate closer for topic context menu to avoid interference
 function closeTopicContextMenu() {
-    const existingMenu = document.getElementById('topicContextMenu');
+    const existingMenu = ownerDocument?.getElementById('topicContextMenu');
     if (existingMenu) existingMenu.remove();
 }
 
 function closeContextMenuOnClickOutside(event) {
-    const menu = document.getElementById('chatContextMenu');
+    const menu = ownerDocument?.getElementById('chatContextMenu');
     if (menu && !menu.contains(event.target)) {
         closeContextMenu();
     }
-    const topicMenu = document.getElementById('topicContextMenu');
+    const topicMenu = ownerDocument?.getElementById('topicContextMenu');
     if (topicMenu && !topicMenu.contains(event.target)) {
         closeTopicContextMenu();
     }
@@ -50,7 +65,7 @@ function showContextMenu(event, messageItem, message) {
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
 
-    const menu = document.createElement('div');
+    const menu = ownerDocument.createElement('div');
     menu.id = 'chatContextMenu';
     menu.classList.add('context-menu');
 
@@ -58,7 +73,7 @@ function showContextMenu(event, messageItem, message) {
     const isError = message.finishReason === 'error';
 
     if (isThinkingOrStreaming) {
-        const interruptOption = document.createElement('div');
+        const interruptOption = ownerDocument.createElement('div');
         interruptOption.classList.add('context-menu-item', 'danger-item');
         interruptOption.innerHTML = `<i class="fas fa-stop-circle"></i> 中止回复`;
         interruptOption.onclick = async () => {
@@ -78,9 +93,7 @@ function showContextMenu(event, messageItem, message) {
                     } else {
                         uiHelper.showToastNotification(`群聊中止失败: ${result.error}`, "error");
                         // 作为后备，在前端直接停止渲染
-                        if (contextMenuDependencies.finalizeStreamedMessage) {
-                            contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
-                        }
+                        await cancelOwnedStream(activeMessageId, result.error || 'group-interrupt-failed');
                     }
                 } else {
                     console.error("[ContextMenu] electronAPI.interruptGroupRequest is not available.");
@@ -98,9 +111,7 @@ function showContextMenu(event, messageItem, message) {
                         uiHelper.showToastNotification(`中止失败: ${result.error}`, "error");
                         
                         // 中止失败时手动finalize消息
-                        if (contextMenuDependencies.finalizeStreamedMessage) {
-                            contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
-                        }
+                        await cancelOwnedStream(activeMessageId, result.error || 'agent-interrupt-failed');
                         
                         // Flowlock 不在此处直接恢复。中止/错误后的重试由对应 Agent Session
                         // 基于 messageId/context 的最终事件统一调度，避免读取其他 Agent 的输入框。
@@ -108,9 +119,7 @@ function showContextMenu(event, messageItem, message) {
                 } else {
                     console.error("[ContextMenu] Interrupt handler not available. Manually cancelling.");
                     uiHelper.showToastNotification("无法发送中止信号，已在本地取消。", "warning");
-                    if (contextMenuDependencies.finalizeStreamedMessage) {
-                        contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
-                    }
+                    await cancelOwnedStream(activeMessageId, 'interrupt-handler-unavailable');
                 }
             }
         };
@@ -123,7 +132,7 @@ function showContextMenu(event, messageItem, message) {
         const textarea = isEditing ? messageItem.querySelector('.message-edit-textarea') : null;
 
         if (!isEditing) {
-            const editOption = document.createElement('div');
+            const editOption = ownerDocument.createElement('div');
             editOption.classList.add('context-menu-item');
             editOption.innerHTML = `<i class="fas fa-edit"></i> 编辑消息`;
             editOption.onclick = () => {
@@ -133,7 +142,7 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(editOption);
         }
 
-        const copyOption = document.createElement('div');
+        const copyOption = ownerDocument.createElement('div');
         copyOption.classList.add('context-menu-item');
         copyOption.innerHTML = `<i class="fas fa-copy"></i> 复制文本`;
         copyOption.onclick = () => {
@@ -168,15 +177,15 @@ function showContextMenu(event, messageItem, message) {
         menu.appendChild(copyOption);
 
         if (isEditing && textarea) {
-            const cutOption = document.createElement('div');
+            const cutOption = ownerDocument.createElement('div');
             cutOption.classList.add('context-menu-item');
             cutOption.innerHTML = `<i class="fas fa-cut"></i> 剪切文本`;
             cutOption.onclick = () => {
-                textarea.focus(); document.execCommand('cut'); closeContextMenu();
+                textarea.focus(); ownerDocument.execCommand('cut'); closeContextMenu();
             };
             menu.appendChild(cutOption);
 
-            const pasteOption = document.createElement('div');
+            const pasteOption = ownerDocument.createElement('div');
             pasteOption.classList.add('context-menu-item');
             pasteOption.innerHTML = `<i class="fas fa-paste"></i> 粘贴文本`;
             pasteOption.onclick = async () => {
@@ -196,7 +205,7 @@ function showContextMenu(event, messageItem, message) {
         }
 
         if (currentSelectedItemVal.type === 'agent' || currentSelectedItemVal.type === 'group') {
-            const createBranchOption = document.createElement('div');
+            const createBranchOption = ownerDocument.createElement('div');
             createBranchOption.classList.add('context-menu-item');
             createBranchOption.innerHTML = `<i class="fas fa-code-branch"></i> 创建分支`;
             createBranchOption.onclick = () => {
@@ -208,7 +217,7 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(createBranchOption);
         }
 
-        const forwardOption = document.createElement('div');
+        const forwardOption = ownerDocument.createElement('div');
         forwardOption.classList.add('context-menu-item');
         forwardOption.innerHTML = `<i class="fas fa-share"></i> 转发消息`;
         forwardOption.onclick = () => {
@@ -221,13 +230,13 @@ function showContextMenu(event, messageItem, message) {
 
         // Add "Read Aloud" option for assistant messages
         if (message.role === 'assistant') {
-            const readAloudOption = document.createElement('div');
+            const readAloudOption = ownerDocument.createElement('div');
             readAloudOption.classList.add('context-menu-item', 'context-menu-item-speak');
             readAloudOption.innerHTML = `<i class="fas fa-volume-up"></i> 朗读气泡`;
             readAloudOption.onclick = async () => {
                 // **关键修复：在发送请求前，确保音频上下文已激活**
-                if (typeof window.ensureAudioContext === 'function') {
-                    window.ensureAudioContext();
+                if (typeof contextMenuDependencies.ensureAudioContext === 'function') {
+                    contextMenuDependencies.ensureAudioContext();
                 }
 
                 const agentId = message.agentId || currentSelectedItemVal.id;
@@ -281,7 +290,7 @@ function showContextMenu(event, messageItem, message) {
             menu.appendChild(readAloudOption);
         }
 
-        const readModeOption = document.createElement('div');
+        const readModeOption = ownerDocument.createElement('div');
         readModeOption.classList.add('context-menu-item', 'info-item');
         readModeOption.innerHTML = `<i class="fas fa-book-reader"></i> 阅读模式`;
         readModeOption.onclick = async () => { // Make it async
@@ -311,7 +320,7 @@ function showContextMenu(event, messageItem, message) {
                     const contentString = (typeof rawContent === 'string') ? rawContent : (rawContent?.text || '');
                     
                     const windowTitle = `阅读: ${message.id.substring(0, 10)}...`;
-                    const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+                    const currentTheme = ownerDocument.body.classList.contains('light-theme') ? 'light' : 'dark';
                     
                     if (electronAPI && typeof electronAPI.openTextInNewWindow === 'function') {
                         electronAPI.openTextInNewWindow(contentString, windowTitle, currentTheme);
@@ -329,7 +338,7 @@ function showContextMenu(event, messageItem, message) {
         };
         menu.appendChild(readModeOption);
 
-        const deleteOption = document.createElement('div');
+        const deleteOption = ownerDocument.createElement('div');
         deleteOption.classList.add('context-menu-item', 'danger-item');
         deleteOption.innerHTML = `<i class="fas fa-trash-alt"></i> 删除消息`;
         deleteOption.onclick = async () => {
@@ -350,7 +359,7 @@ function showContextMenu(event, messageItem, message) {
         
         // Regenerate option should be here to maintain order
         if (message.role === 'assistant' && !message.isGroupMessage && currentSelectedItemVal.type === 'agent') {
-            const regenerateOption = document.createElement('div');
+            const regenerateOption = ownerDocument.createElement('div');
             regenerateOption.classList.add('context-menu-item', 'regenerate-text');
             regenerateOption.innerHTML = `<i class="fas fa-sync-alt"></i> 重新回复`;
             regenerateOption.onclick = () => {
@@ -362,7 +371,7 @@ function showContextMenu(event, messageItem, message) {
         
         // 新增：群聊中的“重新回复”功能
         if (message.role === 'assistant' && message.isGroupMessage) {
-            const redoGroupOption = document.createElement('div');
+            const redoGroupOption = ownerDocument.createElement('div');
             redoGroupOption.classList.add('context-menu-item', 'regenerate-text');
             redoGroupOption.innerHTML = `<i class="fas fa-sync-alt"></i> 重新回复`;
             redoGroupOption.onclick = () => {
@@ -386,12 +395,12 @@ function showContextMenu(event, messageItem, message) {
 
     menu.style.visibility = 'hidden';
     menu.style.position = 'absolute';
-    document.body.appendChild(menu);
+    ownerDocument.body.appendChild(menu);
 
     const menuWidth = menu.offsetWidth;
     const menuHeight = menu.offsetHeight;
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
+    const windowWidth = ownerWindow.innerWidth;
+    const windowHeight = ownerWindow.innerHeight;
 
     let top = event.clientY;
     let left = event.clientX;
@@ -467,7 +476,7 @@ function toggleEditMode(messageItem, message) {
 
         messageItem.classList.add('message-item-editing');
 
-        const textarea = document.createElement('textarea');
+        const textarea = ownerDocument.createElement('textarea');
         textarea.classList.add('message-edit-textarea');
         
         let textForEditing = "";
@@ -482,10 +491,10 @@ function toggleEditMode(messageItem, message) {
         textarea.style.minHeight = `${Math.max(originalContentHeight, 50)}px`;
         textarea.style.width = '100%';
 
-        const controlsDiv = document.createElement('div');
+        const controlsDiv = ownerDocument.createElement('div');
         controlsDiv.classList.add('message-edit-controls');
 
-        const saveButton = document.createElement('button');
+        const saveButton = ownerDocument.createElement('button');
         saveButton.innerHTML = `<i class="fas fa-save"></i> 保存`;
         saveButton.onclick = async () => {
             // 🔧 关键修复：添加防御性编程和错误处理
@@ -543,17 +552,13 @@ function toggleEditMode(messageItem, message) {
 
             try {
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
-                    let saveResult;
-                    if (currentSelectedItemVal.type === 'agent') {
-                        saveResult = await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                    } else if (currentSelectedItemVal.type === 'group' && electronAPI.saveGroupChatHistory) {
-                        saveResult = await electronAPI.saveGroupChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
-                    }
-                    
-                    // 🔧 检查保存结果
-                    if (saveResult && !saveResult.success) {
-                        throw new Error(saveResult.error || '保存失败');
-                    }
+                    if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for message edits');
+                    await mainRefs.historyMutationAuthority.replace({
+                        itemId: currentSelectedItemVal.id,
+                        itemType: currentSelectedItemVal.type,
+                        topicId: currentTopicIdVal,
+                        category: 'message-edit',
+                    }, currentChatHistoryArray);
                 }
             } catch (error) {
                 console.error('[EditMode] Save failed, rolling back:', error);
@@ -614,7 +619,7 @@ function toggleEditMode(messageItem, message) {
             toggleEditMode(messageItem, message);
         };
 
-        const cancelButton = document.createElement('button');
+        const cancelButton = ownerDocument.createElement('button');
         cancelButton.innerHTML = `<i class="fas fa-times"></i> 取消`;
         cancelButton.onclick = () => {
              toggleEditMode(messageItem, message);
@@ -663,6 +668,8 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
     const globalSettingsVal = mainRefs.globalSettingsRef.get();
+    let streamingRequested = false;
+    let streamContext = null;
 
     if (!currentSelectedItemVal.id || currentSelectedItemVal.type !== 'agent' || !currentTopicIdVal || !originalAssistantMessage || originalAssistantMessage.role !== 'assistant') {
         uiHelper.showToastNotification("只能为 Agent 的回复进行重新生成。", "warning");
@@ -681,7 +688,13 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
     if (currentSelectedItemVal.id && currentTopicIdVal) {
         try {
-            await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+            if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for regeneration');
+            await mainRefs.historyMutationAuthority.replace({
+                itemId: currentSelectedItemVal.id,
+                itemType: currentSelectedItemVal.type,
+                topicId: currentTopicIdVal,
+                category: 'regeneration-truncate',
+            }, currentChatHistoryArray);
         } catch (saveError) {
             console.error("ContextMenu: Failed to save chat history after splice in regenerate:", saveError);
         }
@@ -701,7 +714,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
     currentChatHistoryArray.push(regenerationThinkingMessage);
     mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-    window.updateSendButtonState?.();
+    ownerWindow.updateSendButtonState?.();
 
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id);
@@ -723,10 +736,10 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
         // VCPChatTarven (高级回复) - 收集当前生效的规则,
         // 让"重新回复"与正常发送消息保持完全一致的注入行为
-        const tavernRules = (window.TavernManager && typeof window.TavernManager.getActiveRulesForScope === 'function')
-            ? (window.TavernManager.getActiveRulesForScope('agent') || [])
+        const tavernRules = (ownerWindow.TavernManager && typeof ownerWindow.TavernManager.getActiveRulesForScope === 'function')
+            ? (ownerWindow.TavernManager.getActiveRulesForScope('agent') || [])
             : [];
-        const tavernEngine = window.TavernRulesEngine;
+        const tavernEngine = ownerWindow.TavernRulesEngine;
 
         const messagesForVCP = await Promise.all(historyForRegeneration.map(async (msg, index) => {
             let vcpImageAttachmentsPayload = [];
@@ -988,16 +1001,13 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
         
-        // 【关键修复】如果使用流式输出，先调用 startStreamingMessage
-        if (modelConfigForVCP.stream) {
-            contextMenuDependencies.startStreamingMessage({ ...regenerationThinkingMessage, content: "" });
-        }
-
         const context = {
             agentId: currentSelectedItemVal.id,
             topicId: currentTopicIdVal,
             isGroupMessage: false
         };
+        streamingRequested = modelConfigForVCP.stream;
+        streamContext = context;
         
         const vcpResult = await electronAPI.sendToVCP(
             globalSettingsVal.vcpServerUrl,
@@ -1013,7 +1023,12 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             // 如果流启动失败，vcpResult 会包含错误信息
             if (vcpResult.streamError || !vcpResult.streamingStarted) {
                 let detailedError = vcpResult.error || '未能启动流';
-                contextMenuDependencies.finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `VCP 流错误 (重新生成): ${detailedError}`);
+                contextMenuDependencies.acceptStreamEvent?.({
+                    type: 'error',
+                    messageId: regenerationThinkingMessage.id,
+                    error: `VCP 流错误 (重新生成): ${detailedError}`,
+                    context,
+                });
             }
         } else {
             // 非流式处理逻辑 - 参考 chatManager.js 的健壮实现
@@ -1041,23 +1056,22 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 };
 
                 // 【修复2】采用更健壮的“读-改-写”模式
-                const historyForSave = await electronAPI.getChatHistory(context.agentId, context.topicId);
-                if (historyForSave && !historyForSave.error) {
-                    // 确保历史记录中没有残余的 "thinking" 消息
+                if (!mainRefs.historyMutationAuthority) throw new Error('History mutation authority is required for regeneration');
+                const commit = await mainRefs.historyMutationAuthority.mutate({
+                    itemId: context.agentId,
+                    itemType: context.isGroupMessage ? 'group' : 'agent',
+                    topicId: context.topicId,
+                    category: 'regeneration-terminal',
+                }, historyForSave => {
                     const finalHistory = historyForSave.filter(msg => msg.id !== regenerationThinkingMessage.id && !msg.isThinking);
                     finalHistory.push(assistantMessage);
-                    
-                    await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                    return finalHistory;
+                });
+                const finalHistory = [...commit.history];
 
-                    if (isForActiveChat) {
-                        mainRefs.currentChatHistoryRef.set(finalHistory);
-                        contextMenuDependencies.renderMessage(assistantMessage);
-                    }
-                } else {
-                    console.error(`[ContextMenu] Regenerate failed to get history for saving:`, historyForSave.error);
-                     if (isForActiveChat) {
-                        contextMenuDependencies.renderMessage({ role: 'system', content: `重新生成失败：无法读取历史记录以保存。`, timestamp: Date.now() });
-                    }
+                if (isForActiveChat) {
+                    mainRefs.currentChatHistoryRef.set(finalHistory);
+                    contextMenuDependencies.renderMessage(assistantMessage);
                 }
             }
             if (isForActiveChat) {
@@ -1066,8 +1080,31 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         }
 
     } catch (error) {
-        contextMenuDependencies.finalizeStreamedMessage(regenerationThinkingMessage.id, 'error', `客户端错误 (重新生成): ${error.message}`);
-        if (currentSelectedItemVal.id && currentTopicIdVal) await electronAPI.saveChatHistory(currentSelectedItemVal.id, currentTopicIdVal, currentChatHistoryArray);
+        if (streamingRequested && streamContext) {
+            contextMenuDependencies.acceptStreamEvent?.({
+                type: 'error',
+                messageId: regenerationThinkingMessage.id,
+                error: `客户端错误 (重新生成): ${error.message}`,
+                context: streamContext,
+            });
+        } else {
+            const failedHistory = currentChatHistoryArray.filter(message => message.id !== regenerationThinkingMessage.id);
+            mainRefs.currentChatHistoryRef.set(failedHistory);
+            contextMenuDependencies.removeMessageById(regenerationThinkingMessage.id, false);
+            contextMenuDependencies.renderMessage({
+                role: 'system',
+                content: `客户端错误 (重新生成): ${error.message}`,
+                timestamp: Date.now(),
+            });
+            if (currentSelectedItemVal.id && currentTopicIdVal && mainRefs.historyMutationAuthority) {
+                await mainRefs.historyMutationAuthority.replace({
+                    itemId: currentSelectedItemVal.id,
+                    itemType: currentSelectedItemVal.type,
+                    topicId: currentTopicIdVal,
+                    category: 'regeneration-failure-cleanup',
+                }, failedHistory);
+            }
+        }
         uiHelper.scrollToBottom();
     }
 }
@@ -1076,11 +1113,23 @@ function setContextMenuDependencies(newDependencies) {
     contextMenuDependencies = { ...contextMenuDependencies, ...newDependencies };
 }
 
-export {
+function dispose() {
+    ownerDocument?.removeEventListener('click', closeContextMenuOnClickOutside, true);
+    closeContextMenu();
+    closeTopicContextMenu();
+    mainRefs = {};
+    contextMenuDependencies = {};
+    ownerDocument = null;
+    ownerWindow = null;
+}
+
+return Object.freeze({
     initializeContextMenu,
     showContextMenu,
     closeContextMenu,
     toggleEditMode,
     handleRegenerateResponse,
-    setContextMenuDependencies
-};
+    setContextMenuDependencies,
+    dispose,
+});
+}

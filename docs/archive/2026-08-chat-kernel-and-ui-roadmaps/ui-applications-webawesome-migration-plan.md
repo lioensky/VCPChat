@@ -1,5 +1,7 @@
 # VCPChat 应用页面与全局设置 Web Awesome 路线图
 
+> 归档说明（2026-08-21）：该整页迁移计划已停止执行。未来业务页面只允许按真实需求在独立 PR 中连同 runtime、consumer 和测试一起引入。
+
 > 状态：历史页面迁移方案，当前不实施。无生产消费者的业务子页面 Next runtime 已在 P2 删除；未来只允许页面、runtime 与测试在同一独立 PR 引入。
 > 基线日期：2026-08-01
 > 适用分支：`codex/vcpchat-codex-app-server`

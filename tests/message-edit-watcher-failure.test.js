@@ -12,8 +12,8 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
         <div class="md-content">old content</div>
     </div>`, { runScripts: 'outside-only', url: 'https://vcpchat.local/' });
     const executableSource = source
-        .replace(/export\s*\{[\s\S]*?\};\s*$/, '')
-        .concat('\nwindow.__messageEditTestApi = { initializeContextMenu, toggleEditMode };\n');
+        .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
+        .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
     dom.window.eval(executableSource);
 
     const history = [{ id: 'message-1', role: 'assistant', content: 'old content' }];
@@ -25,13 +25,15 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
     dom.window.__messageEditTestApi.initializeContextMenu({
         electronAPI: {
             watcherBegin: async () => ({ success: true, token: 'edit-lease' }),
-            saveChatHistory: async (_itemId, _topicId, nextHistory) => {
-                durableWrites.push(JSON.parse(JSON.stringify(nextHistory)));
-                return { success: true };
-            },
             watcherStart: async () => {
                 watcherRestarts += 1;
                 throw new Error('controlled watcher restart failure');
+            },
+        },
+        chatRepository: {
+            saveHistory: async (_itemId, _type, _topicId, nextHistory) => {
+                durableWrites.push(JSON.parse(JSON.stringify(nextHistory)));
+                return { success: true };
             },
         },
         markedInstance: { parse: value => value },
@@ -44,6 +46,12 @@ test('a watcher restart failure cannot roll back a durably saved message edit', 
             get: () => ({ id: 'agent-1', type: 'agent', config: { agentDataPath: '/fixture/agent-1' } }),
         },
         currentTopicIdRef: { get: () => 'topic-1' },
+        historyMutationAuthority: {
+            replace: async (_descriptor, nextHistory) => {
+                durableWrites.push(JSON.parse(JSON.stringify(nextHistory)));
+                return { result: { success: true }, history: nextHistory };
+            },
+        },
     }, {
         updateMessageContent(_messageId, content) { renderedContent = content; },
     });

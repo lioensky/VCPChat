@@ -1,25 +1,21 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
+import { createContentRuntime } from '../chat/contentRuntime.js';
+import { createDesktopPushConsumer } from './desktopPushConsumer.js';
+import { createStreamProjectionRuntime } from './streamProjectionRuntime.js';
 
-// --- Stream State ---
-const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
-const streamingTimers = new Map();      // messageId -> intervalId
-const accumulatedStreamText = new Map(); // messageId -> string
-const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, stableRenderedCutoff, stableBlocks, stableBlockSeq, lastTailText, lastParagraphBoundary }
-let activeStreamingMessageId = null; // Track the currently active streaming message
-const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
+/** Creates one DOM stream projection owner for one renderer Surface. */
+export function createStreamProjection() {
+const runtime = createStreamProjectionRuntime();
+const {
+    messageRuntimeKeys, streamingChunkQueues, streamingTimers, accumulatedStreamText,
+    streamSegmentStates, activeStreamingMessages, elementContentLengthCache,
+} = runtime;
+// Renderer-local active stream facts. This is not durable history.
+const streamMessageModels = new Map();
 const STREAM_CODE_LINE_SWEEP_DURATION_MS = 2400;
 const STREAM_CODE_MAX_ACTIVE_SWEEPS = 3;
-
-// --- VCPdesktop 流式推送状态 ---
-const desktopPushStates = new Map(); // messageId -> { active, widgetId, buffer, tagBuffer, created, pushTimer, lastPushedLength, lastTokenTime, validated }
-const DESKTOP_PUSH_START_TAG = '<<<[DESKTOP_PUSH]>>>';
-const DESKTOP_PUSH_END_TAG = '<<<[DESKTOP_PUSH_END]>>>';
-const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌面画布
-const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
-const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', '<style', 'target:','<!--'];
-let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -167,35 +163,81 @@ function preserveDynamicStreamState(fromEl, toEl) {
     }
 }
 
-// --- DOM Cache ---
-const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
-
-const scrollThrottleTimers = new Map(); // messageId -> timerId
+// --- Surface-owned runtime projections ---
+const {
+    messageDomCache, scrollThrottleTimers, viewContextCache,
+    pendingDirectRenderMessages, preBufferedChunks, messageInitializationStatus,
+    messageInitializationWaiters, messageContextMap,
+} = runtime;
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
-const viewContextCache = new Map(); // messageId -> boolean (是否为当前视图)
 let currentViewSignature = null; // 当前视图的签名
 let globalRenderLoopRunning = false;
-const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达只置脏，由全局 rAF 合帧渲染
-
-// 记录延迟清理定时器，方便切换话题时统一清除
-const delayedCleanupTimers = new Map(); // messageId -> timerId
-
-// --- 新增：预缓冲系统 ---
-const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
-const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
-const pendingFinalizationEvents = new Map(); // messageId -> { finishReason, context, finalPayload }
-// Renderer-owned pending entries are deliberately not persisted. They carry
-// enough ordering metadata to finalize a stream after its source topic has
-// moved to the background without leaving crash-residue in history.json.
-const pendingHistoryEntries = new Map(); // messageId -> pending assistant message
-
-// --- 新增：消息上下文映射 ---
-const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId, isGroupMessage}
 
 // --- Local Reference Store ---
 let refs = {};
 let contentPipeline = null;
+let contentRuntime = null;
 let transientCleanupRegistered = false;
+let transientCleanupWindow = null;
+let desktopPushConsumer = null;
+let disposed = false;
+const pendingAsyncOperations = new Set();
+const ownedTimeouts = new Set();
+const scheduledAnimationFrames = new Set();
+
+function trackAsyncOperation(operation) {
+    const promise = Promise.resolve(operation);
+    pendingAsyncOperations.add(promise);
+    promise.finally(() => pendingAsyncOperations.delete(promise)).catch(() => {});
+    return promise;
+}
+
+function scheduleOwnedTimeout(callback, delay = 0) {
+    const environment = ownerWindow?.() || globalThis;
+    const set = environment.setTimeout?.bind(environment) || setTimeout;
+    const clear = environment.clearTimeout?.bind(environment) || clearTimeout;
+    const record = { id: null, clear };
+    record.id = set(() => {
+        ownedTimeouts.delete(record);
+        if (!disposed) callback();
+    }, delay);
+    ownedTimeouts.add(record);
+    return record;
+}
+
+function clearOwnedTimeout(record) {
+    if (!record) return;
+    record.clear(record.id);
+    ownedTimeouts.delete(record);
+}
+
+const ownerDocument = () => refs.document || refs.chatMessagesDiv?.ownerDocument || null;
+const ownerWindow = () => refs.window || ownerDocument()?.defaultView || null;
+
+function scheduleAnimationFrame(callback) {
+    if (disposed) return null;
+    const environment = ownerWindow();
+    if (!environment) return null;
+    const entry = { handle: null };
+    const invoke = timestamp => {
+        scheduledAnimationFrames.delete(entry);
+        if (!disposed) callback(timestamp);
+    };
+    if (typeof environment.requestAnimationFrame === 'function') {
+        entry.handle = environment.requestAnimationFrame(invoke);
+        entry.cancel = () => environment.cancelAnimationFrame?.(entry.handle);
+    } else {
+        entry.handle = environment.setTimeout(() => invoke(Date.now()), 0);
+        entry.cancel = () => environment.clearTimeout?.(entry.handle);
+    }
+    scheduledAnimationFrames.add(entry);
+    return entry.handle;
+}
+
+function cancelScheduledAnimationFrames() {
+    for (const entry of scheduledAnimationFrames) entry.cancel?.();
+    scheduledAnimationFrames.clear();
+}
 
 // --- Pre-compiled Regular Expressions for Performance ---
 
@@ -203,13 +245,25 @@ let transientCleanupRegistered = false;
  * Initializes the Stream Manager with necessary dependencies from the main renderer.
  * @param {object} dependencies - An object containing all required functions and references.
  */
-export function initStreamManager(dependencies) {
+function attachStreamProjection(dependencies) {
+    if (disposed) throw new Error('StreamProjection is disposed');
     refs = dependencies;
+    if (!dependencies?.chatMessagesDiv?.querySelector) {
+        throw new TypeError('StreamProjection requires an owning Surface root');
+    }
+    if (typeof dependencies?.viewAuthority?.isCurrent !== 'function') {
+        throw new TypeError('StreamProjection requires an explicit view authority');
+    }
+    if (!dependencies.transientStreamHistory || typeof dependencies.transientStreamHistory.prepare !== 'function' || typeof dependencies.transientStreamHistory.finalize !== 'function') {
+        throw new TypeError('StreamProjection requires an explicit transient history capability');
+    }
 
     // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
     // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
     if (!transientCleanupRegistered) {
-        window.addEventListener('beforeunload', cleanupTransientState);
+        transientCleanupWindow = dependencies.window || dependencies.chatMessagesDiv?.ownerDocument?.defaultView || null;
+        if (!transientCleanupWindow) throw new TypeError('StreamProjection requires an owning window capability');
+        transientCleanupWindow.addEventListener('beforeunload', dispose);
         transientCleanupRegistered = true;
     }
 
@@ -250,20 +304,24 @@ export function initStreamManager(dependencies) {
             return processedText;
         }
     });
+    contentRuntime = typeof createContentRuntime === 'function'
+        ? createContentRuntime({ pipeline: contentPipeline })
+        : {
+            processStream: (text, options = {}) => contentPipeline.process(text, { ...options, mode: PIPELINE_MODES.STREAM_FAST }),
+            extractChunkText: (chunk) => {
+                if (chunk?.error === 'json_parse_error') return '';
+                return chunk?.choices?.[0]?.delta?.content || chunk?.delta?.content || chunk?.content || (typeof chunk === 'string' ? chunk : '') || (chunk?.raw && !chunk?.error ? chunk.raw : '');
+            }
+        };
 
     // Assume morphdom is passed in dependencies, warn if not present.
     if (!refs.morphdom) {
         console.warn('[StreamManager] `morphdom` not provided. Streaming rendering will fall back to inefficient innerHTML updates.');
     }
 
-    // 监听桌面窗口状态，缓存到本地标志位
-    // 这样在流式推送时就不需要每个token都做IPC查询
-    if (refs.electronAPI?.onDesktopStatus) {
-        refs.electronAPI.onDesktopStatus((data) => {
-            desktopWindowAvailable = !!data.connected;
-            console.log(`[StreamManager] Desktop window availability changed: ${desktopWindowAvailable}`);
-        });
-    }
+    desktopPushConsumer?.dispose();
+    desktopPushConsumer = createDesktopPushConsumer({ electronAPI: refs.electronAPI });
+    desktopPushConsumer.start();
 }
 
 function shouldEnableSmoothStreaming() {
@@ -281,7 +339,7 @@ function messageIsFinalized(messageId) {
  * 判断请求是否仍处于等待首块或流式处理中。
  * 该 Map 是跨 Agent/话题异步请求的运行态真源，不能只依赖单一的 activeStreamingMessageId。
  */
-export function isMessageActive(messageId) {
+function isMessageActive(messageId) {
     const initStatus = messageInitializationStatus.get(messageId);
     return initStatus === 'pending' || initStatus === 'ready';
 }
@@ -306,97 +364,7 @@ function getCurrentViewSignature() {
  */
 function isMessageForCurrentView(context) {
     if (!context) return false;
-    
-    const newSignature = getCurrentViewSignature();
-    
-    // 如果视图切换了，清空缓存
-    if (currentViewSignature !== newSignature) {
-        currentViewSignature = newSignature;
-        viewContextCache.clear();
-    }
-    
-    const currentSelectedItem = refs.currentSelectedItemRef.get();
-    const currentTopicId = refs.currentTopicIdRef.get();
-    
-    if (!currentSelectedItem || !currentTopicId) return false;
-    
-    const itemId = context.groupId || context.agentId;
-    return itemId === currentSelectedItem.id && context.topicId === currentTopicId;
-}
-
-async function getHistoryForContext(context) {
-    const { electronAPI } = refs;
-    if (!context) return null;
-    
-    const { agentId, groupId, topicId, isGroupMessage } = context;
-    const itemId = groupId || agentId;
-    
-    if (!itemId || !topicId) return null;
-    
-    try {
-        const historyResult = isGroupMessage
-            ? await electronAPI.getGroupChatHistory(itemId, topicId)
-            : await electronAPI.getChatHistory(itemId, topicId);
-        
-        if (historyResult && !historyResult.error) {
-            return historyResult;
-        }
-    } catch (e) {
-        console.error(`[StreamManager] Failed to get history for context`, context, e);
-    }
-    
-    return null;
-}
-
-// 🟢 历史保存防抖
-const historySaveQueue = new Map(); // context signature -> {context, history, timerId}
-const HISTORY_SAVE_DEBOUNCE = 1000; // 1秒防抖
-
-async function debouncedSaveHistory(context, history) {
-    if (!context || context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        return; // 跳过临时聊天
-    }
-    
-    const signature = `${context.groupId || context.agentId}-${context.topicId}`;
-    
-    // 清除之前的定时器
-    const existing = historySaveQueue.get(signature);
-    if (existing?.timerId) {
-        clearTimeout(existing.timerId);
-    }
-    
-    // 设置新的防抖定时器
-    const timerId = setTimeout(async () => {
-        const queuedData = historySaveQueue.get(signature);
-        if (queuedData) {
-            await saveHistoryForContext(queuedData.context, queuedData.history);
-            historySaveQueue.delete(signature);
-        }
-    }, HISTORY_SAVE_DEBOUNCE);
-    
-    // 使用最新的 history 克隆以避免引用问题
-    historySaveQueue.set(signature, { context, history: [...history], timerId });
-}
-
-async function saveHistoryForContext(context, history) {
-    const { electronAPI } = refs;
-    if (!context || context.isGroupMessage) {
-        // For group messages, the main process (groupchat.js) is the single source of truth for history.
-        // The renderer avoids saving to prevent race conditions and overwriting the correct history.
-        return;
-    }
-    
-    const { agentId, topicId } = context;
-    
-    if (!agentId || !topicId) return;
-    
-    const historyToSave = history.filter(msg => !msg.isThinking && !msg.isPendingStream);
-    
-    try {
-        await electronAPI.saveChatHistory(agentId, topicId, historyToSave);
-    } catch (e) {
-        console.error(`[StreamManager] Failed to save history for context`, context, e);
-    }
+    return refs.viewAuthority.isCurrent(context) === true;
 }
 
 /**
@@ -405,11 +373,8 @@ async function saveHistoryForContext(context, history) {
  */
 function applyStreamingPreprocessors(text) {
     if (!text) return '';
-    if (!contentPipeline) return text;
-
-    return contentPipeline.process(text, {
-        mode: PIPELINE_MODES.STREAM_FAST
-    }).text;
+    if (!contentRuntime) return text;
+    return contentRuntime.createRenderModel({ content: text, role: 'assistant' }, { mode: PIPELINE_MODES.STREAM_FAST }).text;
 }
 
 function parseStreamTail(text) {
@@ -436,19 +401,19 @@ function ensureStreamingRoots(contentDiv) {
 
     if (!stableRoot || !tailRoot) {
         contentDiv.innerHTML = '';
-        stableRoot = document.createElement('div');
+        stableRoot = ownerDocument().createElement('div');
         stableRoot.className = 'vcp-stream-stable-root';
-        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot = ownerDocument().createElement('div');
         stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
         stableRoot.appendChild(stableBlocksRoot);
-        tailRoot = document.createElement('div');
+        tailRoot = ownerDocument().createElement('div');
         tailRoot.className = 'vcp-stream-tail-root';
         contentDiv.appendChild(stableRoot);
         contentDiv.appendChild(tailRoot);
     } else if (!stableBlocksRoot) {
         // 兼容旧的 stableRoot 结构：后续追加式固化只写入 stableBlocksRoot。
         // 如果 stableRoot 已有旧内容，先原样搬入 blocksRoot，避免切换实现时丢失已渲染 DOM。
-        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot = ownerDocument().createElement('div');
         stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
         while (stableRoot.firstChild) {
             stableBlocksRoot.appendChild(stableRoot.firstChild);
@@ -508,7 +473,7 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
         settings = null
     } = options;
 
-    const blockEl = document.createElement('div');
+    const blockEl = ownerDocument().createElement('div');
     const blockRecord = createStableBlockRecord(
         segmentState,
         segmentState.stableRenderedCutoff,
@@ -588,7 +553,7 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
     stableBlocksRoot.replaceChildren();
 
     for (const record of segmentState.stableBlocks) {
-        const blockEl = document.createElement('div');
+    const blockEl = ownerDocument().createElement('div');
         blockEl.className = 'vcp-stream-stable-block';
         blockEl.dataset.vcpStreamStableBlock = 'true';
         blockEl.dataset.vcpBlockKey = record.id;
@@ -1175,8 +1140,7 @@ function getCachedMessageDom(messageId) {
     }
     
     // 重新查询并缓存
-    const { chatMessagesDiv } = refs;
-    const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    const messageItem = refs.chatMessagesDiv?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
     
     if (!messageItem) return null;
     
@@ -1242,7 +1206,8 @@ function processStreamTailImages(container) {
 
 function highlightCompletedStreamingCodeLine(lineElement) {
     if (!lineElement || lineElement.dataset.vcpStreamCodeHighlighted === 'true') return;
-    if (!window.hljs) return;
+    const syntaxHighlighter = refs.hljs || ownerWindow()?.hljs;
+    if (!syntaxHighlighter) return;
 
     const codeElement = lineElement.closest('code');
     const languageClass = codeElement
@@ -1256,14 +1221,14 @@ function highlightCompletedStreamingCodeLine(lineElement) {
     try {
         let highlightedHtml = '';
 
-        if (lineText && language && window.hljs.getLanguage?.(language)) {
-            highlightedHtml = window.hljs.highlight(lineText, {
+        if (lineText && language && syntaxHighlighter.getLanguage?.(language)) {
+            highlightedHtml = syntaxHighlighter.highlight(lineText, {
                 language,
                 ignoreIllegals: true
             }).value;
         } else if (lineText) {
             // 没有语言标记时也只在该行完成时自动检测一次，而不是每帧重复检测。
-            highlightedHtml = window.hljs.highlightAuto(lineText).value;
+            highlightedHtml = syntaxHighlighter.highlightAuto(lineText).value;
         }
 
         if (highlightedHtml) {
@@ -1279,9 +1244,9 @@ function highlightCompletedStreamingCodeLine(lineElement) {
 
 function playStreamingCodeLineSweep(lineElement, delayMs = 0) {
     if (!lineElement || typeof lineElement.animate !== 'function') return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (ownerWindow()?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
 
-    const isLightTheme = document.body.classList.contains('light-theme');
+    const isLightTheme = ownerDocument()?.body?.classList.contains('light-theme');
     const baseColor = isLightTheme ? '#333333' : '#abb2bf';
     const colorSweep = isLightTheme
         ? `linear-gradient(90deg, transparent 0%, transparent 24%, #0077b6 37%, #6f42c1 46%, #d63384 54%, #b26a00 63%, #238636 70%, transparent 82%, transparent 100%)`
@@ -1474,7 +1439,7 @@ function renderStreamFrame(messageId) {
                     if (lengthDiff > 20) {
                         // 使用脉冲动画而不是滑入动画
                         fromEl.classList.add('vcp-stream-content-pulse');
-                        setTimeout(() => {
+                        scheduleOwnedTimeout(() => {
                             fromEl.classList.remove('vcp-stream-content-pulse');
                         }, 300);
                     }
@@ -1498,8 +1463,8 @@ function renderStreamFrame(messageId) {
                 }
                 
                 // 🟢 保留输入焦点
-                if (fromEl === document.activeElement) {
-                    requestAnimationFrame(() => toEl.focus());
+                if (fromEl === ownerDocument()?.activeElement) {
+                    scheduleAnimationFrame(() => toEl.focus());
                 }
                 
                 // 🟢 简化图片逻辑：只保留状态，不再做 URL 对比
@@ -1552,7 +1517,7 @@ function renderStreamFrame(messageId) {
                     elementContentLengthCache.set(node, node.textContent.length);
                     
                     // 动画结束后清理类名，但保留一小段时间确保渲染稳定
-                    setTimeout(() => {
+                    scheduleOwnedTimeout(() => {
                         if (node && node.classList) {
                             node.classList.remove('vcp-stream-element-fade-in');
                         }
@@ -1587,7 +1552,7 @@ function throttledScrollToBottom(messageId) {
     
     refs.uiHelper.scrollToBottom();
     
-    const timerId = setTimeout(() => {
+    const timerId = scheduleOwnedTimeout(() => {
         scrollThrottleTimers.delete(messageId);
     }, SCROLL_THROTTLE_MS);
     
@@ -1641,15 +1606,35 @@ function renderChunkDirectlyToDOM(messageId, textToAppend) {
     }
 }
 
-export async function startStreamingMessage(message, passedMessageItem = null) {
+function conversationIdentityMatches(context, identity = {}) {
+    if (!context || !identity) return false;
+    const itemType = context.isGroupMessage ? 'group' : 'agent';
+    const itemId = context.isGroupMessage ? context.groupId : context.agentId;
+    return itemType === identity.itemType
+        && itemId === identity.itemId
+        && context.topicId === identity.topicId;
+}
+
+async function startStreamingMessage(message, passedMessageItem = null) {
+    if (disposed) return null;
     const messageId = message.id;
+    const streamOperationId = message.streamOperationId || message.context?.streamOperationId || null;
+    const previousRuntimeKey = messageRuntimeKeys.get(String(messageId));
+    const nextRuntimeKey = streamOperationId ? `${streamOperationId}::${messageId}` : String(messageId);
+    if (previousRuntimeKey && previousRuntimeKey !== nextRuntimeKey) {
+        // Keep the old key active while discardStreamingMessage clears every
+        // operation-owned map; only then publish the retry's new owner key.
+        discardStreamingMessage(messageId);
+    }
+    messageRuntimeKeys.set(String(messageId), nextRuntimeKey);
     
     // 🟢 修复：如果消息已在处理中，且 isThinking 状态没变，直接返回现有状态
     const currentStatus = messageInitializationStatus.get(messageId);
     const cached = getCachedMessageDom(messageId);
     const isCurrentlyThinking = cached?.messageItem?.classList.contains('thinking');
 
-    if ((currentStatus === 'pending' || currentStatus === 'ready') && (isCurrentlyThinking === !!message.isThinking)) {
+    if ((currentStatus === 'pending' || currentStatus === 'ready') && cached
+        && (isCurrentlyThinking === !!message.isThinking)) {
         console.debug(`[StreamManager] Message ${messageId} already initialized (${currentStatus}) with same thinking state, skipping re-init`);
         return cached?.messageItem || null;
     }
@@ -1663,6 +1648,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         agentName: message.name || message.context?.agentName,
         avatarUrl: message.avatarUrl || message.context?.avatarUrl,
         avatarColor: message.avatarColor || message.context?.avatarColor,
+        streamOperationId,
     };
     
     // Validate context
@@ -1672,40 +1658,40 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     }
     
     messageContextMap.set(messageId, context);
+    streamMessageModels.set(messageId, {
+        ...message,
+        id: messageId,
+        agentId: context.agentId,
+        groupId: context.groupId,
+        topicId: context.topicId,
+        isGroupMessage: context.isGroupMessage,
+        streamOperationId,
+    });
     
     // 🟢 关键修复：如果消息已经初始化过，不要重新设为 pending，避免阻塞后续 chunk
     if (!currentStatus || currentStatus === 'finalized') {
         messageInitializationStatus.set(messageId, 'pending');
     }
     
-    activeStreamingMessageId = messageId;
+    activeStreamingMessages.set(messageId, context);
     
-    const { chatMessagesDiv, electronAPI, currentChatHistoryRef, uiHelper } = refs;
+    const { chatMessagesDiv, electronAPI, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(context);
+    const shouldProjectToDom = isForCurrentView;
     // 🟢 缓存视图检查结果
-    viewContextCache.set(messageId, isForCurrentView);
+    viewContextCache.set(messageId, shouldProjectToDom);
     
-    // Get the correct history for this message's context
-    let historyForThisMessage;
-    // For assistant chat, always use a temporary in-memory history
-    if (context.topicId === 'assistant_chat' || context.topicId?.startsWith('voicechat_')) {
-        historyForThisMessage = currentChatHistoryRef.get();
-    } else if (isForCurrentView) {
-        // For current view, use in-memory history
-        historyForThisMessage = currentChatHistoryRef.get();
-    } else {
-        // For background chats, load from disk
-        historyForThisMessage = await getHistoryForContext(context);
-        if (!historyForThisMessage) {
-            console.error(`[StreamManager] Could not load history for background message ${messageId}`, context);
-            discardStreamingMessage(messageId);
-            return null;
-        }
+    try {
+        await refs.transientStreamHistory.prepare(message, context, { visible: isForCurrentView });
+    } catch (error) {
+        console.error(`[StreamManager] Could not prepare transient history for ${messageId}`, context, error);
+        discardStreamingMessage(messageId);
+        return null;
     }
     
     // Only manipulate DOM for current view
     let messageItem = null;
-    if (isForCurrentView) {
+    if (shouldProjectToDom) {
         messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
         if (!messageItem) {
             const placeholderMessage = { 
@@ -1715,7 +1701,9 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
                 timestamp: message.timestamp || Date.now(), 
                 isGroupMessage: message.isGroupMessage || false 
             };
-            messageItem = refs.renderMessage(placeholderMessage, false);
+            messageItem = refs.chatDomRenderer
+                ? await refs.chatDomRenderer.renderMessage(placeholderMessage, false)
+                : refs.renderMessage(placeholderMessage, false);
             if (!messageItem) {
                 console.error(`[StreamManager] Failed to render message item for ${message.id}`);
                 discardStreamingMessage(messageId);
@@ -1726,6 +1714,8 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         if (messageItem && messageItem.classList) {
             messageItem.classList.add('streaming');
             messageItem.classList.remove('thinking');
+            const contentDiv = messageItem.querySelector('.md-content');
+            if (contentDiv) messageDomCache.set(messageId, { messageItem, contentDiv });
         }
     }
     
@@ -1748,39 +1738,6 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         accumulatedStreamText.set(messageId, newText);
     }
     
-    // Prepare placeholder for history
-    const placeholderForHistory = {
-        ...message,
-        content: shouldSkipGroupThinkingSeed ? '' : (message.content || ''),
-        isThinking: false,
-        isPendingStream: true,
-        timestamp: message.timestamp || Date.now(),
-        isGroupMessage: context.isGroupMessage,
-        name: context.agentName,
-        agentId: context.agentId
-    };
-    pendingHistoryEntries.set(messageId, { ...placeholderForHistory });
-    
-    // Update the appropriate history
-    const historyIndex = historyForThisMessage.findIndex(m => m.id === message.id);
-    if (historyIndex === -1) {
-        historyForThisMessage.push(placeholderForHistory);
-    } else {
-        historyForThisMessage[historyIndex] = { ...historyForThisMessage[historyIndex], ...placeholderForHistory };
-    }
-    
-    // Save the history
-    if (isForCurrentView) {
-        // Update in-memory reference for current view
-        currentChatHistoryRef.set([...historyForThisMessage]);
-        window.updateSendButtonState?.();
-    }
-    
-    // 🟢 使用防抖保存
-    if (context.topicId !== 'assistant_chat' && !context.topicId.startsWith('voicechat_')) {
-        debouncedSaveHistory(context, historyForThisMessage);
-    }
-    
     // Initialization is complete, message is ready to process chunks.
     // 如果 end/error 事件在异步初始化期间已经到达，不能把状态从 finalized 回退到 ready。
     if (messageInitializationStatus.get(messageId) !== 'finalized') {
@@ -1792,26 +1749,16 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     if (bufferedChunks && bufferedChunks.length > 0 && messageInitializationStatus.get(messageId) === 'ready') {
         console.debug(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
         for (const chunkData of bufferedChunks) {
-            appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
+            appendStreamChunk(messageId, chunkData.chunk, chunkData.context, chunkData.streamOperationId);
         }
         preBufferedChunks.delete(messageId);
     }
     
-    const deferredFinalization = pendingFinalizationEvents.get(messageId);
-    if (deferredFinalization) {
-        pendingFinalizationEvents.delete(messageId);
-        console.warn(`[StreamManager] Replaying deferred finalization for message ${messageId}.`);
-        setTimeout(() => {
-            finalizeStreamedMessage(
-                messageId,
-                deferredFinalization.finishReason,
-                deferredFinalization.context,
-                deferredFinalization.finalPayload
-            );
-        }, 0);
-    }
+    const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
+    messageInitializationWaiters.delete(messageId);
+    initializationWaiters.forEach(resolve => resolve(true));
     
-    if (isForCurrentView) {
+    if (shouldProjectToDom) {
         // 如果从思考转为非思考，立即触发一次渲染以清理占位符
         if (!message.isThinking && isCurrentlyThinking) {
             renderStreamFrame(messageId);
@@ -1848,7 +1795,7 @@ function startGlobalRenderLoop() {
         }
         const elapsed = currentTime - lastFrameTime;
         if (elapsed < FRAME_INTERVAL) {
-            requestAnimationFrame(renderLoop);
+            scheduleAnimationFrame(renderLoop);
             return;
         }
 
@@ -1874,10 +1821,10 @@ function startGlobalRenderLoop() {
             }
         }
 
-        requestAnimationFrame(renderLoop);
+        scheduleAnimationFrame(renderLoop);
     }
 
-    requestAnimationFrame(renderLoop);
+    scheduleAnimationFrame(renderLoop);
 }
 
 /**
@@ -1926,197 +1873,16 @@ function intelligentChunkSplit(text) {
  * 3. 在逐字符级别做工具结果块检测会与推送标签检测产生字符竞争bug
  */
 function processDesktopPushToken(messageId, textToAppend) {
-    let state = desktopPushStates.get(messageId);
-    if (!state) {
-        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, lastTokenTime: null, backtickContext: false };
-        desktopPushStates.set(messageId, state);
-    }
-
-    const electronAPI = refs.electronAPI;
-    const canPush = desktopWindowAvailable && electronAPI?.desktopPush;
-
-    let remainingText = textToAppend;
-    let outputText = '';
-
-    for (let i = 0; i < remainingText.length; i++) {
-        const char = remainingText[i];
-
-        if (!state.active) {
-            state.tagBuffer += char;
-
-            if (DESKTOP_PUSH_START_TAG.startsWith(state.tagBuffer)) {
-                if (state.tagBuffer === DESKTOP_PUSH_START_TAG) {
-                    // 🟢 加固：检查开始标签前是否有反引号包裹
-                    // 检查 outputText 末尾是否刚输出了一个反引号
-                    const precedingChar = outputText.length > 0 ? outputText[outputText.length - 1] : '';
-                    if (precedingChar === '`') {
-                        // 被反引号包裹，不视为推送标签，直接输出原文
-                        state.backtickContext = true;
-                        outputText += state.tagBuffer;
-                        state.tagBuffer = '';
-                        continue;
-                    }
-                    
-                    // 匹配到开始标签，进入active状态但延迟创建挂件
-                    state.active = true;
-                    state.backtickContext = false;
-                    state.widgetId = 'dw-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
-                    state.buffer = '';
-                    state.created = false;
-                    state.validated = false; // 二级验证：等待内容前缀确认
-                    state.tagBuffer = '';
-                    state.lastPushedLength = 0;
-                }
-            } else {
-                outputText += state.tagBuffer;
-                state.tagBuffer = '';
-            }
-        } else {
-            // 在推送块内
-            state.tagBuffer += char;
-
-            if (DESKTOP_PUSH_END_TAG.startsWith(state.tagBuffer)) {
-                if (state.tagBuffer === DESKTOP_PUSH_END_TAG) {
-                    // 结束标签
-                    if (state.pushTimer) { clearInterval(state.pushTimer); state.pushTimer = null; }
-
-                    if (canPush && state.created) {
-                        if (state.isReplaceMode) {
-                            // 替换模式：解析 target/replace 的「始ESCAPE」「末ESCAPE」或旧版「始」「末」
-                            const targetMatch = state.buffer.match(/target:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
-                            const replaceMatch = state.buffer.match(/replace:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
-                            
-                            if (targetMatch && replaceMatch) {
-                                const targetSelector = (targetMatch[1] || targetMatch[2] || '').trim();
-                                const replaceContent = (replaceMatch[1] || replaceMatch[2] || '').trim();
-                                electronAPI.desktopPush({
-                                    action: 'replace',
-                                    targetSelector: targetSelector,
-                                    content: replaceContent
-                                });
-                                console.log(`[DesktopPush] Replace: "${targetSelector}" → ${replaceContent.substring(0, 50)}...`);
-                            } else {
-                                console.warn(`[DesktopPush] Replace mode but couldn't parse target/replace fields from buffer:`, state.buffer.substring(0, 100));
-                            }
-                        } else {
-                            // 创建模式：最终推送 + finalize
-                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                            console.log(`[DesktopPush] Widget finalized: ${state.widgetId}`);
-                        }
-                    }
-
-                    state.active = false; state.tagBuffer = ''; state.buffer = '';
-                    state.widgetId = null; state.created = false; state.validated = false;
-                    state.isReplaceMode = false; state.lastPushedLength = 0;
-                }
-            } else {
-                // 不是结束标签，内容追加到buffer
-                state.buffer += state.tagBuffer;
-                state.tagBuffer = '';
-
-                // 🟢 性能优化：仅更新时间戳，超时检查由 pushTimer interval 负责
-                // 这样每个 token 只需一次赋值操作，避免频繁 clearTimeout/setTimeout
-                state.lastTokenTime = Date.now();
-
-                // 二级验证：buffer积累到一定量后检查前缀是否合法
-                // 只在前30个有效字符内做验证，避免延迟过大
-                if (!state.validated && state.buffer.trim().length >= 5) {
-                    const trimmedBuffer = state.buffer.trim().toLowerCase();
-                    const isValid = DESKTOP_PUSH_VALID_PREFIXES.some(prefix => trimmedBuffer.startsWith(prefix));
-                    
-                    if (isValid) {
-                        state.validated = true;
-                        
-                        // 判断是否为替换模式（target:「始」...「末」开头）
-                        const isReplaceMode = trimmedBuffer.startsWith('target:');
-                        state.isReplaceMode = isReplaceMode;
-                        
-                        if (isReplaceMode) {
-                            console.log(`[DesktopPush] Replace mode detected, waiting for target and replace fields...`);
-                            state.created = true; // 标记为已处理，但不创建新挂件
-                            // 替换模式不需要定时推送，等到结束标签时一次性解析并替换
-                        } else {
-                            console.log(`[DesktopPush] Content validated with prefix: ${trimmedBuffer.substring(0, 15)}...`);
-                            
-                            // 创建模式：验证通过后才创建挂件
-                            if (canPush) {
-                                electronAPI.desktopPush({
-                                    action: 'create', widgetId: state.widgetId,
-                                    options: { x: 200, y: 150, width: 400, height: 300 }
-                                });
-                                state.created = true;
-                                
-                                // 启动定时推送 + 内置空闲超时检测
-                                state.lastTokenTime = Date.now();
-                                state.pushTimer = setInterval(() => {
-                                    // 推送新内容
-                                    if (state.buffer.length > state.lastPushedLength) {
-                                        electronAPI.desktopPush({
-                                            action: 'append', widgetId: state.widgetId, content: state.buffer
-                                        });
-                                        state.lastPushedLength = state.buffer.length;
-                                    }
-                                    
-                                    // 🟢 空闲超时检测：如果距离上次token超过150秒，自动finalize
-                                    // 不需要单独的setTimeout，复用已有的interval，零额外开销
-                                    if (state.lastTokenTime && (Date.now() - state.lastTokenTime > DESKTOP_PUSH_TIMEOUT_MS)) {
-                                        console.warn(`[DesktopPush] Widget ${state.widgetId} idle timeout (no new tokens for ${DESKTOP_PUSH_TIMEOUT_MS / 1000}s), auto-finalizing`);
-                                        clearInterval(state.pushTimer); state.pushTimer = null;
-                                        if (state.created && !state.isReplaceMode && electronAPI?.desktopPush) {
-                                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                                        }
-                                        state.active = false; state.tagBuffer = ''; state.buffer = '';
-                                        state.widgetId = null; state.created = false; state.validated = false;
-                                        state.isReplaceMode = false; state.lastPushedLength = 0; state.lastTokenTime = null;
-                                    }
-                                }, DESKTOP_PUSH_THROTTLE_MS);
-                            }
-                        }
-
-                        // 🟢 替换模式也需要空闲超时保护
-                        // 替换模式没有 pushTimer，需要单独的超时机制
-                        if (state.isReplaceMode && canPush) {
-                            state.lastTokenTime = Date.now();
-                            // 替换模式用一个轻量级的检查 interval
-                            state.pushTimer = setInterval(() => {
-                                if (state.lastTokenTime && (Date.now() - state.lastTokenTime > DESKTOP_PUSH_TIMEOUT_MS)) {
-                                    console.warn(`[DesktopPush] Replace mode idle timeout, discarding`);
-                                    clearInterval(state.pushTimer); state.pushTimer = null;
-                                    state.active = false; state.tagBuffer = ''; state.buffer = '';
-                                    state.widgetId = null; state.created = false; state.validated = false;
-                                    state.isReplaceMode = false; state.lastPushedLength = 0; state.lastTokenTime = null;
-                                }
-                            }, 5000); // 替换模式检查频率低一些：5秒一次
-                        }
-                    } else if (state.buffer.trim().length >= 30) {
-                        // 验证失败：30字符内未匹配到合法前缀，丢弃该推送块
-                        console.warn(`[DesktopPush] Invalid content prefix, discarding push block: "${trimmedBuffer.substring(0, 30)}..."`);
-                        state.active = false; state.tagBuffer = ''; state.buffer = '';
-                        state.widgetId = null; state.created = false; state.validated = false; state.lastPushedLength = 0;
-                    }
-                    // 5-30字符之间继续等待更多内容
-                }
-            }
-        }
-    }
-
-    return outputText;
+    return desktopPushConsumer?.processToken(messageId, textToAppend) ?? textToAppend;
 }
-/**
- * 清理消息的桌面推送状态
- */
+
+/** Releases the Desktop canvas state owned by one stream message. */
 function cleanupDesktopPushState(messageId) {
-    const state = desktopPushStates.get(messageId);
-    if (state?.pushTimer) {
-        clearInterval(state.pushTimer);
-        state.pushTimer = null;
-    }
-    desktopPushStates.delete(messageId);
+    desktopPushConsumer?.cleanupMessage(messageId);
 }
 
-export function appendStreamChunk(messageId, chunkData, context) {
+function appendStreamChunk(messageId, chunkData, context, streamOperationId = null) {
+    if (disposed) return false;
     const initStatus = messageInitializationStatus.get(messageId);
     
     if (!initStatus || initStatus === 'pending') {
@@ -2126,7 +1892,7 @@ export function appendStreamChunk(messageId, chunkData, context) {
             console.debug(`[StreamManager] Started pre-buffering for message ${messageId}`);
         }
         const buffer = preBufferedChunks.get(messageId);
-        buffer.push({ chunk: chunkData, context });
+        buffer.push({ chunk: chunkData, context, streamOperationId });
         
         // 防止缓冲区无限增长 - 如果超过1000个chunks，可能有问题
         if (buffer.length > 1000) {
@@ -2142,6 +1908,8 @@ export function appendStreamChunk(messageId, chunkData, context) {
         return;
     }
     
+    const activeContext = messageContextMap.get(messageId);
+    if (streamOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== streamOperationId) return false;
     // Extract text from chunk
     // 如果检测到 JSON 解析错误，直接过滤掉，不显示给用户
     if (chunkData?.error === 'json_parse_error') {
@@ -2149,19 +1917,9 @@ export function appendStreamChunk(messageId, chunkData, context) {
         return;
     }
     
-    let textToAppend = "";
-    if (chunkData?.choices?.[0]?.delta?.content) {
-        textToAppend = chunkData.choices[0].delta.content;
-    } else if (chunkData?.delta?.content) {
-        textToAppend = chunkData.delta.content;
-    } else if (typeof chunkData?.content === 'string') {
-        textToAppend = chunkData.content;
-    } else if (typeof chunkData === 'string') {
-        textToAppend = chunkData;
-    } else if (chunkData?.raw && !chunkData?.error) {
-        // 只有在没有错误标记时才显示 raw 数据
-        textToAppend = chunkData.raw;
-    }
+    const textToAppend = contentRuntime
+        ? contentRuntime.extractChunkText(chunkData)
+        : '';
     
     if (!textToAppend) return;
 
@@ -2209,19 +1967,35 @@ export function appendStreamChunk(messageId, chunkData, context) {
     }
 }
 
-export async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    const initStatusAtFinalize = messageInitializationStatus.get(messageId);
-    if (!initStatusAtFinalize || initStatusAtFinalize === 'pending') {
-        console.warn(`[StreamManager] Finalization arrived before message initialization completed for ${messageId}. Deferring. status=${initStatusAtFinalize || 'missing'}`);
-        pendingFinalizationEvents.set(messageId, { finishReason, context, finalPayload });
-        return;
+/**
+ * Applies the terminal message model and DOM projection without writing durable history.
+ * The StreamCoordinator owns the production commit point.
+ */
+async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+    if (disposed) return null;
+    const expectedOperationId = finalPayload?.streamOperationId || context?.streamOperationId || null;
+    const activeContext = messageContextMap.get(messageId);
+    if (expectedOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== expectedOperationId) return null;
+    let initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    if (initStatusAtFinalize === 'pending') {
+        console.warn(`[StreamManager] Finalization is waiting for message initialization: ${messageId}`);
+        const initialized = await new Promise(resolve => {
+            const waiters = messageInitializationWaiters.get(messageId) || [];
+            waiters.push(resolve);
+            messageInitializationWaiters.set(messageId, waiters);
+        });
+        if (!initialized) return null;
+        initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    }
+    if (!initStatusAtFinalize) {
+        console.warn(`[StreamManager] Finalization ignored because message initialization is absent: ${messageId}`);
+        discardStreamingMessage(messageId);
+        return null;
     }
 
     // With the global render loop, we no longer need to manually drain the queue here or clear timers.
     // The loop will continue to process chunks until the queue is empty and the message is finalized, then clean itself up.
-    if (activeStreamingMessageId === messageId) {
-        activeStreamingMessageId = null;
-    }
+    activeStreamingMessages.delete(messageId);
     
     // 🟢 清理节流定时器
     const scrollTimer = scrollThrottleTimers.get(messageId);
@@ -2242,36 +2016,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     
     const { chatMessagesDiv, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(storedContext);
+    const shouldProjectToDom = isForCurrentView;
     
-    // Get the correct history
-    let historyForThisMessage;
-    const currentViewHistory = refs.currentChatHistoryRef.get();
-    const currentViewOwnsPendingMessage = isForCurrentView
-        && Array.isArray(currentViewHistory)
-        && currentViewHistory.some(message => message?.id === messageId);
-    // The thinking placeholder is committed to renderer memory before the
-    // request starts, but intentionally is not written to disk. When a fast
-    // stream finishes, disk can therefore lag behind and not contain the
-    // message yet. Prefer the owned in-memory transaction for the current
-    // view; background topics still read their own persisted history.
-    if (
-        currentViewOwnsPendingMessage
-        || storedContext.topicId === 'assistant_chat'
-        || storedContext.topicId?.startsWith('voicechat_')
-    ) {
-        historyForThisMessage = currentViewHistory;
-    } else {
-        // For all other chats, always fetch the latest history from the source of truth
-        // to avoid race conditions with the UI state (currentChatHistoryRef).
-        historyForThisMessage = await getHistoryForContext(storedContext);
-        if (!historyForThisMessage) {
-            console.error(`[StreamManager] Could not load history for finalization`, storedContext);
-            discardStreamingMessage(messageId);
-            return;
-        }
-    }
-    
-    // Find and update the message
     const accumulatedText = accumulatedStreamText.get(messageId) || "";
     const payloadFullResponse = typeof finalPayload?.fullResponse === 'string' ? finalPayload.fullResponse : "";
     const payloadError = typeof finalPayload?.error === 'string' ? finalPayload.error.trim() : "";
@@ -2293,26 +2039,21 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             finalFullText = "";
         }
     }
-    let messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
-
-    // A background stream can finish before its debounced history save. The
-    // pending entry lives in renderer memory rather than on disk; reconstruct
-    // it at the position owned by its user message before applying the final
-    // response. This also preserves conversational order when two streams
-    // finish in reverse order.
-    if (messageIndex === -1) {
-        const pendingEntry = pendingHistoryEntries.get(messageId);
-        if (pendingEntry) {
-            const replyIndex = pendingEntry.replyToMessageId
-                ? historyForThisMessage.findIndex(message => message.id === pendingEntry.replyToMessageId)
-                : -1;
-            const insertionIndex = replyIndex >= 0 ? replyIndex + 1 : historyForThisMessage.length;
-            historyForThisMessage.splice(insertionIndex, 0, { ...pendingEntry });
-            messageIndex = insertionIndex;
-        }
+    let transientModel;
+    try {
+        transientModel = await refs.transientStreamHistory.finalize({
+            messageId,
+            context: storedContext,
+            content: finalFullText,
+            finishReason,
+            visible: isForCurrentView,
+        });
+    } catch (error) {
+        console.error(`[StreamManager] Could not finalize transient history for ${messageId}`, storedContext, error);
+        discardStreamingMessage(messageId);
+        return null;
     }
-    
-    if (messageIndex === -1) {
+    if (!transientModel) {
         // If it's an assistant chat and the message is not found,
         // it's likely the window was reset. Ignore gracefully.
         if (storedContext && storedContext.topicId === 'assistant_chat') {
@@ -2325,21 +2066,12 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         return;
     }
     
-    const message = historyForThisMessage[messageIndex];
-    message.content = finalFullText;
-    message.finishReason = finishReason;
-    message.isThinking = false;
-    delete message.isPendingStream;
-    if (message.isGroupMessage && storedContext) {
-        message.name = storedContext.agentName || message.name;
-        message.agentId = storedContext.agentId || message.agentId;
-    }
+    const { message, history: historyForThisMessage } = transientModel;
     
     // Update UI if it's the current view
-    if (isForCurrentView) {
-        refs.currentChatHistoryRef.set([...historyForThisMessage]);
-
-        const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+    if (shouldProjectToDom) {
+        const messageItem = messageDomCache.get(messageId)?.messageItem
+            || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
 
@@ -2377,7 +2109,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                     }
 
                     // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
-                    setTimeout(() => {
+                    scheduleOwnedTimeout(() => {
                         if (contentDiv && contentDiv.isConnected) {
                             refs.runTextHighlights(contentDiv);
                         }
@@ -2392,7 +2124,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             
             const nameTimeBlock = messageItem.querySelector('.name-time-block');
             if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
-                const timestampDiv = document.createElement('div');
+                const timestampDiv = ownerDocument().createElement('div');
                 timestampDiv.classList.add('message-timestamp');
                 timestampDiv.textContent = formatMessageTimestamp(message.timestamp || Date.now());
                 nameTimeBlock.appendChild(timestampDiv);
@@ -2403,58 +2135,38 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
 
     }
     
-    // 🟢 使用防抖保存
-    if (storedContext.topicId !== 'assistant_chat') {
-        debouncedSaveHistory(storedContext, historyForThisMessage);
-    }
-    
     // Cleanup
     streamingChunkQueues.delete(messageId);
     pendingDirectRenderMessages.delete(messageId);
     accumulatedStreamText.delete(messageId);
     streamSegmentStates.delete(messageId);
-    pendingHistoryEntries.delete(messageId);
+    refs.transientStreamHistory.discard?.(messageId);
     cleanupDesktopPushState(messageId);
 
-    // Finalization can start in a background topic and finish after the user
-    // has navigated again. Refreshing only inside isForCurrentView leaves the
-    // shared send button stuck in interrupt mode even though all stream state
-    // is already gone. The updater derives state from the *current* chat, so
-    // it is safe and necessary to run after cleanup for every finalization.
-    window.updateSendButtonState?.();
-
-    // Delayed cleanup
-    const existingCleanupTimer = delayedCleanupTimers.get(messageId);
-    if (existingCleanupTimer) {
-        clearTimeout(existingCleanupTimer);
-    }
-    const cleanupTimerId = setTimeout(() => {
-        messageDomCache.delete(messageId);
-        messageInitializationStatus.delete(messageId);
-        preBufferedChunks.delete(messageId);
-        messageContextMap.delete(messageId);
-        pendingHistoryEntries.delete(messageId);
-        viewContextCache.delete(messageId);
-        delayedCleanupTimers.delete(messageId);
-    }, 5000);
-    delayedCleanupTimers.set(messageId, cleanupTimerId);
+    // Terminal means ownership has ended; no delayed cache lease survives `done`.
+    messageDomCache.delete(messageId);
+    messageInitializationStatus.delete(messageId);
+    preBufferedChunks.delete(messageId);
+    messageContextMap.delete(messageId);
+    viewContextCache.delete(messageId);
+    messageRuntimeKeys.delete(String(messageId));
+    streamMessageModels.delete(messageId);
 
     // 调用方（例如 Flowlock）需要基于真正落盘的完整文本解析最终控制协议。
     return {
         messageId,
         context: storedContext,
         content: finalFullText,
-        finishReason
+        finishReason,
+        history: historyForThisMessage,
     };
 }
 
-export function discardStreamingMessage(messageId) {
+function discardStreamingMessage(messageId) {
+    if (disposed) return false;
     const scrollTimer = scrollThrottleTimers.get(messageId);
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollThrottleTimers.delete(messageId);
-    const cleanupTimer = delayedCleanupTimers.get(messageId);
-    if (cleanupTimer) clearTimeout(cleanupTimer);
-    delayedCleanupTimers.delete(messageId);
     streamingChunkQueues.delete(messageId);
     streamingTimers.delete(messageId);
     pendingDirectRenderMessages.delete(messageId);
@@ -2463,40 +2175,37 @@ export function discardStreamingMessage(messageId) {
     messageDomCache.delete(messageId);
     preBufferedChunks.delete(messageId);
     messageInitializationStatus.delete(messageId);
-    pendingFinalizationEvents.delete(messageId);
-    pendingHistoryEntries.delete(messageId);
+    const initializationWaiters = messageInitializationWaiters.get(messageId) || [];
+    messageInitializationWaiters.delete(messageId);
+    initializationWaiters.forEach(resolve => resolve(false));
+    refs.transientStreamHistory.discard?.(messageId);
     messageContextMap.delete(messageId);
     viewContextCache.delete(messageId);
     cleanupDesktopPushState(messageId);
-    if (activeStreamingMessageId === messageId) activeStreamingMessageId = null;
-    window.updateSendButtonState?.();
+    activeStreamingMessages.delete(messageId);
+    messageRuntimeKeys.delete(String(messageId));
 }
 
-export function cleanupTransientState() {
+async function dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (transientCleanupRegistered) {
+            transientCleanupWindow?.removeEventListener('beforeunload', dispose);
+            transientCleanupRegistered = false;
+            transientCleanupWindow = null;
+        }
+        cancelScheduledAnimationFrames();
         // 清理所有流式消息相关状态
         for (const timerId of scrollThrottleTimers.values()) {
-            clearTimeout(timerId);
+            clearOwnedTimeout(timerId);
         }
         scrollThrottleTimers.clear();
+        for (const timeout of ownedTimeouts) clearOwnedTimeout(timeout);
+        cancelScheduledAnimationFrames();
     
-        for (const state of desktopPushStates.values()) {
-            if (state?.pushTimer) {
-                clearInterval(state.pushTimer);
-            }
-        }
-        desktopPushStates.clear();
+        desktopPushConsumer?.dispose();
+        desktopPushConsumer = null;
     
-        for (const timerId of delayedCleanupTimers.values()) {
-            clearTimeout(timerId);
-        }
-        delayedCleanupTimers.clear();
-    
-        for (const timerId of historySaveQueue.values()) {
-            if (timerId?.timerId) {
-                clearTimeout(timerId.timerId);
-            }
-        }
-        historySaveQueue.clear();
     
         streamingChunkQueues.clear();
         streamingTimers.clear();
@@ -2506,53 +2215,107 @@ export function cleanupTransientState() {
         messageDomCache.clear();
         preBufferedChunks.clear();
         messageInitializationStatus.clear();
-        pendingFinalizationEvents.clear();
-        pendingHistoryEntries.clear();
+        for (const waiters of messageInitializationWaiters.values()) waiters.forEach(resolve => resolve(false));
+        messageInitializationWaiters.clear();
+        refs.transientStreamHistory.dispose?.();
         messageContextMap.clear();
         viewContextCache.clear();
+        streamMessageModels.clear();
     
-        activeStreamingMessageId = null;
+        activeStreamingMessages.clear();
+        messageRuntimeKeys.clear();
         currentViewSignature = null;
         globalRenderLoopRunning = false;
+        await Promise.allSettled([...pendingAsyncOperations]);
     
         console.debug('[StreamManager] Transient state cleared');
     }
 
-export function getStreamDiagnostics() {
+function getActiveStreamingMessageId() {
+    const active = [...activeStreamingMessages.entries()];
+    for (let index = active.length - 1; index >= 0; index -= 1) {
+        const [messageId, context] = active[index];
+        if (isMessageForCurrentView(context)) return messageId;
+    }
+    return null;
+}
+
+function getActiveStreamingContext() {
+    const messageId = getActiveStreamingMessageId();
+    return messageId ? activeStreamingMessages.get(messageId) || null : null;
+}
+
+function snapshotConversation(identity) {
+    if (disposed) return Object.freeze([]);
+    const snapshots = [];
+    for (const [messageId, context] of activeStreamingMessages.entries()) {
+        if (!conversationIdentityMatches(context, identity)) continue;
+        snapshots.push(Object.freeze({
+            conversation: Object.freeze({
+                itemType: context.isGroupMessage ? 'group' : 'agent',
+                itemId: context.isGroupMessage ? context.groupId : context.agentId,
+                topicId: context.topicId,
+            }),
+            message: Object.freeze({ ...(streamMessageModels.get(messageId) || { id: messageId }) }),
+            messageId,
+            streamOperationId: context.streamOperationId || null,
+            context: Object.freeze({ ...context }),
+            phase: messageInitializationStatus.get(messageId) || 'active',
+            accumulatedText: accumulatedStreamText.get(messageId) || '',
+        }));
+    }
+    return Object.freeze(snapshots);
+}
+
+async function reconcileConversation(identity) {
+    if (disposed) return Object.freeze([]);
+    const snapshots = snapshotConversation(identity);
+    for (const snapshot of snapshots) {
+        const context = messageContextMap.get(snapshot.messageId) || snapshot.context;
+        viewContextCache.set(snapshot.messageId, isMessageForCurrentView(context));
+        await startStreamingMessage({ ...snapshot.message, ...context, content: snapshot.message.content || '' });
+        if (isMessageForCurrentView(context)) {
+            renderStreamFrame(snapshot.messageId);
+        }
+    }
+    return snapshots;
+}
+
+function getStreamDiagnostics() {
+    const activeMessageId = getActiveStreamingMessageId();
     return Object.freeze({
-        activeMessageId: activeStreamingMessageId,
+        activeMessageId,
+        activeMessageIds: Object.freeze(activeStreamingMessages.displayKeys()),
         initialization: messageInitializationStatus.size,
         activeInitializations: [...messageInitializationStatus.values()]
             .filter(status => status === 'pending' || status === 'ready').length,
         contexts: messageContextMap.size,
-        pendingHistory: pendingHistoryEntries.size,
+        pendingHistory: refs.transientStreamHistory?.pendingCount || 0,
         prebuffered: preBufferedChunks.size,
-        pendingFinalizations: pendingFinalizationEvents.size,
+        pendingFinalizations: messageInitializationWaiters.size,
         chunkQueues: streamingChunkQueues.size,
         renderTimers: streamingTimers.size,
-        delayedCleanupTimers: delayedCleanupTimers.size,
-        historySaveQueue: historySaveQueue.size,
-        desktopPushStates: desktopPushStates.size,
+        delayedCleanupTimers: ownedTimeouts.size + scheduledAnimationFrames.size,
+        desktopPushStates: desktopPushConsumer?.getStateCount() || 0,
     });
 }
 
-// Expose to global scope for classic scripts
-window.streamManager = {
-    initStreamManager,
-    startStreamingMessage,
+return Object.freeze({
+    attachStreamProjection,
+    dispose,
+    startStreamingMessage: (...args) => trackAsyncOperation(startStreamingMessage(...args)),
     appendStreamChunk,
-    finalizeStreamedMessage,
+    projectStreamTerminal: (...args) => trackAsyncOperation(projectStreamTerminal(...args)),
     discardStreamingMessage,
-    cleanupTransientState,
     getDiagnostics: getStreamDiagnostics,
     isMessageActive,
-    getActiveStreamingMessageId: () => activeStreamingMessageId,
-    getActiveStreamingContext: () => {
-        if (!activeStreamingMessageId) return null;
-        return messageContextMap.get(activeStreamingMessageId) || null;
-    },
+    getActiveStreamingMessageId,
+    getActiveStreamingContext,
+    snapshotConversation,
+    reconcileConversation: (...args) => trackAsyncOperation(reconcileConversation(...args)),
     isMessageInitialized: (messageId) => {
         // Check if message is being tracked by streamManager
         return messageInitializationStatus.has(messageId);
     }
-};
+});
+}

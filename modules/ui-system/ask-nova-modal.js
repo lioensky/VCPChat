@@ -1,4 +1,8 @@
-import { fixEmoticonUrl } from '../renderer/emoticonUrlFixer.js';
+import { createEmoticonUrlFixer } from '../renderer/emoticonUrlFixer.js';
+
+// Ask Nova is a standalone surface; keep its sticker repair state local to
+// this module instead of importing a mutable renderer singleton.
+const emoticonUrlFixer = createEmoticonUrlFixer();
 
 const NOVA_STICKER_CATEGORY = 'Nova表情包';
 const NOVA_STICKER_PLACEHOLDER_REGEX = /\[表情包:([^\]\r\n]{1,100})\]/g;
@@ -137,7 +141,7 @@ function replaceStickerPlaceholders(root, stickerMap, outputDocument) {
                 if (!originalUrl || !isSafeExternalUrl(originalUrl)) continue;
                 replacement.append(outputDocument.createTextNode(text.slice(lastIndex, match.index)));
                 const image = outputDocument.createElement('img');
-                const fixedUrl = fixEmoticonUrl(originalUrl);
+                const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(originalUrl);
                 image.src = isSafeExternalUrl(fixedUrl) ? fixedUrl : originalUrl;
                 image.alt = stickerName;
                 image.title = stickerName;

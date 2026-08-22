@@ -861,6 +861,7 @@ function initialize(mainWindow, context) {
     ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, context = null) => {
         console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`, context);
         const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
+        const streamOperationId = `${messageId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
 
         let streamTask = null;
         let streamTaskDetached = false;
@@ -872,7 +873,7 @@ function initialize(mainWindow, context) {
         const sendStreamPayload = payload => {
             if (streamTask?.controller.signal.aborted || event.sender.isDestroyed()) return false;
             try {
-                event.sender.send(streamChannel, payload);
+                event.sender.send(streamChannel, { ...payload, streamOperationId });
                 return true;
             } catch (error) {
                 console.warn(`[Main - sendToVCP] Dropped stream event for ${messageId}:`, error.message);

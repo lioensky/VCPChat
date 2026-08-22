@@ -1,4 +1,15 @@
 // Assistantmodules/assistant.js
+import { createMemoryChatRepository } from '../../modules/chat/memoryChatRepository.js';
+import { createTransientChatHistoryPersistence } from '../../modules/chat/chatHistoryPersistence.js';
+import { createChatHistoryMutationAuthority } from '../../modules/chat/chatHistoryMutationAuthority.js';
+import { createChatRepository } from '../../modules/chat/chatRepository.js';
+import { createWindowStreamRuntime } from '../../modules/renderer/windowStreamRuntime.js';
+import { createMessageRenderer } from '../../modules/messageRenderer.js';
+import { createStreamProjection } from '../../modules/renderer/streamManager.js';
+import { createStreamTransientHistory } from '../../modules/chat/streamTransientHistory.js';
+
+const streamManager = createStreamProjection();
+const messageRenderer = createMessageRenderer({ streamManager });
 
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
@@ -16,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChatHistory = [];
     let attachedFiles = [];
     let activeStreamingMessageId = null;
+    let streamRuntime = null;
+    let historyMutationAuthority = null;
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
 
     const scrollToBottom = () => {
@@ -38,10 +51,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            if (activeStreamingMessageId) {
+                await window.electronAPI.interruptVcpRequest?.({ messageId: activeStreamingMessageId });
+                await streamRuntime?.cancel(activeStreamingMessageId, 'assistant-window-close');
+            }
             await saveAssistantChatToHistory();
         } catch (error) {
             console.error('[Assistant] Error saving history on close:', error);
         } finally {
+            await streamRuntime?.dispose();
+            await streamManager.dispose();
+            await messageRenderer.disposeRootResources(chatMessagesDiv);
+            messageRenderer.disposeRendererResources();
+            await historyMutationAuthority?.dispose();
             window.close();
         }
     });
@@ -60,42 +82,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return eventTopicId === getAssistantTopicId() && eventAgentId === agentId;
     }
 
-    async function waitForActiveStreamToSettle(timeoutMs = 4000) {
-        if (!activeStreamingMessageId) return true;
-
-        const pendingMessageId = activeStreamingMessageId;
-        console.log(`[Assistant] Waiting for active stream to settle before close: ${pendingMessageId}`);
-
-        return await new Promise((resolve) => {
-            let settled = false;
-            const startedAt = Date.now();
-
-            const check = () => {
-                if (settled) return;
-                if (activeStreamingMessageId !== pendingMessageId) {
-                    settled = true;
-                    resolve(true);
-                    return;
-                }
-
-                if (Date.now() - startedAt >= timeoutMs) {
-                    console.warn(`[Assistant] Timed out while waiting stream to settle: ${pendingMessageId}`);
-                    settled = true;
-                    resolve(false);
-                    return;
-                }
-
-                setTimeout(check, 80);
-            };
-
-            check();
-        });
+    function restoreComposerAfterStream() {
+        activeStreamingMessageId = null;
+        messageInput.disabled = false;
+        sendMessageBtn.disabled = false;
+        if (attachFileBtn) attachFileBtn.disabled = false;
+        messageInput.focus();
     }
 
     async function saveAssistantChatToHistory() {
         if (!agentId) return;
-
-        await waitForActiveStreamToSettle();
 
         const persistedHistory = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
         if (persistedHistory.length === 0) return;
@@ -109,7 +105,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
 
-                await window.electronAPI.saveChatHistory(agentId, newTopicId, persistedHistory);
+                if (!historyMutationAuthority) throw new Error('Assistant history mutation authority is not ready');
+                await historyMutationAuthority.replace({ itemId: agentId, itemType: 'agent', topicId: newTopicId, category: 'assistant-session-close' }, persistedHistory);
                 console.log(`[Assistant] History saved to new topic: ${newTopicId}`);
 
                 if (window.summarizeTopicFromMessages) {
@@ -175,7 +172,7 @@ window.electronAPI.onAssistantData(async (data) => {
         agentNameSpan.textContent = agentConfig.name;
 
         // --- Initialize Shared Renderer ---
-        if (window.messageRenderer) {
+        if (messageRenderer) {
             const chatHistoryRef = {
                 get: () => currentChatHistory,
                 set: (newHistory) => { currentChatHistory = newHistory; }
@@ -204,7 +201,7 @@ window.electronAPI.onAssistantData(async (data) => {
                     if (activeStreamingMessageId === messageId) {
                         // Notify the main process to stop the VCP request.
                         // The main process should then send an 'end' or 'error' stream event,
-                        // which will trigger finalizeStreamedMessage correctly.
+                        // which will publish the coordinator-owned terminal outcome.
                         await window.electronAPI.interruptVcpRequest({ messageId });
                         return { success: true };
                     }
@@ -212,22 +209,54 @@ window.electronAPI.onAssistantData(async (data) => {
                 }
             };
 
-            window.messageRenderer.initializeMessageRenderer({
+            const chatRepository = createMemoryChatRepository({
+                read: () => currentChatHistory,
+                write: history => { currentChatHistory = history; },
+            });
+            const historyPersistence = createTransientChatHistoryPersistence(chatRepository);
+            const transientStreamHistory = createStreamTransientHistory({
+                repository: chatRepository,
+                currentHistory: { get: () => chatHistoryRef.get(), replace: history => chatHistoryRef.set(history) },
+            });
+            historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
+            messageRenderer.initializeMessageRenderer({
+                chatRepository,
+                historyMutationAuthority,
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,
+                transientStreamHistory,
+                viewAuthority: { isCurrent: context => context?.agentId === agentId && context?.topicId === getAssistantTopicId() },
                 globalSettingsRef: globalSettingsRef,
                 chatMessagesDiv: chatMessagesDiv,
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
+                morphdom: window.morphdom,
+                pretextBridge: window.pretextBridge,
+                flowlockProtocol: window.flowlockProtocol,
                 uiHelper: window.uiHelperFunctions,
+                messageCommands: { handleSendMessage: text => sendMessage(text) },
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {}, // Stub
                 interruptHandler: interruptHandler // Provide the interrupt handler
             });
+            streamRuntime = createWindowStreamRuntime({
+                root: chatMessagesDiv,
+                streamProjection: streamManager,
+                historyPersistence,
+                getSelection: () => ({ id: agentId, type: 'agent' }),
+                getTopicId: getAssistantTopicId,
+                getMessageContext: () => ({
+                    agentId, topicId: getAssistantTopicId(), agentName: agentConfig?.name,
+                    avatarUrl: agentConfig?.avatarUrl, avatarColor: agentConfig?.avatarCalculatedColor,
+                }),
+                contextFilter: context => !!context && context.topicId === getAssistantTopicId() && context.agentId === agentId,
+                dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+                onSettled: restoreComposerAfterStream,
+            });
             console.log('[Assistant] Shared messageRenderer initialized.');
         } else {
-            console.error('[Assistant] window.messageRenderer is not available. Cannot initialize shared renderer.');
+            console.error('[Assistant] shared message renderer provider is not available. Cannot initialize shared renderer.');
             agentNameSpan.textContent = "错误";
             chatMessagesDiv.innerHTML = `<div class="message-item system"><p style="color: var(--danger-color);">加载渲染模块失败，请重启应用。</p></div>`;
             return;
@@ -296,7 +325,7 @@ window.electronAPI.onAssistantData(async (data) => {
 
     const sendMessage = async (messageContent) => {
         if (!messageContent.trim() && attachedFiles.length === 0) return;
-        if (!agentConfig || !window.messageRenderer) return;
+        if (!agentConfig || !messageRenderer) return;
 
         const uiAttachments = [];
         if (attachedFiles.length > 0) {
@@ -319,7 +348,7 @@ window.electronAPI.onAssistantData(async (data) => {
             id: `user_msg_${Date.now()}`,
             attachments: uiAttachments
         };
-        await window.messageRenderer.renderMessage(userMessage, false);
+        await messageRenderer.renderMessage(userMessage, false);
         currentChatHistory.push(userMessage);
 
         messageInput.value = '';
@@ -342,7 +371,7 @@ window.electronAPI.onAssistantData(async (data) => {
             name: agentConfig.name,
             avatarUrl: agentConfig.avatarUrl
         };
-        await window.messageRenderer.renderMessage(assistantMessagePlaceholder, false);
+        await messageRenderer.renderMessage(assistantMessagePlaceholder, false);
 
         // Context is required for the new sendToVCP API
         const context = {
@@ -417,64 +446,18 @@ window.electronAPI.onAssistantData(async (data) => {
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
-            if (window.messageRenderer) {
-                // Finalize without context to prevent history saving, then update UI
-                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error');
-                const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
-                if (messageItemContent) {
-                    messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
-                }
-            }
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            if (attachFileBtn) attachFileBtn.disabled = false;
-            messageInput.focus();
+            const accepted = streamRuntime?.accept({
+                    type: 'error', messageId: thinkingMessageId, error: error.message,
+                    context: { agentId, topicId: getAssistantTopicId() },
+                });
+            if (!accepted) restoreComposerAfterStream();
         }
     };
 
-    const activeStreams = new Set();
     // Listen to the new, unified stream event
     window.electronAPI.onVCPStreamEvent((eventData) => {
-        if (!window.messageRenderer || !isEventForCurrentAssistantSession(eventData)) return;
-
-        const { messageId, type, chunk, error, context } = eventData;
-
-        // The 'start' event is implicit. The first 'data' chunk will trigger startStreamingMessage.
-        if (!activeStreams.has(messageId) && type === 'data') {
-            window.messageRenderer.startStreamingMessage({
-                id: messageId,
-                role: 'assistant',
-                name: agentConfig.name,
-                avatarUrl: agentConfig.avatarUrl,
-                context: context, // Pass context
-            });
-            activeStreams.add(messageId);
-        }
-
-        if (type === 'data') {
-            window.messageRenderer.appendStreamChunk(messageId, chunk, context);
-        } else if (type === 'end') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context);
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            if (attachFileBtn) attachFileBtn.disabled = false;
-            messageInput.focus();
-        } else if (type === 'error') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
-            const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
-            if (messageItemContent) {
-                messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;
-            }
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            if (attachFileBtn) attachFileBtn.disabled = false;
-            messageInput.focus();
-        }
+        if (!streamRuntime || !isEventForCurrentAssistantSession(eventData)) return;
+        streamRuntime.accept(eventData);
     });
 
     if (attachFileBtn) {

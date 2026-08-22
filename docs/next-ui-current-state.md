@@ -1,9 +1,11 @@
-# Next UI 当前架构与交付基线
+# 当前 UI 架构与交付基线
 
 > 状态：当前权威事实文档<br>
-> 核对日期：2026-08-19<br>
-> 核对范围：`codex/ui-ux-harness-research-20260819` 已提交文件树相对 `upstream/main`<br>
+> 核对日期：2026-08-21<br>
+> 核对范围：当前工作树 `codex/chat-kernel-deep-decoupling-draft-20260821` 的实际代码、门禁与测试结果<br>
 > 后续施工顺序：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
+
+> 文件名中的 `next-ui` 是历史命名。当前主窗口只有一套正式布局；`next` 是现行主窗口 presentation，不再与 Classic 构成可切换的双布局。Classic 仅保留给未迁移的业务子页面和兼容边界。
 
 ## 1. 文档用途
 
@@ -51,24 +53,8 @@
 | Web Awesome 离线闭包 | 已完成 | 固定版本、101 文件 closure、vendor 与 pack check |
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
-| Escape 与键盘导航所有权 | 已完成核心范围 | 优先级 Escape dispatcher、Launchpad 方向键/Home/End、controller fallback listener dispose 回归 |
-| Launchpad 隐藏状态可访问性 | 已完成核心范围 | 关闭时 AppTabHost 设置 `aria-hidden` 与 `inert`，防止动态应用按钮获得焦点；打开/关闭回归覆盖 |
-| 应用托盘抽屉隐藏状态可访问性 | 已完成核心范围 | 关闭/出场动画期间 trayManager 同步 `aria-hidden` 与 `inert`；Electron smoke 验证打开和关闭终态 |
-| 通知菜单单一所有者 | 已完成 | 旧 `event-listeners` 重复绑定已停用；controller 单测与 Electron 命令计数证明每个动作只执行一次 |
-| 全局设置永久 pending | 已完成核心范围 | 保存 IPC 有界等待，超时释放提交锁并进入可恢复失败；新增回归覆盖 |
-| 异步 busy 状态语义 | 已完成核心范围 | Ask Nova composer 与主聊天流式发送按钮同步 `aria-busy`，成功/取消后由真实终态清除；Electron 主聊天序列与 UI contract 覆盖 |
-| Overlay teardown 与原生 View 对账 | 已完成核心范围 | OverlayCoordinator dispose 清空 lease 后主动 reconcile，避免隐藏 WebContentsView 遗留；dispose 回归覆盖 |
-| 动态标签关闭焦点恢复 | 已完成核心范围 | AppTabHost 关闭当前 tab 时将焦点恢复到相邻 tab 或主聊天 Home；真实 tab controller 回归覆盖 |
-| Ask Nova 与聊天模式交互合同 | 已完成核心范围 | Ask Nova tabs 使用 roving tabindex/方向键/tabpanel 关系；聊天模式浮层同步 `aria-hidden`/`inert`，保存按最新意图串行化 |
-| Native Modal 可访问名称 | 已完成核心范围 | VCPUI native dialog 生成稳定 `aria-labelledby` 与标题节点；contract test 覆盖 |
-| 兼容确认框模态语义 | 已完成核心范围 | 上游 `showConfirmDialog` 保留原 API，但补齐同步 active 状态、dialog/aria-modal、焦点陷阱、Escape 捕获和焦点恢复 |
-| 动态应用标签与设置导航可访问性 | 已完成核心范围 | 动态标签使用独立 tab button、关闭 sibling 与 labelled tabpanel；全局设置分类使用垂直 tablist、方向键/Home/End 与 section 关系 |
-| 应用托盘设置弹窗 | 已完成核心范围 | 保留上游托盘 API，补齐 dialog 语义、焦点陷阱、Escape owner 与迟到 overlay acquire 的安全释放 |
-| 设置 Electron 证据 | 已完成当前 canonical 范围 | 真实保存、reload 恢复、搜索/分类切换与主题截图通过；旧的 Classic teardown 断言已移除，避免把已合并主 Surface 当成双布局契约 |
-| 高频主题切换证据 | 已完成当前 canonical 范围 | 真实 Electron smoke 连续切换 20 次，最终主题、Web Awesome theme link 数量和 owner 数量均与切换前一致 |
-| macOS unpacked packaged launch | 证据未完成 | 本机已生成 `dist/mac-arm64/VCP聊天客户端.app` 并确认 `app.asar`/资源存在；直接启动未建立 remote-debugging endpoint，未将未签名产物启动结果计为通过 |
 
-历史证据快照（2026-08-17，P3，不代表当前 HEAD 的 Windows 或发布证据）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明当时覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
+历史完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果只证明当时已覆盖路径稳定，不代表当前分支或任意服务、GPU、休眠、第三方插件组合绝对无缺陷。
 
 ## 4. 公共能力收口状态
 
@@ -102,41 +88,53 @@ P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement
 
 ## 6. 当前 PR 就绪判断
 
-当前分支已完成 P0–P3 与 P4 自动化门禁。分支基线最后一次施工同步为 `upstream/main` `3da77f00`；随后已只读审计当前 `upstream/main` `94923696` 的 7 个新提交：其中聊天气泡边界提交 `fabcbbd1` 已由本分支既有 `14b47e74` 等价实现覆盖（`styles/chat.css` 哈希一致），无需重复合并；VCPMobileSync/Rust 更新属于独立上游范围，暂不合并以避免扩大本路线和插件/数据服务边界。两处共享文件已逐段审查并以理由和规范化文本哈希更新冻结基线。
+当前 UI 拓扑已收敛为单一主窗口 presentation。Chat Kernel 深度解耦的 D5/D6 已在范围内通过：`renderer.js` 只承担 composition/lifecycle orchestration，本路线指定的 settings/filter/presentation ambient facade 已退休。D7 仍未完成，原因是缺少跨 Windows/打包/GPU-DPI 矩阵和 30–60 分钟人工 soak；不得将单主机自动化外推为最终发布就绪。D 阶段状态以 [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md) 为唯一权威，测试数字只以该审计及其记录的最近一次执行为准。
+
+以下 P0–P4、同步提交和历史 Windows/macOS 数字均为 2026-08-17 的阶段性验收记录，保留用于追溯，不代表当前分支的最新通过状态。
 
 Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字节；门禁现统一按 LF 文本语义计算 SHA-256，并用 LF/CRLF 等价断言防复发。Web Awesome 生成产物通过 `.gitattributes` 仅在 `vendor/webawesome-runtime/**` 禁用 text conversion 和 whitespace diagnostics；源码检查保持启用，pack check 会验证该属性没有丢失。
 
-同步后的 macOS 自动证据：
+当前分支自动证据（详细阶段状态以最终审计为准）：
 
-- `npm run check:ui-system`：当前 HEAD 首次运行因新增外部证据清单未加入设计边界白名单而失败；该守卫同步修复后需重新取得绿证据，不能引用旧快照代替。
-- Electron UI Apps：22/22。
-- 主聊天操作序列：24 actions、11 action kinds、21 pairs、12 transitions、2 faults、required edge 1/1。
-- 生命周期压力：3 次预热 + 20 次测量；861 listener、8 Scope、162 受管资源、5 process、2 renderer process 在全部 checkpoint 恒定，detached root/icon/option 为 0，heap 约 9.8 MiB → 9.7 MiB。
-- Web Awesome closure：101 files、0.46 MiB，可重复生成；pack check 通过。
-- `git diff --check upstream/main...HEAD`：通过。
+- Chat Kernel：146/146；UI System：97/97。
+- `npm run check:ui-system`：通过，包含 design subtraction、consumer、Classic、Next、应用运行时和 UI System 全链路。
+- Electron UI Apps：24/24；主聊天与辅助窗口证据、当前主机 Windows 矩阵见 [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md)。
+- 当前工作树 Windows matrix：六行全部通过，包含 60-cycle lifecycle；30 分钟 manual-soak 观察已生成 artifact，但 checklist 仍为 `manual_observation_required`。
+- Electron unpacked packaged 构建当前因 `electron-edge-js` MSBuild exit 1 失败；不能把 source/runtime smoke 外推为 packaged PASS。
+- Web Awesome closure 与 pack check：沿用既有通过证据，发布配置矩阵仍属于 D7 未完成项。
 
-尚未完成的发布证据包括当前上游增量重新归因、Windows 复验、签名/可见桌面环境中的 packaged launch 和 30–60 分钟人工 soak。二者不应由 macOS 自动结果代替，因此当前状态是“代码与自动门禁就绪，跨平台/打包/人工发布证据待补”。本分支明确不携带 `.github/workflows/**`，跨平台验证由外部 Windows 环境或上游 CI 执行。
+尚未闭合的发布证据仍包括 30–60 分钟人工 soak、真实 packaged Electron runtime 和跨配置矩阵；`npm run check:chat-release-evidence` 会在这些证据缺失时明确失败。这不影响 C0–C7 实现退出条件，但不应把自动矩阵代替人工体验观察。本分支现提供 Chat Kernel 与 UI 的 PR 门禁工作流；跨配置 Windows、打包安装和人工 soak 仍需单独执行。
 
-2026-08-19 Harness 路线最新自动证据：`test:ui-system` 86/86，Electron UI Apps 22/22，主聊天序列 24 actions / 11 action kinds / 21 pairs / 12 transitions / 2 faults，生命周期压力 3 次预热加 20 次测量后保持 873 listener、8 Scope、174 项受管资源和 5 个 Electron process，detached root/icon/option 为 0，heap 约 10.2 MiB → 10.1 MiB；Web Awesome 101 文件 closure 与 pack check 通过。这些数字是该次 macOS 运行证据，不替代 Windows 与人工 soak。
+当前文档权威关系已在 2026-08-20 收敛；历史文档可以保留当时的双 presentation 描述，但不得用于描述当前主窗口拓扑。
 
-本机 `npm run pack` 能生成 macOS arm64 目录。使用隔离 `userData` 和 `VCPCHAT_E2E_TEST=1` 启动打包 app 后，进程可存活但 15 秒内未创建 remote-debugging 端口；`sample` 显示主线程停在原生 `NSAlert runModal`，因此“打包产物实际启动”仍是未通过的 A6 证据。该结果需要在签名/可见桌面环境进一步定位，不被 repo closure 检查替代。
+P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
 
-当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
+P2 无消费者架构减法已于 2026-08-17 关闭：产品文件树不再携带休眠子页面 runtime、静态 mode facade 或 Settings/Creation/item list 测试 Store；负向边界门禁阻止这些接口在无生产消费者时回归。完整 Windows 验证为 UI System 75/75、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过。
 
-历史证据快照（2026-08-17，不代表当前 HEAD 的 Windows 证据）：P1 所有权缺陷已关闭；组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。此前记录的 UI System 75/75、Electron UI Apps 22/22 和生命周期压力结果只作为当时的回归记录。
-
-历史证据快照（2026-08-17，不代表当前 HEAD 的 Windows 证据）：P2 无消费者架构减法已关闭；产品文件树不再携带休眠子页面 runtime、静态 mode facade 或 Settings/Creation/item list 测试 Store；负向边界门禁阻止这些接口在无生产消费者时回归。
-
-历史证据快照（2026-08-17，不代表当前 HEAD 的 Windows 证据）：P3 公共合同收口已关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。
+P3 公共合同收口已于 2026-08-17 关闭：13 个 Stable 组件均具备生产与 Electron 证据，19 个 Candidate 继续用于正式组件库展示；Registry 仅保留 `commands/apps`，内部应用注销会关闭对应 tab 与 Surface。完整 Windows 验证为 UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、162 项受管资源、407 个 listener、5 个 Electron process，detached root/icon/option 为 0。
 
 P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐。动态壁纸、插件运行时和业务子页面迁移继续排除在本轮之外。
+
+Chat Kernel 的早期 C0–C7 子路线已有既有证据；当前工作转入 D0–D7 深度解耦路线。不要用早期 C0–C7 的通过记录替代 D5–D7 的退出证据。
+
+深度解耦已完成 D0–D6 的范围内退出：`MainChatSurfaceAdapter`、`StreamCoordinator`、`StreamTransientHistory`、operation-scoped `StreamProjection`、独立 Surface consumer 和 owner-scoped preload subscription 已接入生产；主题、设置/presentation、TTS、Flowlock、辅助 preload 事件、forward、附件和 DOM listener 均已有 named owner。D7 继续只补齐发布配置和人工观察证据，不以重写 UI 或增加 facade 为目标。
+
+D0 consumer baseline 已接入 `check:ui-system`：生产引用、测试引用和 Kernel 禁止反向依赖均由 `guard:chat-kernel-consumers` 重复检查。该报告只记录当前事实，不把 legacy facade 自动升级为稳定公共 API。
+
+D0–D6 已接入生产并具备各自的源码、静态门禁和自动化证据；D7 BLOCKED。历史复核的 115/115、129/129、85/85 等数字保留为历史记录，不能作为当前状态。当前 Chat Kernel、UI System、Electron 和 Windows 单主机证据统一记录在最终审计；多版本/打包/GPU-DPI 配置、packaged native rebuild 和人工 checklist 仍未完成。
+
+最新 vD5 增量已将主聊天选择、history 与 TTS 状态改为显式 capability/owner：`VCPMainChatState` 只读快照替代可变 selection globals，主 history 由 `MainChatStateAuthority` 持有，`TtsSurfaceOwner` 持有 AudioContext、队列和订阅；`TopicSelectionReadiness` 替代 renderer-ready/pending selection 全局字段。Flowlock、AutoTTS 和 Electron 序列测试均已迁移到真实 consumer。该增量当时为 Chat Kernel 113/113；当前测试数字只读取最终审计。辅助 Voice/Rust 并发流场景已纳入主聊天序列。
+
+并发流的终态持久化现在会在 stream terminal 显式 flush 并等待当前 topic 的 ChatRepository 保存；独立交互 Surface 的测试也在下一次请求前等待真实 `aria-busy=false` 终态，避免把 terminal 事件误当成发送 Promise 已完成。
 
 ## 7. 文档权威关系
 
 | 文档 | 定位 |
 |---|---|
-| 本文 | 当前实现、真实消费者、完成度与 PR 状态的唯一权威 |
-| `next-ui-development-roadmap.md` | 从当前状态继续施工的唯一权威顺序 |
+| 本文 | 当前主窗口拓扑和 UI 产品状态的权威 |
+| `chat-kernel-vd7-final-audit.md` | D0–D7 阶段状态、自动化证据与 D7 未完成项的唯一权威 |
+| `chat-kernel-deep-decoupling-roadmap.md` | D0–D7 仍有效的目标、行为合同、架构决策和退出条件 |
+| `next-ui-development-roadmap.md` | UI 后续施工顺序；不重复维护 D 阶段状态 |
 | `next-ui-lifecycle-architecture.md` | 生命周期合同和所有权规则 |
 | `main-chat-operation-sequence-testing.md` | 操作序列模型、覆盖与故障注入规则 |
 | `ui-engineering-standard.md` | 新代码的工程 Definition of Done |
@@ -144,6 +142,7 @@ P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐�
 | `classic-retirement-architecture.md` | 已完成的主窗口收敛决策与历史施工记录 |
 | `design-system-upstream-pr-convergence.md` | 历次 PR 审查和整改日志，不代表当前状态 |
 | `upstream-function-parity.md` | 历史双 presentation 验证记录，不再定义当前产品拓扑 |
+| `archive/2026-08-chat-kernel-and-ui-roadmaps/` | 已完成、已停止或按时间追加的历史路线；只用于追溯，不声明当前状态 |
 
 ## 8. 更新规则
 
@@ -152,3 +151,8 @@ P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐�
 - 任何阶段只有全部退出条件满足后才能标为完成，不能用“按需完成”替代状态。
 - 新发现的问题先归因于上游或 Next delta，再决定是否进入本路线。
 - 路线变化必须保留删除项和非目标，防止后续会话重新扩张范围。
+历史证据保留其原始日期和计数；当前 D5/D6 结论与 D7 阻断项只读取最终审计。完整 Windows 配置矩阵和人工 soak 仍待完成。
+
+人工 soak 入口现为 `npm run test:manual-soak`，运行产物写入 `artifacts/manual-soak/` 并固定标记为 `manual_observation_required`；它只提供真实 Electron 采样和人工检查清单，不会替代人工交互或把单台 Windows 观察升级为发布证据。
+
+最新单机 Windows 串行矩阵 artifact 只在 [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md) 维护；resize CDP 仍为显式 skipped，矩阵不代表多版本或安装包覆盖。

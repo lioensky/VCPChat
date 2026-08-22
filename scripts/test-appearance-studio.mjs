@@ -111,9 +111,9 @@ window.uiManager = {
     }
 };
 window.uiHelperFunctions = { showToastNotification() {}, openModal() {} };
-window.normalizeChatPresentationMode = mode => ['bubble', 'panel', 'immersive'].includes(mode) ? mode : 'bubble';
-window.applyChatPresentationMode = async mode => {
-    const normalized = window.normalizeChatPresentationMode(mode);
+const normalizePresentation = mode => ['bubble', 'panel', 'immersive'].includes(mode) ? mode : 'bubble';
+let applyPresentation = async mode => {
+    const normalized = normalizePresentation(mode);
     window.globalSettings.chatPresentationMode = normalized;
     window.document.body.classList.toggle('chat-presentation-bubble', normalized === 'bubble');
     window.document.body.classList.toggle('chat-presentation-panel', normalized === 'panel');
@@ -124,6 +124,18 @@ window.applyChatPresentationMode = async mode => {
 window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-engine.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'));
+window.dispatchEvent(new CustomEvent('vcp-appearance-studio-configure', { detail: {
+    settings: {
+        get: () => structuredClone(window.globalSettings),
+        replace: patch => Object.assign(window.globalSettings, structuredClone(patch || {})),
+    },
+    appearance: window.VCPAppearance,
+    uiManager: window.uiManager,
+    presentation: {
+        normalize: normalizePresentation,
+        apply: (...args) => applyPresentation(...args),
+    },
+} }));
 document.dispatchEvent(new CustomEvent('modal-ready', { detail: { modalId: 'globalSettingsModal' } }));
 
 const settingsRowHeight = document.getElementById('appearanceSidebarRowHeight');
@@ -446,9 +458,9 @@ const persistedBeforeFailedApply = {
     homeVisualTagline: window.globalSettings.homeVisualTagline,
     currentThemeMode: window.globalSettings.currentThemeMode
 };
-const originalApplyPresentation = window.applyChatPresentationMode;
+const originalApplyPresentation = applyPresentation;
 let failCommittedPresentationApply = false;
-window.applyChatPresentationMode = async (...args) => {
+applyPresentation = async (...args) => {
     if (failCommittedPresentationApply) {
         failCommittedPresentationApply = false;
         throw new Error('simulated committed presentation failure');
@@ -470,7 +482,7 @@ assert.equal(document.documentElement.dataset.vcpDensity, 'compact',
     'failed local apply must restore the in-memory appearance snapshot');
 assert.equal(studio.isOpen(), true, 'failed save keeps the studio open for correction');
 await studio.close({ rollback: true });
-window.applyChatPresentationMode = originalApplyPresentation;
+applyPresentation = originalApplyPresentation;
 
 const originalTopTabManager = window.topTabManager;
 let rejectFirstOverlay;
@@ -526,5 +538,7 @@ assert.doesNotMatch(
     /vchatDynamicWallpaperMenuButton|data-studio-action="wallpaper"/,
     'Next Appearance Studio must not depend on a plugin-specific wallpaper adapter'
 );
-await studio.destroy();
+const disposeReceipt = { promise: Promise.resolve() };
+window.dispatchEvent(new CustomEvent('vcp-appearance-studio-dispose', { detail: disposeReceipt }));
+await disposeReceipt.promise;
 console.log('appearance studio checks passed.');

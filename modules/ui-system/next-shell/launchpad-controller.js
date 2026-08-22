@@ -85,7 +85,7 @@
                 grid.append(button);
             });
             listenKeydown(grid);
-            this.getInternalApps().forEach(app => {
+            this.getInternalApps().filter(app => app.discoverable !== false).forEach(app => {
                 const button = this.document.createElement('button');
                 button.type = 'button';
                 button.className = 'next-ui-app-item next-ui-internal-app-item';

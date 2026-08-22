@@ -1112,10 +1112,23 @@ function createAssistantWindow(data) {
         resizable: true,
         alwaysOnTop: false,
     });
+    // Deliver the producer payload after the renderer has installed its
+    // preload/DOM listener. `ready-to-show` is a presentation event and can
+    // race the page's `onAssistantData` registration when another auxiliary
+    // window is opening at the same time.
+    assistantWindow.webContents.once('did-finish-load', () => {
+        if (!assistantWindow || assistantWindow.isDestroyed()) return;
+        assistantWindow.webContents.send('assistant-data', data);
+    });
     assistantWindow.loadFile(path.join(__dirname, '..', '..', 'rust_assistant_engine', 'ui', 'assistant.html'));
+    assistantWindow.webContents.on('render-process-gone', (_event, details) => {
+        console.warn('[Assistant] assistant renderer exited; releasing window owner:', details?.reason || 'unknown');
+        const crashedWindow = assistantWindow;
+        assistantWindow = null;
+        if (crashedWindow && !crashedWindow.isDestroyed()) crashedWindow.destroy();
+    });
     assistantWindow.once('ready-to-show', () => {
         assistantWindow.show();
-        assistantWindow.webContents.send('assistant-data', data);
     });
     assistantWindow.on('closed', () => {
         assistantWindow = null;

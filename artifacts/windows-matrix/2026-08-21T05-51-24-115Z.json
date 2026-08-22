@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-08-21T05:51:24.116Z",
+  "platform": "win32",
+  "arch": "x64",
+  "node": "v22.17.1",
+  "hostname": "FlowX13",
+  "matrixScope": "windows-current-host",
+  "rows": [
+    {
+      "id": "ui-apps-next-classic",
+      "command": "C:\\Program Files\\nodejs\\node.exe scripts\\test-electron-ui-apps-smoke.mjs",
+      "env": {},
+      "startedAt": "2026-08-21T05:51:24.126Z",
+      "finishedAt": "2026-08-21T05:51:57.215Z",
+      "exitCode": 0,
+      "signal": null,
+      "status": "passed",
+      "output": "[electron-ui-apps] opening 便签\n[electron-ui-apps] reopening 便签 cycle 1\n[electron-ui-apps] reopening 便签 cycle 2\n[electron-ui-apps] reopening 便签 cycle 3\n[electron-ui-apps] reopening 便签 cycle 4\n[electron-ui-apps] opening 翻译\n[electron-ui-apps] opening 日志\n[electron-ui-apps] opening 插件\n[electron-ui-apps] opening 任务\n[electron-ui-apps] opening 笔记\n[electron-ui-apps] opening 记忆\n[electron-ui-apps] opening 论坛\nElectron UI apps smoke passed (canonical main layout plus upstream-Classic child host integration).\n\nUI apps audit summary (24/24 passed):\n  [next] 主界面 shell: PASS — boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，上游消息组件语义保留，应用托盘与 Ask Nova 可用\n  [next] UI 组件库: PASS — lazy-registers WA；feedback owner 关闭后不影响主 Surface\n  [next-readonly] 聊天历史: PASS — 独立 root、只读合同、关闭后 teardown\n  [next-interactive] 独立聊天: PASS — 输入/发送/取消/错误状态合同与 teardown\n  [next] 创建助手 Modal: PASS — WA 单一实现覆盖冷启动/主题/故障提示，提交和关闭生命周期可控\n  [next] 全局设置: PASS — 增强输入/保存栏 dirty 态/搜索注入/焦点\n  [next] Agent 设置生命周期: PASS — 20 次往返不增加 WebContents、VCPUI adapter 或提示词 DOM\n  [upstream-classic] 便签: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 翻译: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 日志: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 插件: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 任务: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 笔记: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 记忆: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [upstream-classic] 论坛: PASS — 通用宿主打开上游经典页面，未携带实验性 Next 实现\n  [classic] 便签: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 翻译: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 日志: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 插件: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 任务: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 笔记: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 记忆: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [classic] 论坛: PASS — 旧 DOM 保留，next 表面未挂载，无 WA\n  [canonical] 主窗口与全局设置: PASS — 旧 Classic 配置无法拆卸唯一布局，共享输入、通知、壁纸与设置保持可用\n"
+    },
+    {
+      "id": "settings-next",
+      "command": "C:\\Program Files\\nodejs\\node.exe scripts\\test-settings-wa-electron.mjs",
+      "env": {},
+      "startedAt": "2026-08-21T05:51:57.216Z",
+      "finishedAt": "2026-08-21T05:52:05.350Z",
+      "exitCode": 0,
+      "signal": null,
+      "status": "passed",
+      "output": "  [PASS] 1. SettingsShell layout (nav list, search, save bar, sections, icons)\n  [PASS] 2. category switching keeps unsaved values\n  [PASS] 3. search locates and activates the matching category\n[test-settings-wa-electron] window resize skipped: Protocol error (Browser.getWindowForTarget): 'Browser.getWindowForTarget' wasn't found\n  [PASS] 4. dark screenshot -> screenshots/settings-wa-dark-700x500.png\n  [PASS] 5. light screenshot -> screenshots/settings-wa-light-700x500.png (bg rgb(255, 255, 255))\n[test-settings-wa-electron] window resize skipped: Protocol error (Browser.getWindowForTarget): 'Browser.getWindowForTarget' wasn't found\n  [PASS] 6. real save via IPC persists (modal closed, authority projection updated)\n  [PASS] 7. reopen after reload restores persisted values from settings.json\n  [PASS] 8. canonical Next SettingsShell survives reload\n\nSettings WA Electron gate passed (shell layout, nav/search, real save + reload restore, screenshots).\n"
+    },
+    {
+      "id": "next-tab-lifecycle",
+      "command": "C:\\Program Files\\nodejs\\node.exe scripts\\test-next-ui-tab-lifecycle.mjs",
+      "env": {},
+      "startedAt": "2026-08-21T05:52:05.351Z",
+      "finishedAt": "2026-08-21T05:52:07.126Z",
+      "exitCode": 0,
+      "signal": null,
+      "status": "passed",
+      "output": "Next UI tab lifecycle checks passed.\n"
+    },
+    {
+      "id": "main-chat-default",
+      "command": "C:\\Program Files\\nodejs\\node.exe scripts\\test-electron-main-chat-sequences.mjs",
+      "env": {},
+      "startedAt": "2026-08-21T05:52:07.126Z",
+      "finishedAt": "2026-08-21T05:55:22.760Z",
+      "exitCode": 1,
+      "signal": null,
+      "status": "failed",
+      "output": "file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/common/CallbackRegistry.js:98\r\n    #error = new ProtocolError();\r\n             ^\r\n\r\nProtocolError: Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.\r\n    at <instance_members_initializer> (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/common/CallbackRegistry.js:98:14)\r\n    at new Callback (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/common/CallbackRegistry.js:102:16)\r\n    at CallbackRegistry.create (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/common/CallbackRegistry.js:21:26)\r\n    at Connection._rawSend (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/Connection.js:95:26)\r\n    at CdpCDPSession.send (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/CdpSession.js:70:33)\r\n    at #evaluate (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/ExecutionContext.js:360:50)\r\n    at ExecutionContext.evaluate (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/ExecutionContext.js:274:36)\r\n    at IsolatedWorld.evaluate (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/cdp/IsolatedWorld.js:97:30)\r\n    at CdpJSHandle.evaluate (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/api/JSHandle.js:146:37)\r\n    at CdpElementHandle.evaluate (file:///C:/VCP/vchat-develop/VCPChat-design-system-no-workflow-windows-test/node_modules/puppeteer-core/lib/esm/puppeteer/api/ElementHandle.js:340:38)\r\n\r\nNode.js v22.17.1\r\n"
+    }
+  ]
+}

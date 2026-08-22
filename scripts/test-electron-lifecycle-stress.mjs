@@ -23,6 +23,7 @@ const electron = process.platform === 'darwin'
     ? path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
     : path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const timeoutMs = 90_000;
+const protocolTimeout = positiveInteger(process.env.VCPCHAT_STRESS_PROTOCOL_TIMEOUT_MS, 120_000);
 const cycles = positiveInteger(process.env.VCPCHAT_STRESS_CYCLES, 20);
 const warmupCycles = positiveInteger(process.env.VCPCHAT_STRESS_WARMUP, 3);
 const checkpointEvery = Math.max(2, positiveInteger(process.env.VCPCHAT_STRESS_CHECKPOINT_EVERY, 5));
@@ -209,6 +210,17 @@ async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
         page.metrics(),
         browserCdp.send('SystemInfo.getProcessInfo'),
         page.evaluate(() => ({
+            connectedElements: (() => {
+                let count = 0;
+                const visit = root => {
+                    for (const element of root.querySelectorAll('*')) {
+                        count += 1;
+                        if (element.shadowRoot) visit(element.shadowRoot);
+                    }
+                };
+                visit(document);
+                return count;
+            })(),
             enhancedSettingsControls: window.VCPUISettingsBridge?.enhancedCount || 0,
             promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
             lifecycle: window.VCPLifecycle?.diagnostics?.summary?.() || null,
@@ -337,6 +349,52 @@ async function waitForChildExit(child, timeout = 3_000) {
     });
 }
 
+async function waitForRecoveredMainPage(browser, label, deadline = Date.now() + timeoutMs) {
+    while (Date.now() < deadline) {
+        for (const candidate of await browser.pages()) {
+            if (candidate.isClosed() || !candidate.url().includes('main.html')) continue;
+            try {
+                // Electron can retain the crashed target briefly. Bound this
+                // probe so a stale execution context cannot hide the page
+                // created by main-process recovery.
+                await candidate.waitForFunction(
+                    () => document.documentElement.dataset.vcpRendererReady === 'true',
+                    { timeout: 1_000 }
+                );
+                return candidate;
+            } catch {
+                // The crash target or a loading recovery page is not ready yet.
+            }
+        }
+        await sleep(100);
+    }
+    throw new Error(`${label} did not reach renderer readiness after recovery`);
+}
+
+async function terminateChildTree(child) {
+    if (process.platform === 'win32') {
+        // Electron's main process can survive SIGTERM on Windows and retain
+        // GPU/renderer descendants after a renderer crash. Terminate only the
+        // exact isolated test process tree that this script spawned.
+        await new Promise(resolve => {
+            const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+                windowsHide: true,
+                stdio: 'ignore',
+            });
+            killer.once('error', () => resolve());
+            killer.once('exit', () => resolve());
+        });
+        await waitForChildExit(child);
+        return;
+    }
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill('SIGTERM');
+    if (!await waitForChildExit(child)) {
+        child.kill('SIGKILL');
+        await waitForChildExit(child);
+    }
+}
+
 function assertNoSustainedLeak(baseline, checkpoints) {
     const final = checkpoints.at(-1);
     const heapAllowance = Math.max(10 * 1024 * 1024, baseline.heapUsed * 0.4);
@@ -346,6 +404,8 @@ function assertNoSustainedLeak(baseline, checkpoints) {
         `renderer heap retained too much memory: ${formatBytes(baseline.heapUsed)} -> ${formatBytes(final.heapUsed)}`);
     assert.ok(final.listeners <= baseline.listeners + listenerAllowance,
         `event listeners accumulated: ${baseline.listeners} -> ${final.listeners}`);
+    assert.equal(final.documents, baseline.documents,
+        `renderer documents accumulated: ${baseline.documents} -> ${final.documents}`);
     assert.ok(final.pages <= baseline.pages, `WebContents/pages leaked: ${baseline.pages} -> ${final.pages}`);
     assert.ok(final.processes <= baseline.processes, `Electron processes leaked: ${baseline.processes} -> ${final.processes}`);
     assert.ok(final.rendererProcesses <= baseline.rendererProcesses,
@@ -354,6 +414,8 @@ function assertNoSustainedLeak(baseline, checkpoints) {
         `VCPUI settings controllers accumulated: ${baseline.enhancedSettingsControls} -> ${final.enhancedSettingsControls}`);
     assert.equal(final.promptNodes, baseline.promptNodes,
         `prompt editor DOM accumulated: ${baseline.promptNodes} -> ${final.promptNodes}`);
+    assert.equal(final.connectedElements, baseline.connectedElements,
+        `connected document/shadow DOM accumulated: ${baseline.connectedElements} -> ${final.connectedElements}`);
     assert.ok(final.detachedVcpIcons <= baseline.detachedVcpIcons,
         `detached VCP icon hosts accumulated: ${baseline.detachedVcpIcons} -> ${final.detachedVcpIcons}`);
     assert.ok(final.detachedOptions <= baseline.detachedOptions,
@@ -724,8 +786,7 @@ async function cycleRendererCrash(page, browser, app, label) {
     }
     try { await crashSession.detach(); } catch { /* the crashed target may already be detached */ }
 
-    const recoveredPage = await waitForPage(browser, candidate => candidate.url().includes('main.html'), `${label}: recovered main renderer`);
-    await recoveredPage.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout: timeoutMs });
+    const recoveredPage = await waitForRecoveredMainPage(browser, `${label}: recovered main renderer`);
     await recoveredPage.waitForFunction(() => window.topTabManager?.isMounted?.() && window.askNovaController, { timeout: timeoutMs });
     await recoveredPage.waitForFunction(expectedId => (
         document.querySelector(`[data-view-id="app:${expectedId}"]`)
@@ -813,7 +874,10 @@ try {
             await sleep(150);
         }
     }
-    browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}` });
+    browser = await puppeteer.connect({
+        browserURL: `http://127.0.0.1:${port}`,
+        protocolTimeout,
+    });
     let page = await waitForPage(browser, candidate => candidate.url().includes('main.html'), 'main renderer');
     const trackRendererPage = rendererPage => {
         rendererPage.on('pageerror', error => rendererErrors.push(error?.stack || String(error)));
@@ -893,6 +957,7 @@ try {
         checkpoint: point.label,
         heap: formatBytes(point.heapUsed),
         nodes: point.nodes,
+        connected: point.connectedElements,
         listeners: point.listeners,
         pages: point.pages,
         processes: point.processes,
@@ -915,10 +980,6 @@ try {
     // app intentionally remains alive after its last window closes, so using
     // it here would hang the test runner and retain the isolated process tree.
     try { browser?.disconnect(); } catch { /* debugger may already be gone */ }
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-    if (!await waitForChildExit(child)) {
-        child.kill('SIGKILL');
-        await waitForChildExit(child);
-    }
+    await terminateChildTree(child);
     await fs.rm(appData, { recursive: true, force: true });
 }

@@ -19,6 +19,10 @@ const electron = process.platform === 'darwin'
     ? path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
     : path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const timeout = 45_000;
+// Electron/CDP can legitimately pause while the renderer is synchronously
+// tearing down an embedded Surface. The 300 s default is based on the
+// successful Windows run; callers may still lower/raise it explicitly.
+const protocolTimeout = positiveInteger(process.env.VCPCHAT_SEQUENCE_PROTOCOL_TIMEOUT_MS, 300_000);
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const safeFilePart = value => String(value).replace(/[^a-z0-9._-]+/gi, '-').slice(0, 80) || 'unknown';
 const requestedUiMode = process.env.VCPCHAT_SEQUENCE_UI_MODE || 'next';
@@ -161,6 +165,37 @@ async function writeAgent(appData, id, topics) {
             timestamp: 1,
         }]), 'utf8');
     }
+}
+
+async function terminateChildTree(child) {
+    if (process.platform === 'win32') {
+        await new Promise(resolve => {
+            const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+                windowsHide: true,
+                stdio: 'ignore',
+            });
+            killer.once('error', resolve);
+            killer.once('exit', resolve);
+        });
+        await waitForChildExit(child);
+        return;
+    }
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill('SIGTERM');
+    if (!await waitForChildExit(child)) {
+        child.kill('SIGKILL');
+        await waitForChildExit(child);
+    }
+}
+
+async function findFilesNamed(directory, fileName) {
+    const matches = [];
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        const fullPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) matches.push(...await findFilesNamed(fullPath, fileName));
+        else if (entry.isFile() && entry.name === fileName) matches.push(fullPath);
+    }
+    return matches;
 }
 
 function requestJson(url) {
@@ -313,6 +348,7 @@ const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-main-sequence-'
 await Promise.all(identities.map(id => writeAgent(appData, id, topics[id])));
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({
     uiMode: requestedUiMode, enableDistributedServer: false, vcpServerUrl: fixture.url, vcpApiKey: 'sequence-key',
+    assistantAgent: identities[0], assistantEnabled: false,
 }), 'utf8');
 const debugPort = await freePort();
 const stderr = { value: '' };
@@ -330,7 +366,10 @@ try {
         if (child.exitCode !== null) throw new Error(`Electron exited: ${stderr.value}`);
         try { await requestJson(`http://127.0.0.1:${debugPort}/json/version`); break; } catch { await sleep(100); }
     }
-    browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
+    browser = await puppeteer.connect({
+        browserURL: `http://127.0.0.1:${debugPort}`,
+        protocolTimeout,
+    });
     let page;
     while (Date.now() < deadline && !page) {
         page = (await browser.pages()).find(candidate => candidate.url().includes('main.html'));
@@ -352,11 +391,64 @@ try {
     };
     trackPage(page);
     await page.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout });
+    const providerBoundary = await page.evaluate(async () => {
+        const [{ chatManager }, { createMessageRenderer }, { createStreamProjection }] = await Promise.all([
+            import('./modules/chatManager.js'),
+            import('./modules/messageRenderer.js'),
+            import('./modules/renderer/streamManager.js'),
+        ]);
+        return {
+            noGlobals: !('chatManager' in window)
+                && !('messageRenderer' in window)
+                && !('streamManager' in window),
+            chatProvider: typeof chatManager.sendMessage === 'function',
+            rendererProvider: typeof createMessageRenderer === 'function',
+            streamProvider: typeof createStreamProjection === 'function',
+        };
+    });
+    assert.deepEqual(providerBoundary, {
+        noGlobals: true,
+        chatProvider: true,
+        rendererProvider: true,
+        streamProvider: true,
+    }, 'main renderer must use explicit providers without compatibility globals');
+    const stateFacadeBoundary = await page.evaluate(() => {
+        const descriptor = Object.getOwnPropertyDescriptor(window, 'VCPMainChatState');
+        const snapshot = window.VCPMainChatState.snapshot();
+        return {
+            frozen: Object.isFrozen(window.VCPMainChatState),
+            writable: descriptor?.writable,
+            configurable: descriptor?.configurable,
+            snapshotFrozen: Object.isFrozen(snapshot),
+            selectedFrozen: Object.isFrozen(snapshot.selectedItem),
+            selectedConfigFrozen: snapshot.selectedItem?.config == null || Object.isFrozen(snapshot.selectedItem.config),
+            historyFrozen: Object.isFrozen(snapshot.history),
+            historyEntryFrozen: snapshot.history.length === 0 || Object.isFrozen(snapshot.history[0]),
+            hasMutationRef: 'selectedItemRef' in window.VCPMainChatState || 'topicIdRef' in window.VCPMainChatState,
+            hasHistoryRef: 'historyRef' in window.VCPMainChatState,
+        };
+    });
+    assert.deepEqual(stateFacadeBoundary, {
+        frozen: true,
+        writable: false,
+        configurable: false,
+        snapshotFrozen: true,
+        selectedFrozen: true,
+        selectedConfigFrozen: true,
+        historyFrozen: true,
+        historyEntryFrozen: true,
+        hasMutationRef: false,
+        hasHistoryRef: false,
+    }, 'VCPMainChatState must remain a frozen, non-replaceable read-only plugin facade');
     await page.waitForFunction(ids => ids.every(id => document.querySelector(`#agentList > [data-item-id="${id}"][data-item-type="agent"]`)), { timeout }, identities);
 
     const click = async selector => page.evaluate(value => document.querySelector(value)?.click(), selector);
     const waitForRecoveredMainPage = async () => {
-        const recoveryDeadline = Date.now() + timeout;
+        // Recovery can legitimately spend tens of seconds rebuilding the
+        // message projection after a crash while history is rendered. Keep
+        // the normal action timeout strict, but give renderer recovery its
+        // own bounded quiescence window.
+        const recoveryDeadline = Date.now() + Math.max(timeout, 90_000);
         while (Date.now() < recoveryDeadline) {
             for (const candidate of await browser.pages()) {
                 if (candidate.isClosed() || !candidate.url().includes('main.html')) continue;
@@ -382,15 +474,15 @@ try {
     const waitState = async (id, topicId) => {
         try {
             await page.waitForFunction((expectedId, expectedTopic) => (
-                window.currentSelectedItem?.id === expectedId
-                && window.currentTopicId === expectedTopic
+                window.VCPMainChatState?.snapshot?.()?.selectedItem?.id === expectedId
+                && window.VCPMainChatState?.snapshot?.()?.topicId === expectedTopic
                 && document.querySelector(`#agentList > [data-item-id="${expectedId}"][data-item-type="agent"].active`)
                 && document.querySelector(`[data-topic-id="${expectedTopic}"].active`)
             ), { timeout: 8_000 }, id, topicId);
         } catch (error) {
             const actual = await page.evaluate(() => ({
-                id: window.currentSelectedItem?.id,
-                topicId: window.currentTopicId,
+                id: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id,
+                topicId: window.VCPMainChatState?.snapshot?.()?.topicId,
                 activeItems: [...document.querySelectorAll('#agentList > .active')].map(node => node.dataset.itemId),
                 activeTopics: [...document.querySelectorAll('.topic-item.active')].map(node => node.dataset.topicId),
             }));
@@ -416,7 +508,7 @@ try {
     };
     const waitForStreamQuiescence = async () => {
         await page.waitForFunction(() => {
-            const streams = window.streamManager?.getDiagnostics?.();
+            const streams = window.VCPLifecycleInspector?.snapshot?.().streams;
             return !streams
                 || (
                     streams.activeMessageId === null
@@ -425,7 +517,7 @@ try {
                     && streams.pendingFinalizations === 0
                 );
         }, { timeout: 8_000 });
-        return page.evaluate(() => window.streamManager?.getDiagnostics?.() || null);
+        return page.evaluate(() => window.VCPLifecycleInspector?.snapshot?.().streams || null);
     };
     const driver = {
         async selectAgent(id, topicId) {
@@ -440,12 +532,12 @@ try {
             await waitState(last, topicId);
         },
         async selectTopic(topicId) {
-            const id = await page.evaluate(() => window.currentSelectedItem.id);
+            const id = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
             await click(`[data-topic-id="${topicId}"][data-item-id="${id}"]`);
             await waitState(id, topicId);
         },
         async raceTopics(first, last) {
-            const id = await page.evaluate(() => window.currentSelectedItem.id);
+            const id = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
             await page.evaluate(({ firstId, lastId, itemId }) => {
                 document.querySelector(`[data-topic-id="${firstId}"][data-item-id="${itemId}"]`)?.click();
                 document.querySelector(`[data-topic-id="${lastId}"][data-item-id="${itemId}"]`)?.click();
@@ -463,14 +555,14 @@ try {
             const requestDeadline = Date.now() + 5_000;
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
             assert.ok(fixture.requests.length > before, 'stream request did not reach the controlled VCP fixture');
-            const id = await page.evaluate(() => window.currentSelectedItem.id);
+            const id = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
             await click(`[data-topic-id="${targetTopic}"][data-item-id="${id}"]`);
             await waitState(id, targetTopic);
             await sleep(500);
         },
         async concurrentStreamsReverse(targetTopic, nonce) {
-            const itemId = await page.evaluate(() => window.currentSelectedItem.id);
-            const sourceTopic = await page.evaluate(() => window.currentTopicId);
+            const itemId = await page.evaluate(() => window.VCPMainChatState.snapshot().selectedItem.id);
+            const sourceTopic = await page.evaluate(() => window.VCPMainChatState.snapshot().topicId);
             const firstKey = `first-${nonce}`;
             const secondKey = `second-${nonce}`;
             const sendHeld = key => page.evaluate(holdKey => {
@@ -536,12 +628,12 @@ try {
         },
         async createDeleteTopicRoundtrip(expectedTopic) {
             const item = await page.evaluate(() => ({
-                id: window.currentSelectedItem.id,
-                type: window.currentSelectedItem.type,
+                id: window.VCPMainChatState.snapshot().selectedItem.id,
+                type: window.VCPMainChatState.snapshot().selectedItem.type,
             }));
             const createdTopicId = await page.evaluate(async ({ itemId, itemType }) => {
                 const before = new Set((await window.chatAPI.getAgentTopics(itemId)).map(topic => topic.id));
-                await window.chatManager.createNewTopicForItem(itemId, itemType);
+                await (await import('./modules/chatManager.js')).chatManager.createNewTopicForItem(itemId, itemType);
                 const after = await window.chatAPI.getAgentTopics(itemId);
                 return after.find(topic => !before.has(topic.id))?.id || null;
             }, { itemId: item.id, itemType: item.type });
@@ -551,7 +643,7 @@ try {
             const deletion = await page.evaluate(async ({ itemId, itemType, topicId }) => {
                 const result = await window.chatAPI.deleteTopic(itemId, topicId);
                 if (!result?.success) return result;
-                await window.chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType });
+                await (await import('./modules/chatManager.js')).chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType, topicId, fallbackTopicId: 'a-two' });
                 return result;
             }, { itemId: item.id, itemType: item.type, topicId: createdTopicId });
             assert.equal(deletion?.success, true, `topic deletion roundtrip failed: ${JSON.stringify(deletion)}`);
@@ -576,8 +668,6 @@ try {
             } catch (error) {
                 const state = await page.evaluate(() => ({
                     mode: document.getElementById('sendMessageBtn')?.dataset.mode,
-                    activeStreamId: window.streamManager?.getActiveStreamingMessageId?.(),
-                    activeContext: window.streamManager?.getActiveStreamingContext?.(),
                     streamingDom: [...document.querySelectorAll('.message-item.streaming')].map(node => node.dataset.messageId),
                 }));
                 throw new Error(`cancel did not settle: ${JSON.stringify(state)}`, { cause: error });
@@ -594,7 +684,19 @@ try {
             }, kind);
             const requestDeadline = Date.now() + 5_000;
             while (fixture.requests.length === before && Date.now() < requestDeadline) await sleep(10);
-            assert.ok(fixture.requests.length > before, `${kind} request did not reach the controlled VCP fixture`);
+            if (fixture.requests.length === before) {
+                const state = await page.evaluate(() => ({
+                    selected: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id || null,
+                    topicId: window.VCPMainChatState?.snapshot?.()?.topicId || null,
+                    inputDisabled: document.getElementById('messageInput')?.disabled,
+                    sendDisabled: document.getElementById('sendMessageBtn')?.disabled,
+                    sendMode: document.getElementById('sendMessageBtn')?.dataset.mode,
+                    pending: (window.currentChatHistory || []).filter(message => message?.isThinking || message?.isPendingStream).map(message => message.id),
+                    streamingDom: [...document.querySelectorAll('#chatMessages .message-item.streaming')].map(node => node.dataset.messageId),
+                    recentAssistant: (window.currentChatHistory || []).filter(message => message?.role === 'assistant').slice(-3).map(message => ({ id: message.id, thinking: message.isThinking, pending: message.isPendingStream })),
+                }));
+                assert.fail(`${kind} request did not reach the controlled VCP fixture: ${JSON.stringify(state)}`);
+            }
             await page.waitForFunction(() => (
                 document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt'
                 && document.querySelectorAll('.message-item.streaming').length === 0
@@ -602,8 +704,8 @@ try {
         },
         async recoverDuringHeldStream(kind, nonce) {
             const expected = await page.evaluate(() => ({
-                id: window.currentSelectedItem?.id,
-                topicId: window.currentTopicId,
+                id: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id,
+                topicId: window.VCPMainChatState?.snapshot?.()?.topicId,
             }));
             assert.ok(expected.id && expected.topicId, `${kind}: no selected conversation`);
             const key = `${kind}-${nonce}`;
@@ -644,7 +746,6 @@ try {
             await page.waitForFunction(() => (
                 document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt'
                 && document.querySelectorAll('.message-item.streaming').length === 0
-                && !window.streamManager?.getActiveStreamingMessageId?.()
             ), { timeout: 8_000 });
 
             const historySource = await fs.readFile(
@@ -688,8 +789,8 @@ try {
         },
     };
     const observe = () => page.evaluate(() => ({
-        identity: window.currentSelectedItem?.id || null,
-        topicId: window.currentTopicId || null,
+        identity: window.VCPMainChatState?.snapshot?.()?.selectedItem?.id || null,
+        topicId: window.VCPMainChatState?.snapshot?.()?.topicId || null,
         activeItems: [...document.querySelectorAll('#agentList > [data-item-id][data-item-type].active')].map(node => node.dataset.itemId),
         activeTopics: [...document.querySelectorAll('.topic-item.active')].map(node => node.dataset.topicId),
         rendererReady: document.documentElement.dataset.vcpRendererReady,
@@ -697,7 +798,7 @@ try {
         settingsActive: document.getElementById('globalSettingsModal')?.classList.contains('active') === true,
         mainConnected: Boolean(document.querySelector('.container')?.isConnected && document.querySelector('.main-content')?.isConnected),
         streamingMessages: document.querySelectorAll('.message-item.streaming').length,
-        streams: window.streamManager?.getDiagnostics?.() || null,
+        streams: window.VCPLifecycleInspector?.snapshot?.().streams || null,
         lifecycle: window.VCPLifecycle?.diagnostics?.summary?.() || null,
     }));
     const collectResourceCheckpoint = async label => {
@@ -777,10 +878,15 @@ try {
         const itemId = identities[0];
         const topicId = topics[itemId][0];
         await click(`#agentList > [data-item-id="${itemId}"][data-item-type="agent"]`);
-        await page.waitForFunction(expectedId => window.currentSelectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
-        const activeTopic = await page.evaluate(() => window.currentTopicId);
+        await page.waitForFunction(expectedId => window.VCPMainChatState?.snapshot?.()?.selectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
+        const activeTopic = await page.evaluate(() => window.VCPMainChatState.snapshot().topicId);
         if (activeTopic !== topicId) {
-            await page.evaluate(expectedTopicId => window.chatManager.selectTopic(expectedTopicId), topicId);
+            // Selecting an item starts the asynchronous topic-list load. Do
+            // not issue the imperative selectTopic command until its real DOM
+            // consumer exists; otherwise a reset immediately after a reload
+            // can select a topic before the list manager has mounted it.
+            await page.waitForSelector(`[data-topic-id="${topicId}"]`, { timeout: 8_000 });
+            await page.evaluate(async expectedTopicId => (await import('./modules/chatManager.js')).chatManager.selectTopic(expectedTopicId), topicId);
         }
         await waitState(itemId, topicId);
     };
@@ -799,12 +905,313 @@ try {
             }
         }, topics);
         await ensureInitialConversation();
-        await page.evaluate(({ itemId, topicId }) => (
-            window.chatManager.loadChatHistory(itemId, 'agent', topicId)
+        await page.evaluate(async ({ itemId, topicId }) => (
+            (await import('./modules/chatManager.js')).chatManager.loadChatHistory(itemId, 'agent', topicId)
         ), { itemId: identities[0], topicId: topics[identities[0]][0] });
-        await page.evaluate(() => window.streamManager?.cleanupTransientState?.());
     };
     await ensureInitialConversation();
+    // C6 real VCP fixture matrix: the independent interactive surface must
+    // use the production preload/VCP path, expose a real terminal state, and
+    // retain retry capability after a controlled failure.
+    await page.evaluate(() => window.topTabManager.openInternalApp('standalone-chat-compose'));
+    await page.waitForSelector('.vcp-interactive-chat__composer textarea', { timeout });
+    const standaloneRoot = '.vcp-interactive-chat';
+    const sendStandalone = async (content) => {
+        const before = fixture.requests.length;
+        await page.evaluate(({ root, value }) => {
+            const form = document.querySelector(`${root} form`);
+            const input = form?.querySelector('textarea');
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            form?.requestSubmit();
+        }, { root: standaloneRoot, value: content });
+        const requestDeadline = Date.now() + 8_000;
+        while (fixture.requests.length <= before && Date.now() < requestDeadline) await sleep(10);
+        assert.ok(fixture.requests.length > before, `standalone VCP request did not reach fixture: ${content}`);
+    };
+    const waitForAuxiliaryPage = async (fragment, { exclude = null } = {}) => {
+        const deadline = Date.now() + timeout;
+        while (Date.now() < deadline) {
+            const candidate = (await browser.pages()).find(entry => entry !== exclude && !entry.isClosed() && entry.url().includes(fragment));
+            if (candidate) {
+                trackPage(candidate);
+                try { await candidate.waitForSelector('#messageInput:not([disabled])', { timeout: 1_500 }); return candidate; } catch { /* stale/crashed candidate */ }
+            }
+            await sleep(50);
+        }
+        throw new Error(`Auxiliary Electron page did not open: ${fragment}`);
+    };
+    const waitForAuxiliaryClose = async auxiliaryPage => {
+        const deadline = Date.now() + timeout;
+        while (!auxiliaryPage.isClosed() && Date.now() < deadline) await sleep(25);
+        assert.equal(auxiliaryPage.isClosed(), true, `Auxiliary Electron page did not close: ${auxiliaryPage.url()}`);
+    };
+    const runAuxiliaryWindowScenario = async ({ fragment, open, closeSelector, label }) => {
+        await open();
+        let auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        await auxiliaryPage.type('#messageInput', `${label}-success`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await auxiliaryPage.waitForFunction(() => (
+            !document.querySelector('#messageInput')?.disabled
+            && [...document.querySelectorAll('.message-item.assistant .md-content')]
+                .some(node => /fixture\s+stream\s+complete/.test(node.textContent || ''))
+        ), { timeout });
+        await auxiliaryPage.click(closeSelector);
+        await waitForAuxiliaryClose(auxiliaryPage);
+
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        const holdKey = `${label}-close-${Date.now()}`;
+        await auxiliaryPage.type('#messageInput', `sequence-hold-${holdKey}`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await fixture.waitPending(holdKey);
+        await auxiliaryPage.click(closeSelector);
+        fixture.release(holdKey);
+        await waitForAuxiliaryClose(auxiliaryPage);
+
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        const reloadKey = `${label}-reload-${Date.now()}`;
+        await auxiliaryPage.type('#messageInput', `sequence-hold-${reloadKey}`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await fixture.waitPending(reloadKey);
+        await auxiliaryPage.reload({ waitUntil: 'domcontentloaded', timeout: 20_000 });
+        fixture.release(reloadKey);
+        await auxiliaryPage.waitForSelector('#messageInput:not([disabled])', { timeout });
+        await auxiliaryPage.waitForFunction(() => (
+            !document.querySelector('.message-item.is-thinking, .message-item.streaming')
+            && !document.querySelector('#messageInput')?.disabled
+        ), { timeout });
+        await auxiliaryPage.close();
+        await waitForAuxiliaryClose(auxiliaryPage);
+
+        if (process.env.VCPCHAT_AUX_CRASH_MATRIX !== '1') return;
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment);
+        const crashKey = `${label}-crash-${Date.now()}`;
+        await auxiliaryPage.type('#messageInput', `sequence-hold-${crashKey}`);
+        await auxiliaryPage.click('#sendMessageBtn');
+        await fixture.waitPending(crashKey);
+        const crashSession = await auxiliaryPage.createCDPSession();
+        try { await crashSession.send('Page.crash'); } catch (error) {
+            if (!/Target closed|Session closed|crash/i.test(String(error?.message || error))) throw error;
+        }
+        try { await crashSession.detach(); } catch { /* crashed target */ }
+        fixture.release(crashKey);
+        const crashedPage = auxiliaryPage;
+        await sleep(1_000);
+        await open();
+        auxiliaryPage = await waitForAuxiliaryPage(fragment, { exclude: crashedPage });
+        await auxiliaryPage.waitForFunction(() => (
+            !document.querySelector('.message-item.is-thinking, .message-item.streaming')
+            && !document.querySelector('#messageInput')?.disabled
+        ), { timeout });
+        await auxiliaryPage.close();
+        await waitForAuxiliaryClose(auxiliaryPage);
+    };
+    await sendStandalone('standalone-success');
+    try {
+        await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已发送', { timeout });
+    } catch (error) {
+        const independentState = await page.evaluate(() => ({
+            status: document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent || '',
+            busy: document.querySelector('.vcp-interactive-chat__composer')?.getAttribute('aria-busy') || null,
+            text: document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages')?.textContent || '',
+        }));
+        throw new Error(`Independent chat did not settle: ${JSON.stringify(independentState)}`, { cause: error });
+    }
+    await page.waitForFunction(() => {
+        const root = document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages');
+        return Boolean(root?.querySelector('.message-item') && root.textContent.includes('fixture'));
+    }, { timeout });
+    // The independent Surface owns its projection after registration. Changing
+    // the main-window conversation must not revoke its DOM or terminal rights.
+    const independentSwitchKey = `independent-switch-${Date.now()}`;
+    await sendStandalone(`sequence-hold-${independentSwitchKey}`);
+    await fixture.waitPending(independentSwitchKey);
+    await driver.selectTopic(topics[identities[0]][1]);
+    fixture.release(independentSwitchKey);
+    await page.waitForFunction(expected => {
+        const surface = document.querySelector('.vcp-interactive-chat');
+        return surface?.querySelector('[role="status"]')?.textContent === '已发送'
+            && (surface.querySelector('.vcp-standalone-chat__messages')?.textContent || '').includes(expected);
+    }, { timeout }, independentSwitchKey);
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    await driver.selectTopic(topics[identities[0]][0]);
+
+    // Main and independent operations may coexist on different topics. The
+    // independent cancel control must cancel only its captured operation.
+    const isolatedIndependentKey = `isolated-independent-${Date.now()}`;
+    await sendStandalone(`sequence-hold-${isolatedIndependentKey}`);
+    await fixture.waitPending(isolatedIndependentKey);
+    await driver.selectTopic(topics[identities[0]][1]);
+    const isolatedMainKey = `isolated-main-${Date.now()}`;
+    await page.evaluate(holdKey => {
+        const input = document.getElementById('messageInput');
+        input.value = `sequence-hold-${holdKey}`;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('sendMessageBtn').click();
+    }, isolatedMainKey);
+    await fixture.waitPending(isolatedMainKey);
+    await page.click('.vcp-interactive-chat__composer [data-action="cancel"]');
+    if (fixture.pending.has(isolatedIndependentKey)) fixture.release(isolatedIndependentKey);
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已取消', { timeout });
+    assert.equal(fixture.pending.has(isolatedMainKey), true, 'independent cancel aborted the main-window request');
+    assert.equal(await page.$eval('#sendMessageBtn', button => button.dataset.mode), 'interrupt',
+        'independent cancel cleared the main-window operation state');
+    fixture.release(isolatedMainKey);
+    await waitForStreamQuiescence();
+    await driver.selectTopic(topics[identities[0]][0]);
+
+    await sendStandalone('sequence-fail');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent?.includes('发送失败'), { timeout });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    const standaloneFailureState = await page.evaluate(() => ({
+        status: document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent || '',
+        root: document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages')?.dataset.chatSurface || '',
+        independent: document.querySelector('.vcp-interactive-chat .vcp-standalone-chat__messages') !== document.getElementById('chatMessages'),
+    }));
+    assert.equal(standaloneFailureState.root, 'interactive');
+    assert.equal(standaloneFailureState.independent, true);
+    // Closing an interactive surface while its real operation is pending must
+    // reach quiescence before the owner is gone; the late stream terminal must
+    // not recreate or mutate the detached surface.
+    await sendStandalone(`sequence-hold-close-${Date.now()}`);
+    const closeKey = [...fixture.pending.keys()].find(key => key.startsWith('close-'));
+    assert.ok(closeKey, 'close-while-pending fixture request was not observed');
+    await page.evaluate(() => {
+        window.topTabManager.closeView('app:standalone-chat-compose');
+        window.topTabManager.closeView('app:standalone-chat-compose');
+    });
+    fixture.release(closeKey);
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat'), { timeout });
+    await sleep(200);
+    assert.equal(await page.$('.vcp-interactive-chat'), null, 'late terminal recreated disposed interactive surface');
+    await page.evaluate(() => window.topTabManager.openInternalApp('standalone-chat-compose'));
+    await page.waitForSelector('.vcp-interactive-chat__composer textarea', { timeout });
+    const independentCancelKey = `independent-${Date.now()}`;
+    await sendStandalone(`sequence-hold-${independentCancelKey}`);
+    await fixture.waitPending(independentCancelKey);
+    await page.click('.vcp-interactive-chat__composer [data-action="cancel"]');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent === '已取消', { timeout });
+    fixture.release(independentCancelKey);
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    await sendStandalone('sequence-disconnect');
+    await page.waitForFunction(() => document.querySelector('.vcp-interactive-chat__composer [role="status"]')?.textContent?.includes('发送失败'), { timeout });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat__composer')?.hasAttribute('aria-busy'), { timeout });
+    await page.evaluate(() => {
+        const input = document.querySelector('.vcp-interactive-chat__composer textarea');
+        input.value = 'standalone-retry';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.equal(await page.$eval('.vcp-interactive-chat__composer textarea', input => input.disabled), false, 'disconnect left standalone composer locked');
+    await page.evaluate(() => {
+        window.topTabManager.closeView('app:standalone-chat-compose');
+        window.topTabManager.closeView('app:standalone-chat-compose');
+    });
+    await page.waitForFunction(() => !document.querySelector('.vcp-interactive-chat'), { timeout });
+    const flowlockAgentConfigPath = path.join(appData, 'Agents', identities[0], 'config.json');
+    const flowlockAgentConfig = JSON.parse(await fs.readFile(flowlockAgentConfigPath, 'utf8'));
+    await fs.writeFile(flowlockAgentConfigPath, JSON.stringify({ ...flowlockAgentConfig, streamOutput: false }), 'utf8');
+    const flowlockMessageId = `flowlock-electron-${Date.now()}`;
+    const flowlockRequestCount = fixture.requests.length;
+    await page.evaluate(async ({ agentId, topicId, messageId }) => {
+        await window.flowlockManager.continueWritingForContext({
+            agentId,
+            topicId,
+            messageId,
+            prompt: 'Flowlock Electron terminal evidence',
+        });
+    }, { agentId: identities[0], topicId: topics[identities[0]][0], messageId: flowlockMessageId });
+    assert.equal(fixture.requests.length, flowlockRequestCount + 1, 'Flowlock non-stream request did not reach the real VCP fixture');
+    assert.equal(fixture.requests.at(-1)?.stream, false, 'Flowlock terminal evidence must exercise the non-stream producer path');
+    const flowlockHistoryPath = path.join(appData, 'UserData', identities[0], 'topics', topics[identities[0]][0], 'history.json');
+    const flowlockHistory = JSON.parse(await fs.readFile(flowlockHistoryPath, 'utf8'));
+    assert.equal(flowlockHistory.some(message => message?.id === flowlockMessageId || message?.isThinking), false,
+        'Flowlock terminal commit retained its thinking placeholder');
+    assert.equal(flowlockHistory.filter(message => message?.content === 'fixture response').length, 1,
+        'Flowlock non-stream completion must commit exactly one assistant terminal');
+    await fs.writeFile(flowlockAgentConfigPath, JSON.stringify(flowlockAgentConfig), 'utf8');
+    await runAuxiliaryWindowScenario({
+        fragment: 'Voicechatmodules/voicechat.html',
+        open: () => page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]),
+        closeSelector: '#close-btn-voicechat',
+        label: 'voice',
+    });
+    await runAuxiliaryWindowScenario({
+        fragment: 'rust_assistant_engine/ui/assistant.html',
+        open: () => page.evaluate(() => window.chatAPI.assistantAction('open')),
+        closeSelector: '#close-btn-assistant',
+        label: 'assistant',
+    });
+
+    // D7: both auxiliary surfaces must be able to own real operations at the
+    // same time. Opening and settling them independently catches accidental
+    // singleton renderer/stream state, while the final close verifies that
+    // each window reaches its own quiescent terminal before teardown.
+    // Open through the main renderer serially (the two IPC open commands share
+    // one composition root), then run their actual stream operations in
+    // parallel below.
+    await page.evaluate(agentId => window.chatAPI.openVoiceChatWindow({ agentId }), identities[0]);
+    await page.evaluate(() => window.chatAPI.assistantAction('open'));
+    const [concurrentVoicePage, concurrentAssistantPage] = await Promise.all([
+        waitForAuxiliaryPage('Voicechatmodules/voicechat.html'),
+        waitForAuxiliaryPage('rust_assistant_engine/ui/assistant.html'),
+    ]);
+    // The input is enabled before the preload data callback finishes in the
+    // auxiliary windows. Wait for each window's real agent binding before
+    // sending, otherwise the context filter quite correctly rejects events.
+    await concurrentAssistantPage.waitForFunction(() => {
+        const avatar = document.querySelector('#agentAvatar');
+        return Boolean(avatar?.getAttribute('src'))
+            && document.querySelector('#currentChatAgentName')?.textContent !== '划词助手';
+    }, { timeout });
+    await concurrentVoicePage.waitForFunction(() => (
+        document.querySelector('#currentChatAgentName')?.textContent
+        && document.querySelector('#currentChatAgentName')?.textContent !== '语音聊天'
+    ), { timeout });
+    await Promise.all([
+        (async () => {
+            await concurrentVoicePage.type('#messageInput', 'voice-concurrent');
+            await concurrentVoicePage.click('#sendMessageBtn');
+            await concurrentVoicePage.waitForFunction(() => (
+                !document.querySelector('#messageInput')?.disabled
+                && [...document.querySelectorAll('.message-item.assistant .md-content')]
+                    .some(node => /fixture\s+stream\s+complete/.test(node.textContent || ''))
+            ), { timeout });
+        })(),
+        (async () => {
+            await concurrentAssistantPage.type('#messageInput', 'assistant-concurrent');
+            await concurrentAssistantPage.click('#sendMessageBtn');
+            await concurrentAssistantPage.waitForFunction(() => (
+                !document.querySelector('#messageInput')?.disabled
+                && [...document.querySelectorAll('.message-item.assistant .md-content')]
+                    .some(node => /fixture\s+stream\s+complete/.test(node.textContent || ''))
+            ), { timeout });
+        })(),
+    ]);
+    await concurrentVoicePage.click('#close-btn-voicechat');
+    await concurrentAssistantPage.click('#close-btn-assistant');
+    await Promise.all([
+        waitForAuxiliaryClose(concurrentVoicePage),
+        waitForAuxiliaryClose(concurrentAssistantPage),
+    ]);
+    const allHistoryFiles = await findFilesNamed(path.join(appData, 'UserData'), 'history.json');
+    const parsedHistories = await Promise.all(allHistoryFiles
+        .map(async file => ({ file, history: JSON.parse(await fs.readFile(file, 'utf8')) })));
+    const auxiliaryHistories = parsedHistories.filter(({ history }) => history.some(message => (
+        message?.content === 'voice-success' || message?.content === 'assistant-success'
+    )));
+    const durableAuxiliaryLabels = new Set(auxiliaryHistories.flatMap(({ history }) => history
+        .map(message => message?.content)
+        .filter(content => content === 'voice-success' || content === 'assistant-success')));
+    assert.deepEqual([...durableAuxiliaryLabels].sort(), ['assistant-success', 'voice-success'],
+        `Voice and Rust Assistant must each commit a real auxiliary history; histories=${JSON.stringify(parsedHistories.map(({ file, history }) => ({ file, messages: history.map(message => ({ role: message?.role, content: message?.content, thinking: message?.isThinking })) })))}; console=${JSON.stringify(consoleMessages.filter(message => message.type === 'error').slice(-20))}`);
+    for (const { file, history } of auxiliaryHistories) {
+        assert.equal(history.some(message => message?.isThinking), false, `Auxiliary close persisted a thinking placeholder: ${file}`);
+        assert.equal(history.some(message => /fixture\s+stream\s+complete/.test(message?.content || '')), true,
+            `Auxiliary success terminal was not durably saved: ${file}`);
+    }
     await warmRendererLifecycleBaseline();
     await driver.sendFault('fail');
     await resetFixtureConversationState();
@@ -967,15 +1374,24 @@ try {
         throw error;
     }
     const coverageReport = sequenceCoverage.report();
+    if (process.env.VCPCHAT_SEQUENCE_EVIDENCE_OUTPUT) {
+        await fs.writeFile(process.env.VCPCHAT_SEQUENCE_EVIDENCE_OUTPUT, `${JSON.stringify({
+            schemaVersion: 1,
+            kind: 'electron-main-chat-sequence',
+            mode: requestedUiMode,
+            seed,
+            runs: runCount,
+            actions: totalActions,
+            requests: fixture.requests.length,
+            requiredEdges: `${coverageReport.passedRequiredEdges.length}/${coverageReport.requiredEdges.length}`,
+            coverage: coverageReport,
+        }, null, 2)}\n`, 'utf8');
+    }
     console.log(`Main-chat Electron sequence passed: mode=${requestedUiMode}, seed=${seed}, runs=${runCount}, actions=${totalActions}, VCP requests=${fixture.requests.length}`);
     console.log(`Sequence coverage: actions=${Object.keys(coverageReport.actions).length}, pairs=${Object.keys(coverageReport.actionPairs).length}, transitions=${Object.keys(coverageReport.transitions).length}, faults=${Object.keys(coverageReport.faults).length}, required=${coverageReport.passedRequiredEdges.length}/${coverageReport.requiredEdges.length}`);
 } finally {
     try { await browser?.disconnect(); } catch { /* noop */ }
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-    if (!await waitForChildExit(child)) {
-        child.kill('SIGKILL');
-        await waitForChildExit(child);
-    }
+    await terminateChildTree(child);
     await fixture.close();
     await fs.rm(appData, { recursive: true, force: true });
 }

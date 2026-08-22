@@ -29,11 +29,16 @@ export function setupEventListeners(deps) {
         refs,
 
         // Modules and helper functions
-        uiHelperFunctions, chatManager, itemListManager, settingsManager, uiManager, topicListManager,
+        uiHelperFunctions, chatManager, messageRenderer, historyMutationAuthority, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
-        addNetworkPathInput
+        addNetworkPathInput, sendButtonAction, listenerOwner
     } = deps;
+    const addListener = (target, type, handler, options) => listenerOwner?.add(target, type, handler, options) || target?.addEventListener?.(type, handler, options);
+    const setOwnedTimeout = (callback, delay) => listenerOwner?.timeout?.(callback, delay) ?? setTimeout(callback, delay);
+    const releaseCapturedListeners = listenerOwner?.capture?.() || (() => {});
 
+    let setupCompleted = false;
+    try {
     const setupAutoHideScrollbar = (container, hideDelayMs = 700) => {
         if (!container) return;
         if (container.dataset.autoHideScrollbarBound === 'true') return;
@@ -42,7 +47,7 @@ export function setupEventListeners(deps) {
         const showScrollingState = () => {
             container.classList.add('is-scrolling');
             if (hideTimer) clearTimeout(hideTimer);
-            hideTimer = setTimeout(() => {
+            hideTimer = setOwnedTimeout(() => {
                 container.classList.remove('is-scrolling');
                 hideTimer = null;
             }, hideDelayMs);
@@ -227,10 +232,6 @@ export function setupEventListeners(deps) {
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
 
-        let thinkingMessageItem = null;
-        if (window.messageRenderer) {
-            thinkingMessageItem = await window.messageRenderer.renderMessage(thinkingMessage);
-        }
         currentChatHistory.push(thinkingMessage);
 
         try {
@@ -295,13 +296,6 @@ export function setupEventListeners(deps) {
                 stream: useStreaming
             };
 
-            if (useStreaming) {
-                if (window.messageRenderer) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    await window.messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
-                }
-            }
-
             const context = {
                 agentId: currentSelectedItem.id,
                 agentName: currentSelectedItem.name || currentSelectedItem.id,
@@ -326,12 +320,12 @@ export function setupEventListeners(deps) {
                 const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
 
                 if (isForActiveChat) {
-                    if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
+                    messageRenderer?.removeMessageById(thinkingMessage.id);
                 }
 
                 if (response.error) {
-                    if (isForActiveChat && window.messageRenderer) {
-                        window.messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                    if (isForActiveChat && messageRenderer) {
+                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ContinueWriting] VCP Error:`, response.error);
                 } else if (response.choices && response.choices.length > 0) {
@@ -350,13 +344,16 @@ export function setupEventListeners(deps) {
                     if (historyForSave && !historyForSave.error) {
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
                         finalHistory.push(assistantMessage);
-                        await chatAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                        await historyMutationAuthority.replace({
+                            itemId: context.agentId, itemType: 'agent', topicId: context.topicId,
+                            category: 'flowlock-non-stream-terminal',
+                        }, finalHistory);
 
                         if (isForActiveChat) {
                             currentChatHistory.length = 0;
                             currentChatHistory.push(...finalHistory);
-                            if (window.messageRenderer) window.messageRenderer.renderMessage(assistantMessage);
-                            await window.chatManager.attemptTopicSummarizationIfNeeded();
+                            messageRenderer?.renderMessage(assistantMessage);
+                            await chatManager.attemptTopicSummarizationIfNeeded();
                         }
                     }
                 }
@@ -368,10 +365,13 @@ export function setupEventListeners(deps) {
 
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
-            if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
-            if (window.messageRenderer) window.messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
+            messageRenderer?.removeMessageById(thinkingMessage.id);
+            messageRenderer?.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
             if (currentSelectedItem.id && currentTopicId) {
-                await chatAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
+                await historyMutationAuthority.replace({
+                    itemId: currentSelectedItem.id, itemType: currentSelectedItem.type, topicId: currentTopicId,
+                    category: 'flowlock-failure-cleanup',
+                }, currentChatHistory.filter(msg => !msg.isThinking));
             }
         }
     }
@@ -380,7 +380,7 @@ export function setupEventListeners(deps) {
     window.handleContinueWriting = handleContinueWriting;
 
     if (chatMessagesDiv) {
-        chatMessagesDiv.addEventListener('click', (event) => {
+        addListener(chatMessagesDiv, 'click', (event) => {
             // Stop TTS playback when clicking a speaking avatar
             const avatar = event.target.closest('.chat-avatar');
             if (avatar && avatar.classList.contains('speaking')) {
@@ -423,16 +423,16 @@ export function setupEventListeners(deps) {
         console.error('[Renderer] chatMessagesDiv not found during setupEventListeners.');
     }
 
-    sendMessageBtn.addEventListener('click', async () => {
-        if (typeof window.handleSendButtonAction === 'function' && sendMessageBtn?.dataset.mode === 'interrupt') {
-            await window.handleSendButtonAction();
+    addListener(sendMessageBtn, 'click', async () => {
+        if (typeof sendButtonAction === 'function') {
+            await sendButtonAction();
             return;
         }
         chatManager.handleSendMessage();
     });
 
     // 发送按钮右键 - 打开「高级回复」(VCPChatTarven) 浮窗
-    sendMessageBtn.addEventListener('contextmenu', (e) => {
+    addListener(sendMessageBtn, 'contextmenu', (e) => {
         e.preventDefault();
         if (window.TavernManager && typeof window.TavernManager.togglePopover === 'function') {
             window.TavernManager.togglePopover(sendMessageBtn);
@@ -440,15 +440,15 @@ export function setupEventListeners(deps) {
             console.warn('[EventListeners] TavernManager not available.');
         }
     });
-    messageInput.addEventListener('keydown', (e) => {
+    addListener(messageInput, 'keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             chatManager.handleSendMessage();
         }
     });
-    messageInput.addEventListener('input', () => uiHelperFunctions.autoResizeTextarea(messageInput));
+    addListener(messageInput, 'input', () => uiHelperFunctions.autoResizeTextarea(messageInput));
 
-    messageInput.addEventListener('mousedown', async (e) => {
+    addListener(messageInput, 'mousedown', async (e) => {
         if (e.button === 1) { // 中键
             e.preventDefault();
             e.stopPropagation();
@@ -471,7 +471,7 @@ export function setupEventListeners(deps) {
         }
     });
 
-    attachFileBtn.addEventListener('click', async () => {
+    addListener(attachFileBtn, 'click', async () => {
         const currentSelectedItem = refs.currentSelectedItem.get();
         const currentTopicId = refs.currentTopicId.get();
         if (!currentSelectedItem.id || !currentTopicId) {
@@ -486,7 +486,7 @@ export function setupEventListeners(deps) {
                     console.error(`Error processing selected file ${att.name || 'unknown'}: ${att.error}`);
                     uiHelperFunctions.showToastNotification(`处理文件 ${att.name || '未知文件'} 失败: ${att.error}`, 'error');
                 } else {
-                    refs.attachedFiles.get().push({
+                    refs.attachedFiles.append({
                         file: { name: att.name, type: att.type, size: att.size },
                         localPath: att.internalPath,
                         originalName: att.name,
@@ -622,7 +622,7 @@ export function setupEventListeners(deps) {
                     currentActive.classList.remove('active');
 
                     // 等待退出动画完成后显示新面板
-                    setTimeout(() => {
+                    setOwnedTimeout(() => {
                         currentActive.style.display = 'none';
                         currentActive.classList.remove('switching-out');
 
@@ -1066,8 +1066,8 @@ export function setupEventListeners(deps) {
 
         document.body.appendChild(menu);
 
-        setTimeout(() => {
-            document.addEventListener('click', closeMenu, true);
+        setOwnedTimeout(() => {
+            addListener(document, 'click', closeMenu, true);
         }, 0);
     }
 
@@ -1249,7 +1249,10 @@ export function setupEventListeners(deps) {
         });
 
         if (window.filterManager?.subscribe) {
-            window.filterManager.subscribe(syncNotificationFilterState);
+        // State-channel subscriptions are lifecycle resources too. Keep the
+        // disposer with the main renderer owner so a remount/reload cannot
+        // retain a callback closed over stale settings refs.
+        listenerOwner?.own(window.filterManager.subscribe(syncNotificationFilterState));
         } else {
             window.addEventListener('notification-filter-changed', event => syncNotificationFilterState(event.detail));
             syncNotificationFilterState();
@@ -1385,7 +1388,7 @@ export function setupEventListeners(deps) {
             }
         });
 
-        chatAPI.onDoToggleNotificationsSidebar(() => {
+        listenerOwner?.own(chatAPI.onDoToggleNotificationsSidebar(() => {
             const isActive = notificationsSidebar.classList.toggle('active');
             const mainContent = document.querySelector('.main-content');
             if (mainContent) {
@@ -1395,7 +1398,7 @@ export function setupEventListeners(deps) {
                 notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
             }
             syncNotificationTogglePlacement(isActive);
-        });
+        }));
 
         syncNotificationTogglePlacement();
     }
@@ -1406,10 +1409,10 @@ export function setupEventListeners(deps) {
         let sidebarLongPressTimer = null;
         let wasSidebarLongPress = false;
 
-        const saveSidebarState = () => {
+        const saveSidebarState = settings => {
             if (!chatAPI?.saveSettings) return;
 
-            chatAPI.saveSettings(refs.globalSettings.get()).then(result => {
+            chatAPI.saveSettings(settings || refs.globalSettings.get()).then(result => {
                 if (!result.success) {
                     console.error('保存侧边栏状态失败:', result.error);
                 }
@@ -1440,9 +1443,13 @@ export function setupEventListeners(deps) {
             }
 
             const globalSettings = refs.globalSettings.get();
-            globalSettings.sidebarAvatarOnly = enabled;
-            if (enabled) globalSettings.sidebarActive = true;
-            saveSidebarState();
+            const nextSettings = {
+                ...globalSettings,
+                sidebarAvatarOnly: enabled,
+                sidebarActive: enabled ? true : globalSettings.sidebarActive,
+            };
+            refs.globalSettings.set(nextSettings);
+            saveSidebarState(nextSettings);
             return true;
         };
 
@@ -1457,10 +1464,13 @@ export function setupEventListeners(deps) {
             const isActive = target.classList.toggle('active');
             syncSidebarVisibility(isActive);
 
-            const globalSettings = refs.globalSettings.get();
-            globalSettings.sidebarActive = isActive;
-            globalSettings.sidebarAvatarOnly = false;
-            saveSidebarState();
+            const nextSettings = {
+                ...refs.globalSettings.get(),
+                sidebarActive: isActive,
+                sidebarAvatarOnly: false,
+            };
+            refs.globalSettings.set(nextSettings);
+            saveSidebarState(nextSettings);
             uiHelperFunctions.showToastNotification(`侧栏已${isActive ? '显示' : '隐藏'}`, 'info');
         };
 
@@ -1470,7 +1480,7 @@ export function setupEventListeners(deps) {
         toggleAssistantBtn.addEventListener('mousedown', (e) => {
             if (e.button === 0) {
                 wasLongPress = false;
-                longPressTimer = setTimeout(() => {
+                longPressTimer = setOwnedTimeout(() => {
                     console.log('[Assistant] Long press detected on toggle button');
                     chatAPI.assistantAction('open');
                     wasLongPress = true;
@@ -1507,18 +1517,18 @@ export function setupEventListeners(deps) {
 
             const globalSettings = refs.globalSettings.get();
             const isActive = toggleAssistantBtn.classList.toggle('active');
-            globalSettings.assistantEnabled = isActive;
+            const nextSettings = { ...globalSettings, assistantEnabled: isActive };
+            refs.globalSettings.set(nextSettings);
             chatAPI.toggleSelectionListener(isActive);
             const result = await chatAPI.saveSettings({
-                ...globalSettings,
-                assistantEnabled: isActive
+                ...nextSettings
             });
             if (result.success) {
                 uiHelperFunctions.showToastNotification(`划词助手已${isActive ? '开启' : '关闭'}`, 'info');
             } else {
                 uiHelperFunctions.showToastNotification(`设置划词助手状态失败: ${result.error}`, 'error');
                 toggleAssistantBtn.classList.toggle('active', !isActive);
-                globalSettings.assistantEnabled = !isActive;
+                refs.globalSettings.set({ ...globalSettings, assistantEnabled: !isActive });
             }
         });
 
@@ -1526,7 +1536,7 @@ export function setupEventListeners(deps) {
             toggleSidebarModeBtn.addEventListener('mousedown', e => {
                 if (e.button !== 0) return;
                 wasSidebarLongPress = false;
-                sidebarLongPressTimer = setTimeout(() => {
+                sidebarLongPressTimer = setOwnedTimeout(() => {
                     sidebarLongPressTimer = null;
                     if (!leftSidebar) return;
 
@@ -1667,7 +1677,7 @@ export function setupEventListeners(deps) {
 
     // 监听来自主进程的全局快捷键触发的创建未锁定话题事件
     if (chatAPI?.onCreateUnlockedTopic) {
-        chatAPI.onCreateUnlockedTopic(() => {
+        listenerOwner?.own(chatAPI.onCreateUnlockedTopic(() => {
             console.log('[快捷键] 收到来自主进程的创建未锁定话题请求');
             const currentSelectedItem = refs.currentSelectedItem.get();
             if (!currentSelectedItem.id) {
@@ -1679,7 +1689,12 @@ export function setupEventListeners(deps) {
                 return;
             }
             createNewTopicWithLockStatus(currentSelectedItem, false);
-        });
+        }));
     }
 
+        setupCompleted = true;
+    } finally {
+        releaseCapturedListeners();
+        if (!setupCompleted) eventListenersBound = false;
+    }
 }

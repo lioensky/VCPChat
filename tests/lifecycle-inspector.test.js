@@ -18,12 +18,20 @@ test('lifecycle inspector reports ownership metadata without payload content', a
         chatTasks: [{ requestId: 'message-1', operation: 'chat:stream', state: 'running', ageMs: 1 }],
     }) };
     window.eval(fs.readFileSync('modules/ui-system/lifecycle-inspector.js', 'utf8'));
+    const streamProvider = () => ({ activeMessageId: 'safe-stream', activeMessageIds: ['safe-stream'] });
+    window.VCPLifecycleInspector.setStreamDiagnosticsProvider(streamProvider);
+    window.VCPLifecycleInspector.setStreamDiagnosticsProvider(streamProvider);
+    assert.throws(
+        () => window.VCPLifecycleInspector.setStreamDiagnosticsProvider(() => null),
+        /already registered/
+    );
     window.dispatchEvent(new window.CustomEvent('ui-mode-transition-state', { detail: { phase: 'settled', mode: 'next', generation: 3 } }));
     const renderer = window.VCPLifecycleInspector.snapshot();
     const main = await window.VCPLifecycleInspector.snapshotMain();
     assert.equal(renderer.mode, 'next');
     assert.equal(renderer.transitions[0].generation, 3);
     assert.equal(renderer.performance[0].name, 'next.mount');
+    assert.equal(renderer.streams.activeMessageId, 'safe-stream');
     assert.equal(main.tasks[0].operation, 'embedded:create');
     assert.equal(main.chatTasks[0].operation, 'chat:stream');
     const serialized = JSON.stringify({ renderer, main });

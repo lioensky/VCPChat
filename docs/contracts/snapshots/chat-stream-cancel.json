@@ -1,0 +1,22 @@
+{
+  "modelVisible": [
+    { "role": "user", "content": "start a reply" },
+    { "role": "assistant", "content": "partial", "terminal": "cancelled" }
+  ],
+  "chatVisible": {
+    "role": "assistant",
+    "status": "cancelled",
+    "content": "partial"
+  },
+  "durable": {
+    "conversationKey": "snapshot-cancel-conversation",
+    "terminal": "cancelled",
+    "text": "partial"
+  },
+  "projection": {
+    "statuses": ["streaming", "cancelled"],
+    "chunkCount": 1,
+    "text": "partial"
+  },
+  "wire": ["chunk:partial", "cancelled"]
+}

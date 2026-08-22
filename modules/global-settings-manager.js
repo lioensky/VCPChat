@@ -33,11 +33,20 @@ async function saveGlobalSettings(deps, settingsForm) {
 
     const {
         refs,
+        messageRenderer,
         getCroppedFile,
         setCroppedFile,
         uiHelperFunctions,
-        settingsManager
+        settingsManager,
+        normalizeChatPresentationMode,
+        applyChatPresentationMode,
+        applyChatBubbleLayoutSettings,
+        getAppearance = () => window.VCPAppearance
     } = deps;
+    if (typeof normalizeChatPresentationMode !== 'function' || typeof applyChatPresentationMode !== 'function'
+        || typeof applyChatBubbleLayoutSettings !== 'function') {
+        throw new TypeError('Global settings save requires presentation and layout capabilities.');
+    }
     const currentSettings = refs.globalSettings.get();
 
     const clampBubbleWidthPercent = (rawValue, fallback) => {
@@ -87,7 +96,7 @@ async function saveGlobalSettings(deps, settingsForm) {
         showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
         homeVisualTagline: document.getElementById('homeVisualTagline')?.value.trim().slice(0, 120)
             || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
-        appearanceProfile: window.VCPAppearance?.normalize({
+        appearanceProfile: getAppearance()?.normalize({
             density: document.getElementById('appearanceDensity')?.value,
             radius: document.getElementById('appearanceRadius')?.value,
             typography: document.getElementById('appearanceTypography')?.value,
@@ -125,10 +134,10 @@ async function saveGlobalSettings(deps, settingsForm) {
         chatToolFontPreset: document.getElementById('chatToolFontPreset')?.value || currentSettings.chatToolFontPreset || 'system',
         chatToolFontCustom: document.getElementById('chatToolFontCustom')?.value.trim() || '',
         enableWideChatLayout: document.getElementById('chatLayoutModeWide')?.checked || false,
-        chatPresentationMode: window.normalizeChatPresentationMode?.(
+        chatPresentationMode: normalizeChatPresentationMode(
             document.querySelector('input[name="chatPresentationMode"]:checked')?.value
                 || currentSettings.chatPresentationMode
-        ) || 'bubble',
+        ),
         enableUserChatBubbleUi: document.getElementById('enableUserChatBubbleUi')?.checked !== false,
         showUserMetaInChatBubbleUi: document.getElementById('showUserMetaInChatBubbleUi')?.checked !== false,
         chatBubbleMaxWidthDefault: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthDefault, 82),
@@ -208,7 +217,7 @@ async function saveGlobalSettings(deps, settingsForm) {
                 buffer: arrayBuffer
             });
             if (avatarSaveResult.success) {
-                refs.globalSettings.get().userAvatarUrl = avatarSaveResult.avatarUrl;
+                newSettings.userAvatarUrl = avatarSaveResult.avatarUrl;
                 const userAvatarPreview = document.getElementById('userAvatarPreview');
                 userAvatarPreview.src = avatarSaveResult.avatarUrl;
                 userAvatarPreview.style.display = 'block';
@@ -219,9 +228,7 @@ async function saveGlobalSettings(deps, settingsForm) {
                     userAvatarWrapper.classList.remove('no-avatar');
                 }
                 
-                if (window.messageRenderer) {
-                    window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
-                }
+                messageRenderer?.setUserAvatar(avatarSaveResult.avatarUrl);
                 if (avatarSaveResult.needsColorExtraction && chatAPI?.saveAvatarColor) {
                     if (window.getDominantAvatarColor) {
                         window.getDominantAvatarColor(avatarSaveResult.avatarUrl).then(avgColor => {
@@ -229,8 +236,9 @@ async function saveGlobalSettings(deps, settingsForm) {
                                 chatAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
                                     .then((saveColorResult) => {
                                         if (saveColorResult && saveColorResult.success) {
-                                            refs.globalSettings.get().userAvatarCalculatedColor = avgColor;
-                                            if (window.messageRenderer) window.messageRenderer.setUserAvatarColor(avgColor);
+                                            const current = refs.globalSettings.get();
+                                            refs.globalSettings.set?.({ ...current, userAvatarCalculatedColor: avgColor });
+                                            messageRenderer?.setUserAvatarColor(avgColor);
                                         } else {
                                             console.warn("Failed to save user avatar color:", saveColorResult?.error);
                                         }
@@ -286,20 +294,21 @@ async function saveGlobalSettings(deps, settingsForm) {
             }
         }
 
-        Object.assign(refs.globalSettings.get(), newSettings);
         try {
-            newSettings.appearanceProfile = window.VCPAppearance?.commit(
+            newSettings.appearanceProfile = getAppearance()?.commit(
                 newSettings.appearanceProfile,
                 { uiMode: 'next', source: 'settings-save' }
             ) || newSettings.appearanceProfile;
+            const committedSettings = { ...currentSettings, ...newSettings };
+            refs.globalSettings.set?.(committedSettings);
             window.dispatchEvent(new CustomEvent('global-settings-updated', {
-                detail: { settings: refs.globalSettings.get(), source: 'settings-save' }
+                detail: { settings: committedSettings, source: 'settings-save' }
             }));
-            if (typeof window.applyChatBubbleLayoutSettings === 'function') {
-                window.applyChatBubbleLayoutSettings(refs.globalSettings.get());
+            if (typeof applyChatBubbleLayoutSettings === 'function') {
+                applyChatBubbleLayoutSettings(committedSettings);
             }
-            if (typeof window.applyChatPresentationMode === 'function') {
-                await window.applyChatPresentationMode(newSettings.chatPresentationMode, {
+            if (typeof applyChatPresentationMode === 'function') {
+                await applyChatPresentationMode(newSettings.chatPresentationMode, {
                     persist: false,
                     preserveScroll: true,
                     source: 'global-settings'

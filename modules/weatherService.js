@@ -17,6 +17,7 @@ const weatherService = (() => {
     let lastFetchTime = 0;
     const CACHE_DURATION = 30 * 60 * 1000; // 30分钟缓存
     let refreshTimer = null;
+    let getGlobalSettings = () => ({});
 
     /**
      * 从 vcpServerUrl 推导出天气 API 的 URL
@@ -329,7 +330,7 @@ const weatherService = (() => {
      * 初始化天气服务
      */
     async function init() {
-        const globalSettings = window.globalSettings || {};
+        const globalSettings = getGlobalSettings();
         if (globalSettings.enableWeatherCard === false) {
             console.log('[WeatherService] Weather card disabled in settings');
             return;
@@ -346,7 +347,7 @@ const weatherService = (() => {
         // 设置定时刷新（每30分钟）
         if (refreshTimer) clearInterval(refreshTimer);
         refreshTimer = setInterval(async () => {
-            const gs = window.globalSettings || {};
+            const gs = getGlobalSettings();
             if (gs.enableWeatherCard === false) return;
             const freshData = await getWeatherData(true);
             if (freshData) {
@@ -385,6 +386,11 @@ const weatherService = (() => {
     }
 
     return {
+        configureCapabilities({ settings = null } = {}) {
+            getGlobalSettings = typeof settings?.get === 'function'
+                ? () => settings.get() || {}
+                : () => ({});
+        },
         init,
         destroy,
         toggle,

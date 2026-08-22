@@ -1,4 +1,15 @@
 // Voicechatmodules/voicechat.js
+import { createMemoryChatRepository } from '../modules/chat/memoryChatRepository.js';
+import { createTransientChatHistoryPersistence } from '../modules/chat/chatHistoryPersistence.js';
+import { createChatHistoryMutationAuthority } from '../modules/chat/chatHistoryMutationAuthority.js';
+import { createChatRepository } from '../modules/chat/chatRepository.js';
+import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRuntime.js';
+import { createMessageRenderer } from '../modules/messageRenderer.js';
+import { createStreamProjection } from '../modules/renderer/streamManager.js';
+import { createStreamTransientHistory } from '../modules/chat/streamTransientHistory.js';
+
+const streamManager = createStreamProjection();
+const messageRenderer = createMessageRenderer({ streamManager });
 
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessagesDiv = document.getElementById('chatMessages');
@@ -10,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleInputModeBtn = document.getElementById('toggleInputModeBtn');
     const keyboardIcon = document.getElementById('keyboard-icon');
     const micIcon = document.getElementById('mic-icon');
+    let historyMutationAuthority = null;
 
     // Initialize audio context on first user gesture
     function initAudioContext() {
@@ -52,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let globalSettings = {};
     let currentChatHistory = [];
     let activeStreamingMessageId = null;
+    let streamRuntime = null;
     let inputMode = 'text'; // 'text' or 'voice'
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
     let speechRecognitionTimeout = null;
@@ -74,8 +87,17 @@ document.addEventListener('DOMContentLoaded', () => {
     closeBtn.addEventListener('click', async () => {
         closeBtn.disabled = true;
         try {
+            if (activeStreamingMessageId) {
+                await window.electronAPI.interruptVcpRequest?.({ messageId: activeStreamingMessageId });
+                await streamRuntime?.cancel(activeStreamingMessageId, 'voice-window-close');
+            }
             await saveVoiceChatToHistory();
         } finally {
+            await streamRuntime?.dispose();
+            await streamManager.dispose();
+            await messageRenderer.disposeRootResources(chatMessagesDiv);
+            messageRenderer.disposeRendererResources();
+            await historyMutationAuthority?.dispose();
             window.close();
         }
     });
@@ -96,42 +118,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return !!expectedTopicId && eventTopicId === expectedTopicId && eventAgentId === agentId;
     }
 
-    async function waitForActiveStreamToSettle(timeoutMs = 4000) {
-        if (!activeStreamingMessageId) return true;
-
-        const pendingMessageId = activeStreamingMessageId;
-        console.log(`[VoiceChat] Waiting for active stream to settle before close: ${pendingMessageId}`);
-
-        return await new Promise((resolve) => {
-            let settled = false;
-            const startedAt = Date.now();
-
-            const check = () => {
-                if (settled) return;
-                if (activeStreamingMessageId !== pendingMessageId) {
-                    settled = true;
-                    resolve(true);
-                    return;
-                }
-
-                if (Date.now() - startedAt >= timeoutMs) {
-                    console.warn(`[VoiceChat] Timed out while waiting stream to settle: ${pendingMessageId}`);
-                    settled = true;
-                    resolve(false);
-                    return;
-                }
-
-                setTimeout(check, 80);
-            };
-
-            check();
-        });
+    function restoreComposerAfterStream() {
+        activeStreamingMessageId = null;
+        messageInput.disabled = false;
+        sendMessageBtn.disabled = false;
+        messageInput.focus();
     }
 
     async function saveVoiceChatToHistory() {
         if (!agentId) return;
-
-        await waitForActiveStreamToSettle();
 
         const persistedHistory = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
         if (persistedHistory.length === 0) return;
@@ -145,7 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
 
-                await window.electronAPI.saveChatHistory(agentId, newTopicId, persistedHistory);
+                if (!historyMutationAuthority) throw new Error('Voice history mutation authority is not ready');
+                await historyMutationAuthority.replace({ itemId: agentId, itemType: 'agent', topicId: newTopicId, category: 'voice-session-close' }, persistedHistory);
                 console.log(`[VoiceChat] History saved to new topic: ${newTopicId}`);
 
                 if (window.summarizeTopicFromMessages) {
@@ -266,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function initializeRenderer() {
-        if (window.messageRenderer) {
+        if (messageRenderer) {
             const chatHistoryRef = {
                 get: () => currentChatHistory,
                 set: (newHistory) => { currentChatHistory = newHistory; }
@@ -289,21 +285,57 @@ document.addEventListener('DOMContentLoaded', () => {
                 get: () => getVoiceTopicId(),
                 set: () => {}
             };
-            window.messageRenderer.initializeMessageRenderer({
+            const chatRepository = createMemoryChatRepository({
+                read: () => currentChatHistory,
+                write: history => { currentChatHistory = history; },
+            });
+            const historyPersistence = createTransientChatHistoryPersistence(chatRepository);
+            const transientStreamHistory = createStreamTransientHistory({
+                repository: chatRepository,
+                currentHistory: { get: () => chatHistoryRef.get(), replace: history => chatHistoryRef.set(history) },
+            });
+            historyMutationAuthority = createChatHistoryMutationAuthority({ repository: createChatRepository(window.electronAPI) });
+            messageRenderer.initializeMessageRenderer({
+                chatRepository,
+                historyMutationAuthority,
                 currentChatHistoryRef: chatHistoryRef,
                 currentSelectedItemRef: selectedItemRef,
                 currentTopicIdRef: topicIdRef,
+                transientStreamHistory,
+                viewAuthority: { isCurrent: context => context?.agentId === agentId && context?.topicId === getVoiceTopicId() },
                 globalSettingsRef: globalSettingsRef,
                 chatMessagesDiv: chatMessagesDiv,
                 electronAPI: window.electronAPI,
                 markedInstance: markedInstance,
+                morphdom: window.morphdom,
+                pretextBridge: window.pretextBridge,
+                flowlockProtocol: window.flowlockProtocol,
                 uiHelper: uiHelperFunctions, // Pass the local helper
+                messageCommands: { handleSendMessage: text => sendMessage(text) },
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {} // Stub
             });
+            streamRuntime = createWindowStreamRuntime({
+                root: chatMessagesDiv,
+                streamProjection: streamManager,
+                historyPersistence,
+                getSelection: () => ({ id: agentId, type: 'agent' }),
+                getTopicId: getVoiceTopicId,
+                getMessageContext: () => ({
+                    agentId, topicId: getVoiceTopicId(), agentName: agentConfig?.name,
+                    avatarUrl: agentConfig?.avatarUrl, avatarColor: agentConfig?.avatarCalculatedColor,
+                }),
+                contextFilter: context => !!context && context.topicId === getVoiceTopicId() && context.agentId === agentId,
+                dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
+                afterPersist: ({ terminal, finalized }) => {
+                    if (terminal.kind !== 'completed') return;
+                    if (finalized?.messageId) setTimeout(() => extractTextAndPlayTTS(finalized.messageId, 0), 100);
+                },
+                onSettled: restoreComposerAfterStream,
+            });
             console.log('[VoiceChat] Shared messageRenderer initialized.');
         } else {
-            console.error('[VoiceChat] window.messageRenderer is not available.');
+            console.error('[VoiceChat] shared message renderer provider is not available.');
         }
     }
 
@@ -327,10 +359,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const sendMessage = async (messageContent) => {
         clearTimeout(speechRecognitionTimeout); // Stop any pending auto-send
-        if (!messageContent.trim() || !agentConfig || !window.messageRenderer) return;
+        if (!messageContent.trim() || !agentConfig || !messageRenderer) return;
 
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
-        await window.messageRenderer.renderMessage(userMessage);
+        await messageRenderer.renderMessage(userMessage);
         currentChatHistory.push(userMessage);
 
         messageInput.value = '';
@@ -349,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name: agentConfig.name,
             avatarUrl: agentConfig.avatarUrl
         };
-        await window.messageRenderer.renderMessage(assistantMessagePlaceholder);
+        await messageRenderer.renderMessage(assistantMessagePlaceholder);
 
         const context = {
             agentId: agentId,
@@ -387,70 +419,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
-            if (window.messageRenderer) {
-                window.messageRenderer.finalizeStreamedMessage(thinkingMessageId, 'error');
-                const messageItemContent = document.querySelector(`.message-item[data-message-id="${thinkingMessageId}"] .md-content`);
-                if (messageItemContent) {
-                    messageItemContent.innerHTML = `<p style="color: var(--danger-color);">请求失败: ${error.message}</p>`;
-                }
-            }
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.focus();
+            const accepted = streamRuntime?.accept({
+                    type: 'error', messageId: thinkingMessageId, error: error.message,
+                    context: { agentId, topicId: getVoiceTopicId() },
+                });
+            if (!accepted) restoreComposerAfterStream();
         }
     };
 
-    const activeStreams = new Set();
     window.electronAPI.onVCPStreamEvent((eventData) => {
-        if (!window.messageRenderer || !isEventForCurrentVoiceSession(eventData)) return;
-
-        const { messageId, type, chunk, error, context } = eventData;
-
-        if (!activeStreams.has(messageId) && type === 'data') {
-            window.messageRenderer.startStreamingMessage({
-                id: messageId,
-                role: 'assistant',
-                name: agentConfig.name,
-                avatarUrl: agentConfig.avatarUrl,
-                context: context,
-            });
-            activeStreams.add(messageId);
-        }
-
-        if (type === 'data') {
-            window.messageRenderer.appendStreamChunk(messageId, chunk, context);
-        } else if (type === 'end') {
-            console.log(`[VoiceChat] 收到流结束事件，messageId: ${messageId}`);
-            console.log(`[VoiceChat] 当前activeStreamingMessageId: ${activeStreamingMessageId}`);
-            console.log(`[VoiceChat] agentConfig状态: ${!!agentConfig}, TTS语音: ${agentConfig?.ttsVoicePrimary || '未设置'}`);
-
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'completed', context).then(() => {
-                console.log(`[VoiceChat] finalizeStreamedMessage完成，准备TTS`);
-
-                // 添加延迟以确保DOM完全渲染
-                setTimeout(() => {
-                    extractTextAndPlayTTS(messageId, 0);
-                }, 100);
-            });
-
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.focus();
-        } else if (type === 'error') {
-            window.messageRenderer.finalizeStreamedMessage(messageId, 'error', context);
-            const messageItemContent = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
-            if (messageItemContent) {
-                messageItemContent.innerHTML = `<p style="color: var(--danger-color);">${error || '未知流错误'}</p>`;
-            }
-            activeStreams.delete(messageId);
-            activeStreamingMessageId = null;
-            messageInput.disabled = false;
-            sendMessageBtn.disabled = false;
-            messageInput.focus();
-        }
+        if (!streamRuntime || !isEventForCurrentVoiceSession(eventData)) return;
+        streamRuntime.accept(eventData);
     });
     
     // 新增：智能文本提取和TTS触发函数，包含重试机制
@@ -463,8 +442,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (messageElement) {
             const contentElement = messageElement.querySelector('.md-content');
-            if (contentElement && window.messageRenderer?.extractSpeakableTextFromContentElement) {
-                textToSpeak = window.messageRenderer.extractSpeakableTextFromContentElement(contentElement);
+            if (contentElement && messageRenderer?.extractSpeakableTextFromContentElement) {
+                textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);
             } else if (contentElement) {
                 const contentClone = contentElement.cloneNode(true);
                 contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script').forEach(el => el.remove());
@@ -501,8 +480,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log(`[VoiceChat] 找到备用匹配元素: ${idAttr}`);
                         const contentElement = item.querySelector('.md-content');
                         if (contentElement) {
-                            const backupText = window.messageRenderer?.extractSpeakableTextFromContentElement
-                                ? window.messageRenderer.extractSpeakableTextFromContentElement(contentElement)
+                            const backupText = messageRenderer?.extractSpeakableTextFromContentElement
+                                ? messageRenderer.extractSpeakableTextFromContentElement(contentElement)
                                 : (contentElement.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
                             if (backupText.trim().length > 0) {
                                 console.log(`[VoiceChat] 使用备用元素提取到文本长度: ${backupText.trim().length}`);

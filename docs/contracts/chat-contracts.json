@@ -1,0 +1,113 @@
+[
+  {
+    "id": "facade.vcp-main-chat-state",
+    "kind": "facade",
+    "owner": "renderer.js",
+    "facadeName": "VCPMainChatState",
+    "status": "pass",
+    "consumers": ["Flowlockmodules/flowlock-integration.js", "modules/VChatAutoTTS/plugin.js"],
+    "dynamicSmoke": "scripts/test-electron-main-chat-sequences.mjs",
+    "retirement": "retain while Flowlock and AutoTTS plugin consumers use the main-chat state protocol",
+    "evidence": ["npm run guard:chat-kernel-consumers", "npm run test:electron-main-chat-sequences"]
+  },
+  {
+    "id": "facade.main-chat-commands",
+    "kind": "facade",
+    "owner": "modules/mainChatCommands.js",
+    "facadeName": "MainChatCommands",
+    "status": "pass",
+    "consumers": ["modules/ui-system/next-shell/next-shell-controller.js", "modules/event-listeners.js"],
+    "dynamicSmoke": "scripts/test-electron-ui-apps-smoke.mjs",
+    "retirement": "retain while Next shell, Classic menus or plugin commands consume it",
+    "evidence": ["npm run guard:chat-kernel-consumers", "npm run test:electron-ui-apps"]
+  },
+  {
+    "id": "facade.vcp-appearance-studio",
+    "kind": "facade",
+    "owner": "modules/ui-system/appearance-studio.js",
+    "facadeName": "VCPAppearanceStudio",
+    "status": "pass",
+    "consumers": ["modules/ui-system/next-shell/next-shell-controller.js", "modules/settingsManager.js"],
+    "dynamicSmoke": "scripts/test-appearance-studio.mjs",
+    "retirement": "retain while Next shell and settings entrypoints consume it",
+    "evidence": ["npm run guard:chat-kernel-consumers", "npm run test:appearance-studio"]
+  },
+  {
+    "id": "chat.stream.lifecycle",
+    "kind": "event",
+    "owner": "modules/chat/streamSession.js",
+    "status": "pass",
+    "producer": ["modules/chat/streamSession.js", "modules/chat/streamCoordinator.js"],
+    "consumers": ["modules/renderer/streamManager.js", "modules/chat/vcpStreamBridge.js"],
+    "mode": "emit",
+    "durable": false,
+    "terminal": { "kinds": ["completed", "failed", "cancelled", "discarded"], "single": true, "late": "discard" },
+    "sourceEntry": "tests/stream-session.test.mjs",
+    "invalidCase": "scripts/fixtures/chat-contract-invalid.mjs",
+    "evidence": ["npm run test:chat-kernel", "npm run test:chat-contract-invariants"]
+  },
+  {
+    "id": "chat.stream.completed.persistence",
+    "kind": "event",
+    "owner": "modules/chat/streamCoordinator.js",
+    "status": "pass",
+    "producer": ["modules/chat/streamCoordinator.js"],
+    "consumers": ["modules/chat/chatHistoryPersistence.js"],
+    "mode": "emit",
+    "durable": true,
+    "terminal": { "kinds": ["completed"], "single": true },
+    "sourceEntry": "tests/stream-coordinator.test.mjs",
+    "evidence": ["npm run test:chat-kernel"]
+  },
+  {
+    "id": "ui.webawesome.dynamic-event-adapter",
+    "kind": "event",
+    "owner": "modules/ui-system/webawesome-adapter.js",
+    "status": "pass",
+    "dynamic": true,
+    "dynamicSites": [{ "file": "modules/ui-system/webawesome-adapter.js", "line": 150 }],
+    "producer": ["modules/ui-system/webawesome-adapter.js"],
+    "consumers": ["modules/ui-system/webawesome-adapter.js"],
+    "mode": "emit",
+    "durable": false,
+    "terminal": { "single": false, "late": "surface-scoped" },
+    "sourceEntry": "scripts/test-webawesome-adapter.mjs",
+    "evidence": ["npm run test:ui-system"]
+  },
+  {
+    "id": "snapshot.chat-stream.completed",
+    "kind": "snapshot",
+    "owner": "scripts/test-chat-transcript-snapshot.mjs",
+    "status": "pass",
+    "snapshot": "docs/contracts/snapshots/chat-stream.json",
+    "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
+    "evidence": ["npm run test:chat-transcript-snapshot"]
+  },
+  {
+    "id": "snapshot.chat-stream.cancelled",
+    "kind": "snapshot",
+    "owner": "scripts/test-chat-transcript-snapshot.mjs",
+    "status": "pass",
+    "snapshot": "docs/contracts/snapshots/chat-stream-cancel.json",
+    "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
+    "evidence": ["npm run test:chat-transcript-snapshot"]
+  },
+  {
+    "id": "snapshot.chat-stream.failed",
+    "kind": "snapshot",
+    "owner": "scripts/test-chat-transcript-snapshot.mjs",
+    "status": "pass",
+    "snapshot": "docs/contracts/snapshots/chat-stream-failed.json",
+    "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
+    "evidence": ["npm run test:chat-transcript-snapshot"]
+  },
+  {
+    "id": "snapshot.chat-stream.discarded",
+    "kind": "snapshot",
+    "owner": "scripts/test-chat-transcript-snapshot.mjs",
+    "status": "pass",
+    "snapshot": "docs/contracts/snapshots/chat-stream-discarded.json",
+    "sourceEntry": "scripts/test-chat-transcript-snapshot.mjs",
+    "evidence": ["npm run test:chat-transcript-snapshot"]
+  }
+]

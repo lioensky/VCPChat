@@ -49,13 +49,16 @@ test('global settings saves the server URL once with canonical presentation', as
     };
     dom.window.normalizeChatPresentationMode = () => 'bubble';
 
-    const currentSettings = {};
+    let currentSettings = {};
     const deps = {
-        refs: { globalSettings: { get: () => currentSettings } },
+        refs: { globalSettings: { get: () => currentSettings, set: value => { currentSettings = value; } } },
         getCroppedFile: () => null,
         setCroppedFile() {},
         uiHelperFunctions: { showToastNotification() {}, closeModal() {} },
         settingsManager: { completeVcpUrl: url => url },
+        normalizeChatPresentationMode: () => 'bubble',
+        applyChatPresentationMode: async () => ({ success: true, mode: 'bubble' }),
+        applyChatBubbleLayoutSettings() {},
     };
     const form = dom.window.document.getElementById('globalSettingsForm');
     dom.window.document.getElementById('vcpServerUrl').value = 'http://localhost:6005';

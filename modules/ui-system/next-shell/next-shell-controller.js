@@ -19,6 +19,7 @@
     let pendingTabRestore = null;
     let teardownPromise = null;
     let overlayCoordinator = null;
+    let chatCapabilities = null;
     let releaseWindowState = null;
     let tabOperationId = 0;
     let tabOperationRevision = 0;
@@ -224,13 +225,14 @@
             close: () => closeView(viewId),
             activate: () => setView(viewId),
             feedback: window.VCPUI?.feedback,
-            scope: viewScope
+            scope: viewScope,
+            chat: chatCapabilities,
         });
         let disposer = null;
         try {
             disposer = app.mount(container, context) || null;
         } catch (error) {
-            console.error(`[NextUiApps] Failed to mount ${app.id}:`, error);
+            console.error(`[NextUiApps] Failed to mount ${app.id}:`, error?.stack || error?.message || error);
             container.textContent = `应用加载失败：${error.message}`;
         }
         if (viewScope) {
@@ -315,9 +317,29 @@
             return;
         }
         const viewId = `app:${app.id}`;
-        if (appTabHost.views.has(viewId)) {
-            setView(viewId);
-            return;
+        const existingView = appTabHost.views.get(viewId);
+        if (existingView) {
+            // A child WebContents can close before its asynchronous state
+            // notification removes the renderer tab. Reusing that stale tab
+            // leaves the user looking at an empty native Surface and prevents
+            // a new session from being created. Main is the session authority:
+            // reconcile before treating an existing renderer view as reusable.
+            try {
+                const authoritative = await embeddedAppController.list();
+                if (!mounted || generation !== mountGeneration) return;
+                const sessionExists = authoritative?.sessions?.some(session => session.action === existingView.action);
+                if (sessionExists) {
+                    setView(viewId);
+                    return;
+                }
+                closeView(viewId, { skipEmbeddedClose: true });
+            } catch (error) {
+                // If Main cannot be queried, preserve the existing renderer
+                // view rather than risk creating a duplicate native session.
+                console.warn(`[NextUI] Failed to reconcile embedded app ${app.id} before reopen:`, error);
+                setView(viewId);
+                return;
+            }
         }
         const host = ensureInternalHost();
         const container = document.createElement('section');
@@ -742,7 +764,7 @@
         accountMenuController = new AccountMenuController({
             window,
             document,
-            getSettings: () => window.globalSettings || {},
+            getSettings: () => chatCapabilities?.settings?.get?.() || {},
             openSettings: () => window.uiHelperFunctions?.openModal?.('globalSettingsModal'),
             openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),
             openThemes: () => (window.chatAPI || window.electronAPI)?.openThemesWindow?.(),
@@ -892,6 +914,24 @@
         mount();
     }
 
+    function provideChatCapabilities(capabilities) {
+        if (!capabilities || !capabilities.repository || typeof capabilities.getSnapshot !== 'function'
+            || typeof capabilities.createRenderer !== 'function' || !capabilities.manager) {
+            throw new TypeError('Next UI chat capabilities require repository, state snapshot, renderer factory and manager.');
+        }
+        chatCapabilities = Object.freeze({
+            repository: capabilities.repository,
+            getSnapshot: capabilities.getSnapshot,
+            createRenderer: capabilities.createRenderer,
+            manager: capabilities.manager,
+            presentation: capabilities.presentation || null,
+            settings: capabilities.settings || null,
+        });
+        return () => {
+            if (chatCapabilities?.repository === capabilities.repository) chatCapabilities = null;
+        };
+    }
+
     // Internal applications may need to enter the shared VCPChat Agent/Group
     // creation flow.  Expose the action itself rather than asking them to
     // synthesize a click on #nextUiCreateItemBtn: that element is part of a
@@ -912,6 +952,7 @@
         setView,
         acquireOverlay,
         releaseOverlay,
+        provideChatCapabilities,
         getDiagnostics: () => Object.freeze({
             mounted,
             generation: mountGeneration,

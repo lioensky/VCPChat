@@ -3,6 +3,7 @@
     'use strict';
     if (!globalObject || globalObject.VCPLifecycleInspector) return;
     const transitionHistory = [];
+    let streamDiagnosticsProvider = null;
     const MAX_HISTORY = 30;
     const record = event => {
         const detail = event.detail || {};
@@ -30,7 +31,7 @@
             contributions: globalObject.VCPContributions?.diagnostics?.snapshot?.() || null,
             states: Object.freeze(globalObject.VCPStateChannels?.diagnostics?.() || []),
             shell: globalObject.VCPNextShellController?.getDiagnostics?.() || null,
-            streams: globalObject.streamManager?.getDiagnostics?.() || null,
+            streams: streamDiagnosticsProvider?.() || null,
             performance: Object.freeze(globalObject.VCPPerformance?.snapshot?.() || []),
             transitions: Object.freeze([...transitionHistory]),
         });
@@ -47,5 +48,13 @@
         });
     }
 
-    globalObject.VCPLifecycleInspector = Object.freeze({ snapshot, snapshotMain });
+    function setStreamDiagnosticsProvider(provider) {
+        if (typeof provider !== 'function') throw new TypeError('Stream diagnostics provider must be a function.');
+        if (streamDiagnosticsProvider && streamDiagnosticsProvider !== provider) {
+            throw new Error('Stream diagnostics provider is already registered.');
+        }
+        streamDiagnosticsProvider = provider;
+    }
+
+    globalObject.VCPLifecycleInspector = Object.freeze({ snapshot, snapshotMain, setStreamDiagnosticsProvider });
 })(typeof window !== 'undefined' ? window : null);

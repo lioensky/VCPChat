@@ -1,9 +1,9 @@
 # VCPChat UI 交互与可访问性行为合同路线
 
-> 状态：施工中
-> 基线：P1–P3 已完成，P4 仍需同步后的 Windows 复验与人工 soak
-> 目的：把“可访问性、键盘、焦点、异步终态、视觉稳定性和资源清理”从分散的实现细节提升为可重复验证的 UI 行为合同。
-> 上位路线：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
+> 状态：规划中  
+> 基线：P1–P3 已完成，P4 仍需同步后的 Windows 复验与人工 soak   
+> 目的：把“可访问性、键盘、焦点、异步终态、视觉稳定性和资源清理”从分散的实现细节提升为可重复验证的 UI 行为合同。  
+> 上位路线：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)  
 > 当前事实：[`next-ui-current-state.md`](./next-ui-current-state.md)
 
 ## 1. 为什么建立这条路线
@@ -45,28 +45,16 @@ open
 
 | 阶段 | 状态 | 目标 | 主要产物 | 退出条件 |
 |---|---|---|---|---|
-| A0 事实与风险基线 | 已完成 | 盘点所有交互层、焦点入口、ARIA 和真实消费者 | `scripts/ui-interaction-inventory.json`、缺口报告、审计门禁 | 每个高频 Surface 有 owner、触发源和终态负责人，且清单引用真实入口 |
-| A1 基础交互合同 | 核心完成；跨平台证据待验 | 统一 IconButton、focus-visible、ARIA 状态和 Escape 作用域 | 基础规则、静态 gate、键盘工具 | 主窗口关键导航和菜单通过键盘/ARIA 矩阵；Windows 复验仍待补 |
-| A2 Modal/Popover/Select 内核 | 核心完成；打包与人工证据待验 | 消除误关闭、焦点丢失和层级竞争 | Overlay/Focus contract、真实测试 | 创建、设置、Ask Nova、Account Menu、托盘路径闭环；外部环境仍待验 |
-| A3 异步终态与错误恢复 | 核心完成；长时 soak 待验 | 统一 loading、disabled、error、提交和取消行为 | 页面状态矩阵、错误字段合同 | 成功/失败/取消/迟到 Promise 均有唯一终态；稳定周期仍待验 |
-| A4 主题、动画、DPI 与 fallback | macOS 自动完成；Windows/DPI/GPU 待验 | 让视觉内核和平台降级遵守同一交互合同 | 主题真源 gate、motion/DPI 矩阵 | macOS 自动证据通过；Windows 100/125/150% DPI、GPU 和视觉证据待补 |
-| A5 页面模式和任务级回归 | 自动任务完成；人工视觉证据待验 | 把设置、创建、搜索、App、聊天变成固定工作流 | Task journey tests、截图基线 | 高频任务可从真实入口完成并验证世界状态；人工回归待补 |
-| A6 交付门禁与稳定周期 | 自动门禁完成；外部发布证据待验 | 形成持续回归和发布证据 | `npm run check:ui-harness-evidence`、人工 soak 记录、P5 观测 | 门禁通过、签名打包启动和 30–60 分钟 soak 仍待补 |
+| A0 事实与风险基线 | 未开始 | 盘点所有交互层、焦点入口、ARIA 和真实消费者 | Surface/键盘/属性清单、缺口报告 | 每个高频 Surface 有 owner、触发源和终态负责人 |
+| A1 基础交互合同 | 未开始 | 统一 IconButton、focus-visible、ARIA 状态和 Escape 作用域 | 基础规则、静态 gate、键盘工具 | 主窗口关键导航和菜单通过键盘/ARIA 矩阵 |
+| A2 Modal/Popover/Select 内核 | 未开始 | 消除误关闭、焦点丢失和层级竞争 | Overlay/Focus contract、真实测试 | 创建、设置、Ask Nova、Account Menu、托盘路径闭环 |
+| A3 异步终态与错误恢复 | 未开始 | 统一 loading、disabled、error、提交和取消行为 | 页面状态矩阵、错误字段合同 | 成功/失败/取消/迟到 Promise 均有唯一终态 |
+| A4 主题、动画、DPI 与 fallback | 未开始 | 让视觉内核和平台降级遵守同一交互合同 | 主题真源 gate、motion/DPI 矩阵 | Windows/macOS 关键主题和窗口尺寸通过视觉与键盘验证 |
+| A5 页面模式和任务级回归 | 未开始 | 把设置、创建、搜索、App、聊天变成固定工作流 | Task journey tests、截图基线 | 高频任务可从真实入口完成并验证世界状态 |
+| A6 交付门禁与稳定周期 | 未开始 | 形成持续回归和发布证据 | CI/本地矩阵、人工 soak 记录、P5 观测 | 一个稳定发布周期无阻塞性回归 |
 | A7 条件式逐页演进 | 条件式远期 | 仅在真实需求下迁移一个业务子页面 | 独立页面 PR | consumer/runtime/test/teardown 同步进入 |
 
 A0–A6 是完整落地这套行为合同所需的主路线；A7 不应提前进入当前主 PR。
-
-2026-08-19 补充：动态 AppTab 已改为独立 tab button、sibling close button 与 labelled tabpanel；全局设置分类已具备垂直 tablist、方向键/Home/End 和 section 关系；应用托盘设置弹窗已具备 dialog 语义、focus trap、Escape owner 与迟到 overlay acquire 清理。
-
-设置 Electron gate 已实际通过保存、reload 恢复、分类/搜索、主题截图和 canonical Next 重载检查；旧的“双布局 teardown”断言已删除，避免将历史 Classic/Next 测试契约误当成当前主窗口架构。
-
-同一真实 Electron smoke 现在额外连续执行 20 次明暗主题切换，并验证最终主题以及 Web Awesome theme link/owner 数量不漂移；这覆盖 Windows 上常见的高频切换候选竞态，但不替代 Windows 实机性能证据。
-
-本机曾生成 macOS unpacked `.app` 并审计 `app.asar` 资源，但未签名产物直接启动没有建立调试端点，因此 packaged launch 仍标记为外部证据，不能用生成成功替代真实启动。
-
-Windows、签名 packaged launch 与人工 soak 的执行步骤和归档字段见 [`ui-harness-external-evidence-checklist.md`](./ui-harness-external-evidence-checklist.md)。
-
-2026-08-19 进展：交互 inventory 现在必须解析到真实存在的测试文件；任务 journey gate 进一步要求每条声明的 Electron 证据包含关键入口、操作和世界状态标记，避免“文件存在”被误报为覆盖。通知菜单具备独立 controller 证据，旧 document 级重复绑定已移除；Escape 使用单一优先级 owner；Launchpad 具备方向键/Home/End、打开时焦点转移与 fallback listener teardown。补充修复了动态 Launchpad 和应用托盘抽屉的隐藏可访问性：关闭时由各自 owner 设置 `inert`，避免运行时生成的应用按钮在隐藏或出场动画期间进入 Tab 顺序；对应 controller/Electron 回归覆盖打开/关闭终态。Ask Nova tabs 现在具备 roving tabindex、方向键导航和 tabpanel 关系；主聊天流式发送通过 `aria-busy` 暴露 loading 终态；聊天模式浮层同步 `aria-hidden`/`inert`，快速切换保存按最新意图串行化并避免旧失败回滚新选择。OverlayCoordinator dispose 现在会主动 reconcile 原生 WebContentsView，避免隐藏 View 遗留；AppTabHost 关闭当前动态 tab 时恢复焦点到相邻 tab 或 Home；native Modal 具备可访问名称；兼容确认框保留上游 API 但补齐同步 active、焦点陷阱、Escape 捕获与焦点恢复。macOS Electron UI Apps、主聊天序列、20 轮生命周期压力和 pack closure 均通过。A1–A6 仍保持进行中，直至异步状态逐项真实终态、Windows/打包产物、人工 soak 与稳定周期证据完成。
 
 ## 4. A0：事实与风险基线
 

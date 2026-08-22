@@ -3,6 +3,29 @@
 
     const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
     const moduleScope = LifecycleScope ? new LifecycleScope('next:appearance-studio-controller') : null;
+    let capabilities = Object.create(null);
+    window.addEventListener('vcp-appearance-studio-configure', event => {
+        capabilities = Object.freeze({ ...(event.detail || {}) });
+    }, { once: true });
+    window.addEventListener('vcp-appearance-studio-dispose', event => {
+        if (destroyPromise) {
+            event.detail.promise = destroyPromise;
+            return;
+        }
+        destroyed = true;
+        destroyPromise = (async () => {
+            await close({ rollback: true });
+            await moduleScope?.dispose('appearance-controller-destroyed');
+        })();
+        event.detail.promise = destroyPromise;
+    }, { once: true });
+    const service = (name, fallback) => capabilities[name] || fallback?.();
+    const getSettings = () => service('settings', null)?.get?.() || {};
+    const replaceSettings = patch => service('settings', null)?.replace?.(patch);
+    const getAppearance = () => service('appearance', () => window.VCPAppearance);
+    const getUiManager = () => service('uiManager', () => window.uiManager);
+    const getPresentationMode = mode => service('presentation', null)?.normalize?.(mode);
+    const applyPresentation = (...args) => service('presentation', null)?.apply?.(...args);
 
     const DEFAULT_HOME_TAGLINE = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
     const CANONICAL_UI_MODE = 'next';
@@ -287,9 +310,8 @@
         if (!normalizedMode) return false;
         const { persist = true, source = 'appearance-theme-control' } = options;
         const effectiveTheme = effectiveThemeForMode(normalizedMode);
-        window.globalSettings = window.globalSettings || {};
-        window.globalSettings.currentThemeMode = normalizedMode;
-        window.uiManager?.applyTheme?.(effectiveTheme);
+        replaceSettings({ currentThemeMode: normalizedMode });
+        getUiManager()?.applyTheme?.(effectiveTheme);
         if (persist) {
             if (normalizedMode === 'system') api()?.setThemeMode?.('system');
             else api()?.setTheme?.(normalizedMode);
@@ -297,20 +319,20 @@
         syncAccountMenuValue();
         syncSettingsSummary();
         window.dispatchEvent(new CustomEvent('global-settings-updated', {
-            detail: { settings: window.globalSettings, source }
+            detail: { settings: getSettings(), source }
         }));
         return true;
     }
 
     function readState() {
-        const settings = window.globalSettings || {};
+        const settings = getSettings();
         const themeMode = THEME_MODES.has(settings.currentThemeMode)
             ? settings.currentThemeMode
             : readEffectiveTheme();
         return {
-            profile: window.VCPAppearance?.normalize(settings.appearanceProfile, CANONICAL_UI_MODE)
+            profile: getAppearance()?.normalize(settings.appearanceProfile, CANONICAL_UI_MODE)
                 || clone(PRESETS.balanced.profile),
-            presentation: window.normalizeChatPresentationMode?.(settings.chatPresentationMode) || 'bubble',
+            presentation: getPresentationMode(settings.chatPresentationMode) || 'bubble',
             messageWidth: settings.enableWideChatLayout === true ? 'wide' : 'normal',
             homeVisual: settings.showHomeVisualBrand === false ? 'hidden' : 'shown',
             homeTagline: settings.showHomeVisualTagline === false ? 'hidden' : 'shown',
@@ -328,9 +350,9 @@
             ? source.themeFileName
             : (typeof base.themeFileName === 'string' ? base.themeFileName : null);
         return {
-            profile: window.VCPAppearance?.normalize(source.profile || base.profile, CANONICAL_UI_MODE)
+            profile: getAppearance()?.normalize(source.profile || base.profile, CANONICAL_UI_MODE)
                 || clone(base.profile),
-            presentation: window.normalizeChatPresentationMode?.(source.presentation || base.presentation)
+            presentation: getPresentationMode(source.presentation || base.presentation)
                 || base.presentation,
             messageWidth: source.messageWidth === 'wide' || source.messageWidth === 'normal'
                 ? source.messageWidth
@@ -1002,7 +1024,7 @@
         if (!draft) return;
         const generation = ++previewGeneration;
         if (generation !== previewGeneration || !draft) return;
-        window.VCPAppearance?.apply(draft.profile, {
+        getAppearance()?.apply(draft.profile, {
             uiMode: CANONICAL_UI_MODE,
             cache: false,
             source: 'appearance-studio-preview'
@@ -1011,9 +1033,9 @@
         applyHomeVisual(draft.homeVisual);
         applyHomeTagline(draft.homeTagline, draft.homeTaglineText);
         if (!options.appearanceOnly) {
-            window.uiManager?.applyTheme?.(effectiveThemeForMode(draft.themeMode));
+            getUiManager()?.applyTheme?.(effectiveThemeForMode(draft.themeMode));
             previewThemeFile(draft.themeFileName);
-            await window.applyChatPresentationMode?.(draft.presentation, {
+            await applyPresentation(draft.presentation, {
                 persist: false,
                 preserveScroll: true,
                 notify: false,
@@ -1029,9 +1051,9 @@
     async function restoreSnapshot() {
         if (!snapshot) return;
         previewGeneration += 1;
-        if ((window.VCPAppearance?.getRevision?.() || 0) !== snapshotRevision) return;
+        if ((getAppearance()?.getRevision?.() || 0) !== snapshotRevision) return;
         removeThemePreview();
-        window.VCPAppearance?.apply(snapshot.profile, {
+        getAppearance()?.apply(snapshot.profile, {
             uiMode: CANONICAL_UI_MODE,
             cache: false,
             source: 'appearance-studio-rollback'
@@ -1039,8 +1061,8 @@
         document.body.classList.toggle('chat-wide-layout', snapshot.messageWidth === 'wide');
         applyHomeVisual(snapshot.homeVisual);
         applyHomeTagline(snapshot.homeTagline, snapshot.homeTaglineText);
-        window.uiManager?.applyTheme?.(effectiveThemeForMode(snapshot.themeMode));
-        await window.applyChatPresentationMode?.(snapshot.presentation, {
+        getUiManager()?.applyTheme?.(effectiveThemeForMode(snapshot.themeMode));
+        await applyPresentation(snapshot.presentation, {
             persist: false,
             preserveScroll: true,
             notify: false,
@@ -1108,7 +1130,7 @@
             if (!result?.success) throw new Error(result?.error || '设置保存失败');
             settingsPersisted = true;
 
-            Object.assign(window.globalSettings || {}, {
+            replaceSettings({
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
@@ -1117,7 +1139,7 @@
                 homeVisualTagline: nextState.homeTaglineText,
                 currentThemeMode: nextState.themeMode
             });
-            await window.applyChatPresentationMode?.(nextState.presentation, {
+            await applyPresentation(nextState.presentation, {
                 persist: false,
                 preserveScroll: true,
                 notify: false,
@@ -1126,28 +1148,28 @@
             // Commit the appearance revision only after all fallible local
             // projections have succeeded. Otherwise rollback mistakes our
             // own partial commit for a newer external settings revision.
-            window.VCPAppearance?.commit(nextState.profile, {
+            getAppearance()?.commit(nextState.profile, {
                 uiMode: CANONICAL_UI_MODE,
                 source: 'appearance-studio-save'
             });
             if (nextState.themeMode === 'system') {
                 api()?.setThemeMode?.('system');
-                window.uiManager?.applyTheme?.(effectiveThemeForMode('system'));
+                getUiManager()?.applyTheme?.(effectiveThemeForMode('system'));
             } else {
                 api()?.setTheme?.(nextState.themeMode);
-                window.uiManager?.applyTheme?.(nextState.themeMode);
+                getUiManager()?.applyTheme?.(nextState.themeMode);
             }
             if (nextState.themeFileName && nextState.themeFileName !== snapshot.themeFileName) {
                 api()?.applyTheme?.(nextState.themeFileName);
             }
             syncSettingsControls();
             snapshot = clone(nextState);
-            snapshotRevision = window.VCPAppearance?.getRevision?.() || snapshotRevision;
+            snapshotRevision = getAppearance()?.getRevision?.() || snapshotRevision;
             syncAccountMenuValue(nextState);
             window.dispatchEvent(new CustomEvent('global-settings-updated', {
-                detail: { settings: window.globalSettings, source: 'appearance-studio' }
+                detail: { settings: getSettings(), source: 'appearance-studio' }
             }));
-            window.uiHelperFunctions?.showToastNotification?.('外观与布局已应用。', 'success');
+            service('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.('外观与布局已应用。', 'success');
             await close({ rollback: false });
         } catch (error) {
             if (settingsPersisted && persistedSnapshot) {
@@ -1156,12 +1178,12 @@
                     if (!rollbackResult?.success) throw new Error(rollbackResult?.error || '设置回写失败');
                 } catch (rollbackError) {
                     console.error('[AppearanceStudio] Failed to restore persisted settings:', rollbackError);
-                    window.uiHelperFunctions?.showToastNotification?.(
+                    service('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.(
                         `外观保存失败，且磁盘设置恢复失败：${rollbackError.message}`,
                         'error'
                     );
                 }
-                Object.assign(window.globalSettings || {}, {
+                replaceSettings({
                     ...persistedSnapshot,
                     appearanceProfile: clone(persistedSnapshot.appearanceProfile)
                 });
@@ -1169,7 +1191,7 @@
             await restoreSnapshot();
             draft = clone(snapshot);
             syncControls();
-            window.uiHelperFunctions?.showToastNotification?.(`外观与布局保存失败：${error.message}`, 'error');
+            service('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.(`外观与布局保存失败：${error.message}`, 'error');
         } finally {
             setBusy(false);
         }
@@ -1286,7 +1308,7 @@
         if (!openScope && moduleScope) openScope = moduleScope.child('next:appearance-studio-open');
         acquireStudioOverlay();
         snapshot = readState();
-        snapshotRevision = window.VCPAppearance?.getRevision?.() || 0;
+        snapshotRevision = getAppearance()?.getRevision?.() || 0;
         draft = normalizeState(options.initialState, snapshot);
         currentSurface.root.hidden = false;
         document.body.classList.add('vcp-appearance-studio-open');
@@ -1392,7 +1414,7 @@
             api()?.openThemesWindow?.();
         } else if (target.dataset.studioAction === 'settings') {
             if (!await requestClose()) return;
-            window.uiHelperFunctions?.openModal?.('globalSettingsModal');
+            service('uiHelper', () => window.uiHelperFunctions)?.openModal?.('globalSettingsModal');
         }
     }
 
@@ -1501,7 +1523,7 @@
         else requestAnimationFrame(bindSettingsSummary);
     });
 
-    window.VCPAppearanceStudio = Object.freeze({
+    Object.defineProperty(window, 'VCPAppearanceStudio', { value: Object.freeze({
         PRESETS,
         open,
         close,
@@ -1511,14 +1533,5 @@
         syncAccountMenuValue,
         syncSettingsSummary,
         setThemeMode,
-        destroy() {
-            if (destroyPromise) return destroyPromise;
-            destroyed = true;
-            destroyPromise = (async () => {
-                await close({ rollback: true });
-                await moduleScope?.dispose('appearance-controller-destroyed');
-            })();
-            return destroyPromise;
-        }
-    });
+    }), writable: false, configurable: false });
 })();

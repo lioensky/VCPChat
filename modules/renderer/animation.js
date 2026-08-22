@@ -10,9 +10,6 @@ const CDN_TO_LOCAL_MAP = {
     'https://unpkg.com/animejs': 'vendor/anime.min.js',
 };
 
-import * as visibilityOptimizer from './visibilityOptimizer.js';
-import { createPausableRAF, createPausableTimerAPI, registerCanvasAnimation } from './visibilityOptimizer.js';
-
 // 🔥 全局跟踪已加载的脚本，防止跨消息重复加载
 if (!window._vcp_loaded_scripts) {
     window._vcp_loaded_scripts = new Set();
@@ -58,6 +55,7 @@ function replaceCdnUrls(scriptContent) {
 }
 
 const trackedThreeInstances = new Map();
+const visibilityOwnerByContent = new WeakMap();
 let isThreePatched = false;
 
 function patchThreeJS() {
@@ -102,6 +100,11 @@ function patchThreeJS() {
         renderer.dispose = function() {
             if (this._disposed) return;
             this._disposed = true;
+            // This observer is owned by the renderer. Disconnect it before
+            // releasing GPU resources so a detached canvas cannot retain the
+            // document or re-register itself after teardown.
+            this._vcpMutationObserver?.disconnect?.();
+            this._vcpMutationObserver = null;
             if (originalDispose) {
                 return originalDispose.call(this);
             }
@@ -111,6 +114,7 @@ function patchThreeJS() {
             if (document.body.contains(renderer.domElement)) {
                 const contentDiv = renderer.domElement.closest('.md-content');
                 if (contentDiv) {
+                    const visibilityOptimizer = visibilityOwnerByContent.get(contentDiv);
                     if (!trackedThreeInstances.has(contentDiv)) {
                         trackedThreeInstances.set(contentDiv, []);
                     }
@@ -135,6 +139,8 @@ function patchThreeJS() {
                 observer.disconnect();
             }
         });
+
+        renderer._vcpMutationObserver = observer;
 
         observer.observe(document.body, { childList: true, subtree: true });
 
@@ -167,7 +173,8 @@ function loadScript(src, onLoad, onError) {
     document.head.appendChild(scriptEl);
 }
 
-function processScripts(containerElement) {
+function processScripts(containerElement, visibilityOptimizer) {
+    if (visibilityOptimizer) visibilityOwnerByContent.set(containerElement, visibilityOptimizer);
     const messageItem = containerElement.closest('.message-item');
 
     // Separate scripts by type
@@ -229,16 +236,19 @@ function processScripts(containerElement) {
                     const canvases = containerElement.querySelectorAll('canvas');
                     canvases.forEach(canvas => {
                         if (messageItem) {
-                            registerCanvasAnimation(messageItem, { canvas });
+                            visibilityOptimizer?.registerCanvasAnimation?.(messageItem, { canvas });
                         }
                     });
 
                     // 2. 创建可暂停的 rAF 与 timer 包装器
                     const pausableRAF = messageItem
-                        ? createPausableRAF(messageItem)
+                        ? visibilityOptimizer?.createPausableRAF?.(messageItem) || window.requestAnimationFrame
                         : window.requestAnimationFrame;
                     const pausableTimerAPI = messageItem
-                        ? createPausableTimerAPI(messageItem)
+                        ? visibilityOptimizer?.createPausableTimerAPI?.(messageItem) || {
+                            setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window),
+                            setInterval: window.setInterval.bind(window), clearInterval: window.clearInterval.bind(window)
+                        }
                         : {
                             setTimeout: window.setTimeout.bind(window),
                             clearTimeout: window.clearTimeout.bind(window),
@@ -451,14 +461,15 @@ function processScripts(containerElement) {
     }
 }
 
-export function processAnimationsInContent(containerElement) {
+export function processAnimationsInContent(containerElement, visibilityOptimizer = null) {
     if (!containerElement) return;
-    processScripts(containerElement);
+    processScripts(containerElement, visibilityOptimizer);
 }
 
 
 export function cleanupAnimationsInContent(contentDiv) {
     if (!contentDiv) return;
+    visibilityOwnerByContent.delete(contentDiv);
 
     if (window.anime) {
         const animatedElements = contentDiv.querySelectorAll('*');

@@ -158,6 +158,19 @@ assert.equal(
     'a hide IPC that settles after lease release must reconcile back to the active embedded view'
 );
 
+// A native child may disappear before its `closed` notification reaches the
+// renderer. Reopening during that window must consult Main and replace the
+// stale tab instead of merely activating a view with no WebContents.
+authoritativeSessions.delete('open-translator-window');
+await window.topTabManager.openEmbeddedApp({
+    id: 'translator', action: 'open-translator-window', name: '翻译', icon: 'translator'
+});
+assert.equal(creates, 2, 'reopening must replace a renderer tab whose authoritative native session is gone');
+assert.ok(
+    window.document.querySelector('[data-view-id="app:translator"]'),
+    'reopening after native close must leave one live replacement tab',
+);
+
 const lifecycleUnmount = window.topTabManager.unmount();
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(window.topTabManager.isMounted(), false, 'explicit lifecycle teardown must unmount the tab host');
@@ -171,12 +184,12 @@ assert.ok(
 
 const lifecycleRemount = window.topTabManager.mount();
 await new Promise(resolve => setTimeout(resolve, 10));
-assert.equal(creates, 1, 'remount must wait for the previous native teardown');
+assert.equal(creates, 2, 'remount must wait for the previous native teardown');
 resolveDeferredClose?.();
 await lifecycleUnmount;
 await lifecycleRemount;
 await new Promise(resolve => setTimeout(resolve, 10));
-assert.equal(creates, 2, 'remount must restore the preserved tab session once');
+assert.equal(creates, 3, 'remount must restore the preserved tab session once');
 assert.equal(window.VCPLifecycle.diagnostics.find('next:tab-host').length, 1, 'remount must create one fresh owner');
 
 window.topTabManager.openInternalApp(removableInternalApp.id);

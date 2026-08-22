@@ -1,0 +1,22 @@
+{
+  "modelVisible": [
+    { "role": "user", "content": "say hello" },
+    { "role": "assistant", "content": "hello world", "terminal": "completed" }
+  ],
+  "chatVisible": {
+    "role": "assistant",
+    "status": "completed",
+    "content": "hello world"
+  },
+  "durable": {
+    "conversationKey": "snapshot-conversation",
+    "terminal": "completed",
+    "text": "hello world"
+  },
+  "projection": {
+    "statuses": ["streaming", "streaming", "completed"],
+    "chunkCount": 2,
+    "text": "hello world"
+  },
+  "wire": ["chunk:hello ", "chunk:world", "completed"]
+}

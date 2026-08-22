@@ -34,12 +34,17 @@ test('legacy mode events cannot tear down canonical topic management state', asy
     window.topicListManager.init({
         elements: { topicListContainer: window.document.getElementById('tabContentTopics') },
         electronAPI: {},
+        chatRepository: { getHistory: async () => [] },
         refs: {
             currentSelectedItemRef: { get: () => ({ id: '', type: '' }) },
             currentTopicIdRef: { get: () => 'topic-a' }
         },
         uiHelper: {},
-        mainRendererFunctions: {}
+        mainRendererFunctions: {},
+        topicSelectionReadiness: {
+            isReady: () => true,
+            defer() {},
+        }
     });
 
     window.document.documentElement.dataset.uiMode = 'classic';
@@ -54,5 +59,32 @@ test('legacy mode events cannot tear down canonical topic management state', asy
     assert.equal(window.document.querySelectorAll('.unlocked-indicator').length, 1);
     assert.equal(window.document.querySelectorAll('.topic-item.selected').length, 2);
     assert.equal(window.document.getElementById('nextUiManageTopicsBtn').getAttribute('aria-pressed'), 'true');
+    dom.window.close();
+});
+
+test('topic manager accepts a lifecycle listener owner and disposes its render resources', () => {
+    const dom = new JSDOM('<!doctype html><html><body><section id="tabContentTopics"><div class="topics-header-container"></div><ul id="topicList"></ul></section></body></html>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    window.eval(fs.readFileSync(path.join(root, 'modules/topicListManager.js'), 'utf8'));
+    const removals = [];
+    const owner = {
+        add(target, type, handler, options) {
+            target.addEventListener(type, handler, options);
+            removals.push(() => target.removeEventListener(type, handler, options));
+            return true;
+        },
+        dispose() { removals.splice(0).reverse().forEach(remove => remove()); }
+    };
+    window.topicListManager.init({
+        elements: { topicListContainer: window.document.getElementById('tabContentTopics') },
+        electronAPI: {},
+        chatRepository: { getHistory: async () => [] },
+        refs: { currentSelectedItemRef: { get: () => ({ id: '', type: '' }) }, currentTopicIdRef: { get: () => null } },
+        uiHelper: {}, mainRendererFunctions: {}, topicSelectionReadiness: { isReady: () => true, defer() {} }, listenerOwner: owner
+    });
+    window.topicListManager.dispose();
+    owner.dispose();
+    assert.equal(removals.length, 0);
+    assert.equal(typeof window.topicListManager.dispose, 'function');
     dom.window.close();
 });
