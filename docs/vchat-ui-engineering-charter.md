@@ -142,3 +142,5 @@ vcp.tokens → vcp.surface → vcp.components → vcp.page → vcp.overrides
 7. 变更可以独立回滚，且工作树和文档状态一致。
 
 本规范与 `next-ui-current-state.md`、`vcp-ui-provider-architecture.md`、`next-ui-lifecycle-architecture.md` 和 `styles/app-surfaces/README.md` 一起构成工程约束；若事实冲突，以当前代码和最新证据为准并在同一变更中更新文档。
+
+参考项目的取舍记录见 [`ui-reference-research-cherry-deepseek.md`](./ui-reference-research-cherry-deepseek.md)：Cherry Studio 提供内容优先的视觉方向，DeepSeek Harness 提供 seam、owner、真实入口和证据哲学。

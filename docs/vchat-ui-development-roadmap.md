@@ -131,6 +131,8 @@ App Surface 视觉分支已经有 20 个页面/共享层提交，覆盖 Notes、
 
 只有六页达到稳定验收后，才评估其他业务页面。每次新增页面都必须先写页面合同，再选择迁移或保持 Classic；不能为了形式统一而重建低价值页面。
 
+参考原则：页面视觉遵循 Cherry Studio 的中性、内容优先和语义 token；工程实现遵循 DeepSeek Harness 的 seam、显式 owner、可逆副作用、真实入口测试和证据优先。具体取舍见 [`ui-reference-research-cherry-deepseek.md`](./ui-reference-research-cherry-deepseek.md)。
+
 ## 3. 每个阶段的固定交付顺序
 
 1. 记录事实、业务边界和页面合同；
