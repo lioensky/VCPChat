@@ -1,6 +1,24 @@
 // modules/notificationRenderer.js
 
 var notificationRendererApi = window.chatAPI || window.electronAPI;
+let filterManagerCapability = null;
+let notificationLifecycleOwner = null;
+
+function checkMessageFilter(messageTitle) {
+    return filterManagerCapability?.checkMessageFilter?.(messageTitle) || null;
+}
+
+function scheduleNotificationTimeout(callback, delay) {
+    return notificationLifecycleOwner?.timeout
+        ? notificationLifecycleOwner.timeout(callback, delay)
+        : setTimeout(callback, delay);
+}
+
+function listenNotification(target, type, handler, options) {
+    if (notificationLifecycleOwner?.add) return notificationLifecycleOwner.add(target, type, handler, options);
+    target?.addEventListener?.(type, handler, options);
+    return true;
+}
 
 /**
  * @typedef {Object} VCPLogStatus
@@ -35,6 +53,17 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 
 const handledToolApprovalRequestIds = new Set();
 
+function clearPersistentNotifications({ container = document.getElementById('notificationsList') } = {}) {
+    if (!container) return { success: false, removed: 0 };
+    let removed = 0;
+    container.querySelectorAll('.notification-item').forEach(item => {
+        if (item.dataset.protectedNotification === 'tool-approval') return;
+        item.remove();
+        removed += 1;
+    });
+    return { success: true, removed };
+}
+
 function sendToolApprovalResponse(requestId, approved, reason = '') {
     if (!requestId || !notificationRendererApi || typeof notificationRendererApi.sendVCPLogMessage !== 'function') {
         return false;
@@ -66,7 +95,7 @@ function sendToolApprovalResponse(requestId, approved, reason = '') {
  */
 function renderVCPLogNotification(logData, originalRawMessage = null, notificationsListUl, themeColors = {}) {
     if (logData && typeof logData === 'object' && logData.type === 'tool_approval_request' && logData.data && typeof logData.data === 'object') {
-        const autoApprovalResult = window.filterManager?.checkToolAutoApproval?.(logData.data);
+        const autoApprovalResult = (filterManagerCapability || window.filterManager)?.checkToolAutoApproval?.(logData.data);
         if (autoApprovalResult && autoApprovalResult.action === 'approve') {
             const sent = sendToolApprovalResponse(logData.data.requestId, true);
             const autoApprovalLog = {
@@ -361,7 +390,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                     const originalMarkup = copyButton.innerHTML;
                     copyButton.textContent = '已复制!';
                     copyButton.disabled = true;
-                    setTimeout(() => {
+                    scheduleNotificationTimeout(() => {
                         copyButton.textContent = originalText;
                         copyButton.innerHTML = originalMarkup;
                         copyButton.disabled = false;
@@ -371,7 +400,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                     const originalText = copyButton.textContent;
                     const originalMarkup = copyButton.innerHTML;
                     copyButton.textContent = '错误!';
-                    setTimeout(() => {
+                    scheduleNotificationTimeout(() => {
                         copyButton.textContent = originalText;
                         copyButton.innerHTML = originalMarkup;
                     }, 1500);
@@ -386,7 +415,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
                 element.style.opacity = '0';
                 element.style.transform = 'translateX(100%)'; // Assuming this is the desired animation for list items
-                setTimeout(() => {
+                scheduleNotificationTimeout(() => {
                     if (element.parentNode) {
                         element.parentNode.removeChild(element);
                     }
@@ -399,13 +428,13 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         toastElement.classList.add('exiting');
         
         // 设置一个fallback timeout，确保元素一定会被移除
-        const fallbackTimeout = setTimeout(() => {
+        const fallbackTimeout = scheduleNotificationTimeout(() => {
             if (toastElement.parentNode) {
                 toastElement.parentNode.removeChild(toastElement);
             }
         }, 500); // 500ms后强制移除，即使transition没有完成
         
-        toastElement.addEventListener('transitionend', () => {
+        listenNotification(toastElement, 'transitionend', () => {
             clearTimeout(fallbackTimeout); // 如果transition正常完成，清除fallback
             if (toastElement.parentNode) {
                 toastElement.parentNode.removeChild(toastElement);
@@ -429,7 +458,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             } else {
                 approvalElement.style.opacity = '0';
                 approvalElement.style.transform = 'translateX(100%)';
-                setTimeout(() => approvalElement.remove(), 500);
+                scheduleNotificationTimeout(() => approvalElement.remove(), 500);
             }
         });
     };
@@ -454,7 +483,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         populateNotificationElement(toastBubble, true);
 
         toastContainer.prepend(toastBubble);
-        setTimeout(() => toastBubble.classList.add('visible'), 50);
+        scheduleNotificationTimeout(() => toastBubble.classList.add('visible'), 50);
         
         // 增强自动消失逻辑，支持自定义停留时间
         let autoDismissDelay = 7000; // 默认7秒
@@ -462,8 +491,8 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         // 审核类通知永不自动消失
         if (isToolApprovalRequest) {
             autoDismissDelay = Infinity;
-        } else if (typeof window.checkMessageFilter === 'function') {
-            const filterResult = window.checkMessageFilter(titleText);
+        } else {
+            const filterResult = checkMessageFilter(titleText);
             if (filterResult && filterResult.duration !== undefined) {
                 autoDismissDelay = filterResult.duration === 0 ? Infinity : filterResult.duration * 1000;
             }
@@ -474,7 +503,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             // 永久显示，不设置自动消失定时器
             autoDismissTimeout = null;
         } else {
-            autoDismissTimeout = setTimeout(() => {
+            autoDismissTimeout = scheduleNotificationTimeout(() => {
                 if (toastBubble.parentNode && toastBubble.classList.contains('visible') && !toastBubble.classList.contains('exiting')) {
                     closeToastNotification(toastBubble);
                 }
@@ -500,7 +529,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         populateNotificationElement(listItemBubble, false);
         notificationsListUl.prepend(listItemBubble);
         // Apply 'visible' class for potential animations on list items if defined in CSS
-        setTimeout(() => listItemBubble.classList.add('visible'), 50);
+        scheduleNotificationTimeout(() => listItemBubble.classList.add('visible'), 50);
     } else {
         console.warn('Notifications sidebar UL not found. Persistent notification not added.');
     }
@@ -509,12 +538,24 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 // 添加窗口焦点变化监听，清理残留的通知元素
 let focusCleanupInitialized = false;
 
-function initializeFocusCleanup() {
+function initializeFocusCleanup(options = {}) {
     if (focusCleanupInitialized) return;
     focusCleanupInitialized = true;
+    notificationLifecycleOwner = options.owner || notificationLifecycleOwner;
+
+    const cleanupExpiredToasts = (maxAgeMs) => {
+        const toastContainer = document.getElementById('floating-toast-notifications-container');
+        if (!toastContainer) return;
+        toastContainer.querySelectorAll('.floating-toast-notification').forEach(toast => {
+            if (toast.dataset.protectedNotification === 'tool-approval') return;
+            const createdAt = Number(toast.dataset.createdAt || Date.now());
+            if (!toast.dataset.createdAt) toast.dataset.createdAt = String(createdAt);
+            if (Date.now() - createdAt > maxAgeMs) toast.parentNode?.removeChild(toast);
+        });
+    };
 
     // 当窗口重新获得焦点时，清理所有可能残留的通知元素
-    window.addEventListener('focus', () => {
+    const onFocus = () => {
         const toastContainer = document.getElementById('floating-toast-notifications-container');
         if (toastContainer) {
             // 查找所有添加了 exiting 类但仍在 DOM 中的元素
@@ -546,39 +587,27 @@ function initializeFocusCleanup() {
                 }
             });
         }
-    });
+    };
+    if (notificationLifecycleOwner?.add) notificationLifecycleOwner.add(window, 'focus', onFocus);
+    else window.addEventListener('focus', onFocus);
 
     // 定期清理机制，每30秒检查一次
-    setInterval(() => {
-        const toastContainer = document.getElementById('floating-toast-notifications-container');
-        if (toastContainer) {
-            const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
-            allToasts.forEach(toast => {
-                if (toast.dataset.protectedNotification === 'tool-approval') return;
-
-                if (toast.dataset.createdAt) {
-                    const createdAt = parseInt(toast.dataset.createdAt);
-                    const now = Date.now();
-                    if (now - createdAt > 15000) { // 超过15秒强制清理
-                        console.log('[NotificationRenderer] 定期清理超时的通知元素');
-                        if (toast.parentNode) {
-                            toast.parentNode.removeChild(toast);
-                        }
-                    }
-                }
-            });
-        }
-    }, 30000); // 每30秒检查一次
+    const scheduleCleanup = () => {
+        cleanupExpiredToasts(15000);
+        if (notificationLifecycleOwner?.timeout) notificationLifecycleOwner.timeout(scheduleCleanup, 30000);
+        else scheduleNotificationTimeout(scheduleCleanup, 30000);
+    };
+    scheduleCleanup();
 }
 
 // Expose functions to be used by renderer.js
 window.notificationRenderer = {
     updateVCPLogStatus,
     renderVCPLogNotification,
-    initializeFocusCleanup
+    initializeFocusCleanup,
+    clearPersistentNotifications,
+    configureCapabilities({ filterManager = null, listenerOwner = null } = {}) {
+        filterManagerCapability = filterManager;
+        notificationLifecycleOwner = listenerOwner;
+    }
 };
-
-// Make globalSettings accessible for do not disturb mode check
-if (typeof window.globalSettings === 'undefined') {
-    window.globalSettings = {};
-}

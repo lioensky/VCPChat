@@ -1,13 +1,16 @@
 // modules/chatManager.js
 
-window.chatManager = (() => {
+export const chatManager = (() => {
     // --- Private Variables ---
     let electronAPI;
     let uiHelper;
     let messageRenderer;
+    let chatDomRenderer;
     let itemListManager;
     let topicListManager;
     let groupRenderer;
+    let streamProjection;
+    let interruptCapability;
 
     // References to state in renderer.js
     let currentSelectedItemRef;
@@ -15,15 +18,100 @@ window.chatManager = (() => {
     let currentChatHistoryRef;
     let attachedFilesRef;
     let globalSettingsRef;
+    let chatContext;
+    let chatRepository;
+    let historyMutationAuthority;
+    let streamConsumerRegistry;
+
+    function requireHistoryRepository() {
+        if (!chatRepository) throw new Error('ChatRepository is required for chat history operations');
+        return chatRepository;
+    }
+
+    function getHistory(itemId, itemType, topicId) {
+        const repository = requireHistoryRepository();
+        return repository.getHistory(itemId, itemType, topicId);
+    }
+
+    function saveHistory(itemId, itemType, topicId, history) {
+        if (historyMutationAuthority) {
+            return historyMutationAuthority.replace({
+                itemId,
+                itemType,
+                topicId,
+                category: 'chat-manager',
+            }, history).then(commit => commit.result || { success: true });
+        }
+        const repository = requireHistoryRepository();
+        return repository.saveHistory(itemId, itemType, topicId, history);
+    }
 
     // DOM Elements from renderer.js
     let elements = {};
     
     // Functions from main renderer
     let mainRendererFunctions = {};
+    // Narrow capability supplied by the owning Surface. ChatManager must not
+    // discover the main-window send button through the ambient window object.
+    let notifySendStateChanged = () => {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
     let lastAssistantSuspendAt = 0;
     let activeHistoryLoadToken = 0;
+    let historySyncGeneration = 0;
+    let itemSelectionGeneration = 0;
+    let topicSelectionGeneration = 0;
+    let topicCreationGeneration = 0;
+    let pendingItemSelectionToken = null;
+    let emptyStateObserver = null;
+    let canvasContentDisposer = null;
+    let canvasClosedDisposer = null;
+    const forwardTimers = new Set();
+    const outgoingPersistenceQueues = new Map();
+    const pendingSendContexts = new Set();
+    let lastOpenSaveQueue = Promise.resolve();
+    let initialized = false;
+    let disposed = false;
+
+    function insertAfterMessage(history, ownerMessageId, message) {
+        const next = Array.isArray(history) ? [...history] : [];
+        if (next.some(entry => entry?.id === message.id)) return next;
+        const ownerIndex = ownerMessageId
+            ? next.findIndex(entry => entry?.id === ownerMessageId)
+            : -1;
+        next.splice(ownerIndex >= 0 ? ownerIndex + 1 : next.length, 0, message);
+        return next;
+    }
+
+    function persistOutgoingUserMessage(sendContext, userMessage) {
+        const signature = `${sendContext.agentId}:${sendContext.topicId}`;
+        const previous = outgoingPersistenceQueues.get(signature) || Promise.resolve();
+        const operation = previous.catch(() => {}).then(async () => {
+            const persisted = await getHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId);
+            if (!Array.isArray(persisted)) {
+                throw new Error(persisted?.error || '读取聊天记录失败');
+            }
+            const nextHistory = persisted.some(message => message?.id === userMessage.id)
+                ? persisted
+                : [...persisted, userMessage];
+            const saveResult = await saveHistory(
+                sendContext.agentId,
+                sendContext.itemType || 'agent',
+                sendContext.topicId,
+                nextHistory
+            );
+            if (saveResult?.success === false) {
+                throw new Error(saveResult.error || '保存聊天记录失败');
+            }
+            return nextHistory;
+        });
+        outgoingPersistenceQueues.set(signature, operation);
+        operation.finally(() => {
+            if (outgoingPersistenceQueues.get(signature) === operation) {
+                outgoingPersistenceQueues.delete(signature);
+            }
+        }).catch(() => {});
+        return operation;
+    }
 
     function setCurrentItemActionButtonText(button, text) {
         if (!button) return;
@@ -33,6 +121,41 @@ window.chatManager = (() => {
             return;
         }
         button.textContent = text;
+    }
+
+    async function beginHistoryWatcherOperation() {
+        try {
+            const result = electronAPI.watcherBegin
+                ? await electronAPI.watcherBegin()
+                : electronAPI.watcherStop
+                    ? await electronAPI.watcherStop()
+                    : { success: true, token: null };
+            if (result?.stale) return result;
+            if (result?.success === false) {
+                console.warn('[ChatManager] History watcher unavailable; continuing without file watching:', result.error || result);
+                return { success: true, degraded: true, token: null, error: result.error };
+            }
+            return result || { success: true, token: null };
+        } catch (error) {
+            console.warn('[ChatManager] History watcher unavailable; continuing without file watching:', error);
+            return { success: true, degraded: true, token: null, error: error?.message };
+        }
+    }
+
+    async function startOwnedHistoryWatcher(leaseToken, filePath, itemId, topicId) {
+        if (!electronAPI.watcherStart) return { success: true };
+        try {
+            const result = await electronAPI.watcherStart(filePath, itemId, topicId, leaseToken);
+            if (result?.stale) return result;
+            if (result?.success === false) {
+                console.warn('[ChatManager] Failed to start history watcher; continuing with loaded history:', result.error || result);
+                return { success: true, degraded: true, error: result.error };
+            }
+            return result || { success: true };
+        } catch (error) {
+            console.warn('[ChatManager] Failed to start history watcher; continuing with loaded history:', error);
+            return { success: true, degraded: true, error: error?.message };
+        }
     }
 
 
@@ -237,6 +360,14 @@ window.chatManager = (() => {
      * @param {object} config - The configuration object.
      */
     function init(config) {
+        if (disposed) throw new Error('ChatManager has been disposed');
+        initialized = false;
+        chatContext = config.chatContext || null;
+        chatRepository = config.chatRepository || null;
+        historyMutationAuthority = config.historyMutationAuthority || null;
+        streamConsumerRegistry = config.streamConsumerRegistry || null;
+        if (!chatRepository) throw new Error('ChatManager requires ChatRepository');
+        chatDomRenderer = config.chatDomRenderer || null;
         electronAPI = config.electronAPI;
         uiHelper = config.uiHelper;
         
@@ -245,6 +376,8 @@ window.chatManager = (() => {
         itemListManager = config.modules.itemListManager;
         topicListManager = config.modules.topicListManager;
         groupRenderer = config.modules.groupRenderer;
+        streamProjection = config.modules.streamManager || null;
+        interruptCapability = config.modules.interruptHandler || null;
 
         // State References
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
@@ -255,17 +388,50 @@ window.chatManager = (() => {
 
         // DOM Elements
         elements = config.elements;
+
+        // The empty-state visual is a projection of the chat DOM.  History
+        // loads and file-watcher updates can complete out of order, so keep a
+        // final DOM-level guard against showing it over a real message.
+        if (emptyStateObserver) {
+            emptyStateObserver.disconnect();
+            emptyStateObserver = null;
+        }
+        if (elements.chatMessagesDiv && typeof MutationObserver !== 'undefined') {
+            emptyStateObserver = new MutationObserver(() => {
+                syncNextUiEmptyStateWithMessages();
+            });
+            emptyStateObserver.observe(elements.chatMessagesDiv, { childList: true, subtree: true });
+        }
         
         // Main Renderer Functions
         mainRendererFunctions = config.mainRendererFunctions;
-
-        console.log('[ChatManager] Initialized successfully.');
+        notifySendStateChanged = typeof config.notifySendStateChanged === 'function'
+            ? config.notifySendStateChanged
+            : (typeof mainRendererFunctions?.updateSendButtonState === 'function'
+                ? mainRendererFunctions.updateSendButtonState
+                : () => {});
 
         // Listen for Canvas events
         if (electronAPI) {
-            electronAPI.onCanvasContentUpdate(handleCanvasContentUpdate);
-            electronAPI.onCanvasWindowClosed(handleCanvasWindowClosed);
+            canvasContentDisposer?.();
+            canvasClosedDisposer?.();
+            canvasContentDisposer = null;
+            canvasClosedDisposer = null;
+            try {
+                canvasContentDisposer = electronAPI.onCanvasContentUpdate?.(handleCanvasContentUpdate) || null;
+                canvasClosedDisposer = electronAPI.onCanvasWindowClosed?.(handleCanvasWindowClosed) || null;
+            } catch (error) {
+                canvasContentDisposer?.();
+                canvasClosedDisposer?.();
+                canvasContentDisposer = null;
+                canvasClosedDisposer = null;
+                emptyStateObserver?.disconnect();
+                emptyStateObserver = null;
+                throw error;
+            }
         }
+        initialized = true;
+        console.log('[ChatManager] Initialized successfully.');
     }
 
     /**
@@ -284,11 +450,16 @@ window.chatManager = (() => {
                 lastOpenItemType: currentSelectedItem.type,
                 lastOpenTopicId: currentTopicId,
             };
-            // No need to await, let it save in the background
-            electronAPI.saveSettings(settingsToSave).catch(err => {
+            const operation = lastOpenSaveQueue
+                .catch(() => {})
+                .then(() => electronAPI.saveSettings(settingsToSave));
+            lastOpenSaveQueue = operation;
+            return operation.catch(err => {
                 console.error('[ChatManager] Failed to save last open state:', err);
+                return { success: false, error: err?.message || String(err) };
             });
         }
+        return Promise.resolve({ success: false, skipped: true });
     }
 
     function suspendAssistantListenerForTopicLoad(topicId) {
@@ -332,8 +503,56 @@ window.chatManager = (() => {
     }
  
     // --- Functions moved from renderer.js ---
- 
+
+    function setNextUiEmptyStateActive(isActive, reason = null) {
+        if (isActive && hasRenderableChatMessages()) {
+            isActive = false;
+            reason = null;
+        }
+
+        const mainContent = document.querySelector('.main-content');
+        const emptyState = document.getElementById('nextUiEmptyState');
+
+        mainContent?.classList.toggle('next-ui-empty-state-active', isActive);
+        if (mainContent) {
+            mainContent.dataset.chatEmpty = String(isActive);
+            if (isActive && reason) {
+                mainContent.dataset.chatEmptyReason = reason;
+            } else {
+                delete mainContent.dataset.chatEmptyReason;
+            }
+        }
+        emptyState?.setAttribute('aria-hidden', String(!isActive));
+    }
+
+    function hasRenderableChatMessages() {
+        const chatMessagesDiv = elements.chatMessagesDiv;
+        if (!chatMessagesDiv) return false;
+        return Boolean(chatMessagesDiv.querySelector(
+            '.message-item:not(.welcome-bubble):not(.topic-timestamp-bubble)'
+        ));
+    }
+
+    function syncNextUiEmptyStateWithMessages() {
+        if (hasRenderableChatMessages()) {
+            setNextUiEmptyStateActive(false);
+        }
+    }
+
     function displayNoItemSelected() {
+        const selectedItem = currentSelectedItemRef?.get?.();
+        if (pendingItemSelectionToken !== null || selectedItem?.id) {
+            setNextUiEmptyStateActive(false);
+            return false;
+        }
+
+        ++itemSelectionGeneration;
+        ++topicSelectionGeneration;
+        ++activeHistoryLoadToken;
+        void beginHistoryWatcherOperation().catch(error => {
+            console.warn('[ChatManager] Failed to stop history watcher for empty selection:', error);
+        });
+
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
         currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
@@ -343,34 +562,73 @@ window.chatManager = (() => {
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
         attachFileBtn.disabled = true;
+        setNextUiEmptyStateActive(true, 'no-selection');
         if (mainRendererFunctions.displaySettingsForItem) {
             mainRendererFunctions.displaySettingsForItem(); 
         }
         if (topicListManager) topicListManager.loadTopicList();
+        return true;
     }
 
-    async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
-        // Flowlock 只绑定目标 Agent 的 Topic，不再阻止用户切换到其他 Agent。
-        // 当重新进入已锁 Agent 时，下面会优先恢复它的锁定 Topic。
-        // Stop any previous watcher when switching items
-        if (electronAPI.watcherStop) {
-            await electronAPI.watcherStop();
-        }
+    async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig, options = {}) {
+        const selectionToken = ++itemSelectionGeneration;
+        ++topicSelectionGeneration;
+        ++activeHistoryLoadToken;
+        pendingItemSelectionToken = selectionToken;
+        const isSelectionCurrent = () => selectionToken === itemSelectionGeneration;
+        const finishSelection = () => {
+            if (pendingItemSelectionToken === selectionToken) {
+                pendingItemSelectionToken = null;
+            }
+        };
+        let watcherLeaseToken = null;
+        const loadOwnedHistory = (topicId) => loadChatHistory(
+            itemId,
+            itemType,
+            topicId,
+            isSelectionCurrent,
+            watcherLeaseToken
+        );
+        setNextUiEmptyStateActive(false);
 
-        const { currentChatNameH3, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
-        let currentSelectedItem = currentSelectedItemRef.get();
-        let currentTopicId = currentTopicIdRef.get();
-
-        if (currentSelectedItem.id === itemId && currentSelectedItem.type === itemType && currentTopicId) {
-            console.log(`Item ${itemType} ${itemId} already selected with topic ${currentTopicId}. No change.`);
+        const activeBeforeSelection = currentSelectedItemRef.get();
+        if (
+            activeBeforeSelection?.id === itemId
+            && activeBeforeSelection?.type === itemType
+            && currentTopicIdRef.get()
+        ) {
+            finishSelection();
+            await _saveLastOpenState();
             return;
         }
 
+        // Flowlock 只绑定目标 Agent 的 Topic，不再阻止用户切换到其他 Agent。
+        // 当重新进入已锁 Agent 时，下面会优先恢复它的锁定 Topic。
+        try {
+            const lease = await beginHistoryWatcherOperation();
+            if (lease?.stale || lease?.success === false) return;
+            watcherLeaseToken = lease.token || null;
+        } catch (error) {
+            console.warn('[ChatManager] Failed to claim history watcher ownership:', error);
+        }
+
+        if (!isSelectionCurrent()) return;
+
+        const { currentChatNameH3, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
+        let currentSelectedItem = currentSelectedItemRef.get();
+
         currentSelectedItem = { id: itemId, type: itemType, name: itemName, avatarUrl: itemAvatarUrl, config: itemFullConfig };
         currentSelectedItemRef.set(currentSelectedItem);
+        chatContext?.setSelectedItem(currentSelectedItem);
+        // From this point displayNoItemSelected can rely on the selected item
+        // itself. Keep generation ownership for the async transaction, but do
+        // not retain a separate pending marker that an unrelated renderer
+        // exception could strand forever.
+        finishSelection();
         currentTopicIdRef.set(null); // Reset topic
         currentChatHistoryRef.set([]);
-        window.updateSendButtonState?.();
+        chatContext?.setHistory([]);
+        notifySendStateChanged();
 
         document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
             item.classList.remove('active-topic-glowing');
@@ -385,6 +643,7 @@ window.chatManager = (() => {
 
         if (itemType === 'group' && groupRenderer && typeof groupRenderer.handleSelectGroup === 'function') {
             await groupRenderer.handleSelectGroup(itemId, itemName, itemAvatarUrl, itemFullConfig);
+            if (!isSelectionCurrent()) return;
         } else if (itemType === 'agent') {
             if (groupRenderer && typeof groupRenderer.clearInviteAgentButtons === 'function') {
                 groupRenderer.clearInviteAgentButtons();
@@ -414,73 +673,119 @@ window.chatManager = (() => {
             } else if (itemType === 'group') {
                 topics = await electronAPI.getGroupTopics(itemId);
             }
+            if (!isSelectionCurrent()) return;
 
             if (topics && !topics.error && topics.length > 0) {
                 let topicToLoadId = topics[0].id;
                 const lockedTopicId = itemType === 'agent'
                     ? window.flowlockManager?.getLockedTopicId?.(itemId)
                     : null;
+                const preferredTopicId = typeof options.preferredTopicId === 'string'
+                    ? options.preferredTopicId
+                    : null;
                 const rememberedTopicId = localStorage.getItem(`lastActiveTopic_${itemId}_${itemType}`);
 
                 if (lockedTopicId && topics.some(t => t.id === lockedTopicId)) {
                     topicToLoadId = lockedTopicId;
+                } else if (preferredTopicId && topics.some(t => t.id === preferredTopicId)) {
+                    topicToLoadId = preferredTopicId;
                 } else if (rememberedTopicId && topics.some(t => t.id === rememberedTopicId)) {
                     topicToLoadId = rememberedTopicId;
                 }
+                if (!isSelectionCurrent()) return;
                 currentTopicIdRef.set(topicToLoadId);
                 if (messageRenderer) messageRenderer.setCurrentTopicId(topicToLoadId);
-                await loadChatHistory(itemId, itemType, topicToLoadId);
+                await loadOwnedHistory(topicToLoadId);
             } else if (topics && topics.error) {
+                if (!isSelectionCurrent()) return;
                 console.error(`加载 ${itemType} ${itemId} 的话题列表失败`, topics.error);
                 if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });
-                await loadChatHistory(itemId, itemType, null);
+                await loadOwnedHistory(null);
             } else {
                 if (itemType === 'agent') {
                     const agentConfig = await electronAPI.getAgentConfig(itemId);
+                    if (!isSelectionCurrent()) return;
                     // ⚠️ 检查是否返回错误对象
                     if (agentConfig && agentConfig.error) {
                         console.error(`[ChatManager] Failed to get agent config for ${itemId}:`, agentConfig.error);
                         if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载助手配置失败: ${agentConfig.error}`, timestamp: Date.now() });
-                        await loadChatHistory(itemId, itemType, null);
+                        await loadOwnedHistory(null);
                     } else if (agentConfig && (!agentConfig.topics || agentConfig.topics.length === 0)) {
                         const defaultTopicResult = await electronAPI.createNewTopicForAgent(itemId, "主要对话");
+                        if (!isSelectionCurrent()) return;
                         if (defaultTopicResult.success) {
                             currentTopicIdRef.set(defaultTopicResult.topicId);
                             if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
-                            await loadChatHistory(itemId, itemType, defaultTopicResult.topicId);
+                            await loadOwnedHistory(defaultTopicResult.topicId);
                         } else {
                             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
-                            await loadChatHistory(itemId, itemType, null);
+                            await loadOwnedHistory(null);
                         }
                     } else {
-                         await loadChatHistory(itemId, itemType, null);
+                         await loadOwnedHistory(null);
                     }
                 } else if (itemType === 'group') {
                     const defaultTopicResult = await electronAPI.createNewTopicForGroup(itemId, "主要群聊");
+                    if (!isSelectionCurrent()) return;
                     if (defaultTopicResult.success) {
                         currentTopicIdRef.set(defaultTopicResult.topicId);
                         if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
-                        await loadChatHistory(itemId, itemType, defaultTopicResult.topicId);
+                        await loadOwnedHistory(defaultTopicResult.topicId);
                     } else {
                         if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认群聊话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
-                        await loadChatHistory(itemId, itemType, null);
+                        await loadOwnedHistory(null);
                     }
                 }
             }
         } catch (e) {
+            if (!isSelectionCurrent()) return;
             console.error(`选择 ${itemType} ${itemId} 时发生错误: `, e);
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `选择${itemType === 'group' ? '群组' : '助手'}时出错: ${e.message}`, timestamp: Date.now() });
         }
 
+        if (!isSelectionCurrent()) return;
         messageInput.disabled = false;
         sendMessageBtn.disabled = false;
         attachFileBtn.disabled = false;
         // messageInput.focus();
-        if (topicListManager) topicListManager.loadTopicList();
-        _saveLastOpenState(); // Save state after selecting an item and its default topic
+        if (topicListManager) await Promise.resolve(topicListManager.loadTopicList());
+        if (!isSelectionCurrent()) return;
+        await _saveLastOpenState(); // Commit before startup/reload can observe the selection.
+        finishSelection();
+    }
+
+    /**
+     * Restores the last durable chat selection through the same transaction as
+     * an explicit user selection. A concurrent click increments the shared
+     * selection generation and therefore always supersedes this restoration.
+     */
+    async function restoreLastOpenState(settings = {}) {
+        const itemId = typeof settings.lastOpenItemId === 'string'
+            ? settings.lastOpenItemId
+            : null;
+        const itemType = settings.lastOpenItemType === 'agent' || settings.lastOpenItemType === 'group'
+            ? settings.lastOpenItemType
+            : null;
+        if (!itemId || !itemType || !itemListManager?.findItemById) return false;
+
+        const item = itemListManager.findItemById(itemId, itemType);
+        if (!item) return false;
+
+        await selectItem(
+            item.id,
+            item.type,
+            item.name,
+            item.avatarUrl,
+            item.config || item,
+            { preferredTopicId: settings.lastOpenTopicId }
+        );
+
+        const selectedItem = currentSelectedItemRef.get();
+        return selectedItem?.id === item.id && selectedItem?.type === item.type;
     }
  
     async function selectTopic(topicId) {
+        setNextUiEmptyStateActive(false);
         const selectedItemForLock = currentSelectedItemRef.get();
         const lockedTopicId = selectedItemForLock?.type === 'agent'
             ? window.flowlockManager?.getLockedTopicId?.(selectedItemForLock.id)
@@ -496,6 +801,7 @@ window.chatManager = (() => {
 
         let currentTopicId = currentTopicIdRef.get();
         if (currentTopicId === topicId) {
+            await _saveLastOpenState();
             return;
         }
 
@@ -505,15 +811,37 @@ window.chatManager = (() => {
             return;
         }
 
+        const topicToken = ++topicSelectionGeneration;
+        ++activeHistoryLoadToken;
+        const selectedItemId = currentSelectedItem.id;
+        const selectedItemType = currentSelectedItem.type;
+        const isTopicOperationCurrent = () => {
+            const activeItem = currentSelectedItemRef.get();
+            return topicToken === topicSelectionGeneration
+                && activeItem?.id === selectedItemId
+                && activeItem?.type === selectedItemType;
+        };
+        const isTopicSelectionCurrent = () => {
+            return isTopicOperationCurrent()
+                && currentTopicIdRef.get() === topicId;
+        };
+        let watcherLeaseToken = null;
+
         try {
             currentTopicIdRef.set(topicId);
             if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
-
-            const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
-            if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
-                const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${topicId}\\history.json`;
-                await electronAPI.watcherStart(historyFilePath, currentSelectedItem.id, topicId);
-            }
+            // Persist the selection intent before watcher/history work. A
+            // renderer reload or crash during that work must restore the
+            // topic the user actually selected, not the previous durable one.
+            await _saveLastOpenState();
+            const lease = await beginHistoryWatcherOperation();
+            if (!isTopicSelectionCurrent() || lease?.stale || lease?.success === false) return;
+            watcherLeaseToken = lease.token || null;
+            // Persist the user's selection intent at the same point as the
+            // visible state commit. History/watcher work is cancellable; if
+            // the user immediately switches away, waiting until that work
+            // finishes would silently forget the topic they just selected.
+            localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_${currentSelectedItem.type}`, topicId);
 
             document.querySelectorAll('#topicList .topic-item').forEach(item => {
                 const isClickedItem = item.dataset.topicId === topicId && item.dataset.itemId === currentSelectedItem.id;
@@ -521,10 +849,17 @@ window.chatManager = (() => {
                 item.classList.toggle('active-topic-glowing', isClickedItem);
             });
 
-            await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, topicId);
-            localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_${currentSelectedItem.type}`, topicId);
-            _saveLastOpenState();
+            await loadChatHistory(
+                currentSelectedItem.id,
+                currentSelectedItem.type,
+                topicId,
+                isTopicSelectionCurrent,
+                watcherLeaseToken
+            );
+            if (!isTopicSelectionCurrent()) return;
+            await _saveLastOpenState();
         } catch (error) {
+            if (!isTopicSelectionCurrent()) return;
             console.error('[ChatManager] Failed to select topic:', error);
             if (messageRenderer) {
                 messageRenderer.renderMessage({
@@ -536,19 +871,41 @@ window.chatManager = (() => {
         }
     }
 
-    async function handleTopicDeletion(remainingTopics) {
+    async function handleTopicDeletion(remainingTopics, deletionContext = null) {
         let currentSelectedItem = currentSelectedItemRef.get();
-        const config = currentSelectedItem.config || currentSelectedItem;
-        config.topics = remainingTopics;
+        if (
+            deletionContext
+            && (
+                currentSelectedItem?.id !== deletionContext.id
+                || currentSelectedItem?.type !== deletionContext.type
+            )
+        ) {
+            console.debug('[ChatManager] Ignoring stale topic deletion completion', deletionContext);
+            return false;
+        }
+        const deletedTopicIds = new Set([
+            ...(Array.isArray(deletionContext?.deletedTopicIds) ? deletionContext.deletedTopicIds : []),
+            ...(deletionContext?.topicId ? [deletionContext.topicId] : []),
+        ].filter(Boolean).map(String));
+        const sanitizedRemainingTopics = (Array.isArray(remainingTopics) ? remainingTopics : [])
+            .filter(topic => !deletedTopicIds.has(String(topic?.id)));
+        const currentConfig = currentSelectedItem.config || currentSelectedItem;
+        const nextConfig = { ...currentConfig, topics: sanitizedRemainingTopics };
+        currentSelectedItem = currentSelectedItem.config
+            ? { ...currentSelectedItem, config: nextConfig }
+            : { ...currentSelectedItem, ...nextConfig };
         currentSelectedItemRef.set(currentSelectedItem);
 
-        if (remainingTopics && remainingTopics.length > 0) {
-            const newSelectedTopic = remainingTopics.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-            await selectItem(currentSelectedItem.id, currentSelectedItem.type, currentSelectedItem.name, currentSelectedItem.avatarUrl, (currentSelectedItem.config || currentSelectedItem));
-            await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, newSelectedTopic.id);
-            currentTopicIdRef.set(newSelectedTopic.id);
-            if (messageRenderer) messageRenderer.setCurrentTopicId(newSelectedTopic.id);
+        if (sanitizedRemainingTopics.length > 0) {
+            const fallbackTopic = deletionContext?.fallbackTopicId
+                ? sanitizedRemainingTopics.find(topic => String(topic?.id) === String(deletionContext.fallbackTopicId))
+                : null;
+            const newSelectedTopic = fallbackTopic || [...sanitizedRemainingTopics]
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+            await selectTopic(newSelectedTopic.id);
         } else {
+            ++topicSelectionGeneration;
+            ++activeHistoryLoadToken;
             currentTopicIdRef.set(null);
             if (messageRenderer) {
                 messageRenderer.setCurrentTopicId(null);
@@ -557,12 +914,15 @@ window.chatManager = (() => {
             }
             await displayTopicTimestampBubble(currentSelectedItem.id, currentSelectedItem.type, null);
         }
+        return true;
     }
 
-    async function loadChatHistory(itemId, itemType, topicId) {
+    async function loadChatHistory(itemId, itemType, topicId, ownershipGuard = null, watcherLeaseToken = null) {
         const loadToken = ++activeHistoryLoadToken;
+        setNextUiEmptyStateActive(false);
 
-        const isLoadStillActive = () => loadToken === activeHistoryLoadToken;
+        const isLoadStillActive = () => loadToken === activeHistoryLoadToken
+            && (!ownershipGuard || ownershipGuard());
         const abortIfStale = () => {
             if (!isLoadStillActive()) {
                 console.debug(`[ChatManager] Ignoring stale history load for ${itemType}:${itemId}:${topicId}`);
@@ -575,7 +935,7 @@ window.chatManager = (() => {
 
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
-        window.updateSendButtonState?.();
+        notifySendStateChanged();
     
     
         document.querySelectorAll('.topic-list .topic-item').forEach(item => {
@@ -600,6 +960,12 @@ window.chatManager = (() => {
             await displayTopicTimestampBubble(itemId, itemType, null);
             return;
         }
+
+        if (watcherLeaseToken === null && electronAPI.watcherBegin) {
+            const lease = await beginHistoryWatcherOperation();
+            if (abortIfStale() || lease?.stale || lease?.success === false) return;
+            watcherLeaseToken = lease.token || null;
+        }
     
         // 核心修改：使用 await 确保加载消息被渲染
         if (messageRenderer) {
@@ -610,12 +976,7 @@ window.chatManager = (() => {
             return;
         }
     
-        let historyResult;
-        if (itemType === 'agent') {
-            historyResult = await electronAPI.getChatHistory(itemId, topicId);
-        } else if (itemType === 'group') {
-            historyResult = await electronAPI.getGroupChatHistory(itemId, topicId);
-        }
+        const historyResult = await getHistory(itemId, itemType, topicId);
 
         if (abortIfStale()) {
             if (messageRenderer) messageRenderer.removeMessageById('loading_history');
@@ -626,7 +987,8 @@ window.chatManager = (() => {
         const agentConfigForHistory = currentSelectedItem.config || currentSelectedItem;
         if (electronAPI.watcherStart && agentConfigForHistory?.agentDataPath) {
             const historyFilePath = `${agentConfigForHistory.agentDataPath}\\topics\\${topicId}\\history.json`;
-            await electronAPI.watcherStart(historyFilePath, itemId, topicId);
+            const watcherResult = await startOwnedHistoryWatcher(watcherLeaseToken, historyFilePath, itemId, topicId);
+            if (watcherResult?.stale || watcherResult?.success === false) return;
         }
 
         if (abortIfStale()) {
@@ -643,7 +1005,7 @@ window.chatManager = (() => {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (historyResult && historyResult.length > 0) {
             currentChatHistoryRef.set(historyResult);
-            window.updateSendButtonState?.();
+            notifySendStateChanged();
             if (messageRenderer) {
                 // 使用优化的分批渲染策略
                 const renderOptions = {
@@ -653,20 +1015,33 @@ window.chatManager = (() => {
                 };
                 
                 console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
-                await messageRenderer.renderHistory(historyResult, renderOptions);
+                await (chatDomRenderer || messageRenderer).renderHistory(historyResult, renderOptions);
                 if (abortIfStale()) return;
                 console.log(`[ChatManager] 话题历史加载完成`);
             }
     
         } else if (historyResult) { // History is empty
             currentChatHistoryRef.set([]);
-            window.updateSendButtonState?.();
+            notifySendStateChanged();
+            const activeItem = currentSelectedItemRef.get();
+            if (
+                activeItem?.id === itemId
+                && activeItem?.type === itemType
+                && currentTopicIdRef.get() === topicId
+            ) {
+                setNextUiEmptyStateActive(true, 'empty-topic');
+            }
         } else {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
 
         if (abortIfStale()) return;
-    
+
+        // Re-project renderer-local active streams after history/DOM replacement.
+        // This never persists partial output; terminal persistence remains coordinator-owned.
+        await streamProjection?.reconcileConversation?.({ itemType, itemId, topicId });
+        if (abortIfStale()) return;
+
         if (itemId && topicId && !(historyResult && historyResult.error)) {
             localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, topicId);
         }
@@ -711,7 +1086,7 @@ window.chatManager = (() => {
             }
 
             try {
-                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, updatedHistory);
+                await saveHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicId, updatedHistory);
                 currentChatHistoryRef.set(updatedHistory);
 
                 if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {
@@ -812,7 +1187,7 @@ window.chatManager = (() => {
             if (!message.attachments) message.attachments = [];
             message.attachments.push(...successfulAttachments);
 
-            await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, updatedHistory);
+            await saveHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicId, updatedHistory);
             currentChatHistoryRef.set(updatedHistory);
 
             if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {
@@ -908,12 +1283,10 @@ window.chatManager = (() => {
                 return;
             }
             // 使用最新的配置更新内存中的状态，以保持同步
-            if (currentSelectedItem.config) {
-                currentSelectedItem.config = agentConfigForSummary;
-            } else {
-                Object.assign(currentSelectedItem, agentConfigForSummary);
-            }
-            currentSelectedItemRef.set(currentSelectedItem);
+            const refreshedSelectedItem = currentSelectedItem.config
+                ? { ...currentSelectedItem, name: agentConfigForSummary.name || currentSelectedItem.name, config: agentConfigForSummary }
+                : { ...currentSelectedItem, ...agentConfigForSummary };
+            currentSelectedItemRef.set(refreshedSelectedItem);
 
             const topics = agentConfigForSummary.topics || [];
             const currentTopicObject = topics.find(t => t.id === currentTopicId);
@@ -946,26 +1319,61 @@ window.chatManager = (() => {
         }
     }
 
-    async function handleSendMessage() {
+    async function handleSendMessage(request = null) {
         const { messageInput } = elements;
-        let content = messageInput.value; // Use let as it might be modified
-        const attachedFiles = attachedFilesRef.get();
-        const currentSelectedItem = currentSelectedItemRef.get();
-        const currentTopicId = currentTopicIdRef.get();
+        const renderTarget = request?.domRenderer || messageRenderer;
+        const input = request?.input || messageInput;
+        let content = typeof request?.content === 'string' ? request.content : input.value; // Use let as it might be modified
+        const attachedFiles = Array.isArray(request?.attachments) ? request.attachments : attachedFilesRef.get();
+        const sendSelectedItemRef = request?.conversation?.selectedItemRef || currentSelectedItemRef;
+        const sendTopicIdRef = request?.conversation?.topicIdRef || currentTopicIdRef;
+        const sendHistoryRef = request?.conversation?.historyRef || currentChatHistoryRef;
+        const currentSelectedItem = sendSelectedItemRef.get();
+        const currentTopicId = sendTopicIdRef.get();
         const globalSettings = globalSettingsRef.get();
+        const notifySendState = request?.conversation ? () => {} : notifySendStateChanged;
+        const sendContext = {
+            agentId: currentSelectedItem.id,
+            itemType: currentSelectedItem.type || 'agent',
+            agentName: currentSelectedItem.name || currentSelectedItem.id,
+            topicId: currentTopicId,
+            isGroupMessage: currentSelectedItem.type === 'group',
+            avatarUrl: currentSelectedItem.avatarUrl,
+            avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
+        };
+        const isSendContextCurrent = () => {
+            if (request?.conversation && request.conversation.isActive?.() === false) return false;
+            const activeItem = sendSelectedItemRef.get();
+            return activeItem?.id === sendContext.agentId
+                && activeItem?.type === sendContext.itemType
+                && sendTopicIdRef.get() === sendContext.topicId;
+        };
 
         if (!content && attachedFiles.length === 0) return;
         if (!currentSelectedItem.id || !currentTopicId) {
-            uiHelper.showToastNotification('请先选择一个项目和话题。', 'error');
+            const error = new Error('请先选择一个项目和话题。');
+            if (!request?.conversation) uiHelper.showToastNotification(error.message, 'error');
+            if (request?.propagateError) throw error;
             return;
         }
         if (!globalSettings.vcpServerUrl) {
-            uiHelper.showToastNotification('请先在全局设置中配置 VCP 服务器 URL。', 'error');
-            uiHelper.openModal('globalSettingsModal');
+            const error = new Error('请先在全局设置中配置 VCP 服务器 URL。');
+            if (!request?.conversation) {
+                uiHelper.showToastNotification(error.message, 'error');
+                uiHelper.openModal('globalSettingsModal');
+            }
+            if (request?.propagateError) throw error;
             return;
         }
 
+        if (!request?.conversation) setNextUiEmptyStateActive(false);
+
         if (currentSelectedItem.type === 'group') {
+            if (request?.conversation) {
+                const error = new Error('独立群聊尚未接入 Surface-owned 群组 operation');
+                if (request.propagateError) throw error;
+                return;
+            }
             if (groupRenderer && typeof groupRenderer.handleSendGroupMessage === 'function') {
                 groupRenderer.handleSendGroupMessage(
                     currentSelectedItem.id,
@@ -976,15 +1384,24 @@ window.chatManager = (() => {
             } else {
                 uiHelper.showToastNotification("群聊功能模块未加载，无法发送消息。", 'error');
             }
-            messageInput.value = '';
-            attachedFilesRef.set([]);
-            if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
-            uiHelper.autoResizeTextarea(messageInput);
+            if (!request) {
+                messageInput.value = '';
+                attachedFilesRef.set([]);
+                if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+                uiHelper.autoResizeTextarea(messageInput);
+            }
             // messageInput.focus();
             return;
         }
 
         // --- Standard Agent Message Sending ---
+        const sendSignature = `${sendContext.agentId}:${sendContext.topicId}`;
+        if (pendingSendContexts.has(sendSignature)) {
+            uiHelper.showToastNotification('该话题已有消息正在启动，请稍候。', 'warning');
+            return;
+        }
+        pendingSendContexts.add(sendSignature);
+        try {
         // The 'content' variable still holds the user's raw input, including the placeholder.
         // We will resolve the placeholder later, only for the final message sent to VCP.
         let combinedTextContent = content; // 用于发送给VCP的组合文本内容
@@ -1026,16 +1443,58 @@ window.chatManager = (() => {
             attachments: uiAttachments
         };
         
-        if (messageRenderer) {
-            await messageRenderer.renderMessage(userMessage);
+        const optimisticHistory = [...sendHistoryRef.get(), userMessage];
+        if (isSendContextCurrent()) {
+            sendHistoryRef.set(optimisticHistory);
         }
-        // Manually update history after rendering
-        const currentChatHistory = currentChatHistoryRef.get();
-        currentChatHistory.push(userMessage);
-        currentChatHistoryRef.set(currentChatHistory);
+        let userMessageItem = null;
+        if (renderTarget) {
+            userMessageItem = await renderTarget.renderMessage(userMessage);
+        }
+        if (!isSendContextCurrent()) {
+            // renderMessage targets the shared chat container. If selection
+            // changed while it awaited, retract the stale DOM projection;
+            // the message still belongs to and is saved in its source topic.
+            userMessageItem?.remove?.();
+        }
 
         // Save history with the user message before adding the thinking message or making API calls
-        await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory);
+        let sendHistory;
+        try {
+            sendHistory = await persistOutgoingUserMessage(sendContext, userMessage);
+        } catch (error) {
+            // The draft is consumed only after the durable write succeeds. If
+            // persistence fails, retract the optimistic projection and leave
+            // the initiating input/attachments available for retry.
+            if (isSendContextCurrent()) {
+                sendHistoryRef.set(
+                    sendHistoryRef.get().filter(message => message?.id !== userMessage.id)
+                );
+                userMessageItem?.remove?.();
+                notifySendState();
+                if (!request?.conversation) uiHelper.showToastNotification(`发送失败，草稿已保留: ${error.message}`, 'error');
+            }
+            console.error('[ChatManager] Failed to persist outgoing message:', error);
+            if (request?.propagateError) throw error;
+            return;
+        }
+
+        // Consume only the exact draft transaction that was durably saved.
+        // Both the text and attachment-array identity must still match, so an
+        // attachment added while the save was pending cannot be discarded.
+        if (
+            isSendContextCurrent()
+            && input.value === content
+            && (request || attachedFilesRef.get() === attachedFiles)
+        ) {
+            if (!request) {
+                messageInput.value = '';
+                attachedFilesRef.set([]);
+                if (mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+                if (isCanvasWindowOpen) messageInput.value = CANVAS_PLACEHOLDER;
+                uiHelper.autoResizeTextarea(messageInput);
+            }
+        }
 
         // 用户已参与该话题：同步清除 TopicSponsor/手动设置的持久化未读标记。
         // 之前这里只刷新徽章，并未真正修改 topic.unread，导致无数字“未读”长期残留。
@@ -1059,17 +1518,6 @@ window.chatManager = (() => {
             itemListManager.loadItems();
         }
 
-        messageInput.value = '';
-        attachedFilesRef.set([]);
-        if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
-        
-        // After sending, if the canvas window is still open, restore the placeholder
-        if (isCanvasWindowOpen) {
-            messageInput.value = CANVAS_PLACEHOLDER;
-        }
-        uiHelper.autoResizeTextarea(messageInput);
-        // messageInput.focus(); // 核心修正：注释掉此行。这是导致AI流式输出时，即使向上滚动也会被强制拉回底部的根源。
-
         const thinkingMessageId = `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`;
         const thinkingMessage = {
             role: 'assistant',
@@ -1078,24 +1526,75 @@ window.chatManager = (() => {
             timestamp: Date.now(),
             id: thinkingMessageId,
             isThinking: true,
+            replyToMessageId: userMessage.id,
+            agentId: sendContext.agentId,
+            topicId: sendContext.topicId,
+            context: sendContext,
             avatarUrl: currentSelectedItem.avatarUrl,
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
 
         let thinkingMessageItem = null;
-        if (messageRenderer) {
-            thinkingMessageItem = await messageRenderer.renderMessage(thinkingMessage);
+        let releaseStreamConsumerRoute = null;
+        let settleOwnedStreamOperation = null;
+        const ownedStreamTerminal = request?.awaitTerminal
+            ? new Promise(resolve => { settleOwnedStreamOperation = resolve; })
+            : null;
+        if (renderTarget && isSendContextCurrent()) {
+            thinkingMessageItem = await renderTarget.renderMessage(thinkingMessage);
+            if (!isSendContextCurrent()) {
+                thinkingMessageItem?.remove?.();
+                thinkingMessageItem = null;
+            }
         }
-        // Manually update history with the thinking message
-        const currentChatHistoryWithThinking = currentChatHistoryRef.get();
-        currentChatHistoryWithThinking.push(thinkingMessage);
-        currentChatHistoryRef.set(currentChatHistoryWithThinking);
-        window.updateSendButtonState?.();
+        if (isSendContextCurrent()) {
+            sendHistoryRef.set(insertAfterMessage(
+                sendHistoryRef.get(),
+                userMessage.id,
+                thinkingMessage
+            ));
+            notifySendState();
+        }
+        const removeThinkingFromSource = async () => {
+            releaseStreamConsumerRoute?.();
+            releaseStreamConsumerRoute = null;
+            renderTarget?.discardStreaming?.(thinkingMessage.id);
+            try {
+                const sourceHistory = await getHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId);
+                if (!Array.isArray(sourceHistory)) return null;
+                const cleanedHistory = sourceHistory.filter(message => message.id !== thinkingMessage.id);
+                if (cleanedHistory.length !== sourceHistory.length) {
+                    const saveResult = await saveHistory(sendContext.agentId, sendContext.itemType || 'agent', sendContext.topicId, cleanedHistory);
+                    if (saveResult?.success === false) {
+                        throw new Error(saveResult.error || '清理临时消息失败');
+                    }
+                }
+                if (isSendContextCurrent()) {
+                    sendHistoryRef.set(
+                        sendHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
+                    );
+                    if (typeof renderTarget?.removeMessage === 'function') await renderTarget.removeMessage(thinkingMessage.id);
+                    else await renderTarget?.removeMessageById?.(thinkingMessage.id);
+                    notifySendState();
+                }
+                return cleanedHistory;
+            } catch (cleanupError) {
+                console.error('[ChatManager] Failed to clean owned thinking message:', cleanupError);
+                if (isSendContextCurrent()) {
+                    sendHistoryRef.set(
+                        sendHistoryRef.get().filter(message => message?.id !== thinkingMessage.id)
+                    );
+                    if (typeof renderTarget?.removeMessage === 'function') await renderTarget.removeMessage(thinkingMessage.id);
+                    else await renderTarget?.removeMessageById?.(thinkingMessage.id);
+                    notifySendState();
+                }
+                return null;
+            }
+        };
 
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
-            const currentChatHistory = currentChatHistoryRef.get();
-            const historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+            const historySnapshotForVCP = sendHistory.filter(msg => !msg.isThinking);
 
             // VCPChatTarven (高级回复) - 收集生效的规则
             const tavernRules = getTavernRules('agent');
@@ -1357,20 +1856,35 @@ window.chatManager = (() => {
 
             if (useStreaming) {
                 if (messageRenderer) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    // Pass the created DOM element directly to avoid race conditions with querySelector
-                    await messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
+                    releaseStreamConsumerRoute = streamConsumerRegistry?.register?.(thinkingMessage.id, {
+                        kind: request?.domRenderer ? 'independent-surface' : 'main-chat',
+                        start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),
+                        ...(request?.domRenderer ? {
+                            append: (messageId, chunk, streamContext) => request.domRenderer.appendStreaming(messageId, chunk, streamContext),
+                            projectTerminal: (messageId, finishReason, streamContext, payload) => request.domRenderer.projectStreamTerminal(messageId, finishReason, streamContext, payload),
+                        } : {}),
+                        settle: result => settleOwnedStreamOperation?.(result),
+                        release: () => {
+                            releaseStreamConsumerRoute?.();
+                            releaseStreamConsumerRoute = null;
+                        },
+                    });
+                    if (request?.domRenderer?.own && releaseStreamConsumerRoute?.retract) {
+                        request.domRenderer.own(() => releaseStreamConsumerRoute?.retract?.());
+                    }
+                    request?.onOperation?.(Object.freeze({
+                        messageId: thinkingMessage.id,
+                        done: ownedStreamTerminal,
+                        async cancel(reason) {
+                            try { await interruptCapability?.interrupt?.(thinkingMessage.id); }
+                            catch (error) { console.warn('[ChatManager] Surface interrupt request failed; cancelling locally:', error); }
+                            return releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
+                        },
+                    }));
                 }
             }
 
-            const context = {
-                agentId: currentSelectedItem.id,
-                agentName: currentSelectedItem.name || currentSelectedItem.id, // 修复：为单聊上下文添加 agentName，并使用 ID 作为回退
-                topicId: currentTopicId,
-                isGroupMessage: false,
-                avatarUrl: currentSelectedItem.avatarUrl,
-                avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
-            };
+            const context = sendContext;
 
             const vcpResponse = await electronAPI.sendToVCP(
                 globalSettings.vcpServerUrl,
@@ -1385,54 +1899,58 @@ window.chatManager = (() => {
             if (!useStreaming) {
                 const response = vcpResponse?.response ?? vcpResponse;
                 const responseContext = vcpResponse?.context ?? context;
-                const currentSelectedItem = currentSelectedItemRef.get();
-                const currentTopicId = currentTopicIdRef.get();
+                const activeSelectedItem = sendSelectedItemRef.get();
+                const activeTopicId = sendTopicIdRef.get();
 
                 // Determine if the response is for the currently active chat
-                const isForActiveChat = responseContext && responseContext.agentId === currentSelectedItem.id && responseContext.topicId === currentTopicId;
+                const isForActiveChat = responseContext && responseContext.agentId === activeSelectedItem.id && responseContext.topicId === activeTopicId;
 
-                if (isForActiveChat) {
-                    // If it's for the active chat, update the UI as usual
-                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
-                }
+                 if (isForActiveChat) {
+                     // Remove the placeholder through the initiating Surface;
+                     // an internal Surface must never mutate the main root.
+                     if (typeof renderTarget?.removeMessage === 'function') await renderTarget.removeMessage(thinkingMessage.id);
+                     else renderTarget?.removeMessageById?.(thinkingMessage.id);
+                 }
 
                 if (!response) {
                     throw new Error('VCP returned an empty response.');
                 }
 
                 if (response.error) {
-                    if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
+                    await removeThinkingFromSource();
+                    if (isForActiveChat && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ChatManager] VCP Error for background message:`, response.error);
+                    if (request?.propagateError) throw new Error(String(response.error));
                 } else if (response.choices && response.choices.length > 0) {
                     const assistantMessageContent = response.choices[0].message.content;
                     const assistantMessage = {
                         role: 'assistant',
                         name: responseContext?.agentName || responseContext?.agentId || 'AI', // 修复：使用 context 中的 agentName 或 agentId 作为回退
-                        avatarUrl: currentSelectedItem.avatarUrl, // This might be incorrect if user switched, but it's a minor UI detail for background saves.
-                        avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
+                        avatarUrl: responseContext?.avatarUrl || sendContext.avatarUrl,
+                        avatarColor: responseContext?.avatarColor || sendContext.avatarColor,
                         content: assistantMessageContent,
                         timestamp: Date.now(),
                         id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`
                     };
 
                     // Fetch the correct history from the file, update it, and save it back.
-                    const historyForSave = await electronAPI.getChatHistory(responseContext.agentId, responseContext.topicId);
+                    const historyForSave = await getHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId);
                     if (historyForSave && !historyForSave.error) {
                         // Remove any lingering 'thinking' message and add the new one
-                        const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
+                        const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id);
                         finalHistory.push(assistantMessage);
                         
                         // Save the final, complete history to the correct file
-                        await electronAPI.saveChatHistory(responseContext.agentId, responseContext.topicId, finalHistory);
+                        await saveHistory(responseContext.agentId, responseContext.itemType || 'agent', responseContext.topicId, finalHistory);
 
                         if (isForActiveChat) {
                             // If it's the active chat, also update the UI and in-memory state
-                            currentChatHistoryRef.set(finalHistory);
-                            window.updateSendButtonState?.();
-                            if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
-                            await attemptTopicSummarizationIfNeeded();
+                            sendHistoryRef.set(finalHistory);
+                            notifySendState();
+                            if (renderTarget) renderTarget.renderMessage(assistantMessage);
+                            if (!request?.conversation) await attemptTopicSummarizationIfNeeded();
                         } else {
                             console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${responseContext.agentId}, Topic ${responseContext.topicId}`);
                         }
@@ -1440,27 +1958,42 @@ window.chatManager = (() => {
                          console.error(`[ChatManager] Failed to get history for background save:`, historyForSave.error);
                     }
                 } else {
-                    if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', content: 'VCP 返回了未知格式的响应。', timestamp: Date.now() });
+                    await removeThinkingFromSource();
+                    if (isForActiveChat && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: 'VCP 返回了未知格式的响应。', timestamp: Date.now() });
                     }
                 }
             } else {
                 if (vcpResponse && vcpResponse.streamError) {
                     console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
+                    await removeThinkingFromSource();
+                    if (isSendContextCurrent() && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: `请求流式回复失败: ${vcpResponse.error || '未知错误'}`, timestamp: Date.now() });
+                    }
+                    if (request?.propagateError) throw new Error(String(vcpResponse.error || '流式回复失败'));
                 } else if (vcpResponse && !vcpResponse.streamingStarted && !vcpResponse.streamError) {
                     console.warn("Expected streaming to start, but main process returned non-streaming or error:", vcpResponse);
-                    if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id); // This will also remove from history
-                    if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
-                    // No need to save again here as removeMessageById handles it if configured
+                    await removeThinkingFromSource();
+                    if (isSendContextCurrent() && renderTarget) {
+                        renderTarget.renderMessage({ role: 'system', content: '请求流式回复失败，收到非流式响应或错误。', timestamp: Date.now() });
+                    }
+                    if (request?.propagateError) throw new Error('请求流式回复失败，收到非流式响应或错误');
+                }
+                if (request?.awaitTerminal && ownedStreamTerminal) {
+                    const terminal = await ownedStreamTerminal;
+                    return Object.freeze({ messageId: thinkingMessage.id, terminal });
                 }
             }
         } catch (error) {
             console.error('发送消息或处理VCP响应时出错', error);
-            if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
-            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
-            if(currentSelectedItem.id && currentTopicId) {
-                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking));
+            await removeThinkingFromSource();
+            if (isSendContextCurrent() && renderTarget) {
+                renderTarget.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
             }
+            if (request?.propagateError) throw error;
+        }
+        } finally {
+            pendingSendContexts.delete(sendSignature);
         }
     }
 
@@ -1476,6 +2009,17 @@ window.chatManager = (() => {
         }
         
         const currentSelectedItem = currentSelectedItemRef.get();
+        const creationToken = ++topicCreationGeneration;
+        const creationItemGeneration = itemSelectionGeneration;
+        const creationTopicGeneration = topicSelectionGeneration;
+        const isCreationCurrent = () => {
+            const activeItem = currentSelectedItemRef.get();
+            return creationToken === topicCreationGeneration
+                && creationItemGeneration === itemSelectionGeneration
+                && creationTopicGeneration === topicSelectionGeneration
+                && activeItem?.id === itemId
+                && activeItem?.type === itemType;
+        };
         const itemName = currentSelectedItem.name || (itemType === 'group' ? "当前群组" : "当前助手");
         const newTopicName = `新话题 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
         
@@ -1488,9 +2032,15 @@ window.chatManager = (() => {
             }
 
             if (result && result.success && result.topicId) {
+                // Topic creation is durable for its source item even if the
+                // user navigates away, but a late completion must not seize
+                // the newly selected conversation's UI or watcher.
+                if (!isCreationCurrent()) return;
+                const watcherLease = await beginHistoryWatcherOperation();
+                if (!isCreationCurrent() || watcherLease?.stale || watcherLease?.success === false) return;
                 currentTopicIdRef.set(result.topicId);
                 currentChatHistoryRef.set([]);
-                window.updateSendButtonState?.();
+                notifySendStateChanged();
 
                 if (messageRenderer) {
                     messageRenderer.setCurrentTopicId(result.topicId);
@@ -1503,13 +2053,21 @@ window.chatManager = (() => {
                 const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
                 if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
                     const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${result.topicId}\\history.json`;
-                    await electronAPI.watcherStart(historyFilePath, itemId, result.topicId);
+                    const watcherResult = await startOwnedHistoryWatcher(
+                        watcherLease.token || null,
+                        historyFilePath,
+                        itemId,
+                        result.topicId
+                    );
+                    if (watcherResult?.stale || watcherResult?.success === false) return;
+                    if (!isCreationCurrent() || currentTopicIdRef.get() !== result.topicId) return;
                     console.log(`[ChatManager] Started file watcher for new topic: ${result.topicId}`);
                 }
                 
-                if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                    if (topicListManager) await topicListManager.loadTopicList();
-                }
+                // Keep the list projection authoritative even when the topics
+                // tab is currently hidden. Otherwise currentTopicId changes
+                // while the old row remains highlighted until a later visit.
+                if (topicListManager) await topicListManager.loadTopicList();
                 
                 await displayTopicTimestampBubble(itemId, itemType, result.topicId);
                 // elements.messageInput.focus();
@@ -1585,11 +2143,7 @@ window.chatManager = (() => {
 
             const newTopicId = createResult.topicId;
 
-            if (itemType === 'agent') {
-                saveResult = await electronAPI.saveChatHistory(itemId, newTopicId, historyForNewBranch);
-            } else { // group
-                saveResult = await electronAPI.saveGroupChatHistory(itemId, newTopicId, historyForNewBranch);
-            }
+            saveResult = await saveHistory(itemId, itemType, newTopicId, historyForNewBranch);
 
             if (!saveResult || !saveResult.success) {
                 uiHelper.showToastNotification(`无法将历史记录保存到新的分支话题: ${saveResult ? saveResult.error : '未知错误'}`, 'error');
@@ -1639,7 +2193,9 @@ window.chatManager = (() => {
         await selectItem(target.id, target.type, target.name, targetItemFullConfig.avatarUrl, targetItemFullConfig);
 
         // 3. After a brief delay to allow the UI to update from selectItem, populate and send.
-        setTimeout(async () => {
+        const timer = setTimeout(async () => {
+            forwardTimers.delete(timer);
+            if (disposed) return;
             // 4. Populate the message input and attachments ref
             messageInput.value = content;
             
@@ -1663,12 +2219,14 @@ window.chatManager = (() => {
             await handleSendMessage();
 
         }, 200); // 200ms delay seems reasonable for UI transition
+        forwardTimers.add(timer);
     }
 
     // --- Canvas Integration ---
     const CANVAS_PLACEHOLDER = '{{VCPChatCanvas}}';
 
     function handleCanvasContentUpdate(data) {
+        if (disposed) return;
         isCanvasWindowOpen = true;
         const { messageInput } = elements;
         // If the canvas is open and there's content, ensure the placeholder is in the input
@@ -1681,6 +2239,7 @@ window.chatManager = (() => {
     }
 
     function handleCanvasWindowClosed() {
+        if (disposed) return;
         isCanvasWindowOpen = false;
         const { messageInput } = elements;
         // Remove the placeholder when the window is closed
@@ -1693,7 +2252,21 @@ window.chatManager = (() => {
 
 
     async function syncHistoryFromFile(itemId, itemType, topicId) {
-        if (!messageRenderer) return;
+        const syncGeneration = ++historySyncGeneration;
+        const itemGeneration = itemSelectionGeneration;
+        const topicGeneration = topicSelectionGeneration;
+        const isSyncCurrent = () => {
+            const selectedItem = currentSelectedItemRef.get();
+            return !disposed
+                && Boolean(messageRenderer)
+                && syncGeneration === historySyncGeneration
+                && itemGeneration === itemSelectionGeneration
+                && topicGeneration === topicSelectionGeneration
+                && selectedItem?.id === itemId
+                && selectedItem?.type === itemType
+                && currentTopicIdRef.get() === topicId;
+        };
+        if (!isSyncCurrent()) return;
 
         // 🔧 检查是否有正在进行的编辑操作
         const isEditing = document.querySelector('.message-item-editing');
@@ -1702,13 +2275,22 @@ window.chatManager = (() => {
             return;
         }
 
+        // Capture active stream ownership before the async read. A stream may
+        // reach terminal while the read is in flight; that terminal must not
+        // be mistaken for a file-side deletion when the active id disappears.
+        const activeStreamingIdAtRead = streamProjection?.getActiveStreamingMessageId?.() || null;
+
         // 1. Fetch the latest history from the file
         let newHistory;
         if (itemType === 'agent') {
-            newHistory = await electronAPI.getChatHistory(itemId, topicId);
+            newHistory = await getHistory(itemId, itemType, topicId);
         } else if (itemType === 'group') {
-            newHistory = await electronAPI.getGroupChatHistory(itemId, topicId);
+            newHistory = await getHistory(itemId, itemType, topicId);
         }
+
+        // A file notification may resolve after navigation, a newer sync, or
+        // teardown. Only the still-selected conversation may update its view.
+        if (!isSyncCurrent()) return;
 
         if (!newHistory || newHistory.error) {
             console.error("Sync failed: Could not fetch new history.", newHistory?.error);
@@ -1720,13 +2302,16 @@ window.chatManager = (() => {
 
         const oldHistoryMap = new Map(oldHistory.map(msg => [msg.id, msg]));
         const newHistoryMap = new Map(newHistory.map(msg => [msg.id, msg]));
-        const activeStreamingId = window.streamManager ? window.streamManager.getActiveStreamingMessageId() : null;
+        const activeStreamingId = streamProjection?.getActiveStreamingMessageId?.() || null;
+        const protectedStreamingIds = new Set(
+            [activeStreamingIdAtRead, activeStreamingId].filter(Boolean),
+        );
 
         // --- Perform UI and Memory updates ---
 
         // 2. Handle DELETED and MODIFIED messages
         for (const oldMsg of oldHistory) {
-            if (oldMsg.id === activeStreamingId) {
+            if (protectedStreamingIds.has(oldMsg.id)) {
                 continue; // Protect the currently streaming message
             }
             
@@ -1767,8 +2352,8 @@ window.chatManager = (() => {
         // 4. If messages were added or removed, the order might be wrong. Re-sort.
         // Also ensures the streaming message (if any) is at the very end.
         historyInMem.sort((a, b) => {
-            if (a.id === activeStreamingId) return 1;
-            if (b.id === activeStreamingId) return -1;
+            if (protectedStreamingIds.has(a.id)) return 1;
+            if (protectedStreamingIds.has(b.id)) return -1;
             return a.timestamp - b.timestamp;
         });
 
@@ -1785,16 +2370,47 @@ window.chatManager = (() => {
 
 
 
+    async function dispose() {
+        if (disposed) return;
+        disposed = true;
+        initialized = false;
+        itemSelectionGeneration += 1;
+        topicSelectionGeneration += 1;
+        topicCreationGeneration += 1;
+        activeHistoryLoadToken += 1;
+        historySyncGeneration += 1;
+        pendingItemSelectionToken = null;
+        emptyStateObserver?.disconnect();
+        emptyStateObserver = null;
+        canvasContentDisposer?.();
+        canvasClosedDisposer?.();
+        canvasContentDisposer = null;
+        canvasClosedDisposer = null;
+        for (const timer of forwardTimers) clearTimeout(timer);
+        forwardTimers.clear();
+        await Promise.allSettled([
+            lastOpenSaveQueue,
+            ...outgoingPersistenceQueues.values(),
+        ]);
+        outgoingPersistenceQueues.clear();
+        pendingSendContexts.clear();
+    }
+
     // --- Public API ---
     return {
         init,
+        dispose,
+        isReady: () => initialized,
         selectItem,
+        restoreLastOpenState,
         selectTopic,
         handleTopicDeletion,
         loadChatHistory,
         handleSendMessage,
+        sendMessage: handleSendMessage,
         createNewTopicForItem,
         displayNoItemSelected,
+        syncNextUiEmptyStateWithMessages,
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,
         handleForwardMessage,
@@ -1804,4 +2420,3 @@ window.chatManager = (() => {
         syncHistoryFromFile, // Expose the new function
     };
 })();
-

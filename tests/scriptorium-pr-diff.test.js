@@ -35,6 +35,29 @@ assert.strictEqual(appendedLines[1003], '第 1004 行续写');
 assert.strictEqual(appended.applied[0].type, 'insert');
 assert.strictEqual(appended.applied[0].line, 1004);
 
+const appendedAtEnd = applyReplacements('第一行\n第二行', [{
+    append: '第三行',
+}]);
+assert.strictEqual(appendedAtEnd.success, true);
+assert.strictEqual(appendedAtEnd.source, '第一行\n第二行\n第三行');
+assert.strictEqual(appendedAtEnd.applied[0].type, 'append');
+assert.strictEqual(appendedAtEnd.applied[0].line, 3);
+assert.strictEqual(appendedAtEnd.applied[0].append, '第三行');
+
+const appendedWithBoundary = applyReplacements('第一行\n', [{
+    append: '第二行\n\n第三行',
+}]);
+assert.strictEqual(
+    appendedWithBoundary.source,
+    '第一行\n第二行\n\n第三行'
+);
+
+const appendedEmpty = applyReplacements('', [{
+    append: '首段',
+}]);
+assert.strictEqual(appendedEmpty.source, '首段');
+assert.strictEqual(appendedEmpty.applied[0].line, 1);
+
 const insertedBefore = applyReplacements('第一行\n第二行\n第三行', [{
     insert: '新第二行',
     line: 2,

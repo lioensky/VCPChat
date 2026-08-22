@@ -42,6 +42,13 @@ function createVoiceChatWindow(agentId) {
 
     openChildWindows.push(voiceChatWindow);
 
+    voiceChatWindow.webContents.on('render-process-gone', (_event, details) => {
+        console.warn('[VoiceHandlers] voice renderer exited; releasing window owner:', details?.reason || 'unknown');
+        const index = openChildWindows.indexOf(voiceChatWindow);
+        if (index > -1) openChildWindows.splice(index, 1);
+        if (!voiceChatWindow.isDestroyed()) voiceChatWindow.destroy();
+    });
+
     voiceChatWindow.on('closed', () => {
         const index = openChildWindows.indexOf(voiceChatWindow);
         if (index > -1) {

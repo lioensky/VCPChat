@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createStreamConsumerRegistry } from '../modules/chat/streamConsumerRegistry.js';
+
+test('stream consumer routes are exact-owner scoped and absent after release', () => {
+    const registry = createStreamConsumerRegistry();
+    const first = { kind: 'main-chat' };
+    const releaseFirst = registry.register('m1', first);
+    assert.equal(registry.claim('m1').suppressed, false);
+    assert.throws(
+        () => registry.register('m1', { kind: 'independent-surface' }),
+        /already registered/,
+    );
+    assert.equal(registry.claim('m1').suppressed, false, 'duplicate registration must not replace the current owner');
+    releaseFirst();
+    assert.equal(registry.claim('m1'), null);
+});
+
+test('stream consumer registry rejects registration after owner dispose', () => {
+    const registry = createStreamConsumerRegistry();
+    registry.register('m2', { kind: 'main-chat' });
+    const release = registry.register('captured', { append() {} });
+    const captured = registry.claim('captured');
+    registry.dispose();
+    assert.equal(registry.claim('m2'), null);
+    assert.equal(captured.suppressed, true);
+    release();
+    assert.throws(() => registry.register('late', {}), /disposed/);
+});
+
+test('owner retraction leaves a one-terminal tombstone for late stream events', () => {
+    const registry = createStreamConsumerRegistry();
+    const calls = [];
+    const release = registry.register('late', { start: () => calls.push('start'), append: () => calls.push('append') });
+    const captured = registry.claim('late');
+    release.retract();
+    const tombstone = registry.claim('late');
+    assert.equal(tombstone.suppressed, true);
+    captured.start();
+    captured.append();
+    assert.deepEqual(calls, [], 'a route captured before retraction must lose projection authority');
+    tombstone.release();
+    assert.equal(registry.claim('late'), null);
+});
+
+test('a retracted route loses DOM authority but can still settle its operation promise', () => {
+    const registry = createStreamConsumerRegistry();
+    const settlements = [];
+    const release = registry.register('owned', {
+        append: () => assert.fail('retracted projection must stay silent'),
+        settle: value => settlements.push(value),
+    });
+    const route = registry.claim('owned');
+    release.retract();
+    route.append('late');
+    route.settle({ type: 'discarded' });
+    assert.deepEqual(settlements, [{ type: 'discarded' }]);
+    route.release();
+    assert.equal(registry.claim('owned'), null);
+});

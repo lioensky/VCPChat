@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "status": "manual_observation_required",
+  "startedAt": "2026-08-20T20:28:29.513Z",
+  "endedAt": "2026-08-20T20:28:33.493Z",
+  "requestedMinutes": 0.02,
+  "intervalSeconds": 1,
+  "stopReason": "duration_elapsed",
+  "host": {
+    "platform": "win32",
+    "arch": "x64",
+    "hostname": "FlowX13",
+    "node": "v22.17.1"
+  },
+  "checklist": [
+    {
+      "item": "main chat send/stream/cancel/retry",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "history and topic switching",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "attachments",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "theme",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "notifications and desktop push",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "VoiceChat",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "Rust Assistant",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "renderer reload/crash recovery",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "Classic child pages and plugin protocol",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "observe detached roots/listeners/heap/errors throughout the session",
+      "observed": null,
+      "notes": ""
+    }
+  ],
+  "checkpoints": [
+    {
+      "label": "baseline",
+      "at": "2026-08-20T20:28:32.097Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1132,
+        "listeners": null,
+        "lifecycleActiveResources": 79,
+        "lifecycleActiveScopes": 8,
+        "detachedRoots": 0,
+        "bodyText": 249
+      },
+      "heapUsed": 10670540,
+      "heapTotal": 14290944,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-1",
+      "at": "2026-08-20T20:28:33.115Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1185,
+        "listeners": null,
+        "lifecycleActiveResources": 79,
+        "lifecycleActiveScopes": 8,
+        "detachedRoots": 0,
+        "bodyText": 249
+      },
+      "heapUsed": 9528524,
+      "heapTotal": 14815232,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-2",
+      "at": "2026-08-20T20:28:33.316Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1185,
+        "listeners": null,
+        "lifecycleActiveResources": 79,
+        "lifecycleActiveScopes": 8,
+        "detachedRoots": 0,
+        "bodyText": 249
+      },
+      "heapUsed": 9547680,
+      "heapTotal": 14815232,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "final",
+      "at": "2026-08-20T20:28:33.321Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1185,
+        "listeners": null,
+        "lifecycleActiveResources": 79,
+        "lifecycleActiveScopes": 8,
+        "detachedRoots": 0,
+        "bodyText": 249
+      },
+      "heapUsed": 9559864,
+      "heapTotal": 14815232,
+      "rendererProcesses": 2,
+      "errors": []
+    }
+  ],
+  "electronStderrTail": "\r\nDevTools listening on ws://127.0.0.1:51214/devtools/browser/97f0314d-0890-4c03-a1c3-82f261fa23b5\r\n[Main] Failed to fetch and cache models: [TypeError: fetch failed] {\n  [cause]: Error: bad port\n      at makeNetworkError (node:internal/deps/undici/undici:11790:35)\n      at mainFetch (node:internal/deps/undici/undici:13173:22)\n      at fetching (node:internal/deps/undici/undici:13160:7)\n      at fetch (node:internal/deps/undici/undici:13024:20)\n      at fetch (node:internal/deps/undici/undici:17692:10)\n      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)\n      at fetchAndCacheModels (C:\\VCP\\vchat-develop\\VCPChat-design-system-no-workflow-windows-test\\main.js:937:40)\n}\n[Music] ========== INITIALIZE CALLED ==========\n[Music] About to call registerIpcHandlers...\n[Music] IPC handlers registered.\n[EmoticonFixer] Emoji library degraded: missing fileKey in settings.json\n[Main] Failed to register global shortcut: Super+Alt+Z\n[EmoticonFixer] Emoji library degraded: missing fileKey in settings.json\n[EmoticonFixer] Emoji library degraded: missing fileKey in settings.json\n",
+  "errors": [],
+  "operatorNote": "This artifact is an observation log, not a pass result. A human must review every checklist item and record pass/fail separately."
+}

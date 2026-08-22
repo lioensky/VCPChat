@@ -181,7 +181,6 @@ window.itemListManager = (() => {
 
     // To hold the loaded items in memory for quick access
     let loadedItemsCache = [];
-
     function escapeHtml(str) {
         return (str || '')
             .replace(/&/g, '&amp;')

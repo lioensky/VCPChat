@@ -206,7 +206,7 @@
                 const scopeTagClass = `tag-scope-${rule.scope || 'global'}`;
                 row.innerHTML = `
                     <div class="tavern-rule-info">
-                        <div class="tavern-rule-name">${escapeHtml(rule.name || '未命名规则')}</div>
+                        <div class="tavern-rule-name">${escapeHtml(rule.name || '未命名规则')}${rule.isBuiltin ? ' <span class="tavern-rule-tag">官方预置</span>' : ''}</div>
                         <div class="tavern-rule-meta">
                             <span class="tavern-rule-tag ${typeTagClass}">${TYPE_LABELS[rule.type] || rule.type}</span>
                             <span class="tavern-rule-tag ${scopeTagClass}">${SCOPE_LABELS[rule.scope || 'global']}</span>
@@ -342,6 +342,7 @@
                                     : rule.type === 'user_suffix' ? 'tag-user' : 'tag-context';
                 item.innerHTML = `
                     <span class="tavern-rule-tag ${typeTagClass}" style="flex-shrink:0;">${TYPE_LABELS[rule.type] || rule.type}</span>
+                    ${rule.isBuiltin ? '<span class="tavern-rule-tag" style="flex-shrink:0;">官方</span>' : ''}
                     <span class="item-name">${escapeHtml(rule.name || '未命名规则')}</span>
                     <div class="tavern-drag-handle" title="长按整行或拖拽手柄排序">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -425,6 +426,11 @@
             const isContext = rule.type === 'context_inject';
             const wrapEnabled = rule.wrap !== false;
             panel.innerHTML = `
+                ${rule.isBuiltin ? `
+                <div class="tavern-help-text" style="margin-bottom:12px;">
+                    此规则来源于官方规则文件。它与用户规则具有相同权限，可编辑、排序或删除，修改会直接保存至官方规则文件。
+                </div>
+                ` : ''}
                 <div class="tavern-form-row">
                     <label>规则名称</label>
                     <input type="text" data-field="name" value="${escapeHtml(rule.name || '')}">
@@ -517,6 +523,8 @@
                     scope: 'global',
                     ...(type === 'context_inject' ? { role: 'user', depth: 0 } : {})
                 };
+            newRule.source = 'user';
+            newRule.isBuiltin = false;
             if (!Array.isArray(this.store.rules)) this.store.rules = [];
             this.store.rules.push(newRule);
             this.selectedRuleId = newRule.id;
@@ -582,9 +590,18 @@
                 : null;
             let confirmed;
             if (confirmFn) {
-                confirmed = await confirmFn(`确定要删除规则 "${rule.name}" 吗？`, '删除规则', '删除', '取消', true);
+                const sourceLabel = rule.isBuiltin ? '官方规则' : '用户规则';
+                confirmed = await confirmFn(
+                    `确定要删除${sourceLabel} "${rule.name}" 吗？删除后不会自动恢复。`,
+                    '删除规则',
+                    '删除',
+                    '取消',
+                    true
+                );
             } else {
-                confirmed = window.confirm(`确定要删除规则 "${rule.name}" 吗？`);
+                confirmed = window.confirm(
+                    `确定要删除${rule.isBuiltin ? '官方规则' : '用户规则'} "${rule.name}" 吗？删除后不会自动恢复。`
+                );
             }
             if (!confirmed) return;
 

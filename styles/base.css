@@ -34,14 +34,62 @@ body.light-theme .main-content {
 }
 
 /* =======================================================
- * 全局主题切换平滑过渡
+ * 主题切换过渡
+ *
+ * 不要在通配符上声明 transition。明暗主题会改变大量继承变量，
+ * 全树动画会让 Markdown token、SVG path 和伪元素各自创建动画，
+ * 在长会话与磨砂表面上造成明显的样式重算和合成压力。
  * ======================================================= */
-*,
-*::before,
-*::after {
-    transition: background-color 0.3s ease-in-out,
-                color 0.3s ease-in-out,
-                border-color 0.3s ease-in-out,
-                fill 0.3s ease-in-out, /* For SVG icons */
-                stroke 0.3s ease-in-out; /* For SVG icons */
+body,
+.next-ui-navigation-material,
+.next-ui-topbar,
+.next-ui-launchpad,
+.sidebar,
+.next-ui-main-panel,
+.chat-header,
+.chat-messages-container,
+.notifications-sidebar,
+.chat-input-card,
+.modal-content {
+    transition:
+        background-color 180ms ease,
+        color 160ms ease,
+        border-color 180ms ease;
+}
+
+/* 气泡背景与主题字体仍然正常跟随变量；只让明确的语义节点
+ * 执行短颜色过渡，不再递归动画气泡中的每一个后代节点。 */
+.message-item .md-content,
+.message-item .sender-name,
+.message-item .message-timestamp,
+.message-item .md-content :is(
+    h1, h2, h3, h4, h5, h6,
+    a, blockquote, code
+) {
+    transition:
+        color 160ms ease,
+        border-color 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body,
+    .next-ui-navigation-material,
+    .next-ui-topbar,
+    .next-ui-launchpad,
+    .sidebar,
+    .next-ui-main-panel,
+    .chat-header,
+    .chat-messages-container,
+    .notifications-sidebar,
+    .chat-input-card,
+    .modal-content,
+    .message-item .md-content,
+    .message-item .sender-name,
+    .message-item .message-timestamp,
+    .message-item .md-content :is(
+        h1, h2, h3, h4, h5, h6,
+        a, blockquote, code
+    ) {
+        transition: none;
+    }
 }

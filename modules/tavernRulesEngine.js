@@ -10,6 +10,8 @@
 //   enabled: boolean,
 //   content: string,
 //   scope: 'global' | 'agent' | 'group',
+//   builtinKey?: string, // 官方预置的稳定覆盖键
+//   isBuiltin?: boolean, // 仅运行时/UI 使用，不持久化
 //   // context_inject 专用:
 //   role: 'user' | 'assistant',
 //   depth: number  // 0 = 上下文末尾, N = 倒数第 N+1 条之前
@@ -26,6 +28,10 @@
 
     const INJECTION_HEADER = '[本信息由VCPChat客户端注入]';
     const INJECTION_FOOTER = '[临时注入结束]';
+
+    function cloneRule(rule) {
+        return { ...rule };
+    }
 
     /**
      * 用统一的标记包装注入文本
@@ -190,6 +196,18 @@
                     scope: ['global', 'agent', 'group'].indexOf(r.scope) !== -1 ? r.scope : 'global',
                     wrap: r.wrap !== false // 默认包裹
                 };
+                if (typeof r.builtinKey === 'string' && r.builtinKey) {
+                    out.builtinKey = r.builtinKey;
+                }
+                if (r.source === 'official' || r.source === 'user') {
+                    out.source = r.source;
+                }
+                if (r.isBuiltin === true) {
+                    out.isBuiltin = true;
+                }
+                if (Number.isFinite(Number(r.order))) {
+                    out.order = Math.max(0, Number(r.order));
+                }
                 if (t === 'context_inject') {
                     out.role = r.role === 'assistant' ? 'assistant' : 'user';
                     out.depth = Math.max(0, Number(r.depth) || 0);
@@ -197,6 +215,56 @@
                 return out;
             });
         return { version: 1, rules: normalized };
+    }
+
+    /**
+     * 合并两个同构规则文件。来源标记只由文件决定，文件内伪造的标记会被覆盖。
+     */
+    function combineRuleStores(officialStore, userStore) {
+        const officialRules = normalizeRuleStore(officialStore).rules.map(function (rule, index) {
+            return { ...rule, source: 'official', isBuiltin: true, order: Number.isFinite(rule.order) ? rule.order : index };
+        });
+        const userRules = normalizeRuleStore(userStore).rules.map(function (rule, index) {
+            return { ...rule, source: 'user', isBuiltin: false, order: Number.isFinite(rule.order) ? rule.order : officialRules.length + index };
+        });
+
+        return {
+            version: 3,
+            rules: officialRules.concat(userRules).sort(function (a, b) {
+                return a.order - b.order;
+            })
+        };
+    }
+
+    /**
+     * 把运行时规则按来源拆回两个同构文件，并写入统一顺序。
+     */
+    function splitRuleStore(store) {
+        const normalized = normalizeRuleStore(store);
+        const officialRules = [];
+        const userRules = [];
+
+        normalized.rules.forEach(function (rule, index) {
+            const persisted = { ...rule, order: index };
+            const source = persisted.source === 'official' || persisted.isBuiltin === true ? 'official' : 'user';
+            delete persisted.source;
+            delete persisted.isBuiltin;
+            (source === 'official' ? officialRules : userRules).push(persisted);
+        });
+
+        return {
+            officialStore: { version: 3, rules: officialRules },
+            userStore: { version: 3, rules: userRules }
+        };
+    }
+
+    // 兼容旧调用方：单文件不再自动补入任何官方定义。
+    function mergeBuiltinRules(store) {
+        return normalizeRuleStore(store);
+    }
+
+    function compactRuleStore(store) {
+        return normalizeRuleStore(store);
     }
 
     return {
@@ -209,6 +277,10 @@
         applyUserSuffix: applyUserSuffix,
         applyContextInject: applyContextInject,
         createDefaultRule: createDefaultRule,
-        normalizeRuleStore: normalizeRuleStore
+        normalizeRuleStore: normalizeRuleStore,
+        combineRuleStores: combineRuleStores,
+        splitRuleStore: splitRuleStore,
+        mergeBuiltinRules: mergeBuiltinRules,
+        compactRuleStore: compactRuleStore
     };
 });

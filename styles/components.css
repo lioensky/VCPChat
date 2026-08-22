@@ -423,6 +423,14 @@ body:not(.light-theme) .chat-actions .header-button {
     padding: 0 10px;
 }
 
+#toggleSidebarModeBtn {
+    display: none;
+}
+
+.assistant-control-icon-next {
+    display: none;
+}
+
 .chat-actions .header-button#voiceChatBtn {
     padding: 0 10px;
 }
@@ -519,109 +527,6 @@ body.light-theme .chat-actions .header-button:hover {
     color: #ffffff;
 }
 
-#sendMessageBtn, #attachFileBtn, #quickNewTopicBtn, #emoticonTriggerBtn {
-    border: none;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
-    padding: 0;
-}
-#sendMessageBtn svg, #attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
-    width: 24px;
-    height: 24px;
-    stroke: currentColor;
-    color: currentColor;
-}
-
-#sendMessageBtn svg {
-    fill: none;
-}
-
-#attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
-    width: 16px;
-    height: 16px;
-    fill: none;
-}
-
-body.light-theme #sendMessageBtn svg {
-    fill: none;
-}
-
-body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
-    fill: none; 
-}
-
-body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
-    stroke: var(--button-bg);
-    fill: none;
-}
-
-#sendMessageBtn:hover {
-    background-color: var(--button-hover-bg);
-}
-
-#sendMessageBtn {
-    position: static;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border-radius: 50%;
-    background-color: var(--button-bg);
-    color: var(--text-on-accent);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-    margin-left: auto;
-}
-
-#sendMessageBtn.interrupt-mode {
-    background-color: var(--button-bg);
-    background-image: linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
-}
-
-#sendMessageBtn.interrupt-mode svg {
-    width: 16px;
-    height: 16px;
-    stroke: none;
-    color: #ffffff;
-}
-
-#sendMessageBtn.interrupt-mode:hover:not(:disabled) {
-    background-image: linear-gradient(rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.24));
-}
-
-#sendMessageBtn:hover:not(:disabled) {
-    transform: translateY(-1px);
-}
-
-#attachFileBtn, #quickNewTopicBtn, #emoticonTriggerBtn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background-color: transparent;
-    border: none;
-    margin-left: 0;
-    flex-shrink: 0;
-}
-
-#quickNewTopicBtn, #attachFileBtn {
-    margin-right: 4px;
-}
-
-#attachFileBtn:hover:not(:disabled), #quickNewTopicBtn:hover:not(:disabled), #emoticonTriggerBtn:hover:not(:disabled) {
-    background-color: rgba(128, 128, 128, 0.12);
-}
-
-#sendMessageBtn:disabled,
-#attachFileBtn:disabled,
-#quickNewTopicBtn:disabled,
-#emoticonTriggerBtn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
 /* --- Modals --- */
 .modal {
     display: none; 
@@ -661,6 +566,51 @@ body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, bod
 
 #avatarCropperModal .modal-content { /* Specific styles for cropper modal if needed */
     color: var(--primary-text);
+}
+
+.avatar-cropper-modal-content {
+    max-width: 420px;
+}
+
+.avatar-cropper-stage {
+    width: 360px;
+    height: 360px;
+    margin: 10px auto;
+    position: relative;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    background-color: #ccc;
+}
+
+.avatar-cropper-overlay {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+}
+
+.avatar-cropper-overlay-svg {
+    pointer-events: none;
+}
+
+.avatar-cropper-help {
+    margin: 0 0 15px;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    text-align: center;
+}
+
+.avatar-cropper-actions {
+    margin-top: 10px;
+}
+
+.avatar-cropper-cancel {
+    background-color: var(--button-bg);
+    color: var(--primary-text);
+}
+
+.avatar-cropper-confirm {
+    background-color: var(--user-bubble-bg);
+    color: white;
 }
 
 #modelSelectModal, #avatarCropperModal, #forwardMessageModal, #regexRuleModal, #filterRulesModal, #filterRuleEditorModal, #createGroupModal {
@@ -1010,17 +960,20 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 /* --- Toggle Assistant Button --- */
-#toggleAssistantBtn.active {
+#toggleAssistantBtn.active,
+#toggleSidebarModeBtn.active {
     background-color: var(--highlight-text);
     color: var(--text-on-accent);
     border-color: var(--highlight-text);
 }
 
-#toggleAssistantBtn.active svg {
+#toggleAssistantBtn.active svg,
+#toggleSidebarModeBtn.active svg {
     stroke: var(--text-on-accent);
 }
 
-body:not(.light-theme) #toggleAssistantBtn.active {
+body:not(.light-theme) #toggleAssistantBtn.active,
+body:not(.light-theme) #toggleSidebarModeBtn.active {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
@@ -1028,7 +981,8 @@ body:not(.light-theme) #toggleAssistantBtn.active {
     -webkit-backdrop-filter: none;
 }
 
-body.light-theme #toggleAssistantBtn.active {
+body.light-theme #toggleAssistantBtn.active,
+body.light-theme #toggleSidebarModeBtn.active {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.78),
@@ -1043,7 +997,8 @@ body.light-theme #toggleAssistantBtn.active {
     color: var(--button-bg);
 }
 
-body.light-theme #toggleAssistantBtn.active svg {
+body.light-theme #toggleAssistantBtn.active svg,
+body.light-theme #toggleSidebarModeBtn.active svg {
     stroke: currentColor;
 }
 

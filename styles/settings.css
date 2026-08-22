@@ -1,52 +1,53 @@
 /* styles/settings.css - Settings Entry Point */
 
-/* 侧边栏标签页 */
 @import url('./setting/settings-sidebar-tabs.css');
+@import url('./setting/settings-sidebar-list.css');
+@import url('./setting/settings-search.css');
+@import url('./setting/settings-agent-form.css');
+@import url('./setting/settings-group-form.css');
+@import url('./setting/settings-form-controls.css');
+@import url('./setting/settings-invite.css');
+@import url('./setting/settings-model-select.css');
+@import url('./setting/settings-regex.css');
+@import url('./setting/settings-global-modal.css');
+@import url('./setting/settings-agent-params.css');
+@import url('./setting/settings-agent-card-shell.css');
+@import url('./setting/settings-agent-identity.css');
+@import url('./setting/settings-agent-sections.css');
+@import url('./setting/settings-agent-prompt.css');
+@import url('./setting/settings-agent-style-collapse.css');
+@import url('./setting/settings-group-sections.css');
+
+/* 侧边栏标签页 */
 
 /* 侧边栏列表（Agent列表 + Topic列表 + 时钟） */
-@import url('./setting/settings-sidebar-list.css');
 
 /* 搜索框 */
-@import url('./setting/settings-search.css');
 
 /* Agent 表单基础 */
-@import url('./setting/settings-agent-form.css');
 
 /* Group 表单基础 */
-@import url('./setting/settings-group-form.css');
 
 /* 通用表单控件 */
-@import url('./setting/settings-form-controls.css');
 
 /* 邀请 Agent 按钮 */
-@import url('./setting/settings-invite.css');
 
 /* 模型选择器 */
-@import url('./setting/settings-model-select.css');
 
 /* 正则编辑器 */
-@import url('./setting/settings-regex.css');
 
 /* 全局设置模态框 */
-@import url('./setting/settings-global-modal.css');
 
 /* Agent 参数折叠容器 */
-@import url('./setting/settings-agent-params.css');
 
 /* Agent 卡片外壳 */
-@import url('./setting/settings-agent-card-shell.css');
 
 /* Agent 身份区域（头像+名称+样式控制） */
-@import url('./setting/settings-agent-identity.css');
 
 /* Agent 统一折叠区段 */
-@import url('./setting/settings-agent-sections.css');
 
 /* Agent 提示词编辑器 */
-@import url('./setting/settings-agent-prompt.css');
 
 /* Agent 嵌套样式折叠 */
-@import url('./setting/settings-agent-style-collapse.css');
 
 /* Group 最终布局 */
-@import url('./setting/settings-group-sections.css');

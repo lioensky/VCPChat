@@ -115,7 +115,7 @@ class FlowlockManager {
      */
     async stop(agentId) {
         // 兼容旧插件 stop()：优先停止当前可见 Agent，不再错误地停止其他并发 Session。
-        const resolvedAgentId = agentId || window.currentSelectedItem?.id;
+        const resolvedAgentId = agentId || window.VCPMainChatState?.snapshot?.()?.selectedItem?.id;
         const session = this.sessions.get(resolvedAgentId);
         agentId = resolvedAgentId;
         if (!session) {
@@ -635,7 +635,7 @@ class FlowlockManager {
      * 切换 Agent 后也可无参数调用，以当前可见 Agent 的真实 Session 为准。
      */
     syncCurrentHeaderIndicator() {
-        const currentItem = window.currentSelectedItem;
+        const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;
         const header = document.getElementById('currentChatAgentName');
         if (!header) return;
 
@@ -651,7 +651,7 @@ class FlowlockManager {
     }
 
     updateCurrentHeaderIndicator(agentId, active) {
-        const currentItem = window.currentSelectedItem;
+        const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;
         if (currentItem?.type !== 'agent' || currentItem.id !== agentId) return;
 
         const header = document.getElementById('currentChatAgentName');
@@ -667,7 +667,7 @@ class FlowlockManager {
     }
 
     triggerCurrentHeaderHeartbeat(agentId) {
-        const currentItem = window.currentSelectedItem;
+        const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;
         if (currentItem?.type !== 'agent' || currentItem.id !== agentId) return;
 
         const header = document.getElementById('currentChatAgentName');

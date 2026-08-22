@@ -12,6 +12,7 @@ const {
   upsertMessageIndex,
   upsertAttachmentIndex,
   upsertMessageAttachment,
+  upsertHistorySourceState,
   updateTopicAggregatedHash,
 } = require("../core/db");
 const {
@@ -574,7 +575,10 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
 }
 
 /**
- * 将 history.json 摄入到消息索引
+ * 将 history.json 摄入到消息索引。
+ *
+ * reconcile 调用方可传入已读取的 history 与 stat，避免同一文件先校验、
+ * 后摄取时发生第二次完整读取。普通 watcher/push 调用仍保持向后兼容。
  */
 function resolveMessageUpdatedAt(message, hash, previous, detectedAt) {
   if (Number.isSafeInteger(message.updatedAt) && message.updatedAt >= 0) {
@@ -585,14 +589,27 @@ function resolveMessageUpdatedAt(message, hash, previous, detectedAt) {
   return detectedAt;
 }
 
-async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
-  if (topicId === "default") return;
+async function ingestHistoryToDb(
+  filePath,
+  topicId,
+  source = "watcher",
+  { history: suppliedHistory, sourceStats: suppliedStats } = {},
+) {
+  if (topicId === "default") return { messageCount: 0, warningCount: 0 };
   const db = getDb();
   const logger = getLogger();
   if (!db) throw new Error("Database not initialized");
 
   try {
-    const { history } = await readHistoryStrict(filePath);
+    if ((suppliedHistory === undefined) !== (suppliedStats === undefined)) {
+      throw new Error("History and source stats must be supplied together");
+    }
+    let history = suppliedHistory;
+    let sourceStats = suppliedStats;
+    if (history === undefined) {
+      sourceStats = await fs.stat(filePath);
+      history = (await readHistoryStrict(filePath)).history;
+    }
     const canonical = canonicalizeHistory(history, topicId);
     if (canonical.topicIdRewrites > 0) {
       logger.logInfo(
@@ -616,13 +633,16 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
     const applyIndex = db.transaction(() => {
       const existing = db
         .prepare(
-          "SELECT msg_id, hash, updated_at FROM message_index WHERE topic_id = ? AND deleted_at IS NULL",
+          "SELECT msg_id, hash, updated_at, deleted_at FROM message_index WHERE topic_id = ?",
         )
         .all(topicId);
       const existingById = new Map(existing.map((row) => [row.msg_id, row]));
       for (const m of validMessages) {
         const hash = computeMessageFingerprint(m);
         const previous = existingById.get(m.id);
+        if (previous?.deleted_at !== null && previous?.deleted_at !== undefined) {
+          continue;
+        }
         const updatedAt = resolveMessageUpdatedAt(m, hash, previous, now);
         upsertMessageIndex(m.id, topicId, hash, updatedAt);
         fingerprints.push(computeMessageLeafHash(m.id, hash));
@@ -643,7 +663,7 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
         }
       }
       for (const row of existing) {
-        if (!liveIds.has(row.msg_id)) {
+        if (row.deleted_at === null && !liveIds.has(row.msg_id)) {
           const removed = db
             .prepare(
               "UPDATE message_index SET deleted_at = ? WHERE topic_id = ? AND msg_id = ? AND deleted_at IS NULL",
@@ -675,6 +695,12 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
       }
     });
     applyIndex();
+    upsertHistorySourceState(
+      topicId,
+      filePath,
+      sourceStats.size,
+      sourceStats.mtimeMs,
+    );
     clearHistoryTopicUnhealthy(topicId);
 
     if (source !== "reconcile") {
@@ -686,7 +712,9 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
         `msgs=${validMessages.length} attachments=${attachmentCount}`,
       );
     }
-    if (canonical.warningCount > 0) {
+    // 启动 reconcile 由外层合并输出摘要，避免数十个话题分别触发
+    // console、日志文件和 WebSocket 三路写入。
+    if (canonical.warningCount > 0 && source !== "reconcile") {
       logger.logOperation(
         "messages",
         "legacy_attachment_warning",
@@ -695,9 +723,17 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
         `count=${canonical.warningCount}`,
       );
     }
+    return {
+      messageCount: validMessages.length,
+      warningCount: canonical.warningCount,
+    };
   } catch (e) {
     markHistoryTopicUnhealthy(topicId, e);
-    logger.logOperation("messages", "ingest", topicId, "error", e.message);
+    // 启动 reconcile 由外层统一按 history 话题记录错误，避免同一故障
+    // 同时产生 ingest 与 history 两条控制台/文件/WS 日志。
+    if (source !== "reconcile") {
+      logger.logOperation("messages", "ingest", topicId, "error", e.message);
+    }
     throw e;
   }
 }

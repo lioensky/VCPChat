@@ -1,5 +1,7 @@
-import * as emoticonFixer from './renderer/emoticonUrlFixer.js';
+import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
+
+const emoticonFixer = createEmoticonUrlFixer();
 
 document.addEventListener('DOMContentLoaded', async () => {
     const viewerAPI = window.utilityAPI || window.electronAPI;

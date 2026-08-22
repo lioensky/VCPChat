@@ -1,19 +1,52 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui-mode="next">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- frame-src: 仅放通本机环回的 VCPDistributedServer(5974)，供 VCPWEWallpaper
+         插件以 iframe 隔离渲染 Wallpaper Engine 的 web 类型壁纸。不开放任何外网源。 -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:;
                    script-src 'self' 'unsafe-inline';
                    style-src 'self' 'unsafe-inline' https:;
                    img-src * data: file: blob:;
                    media-src * data: file: blob:;
                    font-src *;
-                   connect-src * ws: wss:;">
+                   frame-src 'self' http://127.0.0.1:5974 http://localhost:5974;
+                   connect-src * ws: wss: data:;">
     <title>VCPChat</title>
+    <style>
+        /* Avoid painting the canonical shell with uninitialized theme variables. */
+        body[data-theme-pending="true"] { visibility: hidden; }
+        .startup-initialization-status {
+            position: fixed;
+            top: 8px;
+            left: 50%;
+            z-index: 10000;
+            max-width: min(90vw, 720px);
+            padding: 6px 10px;
+            transform: translateX(-50%);
+            border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+            border-radius: 6px;
+            background: Canvas;
+            color: CanvasText;
+            font: 12px/1.4 system-ui, sans-serif;
+            pointer-events: none;
+        }
+    </style>
     <link rel="stylesheet" href="vendor/fontawesome-v6/fontawesome-v6.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="styles/compact-sidebar.css">
+    <script src="modules/ui-system/lifecycle-scope.js"></script>
+    <script src="modules/ui-system/performance-recorder.js"></script>
+    <script src="modules/ui-system/task-handle.js"></script>
+    <script src="modules/ui-system/contribution-registry.js"></script>
+    <script src="modules/ui-system/state-channel.js"></script>
+    <script src="modules/ui-system/settlement.js"></script>
+    <script src="modules/services/windowStateService.js"></script>
+    <script src="modules/ui-system/surface-controller.js"></script>
+    <script src="modules/ui-system/lifecycle-inspector.js"></script>
+    <script src="modules/ui-system/appearance-engine.js"></script>
     <link rel="stylesheet" href="Flowlockmodules/flowlock.css">
     <link rel="stylesheet" href="Promptmodules/prompt-modules.css">
     <link rel="stylesheet" href="Tavernmodules/tavern.css">
@@ -28,22 +61,43 @@
     <script src="vendor/morphdom.min.js"></script>
 </head>
 
-<body>
-    <div class="seam-fixer" id="title-bar-seam-fixer"></div>
-    <div class="title-bar">
-        <div class="title-bar-text"><img src="assets/icon.png" alt="Logo" class="title-bar-logo"> VCPChat</div>
-        <div class="title-bar-controls">
-            <div class="title-bar-view-switcher">
-                <button id="themes-btn" class="title-bar-button" title="主题商店"
-                    aria-haspopup="true" aria-controls="chat-presentation-quick-switcher"
-                    onclick="(window.chatAPI || window.electronAPI)?.openThemesWindow?.()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"
-                        style="width: 12px; height: 12px;">
-                        <path
-                            d="M15.825.12a.5.5 0 0 1 .132.584c-1.53 3.43-4.743 8.17-7.095 10.64a6.067 6.067 0 0 1-2.373 1.534c-.018.227-.06.538-.16.868-.201.659-.667 1.479-1.708 1.74a8.118 8.118 0 0 1-3.078.132 3.659 3.659 0 0 1-.562-.135 1.382 1.382 0 0 1-.466-.247.714.714 0 0 1-.204-.288.622.622 0 0 1 .004-.443c.095-.245.316-.38.461-.452.394-.197.625-.453.867-.826.095-.144.184-.297.287-.472l.117-.198c.151-.255.326-.5.527-.734.206-.236.438-.46.693-.659.26-.2.548-.37.848-.487.306-.12.624-.19.958-.21a3.36 3.36 0 0 1 .82.025c.28.04.554.12.81.24.26.12.5.28.7.49.2.21.36.46.48.74.12.28.2.6.22.94.02.34-.02.69-.1.99-.08.3-.2.59-.35.86-.15.27-.35.52-.58.75-.23.23-.5.43-.78.58-.28.15-.59.26-.92.32-.33.06-.67.06-1.01-.02a4.007 4.007 0 0 1-1.12-.328.5.5 0 0 1-.28-.88c.24-.17.54-.38.87-.58.33-.19.68-.42 1.05-.68.37-.26.76-.55 1.18-.86.42-.3.87-.62 1.34-.94.47-.32.96-.64 1.48-.96.52-.32 1.05-.63 1.6-.92.55-.29 1.1-.56 1.65-.8.55-.24 1.1-.47 1.6-.68.5-.2.95-.38 1.36-.51a.5.5 0 0 1 .585.132z" />
+<body data-theme-pending="true">
+    <div id="startupInitializationStatus" class="startup-initialization-status" role="status" aria-live="polite" hidden></div>
+    <div class="next-ui-navigation-material" aria-hidden="true"></div>
+    <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
+        <nav class="next-ui-tab-strip" aria-label="页面标签">
+            <div class="next-ui-brand-tab-group">
+                <button id="toggleSidebarModeBtn" class="next-ui-icon-button next-ui-sidebar-mode-button" type="button"
+                    title="点击：切换头像窄栏｜长按：隐藏或显示左侧栏" aria-label="切换侧栏显示模式"
+                    aria-pressed="false">
+                    <span class="next-ui-sidebar-brand" aria-hidden="true">
+                        <img src="assets/icon.png" alt="" width="22" height="22">
+                    </span>
+                    <svg class="lucide lucide-panel-left next-ui-sidebar-control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+                        <path d="M9 3v18"></path>
                     </svg>
                 </button>
-                <div id="chat-presentation-quick-switcher" class="chat-presentation-quick-switcher"
+                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" role="tab" aria-controls="nextUiMainPanel" aria-selected="true" tabindex="0">
+                    <span>VCPChat</span>
+                </button>
+            </div>
+            <div id="nextUiDynamicTabs" class="next-ui-dynamic-tabs" role="tablist" aria-label="已打开应用"></div>
+            <button id="nextUiAddTabBtn" class="next-ui-add-tab" type="button" title="打开应用" aria-label="打开应用"
+                aria-expanded="false" aria-controls="nextUiLaunchpad">
+                <span class="vcp-ui-icon" aria-hidden="true">add</span>
+            </button>
+        </nav>
+        <div class="next-ui-topbar-actions">
+            <div class="next-ui-presentation-switcher">
+                <button id="nextUiPresentationBtn" class="next-ui-icon-button" type="button"
+                    title="聊天显示模式" aria-label="聊天显示模式" aria-haspopup="true"
+                    aria-controls="nextUiChatPresentationSwitcher" aria-expanded="false">
+                    <span class="vcp-ui-icon" aria-hidden="true">view_agenda</span>
+                </button>
+                <div id="nextUiChatPresentationSwitcher"
+                    class="chat-presentation-quick-switcher next-ui-chat-presentation-switcher"
                     role="radiogroup" aria-label="聊天显示模式">
                     <button type="button" class="chat-presentation-quick-option"
                         data-presentation-mode="bubble" role="radio" aria-checked="false">气泡</button>
@@ -53,38 +107,84 @@
                         data-presentation-mode="immersive" role="radio" aria-checked="false">刊物</button>
                 </div>
             </div>
-            <button id="minimize-to-tray-btn" class="title-bar-button" title="最小化到托盘">
-                <svg viewBox="0 0 10 10">
-                    <polygon points="5,8 0,2 10,2"></polygon>
-                </svg>
+            <button id="nextUiThemeStoreBtn" class="next-ui-icon-button" type="button" title="选择主题" aria-label="选择主题">
+                <span class="vcp-ui-icon" aria-hidden="true">palette</span>
             </button>
-            <button id="minimize-btn" class="title-bar-button" title="最小化">
-                <svg x="0px" y="0px" viewBox="0 0 10.2 1">
-                    <rect x="0" y="0" width="10.2" height="1"></rect>
-                </svg>
+            <button id="nextUiThemeBtn" class="next-ui-icon-button" type="button" title="切换明暗主题" aria-label="切换明暗主题">
+                <span class="vcp-ui-icon" aria-hidden="true">light_mode</span>
             </button>
-            <button id="maximize-btn" class="title-bar-button" title="最大化">
-                <svg viewBox="0 0 10 10">
-                    <path d="M0,0v10h10V0H0z M9,9H1V1h8V9z"></path>
-                </svg>
+            <button id="nextUiSettingsBtn" class="next-ui-icon-button next-ui-relocated-action" type="button" title="全局设置" aria-label="全局设置">
+                <span class="vcp-ui-icon" aria-hidden="true">settings</span>
             </button>
-            <button id="restore-btn" class="title-bar-button" title="还原" style="display: none;">
-                <svg viewBox="0 0 10.2 10.1">
-                    <path d="M2.1,0v2H0v8.1h8.2v-2h2V0H2.1z M7.2,9.2H1.1V3h6.1V9.2z M9.2,7.1h-1V2H3.1V1h6.1V7.1z">
-                    </path>
-                </svg>
+            <button id="nextUiMinimizeToTrayBtn" class="next-ui-window-button" type="button" title="最小化到系统托盘" aria-label="最小化到系统托盘">
+                <span class="vcp-ui-icon" aria-hidden="true">keyboard_arrow_down</span>
             </button>
-            <button id="close-btn" class="title-bar-button close-button" title="关闭">
-                <svg viewBox="0 0 10 10">
-                    <polygon
-                        points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5">
-                    </polygon>
-                </svg>
+            <button id="nextUiMinimizeBtn" class="next-ui-window-button" type="button" title="最小化" aria-label="最小化">
+                <span class="vcp-ui-icon" aria-hidden="true">remove</span>
+            </button>
+            <button id="nextUiMaximizeBtn" class="next-ui-window-button" type="button" title="最大化窗口" aria-label="最大化窗口" aria-pressed="false">
+                <span class="vcp-ui-icon" aria-hidden="true">crop_square</span>
+            </button>
+            <button id="nextUiCloseBtn" class="next-ui-window-button next-ui-close-button" type="button" title="关闭" aria-label="关闭">
+                <span class="vcp-ui-icon" aria-hidden="true">close</span>
             </button>
         </div>
-    </div>
+    </header>
+    <section id="nextUiLaunchpad" class="next-ui-launchpad vcp-ui-scope" data-density="comfortable" role="region" aria-label="应用启动台" aria-hidden="true">
+        <div class="next-ui-launchpad-inner">
+            <div class="next-ui-empty-brand next-ui-launchpad-brand" role="img" aria-label="VCPChat">
+                <svg class="next-ui-empty-brand-svg" viewBox="0 0 900 190" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="nextUiLaunchpadStaticStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="var(--next-empty-flow-primary)"></stop>
+                            <stop offset="50%" stop-color="var(--next-empty-flow-primary)"></stop>
+                            <stop offset="50%" stop-color="var(--next-empty-flow-secondary)"></stop>
+                            <stop offset="100%" stop-color="var(--next-empty-flow-secondary)"></stop>
+                        </linearGradient>
+                        <filter id="nextUiLaunchpadLogoGlow" x="-20%" y="-40%" width="140%" height="180%">
+                            <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                            <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
+                        </filter>
+                    </defs>
+                    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
+                        class="next-ui-empty-brand-text next-ui-empty-brand-base">VCPCHAT</text>
+                    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
+                        class="next-ui-empty-brand-text next-ui-empty-brand-flow next-ui-empty-brand-cyan"
+                        filter="url(#nextUiLaunchpadLogoGlow)">VCPCHAT</text>
+                    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
+                        class="next-ui-empty-brand-text next-ui-empty-brand-flow next-ui-empty-brand-pink"
+                        filter="url(#nextUiLaunchpadLogoGlow)">VCPCHAT</text>
+                </svg>
+            </div>
+            <nav class="next-ui-nova-panel" aria-label="VCP 源码导航">
+                <div class="next-ui-nova-panel-label">
+                    <span class="vcp-ui-icon" aria-hidden="true">chat_bubble</span>
+                    <span>ASK NOVA ABOUT VCP</span>
+                </div>
+                <div class="next-ui-nova-panel-actions">
+                    <button class="next-ui-nova-link next-ui-nova-link-frontend" type="button"
+                        data-ask-nova-target="frontend" aria-label="向 Nova 询问 VCPChat 源码">
+                        FRONTEND
+                    </button>
+                    <button class="next-ui-nova-link next-ui-nova-link-backend" type="button"
+                        data-ask-nova-target="backend" aria-label="向 Nova 询问 VCPToolBox 源码">
+                        BACKEND
+                    </button>
+                    <button class="next-ui-nova-link next-ui-nova-link-fullstack" type="button"
+                        data-ask-nova-target="fullstack" aria-label="向 Nova 询问 VCP 全栈源码">
+                        FULLSTACK
+                    </button>
+                </div>
+            </nav>
+            <div id="nextUiAppGrid" class="next-ui-app-grid"></div>
+            <p class="next-ui-launchpad-epigraph">
+                <span>VCPChat · 原生分布式引擎终端</span>
+                <span>语义级打穿 AI、UI/UX、APP 与人类想象力的边界</span>
+            </p>
+        </div>
+    </section>
     <div class="container">
-        <aside class="sidebar active">
+        <aside class="sidebar active vcp-ui-scope">
             <div class="sidebar-compact-navigation" aria-label="窄侧栏导航">
                 <button type="button" class="sidebar-compact-trigger" aria-label="展开侧栏导航"
                     aria-expanded="false" title="侧栏导航">
@@ -137,12 +237,31 @@
                 </div>
             </div>
             <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
-                <button class="sidebar-tab-button active" data-tab="agents">助手</button>
-                <button class="sidebar-tab-button" data-tab="topics">话题</button>
-                <button class="sidebar-tab-button" data-tab="settings">设置</button>
+                <button class="sidebar-tab-button active" type="button" data-tab="agents">助手</button>
+                <button class="sidebar-tab-button" type="button" data-tab="topics">话题</button>
+                <button class="sidebar-tab-button" type="button" data-tab="settings">设置</button>
             </div>
             <div class="sidebar-tab-content active" id="tabContentAgents" role="tabpanel" aria-hidden="false">
                 <div class="agents-header">
+                    <div class="next-ui-agent-tools">
+                        <button id="nextUiCreateItemBtn" class="next-ui-create-item-trigger" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 5v14"></path>
+                                <path d="M5 12h14"></path>
+                            </svg>
+                            <span>创建助手或群组</span>
+                        </button>
+                        <button id="nextUiAgentSearchTrigger" class="next-ui-agent-search-trigger" type="button"
+                            title="搜索助手或群" aria-label="搜索助手或群" aria-controls="agentSearchInput"
+                            aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="7"></circle>
+                                <path d="m20 20-3.5-3.5"></path>
+                            </svg>
+                        </button>
+                    </div>
                     <div class="sidebar-subtab-item sidebar-search-subtab">
                         <div class="topic-search-container">
                             <span class="agent-search-icon" aria-hidden="true">
@@ -153,7 +272,16 @@
                                     <path d="m20 20-3.5-3.5"></path>
                                 </svg>
                             </span>
-                            <input type="text" id="agentSearchInput" placeholder="搜索助手或群..." class="topic-search-input">
+                            <input type="text" id="agentSearchInput" placeholder="搜索助手或群..."
+                                aria-label="搜索助手或群" class="topic-search-input">
+                            <button id="nextUiAgentSearchClose" class="next-ui-agent-search-close" type="button"
+                                title="关闭搜索" aria-label="关闭助手搜索">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m7 7 10 10"></path>
+                                    <path d="M17 7 7 17"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -167,39 +295,41 @@
                     -->
                     </ul>
                 </div>
-                <div class="sidebar-actions">
-                    <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                            aria-hidden="true">
-                            <path d="M2 21a8 8 0 0 1 13.292-6"></path>
-                            <circle cx="10" cy="8" r="5"></circle>
-                            <path d="M19 16v6"></path>
-                            <path d="M22 19h-6"></path>
-                        </svg>
-                        <span class="sidebar-button-label">
-                            <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                            <span class="sidebar-button-keyword">Agent</span>
-                        </span>
-                    </button>
-                    <button id="createNewGroupBtn" class="sidebar-button create-group-btn small-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                            aria-hidden="true">
-                            <path d="M18 21a8 8 0 0 0-16 0"></path>
-                            <circle cx="10" cy="8" r="5"></circle>
-                            <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path>
-                        </svg>
-                        <span class="sidebar-button-label">
-                            <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                            <span class="sidebar-button-keyword">Group</span>
-                        </span>
-                    </button>
-                </div>
+
             </div>
             <div class="sidebar-tab-content" id="tabContentTopics" role="tabpanel" aria-hidden="true">
                 <!-- 话题内容区 -->
                 <div class="topics-header-container">
+                    <div class="next-ui-topic-tools">
+                        <button id="nextUiCreateTopicBtn" class="next-ui-create-topic-trigger" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 5v14"></path>
+                                <path d="M5 12h14"></path>
+                            </svg>
+                            <span>新建话题</span>
+                        </button>
+                        <button id="nextUiManageTopicsBtn" class="next-ui-topic-icon-trigger" type="button"
+                            title="管理话题" aria-label="管理话题" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="m3 6 2 2 4-4"></path>
+                                <path d="M11 6h10"></path>
+                                <path d="m3 12 2 2 4-4"></path>
+                                <path d="M11 12h10"></path>
+                                <path d="m3 18 2 2 4-4"></path>
+                                <path d="M11 18h10"></path>
+                            </svg>
+                        </button>
+                        <button id="nextUiTopicSearchTrigger" class="next-ui-topic-icon-trigger" type="button"
+                            title="搜索话题" aria-label="搜索话题" aria-controls="topicSearchInput" aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="7"></circle>
+                                <path d="m20 20-3.5-3.5"></path>
+                            </svg>
+                        </button>
+                    </div>
                     <div class="sidebar-subtab-item sidebar-search-subtab">
                         <div class="topic-search-container">
                             <span class="agent-search-icon" aria-hidden="true">
@@ -214,6 +344,14 @@
                                 title="输入“未读话题”或“unread topic”将未读话题置顶"
                                 aria-label="搜索话题或未读话题"
                                 class="topic-search-input">
+                            <button id="nextUiTopicSearchClose" class="next-ui-topic-search-close" type="button"
+                                title="关闭搜索" aria-label="关闭话题搜索">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m7 7 10 10"></path>
+                                <path d="M17 7 7 17"></path>
+                            </svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -222,12 +360,31 @@
                     <!-- 话题列表将在这里动态加载 -->
                     </ul>
                 </div>
+                <div class="next-ui-topic-manage-panel" aria-hidden="true">
+                    <div class="next-ui-topic-manage-selection">
+                        <button id="nextUiSelectAllTopicsBtn" class="next-ui-topic-manage-button" type="button"
+                            title="全选话题" aria-label="全选话题">
+                            <span class="vcp-ui-icon" aria-hidden="true">check_box_outline_blank</span>
+                        </button>
+                        <span id="nextUiTopicSelectionCount" aria-live="polite">已选择 0 项</span>
+                    </div>
+                    <div class="next-ui-topic-manage-actions">
+                        <button id="nextUiDeleteTopicsBtn" class="next-ui-topic-manage-button danger" type="button"
+                            title="删除所选话题" aria-label="删除所选话题" disabled>
+                            <span class="vcp-ui-icon" aria-hidden="true">delete</span>
+                        </button>
+                        <button id="nextUiExitTopicManageBtn" class="next-ui-topic-manage-button" type="button"
+                            title="退出管理" aria-label="退出话题管理">
+                            <span class="vcp-ui-icon" aria-hidden="true">close</span>
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="sidebar-tab-content" id="tabContentSettings" role="tabpanel" aria-hidden="true">
+            <div class="sidebar-tab-content" id="tabContentSettings" data-settings-presentation="classic" role="tabpanel" aria-hidden="true">
                 <!-- 设置内容区 -->
                 <div class="settings-header-bar">
                     <h2>设置</h2>
-                    <button id="globalSettingsBtn" class="sidebar-button global-settings-btn">全局设置</button>
+                    <button id="globalSettingsBtn" class="sidebar-button global-settings-btn" type="button">全局设置</button>
                 </div>
 
                 <div id="agentSettingsContainer" style="display: none;"> <!-- Initially hidden -->
@@ -251,7 +408,7 @@
                                     <div class="agent-identity-main">
                                         <div class="agent-avatar-wrapper">
                                             <img id="agentAvatarPreview" src="assets/default_avatar.png" alt="头像预览"
-                                                class="agent-avatar-display" style="display: block;">
+                                                class="agent-avatar-display" width="76" height="76" style="display: block;">
                                             <label for="agentAvatarInput" class="avatar-upload-overlay">
                                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                                                     stroke="currentColor" stroke-width="2">
@@ -311,7 +468,7 @@
                                             <input type="color" id="agentAvatarBorderColor" name="avatarBorderColor"
                                                 value="#3d5a80">
                                             <input type="text" id="agentAvatarBorderColorText" placeholder="#3d5a80"
-                                                maxlength="7">
+                                                aria-label="头像外框颜色十六进制值" maxlength="7">
                                         </div>
                                     </div>
                                     <div class="style-control-item">
@@ -320,7 +477,7 @@
                                             <input type="color" id="agentNameTextColor" name="nameTextColor"
                                                 value="#ffffff">
                                             <input type="text" id="agentNameTextColorText" placeholder="#ffffff"
-                                                maxlength="7">
+                                                aria-label="名称文字颜色十六进制值" maxlength="7">
                                         </div>
                                     </div>
 
@@ -405,6 +562,7 @@
                                 <div class="agent-settings-card-shell agent-settings-model-shell">
                                     <div class="model-input-container">
                                         <input type="text" id="agentModel" name="model"
+                                            aria-label="Agent 模型"
                                             placeholder="例如 gemini-2.5-flash-preview-05-20">
                                         <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
                                             <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
@@ -546,26 +704,69 @@
                 </div>
                 <p id="selectAgentPromptForSettings" style="display: block;">请先在“助手”标签页选择一个Agent以查看或修改其设置。</p>
             </div>
+            <div class="next-ui-account-dock">
+                <div id="nextUiAccountMenu" class="next-ui-account-menu" role="menu" aria-label="界面快捷设置" hidden>
+                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
+                        role="menuitem">
+                        <span class="vcp-ui-icon" aria-hidden="true">tune</span>
+                        <span class="next-ui-account-menu-label">外观与布局</span>
+                        <span id="nextUiAccountAppearanceStudioValue" class="next-ui-account-menu-value">自定义</span>
+                        <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
+                    </button>
+                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
+                        role="menuitem" aria-label="打开主题管理器">
+                        <span class="vcp-ui-icon" aria-hidden="true">palette</span>
+                        <span class="next-ui-account-menu-label">主题管理器</span>
+                        <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
+                    </button>
+                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
+                        role="menuitem" aria-label="切换深色或浅色模式">
+                        <span id="nextUiAccountThemeIcon" class="vcp-ui-icon" aria-hidden="true">dark_mode</span>
+                        <span id="nextUiAccountThemeLabel" class="next-ui-account-menu-label">切换为深色模式</span>
+                    </button>
+                </div>
+                <button id="nextUiAccountMenuTrigger" class="next-ui-account-trigger" type="button"
+                    aria-haspopup="menu" aria-controls="nextUiAccountMenu" aria-expanded="false">
+                    <img id="nextUiAccountAvatar" src="assets/default_user_avatar.png" alt="用户头像" width="32" height="32">
+                    <span id="nextUiAccountName">用户</span>
+                    <span class="vcp-ui-icon next-ui-account-expand-icon" aria-hidden="true">expand_less</span>
+                </button>
+                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" role="menuitem" type="button"
+                    title="全局设置" aria-label="全局设置">
+                    <span class="vcp-ui-icon" aria-hidden="true">settings</span>
+                </button>
+            </div>
         </aside>
         <div class="resizer" id="resizerLeft"></div>
-        <main class="main-content">
-            <header class="chat-header">
+        <section id="nextUiMainPanel" class="next-ui-main-panel" role="tabpanel" aria-labelledby="nextUiHomeTab">
+          <main class="main-content">
+            <header class="chat-header vcp-ui-scope">
                 <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
                 <div class="chat-actions">
-                    <button id="toggleAssistantBtn" class="header-button"
-                        title="左键：开关划词助手｜长按：直接呼出&#10;右键：切换头像窄栏｜长按：隐藏/显示左侧栏"
-                        aria-label="划词助手与侧栏控制">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                            aria-hidden="true">
+                    <button id="toggleAssistantBtn" class="header-button" type="button"
+                        title="点击：开关划词助手｜长按：直接呼出" aria-label="划词助手开关与呼出">
+                        <svg class="assistant-control-icon-classic" xmlns="http://www.w3.org/2000/svg" width="18"
+                            height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"></path>
                             <path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"></path>
                             <path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"></path>
                             <path d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1"></path>
                             <path d="M9 6v12"></path>
                         </svg>
+                        <svg class="assistant-control-icon-next lucide lucide-scan-text" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                            <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                            <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                            <path d="M7 8h8"></path>
+                            <path d="M7 12h10"></path>
+                            <path d="M7 16h6"></path>
+                        </svg>
                     </button>
-                    <button id="toggleNotificationsBtn" class="header-button" title="左键启动通知/右键监控面板">
+                    <button id="toggleNotificationsBtn" class="header-button" type="button" title="左键打开通知面板/右键监控面板"
+                        aria-label="打开通知面板" aria-controls="notificationsSidebar" aria-expanded="false">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                             aria-hidden="true">
@@ -575,29 +776,8 @@
                             </path>
                         </svg>
                     </button>
-                    <button id="themeToggleBtn" class="header-button" title="深色/浅色模式">
-                        <svg id="sun-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <circle cx="12" cy="12" r="4"></circle>
-                            <path d="M12 2v2"></path>
-                            <path d="M12 20v2"></path>
-                            <path d="m4.93 4.93 1.41 1.41"></path>
-                            <path d="m17.66 17.66 1.41 1.41"></path>
-                            <path d="M2 12h2"></path>
-                            <path d="M20 12h2"></path>
-                            <path d="m6.34 17.66-1.41 1.41"></path>
-                            <path d="m19.07 4.93-1.41 1.41"></path>
-                        </svg>
-                        <svg id="moon-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path
-                                d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401">
-                            </path>
-                        </svg>
-                    </button>
-                    <button id="currentAgentSettingsBtn" class="header-button" title="当前Agent设置" style="display: none;">
+
+                    <button id="currentAgentSettingsBtn" class="header-button" type="button" title="当前Agent设置" style="display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44"
                             aria-hidden="true">
                             <g transform="translate(1 2) scale(1.62)" stroke="currentColor" stroke-width="2" fill="none"
@@ -616,7 +796,7 @@
                         </svg>
                         <span class="button-label">新建聊天话题</span>
                     </button>
-                    <button id="voiceChatBtn" class="header-button" title="语音聊天"
+                    <button id="voiceChatBtn" class="header-button" type="button" title="语音聊天"
                         style="margin-right: 5px; display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -625,18 +805,49 @@
                             <rect x="9" y="2" width="6" height="13" rx="3"></rect>
                         </svg>
                     </button>
+                    <span id="nextUiChatNotificationHost" class="next-ui-notification-toggle-host"></span>
                 </div>
             </header>
-            <div class="chat-messages-container">
+            <div class="chat-messages-container vcp-ui-scope" data-density="comfortable">
+                <section id="nextUiEmptyState" class="next-ui-empty-state" aria-hidden="true">
+                    <div class="next-ui-empty-state-content">
+                        <div class="next-ui-empty-brand" role="img" aria-label="VCPChat">
+                            <svg class="next-ui-empty-brand-svg" viewBox="0 0 900 190" aria-hidden="true">
+                                <defs>
+                                    <linearGradient id="nextUiEmptyStaticStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" stop-color="var(--next-empty-flow-primary)"></stop>
+                                        <stop offset="50%" stop-color="var(--next-empty-flow-primary)"></stop>
+                                        <stop offset="50%" stop-color="var(--next-empty-flow-secondary)"></stop>
+                                        <stop offset="100%" stop-color="var(--next-empty-flow-secondary)"></stop>
+                                    </linearGradient>
+                                    <filter id="nextUiEmptyLogoGlow" x="-20%" y="-40%" width="140%" height="180%">
+                                        <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                                        <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
+                                    </filter>
+                                </defs>
+                                <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
+                                    class="next-ui-empty-brand-text next-ui-empty-brand-base">VCPCHAT</text>
+                                <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
+                                    class="next-ui-empty-brand-text next-ui-empty-brand-flow next-ui-empty-brand-cyan"
+                                    filter="url(#nextUiEmptyLogoGlow)">VCPCHAT</text>
+                                <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
+                                    class="next-ui-empty-brand-text next-ui-empty-brand-flow next-ui-empty-brand-pink"
+                                    filter="url(#nextUiEmptyLogoGlow)">VCPCHAT</text>
+                            </svg>
+                        </div>
+                        <p id="nextUiEmptyTagline" class="next-ui-empty-tagline">语义级打穿 AI、UI/UX、APP 与人类想象力的边界</p>
+                    </div>
+                </section>
                 <div class="chat-messages" id="chatMessages">
                 </div>
             </div>
-            <footer class="chat-input-area">
+            <footer class="chat-input-area vcp-ui-scope" aria-label="消息输入区">
                 <div class="chat-input-card">
                     <div class="attachment-preview-area" id="attachmentPreviewArea"></div>
-                    <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)" rows="1" disabled></textarea>
+                    <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)"
+                        aria-label="消息内容" rows="1" disabled></textarea>
                     <div class="chat-input-actions">
-                        <button id="quickNewTopicBtn" title="新建聊天话题" disabled>
+                        <button id="quickNewTopicBtn" type="button" title="新建聊天话题" aria-label="新建聊天话题" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" aria-hidden="true">
@@ -647,7 +858,7 @@
                                 <path d="M9 11h6"></path>
                             </svg>
                         </button>
-                        <button id="attachFileBtn" title="发送文件" disabled>
+                        <button id="attachFileBtn" type="button" title="发送文件" aria-label="发送文件" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip"
@@ -656,7 +867,7 @@
                                     d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />
                             </svg>
                         </button>
-                        <button id="emoticonTriggerBtn" title="打开表情包" disabled>
+                        <button id="emoticonTriggerBtn" type="button" title="打开表情包" aria-label="打开表情包" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" class="lucide lucide-sticker-icon lucide-sticker"
@@ -669,10 +880,9 @@
                                 <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" />
                             </svg>
                         </button>
-                        <button id="sendMessageBtn" title="发送消息/右键高级回复" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round" aria-hidden="true">
+                        <button id="sendMessageBtn" type="button" title="发送消息/右键高级回复" aria-label="发送消息" disabled>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="m5 12 7-7 7 7"></path>
                                 <path d="M12 19V5"></path>
                             </svg>
@@ -680,43 +890,56 @@
                     </div>
                 </div>
             </footer>
-        </main>
-        <div class="resizer" id="resizerRight"></div>
-        <aside class="notifications-sidebar" id="notificationsSidebar">
+          </main>
+          <div class="resizer" id="resizerRight"></div>
+          <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
             <header class="notifications-header">
                 <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>
                 <div class="datetime-container">
                     <div id="digitalClock" class="digital-clock"></div>
                     <div id="dateDisplay" class="date-display"></div>
                 </div>
-                <div class="notification-header-actions">
-                    <button id="openForumBtn" class="header-button" title="左键VCP论坛/右键VCPMemo中心">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-                            <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"></path>
-                        </svg>
-                    </button>
-                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（左键开关过滤/右键通知设置）">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" class="lucide lucide-funnel-plus-icon lucide-funnel-plus"
+
+                <div class="next-ui-notification-actions">
+                    <button id="nextUiNotificationMenuBtn" class="next-ui-notification-menu-trigger" type="button"
+                        title="通知选项" aria-label="通知选项" aria-haspopup="menu"
+                        aria-controls="nextUiNotificationMenu" aria-expanded="false">
+                        <svg class="lucide lucide-ellipsis-vertical" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                             aria-hidden="true">
-                            <path d="M13.354 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l1.218-1.348"></path>
-                            <path d="M16 6h6"></path>
-                            <path d="M19 3v6"></path>
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="12" cy="5" r="1"></circle>
+                            <circle cx="12" cy="19" r="1"></circle>
                         </svg>
                     </button>
-                    <button id="clearNotificationsBtn" class="header-button" title="清空通知">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                            stroke-linejoin="round" class="lucide lucide-trash-icon lucide-trash" aria-hidden="true">
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                            <path d="M3 6h18"></path>
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                    </button>
+                    <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
+                        aria-label="通知选项" hidden>
+                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开 VCP Forum">
+                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
+                            <span>VCP Forum</span>
+                        </button>
+                        <button id="nextUiNotificationMemo" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开 VCP Memo">
+                            <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
+                            <span>VCP Memo</span>
+                        </button>
+                        <button id="nextUiNotificationFilterToggle" class="next-ui-notification-menu-item"
+                            type="button" role="menuitemcheckbox" aria-checked="false"
+                            title="左键切换过滤模式，右键打开过滤设置">
+                            <span class="vcp-ui-icon" aria-hidden="true">list_filter</span>
+                            <span>过滤模式</span>
+                            <span id="nextUiNotificationFilterState" class="next-ui-notification-menu-state">关闭</span>
+                        </button>
+                        <div class="next-ui-notification-menu-divider" role="separator"></div>
+                        <button id="nextUiNotificationClear" class="next-ui-notification-menu-item danger"
+                            type="button" role="menuitem">
+                            <span class="vcp-ui-icon" aria-hidden="true">trash_2</span>
+                            <span>清空通知</span>
+                        </button>
+                    </div>
                 </div>
+                <span id="nextUiPanelNotificationHost" class="next-ui-notification-toggle-host"></span>
             </header>
             <div class="notifications-status" id="vcpLogConnectionStatus">
                 VCPLog: 未连接
@@ -731,18 +954,21 @@
             <div id="vchatAppTray" class="notes-section">
                 <!-- App tray UI -->
                 <div id="appTrayPinnedApps" class="app-tray-pinned-apps"></div>
-                <button id="appTrayMoreBtn" class="app-tray-more-btn" title="更多应用">
+                <button id="appTrayMoreBtn" class="app-tray-more-btn" type="button"
+                    aria-label="更多应用" aria-controls="appTrayDrawer" aria-expanded="false" aria-haspopup="true"
+                    data-tooltip="更多应用">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="1"></circle>
                         <circle cx="19" cy="12" r="1"></circle>
                         <circle cx="5" cy="12" r="1"></circle>
                     </svg>
                 </button>
-                <div id="appTrayDrawer" class="app-tray-drawer">
+                <div id="appTrayDrawer" class="app-tray-drawer" role="region" aria-label="全部应用" aria-hidden="true">
                     <div class="app-tray-drawer-header">
                         <span class="app-tray-drawer-title">全部应用</span>
                         <div class="app-tray-drawer-actions">
-                            <button id="appTraySettingsBtn" class="app-tray-settings-btn" title="设置托盘显示的按钮">
+                            <button id="appTraySettingsBtn" class="app-tray-settings-btn" type="button"
+                                title="设置托盘显示的按钮" aria-label="设置托盘显示的按钮">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <circle cx="12" cy="12" r="3"></circle>
                                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -753,14 +979,15 @@
                     <div id="appTrayDrawerGrid" class="app-tray-drawer-grid"></div>
                 </div>
             </div>
-        </aside>
+          </aside>
+        </section>
     </div>
 
     <div id="modal-container"></div>
     <template id="globalSettingsModalTemplate">
-        <div class="modal" id="globalSettingsModal">
+        <div class="modal vcp-ui-scope" id="globalSettingsModal">
             <div class="modal-content global-settings-modal-content">
-                <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
+                <button class="close-button" type="button" aria-label="关闭全局设置">×</button>
                 <h2 class="global-settings-title">全局设置</h2>
 
                 <div class="global-settings-layout">
@@ -785,6 +1012,17 @@
                                 </svg>
                                 <span>服务器连接</span>
                             </li>
+                            <li class="settings-nav-item" data-section="appearance-settings">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <circle cx="13.5" cy="6.5" r="2.5"></circle>
+                                    <circle cx="17.5" cy="10.5" r="2.5"></circle>
+                                    <circle cx="8.5" cy="7.5" r="2.5"></circle>
+                                    <circle cx="6.5" cy="12.5" r="2.5"></circle>
+                                    <path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.8 4-4 4h-1.7a2.3 2.3 0 0 0-2.3 2.3v.7a3 3 0 0 1-3 3z"></path>
+                                </svg>
+                                <span>界面与外观</span>
+                            </li>
                             <li class="settings-nav-item" data-section="render-settings">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
@@ -793,7 +1031,7 @@
                                         d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
                                     </path>
                                 </svg>
-                                <span>渲染设置</span>
+                                <span>消息渲染</span>
                             </li>
                             <li class="settings-nav-item" data-section="selection-assistant">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -956,44 +1194,177 @@
                                 </div>
                             </div>
 
-                            <!-- 渲染设置 -->
-                            <div class="settings-section" id="section-render-settings">
-                                <h3 class="settings-section-title">渲染设置</h3>
+                            <!-- 界面与外观 -->
+                            <div class="settings-section" id="section-appearance-settings">
+                                <h3 class="settings-section-title">界面与外观</h3>
+                                <div class="appearance-workbench-card" id="appearanceSettingsWorkbenchCard">
+                                    <div class="appearance-workbench-preview" data-appearance-summary-preview aria-hidden="true">
+                                        <span class="appearance-workbench-preview-rail"></span>
+                                        <span class="appearance-workbench-preview-content">
+                                            <i></i><i></i><i></i>
+                                        </span>
+                                    </div>
+                                    <div class="appearance-workbench-copy">
+                                        <span class="appearance-workbench-eyebrow">可视化工作台</span>
+                                        <strong data-appearance-summary-title>自定义外观</strong>
+                                        <p data-appearance-summary-description>集中预览并调整主题、布局与聊天呈现。</p>
+                                        <div class="appearance-workbench-chips" aria-label="当前外观摘要">
+                                            <span data-appearance-summary-density>舒适</span>
+                                            <span data-appearance-summary-radius>中圆角</span>
+                                            <span data-appearance-summary-presentation>气泡</span>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="appearance-workbench-open" id="openAppearanceStudioFromSettings">
+                                        <svg class="appearance-workbench-open-icon" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                            stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M4 21v-7"></path>
+                                            <path d="M4 10V3"></path>
+                                            <path d="M12 21v-9"></path>
+                                            <path d="M12 8V3"></path>
+                                            <path d="M20 21v-5"></path>
+                                            <path d="M20 12V3"></path>
+                                            <path d="M2 14h4"></path>
+                                            <path d="M10 8h4"></path>
+                                            <path d="M18 16h4"></path>
+                                        </svg>
+                                        <span>打开工作台</span>
+                                    </button>
+                                </div>
+                                <div class="appearance-home-visual-setting">
+                                    <span class="appearance-home-visual-copy">
+                                        <strong>主页视觉文字</strong>
+                                        <small>在空会话中显示 VCPCHAT 标识与寄语</small>
+                                    </span>
+                                    <label class="switch" aria-label="显示主页视觉文字">
+                                        <input type="checkbox" id="showHomeVisualBrand" name="showHomeVisualBrand" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="appearance-home-tagline-setting">
+                                    <div class="appearance-home-visual-setting">
+                                        <span class="appearance-home-visual-copy">
+                                            <strong>首页寄语</strong>
+                                            <small>显示在 VCPCHAT 视觉文字下方</small>
+                                        </span>
+                                        <label class="switch" aria-label="显示首页寄语">
+                                            <input type="checkbox" id="showHomeVisualTagline" name="showHomeVisualTagline" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <label class="settings-form-group" for="homeVisualTagline">
+                                        <span>寄语内容</span>
+                                        <input type="text" id="homeVisualTagline" name="homeVisualTagline" maxlength="120"
+                                            value="语义级打穿 AI、UI/UX、APP 与人类想象力的边界">
+                                    </label>
+                                </div>
+                                <div class="settings-subsection settings-subsection-new appearance-settings-section">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">外观系统</div>
+                                        <p class="settings-subsection-description">密度、字体、圆角与材质可以独立组合。</p>
+                                    </div>
+                                    <div class="appearance-settings-grid">
+                                        <label class="settings-form-group" for="appearanceDensity">
+                                            <span>界面密度</span>
+                                            <select id="appearanceDensity" name="appearanceDensity">
+                                                <option value="compact">紧凑</option>
+                                                <option value="comfortable">舒适</option>
+                                                <option value="relaxed">宽松</option>
+                                            </select>
+                                        </label>
+                                        <label class="settings-form-group" for="appearanceRadius">
+                                            <span>圆角</span>
+                                            <select id="appearanceRadius" name="appearanceRadius">
+                                                <option value="square">直角 · 0px</option>
+                                                <option value="small">小圆角 · 6px 基准</option>
+                                                <option value="medium">中圆角 · 10px 基准</option>
+                                                <option value="round">大圆角 · 14px 基准</option>
+                                                <option value="custom">自定义</option>
+                                            </select>
+                                        </label>
+                                        <label class="settings-form-group" for="appearanceTypography">
+                                            <span>界面字体</span>
+                                            <select id="appearanceTypography" name="appearanceTypography">
+                                                <option value="system">系统字体</option>
+                                                <option value="humanist">VChat 人文无衬线</option>
+                                                <option value="serif">衬线字体</option>
+                                            </select>
+                                        </label>
+                                        <label class="settings-form-group" for="appearanceFontScale">
+                                            <span>字号</span>
+                                            <select id="appearanceFontScale" name="appearanceFontScale">
+                                                <option value="small">较小</option>
+                                                <option value="normal">标准</option>
+                                                <option value="large">较大</option>
+                                            </select>
+                                        </label>
+                                        <label class="settings-form-group" for="appearanceContentWidth">
+                                            <span>内容宽度</span>
+                                            <select id="appearanceContentWidth" name="appearanceContentWidth">
+                                                <option value="full">铺满</option>
+                                                <option value="centered">居中阅读</option>
+                                            </select>
+                                        </label>
+                                        <label class="settings-form-group" for="appearanceSurface">
+                                            <span>导航材质</span>
+                                            <select id="appearanceSurface" name="appearanceSurface">
+                                                <option value="translucent">跟随主题</option>
+                                                <option value="solid">纯色</option>
+                                                <option value="custom">自定义磨砂</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="settings-subsection appearance-sidebar-geometry-section">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">侧栏列表尺寸</div>
+                                        <p class="settings-subsection-description">统一控制助手、话题、创建入口与账户菜单的尺寸。</p>
+                                    </div>
+                                    <div class="appearance-sidebar-geometry-controls">
+                                        <label class="settings-form-group appearance-geometry-control" for="appearanceSidebarRowHeight">
+                                            <span class="appearance-range-heading">
+                                                <span>列表项高度</span>
+                                                <output id="appearanceSidebarRowHeightValue" for="appearanceSidebarRowHeight">46px</output>
+                                            </span>
+                                            <input type="range" id="appearanceSidebarRowHeight" name="appearanceSidebarRowHeight"
+                                                min="38" max="64" step="1" value="46">
+                                        </label>
+                                        <label class="settings-form-group appearance-geometry-control" for="appearanceSidebarAvatarSize">
+                                            <span class="appearance-range-heading">
+                                                <span>头像大小</span>
+                                                <output id="appearanceSidebarAvatarSizeValue" for="appearanceSidebarAvatarSize">32px</output>
+                                            </span>
+                                            <input type="range" id="appearanceSidebarAvatarSize" name="appearanceSidebarAvatarSize"
+                                                min="20" max="52" step="1" value="32">
+                                        </label>
+                                        <div class="settings-form-group appearance-geometry-control appearance-radius-choice-control">
+                                            <span>列表项圆角</span>
+                                            <div class="appearance-radius-choice-grid" role="radiogroup" aria-label="列表项圆角">
+                                                <label><input id="appearanceSidebarRadiusChoice-tuned" type="radio" name="appearanceSidebarRadiusChoice" value="tuned"><span>原设计<small>10px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-follow" type="radio" name="appearanceSidebarRadiusChoice" value="follow"><span>跟随全局<small>自动</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-square" type="radio" name="appearanceSidebarRadiusChoice" value="square"><span>直角<small>0px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-small" type="radio" name="appearanceSidebarRadiusChoice" value="small"><span>小圆角<small>6px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-medium" type="radio" name="appearanceSidebarRadiusChoice" value="medium"><span>中圆角<small>10px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-round" type="radio" name="appearanceSidebarRadiusChoice" value="round"><span>大圆角<small>14px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-custom" type="radio" name="appearanceSidebarRadiusChoice" value="custom"><span>自定义<small>使用下方数值</small></span></label>
+                                            </div>
+                                            <input type="hidden" id="appearanceSidebarRadius" name="appearanceSidebarRadius" value="tuned">
+                                        </div>
+                                        <label class="settings-form-group appearance-geometry-control" for="appearanceCustomRadius">
+                                            <span class="appearance-range-heading">
+                                                <span>自定义圆角值</span>
+                                                <output id="appearanceCustomRadiusValue" for="appearanceCustomRadius">10px</output>
+                                            </span>
+                                            <input type="range" id="appearanceCustomRadius" name="appearanceCustomRadius"
+                                                min="0" max="32" step="1" value="10">
+                                        </label>
+                                    </div>
+                                    <small class="appearance-geometry-helper">头像最大值会随当前列表项高度自动限制，避免超出圆角边界。</small>
+                                </div>
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">基础渲染</div>
-                                        <p class="settings-subsection-description">控制气泡主题、流式输出以及基础渲染节奏。</p>
-                                    </div>
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                        <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme"
-                                                checked>
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                        <label for="enableSmoothStreaming">开启高级流式渲染</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
-                                    <div class="settings-inline-number-row">
-                                        <div>
-                                            <label for="minChunkBufferSize"
-                                                style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
-                                            <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
-                                                value="16" style="width: 80px;">
-                                        </div>
-                                        <div>
-                                            <label for="smoothStreamIntervalMs"
-                                                style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
-                                            <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
-                                                min="1" value="100" style="width: 80px;">
-                                        </div>
+                                        <div class="settings-subsection-title">聊天字体与气泡</div>
+                                        <p class="settings-subsection-description">调整聊天正文、代码、场景字体和 Agent 气泡外观。</p>
                                     </div>
                                     <div class="settings-form-group" id="chatFontSettingsGroup" style="margin-top: 18px;">
                                         <label for="chatFontPreset">聊天字体</label>
@@ -1220,6 +1591,44 @@
                                                     可设置范围为 50% - 98%。标准模式沿用系统默认宽度，这里只调整气泡模式的宽屏布局。
                                                 </small>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 消息渲染 -->
+                            <div class="settings-section" id="section-render-settings">
+                                <h3 class="settings-section-title">消息渲染</h3>
+                                <div class="settings-subsection settings-subsection-new">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">流式输出</div>
+                                        <p class="settings-subsection-description">控制增量消息的缓冲大小与刷新节奏，不影响界面外观。</p>
+                                    </div>
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                        <div>
+                                            <label for="enableSmoothStreaming">开启高级流式渲染</label>
+                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                对增量文本进行缓冲，使输出节奏更加平滑。
+                                            </small>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <div class="settings-inline-number-row">
+                                        <div>
+                                            <label for="minChunkBufferSize"
+                                                style="display: block; margin-bottom: 4px;">最小渲染 Chunk 字数（≥1）</label>
+                                            <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
+                                                value="16" style="width: 80px;">
+                                        </div>
+                                        <div>
+                                            <label for="smoothStreamIntervalMs"
+                                                style="display: block; margin-bottom: 4px;">最小刷新间隔（ms，≥1）</label>
+                                            <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
+                                                min="1" value="100" style="width: 80px;">
                                         </div>
                                     </div>
                                 </div>
@@ -1688,19 +2097,17 @@
     </template>
 
     <template id="avatarCropperModalTemplate">
-        <div class="modal" id="avatarCropperModal">
-            <div class="modal-content" style="max-width: 420px;"> <!-- Adjusted width for cropper -->
+        <div class="modal vcp-ui-scope" id="avatarCropperModal">
+            <div class="modal-content avatar-cropper-modal-content">
                 <span class="close-button"
                     onclick="uiHelperFunctions.closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
                 <h2>裁剪头像</h2>
-                <div id="avatarCropperContainer"
-                    style="width: 360px; height: 360px; margin: 10px auto; position: relative; border: 1px solid var(--border-color); overflow: hidden; background-color: #ccc;">
+                <div id="avatarCropperContainer" class="avatar-cropper-stage">
                     <!-- Canvas for the image -->
                     <canvas id="avatarCanvas" width="360" height="360"></canvas>
                     <!-- Div for the circular overlay -->
-                    <div id="avatarCropOverlay"
-                        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab;">
-                        <svg width="100%" height="100%" viewBox="0 0 360 360" style="pointer-events: none;">
+                    <div id="avatarCropOverlay" class="avatar-cropper-overlay">
+                        <svg class="avatar-cropper-overlay-svg" width="100%" height="100%" viewBox="0 0 360 360">
                             <!-- SVG itself non-interactive -->
                             <defs>
                                 <mask id="circleMask">
@@ -1714,21 +2121,18 @@
                         </svg>
                     </div>
                 </div>
-                <div
-                    style="text-align: center; margin-top: 0px; margin-bottom:15px; font-size: 0.9em; color: var(--secondary-text);">
+                <div class="avatar-cropper-help">
                     <small>使用鼠标滚轮缩放, 拖动选区</small></div>
-                <div class="form-actions" style="margin-top: 10px;">
-                    <button type="button" id="cancelCropBtn" class="sidebar-button"
-                        style="background-color: var(--button-bg); color: var(--primary-text);">取消</button>
-                    <button type="button" id="confirmCropBtn" class="sidebar-button"
-                        style="background-color: var(--user-bubble-bg); color: white;">确认裁剪</button>
+                <div class="form-actions avatar-cropper-actions">
+                    <button type="button" id="cancelCropBtn" class="sidebar-button avatar-cropper-cancel">取消</button>
+                    <button type="button" id="confirmCropBtn" class="sidebar-button avatar-cropper-confirm">确认裁剪</button>
                 </div>
             </div>
         </div>
     </template>
 
     <template id="createGroupModalTemplate">
-        <div class="modal" id="createGroupModal">
+        <div class="modal vcp-ui-scope" id="createGroupModal">
             <div class="modal-content">
                 <span class="close-button" onclick="uiHelperFunctions.closeModal('createGroupModal')">×</span>
                 <h2>创建新群组</h2>
@@ -1748,7 +2152,7 @@
     </template>
 
     <template id="modelSelectModalTemplate">
-        <div class="modal" id="modelSelectModal">
+        <div class="modal vcp-ui-scope" id="modelSelectModal">
             <div class="modal-content">
                 <span class="close-button" onclick="uiHelperFunctions.closeModal('modelSelectModal')">×</span>
                 <h2>选择模型</h2>
@@ -1774,29 +2178,31 @@
     </template>
 
     <template id="globalSearchModalTemplate">
-        <div id="global-search-modal" class="search-modal-overlay" style="display: none;">
-            <div class="search-modal-content">
-                <div class="search-modal-header">
-                    <h3>全局搜索</h3>
-                    <button id="global-search-close-button" class="search-modal-close-button">&times;</button>
-                </div>
-                <div class="search-modal-body">
-                    <div class="search-controls">
-                        <select id="global-search-agent-select" class="search-agent-select">
-                            <option value="all">所有助手和群组</option>
-                        </select>
+        <div id="globalSearchModal">
+            <div id="global-search-modal" class="search-modal-overlay vcp-ui-scope" style="display: none;">
+                <div class="search-modal-content">
+                    <div class="search-modal-header">
+                        <h3>全局搜索</h3>
+                        <button id="global-search-close-button" class="search-modal-close-button">&times;</button>
                     </div>
-                    <textarea id="global-search-input"
-                        placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
-                    <div id="global-search-results"></div>
-                    <div id="global-search-pagination"></div>
+                    <div class="search-modal-body">
+                        <div class="search-controls">
+                            <select id="global-search-agent-select" class="search-agent-select">
+                                <option value="all">所有助手和群组</option>
+                            </select>
+                        </div>
+                        <textarea id="global-search-input"
+                            placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
+                        <div id="global-search-results"></div>
+                        <div id="global-search-pagination"></div>
+                    </div>
                 </div>
             </div>
         </div>
     </template>
 
     <template id="forwardMessageModalTemplate">
-        <div class="modal" id="forwardMessageModal">
+        <div class="modal vcp-ui-scope" id="forwardMessageModal">
             <div class="modal-content">
                 <span class="close-button" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">×</span>
                 <h2>转发消息</h2>
@@ -1823,7 +2229,7 @@
     </template>
 
     <template id="regexRuleModalTemplate">
-        <div class="modal" id="regexRuleModal">
+        <div class="modal vcp-ui-scope" id="regexRuleModal">
             <div class="modal-content">
                 <span class="close-button" id="closeRegexRuleModal">×</span>
                 <h2>编辑正则表达式规则</h2>
@@ -1893,7 +2299,7 @@
     </template>
 
     <template id="filterRulesModalTemplate">
-        <div class="modal" id="filterRulesModal">
+        <div class="modal vcp-ui-scope" id="filterRulesModal">
             <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
                 <span class="close-button" id="closeFilterRulesModal">×</span>
                 <h2>通知栏行为设置</h2>
@@ -1964,7 +2370,7 @@
     </template>
 
     <template id="filterRuleEditorModalTemplate">
-        <div class="modal" id="filterRuleEditorModal">
+        <div class="modal vcp-ui-scope" id="filterRuleEditorModal">
             <div class="modal-content">
                 <span class="close-button" id="closeFilterRuleEditorModal">×</span>
                 <h2 id="filterRuleEditorTitle">添加过滤规则</h2>
@@ -2039,7 +2445,7 @@
     </template>
 
     <template id="toolAutoApprovalRuleEditorModalTemplate">
-        <div class="modal" id="toolAutoApprovalRuleEditorModal">
+        <div class="modal vcp-ui-scope" id="toolAutoApprovalRuleEditorModal">
             <div class="modal-content">
                 <span class="close-button" id="closeToolAutoApprovalRuleEditorModal">×</span>
                 <h2 id="toolAutoApprovalRuleEditorTitle">添加默认允许工具</h2>
@@ -2097,17 +2503,42 @@
 
     <script src="modules/topicSummarizer.js"></script>
     <script src="modules/notificationRenderer.js"></script>
-    <script type="module" src="modules/messageRenderer.js"></script>
     <script src="modules/inputEnhancer.js"></script>
     <script src="modules/itemListManager.js"></script>
     <script src="modules/topicListManager.js"></script>
-    <script src="modules/chatManager.js"></script>
+    <script src="modules/ui-system/sidebar-resizer.js"></script>
     <script src="modules/uiManager.js"></script>
+    <script src="modules/ui-system/avatar-picker.js"></script>
     <script src="modules/settingsManager.js"></script>
     <script src="modules/emoticonManager.js"></script> <!-- 新增：用户表情包管理器 -->
     <script src="modules/filterManager.js"></script> <!-- 新增：过滤规则管理器 -->
+    <script src="modules/shared/embeddedAppAllowlist.js"></script>
     <script src="modules/trayManager.js"></script> <!-- 新增：应用托盘管理器 -->
+    <script src="node_modules/lucide/dist/umd/lucide.min.js"></script>
+    <script src="modules/ui-system/lucide-adapter.js"></script>
+    <script type="module" src="modules/ui-system/vcp-ui.js"></script>
+    <script type="module" src="modules/ui-system/webawesome-adapter.js"></script>
+    <script type="module" src="modules/ui-system/vcp-main-ui-runtime.js"></script>
+    <script type="module" src="modules/ui-system/settings-bridge.js"></script>
+    <script type="module" src="modules/ui-system/next-ui-apps.js"></script>
+    <script type="module" src="modules/ui-system/ask-nova-modal.js"></script>
+    <script type="module" src="modules/ui-system/component-showcase.js"></script>
+    <script type="module" src="modules/ui-system/standalone-chat-app.js"></script>
+    <script type="module" src="modules/ui-system/interactive-chat-app.js"></script>
+    <script src="modules/mainChatCommands.js"></script>
+    <script src="modules/ui-system/next-shell/overlay-coordinator.js"></script>
+    <script src="modules/ui-system/next-shell/embedded-app-controller.js"></script>
+    <script src="modules/ui-system/next-shell/escape-dispatcher.js"></script>
+    <script src="modules/ui-system/next-shell/app-tab-host.js"></script>
+    <script src="modules/ui-system/next-shell/assistant-search-controller.js"></script>
+    <script src="modules/ui-system/next-shell/account-menu-controller.js"></script>
+    <script src="modules/ui-system/next-shell/notification-menu-controller.js"></script>
+    <script src="modules/ui-system/next-shell/launchpad-controller.js"></script>
+    <script src="modules/ui-system/next-shell/creation-controller.js"></script>
+    <script src="modules/ui-system/next-shell/next-shell-controller.js"></script>
+    <script src="modules/topTabManager.js"></script>
     <script src="modules/ui-helpers.js"></script>
+    <script src="modules/ui-system/appearance-studio.js"></script>
     <!-- Promptmodules -->
     <script src="Promptmodules/original-prompt-module.js"></script>
     <script src="Promptmodules/modular-prompt-module.js"></script>
@@ -2121,7 +2552,6 @@
     <script type="module" src="modules/renderer/colorUtils.js"></script>
     <script type="module" src="modules/renderer/imageHandler.js"></script>
     <script type="module" src="modules/renderer/domBuilder.js"></script>
-    <script type="module" src="modules/renderer/streamManager.js"></script>
     <script type="module" src="modules/renderer/contentProcessor.js"></script>
     <script type="module" src="modules/renderer/messageContextMenu.js"></script>
     <script type="module" src="modules/event-listeners.js"></script>
@@ -2136,4 +2566,3 @@
 </body>
 
 </html>
-

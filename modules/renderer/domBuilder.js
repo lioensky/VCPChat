@@ -20,9 +20,10 @@
  * }} An object containing the created DOM elements.
  */
 
-function fixVoiceChatAssetPath(url) {
+function fixVoiceChatAssetPath(url, ownerWindow = null) {
     if (!url) return url;
-    const isVoiceChatPage = window.location.pathname.replace(/\\/g, '/').includes('/Voicechatmodules/');
+    const pathname = ownerWindow?.location?.pathname || '';
+    const isVoiceChatPage = pathname.replace(/\\/g, '/').includes('/Voicechatmodules/');
     if (!isVoiceChatPage) return url;
     if (url.startsWith('assets/')) return `../${url}`;
     return url;
@@ -74,8 +75,11 @@ export function applyUserMessageLayoutState(messageItem, globalSettings) {
     messageItem.classList.add('user-bubble-ui-disabled');
 }
 
-export function createMessageSkeleton(message, globalSettings, currentSelectedItem) {
-    const messageItem = document.createElement('div');
+export function createMessageSkeleton(message, globalSettings, currentSelectedItem, domRealm = {}) {
+    const ownerDocument = domRealm.document || domRealm.root?.ownerDocument;
+    if (!ownerDocument?.createElement) throw new TypeError('createMessageSkeleton requires a DOM document');
+    const ownerWindow = domRealm.window || ownerDocument.defaultView;
+    const messageItem = ownerDocument.createElement('div');
     messageItem.classList.add('message-item', message.role);
     if (message.isGroupMessage) messageItem.classList.add('group-message-item');
     messageItem.dataset.timestamp = String(message.timestamp);
@@ -83,7 +87,7 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
     if (message.agentId) messageItem.dataset.agentId = message.agentId;
     applyUserMessageLayoutState(messageItem, globalSettings);
 
-    const contentDiv = document.createElement('div');
+    const contentDiv = ownerDocument.createElement('div');
     contentDiv.classList.add('md-content');
 
     let avatarImg = null,
@@ -109,26 +113,26 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
     }
 
     if (message.role === 'user' || message.role === 'assistant') {
-        avatarImg = document.createElement('img');
+        avatarImg = ownerDocument.createElement('img');
         avatarImg.classList.add('chat-avatar');
-        avatarImg.src = fixVoiceChatAssetPath(avatarUrlToUse);
+        avatarImg.src = fixVoiceChatAssetPath(avatarUrlToUse, ownerWindow);
         avatarImg.alt = `${senderNameToUse} 头像`;
         avatarImg.onerror = () => {
             avatarImg.onerror = null;
-            avatarImg.src = fixVoiceChatAssetPath(message.role === 'user' ? 'assets/default_user_avatar.png' : 'assets/default_avatar.png');
+            avatarImg.src = fixVoiceChatAssetPath(message.role === 'user' ? 'assets/default_user_avatar.png' : 'assets/default_avatar.png', ownerWindow);
         };
 
-        nameTimeDiv = document.createElement('div');
+        nameTimeDiv = ownerDocument.createElement('div');
         nameTimeDiv.classList.add('name-time-block');
 
-        senderNameDiv = document.createElement('div');
+        senderNameDiv = ownerDocument.createElement('div');
         senderNameDiv.classList.add('sender-name');
         senderNameDiv.textContent = senderNameToUse;
 
         nameTimeDiv.appendChild(senderNameDiv);
 
         if (message.timestamp && !message.isThinking) {
-            const timestampDiv = document.createElement('div');
+            const timestampDiv = ownerDocument.createElement('div');
             timestampDiv.classList.add('message-timestamp');
             timestampDiv.textContent = formatMessageTimestamp(message.timestamp);
             nameTimeDiv.appendChild(timestampDiv);
@@ -148,10 +152,3 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
 
     return { messageItem, contentDiv, avatarImg, senderNameDiv, nameTimeDiv, detailsAndBubbleWrapper };
 }
-
-// Expose to global scope for classic scripts
-window.domBuilder = {
-    createMessageSkeleton,
-    formatMessageTimestamp,
-    applyUserMessageLayoutState
-};

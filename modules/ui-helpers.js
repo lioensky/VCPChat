@@ -6,6 +6,7 @@
     let croppedAgentAvatarFile = null;
     let croppedUserAvatarFile = null;
     let croppedGroupAvatarFile = null;
+    const modalGenerations = new Map();
 
     const uiHelperFunctions = {};
     const textareaResizeStates = new WeakMap();
@@ -342,7 +343,12 @@
         }
 
         if (modalElement) {
+            const generation = (modalGenerations.get(modalId) || 0) + 1;
+            modalGenerations.set(modalId, generation);
             modalElement.classList.add('active');
+            document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
+                detail: { modalId, active: true, root: modalElement, generation }
+            }));
             // 确保新打开的模态框获得焦点
             modalElement.focus();
         } else {
@@ -356,7 +362,12 @@
      */
     uiHelperFunctions.closeModal = function(modalId) {
         const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.classList.remove('active');
+        if (modalElement) {
+            modalElement.classList.remove('active');
+            document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
+                detail: { modalId, active: false, root: modalElement, generation: modalGenerations.get(modalId) || 0 }
+            }));
+        }
     };
 
     /**
@@ -365,6 +376,11 @@
      * @param {number} [duration=3000] The duration in milliseconds.
      */
     uiHelperFunctions.showToastNotification = function(message, type = 'info', duration = 3000) {
+        if (window.VCPUI?.feedback?.toast) {
+            const variant = type === 'error' ? 'error' : ['info', 'success', 'warning'].includes(type) ? type : 'info';
+            return window.VCPUI.feedback.toast(String(message), { variant, duration });
+        }
+
         const container = document.getElementById('floating-toast-notifications-container');
         if (!container) {
             console.warn("Toast notification container not found.");
@@ -779,38 +795,6 @@
                 console.error("[UI Helper] Could not find tabContentSettings to append group settings DOM placeholder.");
             }
         }
-         // Ensure createNewGroupBtn has its text updated
-         const createNewAgentBtn = document.getElementById('createNewAgentBtn');
-         const createNewGroupBtn = document.getElementById('createNewGroupBtn');
-         if (createNewAgentBtn) {
-             createNewAgentBtn.innerHTML = `
-                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                     <path d="M2 21a8 8 0 0 1 13.292-6"></path>
-                     <circle cx="10" cy="8" r="5"></circle>
-                     <path d="M19 16v6"></path>
-                     <path d="M22 19h-6"></path>
-                 </svg>
-                 <span class="sidebar-button-label">
-                     <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                     <span class="sidebar-button-keyword">Agent</span>
-                 </span>
-             `;
-         }
-         if (createNewGroupBtn) {
-             createNewGroupBtn.innerHTML = `
-                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                     <path d="M18 21a8 8 0 0 0-16 0"></path>
-                     <circle cx="10" cy="8" r="5"></circle>
-                     <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path>
-                 </svg>
-                 <span class="sidebar-button-label">
-                     <span class="sidebar-button-prefix">&#21019;&#24314;</span>
-                     <span class="sidebar-button-keyword">Group</span>
-                 </span>
-             `;
-             console.log('[UI Helper prepareGroupSettingsDOM] createNewGroupBtn icon content applied');
-             createNewGroupBtn.style.display = 'inline-flex'; // Make it visible
-         }
     };
 
     uiHelperFunctions.addNetworkPathInput = function(path = '') {
@@ -888,6 +872,7 @@
      */
     uiHelperFunctions.showConfirmDialog = function(message, title = '确认', confirmText = '确定', cancelText = '取消', isDanger = false) {
         return new Promise((resolve) => {
+            const previousFocus = document.activeElement;
             // 创建模态框容器
             const overlay = document.createElement('div');
             overlay.id = 'confirm-dialog-overlay';
@@ -896,10 +881,15 @@
             // 创建对话框
             const dialog = document.createElement('div');
             dialog.className = 'confirm-dialog';
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            const titleId = `confirm-dialog-title-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            dialog.setAttribute('aria-labelledby', titleId);
             
             // 标题
             const titleEl = document.createElement('div');
             titleEl.className = 'confirm-dialog-title';
+            titleEl.id = titleId;
             titleEl.textContent = title;
             dialog.appendChild(titleEl);
             
@@ -936,24 +926,30 @@
             dialog.appendChild(buttonsEl);
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
-            
-            // 显示动画
-            requestAnimationFrame(() => {
-                overlay.classList.add('visible');
-                confirmBtn.focus();
-            });
+            // Publish the active state synchronously so a same-frame Escape
+            // cannot close the owning settings modal underneath this dialog.
+            overlay.classList.add('visible');
+            confirmBtn.focus();
             
             // 键盘事件
             const handleKeydown = (e) => {
                 if (e.key === 'Escape') {
+                    e.preventDefault();
                     cleanup();
                     resolve(false);
                 } else if (e.key === 'Enter') {
+                    e.preventDefault();
                     cleanup();
                     resolve(true);
+                } else if (e.key === 'Tab') {
+                    const focusables = [cancelBtn, confirmBtn];
+                    const current = focusables.indexOf(document.activeElement);
+                    if (current < 0) return;
+                    e.preventDefault();
+                    focusables[(current + (e.shiftKey ? -1 : 1) + focusables.length) % focusables.length].focus();
                 }
             };
-            document.addEventListener('keydown', handleKeydown);
+            document.addEventListener('keydown', handleKeydown, true);
             
             // 点击遮罩关闭
             overlay.onclick = (e) => {
@@ -965,12 +961,13 @@
             
             // 清理函数
             function cleanup() {
-                document.removeEventListener('keydown', handleKeydown);
+                document.removeEventListener('keydown', handleKeydown, true);
                 overlay.classList.remove('visible');
                 setTimeout(() => {
                     if (overlay.parentNode) {
                         overlay.parentNode.removeChild(overlay);
                     }
+                    if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
                 }, 200);
             }
         });

@@ -9,6 +9,7 @@ let updateAttachmentPreviewRef; // Reference to renderer.js's updateAttachmentPr
 let currentAgentIdRef; // Function to get currentAgentId
 let currentTopicIdRef; // Function to get currentTopicId
 let electronApiRef; // Stable API reference for helper functions outside initializeInputEnhancer
+let inputEnhancerDispose = async () => {};
 
 /**
  * Initializes the input enhancer module.
@@ -20,6 +21,7 @@ let electronApiRef; // Stable API reference for helper functions outside initial
  * @param {Function} refs.updateAttachmentPreview - Function to update the attachment preview UI.
  * @param {Function} refs.getCurrentAgentId - Function that returns the current agent ID.
  * @param {Function} refs.getCurrentTopicId - Function that returns the current topic ID.
+ * @param {object} [refs.listenerOwner] - Renderer lifecycle owner for DOM listeners.
  */
 function initializeInputEnhancer(refs) {
     if (!refs.messageInput || !refs.electronAPI || !refs.attachedFiles || !refs.updateAttachmentPreview || !refs.getCurrentAgentId || !refs.getCurrentTopicId) {
@@ -34,6 +36,38 @@ function initializeInputEnhancer(refs) {
     currentTopicIdRef = refs.getCurrentTopicId;
     electronApiRef = localElectronAPI;
 
+    void inputEnhancerDispose();
+    const ownedDisposers = [];
+    const lifecycle = { active: true, tasks: new Set() };
+    const isActive = () => lifecycle.active;
+    const track = value => {
+        const task = Promise.resolve(value);
+        lifecycle.tasks.add(task);
+        task.finally(() => lifecycle.tasks.delete(task)).catch(() => {});
+        return task;
+    };
+    const addListener = (target, type, handler, options) => {
+        const ownedHandler = (...args) => {
+            if (!isActive()) return;
+            try {
+                const result = handler(...args);
+                return result?.then ? track(result) : result;
+            } catch (error) {
+                console.error(`[InputEnhancer] ${type} listener failed:`, error);
+            }
+        };
+        if (refs.listenerOwner?.add?.(target, type, ownedHandler, options)) return;
+        target?.addEventListener?.(type, ownedHandler, options);
+        ownedDisposers.push(() => target?.removeEventListener?.(type, ownedHandler, options));
+    };
+    inputEnhancerDispose = async () => {
+        if (!lifecycle.active) return;
+        lifecycle.active = false;
+        ownedDisposers.splice(0).reverse().forEach(dispose => dispose());
+        noteSuggestionPopup?.remove?.();
+        noteSuggestionPopup = null;
+        await Promise.allSettled([...lifecycle.tasks]);
+    };
     const messageInput = refs.messageInput;
     const dropTargetElement = refs.dropTargetElement || messageInput;
     let dragDepth = 0;
@@ -45,7 +79,7 @@ function initializeInputEnhancer(refs) {
     };
 
     // 1. Drag and Drop functionality
-    dropTargetElement.addEventListener('dragenter', (event) => {
+    addListener(dropTargetElement, 'dragenter', (event) => {
         event.preventDefault();
         event.stopPropagation();
         console.log('[InputEnhancer] dragenter event');
@@ -53,7 +87,7 @@ function initializeInputEnhancer(refs) {
         activateDropTarget();
     });
 
-    dropTargetElement.addEventListener('dragover', (event) => {
+    addListener(dropTargetElement, 'dragover', (event) => {
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
@@ -62,7 +96,7 @@ function initializeInputEnhancer(refs) {
         }
     });
 
-    dropTargetElement.addEventListener('dragleave', (event) => {
+    addListener(dropTargetElement, 'dragleave', (event) => {
         event.preventDefault();
         event.stopPropagation();
         console.log('[InputEnhancer] dragleave event');
@@ -72,7 +106,7 @@ function initializeInputEnhancer(refs) {
         }
     });
 
-    dropTargetElement.addEventListener('drop', async (event) => {
+    addListener(dropTargetElement, 'drop', async (event) => {
         event.preventDefault();
         event.stopPropagation();
         console.log('[InputEnhancer] drop event triggered.');
@@ -133,6 +167,7 @@ function initializeInputEnhancer(refs) {
             }
 
             const droppedFilesData = await Promise.all(filesToProcess);
+            if (!isActive()) return;
             const successfulFiles = droppedFilesData.filter(f => !f.error);
             const failedFiles = droppedFilesData.filter(f => f.error);
 
@@ -152,19 +187,18 @@ function initializeInputEnhancer(refs) {
                 console.log('[InputEnhancer] Calling localElectronAPI.handleFileDrop with:', agentId, topicId, successfulFiles.map(f => ({ name: f.name, type: f.type, size: f.size, data: f.data ? `[Buffer, length: ${f.data.length}]` : 'N/A' })));
                 // Pass the actual buffers to main process
                 const results = await localElectronAPI.handleFileDrop(agentId, topicId, successfulFiles);
+                if (!isActive()) return;
                 console.log('[InputEnhancer] Results from handleFileDrop:', results);
                 if (results && results.length > 0) {
                     results.forEach(result => {
                         if (result.success && result.attachment) {
                             const att = result.attachment;
-                            const currentFiles = attachedFilesRef.get();
-                            currentFiles.push({
+                            attachedFilesRef.append({
                                 file: { name: att.name, type: att.type, size: att.size },
                                 localPath: att.internalPath,
                                 originalName: att.name,
                                 _fileManagerData: att
                             });
-                            attachedFilesRef.set(currentFiles);
                             console.log(`[InputEnhancer] Successfully attached dropped file: ${att.name}`);
                         } else if (result.error) {
                             console.error(`[InputEnhancer] Error processing dropped file ${result.name || 'unknown'}: ${result.error}`);
@@ -183,7 +217,7 @@ function initializeInputEnhancer(refs) {
     });
 
     // 2. Enhanced Paste functionality
-    messageInput.addEventListener('paste', async (event) => {
+    addListener(messageInput, 'paste', async (event) => {
         const agentId = currentAgentIdRef();
         const topicId = currentTopicIdRef();
         const clipboardData = event.clipboardData || window.clipboardData;
@@ -214,15 +248,16 @@ function initializeInputEnhancer(refs) {
                 if (items[i].kind === 'file') {
                     const file = items[i].getAsFile();
                     if (file) {
-                        await handlePastedFileSafe(file, agentId, topicId);
+                        await handlePastedFileSafe(file, agentId, topicId, lifecycle, localElectronAPI);
                         return; // 婢跺嫮鎮婄€瑰瞼顑囨稉鈧稉顏呮瀮娴犺泛姘ㄧ紒鎾存将
                     }
                 }
             }
             // 婵″倹鐏夐張澶嬪焻閸ユ拝绱濇稊鐔虹暬閺傚洣娆㈤敍灞肩瑐闂堛垻娈戦柅鏄忕帆娴兼艾顦╅悶?
             const imageData = await localElectronAPI.readImageFromClipboard();
+            if (!isActive()) return;
             if (imageData && imageData.data) {
-                 await handlePastedImageDataSafe(imageData, agentId, topicId);
+                 await handlePastedImageDataSafe(imageData, agentId, topicId, lifecycle, localElectronAPI);
                  return;
             }
 
@@ -236,7 +271,7 @@ function initializeInputEnhancer(refs) {
                 alert('请先选择一个 Agent 和话题，再粘贴长文本。');
                 return;
             }
-            await handleLongTextPasteSafe(pastedText, agentId, topicId);
+            await handleLongTextPasteSafe(pastedText, agentId, topicId, lifecycle, localElectronAPI);
             return;
         }
 
@@ -247,7 +282,7 @@ function initializeInputEnhancer(refs) {
     console.log('[InputEnhancer] Event listeners attached to message input.');
 
     // Listen for files shared from other windows (like the music player)
-    localElectronAPI.onAddFileToInput(async (filePath) => {
+    const consumeSharedFile = async (filePath) => {
         console.log(`[InputEnhancer] Received shared file path: ${filePath}`);
         const agentId = currentAgentIdRef();
         const topicId = currentTopicIdRef();
@@ -262,17 +297,17 @@ function initializeInputEnhancer(refs) {
         try {
             // We need to get the filename from the path to mimic a real File object.
             const fileName = await window.electronPath.basename(filePath);
+            if (!isActive()) return;
             const results = await localElectronAPI.handleFileDrop(agentId, topicId, [{ path: filePath, name: fileName }]);
+            if (!isActive()) return;
             if (results && results.length > 0 && results[0].success && results[0].attachment) {
                 const att = results[0].attachment;
-                const currentFiles = attachedFilesRef.get();
-                currentFiles.push({
+                attachedFilesRef.append({
                     file: { name: att.name, type: att.type, size: att.size },
                     localPath: att.internalPath,
                     originalName: att.name,
                     _fileManagerData: att
                 });
-                attachedFilesRef.set(currentFiles);
                 updateAttachmentPreviewRef();
                 console.log(`[InputEnhancer] Successfully attached shared file: ${att.name}`);
             } else {
@@ -280,16 +315,22 @@ function initializeInputEnhancer(refs) {
                 alert('附加分享的文件失败: ' + errorMsg);
             }
         } catch (err) {
+            if (!isActive()) return;
             console.error('[InputEnhancer] Error attaching shared file:', err);
             alert('附加分享的文件时发生意外错误。');
         }
+    };
+    const sharedFileSubscription = localElectronAPI.onAddFileToInput(filePath => {
+        if (!isActive()) return;
+        return track(consumeSharedFile(filePath));
     });
+    refs.listenerOwner?.own?.(sharedFileSubscription);
 
     // --- @note Mention Functionality ---
     let noteSuggestionPopup = null;
     let activeSuggestionIndex = -1;
 
-    messageInput.addEventListener('input', async () => {
+    addListener(messageInput, 'input', async () => {
         const text = messageInput.value;
         const cursorPos = messageInput.selectionStart;
         const atMatch = text.substring(0, cursorPos).match(/@([\w\u4e00-\u9fa5]*)$/);
@@ -299,6 +340,7 @@ function initializeInputEnhancer(refs) {
         try {
             console.log('[inputEnhancer] Searching notes for query:', query);
             const notes = await localElectronAPI.searchNotes(query);
+            if (!isActive()) return;
             console.log('[inputEnhancer] Search results:', notes);
             
             if (notes && notes.length > 0) {
@@ -307,6 +349,7 @@ function initializeInputEnhancer(refs) {
                 hideNoteSuggestions();
             }
         } catch (error) {
+            if (!isActive()) return;
             console.error('[inputEnhancer] Failed to search notes:', error);
             hideNoteSuggestions();
         }
@@ -315,7 +358,7 @@ function initializeInputEnhancer(refs) {
         }
     });
 
-    messageInput.addEventListener('keydown', (e) => {
+    addListener(messageInput, 'keydown', (e) => {
         if (noteSuggestionPopup && noteSuggestionPopup.style.display === 'block') {
             const items = noteSuggestionPopup.querySelectorAll('.suggestion-item');
             if (e.key === 'ArrowDown') {
@@ -358,7 +401,7 @@ function initializeInputEnhancer(refs) {
             `;  
             
             item.dataset.filePath = note.path;
-            item.addEventListener('click', () => selectNoteSuggestion(note));
+        addListener(item, 'click', () => selectNoteSuggestion(note));
             noteSuggestionPopup.appendChild(item);
         });
 
@@ -412,17 +455,16 @@ function initializeInputEnhancer(refs) {
                 name: note.name
                 // No need to specify type or data, main process will handle it
             }]);
+            if (!isActive()) return;
 
             if (results && results.length > 0 && results[0].success && results[0].attachment) {
                 const att = results[0].attachment;
-                const currentFiles = attachedFilesRef.get();
-                currentFiles.push({
+                attachedFilesRef.append({
                     file: { name: att.name, type: att.type, size: att.size },
                     localPath: att.internalPath,
                     originalName: att.name,
                     _fileManagerData: att
                 });
-                attachedFilesRef.set(currentFiles);
                 updateAttachmentPreviewRef();
                 console.log(`[InputEnhancer] Successfully attached note: ${att.name}`);
             } else {
@@ -430,6 +472,7 @@ function initializeInputEnhancer(refs) {
                 alert('附加笔记 "' + note.name + '" 失败: ' + errorMsg);
             }
         } catch (err) {
+            if (!isActive()) return;
             console.error('[InputEnhancer] Error attaching note file:', err);
             alert('附加笔记 "' + note.name + '" 时发生意外错误。');
         }
@@ -463,10 +506,10 @@ function readFileAsUint8Array(file) {
     });
 }
 
-async function handlePastedFileSafe(file, agentId, topicId) {
+async function handlePastedFileSafe(file, agentId, topicId, lifecycle, localElectronAPI) {
     try {
-        const localElectronAPI = getElectronApi();
         const fileBuffer = await readFileAsUint8Array(file);
+        if (!lifecycle.active) return;
 
         if (fileBuffer.length === 0 && file.size !== 0) {
             alert('无法读取粘贴文件 "' + file.name + '" 的内容。');
@@ -479,17 +522,16 @@ async function handlePastedFileSafe(file, agentId, topicId) {
             data: fileBuffer,
             size: file.size
         }]);
+        if (!lifecycle.active) return;
 
         if (results && results.length > 0 && results[0].success && results[0].attachment) {
             const att = results[0].attachment;
-            const currentFiles = attachedFilesRef.get();
-            currentFiles.push({
+            attachedFilesRef.append({
                 file: { name: att.name, type: att.type, size: att.size },
                 localPath: att.internalPath,
                 originalName: att.name,
                 _fileManagerData: att
             });
-            attachedFilesRef.set(currentFiles);
             updateAttachmentPreviewRef();
             return;
         }
@@ -497,73 +539,72 @@ async function handlePastedFileSafe(file, agentId, topicId) {
         const errorMsg = results && results.length > 0 && results[0].error ? results[0].error : '未知错误';
         alert('粘贴文件 "' + file.name + '" 失败: ' + errorMsg);
     } catch (error) {
+        if (!lifecycle.active) return;
         console.error('[InputEnhancer] Failed to handle pasted file:', error);
         alert('粘贴文件 "' + file.name + '" 时发生错误: ' + error.message);
     }
 }
 
-async function handlePastedImageDataSafe(imageData, agentId, topicId) {
+async function handlePastedImageDataSafe(imageData, agentId, topicId, lifecycle, localElectronAPI) {
     try {
-        const localElectronAPI = getElectronApi();
         const result = await localElectronAPI.handleFilePaste(agentId, topicId, {
             type: 'base64',
             data: imageData.data,
             extension: imageData.extension || 'png'
         });
+        if (!lifecycle.active) return;
         if (result.success && result.attachment) {
             const att = result.attachment;
-            const currentFiles = attachedFilesRef.get();
-            currentFiles.push({
+            attachedFilesRef.append({
                 file: { name: att.name, type: att.type, size: att.size },
                 localPath: att.internalPath,
                 originalName: att.name,
                 _fileManagerData: att
             });
-            attachedFilesRef.set(currentFiles);
             updateAttachmentPreviewRef();
         } else {
             alert('无法从剪贴板粘贴图片: ' + (result.error || '截图处理失败'));
         }
     } catch (error) {
+        if (!lifecycle.active) return;
         console.error('[InputEnhancer] Failed to handle pasted image data:', error);
         alert('粘贴截图时发生错误: ' + error.message);
     }
 }
 
-async function handleLongTextPasteSafe(pastedText, agentId, topicId) {
+async function handleLongTextPasteSafe(pastedText, agentId, topicId, lifecycle, localElectronAPI) {
     try {
-        const localElectronAPI = getElectronApi();
         const result = await localElectronAPI.handleTextPasteAsFile(agentId, topicId, pastedText);
+        if (!lifecycle.active) return;
         if (result.success && result.attachment) {
             const att = result.attachment;
-            const currentFiles = attachedFilesRef.get();
-            currentFiles.push({
+            attachedFilesRef.append({
                 file: { name: att.name, type: att.type, size: att.size },
                 localPath: att.internalPath,
                 originalName: att.name,
                 _fileManagerData: att
             });
-            attachedFilesRef.set(currentFiles);
             updateAttachmentPreviewRef();
         } else {
             alert('长文本转存为 .txt 文件失败: ' + (result.error || '未知错误'));
         }
     } catch (error) {
+        if (!lifecycle.active) return;
         console.error('[InputEnhancer] Failed to handle long text paste:', error);
         alert('长文本转存时发生错误: ' + error.message);
     }
 }
 
 async function handlePastedFile(file, agentId, topicId) {
-    return handlePastedFileSafe(file, agentId, topicId);
+    return handlePastedFileSafe(file, agentId, topicId, { active: true }, getElectronApi());
 }
 
 async function handlePastedImageData(imageData, agentId, topicId) {
-    return handlePastedImageDataSafe(imageData, agentId, topicId);
+    return handlePastedImageDataSafe(imageData, agentId, topicId, { active: true }, getElectronApi());
 }
 
 async function handleLongTextPaste(pastedText, agentId, topicId) {
-    return handleLongTextPasteSafe(pastedText, agentId, topicId);
+    return handleLongTextPasteSafe(pastedText, agentId, topicId, { active: true }, getElectronApi());
 }
 
 
@@ -585,5 +626,6 @@ function insertTextAtCursor(inputElement, text) {
 }
 
 window.inputEnhancer = {
-    initializeInputEnhancer
+    initializeInputEnhancer,
+    dispose: () => inputEnhancerDispose()
 };

@@ -697,3 +697,7 @@ body.light-theme .global-settings-footer button[type="submit"]:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* Classic presentation for settings introduced by the optional UI system.
+ * These selectors deliberately target only new appearance controls.  The
+ * upstream Classic form and its existing controls keep their original CSS. */

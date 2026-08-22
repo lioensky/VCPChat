@@ -1104,6 +1104,9 @@ async function reconcileMissingPhysicalIndexes(
        SET deleted_at = ?
        WHERE topic_id = ? AND deleted_at IS NULL`,
     );
+    const deleteHistorySource = database.prepare(
+      "DELETE FROM history_source_state WHERE topic_id = ?",
+    );
 
     for (const owner of staleOwners) {
       const effectiveDeletedAt = staleOwnerDeletedAtByPath.get(owner.file_path);
@@ -1128,6 +1131,7 @@ async function reconcileMissingPhysicalIndexes(
         effectiveDeletedAt,
         topic.id,
       ).changes;
+      deleteHistorySource.run(topic.id);
     }
     database.exec("COMMIT");
   } catch (error) {
@@ -1473,6 +1477,14 @@ async function deleteEntity({
            AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')
        )`,
     ).run(deletedAt, deletedAt, configPath);
+    db.prepare(
+      `DELETE FROM history_source_state
+       WHERE topic_id IN (
+         SELECT id FROM entity_index
+         WHERE file_path = ?
+           AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')
+       )`,
+    ).run(configPath);
     db.prepare(
       `UPDATE entity_index
        SET deleted_at = CASE

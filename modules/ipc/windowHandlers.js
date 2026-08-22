@@ -66,6 +66,13 @@ function initialize(mainWindow, openChildWindows) {
     ipcMain.on('close-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win) {
+            // BrowserWindow.fromWebContents() may resolve a WebContentsView to
+            // its owner window. A child surface must never be allowed to close
+            // that owner through the generic window-control channel.
+            if (event.sender !== win.webContents) {
+                console.warn('[WindowHandlers] Ignored close-window from non-window webContents.');
+                return;
+            }
             // If it's the main window, check if the desktop window is alive.
             // If so, hide the main window to tray instead of quitting.
             if (win === mainWindow) {

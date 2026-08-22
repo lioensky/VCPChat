@@ -13,6 +13,7 @@ try {
 const { getLogger } = require("./logger");
 
 let db = null;
+const HISTORY_INDEX_VERSION = 1;
 const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
 const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
 
@@ -90,6 +91,28 @@ function initDb(dbPath) {
       PRIMARY KEY (msg_id, attachment_order)
     )
   `);
+
+  // 6. history.json 源文件版本。消息 updated_at 不能用于判断物理文件
+  // 是否变化；保存 mtime + size 后，后续启动只需 stat，避免重复读取、
+  // 解析和散列数千个未变化的历史文件。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS history_source_state (
+      topic_id TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      indexed_at INTEGER NOT NULL,
+      index_version INTEGER NOT NULL
+    )
+  `);
+  const historyStateColumns = db
+    .prepare("PRAGMA table_info(history_source_state)")
+    .all();
+  if (!historyStateColumns.some((column) => column.name === "index_version")) {
+    db.exec(
+      "ALTER TABLE history_source_state ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0",
+    );
+  }
 
   const logger = getLogger();
   logger.logInfo("reconcile", "数据库初始化完成。");
@@ -285,6 +308,65 @@ function getEntityIndex(id, type) {
 }
 
 /**
+ * 获取 history.json 最近一次成功索引时的文件版本。
+ */
+function getHistorySourceState(topicId) {
+  if (!db) return null;
+  return db
+    .prepare(
+      "SELECT topic_id, file_path, file_size, mtime_ms, indexed_at, index_version FROM history_source_state WHERE topic_id = ?",
+    )
+    .get(topicId) || null;
+}
+
+/**
+ * 仅在一个话题完整摄取成功后记录文件版本。失败文件不写状态，
+ * 以便下次启动继续验证并恢复，而不是把损坏内容误判为已索引。
+ */
+function upsertHistorySourceState(
+  topicId,
+  filePath,
+  fileSize,
+  mtimeMs,
+  indexedAt = Date.now(),
+) {
+  if (!db) return;
+  db.prepare(`
+    INSERT INTO history_source_state (
+      topic_id, file_path, file_size, mtime_ms, indexed_at, index_version
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(topic_id) DO UPDATE SET
+      file_path = excluded.file_path,
+      file_size = excluded.file_size,
+      mtime_ms = excluded.mtime_ms,
+      indexed_at = excluded.indexed_at,
+      index_version = excluded.index_version
+  `).run(
+    topicId,
+    filePath,
+    fileSize,
+    mtimeMs,
+    indexedAt,
+    HISTORY_INDEX_VERSION,
+  );
+}
+
+/**
+ * 源路径也参与版本判断，避免相同 topicId 被移动或错误复用后沿用旧状态。
+ */
+function isHistorySourceCurrent(topicId, filePath, fileSize, mtimeMs) {
+  const state = getHistorySourceState(topicId);
+  return Boolean(
+    state &&
+    state.index_version === HISTORY_INDEX_VERSION &&
+    pathIdentity(state.file_path) === pathIdentity(filePath) &&
+    state.file_size === fileSize &&
+    state.mtime_ms === mtimeMs
+  );
+}
+
+/**
  * 获取所有指定类型的实体
  * @param {string} type - 实体类型
  * @returns {object[]}
@@ -333,9 +415,12 @@ function softDeleteEntityIndex(id, type, deletedAt = Date.now()) {
        SET deleted_at = CASE
          WHEN deleted_at IS NULL THEN ? ELSE MIN(deleted_at, ?) END
        WHERE id = ? AND type = ?`;
-  return topicType
-    ? db.prepare(sql).run(deletedAt, deletedAt, id)
-    : db.prepare(sql).run(deletedAt, deletedAt, id, type);
+  if (topicType) {
+    const result = db.prepare(sql).run(deletedAt, deletedAt, id);
+    db.prepare("DELETE FROM history_source_state WHERE topic_id = ?").run(id);
+    return result;
+  }
+  return db.prepare(sql).run(deletedAt, deletedAt, id, type);
 }
 
 /**
@@ -454,6 +539,9 @@ module.exports = {
   upsertMessageAttachment,
   upsertAvatarIndex,
   getEntityIndex,
+  getHistorySourceState,
+  upsertHistorySourceState,
+  isHistorySourceCurrent,
   getEntitiesByType,
   getMessagesByTopic,
   softDeleteEntityIndex,

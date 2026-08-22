@@ -7,49 +7,45 @@ const uiManager = (() => {
     // --- Private Variables ---
     let globalSettingsRef = { get: () => ({}) }; // Reference to global settings
     let electronAPI = null;
+    const themeChannel = window.VCPStateChannels?.create('theme', Object.freeze({ ready: false, effective: 'light' })) || null;
 
     // DOM Elements (will be initialized in init)
     let leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight;
-    let minimizeBtn, maximizeBtn, restoreBtn, closeBtn, settingsBtn;
-    let themeToggleBtn;
     let digitalClockElement, dateDisplayElement, notificationTitleElement;
     let sidebarTabButtons, sidebarTabContents;
+    let lifecycleOwner = null;
+    let settingsManagerCapability = null;
+    let itemListManagerCapability = null;
+    let uiHelperCapability = null;
+    let disposed = false;
+    let generation = 0;
+    let themeDisposer = null;
+    const tasks = new Set();
+    const fallbackTimers = new Set();
+    const isCurrent = token => !disposed && token === generation;
+    const track = value => {
+        const task = Promise.resolve(value);
+        tasks.add(task);
+        task.finally(() => tasks.delete(task)).catch(() => {});
+        return task;
+    };
+    const scheduleTimeout = (callback, delay) => {
+        if (lifecycleOwner?.timeout) return lifecycleOwner.timeout(callback, delay);
+        const timer = setTimeout(() => {
+            fallbackTimers.delete(timer);
+            if (!disposed) callback();
+        }, delay);
+        fallbackTimers.add(timer);
+        return timer;
+    };
 
 
     // --- Private Functions ---
 
     /**
-     * Sets up the custom title bar controls (minimize, maximize, close).
-     */
-    function setupTitleBarControls() {
-        if (minimizeBtn) minimizeBtn.addEventListener('click', () => electronAPI.minimizeWindow());
-        if (maximizeBtn) maximizeBtn.addEventListener('click', () => electronAPI.maximizeWindow());
-        if (restoreBtn) restoreBtn.addEventListener('click', () => electronAPI.unmaximizeWindow());
-        if (closeBtn) closeBtn.addEventListener('click', () => electronAPI.closeWindow());
-        // if (settingsBtn) settingsBtn.addEventListener('click', () => electronAPI.openDevTools()); // This is now handled by the theme module
-
-        if (electronAPI && typeof electronAPI.onWindowMaximized === 'function') {
-            electronAPI.onWindowMaximized(() => {
-                if (maximizeBtn) maximizeBtn.style.display = 'none';
-                if (restoreBtn) restoreBtn.style.display = 'flex';
-            });
-        }
-        if (electronAPI && typeof electronAPI.onWindowUnmaximized === 'function') {
-            electronAPI.onWindowUnmaximized(() => {
-                if (maximizeBtn) maximizeBtn.style.display = 'flex';
-                if (restoreBtn) restoreBtn.style.display = 'none';
-            });
-        }
-    }
-
-    /**
      * Initializes the resizable sidebars.
      */
     function initializeResizers() {
-        let resizeState = null;
-        let pendingWidth = null;
-        let resizeFrame = 0;
-
         const getWidthConstraints = (element, fallbackMin) => {
             const computed = getComputedStyle(element);
             return {
@@ -57,104 +53,44 @@ const uiManager = (() => {
                 max: parseFloat(computed.maxWidth) || 600
             };
         };
-
-        const flushResizeWidth = () => {
-            resizeFrame = 0;
-            if (!resizeState || pendingWidth === null) return;
-            resizeState.element.style.width = `${pendingWidth}px`;
-        };
-
-        const scheduleResizeWidth = (width) => {
-            pendingWidth = width;
-            if (!resizeFrame) {
-                resizeFrame = requestAnimationFrame(flushResizeWidth);
-            }
-        };
-
-        const beginResize = (side, element, clientX, fallbackMin) => {
-            const constraints = getWidthConstraints(element, fallbackMin);
-            resizeState = {
-                side,
-                element,
-                startX: clientX,
-                startWidth: element.getBoundingClientRect().width,
-                minWidth: constraints.min,
-                maxWidth: constraints.max
-            };
-            pendingWidth = resizeState.startWidth;
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-            document.body.classList.add('vcp-sidebar-resizing');
-            element.style.transition = 'none';
-        };
-
-        if (resizerLeft && leftSidebar) {
-            resizerLeft.addEventListener('mousedown', (e) => {
-                beginResize('left', leftSidebar, e.clientX, 180);
+        const createResizer = (handle, element, fallbackMin, direction, settingKey, beforeBegin) => {
+            if (!handle || !element || !window.VCPSidebarResizer) return null;
+            return window.VCPSidebarResizer.create({
+                handle,
+                getValue: () => element.getBoundingClientRect().width,
+                getBounds: () => getWidthConstraints(element, fallbackMin),
+                applyValue: (width) => { element.style.width = `${width}px`; },
+                direction,
+                step: 1,
+                beforeBegin,
+                onActiveChange: (active) => {
+                    document.body.style.cursor = active ? 'col-resize' : '';
+                    document.body.style.userSelect = active ? 'none' : '';
+                    document.body.classList.toggle('vcp-sidebar-resizing', active);
+                    element.style.transition = active ? 'none' : '';
+                },
+                onCommit: async (width) => {
+                    const currentSettings = globalSettingsRef.get();
+                    const roundedWidth = Math.round(width);
+                    if (currentSettings[settingKey] === roundedWidth) return;
+                    const nextSettings = { ...currentSettings, [settingKey]: roundedWidth };
+                    globalSettingsRef.set(nextSettings);
+                    try {
+                        await electronAPI.saveSettings(nextSettings);
+                        console.log('Sidebar width saved to settings.');
+                    } catch (error) {
+                        console.error('Failed to save sidebar width:', error);
+                    }
+                },
             });
-        }
+        };
 
-        if (resizerRight && rightNotificationsSidebar) {
-            resizerRight.addEventListener('mousedown', (e) => {
-                if (!rightNotificationsSidebar.classList.contains('active')) {
-                    electronAPI.sendToggleNotificationsSidebar();
-                    requestAnimationFrame(() => {
-                        beginResize('right', rightNotificationsSidebar, e.clientX, 220);
-                    });
-                } else {
-                    beginResize('right', rightNotificationsSidebar, e.clientX, 220);
-                }
-            });
-        }
-
-        document.addEventListener('mousemove', (e) => {
-            if (!resizeState) return;
-
-            const deltaX = e.clientX - resizeState.startX;
-            const rawWidth = resizeState.side === 'left'
-                ? resizeState.startWidth + deltaX
-                : resizeState.startWidth - deltaX;
-            const nextWidth = Math.max(
-                resizeState.minWidth,
-                Math.min(rawWidth, resizeState.maxWidth)
-            );
-            scheduleResizeWidth(nextWidth);
-        });
-
-        document.addEventListener('mouseup', async () => {
-            if (!resizeState) return;
-
-            if (resizeFrame) {
-                cancelAnimationFrame(resizeFrame);
-                resizeFrame = 0;
-            }
-            flushResizeWidth();
-
-            const completedResize = resizeState;
-            const completedWidth = pendingWidth;
-            resizeState = null;
-            pendingWidth = null;
-
-            completedResize.element.style.transition = '';
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-            document.body.classList.remove('vcp-sidebar-resizing');
-
-            const currentSettings = globalSettingsRef.get();
-            const settingKey = completedResize.side === 'left'
-                ? 'sidebarWidth'
-                : 'notificationsSidebarWidth';
-            const roundedWidth = Math.round(completedWidth);
-
-            if (currentSettings[settingKey] === roundedWidth) return;
-            currentSettings[settingKey] = roundedWidth;
-
-            try {
-                await electronAPI.saveSettings(currentSettings);
-                console.log('Sidebar width saved to settings.');
-            } catch (error) {
-                console.error('Failed to save sidebar width:', error);
-            }
+        createResizer(resizerLeft, leftSidebar, 180, 1, 'sidebarWidth');
+        createResizer(resizerRight, rightNotificationsSidebar, 220, -1, 'notificationsSidebarWidth', (event, resume) => {
+            if (rightNotificationsSidebar.classList.contains('active')) return true;
+            electronAPI.sendToggleNotificationsSidebar();
+            requestAnimationFrame(resume);
+            return false;
         });
     }
 
@@ -163,34 +99,57 @@ const uiManager = (() => {
      * @param {string} theme - The theme to apply ('light' or 'dark').
      */
     function applyTheme(theme) {
+        if (disposed) return false;
         if (!theme || (theme !== 'light' && theme !== 'dark')) {
             console.warn(`[UIManager] Invalid theme specified: ${theme}. Defaulting to system or light.`);
             // As a fallback, we'll default to light, but the initial theme should come from the main process.
             theme = 'light';
         }
 
-        // Apply class to body for CSS styling
-        document.body.classList.remove('light-theme', 'dark-theme');
-        document.body.classList.add(`${theme}-theme`);
+        const body = document.body;
+        if (!body) return false;
 
-        // Update the toggle button icon
-        if (themeToggleBtn) {
-            const themeIcon = themeToggleBtn.querySelector('i');
-            if (themeIcon) {
-                // Assuming sun for light theme, moon for dark theme
-                themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
-            }
+        const shouldUseLight = theme === 'light';
+        const domAlreadyApplied = body.classList.contains('light-theme') === shouldUseLight
+            && body.classList.contains('dark-theme') !== shouldUseLight;
+        const channelState = themeChannel?.get();
+        const channelAlreadyApplied = channelState?.ready === true
+            && channelState.effective === theme;
+
+        // setThemeMode() performs an optimistic renderer-side update and the main
+        // process broadcasts the persisted value afterwards. Keep this operation
+        // idempotent so that the echo cannot invalidate and repaint the whole tree.
+        if (domAlreadyApplied && channelAlreadyApplied) {
+            return false;
         }
+
+        // Express the final state directly. Removing both classes before adding the
+        // target class creates an avoidable unthemed intermediate style state.
+        if (!domAlreadyApplied) {
+            body.classList.toggle('light-theme', shouldUseLight);
+            body.classList.toggle('dark-theme', !shouldUseLight);
+        }
+
+        if (!channelAlreadyApplied) {
+            themeChannel?.publish(
+                Object.freeze({ ready: true, effective: theme }),
+                { source: 'ui-manager' }
+            );
+        }
+
         console.log(`[UIManager] Theme applied: ${theme}`);
+        return true;
     }
 
     /**
      * Initializes theme handling by getting the current theme and listening for updates.
      */
-    async function initializeTheme() {
+    async function initializeTheme(token) {
         // Listen for theme updates broadcast from the main process
         if (electronAPI && electronAPI.onThemeUpdated) {
-            electronAPI.onThemeUpdated((theme) => {
+            themeDisposer?.();
+            themeDisposer = electronAPI.onThemeUpdated((theme) => {
+                if (!isCurrent(token)) return;
                 const themeName = typeof theme === 'object' && theme !== null ? theme.theme : theme;
                 if (themeName) {
                     applyTheme(themeName);
@@ -213,6 +172,7 @@ const uiManager = (() => {
             if (electronAPI && electronAPI.getCurrentTheme) {
                 try {
                     const currentTheme = await electronAPI.getCurrentTheme();
+                    if (!isCurrent(token)) return false;
                     applyTheme(currentTheme);
                 } catch (error) {
                     console.error('[UIManager] Fallback failed to get initial theme:', error);
@@ -255,7 +215,11 @@ const uiManager = (() => {
             notificationTitleElement.style.display = 'none';
             updateDateTimeDisplay();
             // 每分钟更新一次时间显示，减少不必要的每秒刷新
-            setInterval(updateDateTimeDisplay, 60000);
+            const scheduleClock = () => {
+                updateDateTimeDisplay();
+                scheduleTimeout(scheduleClock, 60000);
+            };
+            scheduleTimeout(scheduleClock, 60000);
         } else {
             console.error('Digital clock, notification title, or date display element not found.');
         }
@@ -323,9 +287,9 @@ const uiManager = (() => {
                         e.stopPropagation();
 
                         // 打开全局设置模态框
-                        if (window.uiHelperFunctions && window.uiHelperFunctions.openModal) {
+                        if ((uiHelperCapability || window.uiHelperFunctions)?.openModal) {
                             console.log('[UIManager] Middle click on settings tab - opening global settings modal');
-                            window.uiHelperFunctions.openModal('globalSettingsModal');
+                            (uiHelperCapability || window.uiHelperFunctions).openModal('globalSettingsModal');
                         } else {
                             console.warn('[UIManager] uiHelperFunctions.openModal not available');
                         }
@@ -364,7 +328,7 @@ const uiManager = (() => {
 
         const scheduleCompactMenuClose = () => {
             if (closeMenuTimer) clearTimeout(closeMenuTimer);
-            closeMenuTimer = setTimeout(() => setCompactMenuOpen(false), 200);
+            closeMenuTimer = scheduleTimeout(() => setCompactMenuOpen(false), 200);
         };
 
         const closeTopicDrawer = () => {
@@ -425,8 +389,8 @@ const uiManager = (() => {
                 if (action === 'settings') {
                     closeTopicDrawer();
                     leftSidebar.classList.remove('avatar-only');
-                    const settings = globalSettingsRef.get();
-                    settings.sidebarAvatarOnly = false;
+                    const settings = { ...globalSettingsRef.get(), sidebarAvatarOnly: false };
+                    globalSettingsRef.set(settings);
                     electronAPI?.saveSettings?.(settings).catch(error => {
                         console.error('[UIManager] Failed to save compact sidebar state:', error);
                     });
@@ -470,8 +434,8 @@ const uiManager = (() => {
         // “仅头像”是助手列表专属布局；进入话题或设置时恢复完整侧栏。
         if (targetTab !== 'agents' && leftSidebar?.classList.contains('avatar-only')) {
             leftSidebar.classList.remove('avatar-only');
-            const settings = globalSettingsRef.get();
-            settings.sidebarAvatarOnly = false;
+            const settings = { ...globalSettingsRef.get(), sidebarAvatarOnly: false };
+            globalSettingsRef.set(settings);
             electronAPI?.saveSettings?.(settings).catch(error => {
                 console.error('[UIManager] Failed to save avatar-only sidebar state:', error);
             });
@@ -499,26 +463,28 @@ const uiManager = (() => {
                         // 刷新计数
                         refreshUnreadCounts();
                     } else if (targetTab === 'settings') {
-                        if (window.settingsManager) {
+                        if (settingsManagerCapability || window.settingsManager) {
                             // 检查是否有待刷新的 Agent
                             const pendingAgentId = sessionStorage.getItem('pendingAgentReload');
                             if (pendingAgentId) {
                                 console.log('[UIManager] Detected pending agent reload, reloading:', pendingAgentId);
                                 sessionStorage.removeItem('pendingAgentReload');
                                 // 延迟执行以确保标签页切换完成
-                                setTimeout(() => {
-                                    if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {
-                                        window.settingsManager.reloadAgentSettings(pendingAgentId);
+                                const reload = () => {
+                                    if (disposed) return;
+                                    if ((settingsManagerCapability || window.settingsManager)?.reloadAgentSettings) {
+                                        track((settingsManagerCapability || window.settingsManager).reloadAgentSettings(pendingAgentId));
                                     }
-                                }, 50);
+                                };
+                                scheduleTimeout(reload, 50);
                             } else {
-                                window.settingsManager.displaySettingsForItem();
+                                (settingsManagerCapability || window.settingsManager)?.displaySettingsForItem?.();
                             }
                         }
                     } else if (targetTab === 'agents') { // Assuming 'agents' is the ID for the items list tab content
                         // 重置鼠标事件状态，确保双击功能正常工作
-                        if (window.itemListManager && typeof window.itemListManager.resetMouseEventStates === 'function') {
-                            window.itemListManager.resetMouseEventStates();
+                        if ((itemListManagerCapability || window.itemListManager)?.resetMouseEventStates) {
+                            (itemListManagerCapability || window.itemListManager).resetMouseEventStates();
                         }
                         // 刷新计数
                         refreshUnreadCounts();
@@ -535,11 +501,13 @@ const uiManager = (() => {
      * 刷新未读计数
      */
     async function refreshUnreadCounts() {
+        const token = generation;
         try {
             const result = await electronAPI.getUnreadTopicCounts();
+            if (!isCurrent(token)) return;
             if (result && result.success) {
-                if (window.itemListManager && typeof window.itemListManager.updateUnreadBadges === 'function') {
-                    window.itemListManager.updateUnreadBadges(result.counts);
+                if ((itemListManagerCapability || window.itemListManager)?.updateUnreadBadges) {
+                    (itemListManagerCapability || window.itemListManager).updateUnreadBadges(result.counts);
                 }
             }
         } catch (error) {
@@ -551,20 +519,20 @@ const uiManager = (() => {
     // --- Public API ---
     return {
         init: async (options) => {
+            if (disposed) throw new Error('UIManager has been disposed');
+            const token = ++generation;
             electronAPI = options.electronAPI;
             globalSettingsRef = options.refs.globalSettingsRef;
+            lifecycleOwner = options.listenerOwner || null;
+            settingsManagerCapability = options.settingsManager || null;
+            itemListManagerCapability = options.itemListManager || null;
+            uiHelperCapability = options.uiHelper || null;
 
             // Assign DOM elements from options.elements
             leftSidebar = options.elements.leftSidebar;
             rightNotificationsSidebar = options.elements.rightNotificationsSidebar;
             resizerLeft = options.elements.resizerLeft;
             resizerRight = options.elements.resizerRight;
-            minimizeBtn = options.elements.minimizeBtn;
-            maximizeBtn = options.elements.maximizeBtn;
-            restoreBtn = options.elements.restoreBtn;
-            closeBtn = options.elements.closeBtn;
-            settingsBtn = options.elements.settingsBtn;
-            themeToggleBtn = options.elements.themeToggleBtn;
             digitalClockElement = options.elements.digitalClockElement;
             dateDisplayElement = options.elements.dateDisplayElement;
             notificationTitleElement = options.elements.notificationTitleElement;
@@ -572,30 +540,41 @@ const uiManager = (() => {
             sidebarTabContents = options.elements.sidebarTabContents;
 
             // Initialize all features
-            setupTitleBarControls();
-            initializeResizers();
-            await initializeTheme(); // Replaces loadAndApplyThemePreference
-            initializeDigitalClock();
-            setupSidebarTabs();
-            setupCompactSidebarNavigation();
-
-            // Setup theme toggle button listener
-            if (themeToggleBtn) {
-                themeToggleBtn.addEventListener('click', () => {
-                    // Determine the new theme based on the current one
-                    const isCurrentlyDark = document.body.classList.contains('dark-theme');
-                    const newTheme = isCurrentlyDark ? 'light' : 'dark';
-
-                    // Just tell the main process to set the theme.
-                    // The UI update will happen automatically when we receive the 'theme-updated' event.
-                    electronAPI.setTheme(newTheme);
-                });
+            const releaseCapturedListeners = lifecycleOwner?.capture?.() || (() => {});
+            try {
+                initializeResizers();
+                await track(initializeTheme(token)); // Replaces loadAndApplyThemePreference
+                if (!isCurrent(token)) return false;
+                initializeDigitalClock();
+                setupSidebarTabs();
+                setupCompactSidebarNavigation();
+            } finally {
+                releaseCapturedListeners();
             }
 
             console.log('uiManager initialized.');
         },
         applyTheme: applyTheme, // Expose applyTheme if needed externally
+        getThemeState: () => themeChannel?.get() || Object.freeze({ ready: true, effective: document.body.classList.contains('dark-theme') ? 'dark' : 'light' }),
+        subscribeTheme: (listener, options) => themeChannel?.subscribe(listener, options) || (() => false),
         switchToTab: switchToTab // Expose switchToTab for external use
+        ,dispose: async () => {
+            if (disposed) return;
+            disposed = true;
+            generation += 1;
+            themeDisposer?.();
+            themeDisposer = null;
+            for (const timer of fallbackTimers) clearTimeout(timer);
+            fallbackTimers.clear();
+            await Promise.allSettled([...tasks]);
+            lifecycleOwner = null;
+            settingsManagerCapability = null;
+            itemListManagerCapability = null;
+            uiHelperCapability = null;
+            leftSidebar = rightNotificationsSidebar = resizerLeft = resizerRight = null;
+            digitalClockElement = dateDisplayElement = notificationTitleElement = null;
+            sidebarTabButtons = sidebarTabContents = null;
+        }
     };
 })();
 

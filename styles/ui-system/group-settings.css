@@ -1,0 +1,282 @@
+@layer vcp-ui.components {
+    html .vcp-ui-scope #groupSettingsForm {
+        gap: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsForm > .group-settings-section {
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsForm > .group-settings-section::before,
+    html .vcp-ui-scope #groupSettingsForm > .group-settings-section::after {
+        display: none;
+        content: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsForm > .group-settings-section + .group-settings-section {
+        margin-top: var(--vcp-ui-space-1);
+        padding-top: var(--vcp-ui-space-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-header {
+        min-height: 0;
+        padding: var(--vcp-ui-space-1) 0;
+        grid-template-columns: minmax(0, 1fr) 24px;
+        grid-template-areas:
+            "title toggle"
+            "summary summary";
+        align-items: start;
+        column-gap: var(--vcp-ui-space-3);
+        row-gap: 0;
+        border: 0;
+        background: transparent;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-header::before {
+        display: none;
+        content: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsForm .group-settings-section:not(.collapsed) .group-settings-section-header {
+        border: 0;
+        background: transparent;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-title {
+        align-self: center;
+        color: var(--vcp-ui-accent);
+        font-size: var(--vcp-ui-font-body);
+        font-weight: 550;
+        line-height: var(--vcp-ui-line-compact);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-summary {
+        margin-top: var(--vcp-ui-space-1);
+        overflow: visible;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+        white-space: pre-line;
+        text-overflow: clip;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-toggle-btn {
+        width: 24px;
+        height: 24px;
+        align-self: center;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-full);
+        color: var(--vcp-ui-text-3);
+        background: transparent;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-toggle-btn::before {
+        display: none;
+        content: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-toggle-btn:hover {
+        color: var(--vcp-ui-accent);
+        background: var(--vcp-ui-fill-2);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-content {
+        max-height: none;
+        margin: 0;
+        padding: var(--vcp-ui-space-1) 0 var(--vcp-ui-space-2);
+        overflow: visible;
+        opacity: 1;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-section-content {
+        display: none;
+        max-height: 0;
+        padding: 0;
+        overflow: hidden;
+        opacity: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-content > :is(.group-settings-identity-shell, .group-settings-card-shell) {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-identity-shell,
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-card-shell {
+        display: flex;
+        flex-direction: column;
+        gap: var(--vcp-ui-space-2);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-identity-main {
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer :is(.group-avatar-display, #groupAvatarPreview) {
+        width: 76px;
+        min-width: 76px;
+        max-width: 76px;
+        height: 76px;
+        min-height: 76px;
+        max-height: 76px;
+        flex-basis: 76px;
+        border-radius: var(--vcp-ui-radius-full);
+        object-fit: cover;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+        display: grid;
+        grid-template-columns: 30px minmax(0, 1fr);
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        margin-top: var(--vcp-ui-space-2);
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-summary-avatar {
+        width: 30px;
+        min-width: 30px;
+        max-width: 30px;
+        height: 30px;
+        min-height: 30px;
+        max-height: 30px;
+        border-radius: var(--vcp-ui-radius-full);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-summary-label {
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-body);
+        font-weight: 600;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-settings-field-shell {
+        gap: var(--vcp-ui-space-2);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea) {
+        border-color: var(--vcp-ui-control-border);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-control-bg);
+        background-image: none;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select) {
+        height: 34px;
+        min-height: 34px;
+        max-height: 34px;
+        padding: 0 var(--vcp-ui-space-3);
+        border-radius: 16px;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer select {
+        padding-right: var(--vcp-ui-space-2);
+        appearance: auto;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer textarea {
+        min-height: 96px;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        border-radius: var(--vcp-ui-radius-md);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):hover {
+        border-color: var(--vcp-ui-control-focus);
+        box-shadow: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):focus, html .vcp-ui-scope #groupSettingsContainer :is(input[type="text"], select, textarea):focus-visible {
+        border-color: var(--vcp-ui-control-focus);
+        outline: none;
+        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-members-list-container {
+        max-height: 220px;
+        padding: var(--vcp-ui-space-1) 0 0;
+        gap: var(--vcp-ui-space-2);
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-member-item {
+        gap: var(--vcp-ui-space-2);
+        padding: 0;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-member-item label {
+        min-width: 0;
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-control-border);
+        border-radius: var(--vcp-ui-radius-md);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-control-bg);
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .group-member-item label:hover {
+        border-color: var(--vcp-ui-control-focus);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .model-input-container > #openGroupModelSelectBtn {
+        width: 24px;
+        min-width: 24px;
+        height: 24px;
+        min-height: 24px;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-full);
+        color: var(--vcp-ui-text-3);
+        background: transparent;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer .model-input-container > #openGroupModelSelectBtn:hover {
+        color: var(--vcp-ui-accent);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html .vcp-ui-scope #groupSettingsForm .form-actions {
+        position: static;
+        inset: auto;
+        z-index: auto;
+        flex-shrink: 0;
+        margin: var(--vcp-ui-space-3) 0 0;
+        padding: var(--vcp-ui-space-3) 0 0;
+        border-top: 1px solid var(--vcp-ui-border);
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html .vcp-ui-scope #groupSettingsContainer :is(.group-settings-toggle-btn, input, select, textarea, button):focus-visible {
+        outline-color: var(--vcp-ui-focus-ring);
+    }
+}

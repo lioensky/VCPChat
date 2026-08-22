@@ -283,25 +283,6 @@ async function sendToVCP(params) {
         }
     }
 
-    // === Agent Bubble Theme 注入 ===
-    try {
-        if (settings.enableAgentBubbleTheme) {
-            let systemMsgIndex = messages.findIndex(m => m.role === 'system');
-            if (systemMsgIndex === -1) {
-                messages.unshift({ role: 'system', content: '' });
-                systemMsgIndex = 0;
-            }
-            
-            const injection = '输出规范要求：{{VarDivRender}}';
-            if (!messages[systemMsgIndex].content.includes(injection)) {
-                messages[systemMsgIndex].content += `\n\n${injection}`;
-                messages[systemMsgIndex].content = messages[systemMsgIndex].content.trim();
-            }
-        }
-    } catch (e) {
-        console.error('[VCPClient] Failed to inject bubble theme info:', e);
-    }
-
     const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messages, context, messageId);
     messages = stripInternalMessageMetadata(messages);
 

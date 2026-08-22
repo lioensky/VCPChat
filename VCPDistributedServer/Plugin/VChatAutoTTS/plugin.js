@@ -28,7 +28,7 @@
     }
 
     function currentAgent() {
-        const item = window.currentSelectedItem;
+        const item = window.VCPMainChatState?.snapshot?.()?.selectedItem;
         return item?.type === 'agent' && item.id ? item : null;
     }
 

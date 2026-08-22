@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VCPChat Setup",
+  "version": "0.1.0",
+  "identifier": "com.vcpchat.setup",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:5176",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "VCPChat Setup",
+      "width": 880,
+      "height": 620,
+      "minWidth": 720,
+      "minHeight": 520,
+      "resizable": true,
+      "fullscreen": false,
+      "decorations": true,
+      "transparent": false,
+      "center": true,
+      "visible": false
+    }],
+    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost" }
+  },
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "shortDescription": "VCPChat Setup",
+    "longDescription": "Installs and updates VCPChat.",
+    "targets": ["app"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper" }
+    }
+  }
+}

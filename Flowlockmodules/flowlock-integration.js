@@ -3,6 +3,10 @@
 // 多 Agent 并发架构：续写不再依赖当前 UI 状态，而是按指定 Agent/Topic 后台执行。
 
 console.log('[Flowlock Integration] Loading integration script (multi-session)...');
+let chatManagerProvider = null;
+let historyMutationAuthorityProvider = null;
+let settingsProvider = null;
+const mainChatSnapshot = () => window.VCPMainChatState?.snapshot?.() || { selectedItem: null, topicId: null };
 
 /**
  * 初始化Flowlock模块
@@ -23,7 +27,7 @@ function initializeFlowlock() {
         electronAPI: electronAPI,
         uiHelper: window.uiHelperFunctions,
         globalSettingsRef: {
-            get: () => window.globalSettings || {}
+            get: () => settingsProvider?.get?.() || {}
         },
         continueWritingForContext: continueWritingForContext
     });
@@ -58,7 +62,7 @@ function normalizeFlowlockHeartbeatPrompt(prompt) {
 async function continueWritingForContext(params) {
     const { agentId, topicId, prompt, messageId } = params;
     const chatAPI = window.chatAPI || window.electronAPI;
-    const globalSettings = window.globalSettings || {};
+    const globalSettings = settingsProvider?.get?.() || {};
 
     if (!agentId || !topicId) {
         console.error('[Flowlock] continueWritingForContext: missing agentId or topicId');
@@ -86,6 +90,21 @@ async function continueWritingForContext(params) {
         throw new Error(`无法获取 Agent 配置: ${agentConfig.error}`);
     }
 
+    // 获取与普通单聊一致的合并后高级回复规则。
+    // IPC 返回官方预置 + 用户覆盖；权限预置默认关闭，不会因 Flowlock 后台运行而隐式授权。
+    let tavernRules = [];
+    const tavernEngine = window.TavernRulesEngine;
+    if (typeof chatAPI.tavernGetRules === 'function') {
+        try {
+            const tavernResult = await chatAPI.tavernGetRules();
+            if (tavernResult?.success && Array.isArray(tavernResult.store?.rules)) {
+                tavernRules = tavernResult.store.rules;
+            }
+        } catch (error) {
+            console.warn('[Flowlock] Failed to load advanced reply rules:', error);
+        }
+    }
+
     // 确定提示词
     let temporaryPrompt = prompt;
     if (!temporaryPrompt || !temporaryPrompt.trim()) {
@@ -100,6 +119,9 @@ async function continueWritingForContext(params) {
 
     // 所有 Flowlock 心跳消息必须使用系统提示标记；已有前缀时不重复添加。
     temporaryPrompt = normalizeFlowlockHeartbeatPrompt(temporaryPrompt);
+    if (tavernEngine && tavernRules.length > 0) {
+        temporaryPrompt = tavernEngine.applyUserSuffix(temporaryPrompt, tavernRules, 'agent');
+    }
 
     // 构建 VCP 消息
     const messagesForVCP = await Promise.all(historyForVCP.map(async msg => {
@@ -145,7 +167,30 @@ async function continueWritingForContext(params) {
             systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
         }
 
+        if (tavernEngine && tavernRules.length > 0) {
+            systemPromptContent = tavernEngine.applySystemSuffix(systemPromptContent, tavernRules, 'agent');
+        }
         messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
+    } else if (tavernEngine && tavernRules.length > 0) {
+        const tavernSystemOnly = tavernEngine.applySystemSuffix('', tavernRules, 'agent');
+        if (tavernSystemOnly.trim()) {
+            messagesForVCP.unshift({ role: 'system', content: tavernSystemOnly });
+        }
+    }
+
+    if (
+        tavernEngine &&
+        tavernRules.some(rule => rule.type === 'context_inject' && rule.enabled !== false)
+    ) {
+        const systemMessages = messagesForVCP.filter(message => message.role === 'system');
+        const nonSystemMessages = messagesForVCP.filter(message => message.role !== 'system');
+        const injectedMessages = tavernEngine.applyContextInject(
+            nonSystemMessages,
+            tavernRules,
+            'agent'
+        );
+        messagesForVCP.length = 0;
+        messagesForVCP.push(...systemMessages, ...injectedMessages);
     }
 
     const useStreaming = (agentConfig?.streamOutput !== false);
@@ -170,8 +215,7 @@ async function continueWritingForContext(params) {
         avatarColor: agentConfig?.avatarCalculatedColor
     };
 
-    const currentSelectedItem = window.currentSelectedItem;
-    const currentTopicId = window.currentTopicId;
+    const { selectedItem: currentSelectedItem, topicId: currentTopicId } = mainChatSnapshot();
     const isForCurrentView = currentSelectedItem?.id === agentId && currentTopicId === topicId;
 
     // 构建上下文。后台流也必须带完整身份，streamManager 才能写入正确历史。
@@ -184,29 +228,21 @@ async function continueWritingForContext(params) {
         avatarColor: agentConfig?.avatarCalculatedColor
     };
 
-    // 流式消息必须在发送请求前初始化，无论它当前是否可见。
-    // streamManager 自己负责“当前视图渲染 / 后台只写历史”的分流。
-    if (useStreaming) {
-        const streamStarter = window.streamManager?.startStreamingMessage
-            || window.messageRenderer?.startStreamingMessage;
-        if (typeof streamStarter !== 'function') {
-            throw new Error('流式消息管理器未就绪');
-        }
-
-        await streamStarter({
-            ...thinkingMessage,
-            content: '',
-            agentId,
-            topicId,
-            context
-        });
-    } else {
+    // Streaming lifecycle is now started by the VCP stream bridge when the
+    // producer publishes its first owned event. This prevents Flowlock from
+    // creating a second terminal state machine for the same message.
+    if (!useStreaming) {
         let historyWithThinking = await chatAPI.getChatHistory(agentId, topicId);
         if (!historyWithThinking || historyWithThinking.error) {
             historyWithThinking = [];
         }
         historyWithThinking.push(thinkingMessage);
-        await chatAPI.saveChatHistory(agentId, topicId, historyWithThinking);
+        await historyMutationAuthorityProvider.replace({
+            itemId: agentId,
+            itemType: 'agent',
+            topicId,
+            category: 'flowlock-start'
+        }, historyWithThinking);
     }
 
     // 发送到 VCP
@@ -243,10 +279,15 @@ async function continueWritingForContext(params) {
             if (historyForSave && !historyForSave.error) {
                 const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessageId && !msg.isThinking);
                 finalHistory.push(assistantMessage);
-                await chatAPI.saveChatHistory(agentId, topicId, finalHistory);
+                await historyMutationAuthorityProvider.replace({
+                    itemId: agentId,
+                    itemType: 'agent',
+                    topicId,
+                    category: 'flowlock-terminal'
+                }, finalHistory);
 
-                if (isForCurrentView && window.chatManager?.loadChatHistory) {
-                    await window.chatManager.loadChatHistory(agentId, 'agent', topicId);
+                if (isForCurrentView && chatManagerProvider?.loadChatHistory) {
+                    await chatManagerProvider.loadChatHistory(agentId, 'agent', topicId);
                 }
             }
 
@@ -282,8 +323,7 @@ function setupFlowlockInteractions() {
 
         e.preventDefault();
 
-        const currentItem = window.currentSelectedItem;
-        const currentTopic = window.currentTopicId;
+        const { selectedItem: currentItem, topicId: currentTopic } = mainChatSnapshot();
 
         if (!currentItem || !currentItem.id || !currentTopic) {
             if (window.uiHelperFunctions?.showToastNotification) {
@@ -310,8 +350,7 @@ function setupFlowlockInteractions() {
 
         if (!window.flowlockManager) return;
 
-        const currentItem = window.currentSelectedItem;
-        const currentTopic = window.currentTopicId;
+        const { selectedItem: currentItem, topicId: currentTopic } = mainChatSnapshot();
 
         if (window.flowlockManager.isAgentLocked(currentItem.id)) {
             // 如果已激活，则停止
@@ -343,8 +382,7 @@ function setupFlowlockShortcuts() {
 
             if (!window.flowlockManager) return;
 
-            const currentItem = window.currentSelectedItem;
-            const currentTopic = window.currentTopicId;
+            const { selectedItem: currentItem, topicId: currentTopic } = mainChatSnapshot();
 
             if (!currentItem || !currentItem.id || !currentTopic) {
                 if (window.uiHelperFunctions?.showToastNotification) {
@@ -369,18 +407,40 @@ function setupFlowlockShortcuts() {
 /**
  * 主初始化函数
  */
-function initializeFlowlockIntegration() {
+function initializeFlowlockIntegration(dependencies = {}) {
     try {
+        const provider = dependencies.chatManager;
+        if (!provider || typeof provider.loadChatHistory !== 'function' || provider.isReady?.() === false) {
+            throw new TypeError('Flowlock integration requires a ready ChatManager provider.');
+        }
+        const mutationAuthority = dependencies.historyMutationAuthority;
+        if (!mutationAuthority || typeof mutationAuthority.replace !== 'function') {
+            throw new TypeError('Flowlock integration requires a history mutation authority.');
+        }
+        if (chatManagerProvider && chatManagerProvider !== provider) {
+            throw new Error('Flowlock ChatManager provider is already registered.');
+        }
+        if (historyMutationAuthorityProvider && historyMutationAuthorityProvider !== mutationAuthority) {
+            throw new Error('Flowlock history mutation authority is already registered.');
+        }
+        if (!dependencies.settings || typeof dependencies.settings.get !== 'function') {
+            throw new TypeError('Flowlock integration requires a settings provider.');
+        }
+        chatManagerProvider = provider;
+        historyMutationAuthorityProvider = mutationAuthority;
+        settingsProvider = dependencies.settings;
         initializeFlowlock();
         setupFlowlockInteractions();
         setupFlowlockShortcuts();
 
         // 页面卸载时清理
-        window.addEventListener('beforeunload', () => {
+        const cleanup = () => {
             if (window.flowlockManager) {
                 window.flowlockManager.cleanup();
             }
-        });
+        };
+        if (dependencies.listenerOwner?.add) dependencies.listenerOwner.add(window, 'beforeunload', cleanup, { once: true });
+        else window.addEventListener('beforeunload', cleanup, { once: true });
 
         console.log('[Flowlock Integration] Full integration complete (multi-session).');
     } catch (error) {

@@ -1,0 +1,47 @@
+@import url('../../assets/font/vcp-ui/noto-sans-sc.css');
+
+@font-face {
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400;
+    src: url('../../assets/font/vcp-ui/material-symbols-outlined.woff2') format('woff2');
+}
+
+@layer vcp-ui.base {
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope {
+        --vcp-ui-font-family: var(--vcp-appearance-font-family, 'Noto Sans SC Variable', 'Noto Sans SC', system-ui, sans-serif);
+        font-family: var(--vcp-ui-font-family);
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        font-family: 'Material Symbols Outlined';
+        font-size: var(--vcp-ui-icon-size, 18px);
+        font-style: normal;
+        font-weight: 400;
+        line-height: 1;
+        letter-spacing: 0;
+        text-transform: none;
+        white-space: nowrap;
+        direction: ltr;
+        font-feature-settings: 'liga';
+        -webkit-font-feature-settings: 'liga';
+        -webkit-font-smoothing: antialiased;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope svg.vcp-ui-icon.lucide {
+        width: var(--vcp-ui-icon-size, var(--vcp-ui-icon-md));
+        height: var(--vcp-ui-icon-size, var(--vcp-ui-icon-md));
+        display: block;
+        flex: 0 0 auto;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+}

@@ -114,6 +114,66 @@ function entityRow(db, id, type) {
     .get(id, type);
 }
 
+test("history source 旧缓存只失效一次，Topic 墓碑会清除当前缓存", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-source-state-"));
+  const dbPath = path.join(directory, "sync_state.db");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const legacyDb = new DatabaseSync(dbPath);
+  legacyDb.exec(`
+    CREATE TABLE history_source_state (
+      topic_id TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      indexed_at INTEGER NOT NULL
+    )
+  `);
+  legacyDb.prepare(
+    `INSERT INTO history_source_state
+       (topic_id, file_path, file_size, mtime_ms, indexed_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run("topic-source", "/virtual/topic-source/history.json", 2, 10, 20);
+  legacyDb.close();
+
+  const { database } = loadSqliteModules();
+  const db = database.initDb(dbPath);
+  try {
+    assert.equal(
+      database.isHistorySourceCurrent(
+        "topic-source",
+        "/virtual/topic-source/history.json",
+        2,
+        10,
+      ),
+      false,
+    );
+
+    database.upsertHistorySourceState(
+      "topic-source",
+      "/virtual/topic-source/history.json",
+      2,
+      10,
+      30,
+    );
+    assert.equal(
+      database.isHistorySourceCurrent(
+        "topic-source",
+        "/virtual/topic-source/history.json",
+        2,
+        10,
+      ),
+      true,
+    );
+
+    insertEntity(db, { id: "topic-source", type: "topic" });
+    database.softDeleteEntityIndex("topic-source", "topic", 40);
+    assert.equal(database.getHistorySourceState("topic-source"), null);
+  } finally {
+    db.close();
+  }
+});
+
 test("SQLite 墓碑绑定覆盖实体、Topic、消息和头像，并保留最早删除时间", () => {
   const { database } = loadSqliteModules();
   const db = database.initDb(":memory:");
@@ -263,6 +323,13 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
       `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
        VALUES (?, ?, ?, ?)`,
     ).run("message-cascade", "topic-cascade", "b".repeat(64), 1);
+    database.upsertHistorySourceState(
+      "topic-cascade",
+      path.join(historyDir, "history.json"),
+      2,
+      1,
+      1,
+    );
 
     assert.deepEqual(
       await entity.deleteEntity({
@@ -278,6 +345,7 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
     assert.equal(entityRow(db, "topic-unrelated", "agent_topic").deleted_at, null);
     assert.equal(fs.existsSync(agentDir), false);
     assert.equal(fs.existsSync(userDataDir), false);
+    assert.equal(database.getHistorySourceState("topic-cascade"), null);
     assert.equal(
       db.prepare(
         "SELECT deleted_at FROM message_index WHERE topic_id = ? AND msg_id = ?",
@@ -690,6 +758,13 @@ test("legacy reconcile 把物理已消失的 Owner/Topic 及消息收敛为墓�
         `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
          VALUES (?, ?, ?, ?)`,
       ).run(`message-${topicId}`, topicId, "c".repeat(64), 1);
+      database.upsertHistorySourceState(
+        topicId,
+        `/virtual/${topicId}/history.json`,
+        2,
+        1,
+        1,
+      );
     }
 
     assert.deepEqual(
@@ -701,6 +776,12 @@ test("legacy reconcile 把物理已消失的 Owner/Topic 及消息收敛为墓�
     assert.equal(entityRow(db, "group-stale", "group").deleted_at, 900);
     assert.equal(entityRow(db, "topic-stale", "topic").deleted_at, 900);
     assert.equal(entityRow(db, "topic-owner-stale", "topic").deleted_at, 900);
+    assert.deepEqual(
+      db.prepare(
+        "SELECT topic_id FROM history_source_state ORDER BY topic_id",
+      ).all().map((row) => row.topic_id),
+      ["topic-live"],
+    );
     assert.deepEqual(
       db.prepare(
         "SELECT topic_id, deleted_at FROM message_index ORDER BY topic_id",

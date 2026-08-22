@@ -1,0 +1,22 @@
+{
+  "modelVisible": [
+    { "role": "user", "content": "trigger an error" },
+    { "role": "assistant", "content": "partial", "terminal": "failed" }
+  ],
+  "chatVisible": {
+    "role": "assistant",
+    "status": "failed",
+    "content": "partial"
+  },
+  "durable": {
+    "conversationKey": "snapshot-failed-conversation",
+    "terminal": "failed",
+    "text": "partial"
+  },
+  "projection": {
+    "statuses": ["streaming", "failed"],
+    "chunkCount": 1,
+    "text": "partial"
+  },
+  "wire": ["chunk:partial", "failed"]
+}

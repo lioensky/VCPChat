@@ -1,0 +1,26 @@
+@layer vcp-ui.components {
+    /*
+     * Next owns the application shell around the conversation, but the
+     * conversation itself intentionally keeps the Classic message renderer
+     * and its visual contract. Keep this file limited to scroll-container
+     * chrome; message rows, avatars, metadata, bubbles and structured content
+     * must continue to come from chat.css and messageRenderer.css.
+     */
+    html .vcp-ui-scope.chat-messages-container {
+        scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
+    }
+
+    html .vcp-ui-scope.chat-messages-container::-webkit-scrollbar {
+        width: var(--vcp-ui-scrollbar-size);
+        height: var(--vcp-ui-scrollbar-size);
+    }
+
+    html .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb {
+        background: var(--vcp-ui-scrollbar-thumb);
+        border-radius: var(--vcp-ui-radius-full);
+    }
+
+    html .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb:hover {
+        background: var(--vcp-ui-scrollbar-thumb-hover);
+    }
+}

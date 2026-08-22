@@ -9,6 +9,7 @@ const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
 const searchManager = {
     // --- Properties ---
     electronAPI: null,
+    chatRepository: null,
     uiHelper: null,
     chatManager: null,
     currentSelectedItemRef: null,
@@ -29,13 +30,15 @@ const searchManager = {
     init(dependencies) {
         console.log('[SearchManager] Initializing...');
         this.electronAPI = dependencies.electronAPI;
+        this.chatRepository = dependencies.chatRepository || null;
+        if (!this.chatRepository) throw new Error('SearchManager requires ChatRepository');
         this.uiHelper = dependencies.uiHelper;
         this.chatManager = dependencies.modules.chatManager;
         this.currentSelectedItemRef = dependencies.refs.currentSelectedItemRef;
         this.currentTopicIdRef = dependencies.refs.currentTopicIdRef;
 
         this.setupGlobalShortcuts();
-        
+
         // 🟢 监听模态框就绪事件
         document.addEventListener('modal-ready', (e) => {
             if (e.detail.modalId === 'globalSearchModal') {
@@ -107,9 +110,12 @@ const searchManager = {
         
         if (this.elements.modal) {
             this.elements.modal.style.display = 'flex';
-            this.elements.input.focus();
+            this.elements.input?.focus();
         }
-        this.elements.input.select();
+        this.elements.input?.select();
+        if (this.elements.resultsContainer && !this.elements.resultsContainer.childElementCount) {
+            this.elements.resultsContainer.innerHTML = '<p class="search-status-message search-status-message--empty">输入关键词，查找任意助手或群组中的聊天记录。</p>';
+        }
         await this.populateAgentSelect();
     },
 
@@ -174,7 +180,9 @@ const searchManager = {
     },
 
     closeModal() {
-        this.elements.modal.style.display = 'none';
+        // Mode changes can arrive before the lazily-created search modal has
+        // emitted modal-ready. Closing an absent surface is a valid no-op.
+        if (this.elements.modal) this.elements.modal.style.display = 'none';
         this.clearScopedStyles();
 
         // 清空搜索内容和状态，确保下次打开时是干净的
@@ -224,7 +232,7 @@ const searchManager = {
             return;
         }
         if (!query || query.length < 2) {
-            this.elements.resultsContainer.innerHTML = '<p style="text-align: center; padding: 20px;">请输入至少2个字符进行搜索。</p>';
+            this.elements.resultsContainer.innerHTML = '<p class="search-status-message">请输入至少 2 个字符进行搜索。</p>';
             this.state.searchResults = [];
             this.renderSearchResults();
             return;
@@ -233,7 +241,7 @@ const searchManager = {
         this.state.isFetching = true;
         this.state.currentQuery = query;
         this.clearScopedStyles();
-        this.elements.resultsContainer.innerHTML = '<p style="text-align: center; padding: 20px;">正在努力搜索中...</p>';
+        this.elements.resultsContainer.innerHTML = '<p class="search-status-message">正在搜索聊天记录…</p>';
         this.elements.paginationContainer.innerHTML = '';
 
         try {
@@ -310,9 +318,7 @@ const searchManager = {
 
             const historyReadPromises = topicsToFetch.map(info => {
                 const { itemType, itemId, topicId } = info.context;
-                const promise = itemType === 'agent'
-                    ? this.electronAPI.getChatHistory(itemId, topicId)
-                    : this.electronAPI.getGroupChatHistory(itemId, topicId);
+                const promise = this.chatRepository.getHistory(itemId, itemType, topicId);
 
                 return promise.then(history => {
                     if (history && !history.error) {
@@ -370,7 +376,7 @@ const searchManager = {
 
         } catch (error) {
             console.error('[SearchManager] Error during search:', error);
-            this.elements.resultsContainer.innerHTML = `<p style="text-align: center; padding: 20px; color: var(--danger-text);">搜索时发生错误: ${error.message}</p>`;
+            this.elements.resultsContainer.innerHTML = `<p class="search-status-message search-status-message--error">搜索时发生错误：${this.escapeHtml(error.message)}</p>`;
         } finally {
             this.state.isFetching = false;
         }
@@ -381,7 +387,7 @@ const searchManager = {
         this.elements.paginationContainer.innerHTML = '';
 
         if (this.state.searchResults.length === 0) {
-            this.elements.resultsContainer.innerHTML = '<p style="text-align: center; padding: 20px;">未找到匹配的结果。</p>';
+            this.elements.resultsContainer.innerHTML = '<p class="search-status-message search-status-message--empty">未找到匹配的结果。</p>';
             return;
         }
 
