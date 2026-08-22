@@ -308,7 +308,6 @@ pub struct MessagesPushResult {
     pub changed: bool,
     pub revision: Option<i64>,
     pub message_count: usize,
-    pub needed_attachment_hashes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -1044,7 +1043,6 @@ pub async fn push_messages(
                 changed: commit.changed,
                 revision: Some(commit.revision),
                 message_count: commit.message_count,
-                needed_attachment_hashes: Vec::new(),
                 error: None,
             },
             Err(error) => MessagesPushResult {
@@ -1053,7 +1051,6 @@ pub async fn push_messages(
                 changed: false,
                 revision: None,
                 message_count: 0,
-                needed_attachment_hashes: Vec::new(),
                 error: Some(format!("{error:#}")),
             },
         });
@@ -2422,7 +2419,6 @@ mod tests {
         )
         .await;
         assert!(response.results[0].success);
-        assert!(response.results[0].needed_attachment_hashes.is_empty());
         let persisted: Vec<serde_json::Value> =
             serde_json::from_slice(&fs::read(&history_path).expect("read history"))
                 .expect("parse history");

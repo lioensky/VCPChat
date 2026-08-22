@@ -144,13 +144,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   });
 
   // 1.1 批量下载实体
-  router.post("/download-entities", express.json(), async (req, res) => {
+  router.post("/download-entities", express.json({ limit: "10mb" }), async (req, res) => {
     const { requests } = req.body;
-    if (!Array.isArray(requests) || requests.length > 10_000) {
+    if (!Array.isArray(requests) || requests.length > 1_000) {
       return sendHttpError(
         res,
         400,
-        "requests must be an array of at most 10000 items",
+        "requests must be an array of at most 1000 items",
         { code: "SYNC_REQUEST_INVALID", stage: "owner_metadata" },
       );
     }

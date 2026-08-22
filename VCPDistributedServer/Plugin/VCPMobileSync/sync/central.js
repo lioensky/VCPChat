@@ -634,20 +634,10 @@ class CentralSyncAdapter {
             },
           );
         }
-        const needed = new Set(projected.neededAttachmentHashes);
-        const cdsNeeded = result.neededAttachmentHashes;
-        if (!Array.isArray(cdsNeeded)) {
-          throw createSyncError(
-            "SYNC_PROTOCOL_INVALID",
-            `CDS omitted neededAttachmentHashes for ${topicId}`,
-            { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-          );
-        }
-        for (const hash of cdsNeeded) needed.add(hash);
         await writer.write({
           topicId,
           success: true,
-          neededAttachmentHashes: [...needed].sort(),
+          neededAttachmentHashes: projected.neededAttachmentHashes,
         });
       } catch (error) {
         if (
@@ -773,11 +763,7 @@ class CentralSyncAdapter {
       deletedMessageIds: [],
       deletedMessageTombstones: [{ msgId, deletedAt }],
     });
-    if (
-      result?.topicId !== topicId ||
-      result?.success !== true ||
-      !Array.isArray(result?.neededAttachmentHashes)
-    ) {
+    if (result?.topicId !== topicId || result?.success !== true) {
       throw withCdsErrorContext(
         result?.error || `CDS rejected message deletion for ${topicId}`,
         {

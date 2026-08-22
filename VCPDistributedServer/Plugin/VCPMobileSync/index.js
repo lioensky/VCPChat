@@ -89,7 +89,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     await services.chatDataService.startShadowMode();
   }
 
-  const cdsClient = services.chatDataService?.client ?? null;
   const centralSync = centralRequested
     ? createCentralSyncAdapter({
         chatDataService: services.chatDataService ?? { client: null },

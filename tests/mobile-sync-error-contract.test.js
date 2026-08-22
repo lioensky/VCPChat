@@ -453,7 +453,7 @@ test("HTTP route handlers return the same structured error contract", async () =
       stage: "owner_metadata",
       kind: "protocol",
       retry: "after_user_action",
-      message: "requests must be an array of at most 10000 items",
+      message: "requests must be an array of at most 1000 items",
       failedTopicIds: [],
     },
   });

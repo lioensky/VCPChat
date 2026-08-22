@@ -125,7 +125,6 @@ CREATE TABLE IF NOT EXISTS tombstones (
     topic_id TEXT NOT NULL DEFAULT '',
     entity_id TEXT NOT NULL,
     deleted_at INTEGER NOT NULL,
-    expires_at INTEGER,
     origin TEXT NOT NULL,
     PRIMARY KEY (entity_type, owner_type, owner_id, topic_id, entity_id)
 );
@@ -486,19 +485,12 @@ impl Database {
             transaction.execute(
                 "INSERT INTO tombstones(
                     entity_type, owner_type, owner_id, topic_id, entity_id,
-                    deleted_at, expires_at, origin
-                 ) VALUES('owner', ?1, ?2, '', ?2, ?3, ?4, ?5)
+                    deleted_at, origin
+                 ) VALUES('owner', ?1, ?2, '', ?2, ?3, ?4)
                  ON CONFLICT(entity_type, owner_type, owner_id, topic_id, entity_id)
                  DO UPDATE SET deleted_at=excluded.deleted_at,
-                               expires_at=excluded.expires_at,
                                origin=excluded.origin",
-                params![
-                    owner.owner_type.as_str(),
-                    owner.owner_id,
-                    now,
-                    tombstone_expiry(now),
-                    origin,
-                ],
+                params![owner.owner_type.as_str(), owner.owner_id, now, origin],
             )?;
             deleted += 1;
         }
@@ -1396,15 +1388,11 @@ fn upsert_sync_delete_tombstone(
     transaction.execute(
         "INSERT INTO tombstones(
             entity_type, owner_type, owner_id, topic_id, entity_id,
-            deleted_at, expires_at, origin
-         ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            deleted_at, origin
+         ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(entity_type, owner_type, owner_id, topic_id, entity_id)
          DO UPDATE SET
             deleted_at=MIN(tombstones.deleted_at, excluded.deleted_at),
-            expires_at=CASE
-                WHEN tombstones.expires_at IS NULL THEN excluded.expires_at
-                ELSE MAX(tombstones.expires_at, excluded.expires_at)
-            END,
             origin=CASE
                 WHEN excluded.deleted_at < tombstones.deleted_at THEN excluded.origin
                 ELSE tombstones.origin
@@ -1416,7 +1404,6 @@ fn upsert_sync_delete_tombstone(
             topic_id,
             entity_id,
             deleted_at,
-            tombstone_expiry(deleted_at),
             origin,
         ],
     )?;
@@ -1433,11 +1420,10 @@ fn upsert_message_tombstone(
     transaction.execute(
         "INSERT INTO tombstones(
             entity_type, owner_type, owner_id, topic_id, entity_id,
-            deleted_at, expires_at, origin
-         ) VALUES('message', ?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            deleted_at, origin
+         ) VALUES('message', ?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(entity_type, owner_type, owner_id, topic_id, entity_id)
          DO UPDATE SET deleted_at=excluded.deleted_at,
-                       expires_at=excluded.expires_at,
                        origin=excluded.origin",
         params![
             key.owner_type.as_str(),
@@ -1445,15 +1431,10 @@ fn upsert_message_tombstone(
             key.topic_id,
             msg_id,
             now,
-            tombstone_expiry(now),
             origin,
         ],
     )?;
     Ok(())
-}
-
-fn tombstone_expiry(now: i64) -> i64 {
-    now.saturating_add(30 * 24 * 60 * 60 * 1000_i64)
 }
 
 fn current_global_revision(transaction: &Transaction<'_>) -> Result<i64> {
@@ -1782,10 +1763,10 @@ mod tests {
                          'c', 'c', 'c', '{}', 10, NULL);
                      INSERT INTO tombstones(
                         entity_type, owner_type, owner_id, topic_id, entity_id,
-                        deleted_at, expires_at, origin
+                        deleted_at, origin
                      ) VALUES(
                         'message', 'agent', 'agent-a', 'topic-a', 'message-missing',
-                        250, 1000, 'seed'
+                        250, 'seed'
                      );",
                 )
                 .expect("seed owner cascade rows");
