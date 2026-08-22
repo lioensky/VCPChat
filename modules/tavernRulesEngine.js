@@ -29,134 +29,6 @@
     const INJECTION_HEADER = '[本信息由VCPChat客户端注入]';
     const INJECTION_FOOTER = '[临时注入结束]';
 
-    // 官方预置只提供安全的能力开关，不代表默认授权。
-    // 除基础输出能力外，其余权限均默认关闭；插件管理员等超高危权限不得进入此清单。
-    const BUILTIN_RULES = Object.freeze([
-        {
-            id: 'builtin_agent_div_render',
-            builtinKey: 'agent-div-render',
-            name: 'Agent输出动画气泡',
-            type: 'system_suffix',
-            enabled: true,
-            content: '输出规范要求：{{VarDivRender}}',
-            scope: 'global',
-            wrap: true
-        },
-        {
-            id: 'builtin_flowlock',
-            builtinKey: 'flowlock',
-            name: '心流锁系统',
-            type: 'system_suffix',
-            enabled: false,
-            content: `当前VCHAT支持心流锁系统————
-
-一轮工具循环(请求工具-获得结果-请求工具-获得结果…)整体循环视为一个“单回复”，不触发心跳。只有当无工具调用的回合才视为回合结束，触发心流锁。
-工具循环结束视为一个单回合锁，视为回复结束。触发心跳。
-心流锁状态下你可以进入完全自主的行为模式，自己决策自己的行为。完全异步，支持后台窗口。
-
-直接在回复末尾输入
-[[Flowlock::Start]]  启动锁，然后你会进入自主心跳模式，核心启动流程，否则后续功能不触发
-[[Flowlock::Stop]]  停止锁，关闭心跳
-[[Flowlock::Complete]] 完成任务，会弹出通知提醒用户
-[[Flowlock::Fail]] 主动放弃任务，会弹出通知提醒用户
-[[Flowlock::NextHeartbeat::120]] 主动设置下一次心跳来临时间 (默认回复结束后2秒，120代表120秒后触发下一轮，仅支持秒判定)
-[[Flowlock::NextPrompt]]...[[/Flowlock::NextPrompt]]  主动设置下一次心跳来临的提示词，否则是默认提示词。
-
-所有锁占位符不可被工具请求格式或者代码块包裹，否则会忽略。
-
-当然考虑到用户可能不在电脑前，可以使用工具通知用户。
-tool_name:「始」AgentMessage「末」,
-message:「始」当用户不在时，向用户的设备发送通知消息。「末」,
-archery:「始」no_reply「末」`,
-            scope: 'agent',
-            wrap: false
-        },
-        {
-            id: 'builtin_loom',
-            builtinKey: 'loom',
-            name: 'Loom权限',
-            type: 'system_suffix',
-            enabled: false,
-            content: `启用Loom控制权限
-{{VCPLoomController}}`,
-            scope: 'global',
-            wrap: true
-        },
-        {
-            id: 'builtin_scriptorium',
-            builtinKey: 'scriptorium',
-            name: '文坊权限',
-            type: 'system_suffix',
-            enabled: false,
-            content: `VCP文坊编辑权限
-{{VCPScriptoriumCollaborator}}
-该命令集全局支持串行指令（command1 / command2 / …）
-除了基础的html动画和canvas动画，还支持anime.js与three.js，引用的cdn脚本源码会被自动替换为文档内核依赖本地源码，安全可靠。
-在创建样式时，尤其是pptx样式，建议每页使用独立的slideid标注样式避免互相污染，除非确实需要全局样式广播。`,
-            scope: 'global',
-            wrap: true
-        },
-        {
-            id: 'builtin_forbid_tools',
-            builtinKey: 'forbid-tools',
-            name: '禁用所有工具',
-            type: 'system_suffix',
-            enabled: false,
-            content: '[[VCPToolUse=Forbidden]]',
-            scope: 'agent',
-            wrap: false
-        },
-        {
-            id: 'builtin_vcp_desktop',
-            builtinKey: 'vcp-desktop',
-            name: 'VCP桌面权限',
-            type: 'system_suffix',
-            enabled: false,
-            content: `VCP桌面相关
-{{VarDesktop}}
-[[VCP桌面知识日记本::TagMemo]]`,
-            scope: 'agent',
-            wrap: false
-        },
-        {
-            id: 'builtin_server_auth_code',
-            builtinKey: 'server-auth-code',
-            name: '获取服务器验证码',
-            type: 'system_suffix',
-            enabled: false,
-            content: `工具权限验证码-服务器验证码
-{{USER_AUTH_CODE}}`,
-            scope: 'agent',
-            wrap: false
-        },
-        {
-            id: 'builtin_window_control',
-            builtinKey: 'window-control',
-            name: '窗口控制权限',
-            type: 'system_suffix',
-            enabled: false,
-            content: `窗口感知器
-{{WindowSensor_Node}}
-窗口控制器
-{{VCPScreenPilot}}`,
-            scope: 'agent',
-            wrap: false
-        },
-        {
-            id: 'builtin_html_media',
-            builtinKey: 'html-media',
-            name: '启用HTML多媒体权限',
-            type: 'system_suffix',
-            enabled: false,
-            content: `启用Html多媒体生成功能
-{{VCPMediaRenderer}}`,
-            scope: 'global',
-            wrap: true
-        }
-    ].map(function (rule) {
-        return Object.freeze({ ...rule, isBuiltin: true });
-    }));
-
     function cloneRule(rule) {
         return { ...rule };
     }
@@ -327,8 +199,14 @@ archery:「始」no_reply「末」`,
                 if (typeof r.builtinKey === 'string' && r.builtinKey) {
                     out.builtinKey = r.builtinKey;
                 }
+                if (r.source === 'official' || r.source === 'user') {
+                    out.source = r.source;
+                }
                 if (r.isBuiltin === true) {
                     out.isBuiltin = true;
+                }
+                if (Number.isFinite(Number(r.order))) {
+                    out.order = Math.max(0, Number(r.order));
                 }
                 if (t === 'context_inject') {
                     out.role = r.role === 'assistant' ? 'assistant' : 'user';
@@ -340,84 +218,58 @@ archery:「始」no_reply「末」`,
     }
 
     /**
-     * 把官方预置与用户规则合并为运行时规则。
-     * 稳定 builtinKey 优先；旧配置可用同名规则覆盖，避免升级后重复注入。
+     * 合并两个同构规则文件。来源标记只由文件决定，文件内伪造的标记会被覆盖。
      */
-    function mergeBuiltinRules(store) {
-        const userStore = normalizeRuleStore(store);
-        const unmatched = userStore.rules.slice();
-        const mergedBuiltins = BUILTIN_RULES.map(function (builtin) {
-            const overrideIndex = unmatched.findIndex(function (rule) {
-                return rule.builtinKey === builtin.builtinKey ||
-                    (!rule.builtinKey && rule.name === builtin.name);
-            });
-            if (overrideIndex === -1) return cloneRule(builtin);
-
-            const override = unmatched.splice(overrideIndex, 1)[0];
-            return {
-                ...cloneRule(builtin),
-                ...override,
-                builtinKey: builtin.builtinKey,
-                isBuiltin: true
-            };
+    function combineRuleStores(officialStore, userStore) {
+        const officialRules = normalizeRuleStore(officialStore).rules.map(function (rule, index) {
+            return { ...rule, source: 'official', isBuiltin: true, order: Number.isFinite(rule.order) ? rule.order : index };
+        });
+        const userRules = normalizeRuleStore(userStore).rules.map(function (rule, index) {
+            return { ...rule, source: 'user', isBuiltin: false, order: Number.isFinite(rule.order) ? rule.order : officialRules.length + index };
         });
 
         return {
-            version: 2,
-            rules: mergedBuiltins.concat(unmatched.map(function (rule) {
-                const copy = cloneRule(rule);
-                delete copy.isBuiltin;
-                return copy;
-            }))
-        };
-    }
-
-    function comparableRule(rule) {
-        return {
-            name: rule.name,
-            type: rule.type,
-            enabled: rule.enabled !== false,
-            content: rule.content,
-            scope: rule.scope || 'global',
-            wrap: rule.wrap !== false,
-            ...(rule.type === 'context_inject'
-                ? { role: rule.role === 'assistant' ? 'assistant' : 'user', depth: Math.max(0, Number(rule.depth) || 0) }
-                : {})
+            version: 3,
+            rules: officialRules.concat(userRules).sort(function (a, b) {
+                return a.order - b.order;
+            })
         };
     }
 
     /**
-     * 保存前移除未修改的官方预置，只把用户覆盖项写入用户文件。
+     * 把运行时规则按来源拆回两个同构文件，并写入统一顺序。
      */
-    function compactRuleStore(store) {
+    function splitRuleStore(store) {
         const normalized = normalizeRuleStore(store);
-        const rules = normalized.rules.reduce(function (result, rule) {
-            const builtin = BUILTIN_RULES.find(function (candidate) {
-                return candidate.builtinKey === rule.builtinKey ||
-                    (!rule.builtinKey && candidate.name === rule.name);
-            });
-            if (!builtin) {
-                const custom = cloneRule(rule);
-                delete custom.isBuiltin;
-                result.push(custom);
-                return result;
-            }
+        const officialRules = [];
+        const userRules = [];
 
-            if (JSON.stringify(comparableRule(rule)) !== JSON.stringify(comparableRule(builtin))) {
-                const override = cloneRule(rule);
-                override.builtinKey = builtin.builtinKey;
-                delete override.isBuiltin;
-                result.push(override);
-            }
-            return result;
-        }, []);
-        return { version: 2, rules };
+        normalized.rules.forEach(function (rule, index) {
+            const persisted = { ...rule, order: index };
+            const source = persisted.source === 'official' || persisted.isBuiltin === true ? 'official' : 'user';
+            delete persisted.source;
+            delete persisted.isBuiltin;
+            (source === 'official' ? officialRules : userRules).push(persisted);
+        });
+
+        return {
+            officialStore: { version: 3, rules: officialRules },
+            userStore: { version: 3, rules: userRules }
+        };
+    }
+
+    // 兼容旧调用方：单文件不再自动补入任何官方定义。
+    function mergeBuiltinRules(store) {
+        return normalizeRuleStore(store);
+    }
+
+    function compactRuleStore(store) {
+        return normalizeRuleStore(store);
     }
 
     return {
         INJECTION_HEADER: INJECTION_HEADER,
         INJECTION_FOOTER: INJECTION_FOOTER,
-        BUILTIN_RULES: BUILTIN_RULES,
         wrapInjection: wrapInjection,
         renderRuleContent: renderRuleContent,
         isRuleActive: isRuleActive,
@@ -426,6 +278,8 @@ archery:「始」no_reply「末」`,
         applyContextInject: applyContextInject,
         createDefaultRule: createDefaultRule,
         normalizeRuleStore: normalizeRuleStore,
+        combineRuleStores: combineRuleStores,
+        splitRuleStore: splitRuleStore,
         mergeBuiltinRules: mergeBuiltinRules,
         compactRuleStore: compactRuleStore
     };

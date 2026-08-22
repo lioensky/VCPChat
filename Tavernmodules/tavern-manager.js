@@ -428,7 +428,7 @@
             panel.innerHTML = `
                 ${rule.isBuiltin ? `
                 <div class="tavern-help-text" style="margin-bottom:12px;">
-                    官方预置能力开关。除基础输出能力外，权限默认关闭；修改后会保存为用户覆盖，恢复默认不会删除官方定义。
+                    此规则来源于官方规则文件。它与用户规则具有相同权限，可编辑、排序或删除，修改会直接保存至官方规则文件。
                 </div>
                 ` : ''}
                 <div class="tavern-form-row">
@@ -495,7 +495,7 @@
                 <div class="tavern-edit-actions">
                     <button type="button" class="save-button" data-action="save">保存</button>
                     <button type="button" class="secondary-button" data-action="cancel">取消</button>
-                    <button type="button" class="${rule.isBuiltin ? 'secondary-button' : 'danger-button'}" data-action="delete">${rule.isBuiltin ? '恢复官方默认' : '删除'}</button>
+                    <button type="button" class="danger-button" data-action="delete">删除</button>
                 </div>
             `;
 
@@ -523,6 +523,8 @@
                     scope: 'global',
                     ...(type === 'context_inject' ? { role: 'user', depth: 0 } : {})
                 };
+            newRule.source = 'user';
+            newRule.isBuiltin = false;
             if (!Array.isArray(this.store.rules)) this.store.rules = [];
             this.store.rules.push(newRule);
             this.selectedRuleId = newRule.id;
@@ -588,36 +590,23 @@
                 : null;
             let confirmed;
             if (confirmFn) {
-                const message = rule.isBuiltin
-                    ? `确定要将官方预置 "${rule.name}" 恢复为官方默认设置吗？`
-                    : `确定要删除规则 "${rule.name}" 吗？`;
+                const sourceLabel = rule.isBuiltin ? '官方规则' : '用户规则';
                 confirmed = await confirmFn(
-                    message,
-                    rule.isBuiltin ? '恢复官方默认' : '删除规则',
-                    rule.isBuiltin ? '恢复' : '删除',
+                    `确定要删除${sourceLabel} "${rule.name}" 吗？删除后不会自动恢复。`,
+                    '删除规则',
+                    '删除',
                     '取消',
-                    !rule.isBuiltin
+                    true
                 );
             } else {
-                confirmed = window.confirm(rule.isBuiltin
-                    ? `确定要将官方预置 "${rule.name}" 恢复为官方默认设置吗？`
-                    : `确定要删除规则 "${rule.name}" 吗？`);
+                confirmed = window.confirm(
+                    `确定要删除${rule.isBuiltin ? '官方规则' : '用户规则'} "${rule.name}" 吗？删除后不会自动恢复。`
+                );
             }
             if (!confirmed) return;
 
-            if (rule.isBuiltin && window.TavernRulesEngine?.BUILTIN_RULES) {
-                const official = window.TavernRulesEngine.BUILTIN_RULES.find(
-                    candidate => candidate.builtinKey === rule.builtinKey
-                );
-                if (official) {
-                    const index = this.store.rules.findIndex(r => r.id === rule.id);
-                    this.store.rules[index] = { ...official };
-                    this.selectedRuleId = official.id;
-                }
-            } else {
-                this.store.rules = (this.store.rules || []).filter(r => r.id !== rule.id);
-                this.selectedRuleId = (this.store.rules[0] && this.store.rules[0].id) || null;
-            }
+            this.store.rules = (this.store.rules || []).filter(r => r.id !== rule.id);
+            this.selectedRuleId = (this.store.rules[0] && this.store.rules[0].id) || null;
             await this.saveStore();
             this._renderManagerList();
             this._renderManagerEditPanel();
