@@ -791,10 +791,6 @@ class CentralSyncAdapter {
     return { success: true, topicId, msgId };
   }
 
-  async changes(after = 0, limit = 200) {
-    return this.requireClient().changes(after, limit);
-  }
-
   logEnabled() {
     getLogger().logInfo(
       "central",

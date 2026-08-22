@@ -10,7 +10,7 @@ VCP-CDS 是 VCPChat 的中央聊天数据服务。第一阶段建立旁路镜像
 - Tantivy 是可删除、可重建的搜索派生物。
 - DeepMemo 通过中央搜索接口工作。
 - `MobileSyncUseCentralIndex=True` 时，VCPMobileSync 的 Manifest、Topic/Message Diff、
-  Message Pull/Push、消息 Tombstone 与 Change Feed 由 VCP-CDS 提供。
+  Message Pull/Push 与消息 Tombstone 由 VCP-CDS 提供。
 - 中央同步模式不打开或写入旧 `VCPMobileSync/sync_state.db`，也不启动其历史扫描和 watcher。
 - 关闭 `MobileSyncUseCentralIndex` 可恢复旧同步索引链路；旧数据库文件不会自动删除。
 - 普通桌面聊天保存仍先写 `history.json`，由直接通知或 `notify` 摄取。
@@ -191,7 +191,6 @@ GET /v1/health
 
 ```text
 GET  /v1/status
-GET  /v1/changes?after=<sequence>&limit=<limit>
 POST /v1/reconcile
 POST /v1/rebuild-search-index
 POST /v1/ingest/history-path
@@ -223,7 +222,6 @@ VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中�
 3. 不扫描历史文件。
 4. 不启动旧 chokidar watcher。
 5. 消息下载与上传通过中央客户端转发。
-6. `/api/mobile-sync/changes` 暴露带游标的 Change Feed。
 
 `MobileSyncUseCentralIndex` 的优先级固定为：插件显式布尔值 > 主程序 Facade 布尔值 > 默认 `true`。显式 `false` 只影响重启后的新 session，不在 attempt 中途回退。CDS 启动在后台进行，失败只禁用中央同步，不阻塞普通 Chat 窗口创建。
 
@@ -254,7 +252,7 @@ cargo clippy --locked --all-targets -- -D warnings
 - 多个包含候选的歧义拒绝。
 - 移动消息指纹与旧 `content + attachment hashes` 合约一致。
 - 中央同步聚合哈希顺序无关。
-- VCPMobileSync 中央适配器 Manifest 字段兼容和 Change Feed 游标转发。
+- VCPMobileSync 中央适配器 Manifest 字段兼容。
 - wire 1.1 golden canonical output、hash 与 JavaScript safe-integer 边界。
 - ingest → streaming pull → canonicalizer → native push 全链路。
 - 损坏 history source fail closed、Owner/Topic 歧义拒绝及稳定消息 Tombstone 重放。

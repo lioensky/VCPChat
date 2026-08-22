@@ -10,7 +10,7 @@ use std::{
 
 use axum::{
     body::{Body, Bytes},
-    extract::{Query, Request, State},
+    extract::{Request, State},
     http::{
         header::{AUTHORIZATION, CONTENT_TYPE},
         HeaderValue, StatusCode,
@@ -36,9 +36,9 @@ use crate::{
     search::{MemorySearchRequest, MessageSearchRequest, SearchIndex},
     storage::now_ms,
     sync::{
-        self, ChangeFeedResponse, ManifestRequest, ManifestResponse, MessageDiffRequest,
-        MessageDiffResponse, MessageManifestResponse, MessagesPullRequest, MessagesPushRequest,
-        MessagesPushResponse, TopicHashDiffRequest, TopicHashDiffResponse, TopicSelector,
+        self, ManifestRequest, ManifestResponse, MessageDiffRequest, MessageDiffResponse,
+        MessageManifestResponse, MessagesPullRequest, MessagesPushRequest, MessagesPushResponse,
+        TopicHashDiffRequest, TopicHashDiffResponse, TopicSelector,
     },
     watcher::WatcherMetrics,
 };
@@ -215,19 +215,6 @@ enum EntityDeleteTarget {
     Topic(TopicKey),
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ChangesQuery {
-    #[serde(default)]
-    after: i64,
-    #[serde(default = "default_change_limit")]
-    limit: usize,
-}
-
-fn default_change_limit() -> usize {
-    200
-}
-
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/v1/status", get(status))
@@ -242,7 +229,6 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/sync/message-diff", post(sync_message_diff))
         .route("/v1/sync/entity-delete", post(sync_entity_delete))
         .route("/v1/sync/messages/push", post(sync_messages_push))
-        .route("/v1/changes", get(change_feed))
         .route("/v1/flush", post(flush))
         .route("/v1/shutdown", post(shutdown))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
@@ -845,15 +831,6 @@ async fn sync_messages_push_topic(
         }
     }
     Ok(Json(result))
-}
-
-async fn change_feed(
-    State(state): State<AppState>,
-    Query(query): Query<ChangesQuery>,
-) -> ServiceResult<Json<ChangeFeedResponse>> {
-    sync::changes(state.reconciler.database(), query.after, query.limit)
-        .map(Json)
-        .map_err(ServiceError::internal)
 }
 
 async fn rebuild_search(

@@ -188,7 +188,7 @@ graph TD
 
 ## 📐 硬核数据模型与表结构
 
-默认中央模式的 Owner、Topic、Message、附件关系、Tombstone、Change Feed 与 history source 状态由 VCP-CDS 的 `chat_data.sqlite3` 管理。以下 `sync_state.db` 表仅用于显式关闭中央索引后的 legacy 路径：
+默认中央模式的 Owner、Topic、Message、附件关系、Tombstone 与 history source 状态由 VCP-CDS 的 `chat_data.sqlite3` 管理。以下 `sync_state.db` 表仅用于显式关闭中央索引后的 legacy 路径：
 
 ### 1. 实体索引表 (`entity_index`)
 负责缓存智能体、群组以及子话题的元数据与聚合哈希。

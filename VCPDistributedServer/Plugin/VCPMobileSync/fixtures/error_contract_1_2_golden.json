@@ -41,8 +41,6 @@
     "SYNC_AVATAR_READ_FAILED": ["storage", "manual"],
     "SYNC_AVATAR_WRITE_FAILED": ["storage", "manual"],
     "SYNC_BUDGET_EXCEEDED": ["data", "after_user_action"],
-    "SYNC_CHANGE_FEED_FAILED": ["storage", "manual"],
-    "SYNC_CHANGE_FEED_UNAVAILABLE": ["configuration", "after_user_action"],
     "SYNC_DB_DRAIN_FAILED": ["storage", "manual"],
     "SYNC_DB_QUERY_FAILED": ["storage", "manual"],
     "SYNC_DB_UNAVAILABLE": ["storage", "manual"],

@@ -55,7 +55,6 @@ function streamErrorFallback(centralSync, code = "SYNC_STREAM_FAILED") {
 function requestStage(req) {
   const route = req.path || "";
   if (route.includes("message") || route.includes("attachment")) return "messages";
-  if (route === "/changes") return "history";
   if (route === "/upload-entities-batch") return "topic_metadata";
   if (route === "/download-avatar" || route === "/upload-avatar") {
     return "owner_metadata";
@@ -535,27 +534,6 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         code: "SYNC_DELETE_FAILED",
         stage: "messages",
         failedTopicIds: [topicId],
-      });
-    }
-  });
-
-  // Change Feed 为移动端断线续传与删除事件提供中央游标。
-  router.get("/changes", async (req, res) => {
-    if (!centralSync) {
-      return sendHttpError(res, 404, "Central sync is disabled", {
-        code: "SYNC_CHANGE_FEED_UNAVAILABLE",
-        stage: "history",
-      });
-    }
-    try {
-      const after = Number.parseInt(req.query.after || "0", 10) || 0;
-      const limit = Number.parseInt(req.query.limit || "200", 10) || 200;
-      res.json(await centralSync.changes(after, limit));
-    } catch (e) {
-      sendHttpError(res, 500, e, {
-        code: "SYNC_CHANGE_FEED_FAILED",
-        origin: "desktop_cds",
-        stage: "history",
       });
     }
   });

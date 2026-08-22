@@ -38,7 +38,6 @@ function createClient(overrides = {}) {
     }),
     syncEntityDelete: async () => ({ success: true }),
     syncMessagesPush: async () => ({ results: [] }),
-    changes: async () => ({ changes: [], nextSequence: 0, hasMore: false }),
     ...overrides,
   };
 }
@@ -143,26 +142,6 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
   });
 
   assert.deepEqual(captured, { hashes: {}, topics: [state] });
-});
-
-test("中央适配器保留 Change Feed 游标", async () => {
-  let captured;
-  const adapter = createCentralSyncAdapter({
-    client: createClient({
-      changes: async (after, limit) => {
-        captured = { after, limit };
-        return {
-          changes: [{ sequence: 42 }],
-          nextSequence: 42,
-          hasMore: false,
-        };
-      },
-    }),
-  });
-
-  const result = await adapter.changes(41, 20);
-  assert.deepEqual(captured, { after: 41, limit: 20 });
-  assert.equal(result.nextSequence, 42);
 });
 
 test("中央启动门禁可在 SERVICE_BUSY 时持续等待既有 reconcile", async () => {

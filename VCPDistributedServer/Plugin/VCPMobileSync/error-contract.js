@@ -167,8 +167,6 @@ const ERROR_DEFINITIONS = Object.freeze({
   SYNC_AVATAR_NOT_FOUND: definition("owner_metadata", "data", "manual"),
   SYNC_AVATAR_READ_FAILED: definition("owner_metadata", "storage", "manual"),
   SYNC_AVATAR_WRITE_FAILED: definition("owner_metadata", "storage", "manual"),
-  SYNC_CHANGE_FEED_UNAVAILABLE: definition("history", "configuration", "after_user_action"),
-  SYNC_CHANGE_FEED_FAILED: definition("history", "storage", "manual"),
 });
 
 function cleanMessage(value, fallback = "Desktop sync failed") {

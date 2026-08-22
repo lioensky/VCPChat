@@ -400,14 +400,6 @@ class ChatDataServiceClient {
         });
     }
 
-    changes(after = 0, limit = 200, options) {
-        const query = new URLSearchParams({
-            after: String(after),
-            limit: String(limit)
-        });
-        return this.request('GET', `/v1/changes?${query}`, undefined, options);
-    }
-
     flush(options) {
         return this.request('POST', '/v1/flush', {}, options);
     }
