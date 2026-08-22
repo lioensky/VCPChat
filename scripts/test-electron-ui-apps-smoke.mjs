@@ -1355,8 +1355,10 @@ try {
         window.uiManager?.switchToTab?.('settings');
     });
     await page.waitForFunction(() => document.getElementById('editingAgentId')?.value === 'SmokeAgent', { timeout: timeoutMs });
-    // A terminal component-load failure is an application-integrity error.
-    // It must report the failure without mounting a visually divergent UI.
+    // A terminal Web Awesome load failure selects the same creation Surface
+    // with its native kernel. The fallback is a recovery path, not a second
+    // layout: the production controller and unit contract both require the
+    // dialog to remain usable.
     await page.evaluate(() => {
         window.__nextDeltaOriginalWebAwesome = window.VCPWebAwesome;
         window.VCPWebAwesome = Object.freeze({
@@ -1368,10 +1370,23 @@ try {
         });
         document.getElementById('nextUiCreateItemBtn')?.click();
     });
-    await page.waitForFunction(() => [...document.querySelectorAll('.vcp-ui-toast')]
-        .some(item => item.textContent.includes('创建界面组件加载失败')), { timeout: timeoutMs });
-    assert.equal(await page.evaluate(() => Boolean(document.querySelector('.next-ui-create-dialog-host'))), false,
-        'failed WA creation mounted a native substitute');
+    await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host')), { timeout: timeoutMs });
+    const fallbackCreation = await page.evaluate(() => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        return {
+            mounted: Boolean(host),
+            hasForm: Boolean(host?.querySelector('.next-ui-create-dialog-form')),
+            hasNameInput: Boolean(host?.querySelector('input')),
+            hasSubmit: Boolean(host?.querySelector('button[type="submit"]')),
+        };
+    });
+    assert.deepEqual(fallbackCreation, { mounted: true, hasForm: true, hasNameInput: true, hasSubmit: true },
+        'Web Awesome failure must retain the usable native creation Surface');
+    await page.evaluate(() => {
+        const cancel = [...document.querySelectorAll('.next-ui-create-dialog-host button')]
+            .find(button => (button.textContent || '').includes('取消'));
+        cancel?.click();
+    });
     await page.evaluate(() => {
         window.VCPWebAwesome = window.__nextDeltaOriginalWebAwesome;
         delete window.__nextDeltaOriginalWebAwesome;
@@ -1657,6 +1672,15 @@ try {
 
 // ── Report ────────────────────────────────────────────────────────────────
 const pass = summary.filter(item => item.pass).length;
+if (process.env.VCPCHAT_UI_APPS_EVIDENCE_OUTPUT) {
+    await fs.writeFile(process.env.VCPCHAT_UI_APPS_EVIDENCE_OUTPUT, `${JSON.stringify({
+        schemaVersion: 1,
+        kind: 'electron-ui-apps-smoke',
+        passed: pass,
+        total: summary.length,
+        summary,
+    }, null, 2)}\n`, 'utf8');
+}
 console.log(`\nUI apps audit summary (${pass}/${summary.length} passed):`);
 for (const item of summary) {
     console.log(`  [${item.mode}] ${item.surface}: ${item.pass ? 'PASS' : 'FAIL'} — ${item.note}`);

@@ -316,6 +316,14 @@ const allowedSourceDifferencePatterns = [
     /^scripts\/test-electron-manual-soak\.mjs$/,
     // Generated evidence is audited output, not product UI source.
     /^artifacts\/(?:manual-soak|windows-matrix)\/[^/]+\.json$/,
+    // Contract/evidence automation is a gate layer and must not be treated as
+    // a design-system subtraction delta.
+    /^docs\/contracts\//,
+    /^docs\/chat-kernel-evidence-and-contracts-roadmap\.md$/,
+    /^docs\/chat-event-producer-consumer-roadmap\.md$/,
+    /^scripts\/(?:build-chat-event-graph|check-chat-contracts|check-chat-evidence|check-artifact-plane|run-chat-contract-invariants|test-built-artifact-smoke|test-chat-contract-invalid|test-chat-transcript-snapshot|write-chat-evidence-manifest)\.mjs$/,
+    /^scripts\/fixtures\/chat-contract-invalid\.mjs$/,
+    /^tests\/chat-event-contract\.test\.mjs$/,
     /^vendor\/webawesome(?:-runtime)?\//,
     /^modules\/chat\//,
     /^modules\/renderer\/(?:mainChatComposition|mainChatSettingsPresentationOwner|mainChatStreamConsumer|mainChatSurfaceAdapter|renderDependencies|windowStreamRuntime)\.js$/,

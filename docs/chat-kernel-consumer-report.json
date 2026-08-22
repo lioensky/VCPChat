@@ -271,6 +271,7 @@
     "modules/assistant/assistant-rust-adapter.js",
     "modules/chat/chatContext.js",
     "modules/chat/chatDomRenderer.js",
+    "modules/chat/chatEventContract.js",
     "modules/chat/chatHistoryMutationAuthority.js",
     "modules/chat/chatHistoryPersistence.js",
     "modules/chat/chatOperation.js",
@@ -481,6 +482,7 @@
   "testFiles": [
     "tests/chat-context.test.mjs",
     "tests/chat-dom-renderer.test.mjs",
+    "tests/chat-event-contract.test.mjs",
     "tests/chat-history-mutation-authority.test.mjs",
     "tests/chat-history-persistence.test.mjs",
     "tests/chat-manager-selection-race.test.js",
@@ -2896,7 +2898,7 @@
       "definitions": [
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 672,
+          "line": 676,
           "syntax": "dot-assignment",
           "snippet": "window.askNovaController = createAskNovaController();"
         }
@@ -2904,7 +2906,7 @@
       "production": [
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 671,
+          "line": 675,
           "surface": "internal-app",
           "snippet": "if (window.askNovaController) return;"
         }
@@ -6597,49 +6599,49 @@
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 243,
+          "line": 247,
           "surface": "internal-app",
           "snippet": "await window.topTabManager?.acquireOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 252,
+          "line": 256,
           "surface": "internal-app",
           "snippet": "window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 255,
+          "line": 259,
           "surface": "internal-app",
           "snippet": "modalScope?.own(() => window.topTabManager?.releaseOverlay?.(overlayOwner), 'overlay-lease', 'overlay');"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 258,
+          "line": 262,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 263,
+          "line": 267,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 268,
+          "line": 272,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 367,
+          "line": 371,
           "surface": "internal-app",
           "snippet": "window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 384,
+          "line": 388,
           "surface": "internal-app",
           "snippet": "else window.topTabManager?.releaseOverlay?.(overlayOwner);"
         },
@@ -9910,19 +9912,19 @@
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 207,
+          "line": 211,
           "surface": "internal-app",
           "snippet": "const VCPUI = options.VCPUI || window.VCPUI;"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 583,
+          "line": 587,
           "surface": "internal-app",
           "snippet": "window.VCPUI?.feedback?.toast?.('复制失败', { variant: 'error' });"
         },
         {
           "file": "modules/ui-system/ask-nova-modal.js",
-          "line": 631,
+          "line": 635,
           "surface": "internal-app",
           "snippet": "window.VCPUI?.feedback?.toast?.(error?.message || 'Ask Nova 打开失败', { variant: 'error' });"
         },
@@ -13564,6 +13566,14 @@
       "mutableMaps": 0
     },
     "modules/chat/chatDomRenderer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/chat/chatEventContract.js": {
       "windowReferences": 0,
       "documentReferences": 0,
       "electronReferences": 0,

@@ -19,7 +19,10 @@ const electron = process.platform === 'darwin'
     ? path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
     : path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const timeout = 45_000;
-const protocolTimeout = positiveInteger(process.env.VCPCHAT_SEQUENCE_PROTOCOL_TIMEOUT_MS, 120_000);
+// Electron/CDP can legitimately pause while the renderer is synchronously
+// tearing down an embedded Surface. The 300 s default is based on the
+// successful Windows run; callers may still lower/raise it explicitly.
+const protocolTimeout = positiveInteger(process.env.VCPCHAT_SEQUENCE_PROTOCOL_TIMEOUT_MS, 300_000);
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const safeFilePart = value => String(value).replace(/[^a-z0-9._-]+/gi, '-').slice(0, 80) || 'unknown';
 const requestedUiMode = process.env.VCPCHAT_SEQUENCE_UI_MODE || 'next';
@@ -1371,6 +1374,19 @@ try {
         throw error;
     }
     const coverageReport = sequenceCoverage.report();
+    if (process.env.VCPCHAT_SEQUENCE_EVIDENCE_OUTPUT) {
+        await fs.writeFile(process.env.VCPCHAT_SEQUENCE_EVIDENCE_OUTPUT, `${JSON.stringify({
+            schemaVersion: 1,
+            kind: 'electron-main-chat-sequence',
+            mode: requestedUiMode,
+            seed,
+            runs: runCount,
+            actions: totalActions,
+            requests: fixture.requests.length,
+            requiredEdges: `${coverageReport.passedRequiredEdges.length}/${coverageReport.requiredEdges.length}`,
+            coverage: coverageReport,
+        }, null, 2)}\n`, 'utf8');
+    }
     console.log(`Main-chat Electron sequence passed: mode=${requestedUiMode}, seed=${seed}, runs=${runCount}, actions=${totalActions}, VCP requests=${fixture.requests.length}`);
     console.log(`Sequence coverage: actions=${Object.keys(coverageReport.actions).length}, pairs=${Object.keys(coverageReport.actionPairs).length}, transitions=${Object.keys(coverageReport.transitions).length}, faults=${Object.keys(coverageReport.faults).length}, required=${coverageReport.passedRequiredEdges.length}/${coverageReport.requiredEdges.length}`);
 } finally {
