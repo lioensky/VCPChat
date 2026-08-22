@@ -5,7 +5,7 @@
 | 阶段 | 退出条件 | 当前证据 | 状态 |
 | --- | --- | --- | --- |
 | vD0 | owner、producer、consumer、失败入口和工作树边界冻结 | `docs/chat-kernel-consumer-report.json`、当前执行合同、当前 git 状态 | PASS（工作树仍含用户改动） |
-| vD1 | StreamSession/State 无 DOM/Electron，terminal/generation/late-event 可复现 | `npm run test:chat-kernel` 144/144 | PASS |
+| vD1 | StreamSession/State 无 DOM/Electron，terminal/generation/late-event 可复现 | `npm run test:chat-kernel` 146/146 | PASS |
 | vD2 | coordinator 等待真实 reader、terminal 和 persistence，dispose 达到 quiescence | coordinator/history/operation tests、lifecycle stress | PASS |
 | vD3 | 主聊天、独立 Surface、VoiceChat、Rust Assistant 有真实隔离 consumer | 主聊天序列、辅助 reload/crash matrix、consumer gate | PASS（当前主机真实入口） |
 | vD4 | RenderDependencies、root、render model、capability closure 显式化 | render dependency/surface/projection tests、Next delta gate | PASS |
@@ -35,20 +35,27 @@
 
 ## 当前自动化证据
 
-- Chat Kernel：144/144。
-- UI System：92/92；`npm run check:ui-system` 已在本次门禁修正后复跑，完整链路通过。
+- Chat Kernel：146/146。
+- UI System：97/97；`npm run test:ui-system` 与 `npm run check:ui-system` 完整链路通过。
 - Electron UI Apps：24/24；主聊天：24 actions / 25 VCP requests；辅助 crash recovery：24 actions / 27 VCP requests。
 - Windows 当前主机最终矩阵：`artifacts/windows-matrix/2026-08-21T06-13-58-840Z.json`，六行全部通过。Settings resize CDP 能力显式 skipped，不计为通过。
+- 当前工作树复核矩阵：`artifacts/windows-matrix/2026-08-21T18-36-55-200Z.json`，六行全部通过（UI Apps、Settings、Next tab、主聊天、辅助 crash recovery、60-cycle lifecycle）；该证据仅覆盖当前 Windows 主机与当前 Node/Electron 配置，不替代其他 Windows/打包/GPU-DPI 组合。
 - 历史最终矩阵包含 3 warmup + 60 measured。当前精确补丁（包括 Electron fixture 协议超时与进程树清理修正）的最新复跑为 3 warmup + 20 measured：connected elements 2569、listeners 876、lifecycle resources 163 保持稳定；detached roots/icons/options 均为 0。不得把历史 60-cycle 记录描述为本补丁的重跑证据。
 - 矩阵 `artifacts/windows-matrix/2026-08-21T05-51-24-115Z.json` 与较早的 `2026-08-21T05-10-03-018Z.json` 在主聊天行发生 Puppeteer `Runtime.callFunctionOn` protocol timeout，没有产品断言或失败快照；同一最终代码的独立序列和随后完整串行矩阵通过。失败 artifact 保留为当前主机测试基础设施波动证据，不用于证明产品 PASS。
 - 本次复核也观察到并发或协议超时后 Electron fixture 可能遗留测试进程树。主聊天与 lifecycle harness 现使用启动 PID 的 Windows `taskkill /T /F` 精确清理，并配置独立 protocol timeout；清理验证后只保留复核前已存在的用户 Electron 进程。后续协议超时仍记为失败证据，不通过无限重试升级为产品 PASS。
 - 人工 soak 入口为 `npm run test:manual-soak`；产物状态固定为 `manual_observation_required`，短时 smoke 不能当作人工通过。
+- 当前已完成 30 分钟观察入口：`artifacts/manual-soak/2026-08-21T18-43-55-291Z.json`，30 个每分钟采样、renderer 侧 errors 为空、detached roots 为 0、生命周期资源稳定；artifact 仍是 `manual_observation_required`，且 checklist 尚未由操作员填写，stderr 记录了受控 bad-port 模型获取失败和 degraded 配置提示，需人工判定是否属于环境预期，不能当作产品 PASS。
+- 当前临时 Electron unpacked package 构建未通过：`artifacts/packaged/2026-08-21T19-21-58-000Z.json` 记录 `electron-edge-js` native rebuild 的 MSBuild exit 1；未生成 packaged artifact，因此 packaged smoke 保持 `failed`，不能用 source/runtime smoke 替代。
 
 ## 文档权威与归档
 
 - 当前产品/UI 拓扑只在 `next-ui-current-state.md` 维护。
 - 当前 D0-D7 合同只在 `chat-kernel-deep-decoupling-roadmap.md` 维护；当前阶段和测试数字只在本文维护。
 - C0-C7 路线、D0-D7 时间线审查日志、旧 Web Awesome 并行 presentation 路线和已停止的整页迁移计划已移入 `docs/archive/2026-08-chat-kernel-and-ui-roadmaps/`。归档只用于追溯，不得覆盖当前状态。
+
+## 证据工程增量
+
+E0-E7 证据自动化框架、10 项契约登记、生成 graph、invalid runner、built-artifact smoke、packaged smoke、四类 stream transcript snapshot、CI manifest 和发布级 evidence gate 见 [`chat-kernel-evidence-and-contracts-roadmap.md`](./chat-kernel-evidence-and-contracts-roadmap.md)。自动 gate、UI Apps 24/24 和主聊天 24-action 单轮 sequence 均已通过；packaged smoke 在没有外部 unpacked 根目录时明确为 `skipped`，发布级 gate 因缺少真实 packaged/Windows/manual 证据不会通过；历史重跑仍出现 CDP protocol timeout，因此真实 Electron 项仍保持 `manual_required`，不能外推为 D7 完成。
 
 ## 未完成项与完成所需证据
 

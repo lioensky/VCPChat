@@ -39,3 +39,7 @@ D7 还要求在声明支持的 Windows 版本、安装/打包方式、GPU/DPI �
 ## 规范来源
 
 架构与审查优先遵循 `C:\VCP\vchat-develop\deepseek-harness\AGENTS.md`、`docs/architecture.md`、`docs/event-producer-consumer.md`、`docs/defensive-patterns.md`、`docs/testing.md` 和 `.agents/skills/dsh-code-review/SKILL.md`。这些规范定义审查方法，不替代本仓源码和真实测试证据。
+
+## 后续证据工程路线
+
+D0-D7 之后的 producer/consumer graph、typed terminal schema、运行 invariant、deliberate invalid runner、source/artifact plane、built-artifact smoke 和 transcript snapshot 统一见 [`chat-kernel-evidence-and-contracts-roadmap.md`](./chat-kernel-evidence-and-contracts-roadmap.md)。该路线增强证据强度，不改变本文的阶段退出条件，也不能替代 D7 的跨环境和人工 soak 证据。

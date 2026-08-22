@@ -96,13 +96,14 @@ Windows 生成的 `settingsManager.js` 基线曾错误绑定 CRLF 工作区字�
 
 当前分支自动证据（详细阶段状态以最终审计为准）：
 
-- Chat Kernel：144/144；UI System：92/92。
+- Chat Kernel：146/146；UI System：97/97。
 - `npm run check:ui-system`：通过，包含 design subtraction、consumer、Classic、Next、应用运行时和 UI System 全链路。
 - Electron UI Apps：24/24；主聊天与辅助窗口证据、当前主机 Windows 矩阵见 [`chat-kernel-vd7-final-audit.md`](./chat-kernel-vd7-final-audit.md)。
-- 当前精确补丁的 lifecycle stress：3 次预热 + 20 次测量；历史 60-cycle 证据不作为本补丁的重跑证据。
+- 当前工作树 Windows matrix：六行全部通过，包含 60-cycle lifecycle；30 分钟 manual-soak 观察已生成 artifact，但 checklist 仍为 `manual_observation_required`。
+- Electron unpacked packaged 构建当前因 `electron-edge-js` MSBuild exit 1 失败；不能把 source/runtime smoke 外推为 packaged PASS。
 - Web Awesome closure 与 pack check：沿用既有通过证据，发布配置矩阵仍属于 D7 未完成项。
 
-尚未纳入自动化的发布证据仍是 30–60 分钟人工 soak；这不影响 C0–C7 实现退出条件，但不应把自动矩阵代替人工体验观察。本分支现提供 Chat Kernel 与 UI 的 PR 门禁工作流；跨配置 Windows、打包安装和人工 soak 仍需单独执行。
+尚未闭合的发布证据仍包括 30–60 分钟人工 soak、真实 packaged Electron runtime 和跨配置矩阵；`npm run check:chat-release-evidence` 会在这些证据缺失时明确失败。这不影响 C0–C7 实现退出条件，但不应把自动矩阵代替人工体验观察。本分支现提供 Chat Kernel 与 UI 的 PR 门禁工作流；跨配置 Windows、打包安装和人工 soak 仍需单独执行。
 
 当前文档权威关系已在 2026-08-20 收敛；历史文档可以保留当时的双 presentation 描述，但不得用于描述当前主窗口拓扑。
 
@@ -120,7 +121,7 @@ Chat Kernel 的早期 C0–C7 子路线已有既有证据；当前工作转入 D
 
 D0 consumer baseline 已接入 `check:ui-system`：生产引用、测试引用和 Kernel 禁止反向依赖均由 `guard:chat-kernel-consumers` 重复检查。该报告只记录当前事实，不把 legacy facade 自动升级为稳定公共 API。
 
-D0–D6 已接入生产并具备各自的源码、静态门禁和自动化证据；D7 BLOCKED。历史复核的 115/115、129/129、85/85 等数字保留为历史记录，不能作为当前状态。当前 Chat Kernel、UI System、Electron 和 Windows 单主机证据统一记录在最终审计；辅助窗口长矩阵、完整跨配置 Windows 矩阵和 30–60 分钟人工 soak 仍未完成。
+D0–D6 已接入生产并具备各自的源码、静态门禁和自动化证据；D7 BLOCKED。历史复核的 115/115、129/129、85/85 等数字保留为历史记录，不能作为当前状态。当前 Chat Kernel、UI System、Electron 和 Windows 单主机证据统一记录在最终审计；多版本/打包/GPU-DPI 配置、packaged native rebuild 和人工 checklist 仍未完成。
 
 最新 vD5 增量已将主聊天选择、history 与 TTS 状态改为显式 capability/owner：`VCPMainChatState` 只读快照替代可变 selection globals，主 history 由 `MainChatStateAuthority` 持有，`TtsSurfaceOwner` 持有 AudioContext、队列和订阅；`TopicSelectionReadiness` 替代 renderer-ready/pending selection 全局字段。Flowlock、AutoTTS 和 Electron 序列测试均已迁移到真实 consumer。该增量当时为 Chat Kernel 113/113；当前测试数字只读取最终审计。辅助 Voice/Rust 并发流场景已纳入主聊天序列。
 
