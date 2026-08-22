@@ -454,6 +454,29 @@ async function run() {
     );
     assert.strictEqual(inserted.details.receipt.decision, 'approved');
 
+    const appendedByIntent = await collaborator.processToolCall({
+        command: 'SubmitSourcePr',
+        endpoint: 'docx',
+        maid: 'Nova',
+        summary: '在文档末尾续写',
+        append: '## 继续写作\n\n这是直接追加到文档末尾的内容。',
+    }, {
+        requestId: 'append-request',
+    });
+    const appendCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'submitSourcePr'
+        && entry.request.requestId === 'append-request'
+    );
+    assert.ok(appendCall);
+    assert.deepStrictEqual(
+        appendCall.request.payload.replacements,
+        [{
+            append: '## 继续写作\n\n这是直接追加到文档末尾的内容。',
+        }]
+    );
+    assert.strictEqual(appendedByIntent.details.receipt.decision, 'approved');
+
     const styleList = await collaborator.processToolCall({
         command: 'ListStylePacks',
         query: '经典',

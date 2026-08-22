@@ -214,7 +214,6 @@ async function getVcpGlobalSettings() {
                 vcpApiKey: settings.vcpApiKey,
                 userName: settings.userName || '用户',
                 topicSummaryModel: settings.topicSummaryModel,
-                enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true,
                 // 添加净化器相关配置
                 enableContextSanitizer: settings.enableContextSanitizer === true,
                 contextSanitizerDepth: settings.contextSanitizerDepth,
@@ -230,7 +229,6 @@ async function getVcpGlobalSettings() {
         vcpApiKey: null,
         userName: '用户',
         topicSummaryModel: null,
-        enableAgentBubbleTheme: false,
         // 添加净化器默认值
         enableContextSanitizer: false,
         contextSanitizerDepth: 2,
@@ -787,22 +785,6 @@ ${canvasData.errors || 'No errors'}
               
             console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
         }
-        // --- Agent Bubble Theme Injection ---
-        if (globalVcpSettings.enableAgentBubbleTheme) {
-            let systemMsgIndex = messagesForAI.findIndex(m => m.role === 'system');
-            if (systemMsgIndex === -1) {
-                messagesForAI.unshift({ role: 'system', content: '' });
-                systemMsgIndex = 0;
-            }
-            
-            const injection = '为你在群聊中构建独特的个性气泡，输出规范要求：{{VarDivRender}}';
-            if (!messagesForAI[systemMsgIndex].content.includes(injection)) {
-                messagesForAI[systemMsgIndex].content += `\n\n${injection}`;
-                messagesForAI[systemMsgIndex].content = messagesForAI[systemMsgIndex].content.trim();
-            }
-        }
-        // --- End of Injection ---
-
         const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
         if (!globalVcpSettings.vcpUrl) {
             const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 未配置。`;
@@ -1359,22 +1341,6 @@ ${canvasData.errors || 'No errors'}
           
         console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
     }
-    // --- Agent Bubble Theme Injection ---
-    if (globalVcpSettings.enableAgentBubbleTheme) {
-        let systemMsgIndex = messagesForAI.findIndex(m => m.role === 'system');
-        if (systemMsgIndex === -1) {
-            messagesForAI.unshift({ role: 'system', content: '' });
-            systemMsgIndex = 0;
-        }
-        
-        const injection = '为你在群聊中构建独特的个性气泡，输出规范要求：{{VarDivRender}}';
-        if (!messagesForAI[systemMsgIndex].content.includes(injection)) {
-            messagesForAI[systemMsgIndex].content += `\n\n${injection}`;
-            messagesForAI[systemMsgIndex].content = messagesForAI[systemMsgIndex].content.trim();
-        }
-    }
-    // --- End of Injection ---
-
     const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
     if (!globalVcpSettings.vcpUrl) {
         const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 未配置。`;

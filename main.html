@@ -4,14 +4,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- frame-src: 仅放通本机环回的 VCPDistributedServer(5974)，供 VCPWEWallpaper
+         插件以 iframe 隔离渲染 Wallpaper Engine 的 web 类型壁纸。不开放任何外网源。 -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:;
                    script-src 'self' 'unsafe-inline';
                    style-src 'self' 'unsafe-inline' https:;
                    img-src * data: file: blob:;
                    media-src * data: file: blob:;
                    font-src *;
+                   frame-src 'self' http://127.0.0.1:5974 http://localhost:5974;
                    connect-src * ws: wss: data:;">
     <title>VCPChat</title>
+    <style>
+        /* Avoid painting the canonical shell with uninitialized theme variables. */
+        body[data-theme-pending="true"] { visibility: hidden; }
+        .startup-initialization-status {
+            position: fixed;
+            top: 8px;
+            left: 50%;
+            z-index: 10000;
+            max-width: min(90vw, 720px);
+            padding: 6px 10px;
+            transform: translateX(-50%);
+            border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+            border-radius: 6px;
+            background: Canvas;
+            color: CanvasText;
+            font: 12px/1.4 system-ui, sans-serif;
+            pointer-events: none;
+        }
+    </style>
     <link rel="stylesheet" href="vendor/fontawesome-v6/fontawesome-v6.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="styles/compact-sidebar.css">
@@ -39,7 +61,8 @@
     <script src="vendor/morphdom.min.js"></script>
 </head>
 
-<body>
+<body data-theme-pending="true">
+    <div id="startupInitializationStatus" class="startup-initialization-status" role="status" aria-live="polite" hidden></div>
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
         <nav class="next-ui-tab-strip" aria-label="页面标签">
@@ -48,7 +71,7 @@
                     title="点击：切换头像窄栏｜长按：隐藏或显示左侧栏" aria-label="切换侧栏显示模式"
                     aria-pressed="false">
                     <span class="next-ui-sidebar-brand" aria-hidden="true">
-                        <img src="assets/icon.png" alt="">
+                        <img src="assets/icon.png" alt="" width="22" height="22">
                     </span>
                     <svg class="lucide lucide-panel-left next-ui-sidebar-control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -56,13 +79,13 @@
                         <path d="M9 3v18"></path>
                     </svg>
                 </button>
-                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" aria-selected="true">
+                <button id="nextUiHomeTab" class="next-ui-tab active" type="button" role="tab" aria-controls="nextUiMainPanel" aria-selected="true" tabindex="0">
                     <span>VCPChat</span>
                 </button>
             </div>
             <div id="nextUiDynamicTabs" class="next-ui-dynamic-tabs" role="tablist" aria-label="已打开应用"></div>
             <button id="nextUiAddTabBtn" class="next-ui-add-tab" type="button" title="打开应用" aria-label="打开应用"
-                aria-selected="false" aria-expanded="false" aria-controls="nextUiLaunchpad">
+                aria-expanded="false" aria-controls="nextUiLaunchpad">
                 <span class="vcp-ui-icon" aria-hidden="true">add</span>
             </button>
         </nav>
@@ -107,7 +130,7 @@
             </button>
         </div>
     </header>
-    <section id="nextUiLaunchpad" class="next-ui-launchpad vcp-ui-scope" data-density="comfortable" aria-hidden="true">
+    <section id="nextUiLaunchpad" class="next-ui-launchpad vcp-ui-scope" data-density="comfortable" role="region" aria-label="应用启动台" aria-hidden="true">
         <div class="next-ui-launchpad-inner">
             <div class="next-ui-empty-brand next-ui-launchpad-brand" role="img" aria-label="VCPChat">
                 <svg class="next-ui-empty-brand-svg" viewBox="0 0 900 190" aria-hidden="true">
@@ -214,9 +237,9 @@
                 </div>
             </div>
             <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
-                <button class="sidebar-tab-button active" data-tab="agents">助手</button>
-                <button class="sidebar-tab-button" data-tab="topics">话题</button>
-                <button class="sidebar-tab-button" data-tab="settings">设置</button>
+                <button class="sidebar-tab-button active" type="button" data-tab="agents">助手</button>
+                <button class="sidebar-tab-button" type="button" data-tab="topics">话题</button>
+                <button class="sidebar-tab-button" type="button" data-tab="settings">设置</button>
             </div>
             <div class="sidebar-tab-content active" id="tabContentAgents" role="tabpanel" aria-hidden="false">
                 <div class="agents-header">
@@ -249,7 +272,8 @@
                                     <path d="m20 20-3.5-3.5"></path>
                                 </svg>
                             </span>
-                            <input type="text" id="agentSearchInput" placeholder="搜索助手或群..." class="topic-search-input">
+                            <input type="text" id="agentSearchInput" placeholder="搜索助手或群..."
+                                aria-label="搜索助手或群" class="topic-search-input">
                             <button id="nextUiAgentSearchClose" class="next-ui-agent-search-close" type="button"
                                 title="关闭搜索" aria-label="关闭助手搜索">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -360,7 +384,7 @@
                 <!-- 设置内容区 -->
                 <div class="settings-header-bar">
                     <h2>设置</h2>
-                    <button id="globalSettingsBtn" class="sidebar-button global-settings-btn">全局设置</button>
+                    <button id="globalSettingsBtn" class="sidebar-button global-settings-btn" type="button">全局设置</button>
                 </div>
 
                 <div id="agentSettingsContainer" style="display: none;"> <!-- Initially hidden -->
@@ -444,7 +468,7 @@
                                             <input type="color" id="agentAvatarBorderColor" name="avatarBorderColor"
                                                 value="#3d5a80">
                                             <input type="text" id="agentAvatarBorderColorText" placeholder="#3d5a80"
-                                                maxlength="7">
+                                                aria-label="头像外框颜色十六进制值" maxlength="7">
                                         </div>
                                     </div>
                                     <div class="style-control-item">
@@ -453,7 +477,7 @@
                                             <input type="color" id="agentNameTextColor" name="nameTextColor"
                                                 value="#ffffff">
                                             <input type="text" id="agentNameTextColorText" placeholder="#ffffff"
-                                                maxlength="7">
+                                                aria-label="名称文字颜色十六进制值" maxlength="7">
                                         </div>
                                     </div>
 
@@ -538,6 +562,7 @@
                                 <div class="agent-settings-card-shell agent-settings-model-shell">
                                     <div class="model-input-container">
                                         <input type="text" id="agentModel" name="model"
+                                            aria-label="Agent 模型"
                                             placeholder="例如 gemini-2.5-flash-preview-05-20">
                                         <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
                                             <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
@@ -681,20 +706,20 @@
             </div>
             <div class="next-ui-account-dock">
                 <div id="nextUiAccountMenu" class="next-ui-account-menu" role="menu" aria-label="界面快捷设置" hidden>
-                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountAppearanceStudioBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem">
                         <span class="vcp-ui-icon" aria-hidden="true">tune</span>
                         <span class="next-ui-account-menu-label">外观与布局</span>
                         <span id="nextUiAccountAppearanceStudioValue" class="next-ui-account-menu-value">自定义</span>
                         <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
                     </button>
-                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountThemeStoreBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="打开主题管理器">
                         <span class="vcp-ui-icon" aria-hidden="true">palette</span>
                         <span class="next-ui-account-menu-label">主题管理器</span>
                         <span class="vcp-ui-icon next-ui-account-menu-chevron" aria-hidden="true">chevron_right</span>
                     </button>
-                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" type="button"
+                    <button id="nextUiAccountThemeToggleBtn" class="next-ui-account-menu-item" role="menuitem" type="button"
                         role="menuitem" aria-label="切换深色或浅色模式">
                         <span id="nextUiAccountThemeIcon" class="vcp-ui-icon" aria-hidden="true">dark_mode</span>
                         <span id="nextUiAccountThemeLabel" class="next-ui-account-menu-label">切换为深色模式</span>
@@ -702,23 +727,23 @@
                 </div>
                 <button id="nextUiAccountMenuTrigger" class="next-ui-account-trigger" type="button"
                     aria-haspopup="menu" aria-controls="nextUiAccountMenu" aria-expanded="false">
-                    <img id="nextUiAccountAvatar" src="assets/default_user_avatar.png" alt="用户头像">
+                    <img id="nextUiAccountAvatar" src="assets/default_user_avatar.png" alt="用户头像" width="32" height="32">
                     <span id="nextUiAccountName">用户</span>
                     <span class="vcp-ui-icon next-ui-account-expand-icon" aria-hidden="true">expand_less</span>
                 </button>
-                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" type="button"
+                <button id="nextUiAccountSettingsBtn" class="next-ui-account-settings" role="menuitem" type="button"
                     title="全局设置" aria-label="全局设置">
                     <span class="vcp-ui-icon" aria-hidden="true">settings</span>
                 </button>
             </div>
         </aside>
         <div class="resizer" id="resizerLeft"></div>
-        <section id="nextUiMainPanel" class="next-ui-main-panel">
+        <section id="nextUiMainPanel" class="next-ui-main-panel" role="tabpanel" aria-labelledby="nextUiHomeTab">
           <main class="main-content">
             <header class="chat-header vcp-ui-scope">
                 <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
                 <div class="chat-actions">
-                    <button id="toggleAssistantBtn" class="header-button"
+                    <button id="toggleAssistantBtn" class="header-button" type="button"
                         title="点击：开关划词助手｜长按：直接呼出" aria-label="划词助手开关与呼出">
                         <svg class="assistant-control-icon-classic" xmlns="http://www.w3.org/2000/svg" width="18"
                             height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -740,7 +765,7 @@
                             <path d="M7 16h6"></path>
                         </svg>
                     </button>
-                    <button id="toggleNotificationsBtn" class="header-button" title="左键打开通知面板/右键监控面板"
+                    <button id="toggleNotificationsBtn" class="header-button" type="button" title="左键打开通知面板/右键监控面板"
                         aria-label="打开通知面板" aria-controls="notificationsSidebar" aria-expanded="false">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -752,7 +777,7 @@
                         </svg>
                     </button>
 
-                    <button id="currentAgentSettingsBtn" class="header-button" title="当前Agent设置" style="display: none;">
+                    <button id="currentAgentSettingsBtn" class="header-button" type="button" title="当前Agent设置" style="display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44"
                             aria-hidden="true">
                             <g transform="translate(1 2) scale(1.62)" stroke="currentColor" stroke-width="2" fill="none"
@@ -771,7 +796,7 @@
                         </svg>
                         <span class="button-label">新建聊天话题</span>
                     </button>
-                    <button id="voiceChatBtn" class="header-button" title="语音聊天"
+                    <button id="voiceChatBtn" class="header-button" type="button" title="语音聊天"
                         style="margin-right: 5px; display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -819,9 +844,10 @@
             <footer class="chat-input-area vcp-ui-scope" aria-label="消息输入区">
                 <div class="chat-input-card">
                     <div class="attachment-preview-area" id="attachmentPreviewArea"></div>
-                    <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)" rows="1" disabled></textarea>
+                    <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)"
+                        aria-label="消息内容" rows="1" disabled></textarea>
                     <div class="chat-input-actions">
-                        <button id="quickNewTopicBtn" title="新建聊天话题" aria-label="新建聊天话题" disabled>
+                        <button id="quickNewTopicBtn" type="button" title="新建聊天话题" aria-label="新建聊天话题" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" aria-hidden="true">
@@ -832,7 +858,7 @@
                                 <path d="M9 11h6"></path>
                             </svg>
                         </button>
-                        <button id="attachFileBtn" title="发送文件" aria-label="发送文件" disabled>
+                        <button id="attachFileBtn" type="button" title="发送文件" aria-label="发送文件" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip"
@@ -841,7 +867,7 @@
                                     d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />
                             </svg>
                         </button>
-                        <button id="emoticonTriggerBtn" title="打开表情包" aria-label="打开表情包" disabled>
+                        <button id="emoticonTriggerBtn" type="button" title="打开表情包" aria-label="打开表情包" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" class="lucide lucide-sticker-icon lucide-sticker"
@@ -854,7 +880,7 @@
                                 <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" />
                             </svg>
                         </button>
-                        <button id="sendMessageBtn" title="发送消息/右键高级回复" aria-label="发送消息" disabled>
+                        <button id="sendMessageBtn" type="button" title="发送消息/右键高级回复" aria-label="发送消息" disabled>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="m5 12 7-7 7 7"></path>
@@ -941,7 +967,8 @@
                     <div class="app-tray-drawer-header">
                         <span class="app-tray-drawer-title">全部应用</span>
                         <div class="app-tray-drawer-actions">
-                            <button id="appTraySettingsBtn" class="app-tray-settings-btn" title="设置托盘显示的按钮">
+                            <button id="appTraySettingsBtn" class="app-tray-settings-btn" type="button"
+                                title="设置托盘显示的按钮" aria-label="设置托盘显示的按钮">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <circle cx="12" cy="12" r="3"></circle>
                                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -1338,15 +1365,6 @@
                                     <div class="settings-subsection-heading">
                                         <div class="settings-subsection-title">聊天字体与气泡</div>
                                         <p class="settings-subsection-description">调整聊天正文、代码、场景字体和 Agent 气泡外观。</p>
-                                    </div>
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                        <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme"
-                                                checked>
-                                            <span class="slider round"></span>
-                                        </label>
                                     </div>
                                     <div class="settings-form-group" id="chatFontSettingsGroup" style="margin-top: 18px;">
                                         <label for="chatFontPreset">聊天字体</label>
@@ -2510,9 +2528,11 @@
     <script src="modules/mainChatCommands.js"></script>
     <script src="modules/ui-system/next-shell/overlay-coordinator.js"></script>
     <script src="modules/ui-system/next-shell/embedded-app-controller.js"></script>
+    <script src="modules/ui-system/next-shell/escape-dispatcher.js"></script>
     <script src="modules/ui-system/next-shell/app-tab-host.js"></script>
     <script src="modules/ui-system/next-shell/assistant-search-controller.js"></script>
     <script src="modules/ui-system/next-shell/account-menu-controller.js"></script>
+    <script src="modules/ui-system/next-shell/notification-menu-controller.js"></script>
     <script src="modules/ui-system/next-shell/launchpad-controller.js"></script>
     <script src="modules/ui-system/next-shell/creation-controller.js"></script>
     <script src="modules/ui-system/next-shell/next-shell-controller.js"></script>

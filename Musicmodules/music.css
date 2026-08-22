@@ -989,6 +989,36 @@ input:checked+.slider:before {
 
 /* --- EQ Section 重构 --- */
 
+#eq-section {
+    transition: gap 0.28s ease, background-color 0.28s ease;
+}
+
+#eq-section > .block-content {
+    max-height: 190px;
+    overflow: hidden;
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+        max-height 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.2s ease,
+        transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#eq-section.eq-collapsed {
+    gap: 0;
+}
+
+#eq-section.eq-collapsed > .block-header {
+    margin-bottom: 0;
+}
+
+#eq-section.eq-collapsed > .block-content {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+}
+
 /* 控件一行 */
 .eq-controls-row {
     display: flex;
@@ -1000,6 +1030,13 @@ input:checked+.slider:before {
     /* 两个下拉框平分宽度 */
     font-size: 0.8em;
     padding: 4px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #eq-section,
+    #eq-section > .block-content {
+        transition: none;
+    }
 }
 
 /* EQ bands 在手风琴内容中显示 */

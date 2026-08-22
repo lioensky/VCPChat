@@ -1,0 +1,473 @@
+/**
+ * VCPWEWallpaperUI - 样式
+ * 视频背景层 / chat-actions 控制面板（header-button 规格）/ 全屏紧凑网格选择器
+ * 面板按钮完全复用主程序 .header-button 类（32px 高 / 12px 圆角 / 18px 图标），
+ * 此处仅补充展开态与内部小控件的插件专属样式。
+ */
+
+/* ═══════════ 背景视频层（与辉宝插件同模型：fixed + z-index:-1） ═══════════ */
+
+#vcp-we-wallpaper-video {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: -1;
+    pointer-events: none;
+    display: none;          /* JS applyVisibility 控制显隐 */
+}
+
+/* ═══════════ 静态兜底层（scene / web 用自带 preview 大图铺底） ═══════════ */
+
+#vcp-we-wallpaper-image {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    display: none;          /* JS applyVisibility 控制显隐 */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* ═══════════ web 壁纸层（iframe 隔离渲染真实 HTML 壁纸） ═══════════ */
+
+/*
+ * iframe 与 video/image 同处 z-index:-1 背景层。
+ * pointer-events:none 是硬要求：壁纸里的 canvas/a 标签绝不能抢聊天窗口的鼠标。
+ * 载入前 iframe 背景默认白，会在切换瞬间闪一下白屏，故显式压成透明。
+ */
+#vcp-we-wallpaper-web {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    z-index: -1;
+    pointer-events: none;
+    display: none;          /* JS applyVisibility 控制显隐 */
+    background: transparent;
+    color-scheme: normal;   /* 阻止宿主深色偏好给壁纸文档强行反色 */
+}
+
+/* 激活时掀掉 body 静态壁纸（与辉宝同策略） */
+body.vcp-we-wallpaper-visible {
+    background-image: none !important;
+}
+
+/* ═══════════ chat-actions 控制面板（挂在 header-button 按钮排中） ═══════════ */
+
+#vcp-we-wallpaper-panel {
+    display: flex;
+    align-items: center;
+    margin-left: 4px;       /* 与 .chat-actions .header-button 的 margin-left 一致 */
+    flex: 0 0 auto;
+}
+
+/* 折叠态：面板本身就是一个标准 header-button（.vwp-toggle 已套该类） */
+#vcp-we-wallpaper-panel .vwp-toggle {
+    margin-left: 0;
+}
+
+/* 展开态：外层变成一个 32px 高的胶囊容器，内部小按钮统一 24px 高 */
+#vcp-we-wallpaper-panel:not(.collapsed) {
+    height: 32px;
+    padding: 0 8px 0 0;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    transition: border-color 0.2s;
+}
+
+#vcp-we-wallpaper-panel:not(.collapsed) .vwp-toggle {
+    border: none;           /* 展开后融入胶囊，不再独立描边 */
+    background: transparent;
+}
+
+#vcp-we-wallpaper-panel .vwp-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 0;
+    opacity: 0;
+    transition: max-width .25s ease, opacity .25s ease, margin .25s ease;
+    margin-left: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#vcp-we-wallpaper-panel:not(.collapsed) .vwp-controls {
+    max-width: 300px;
+    opacity: 1;
+    margin-left: 4px;
+}
+
+/* 展开态内的功能小按钮：24px 方块，视觉是 header-button 的紧凑变体 */
+#vcp-we-wallpaper-panel .vwp-ctrl {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    min-width: 26px;
+    padding: 0 5px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--secondary-text);
+    cursor: pointer;
+    opacity: .8;
+    transition: background .15s ease, opacity .15s ease;
+}
+
+body:not(.light-theme) #vcp-we-wallpaper-panel .vwp-ctrl { color: var(--highlight-text); }
+
+#vcp-we-wallpaper-panel .vwp-ctrl:hover {
+    background: var(--button-hover-bg, rgba(255, 255, 255, 0.12));
+    opacity: 1;
+}
+
+/*
+ * 轮播开启态。纯静态声明，无动画/无滤镜：color-mix 只在样式解析时算一次，
+ * 触发点仅 updatePanel() 的 classList.toggle（用户操作驱动，不在 rAF/timer 里），
+ * 代价是一次 26×24px 的局部 repaint，不触发 layout。
+ */
+#vcp-we-wallpaper-panel .vwp-ctrl.on {
+    opacity: 1;
+    color: var(--highlight-text, #9fd8c8);
+    background: color-mix(in srgb, var(--highlight-text, #9fd8c8) 18%, transparent);
+}
+
+#vcp-we-wallpaper-panel .vwp-ctrl svg { display: block; }
+
+#vcp-we-wallpaper-panel .vwp-volume {
+    display: flex;
+    align-items: center;
+    padding: 0 2px;
+}
+
+#vcp-we-wallpaper-panel .vwp-volume input {
+    width: 64px;
+    height: 3px;
+    appearance: none;
+    -webkit-appearance: none;
+    border-radius: 2px;
+    background: var(--border-color, rgba(255, 255, 255, .2));
+    background-image: linear-gradient(currentColor, currentColor);
+    background-repeat: no-repeat;
+    cursor: pointer;
+    outline: none;
+}
+
+#vcp-we-wallpaper-panel .vwp-volume input::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+/* ═══════════ 全屏紧凑网格选择器（v1 风格 + 翻页 + 提示） ═══════════ */
+
+#vcp-we-wallpaper-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(860px, 92vw);
+    height: min(640px, 86vh);
+    border-radius: 14px;
+    overflow: hidden;
+    /* 主题同步：只用每个主题都定义的核心变量 + color-mix 半透明化，
+       切换主题（含深浅模式）时弹窗自动跟随新主题配色 */
+    background: color-mix(in srgb, var(--primary-bg) 88%, transparent);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+    color: var(--primary-text);
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-count {
+    font-size: 11px;
+    opacity: .6;
+    margin-right: auto;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-filters {
+    display: flex;
+    gap: 4px;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-filters button {
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 13px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--primary-text);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-filters button.on {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent, #fff);
+    font-weight: 600;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-search {
+    width: 150px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--primary-bg) 70%, transparent);
+    color: var(--primary-text);
+    font-size: 12px;
+    outline: none;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-search:focus {
+    border-color: var(--highlight-text);
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-refresh {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--primary-text);
+    cursor: pointer;
+    opacity: .75;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-refresh:hover {
+    opacity: 1;
+    background: var(--button-hover-bg, color-mix(in srgb, var(--primary-text) 12%, transparent));
+}
+
+/* 扫描中：静态置灰即可表达「正在忙」，不引入 @keyframes 旋转 */
+#vcp-we-wallpaper-picker .vwp-picker-refresh.busy {
+    opacity: .35;
+    cursor: default;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-close {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--primary-text);
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-close:hover {
+    background: var(--button-hover-bg, color-mix(in srgb, var(--primary-text) 12%, transparent));
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-status {
+    min-height: 22px;
+    padding: 4px 16px;
+    font-size: 11px;
+    opacity: .7;
+    flex-shrink: 0;
+}
+
+#vcp-we-wallpaper-picker .vwp-picker-status.hint {
+    opacity: 1;
+    color: var(--highlight-text, #e8c87f);
+}
+
+/* 网格：固定尺寸卡片（16:9 缩略图），分页保证永不压缩 */
+#vcp-we-wallpaper-picker .vwp-picker-grid {
+    flex: 1;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 8px 16px 16px;
+    align-content: start;
+    scrollbar-width: thin;
+}
+
+/* ═══════════ 壁纸卡片（v1 紧凑风格） ═══════════ */
+/* 关键：卡片三段（缩略图 / 名称 / 徽章）全部 flex-shrink:0，
+   缩略图改固定高度而非 aspect-ratio —— 否则同一网格行内高卡片会把
+   矮卡片的徽章压扁，表现为「标签只显示上半部分」。 */
+
+#vcp-we-wallpaper-picker .vwp-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    background: color-mix(in srgb, var(--secondary-bg, #2a2a2a) 55%, transparent);
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+    color: var(--primary-text);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+#vcp-we-wallpaper-picker .vwp-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--highlight-text, rgba(255, 255, 255, 0.4));
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+#vcp-we-wallpaper-picker .vwp-card:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text, #6fc8aa);
+}
+
+#vcp-we-wallpaper-picker .vwp-card.current {
+    border-color: var(--highlight-text, #6fc8aa);
+    box-shadow: 0 0 0 1px var(--highlight-text, #6fc8aa);
+}
+
+#vcp-we-wallpaper-picker .vwp-card-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 84px;
+    flex: 0 0 84px;
+    background-color: color-mix(in srgb, var(--primary-bg, #1e1e1e) 60%, transparent);
+    background-size: cover;
+    background-position: center;
+}
+
+#vcp-we-wallpaper-picker .vwp-thumb-empty {
+    font-size: 11px;
+    opacity: .4;
+}
+
+#vcp-we-wallpaper-picker .vwp-card-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 0 0 auto;
+    padding: 6px 8px 2px;
+    font-size: 11.5px;
+    line-height: 1.4;
+    height: 2.8em;
+    box-sizing: content-box;
+    word-break: break-word;
+    color: var(--primary-text);
+}
+
+#vcp-we-wallpaper-picker .vwp-card-badge {
+    align-self: flex-start;
+    flex: 0 0 auto;
+    margin: 2px 8px 8px;
+    padding: 1px 8px;
+    border-radius: 9px;
+    font-size: 10px;
+    line-height: 1.6;
+    white-space: nowrap;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.18));
+    background: color-mix(in srgb, var(--primary-bg, #1e1e1e) 45%, transparent);
+    opacity: .9;
+}
+
+/* 徽章按「实际可用形态」着色，而非按 WE 原始类型 —— 主人一眼看出能得到什么 */
+#vcp-we-wallpaper-picker .vwp-badge-video {
+    color: var(--highlight-text, #9fd8c8);
+    border-color: color-mix(in srgb, var(--highlight-text, #9fd8c8) 45%, transparent);
+}
+
+#vcp-we-wallpaper-picker .vwp-badge-web {
+    color: var(--highlight-text, #9fd8c8);
+    border-color: color-mix(in srgb, var(--highlight-text, #9fd8c8) 45%, transparent);
+}
+
+#vcp-we-wallpaper-picker .vwp-badge-image {
+    color: var(--secondary-text, #b5b5b5);
+    opacity: .75;
+}
+
+#vcp-we-wallpaper-picker .vwp-badge-none {
+    opacity: .4;
+    text-decoration: line-through;
+}
+
+/* ═══════════ 分页脚 ═══════════ */
+
+#vcp-we-wallpaper-picker .vwp-picker-foot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    flex-shrink: 0;
+}
+
+#vcp-we-wallpaper-picker .vwp-page-btn {
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.16));
+    background: transparent;
+    color: var(--primary-text);
+    font-size: 11.5px;
+    cursor: pointer;
+    opacity: .8;
+    transition: all .15s ease;
+}
+
+#vcp-we-wallpaper-picker .vwp-page-btn:hover:not(:disabled) {
+    background: var(--button-hover-bg, color-mix(in srgb, var(--primary-text) 12%, transparent));
+    border-color: var(--highlight-text, rgba(255, 255, 255, 0.3));
+    opacity: 1;
+}
+
+#vcp-we-wallpaper-picker .vwp-page-btn:disabled {
+    opacity: .3;
+    cursor: default;
+}
+
+#vcp-we-wallpaper-picker .vwp-page-info {
+    font-size: 11.5px;
+    opacity: .6;
+    min-width: 80px;
+    text-align: center;
+}

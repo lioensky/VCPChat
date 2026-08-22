@@ -265,11 +265,29 @@ body.light-theme #moon-icon {
     max-width: var(--chat-bubble-max-width, 82%); /* Default width when sidebar is closed */
     word-wrap: break-word;
     line-height: 1.5;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    /* Bubble surfaces are defined by their clipped fill and border.  A
+     * generic outer shadow here creates a dark halo on translucent themes
+     * (especially while the list is scrolling), so keep emphasis inside the
+     * rounded boundary instead. */
+    box-shadow: none;
     position: relative;
+    /* Keep animated/colored descendants and backdrop compositing inside the
+     * rounded bubble.  Without an explicit clipping/isolation boundary,
+     * Chromium may paint translucent bubble layers into the surrounding
+     * scrolling surface during fast scrolls. */
+    overflow: hidden;
+    isolation: isolate;
     backdrop-filter: blur(8px); /* Keep if desired */
     -webkit-backdrop-filter: blur(8px); /* Keep if desired */
-    transition: max-width 0.4s ease-in-out, background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease; /* Smooth transition for width and surface changes */
+    /* Theme backgrounds can be multi-layer color-mix() gradients over a
+     * backdrop-filter. Interpolating them on every visible message is much
+     * more expensive than committing the target surface once. Keep layout,
+     * text, border and shadow feedback smooth without animating background. */
+    transition:
+        max-width 0.4s ease-in-out,
+        color 0.16s ease,
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
 }
 
 /* When notifications sidebar is active, make bubbles wider to fill more of the narrower space */

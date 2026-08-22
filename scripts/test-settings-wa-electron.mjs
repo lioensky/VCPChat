@@ -287,13 +287,11 @@ try {
     assert.equal(restored.active, 'section-user-identity', 'reopened modal starts on the first category');
     console.log('  [PASS] 7. reopen after reload restores persisted values from settings.json');
 
-    // ---- 8. Classic teardown keeps next-mode surfaces clean ----
+    // ---- 8. Reloaded Next surface remains mounted and authoritative ----
     assert.equal(await page.evaluate(() => document.documentElement.dataset.uiMode), 'next');
-    await page.waitForFunction(() => {
-        const modal = document.getElementById('globalSettingsModal');
-        return !modal?.querySelector('.vcp-ui-settings-shell') && !modal?.querySelector('.vcp-ui-settings-search');
-    }, { timeout: timeoutMs });
-    console.log('  [PASS] 8. switching to classic tears the SettingsShell down');
+    assert.equal(await page.evaluate(() => Boolean(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'))), true,
+        'reloaded Next settings surface remains mounted after persistence restore');
+    console.log('  [PASS] 8. reloaded Next SettingsShell remains mounted');
 
     console.log('\nSettings WA Electron gate passed (shell layout, nav/search, real save + reload restore, screenshots).');
 } catch (error) {

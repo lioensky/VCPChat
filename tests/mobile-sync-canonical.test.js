@@ -20,7 +20,7 @@ const FIXTURE_PATH = path.join(
   "protocol_1_2_golden.json",
 );
 const EXPECTED_FIXTURE_SHA256 =
-  "7226118ea55766f952575032efc8cfff883a19c9d196f637ac267cb8795fcef8";
+  "62d4eecb639feb1a6e46302dc4046c622a5477d6a53463320c891757be629a9b";
 
 test("协议 1.2 golden bundle 与 Mobile 字节一致", () => {
   const bytes = fs.readFileSync(FIXTURE_PATH);
@@ -122,4 +122,42 @@ test("canonicalizer 只接受 Wire 1.2 结构化 topic 错误", () => {
     }),
     /must not contain live messages/,
   );
+});
+
+test("分支话题消息的旧 topicId 归一化为 frame topic 而非拒绝", () => {
+  // 话题分支（chatManager slice 复制）会让消息 JSON 携带旧话题的 topicId。
+  // frame topic 才是存储权威、指纹不含 topicId，因此冲突必须重写而非炸批。
+  const result = canonicalizeTopicFrame({
+    topicId: "topic-branch",
+    messages: [
+      {
+        id: "message-branched",
+        role: "user",
+        content: "branched",
+        timestamp: 1700000002,
+        topicId: "topic-origin",
+      },
+      {
+        id: "message-non-string-topic",
+        role: "assistant",
+        content: "odd",
+        timestamp: 1700000003,
+        topicId: 42,
+      },
+      {
+        id: "message-consistent",
+        role: "user",
+        content: "fine",
+        timestamp: 1700000004,
+        topicId: "topic-branch",
+      },
+    ],
+  });
+  assert.equal(result.topicIdRewrites, 2);
+  assert.equal(result.topicIdRewriteSamples.length, 2);
+  assert.deepEqual(
+    result.frame.messages.map((message) => message.topicId),
+    ["topic-branch", "topic-branch", "topic-branch"],
+  );
+  assert.equal(result.warningCount, 0);
 });

@@ -6,7 +6,7 @@ const { AccountMenuController } = require('../modules/ui-system/next-shell/accou
 function fixture() {
     const dom = new JSDOM(`<!doctype html><body class="dark-theme">
       <div class="next-ui-account-dock"><button id="nextUiAccountMenuTrigger"></button><img id="nextUiAccountAvatar"><span id="nextUiAccountName"></span></div>
-      <div id="nextUiAccountMenu" hidden><button id="nextUiAccountSettingsBtn"></button><button id="nextUiAccountAppearanceStudioBtn"></button><button id="nextUiAccountThemeStoreBtn"></button><button id="nextUiAccountThemeToggleBtn"><span id="nextUiAccountThemeIcon"></span><span id="nextUiAccountThemeLabel"></span></button></div>
+      <div id="nextUiAccountMenu" role="menu" hidden><button id="nextUiAccountSettingsBtn"></button><button id="nextUiAccountAppearanceStudioBtn" role="menuitem"></button><button id="nextUiAccountThemeStoreBtn" role="menuitem"></button><button id="nextUiAccountThemeToggleBtn" role="menuitem"><span id="nextUiAccountThemeIcon"></span><span id="nextUiAccountThemeLabel"></span></button></div>
       <button id="nextUiThemeBtn"><span class="vcp-ui-icon"></span></button>
     </body>`, { url: 'http://vcpchat.local/' });
     const calls = [];
@@ -29,6 +29,11 @@ test('account menu synchronizes identity/theme and owns dismissal behavior', () 
     const document = dom.window.document;
     document.getElementById('nextUiAccountMenuTrigger').click();
     assert.equal(document.getElementById('nextUiAccountMenu').hidden, false);
+    assert.equal(document.activeElement.id, 'nextUiAccountAppearanceStudioBtn');
+    document.getElementById('nextUiAccountMenu').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert.equal(document.activeElement.id, 'nextUiAccountThemeStoreBtn');
+    document.getElementById('nextUiAccountMenu').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(document.activeElement.id, 'nextUiAccountThemeToggleBtn');
     assert.equal(document.getElementById('nextUiAccountName').textContent, 'Nova');
     assert.equal(document.getElementById('nextUiAccountThemeLabel').textContent, '切换为浅色模式');
     document.getElementById('nextUiAccountThemeToggleBtn').click();

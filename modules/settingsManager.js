@@ -67,6 +67,9 @@ const settingsManager = (() => {
     // A private variable to hold the regex rules for the currently edited agent
     let currentAgentRegexes = [];
     let currentModelSelectCallback = null;
+    // 保留模型选择器本次打开时的目标。收藏模型会刷新列表，不能在刷新时
+    // 错误地退回到 Agent 模型输入框。
+    let currentModelSelectTarget = null;
     const sectionControllers = new Map();
     let lastPersistedCollapseStateSignature = '';
     let scheduleStickyButtonsRefresh = () => { };
@@ -1218,12 +1221,13 @@ const settingsManager = (() => {
                     models = await electronAPI.getCachedModels();
                 }
             }
-
+            currentModelSelectTarget = targetInputElement || null;
             currentModelSelectCallback = (modelId) => {
-                if (targetInputElement) {
-                    targetInputElement.value = modelId;
-                    targetInputElement.dispatchEvent(new Event('input', { bubbles: true }));
-                    targetInputElement.dispatchEvent(new Event('change', { bubbles: true }));
+                const activeTarget = currentModelSelectTarget;
+                if (activeTarget?.isConnected) {
+                    activeTarget.value = modelId;
+                    activeTarget.dispatchEvent(new Event('input', { bubbles: true }));
+                    activeTarget.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 uiHelper.closeModal('modelSelectModal');
                 updateSectionSummary('model');
@@ -1319,8 +1323,9 @@ const settingsManager = (() => {
                 if (electronAPI.toggleFavoriteModel) {
                     const result = await electronAPI.toggleFavoriteModel(model.id);
                     if (result && result.favorited !== undefined) {
-                        // 重新拉取一次整个列表的逻辑，保持UI一致性
-                        handleOpenModelSelect(document.getElementById('agentModel') || null); // Note: targetInputElement context is somewhat lost here, ideally we should just refresh the view
+                        // 刷新列表时沿用本次打开选择器的目标，避免从“话题总结模型”
+                        // 打开后因收藏操作而错误切换到 Agent 模型输入框。
+                        handleOpenModelSelect(currentModelSelectTarget);
                     }
                 }
             });

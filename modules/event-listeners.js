@@ -1149,7 +1149,11 @@ export function setupEventListeners(deps) {
         }
     }
 
-    const nextUiNotificationMenuBtn = document.getElementById('nextUiNotificationMenuBtn');
+    /* Notification quick actions are owned by NextShell's
+     * NotificationMenuController. Keeping a second document-level binding
+     * here causes every command and Escape action to run twice. */
+    const nextUiNotificationMenuBtn = null;
+    /*
     const nextUiNotificationMenu = document.getElementById('nextUiNotificationMenu');
     const nextUiNotificationForum = document.getElementById('nextUiNotificationForum');
     const nextUiNotificationMemo = document.getElementById('nextUiNotificationMemo');
@@ -1281,6 +1285,7 @@ export function setupEventListeners(deps) {
             syncNotificationFilterState();
         }
     }
+    */
 
     {
         const enableMiddleClickCheckbox = document.getElementById('enableMiddleClickQuickAction');

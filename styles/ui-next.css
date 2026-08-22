@@ -15,7 +15,7 @@
 
 html {
     --ui-mode: next;
-    --next-topbar-height: 44px;
+    --next-topbar-height: 42px;
 }
 
 html body {
@@ -279,6 +279,19 @@ html #nextUiHomeTab > span:last-child {
     min-width: 0;
 }
 
+.next-ui-tab-label-button {
+    min-width: 0;
+    flex: 1 1 auto;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .next-ui-tab-close {
     width: 20px;
     height: 20px;
@@ -290,6 +303,12 @@ html #nextUiHomeTab > span:last-child {
     color: var(--next-muted);
     background: transparent;
     cursor: pointer;
+}
+
+.next-ui-tab-label-button:focus-visible {
+    outline: 2px solid #3f70ff;
+    outline-offset: -2px;
+    border-radius: 5px;
 }
 
 .next-ui-tab-close:hover {
@@ -454,14 +473,21 @@ html .next-ui-main-panel {
     border-bottom: 0;
     border-radius: var(--vcp-ui-shell-radius) 0 0 0;
     box-sizing: border-box;
-    background-color: var(--primary-bg, var(--next-surface));
+    /* The navigation material is the continuous shell base. Keeping an opaque
+       primary-bg here creates a hard rectangular patch for legacy themes that
+       do not define the optional --next-theme-* contract. The translucent
+       chat surface and wallpaper below remain the panel's visual authority. */
+    background-color: transparent;
     background-image:
         linear-gradient(var(--next-chat-surface), var(--next-chat-surface)),
         var(--next-wallpaper);
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
-    background-attachment: fixed;
+    /* The panel itself does not scroll; its chat descendants do. `fixed`
+       needlessly promotes a viewport-sized background and increases repaint
+       cost while resizing either sidebar. */
+    background-attachment: scroll;
     backdrop-filter: var(--next-surface-backdrop-filter);
     -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
 }
@@ -553,7 +579,7 @@ html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active {
 
 html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover,
 html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible {
-    background: color-mix(in srgb, var(--next-text) 8%, transparent);
+    background: transparent;
 }
 
 html .next-ui-brand-tab-group {
@@ -635,6 +661,21 @@ html .next-ui-sidebar-mode-button:hover > .next-ui-sidebar-control-icon,
 html .next-ui-sidebar-mode-button:focus-visible > .next-ui-sidebar-control-icon {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
+}
+
+/* Switching to avatar-only mode leaves the pointer over this button, so
+   :hover remains true without any new pointer movement. In that active mode,
+   keep the brand visible instead of allowing the control glyph to cover it. */
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover .next-ui-sidebar-brand,
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible .next-ui-sidebar-brand {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:hover > .next-ui-sidebar-control-icon,
+html body #toggleSidebarModeBtn.next-ui-sidebar-mode-button.active:focus-visible > .next-ui-sidebar-control-icon {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.76);
 }
 
 html .assistant-control-icon-classic {
@@ -875,7 +916,9 @@ html .next-ui-launchpad {
     background-repeat: no-repeat;
     background-position: center;
     background-size: cover;
-    background-attachment: fixed;
+    /* This fixed-position surface already owns the viewport below the topbar.
+       Avoid a second fixed-background compositing layer. */
+    background-attachment: scroll;
 }
 
 body.light-theme .next-ui-launchpad {
@@ -1121,6 +1164,7 @@ body.light-theme .next-ui-nova-panel::before {
 
 .next-ui-app-item:focus-visible,
 .next-ui-tab:focus-visible,
+.next-ui-tab-label-button:focus-visible,
 .next-ui-add-tab:focus-visible,
 .next-ui-icon-button:focus-visible,
 .next-ui-window-button:focus-visible {
@@ -1234,8 +1278,14 @@ body.light-theme .next-ui-nova-panel::before {
         transition: none;
     }
 
+    .next-ui-nova-panel::before,
     .next-ui-empty-brand {
         animation: none;
+    }
+
+    .next-ui-nova-panel::before {
+        opacity: 0.68;
+        transform: translateX(0) scale(1);
     }
 
     .next-ui-empty-brand-flow {

@@ -75,6 +75,7 @@ let currentChatHistory = [];
 window.__vcpRendererReady = false;
 window.__vcpPendingTopicSelection = null;
 const chatAPI = window.chatAPI || window.electronAPI;
+const STARTUP_SETTINGS_TIMEOUT_MS = 15_000;
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -205,6 +206,7 @@ function updateSendButtonState() {
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
     sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
     sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
+    sendMessageBtn.setAttribute('aria-busy', String(nextMode === 'interrupt'));
 }
 
 async function interruptActiveResponseFromSendButton() {
@@ -308,8 +310,15 @@ const uiHelperFunctions = window.uiHelperFunctions;
 import searchManager from './modules/searchManager.js';
 import { initialize as initializeEmoticonFixer } from './modules/renderer/emoticonUrlFixer.js';
 import * as interruptHandler from './modules/interruptHandler.js';
+import { StartupThemeGate, loadSettingsWithTimeout } from './modules/ui-system/startup-theme-gate.js';
  
 import { setupEventListeners } from './modules/event-listeners.js';
+
+const startupThemeGate = new StartupThemeGate({
+    document,
+    applyTheme: applyInitialThemeClass,
+    statusElement: document.getElementById('startupInitializationStatus'),
+});
  
  // --- Initialization ---
  document.addEventListener('DOMContentLoaded', async () => {
@@ -974,7 +983,13 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
     try {
         setupChatPresentationQuickSwitcher();
-        await loadAndApplyGlobalSettings();
+        try {
+            await loadAndApplyGlobalSettings();
+        } catch (error) {
+            // Do not leave the startup gate closed if settings IPC fails.
+            console.error('[RENDERER_INIT] Failed to load global settings:', error);
+            startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败，已使用系统主题' });
+        }
         await window.itemListManager.loadItems(); // Load both agents and groups
         await window.chatManager.restoreLastOpenState(globalSettings);
 
@@ -1167,7 +1182,13 @@ import { setupEventListeners } from './modules/event-listeners.js';
     } catch (error) {
         window.__vcpRendererReady = false;
         console.error('Error during DOMContentLoaded initialization:', error);
-        chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
+        startupThemeGate.release({
+            mode: 'system',
+            message: `初始化失败，已使用系统主题：${error?.message || '未知错误'}`,
+        });
+        if (chatMessagesDiv) {
+            chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error?.message || '未知错误'}</div>`;
+        }
     }
 
     // --- Agent Settings Reload Listener ---
@@ -1572,10 +1593,25 @@ function setupTtsListeners() {
 
 
 async function loadAndApplyGlobalSettings() {
-    const settings = await chatAPI.loadSettings();
+    let settings;
+    try {
+        settings = await loadSettingsWithTimeout(
+            chatAPI?.loadSettings,
+            STARTUP_SETTINGS_TIMEOUT_MS,
+            '加载设置超时'
+        );
+    } catch (error) {
+        startupThemeGate.release({ mode: 'system', message: error?.message || '设置加载失败' });
+        throw error;
+    }
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings };
         window.globalSettings = globalSettings;
+
+        // Theme variables must be selected before any item/chat restoration can paint.
+        // The uiManager listener is initialized later and receives the same effective value.
+        startupThemeGate.release({ mode: globalSettings.currentThemeMode });
+
         globalSettings.appearanceProfile = window.VCPAppearance?.commit(
             globalSettings.appearanceProfile,
             { uiMode: 'next', source: 'settings-load' }
@@ -1658,8 +1694,24 @@ async function loadAndApplyGlobalSettings() {
         }
     } else {
         console.warn('加载全局设置失败或无设置:', settings?.error);
+        startupThemeGate.release({ mode: 'system', message: settings?.error || '设置加载失败，已使用系统主题' });
         if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
     }
+}
+
+function applyInitialThemeClass(mode) {
+    let effectiveTheme = mode === 'light' || mode === 'dark' ? mode : null;
+    if (!effectiveTheme && typeof window.matchMedia === 'function') {
+        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    effectiveTheme = effectiveTheme || 'light';
+    if (window.uiManager?.applyTheme) {
+        window.uiManager.applyTheme(effectiveTheme);
+    } else {
+        document.body.classList.remove('light-theme', 'dark-theme');
+        document.body.classList.add(`${effectiveTheme}-theme`);
+    }
+    document.body.removeAttribute('data-theme-pending');
 }
 
 const CHAT_PRESENTATION_MODES = Object.freeze(['bubble', 'panel', 'immersive']);
@@ -1741,6 +1793,9 @@ function restoreChatPresentationScrollAnchor(anchor) {
     scrollContainer.scrollTop += currentOffset - anchor.viewportOffset;
 }
 
+let chatPresentationSaveGeneration = 0;
+let chatPresentationSaveChain = Promise.resolve();
+
 function syncChatPresentationModeControls(mode = globalSettings.chatPresentationMode) {
     const normalizedMode = normalizeChatPresentationMode(mode);
     const modeControl = document.querySelector(
@@ -1773,9 +1828,12 @@ function setupChatPresentationQuickSwitcher() {
         const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
         const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
 
-        const setOpen = (open) => {
+        const setOpen = (open, { restoreFocus = false } = {}) => {
             switcher.classList.toggle('is-open', open);
             trigger?.setAttribute('aria-expanded', String(open));
+            switcher.setAttribute('aria-hidden', String(!open));
+            switcher.inert = !open;
+            if (!open && restoreFocus) trigger?.focus();
         };
 
         const selectMode = async (option) => {
@@ -1807,15 +1865,14 @@ function setupChatPresentationQuickSwitcher() {
                 if (event.key !== 'Escape' || !switcher.classList.contains('is-open')) return;
                 event.preventDefault();
                 event.stopPropagation();
-                setOpen(false);
-                trigger.focus();
+                setOpen(false, { restoreFocus: true });
             });
         }
 
         options.forEach((option) => {
             option.addEventListener('click', async () => {
                 await selectMode(option);
-                if (usesExplicitState) setOpen(false);
+                if (usesExplicitState) setOpen(false, { restoreFocus: true });
             });
             option.addEventListener('keydown', (event) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -1843,6 +1900,7 @@ function setupChatPresentationQuickSwitcher() {
         });
 
         switcher.dataset.bound = 'true';
+        setOpen(false);
     });
     syncChatPresentationModeControls(globalSettings.chatPresentationMode);
 }
@@ -1856,6 +1914,7 @@ async function applyChatPresentationMode(mode, options = {}) {
     } = options;
     const normalizedMode = normalizeChatPresentationMode(mode);
     const previousMode = normalizeChatPresentationMode(globalSettings.chatPresentationMode);
+    const generation = persist ? ++chatPresentationSaveGeneration : chatPresentationSaveGeneration;
     const anchor = preserveScroll ? captureChatPresentationScrollAnchor() : null;
 
     document.body?.classList.remove(...CHAT_PRESENTATION_MODE_CLASSES);
@@ -1882,7 +1941,10 @@ async function applyChatPresentationMode(mode, options = {}) {
     }
 
     try {
-        const result = await chatAPI.saveSettings({ chatPresentationMode: normalizedMode });
+        chatPresentationSaveChain = chatPresentationSaveChain
+            .catch(() => undefined)
+            .then(() => chatAPI.saveSettings({ chatPresentationMode: normalizedMode }));
+        const result = await chatPresentationSaveChain;
         if (!result?.success) {
             throw new Error(result?.error || '设置保存失败');
         }
@@ -1891,13 +1953,17 @@ async function applyChatPresentationMode(mode, options = {}) {
         }
         return { success: true, mode: normalizedMode, source };
     } catch (error) {
-        await applyChatPresentationMode(previousMode, {
-            persist: false,
-            preserveScroll: true,
-            notify: false,
-            source: 'rollback'
-        });
-        uiHelperFunctions?.showToastNotification?.(`聊天显示模式保存失败：${error.message}`, 'error');
+        if (generation === chatPresentationSaveGeneration) {
+            await applyChatPresentationMode(previousMode, {
+                persist: false,
+                preserveScroll: true,
+                notify: false,
+                source: 'rollback'
+            });
+        }
+        if (generation === chatPresentationSaveGeneration) {
+            uiHelperFunctions?.showToastNotification?.(`聊天显示模式保存失败：${error.message}`, 'error');
+        }
         return { success: false, mode: previousMode, error };
     }
 }
@@ -2226,7 +2292,6 @@ async function syncGlobalSettingsToUI(session = captureSettingsSurfaceSession())
         }
     }
 
-    safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
     safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
     safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);

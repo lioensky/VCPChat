@@ -149,11 +149,7 @@ body.light-theme {
    ========================================================= */
 
 /* Frosted panels: substantial enough for an official default theme. */
-.message-bubble,
-.tool-bubble,
-.sidebar,
-.notifications-sidebar,
-.chat-header {
+.tool-bubble {
     backdrop-filter: blur(14px) saturate(112%) !important;
     -webkit-backdrop-filter: blur(14px) saturate(112%) !important;
 }
@@ -167,29 +163,25 @@ body.light-theme {
     box-shadow: -10px 0 34px rgba(0, 0, 0, 0.12);
 }
 
-.chat-header {
-    border-bottom: 1px solid rgba(59, 68, 73, 0.60) !important;
-}
+/* The Next shell owns .chat-header geometry, surface and divider. */
 
 /* Dark user bubble: warning yellow is a structural signal, not a fill. */
-.message-item.user .message-bubble {
+.message-item.user .md-content {
+    box-sizing: border-box;
     border: 1px solid rgba(242, 169, 0, 0.24) !important;
     border-right: 3px solid rgba(242, 169, 0, 0.82) !important;
     border-radius: 14px 4px 14px 14px !important;
-    box-shadow:
-        0 7px 22px rgba(0, 0, 0, 0.20),
-        inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
 }
 
 /* Dark assistant bubble: graphite equipment plate with status edge. */
-.message-item.agent .message-bubble,
-.message-item.assistant .message-bubble {
+.message-item.agent .md-content,
+.message-item.assistant .md-content {
+    box-sizing: border-box;
     border: 1px solid rgba(59, 68, 73, 0.76) !important;
     border-left: 3px solid rgba(118, 191, 174, 0.68) !important;
     border-radius: 4px 14px 14px 14px !important;
-    box-shadow:
-        0 8px 26px rgba(0, 0, 0, 0.25),
-        inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
 }
 
 /* Tool output behaves like a compact operational status plate. */
@@ -229,12 +221,10 @@ body.light-theme .notifications-sidebar {
     box-shadow: -10px 0 30px rgba(27, 33, 31, 0.055);
 }
 
-body.light-theme .chat-header {
-    border-bottom-color: rgba(210, 203, 192, 0.88) !important;
-}
+/* The Next shell also owns the light-mode chat-header divider. */
 
 /* Vermilion editorial annotation card. */
-body.light-theme .message-item.user .message-bubble {
+body.light-theme .message-item.user .md-content {
     background: linear-gradient(
         145deg,
         rgba(252, 250, 244, 0.90),
@@ -242,14 +232,12 @@ body.light-theme .message-item.user .message-bubble {
     ) !important;
     border: 1px solid rgba(185, 72, 50, 0.22) !important;
     border-right: 3px solid rgba(185, 72, 50, 0.82) !important;
-    box-shadow:
-        0 7px 22px rgba(27, 33, 31, 0.085),
-        inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
 }
 
 /* Warm paper assistant card with strong long-reading stability. */
-body.light-theme .message-item.agent .message-bubble,
-body.light-theme .message-item.assistant .message-bubble {
+body.light-theme .message-item.agent .md-content,
+body.light-theme .message-item.assistant .md-content {
     background: linear-gradient(
         180deg,
         rgba(252, 250, 244, 0.88) 0%,
@@ -257,9 +245,7 @@ body.light-theme .message-item.assistant .message-bubble {
     ) !important;
     border: 1px solid rgba(210, 203, 192, 0.88) !important;
     border-left: 3px solid rgba(33, 103, 92, 0.72) !important;
-    box-shadow:
-        0 8px 25px rgba(27, 33, 31, 0.09),
-        inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
 }
 
 body.light-theme .tool-bubble {
@@ -284,21 +270,16 @@ body.light-theme .title-bar-button:hover {
 @keyframes vcpOperationalPulse {
     0%, 100% {
         border-left-color: rgba(118, 191, 174, 0.56);
-        box-shadow:
-            0 8px 26px rgba(0, 0, 0, 0.25),
-            inset 0 1px 0 rgba(255, 255, 255, 0.035);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
     }
     50% {
         border-left-color: rgba(118, 191, 174, 0.82);
-        box-shadow:
-            0 8px 28px rgba(0, 0, 0, 0.27),
-            -3px 0 14px rgba(118, 191, 174, 0.075),
-            inset 0 1px 0 rgba(255, 255, 255, 0.045);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
     }
 }
 
-.message-item.streaming.agent .message-bubble,
-.message-item.streaming.assistant .message-bubble {
+.message-item.streaming.agent .md-content,
+.message-item.streaming.assistant .md-content {
     animation: vcpOperationalPulse 2.8s ease-in-out infinite;
 }
 
@@ -311,8 +292,8 @@ body.light-theme .title-bar-button:hover {
     }
 }
 
-body.light-theme .message-item.streaming.agent .message-bubble,
-body.light-theme .message-item.streaming.assistant .message-bubble {
+body.light-theme .message-item.streaming.agent .md-content,
+body.light-theme .message-item.streaming.assistant .md-content {
     animation: editorialProofPulse 3.2s ease-in-out infinite;
 }
 
@@ -343,10 +324,10 @@ body.light-theme .message-item.streaming.assistant .message-bubble {
 
 /* Respect users who prefer low-motion interfaces. */
 @media (prefers-reduced-motion: reduce) {
-    .message-item.streaming.agent .message-bubble,
-    .message-item.streaming.assistant .message-bubble,
-    body.light-theme .message-item.streaming.agent .message-bubble,
-    body.light-theme .message-item.streaming.assistant .message-bubble {
+    .message-item.streaming.agent .md-content,
+    .message-item.streaming.assistant .md-content,
+    body.light-theme .message-item.streaming.agent .md-content,
+    body.light-theme .message-item.streaming.assistant .md-content {
         animation: none !important;
     }
 

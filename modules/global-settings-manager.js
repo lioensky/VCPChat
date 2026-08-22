@@ -12,6 +12,17 @@ export function handleSaveGlobalSettings(e, deps) {
     });
 }
 
+function awaitWithTimeout(value, timeoutMs) {
+    const duration = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000;
+    let timer;
+    return Promise.race([
+        Promise.resolve(value),
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`保存设置超时（${duration}ms）`)), duration);
+        }),
+    ]).finally(() => clearTimeout(timer));
+}
+
 async function saveGlobalSettings(deps, settingsForm) {
     const chatAPI = window.chatAPI || window.electronAPI;
     const reportSaveResult = (success, error = '') => {
@@ -71,7 +82,6 @@ async function saveGlobalSettings(deps, settingsForm) {
         networkNotesPaths: networkNotesPaths,
         sidebarWidth: refs.globalSettings.get().sidebarWidth,
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
-        enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
         showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
         showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
@@ -259,7 +269,11 @@ async function saveGlobalSettings(deps, settingsForm) {
         }
     }
 
-    const result = await chatAPI.saveSettings(newSettings);
+    // A renderer must regain control when the main-process save never
+    // settles. The underlying IPC call may still finish later, but its late
+    // result cannot continue this operation because the bounded await has
+    // already rejected and the form lock is released by the outer finally.
+    const result = await awaitWithTimeout(chatAPI.saveSettings(newSettings), deps.saveTimeoutMs);
     if (result?.success) {
         if (chatAPI?.saveRustAssistantConfig) {
             const rustSaveResult = await chatAPI.saveRustAssistantConfig(rustConfigPatch);

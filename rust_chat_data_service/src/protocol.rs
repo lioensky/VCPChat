@@ -37,9 +37,8 @@ use crate::{
     storage::now_ms,
     sync::{
         self, ChangeFeedResponse, ManifestRequest, ManifestResponse, MessageDiffRequest,
-        MessageDiffResponse, MessageManifestResponse, MessagesPullFrame, MessagesPullRequest,
-        MessagesPushRequest, MessagesPushResponse, TopicHashDiffRequest, TopicHashDiffResponse,
-        TopicSelector,
+        MessageDiffResponse, MessageManifestResponse, MessagesPullRequest, MessagesPushRequest,
+        MessagesPushResponse, TopicHashDiffRequest, TopicHashDiffResponse, TopicSelector,
     },
     watcher::WatcherMetrics,
 };
@@ -219,7 +218,6 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/sync/message-manifest", post(sync_message_manifest))
         .route("/v1/sync/topic-diff", post(sync_topic_diff))
         .route("/v1/sync/message-diff", post(sync_message_diff))
-        .route("/v1/sync/messages/pull", post(sync_messages_pull))
         .route("/v1/sync/messages/push", post(sync_messages_push))
         .route("/v1/changes", get(change_feed))
         .route("/v1/flush", post(flush))
@@ -498,15 +496,8 @@ async fn sync_topic_identity(
         .map_err(ServiceError::internal)
 }
 
-async fn sync_messages_pull(
-    State(state): State<AppState>,
-    Json(request): Json<MessagesPullRequest>,
-) -> ServiceResult<Json<Vec<MessagesPullFrame>>> {
-    sync::pull_messages(state.reconciler.database(), request)
-        .map(Json)
-        .map_err(ServiceError::internal)
-}
-
+// v1 `/v1/sync/messages/pull` 批量端点已弃用移除（S3-δ）：
+// 全有或全无语义且无活调用方；消息拉取统一走 v2 流式（per-topic `_error` 帧隔离）。
 const MAX_SYNC_TOPICS: usize = 10_000;
 const MAX_SYNC_MESSAGES: usize = 100_000;
 const MAX_SYNC_FRAME_BYTES: usize = 32 * 1024 * 1024;

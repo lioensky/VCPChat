@@ -132,7 +132,6 @@ const populateForm = (settings) => {
     set('chatCodeFontPreset', settings.chatCodeFontPreset || 'consolas');
     set('chatDiaryFontPreset', settings.chatDiaryFontPreset || 'serif');
     set('chatToolFontPreset', settings.chatToolFontPreset || 'system');
-    check('enableAgentBubbleTheme', settings.enableAgentBubbleTheme !== false);
     check('enableSmoothStreaming', settings.enableSmoothStreaming === true);
     set('assistantAgent', settings.assistantAgent || '');
     check('rustDebugMode', Boolean(settings.rustConfig?.debugMode));
@@ -202,6 +201,9 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalSettingsModal').classList.contains('vcp-global-settings-next'), 'Next marks the enhanced global settings modal');
 assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'Next mounts the SettingsShell layout');
 assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length, 8, '8 categories in VCPUI List nav');
+assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-list')?.getAttribute('role'), 'tablist', 'settings categories expose tablist semantics');
+assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-list-item')?.getAttribute('role'), 'tab', 'settings category is an actionable tab');
+assert.equal(document.querySelector('#globalSettingsModal .settings-section')?.getAttribute('role'), 'tabpanel', 'settings section exposes tabpanel semantics');
 assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input[type="search"]'), 'search field injected in the left rail');
 assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input').classList.contains('vcp-ui-native-input'), 'search input is VCPUI-enhanced');
 
@@ -299,7 +301,7 @@ const categories = [
     },
     {
         name: '界面与外观', key: 'appearance-settings',
-        initial: { chatFontPreset: 'system', enableAgentBubbleTheme: true },
+        initial: { chatFontPreset: 'system' },
         assertLoaded: () => document.getElementById('chatFontPreset').value === 'system',
         modify: () => setField('chatFontPreset', 'serif'),
         savedKey: 'chatFontPreset', expected: 'serif',

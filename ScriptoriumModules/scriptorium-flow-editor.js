@@ -7,8 +7,11 @@
         const selectionPrimitives = context.selectionPrimitives;
         const compiler = context.hybridCompiler;
         const notificationPort = context.notificationPort || {};
+        const inputSyncModule = context.inputSync
+            || window.ScriptoriumInputSync;
         if (!adapter || adapter.kind !== 'flow' || !documentPort
-            || !selectionPrimitives || !compiler) {
+            || !selectionPrimitives || !compiler
+            || !inputSyncModule?.createInputSync) {
             throw new TypeError(
                 'Flow editor requires a flow adapter, DocumentPort, DOM selection primitives and compiler.'
             );
@@ -17,6 +20,7 @@
         const state = {
             root: null,
             abortController: null,
+            inputSync: null,
             activeSession: null,
             selectionRange: null,
             selectionText: '',
@@ -29,6 +33,10 @@
             compositionEpoch: 0,
             compositionRetiredEditable: null,
             compositionCommitFrame: 0,
+            textInputFlushTimer: 0,
+            enterInputGuardEditable: null,
+            enterInputGuardCount: 0,
+            enterInputGuardTimer: 0,
             boundaryFocusFrame: 0,
             deferredRender: null,
             disposed: false,
@@ -2281,7 +2289,18 @@
                 || !offsets) {
                 return false;
             }
-            const currentRaw = sourceForRegion(session.region);
+
+            // Enter、Tab、粘贴及结构删除会结束当前输入脉冲。若浏览器 DOM
+            // 中还有尚未提交的普通文字或退格结果，必须与本次显式操作合并
+            // 成一个事务；不能先 flush 再做第二次结构事务，也不能继续以
+            // 旧模型源码为工作副本，否则会丢失 Enter 前的即时输入。
+            window.clearTimeout(state.textInputFlushTimer);
+            state.textInputFlushTimer = 0;
+            const modelRaw = sourceForRegion(session.region);
+            const domRaw = editableSourceText(session.editable);
+            const currentRaw = domRaw !== session.previousText
+                ? domRaw
+                : modelRaw;
             const inserted = String(insertion || '');
             const effectiveOffsets = /\S/u.test(inserted)
                 && !inserted.includes('\n')
@@ -2321,7 +2340,7 @@
             const transaction = transact({
                 from: session.region.sourceRange.start,
                 to: session.region.sourceRange.end,
-                expected: currentRaw,
+                expected: modelRaw,
                 insert: nextRaw,
                 reason,
             });
@@ -2662,6 +2681,7 @@
             if (event.defaultPrevented
                 || event.isComposing
                 || state.composing
+                || state.compositionCommit
                 || event.ctrlKey
                 || event.metaKey
                 || event.altKey) {
@@ -2743,13 +2763,14 @@
 
             if (event.key === 'Enter') {
                 event.preventDefault();
-                // keydown 是 Electron 中最稳定的 Enter 入口。只要处于 Markdown
-                // 编辑会话，就禁止浏览器原生修改 contenteditable DOM，并将
-                // 真换行与必要的 ↵ 直接提交模型。beforeinput 保留为平台兜底。
+                // 结构性 Enter 必须保持单一事务协议：先阻止浏览器原生
+                // DOM 修改，再由 commitSessionInsertion() 一次性完成源码
+                // 写入、区域刷新和光标恢复。普通文字/IME 仍走共享输入
+                // 解耦路径，不能把结构换行伪装成普通 input 快照。
                 const raw = editableSourceText(editable);
                 const insertionOffsets =
                     paragraphBreakEnterSelection(raw, offsets);
-                return commitSessionInsertion(
+                const handled = commitSessionInsertion(
                     session,
                     markdownLineBreakInsertion(
                         editable,
@@ -2758,8 +2779,27 @@
                     insertionOffsets,
                     'flow-keydown-paragraph-break'
                 );
+                if (handled) {
+                    if (state.enterInputGuardEditable !== editable) {
+                        state.enterInputGuardEditable = editable;
+                        state.enterInputGuardCount = 0;
+                    }
+                    state.enterInputGuardCount += 1;
+                    window.clearTimeout(state.enterInputGuardTimer);
+                    state.enterInputGuardTimer = window.setTimeout(() => {
+                        state.enterInputGuardEditable = null;
+                        state.enterInputGuardCount = 0;
+                        state.enterInputGuardTimer = 0;
+                    }, 120);
+                }
+                return handled;
             }
             return false;
+        }
+
+        function scheduleTextInputFlush(session) {
+            if (!session?.editable?.isConnected) return false;
+            return state.inputSync?.markInput(session.editable) ?? false;
         }
 
         function flushSession(
@@ -2814,7 +2854,9 @@
                 transaction,
                 normalizedSelectionOffsets,
                 {
-                    preserveEditable: reason === 'flow-composition-input',
+                    preserveEditable:
+                        reason === 'flow-composition-input'
+                        || reason === 'flow-text-input',
                 }
             )) {
                 const viewState = captureViewState();
@@ -2839,6 +2881,40 @@
             assertActive();
             disposeSurface();
             state.root = root;
+            state.inputSync = inputSyncModule.createInputSync({
+                delay: 0,
+                snapshot: (editable) => ({
+                    editable,
+                    text: editableSourceText(editable),
+                    offsets: editorSelectionOffsets(editable),
+                    session: state.activeSession?.editable === editable
+                        ? state.activeSession
+                        : null,
+                }),
+                onVisualInput: ({ snapshot }) => {
+                    const session = snapshot?.session;
+                    if (!session || inputPending()) return;
+                    const offsets = snapshot.offsets;
+                    if (offsets) {
+                        refreshLocalMarkers(
+                            session,
+                            offsets.start,
+                            offsets.end
+                        );
+                    }
+                },
+                commit: ({ snapshot }) => {
+                    const session = snapshot?.session;
+                    if (state.disposed
+                        || inputPending()
+                        || !session
+                        || state.activeSession !== session
+                        || !session.editable?.isConnected) {
+                        return;
+                    }
+                    flushSession(session, 'flow-text-input');
+                },
+            });
             installMappings(root);
             state.abortController = new AbortController();
             const options = { signal: state.abortController.signal };
@@ -2926,6 +3002,17 @@
 
             root.addEventListener('contextmenu', (event) => {
                 if (event.target.closest?.('[data-vdoc-object-id]')) return;
+                const island = event.target.closest?.('[data-vdoc-island]');
+                if (island) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    context.onIslandContextMenu?.({
+                        event,
+                        island,
+                        editor: api,
+                    });
+                    return;
+                }
                 captureSelection();
                 const selection = selectionState();
                 if (!selection.text || !selection.range) return;
@@ -3030,6 +3117,14 @@
 
                 if (event.inputType === 'insertParagraph'
                     || event.inputType === 'insertLineBreak') {
+                    if (state.enterInputGuardEditable === editable
+                        && state.enterInputGuardCount > 0) {
+                        // keydown 已完成这一轮 Enter。浏览器可能派发多个
+                        // beforeinput 回执；它们都属于同一轮操作，不能按次数
+                        // 消费，否则后续回执会再次进入下面的兜底插入路径。
+                        event.preventDefault();
+                        return;
+                    }
                     event.preventDefault();
                     if (session.region.type === 'html') {
                         // 虚拟键盘及辅助输入设备可能绕过 keydown；与键盘 Enter
@@ -3093,6 +3188,39 @@
                         deleteLineBoundaryBeforeSession(session);
                         return;
                     }
+
+                    // 普通字符退格交给浏览器直接修改当前编辑 DOM，
+                    // 由 input 事件进入短脉冲队列。只有行首、换行或
+                    // paragraph-break 占位符边界继续使用自定义事务；
+                    // 否则延迟事务会让后续退格仍看到同一个 DOM 偏移。
+                    if (offsets.start === offsets.end) {
+                        const placeholder =
+                            compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+                        const prefix = raw.slice(0, offsets.start);
+                        const suffix = raw.slice(offsets.end);
+                        const atStructuralBoundary =
+                            prefix.endsWith('\r\n')
+                            || prefix.endsWith('\n')
+                            || prefix.endsWith(
+                                `\r\n${placeholder}`
+                            )
+                            || prefix.endsWith(`\n${placeholder}`)
+                            || (
+                                prefix.endsWith('\r\n')
+                                && suffix.startsWith(placeholder)
+                            )
+                            || (
+                                prefix.endsWith('\n')
+                                && suffix.startsWith(placeholder)
+                            );
+                        if (!atStructuralBoundary) {
+                            // 普通退格由浏览器先完成视觉删除；随后由
+                            // input 事件统一交给共享输入同步核心读取新 DOM。
+                            // beforeinput 阶段不能读取快照，否则拿到的是删除前内容。
+                            return;
+                        }
+                    }
+
                     event.preventDefault();
 
                     let deletionStart = offsets.start;
@@ -3146,17 +3274,10 @@
                     return;
                 }
 
-                if (event.inputType !== 'insertText'
-                    || event.data === null) {
-                    return;
-                }
-                event.preventDefault();
-                commitSessionInsertion(
-                    session,
-                    event.data,
-                    offsets,
-                    'flow-beforeinput-insert-text'
-                );
+                // 普通文本不能在 beforeinput 阶段读取快照：
+                // 此时浏览器尚未完成 DOM 修改，读取到的仍是旧内容。
+                // 统一等待 input 事件，由共享同步核心读取修改后的视觉 DOM。
+                return;
             }, options);
 
             const clearCompositionCommit = () => {
@@ -3173,24 +3294,45 @@
                 return pending;
             };
 
+            const finishCompositionCommit = () => {
+                state.compositionCommitTimer = 0;
+                state.compositionCommitFrame = 0;
+                const pending = state.compositionCommit;
+                state.compositionCommit = null;
+                try {
+                    commitCompositionDom(pending);
+                } finally {
+                    releaseDeferredRender();
+                }
+            };
+
             const scheduleCompositionCommit = () => {
                 if (state.compositionCommitTimer) {
                     window.clearTimeout(state.compositionCommitTimer);
-                }
-                // compositionend 后的最终 beforeinput/input 在不同输入法、
-                // 不同 Chromium 版本中可能跨越一帧到达。这里保留一个很短的
-                // 静默窗口，把渲染态 DOM 作为输入缓冲区，直到浏览器完成整次
-                // 候选词固化后再一次性对齐源码。
-                state.compositionCommitTimer = window.setTimeout(() => {
                     state.compositionCommitTimer = 0;
-                    const pending = state.compositionCommit;
-                    state.compositionCommit = null;
-                    try {
-                        commitCompositionDom(pending);
-                    } finally {
-                        releaseDeferredRender();
-                    }
-                }, 80);
+                }
+                if (state.compositionCommitFrame) {
+                    window.cancelAnimationFrame(state.compositionCommitFrame);
+                    state.compositionCommitFrame = 0;
+                }
+
+                const pending = state.compositionCommit;
+                if (!pending) return;
+                if (pending.inputObserved) {
+                    // 已经收到 compositionend 后的最终 input。不要在 input
+                    // 事件调用栈中重建 DOM；下一帧提交即可，既让 Chromium
+                    // 完成原生 Selection 更新，也避免固定等待 80ms。
+                    state.compositionCommitFrame =
+                        window.requestAnimationFrame(finishCompositionCommit);
+                    return;
+                }
+
+                // 某些输入法只派发 compositionend，不派发可观察的最终
+                // input。保留兜底窗口，避免过早提交截断候选词。
+                state.compositionCommitTimer = window.setTimeout(
+                    finishCompositionCommit,
+                    80
+                );
             };
 
             const commitCompositionDom = (pending) => {
@@ -3198,14 +3340,46 @@
                 if (pending.epoch !== state.compositionEpoch) return false;
                 if (pending.editable?.isConnected
                     && pending.session.editable === pending.editable) {
+                    const session = pending.session;
+                    const editable = pending.editable;
                     const committed = flushSession(
-                        pending.session,
+                        session,
                         'flow-composition-input'
                     );
                     if (committed) {
-                        // 标记本轮已被消费的编辑器。即使 Chromium 随后
-                        // 再派发一枚 input，也只能被忽略，不能再次同步。
-                        state.compositionRetiredEditable = pending.editable;
+                        // flushSession 的 IME 路径会保留 contenteditable 元素，
+                        // 避免 composition 结束后丢失焦点。源码归一化可能删除
+                        // 输入行上的 ↵，因此只同步该元素的内部子树，绝不重建
+                        // Shadow DOM，也不触发 renderEdit。
+                        const raw = sourceForRegion(session.region);
+                        const offsets = editorSelectionOffsets(editable);
+                        const normalized = normalizeParagraphBreaksInChangedLines(
+                            editableSourceText(editable),
+                            offsets?.start ?? 0,
+                            offsets?.end ?? offsets?.start ?? 0,
+                            offsets?.start,
+                            offsets?.end
+                        );
+                        const nextEditable = configureSourceEditor(
+                            visualEditorForRegion(session.shell, session.region, raw),
+                            session.region
+                        );
+                        if (editableSourceText(nextEditable) === raw) {
+                            editable.replaceChildren(...nextEditable.childNodes);
+                            restoreEditorOffsets(
+                                editable,
+                                raw,
+                                normalized.selectionStart,
+                                normalized.selectionEnd
+                            );
+                            refreshLocalMarkers(
+                                session,
+                                normalized.selectionStart,
+                                normalized.selectionEnd
+                            );
+                            installMappings(state.root);
+                        }
+                        state.compositionRetiredEditable = editable;
                     }
                     return committed;
                 }
@@ -3239,6 +3413,48 @@
                     reason: 'flow-composition-snapshot',
                 });
                 if (!transaction) return false;
+
+                // 旧 editable 已断开不等于整个编辑面都失效。先尝试在
+                // 原 shell 内局部重建：若编译后的源码仍对应单一 edit
+                // region，refreshSessionRegion() 会只替换该 shell 的编辑子树，
+                // 并保留 Shadow DOM、其它 shell 和运行态节点。
+                const locallyRefreshed = refreshSessionRegion(
+                    pending.session,
+                    transaction,
+                    {
+                        start: normalized.selectionStart,
+                        end: normalized.selectionEnd,
+                    }
+                );
+                if (locallyRefreshed
+                    && pending.session.editable?.isConnected) {
+                    state.activeSession = pending.session;
+                    state.compositionRetiredEditable =
+                        pending.session.editable;
+                    try {
+                        pending.session.editable.focus({
+                            preventScroll: true,
+                        });
+                    } catch {
+                        pending.session.editable.focus();
+                    }
+                    restoreEditorOffsets(
+                        pending.session.editable,
+                        normalized.source,
+                        normalized.selectionStart,
+                        normalized.selectionEnd
+                    );
+                    refreshLocalMarkers(
+                        pending.session,
+                        normalized.selectionStart,
+                        normalized.selectionEnd
+                    );
+                    return true;
+                }
+
+                // 只有当前源码确实拆分/合并了 edit region，局部映射失败时
+                // 才升级为全局编辑面重建；这是结构变化兜底，不是普通 IME
+                // 输入的默认路径。
                 state.compositionRetiredEditable = pending.editable;
                 state.activeSession = null;
                 context.renderPort?.invalidate?.(
@@ -3264,6 +3480,18 @@
                 // 否则会用旧 Selection/旧映射重复写入源码。
                 if (state.compositionRetiredEditable === editable) return;
 
+                if (state.enterInputGuardEditable === editable
+                    && state.enterInputGuardCount > 0
+                    && (
+                        event.inputType === 'insertParagraph'
+                        || event.inputType === 'insertLineBreak'
+                    )) {
+                    // keydown 已经完成了 Enter 的视觉补丁；浏览器随后补发
+                    // 的结构性 input 只是同一次操作的回执，不能再次进入
+                    // 普通输入队列，否则会额外生成一行。
+                    return;
+                }
+
                 if (state.compositionCommit?.editable === editable) {
                     // 最终 input 到达时只更新渲染态缓冲，并重新开始静默窗口。
                     // 绝不在 input 调用栈中提交源码或替换 event.target。
@@ -3279,11 +3507,13 @@
                 const session = state.activeSession?.editable === editable
                     ? state.activeSession
                     : beginSession(shell, editable);
-                flushSession(session);
+                if (session) state.inputSync?.markInput(editable, event);
             }, options);
 
             root.addEventListener('compositionstart', (event) => {
                 clearCompositionCommit();
+                window.clearTimeout(state.textInputFlushTimer);
+                state.textInputFlushTimer = 0;
                 // 新的组合会话开始后，旧编辑器节点的迟到事件不再相关。
                 // 只有在这里解除旧节点屏蔽，避免上一轮 compositionend
                 // 后排队的 input 误入普通 flush 路径。
@@ -3380,13 +3610,23 @@
         }
 
         function flush() {
-            // 保存、历史快照等后台调用不能穿透活动 IME 会话。源码将在
-            // composition 静默窗口结束后一次性对齐。
+            // 保存、历史快照等后台调用不能穿透活动 IME 会话。共享输入核心
+            // 先排空普通输入的最新 DOM 快照；composition 期间它会自行保持
+            // pending，待 composition 提交器完成后再同步源码。
             if (inputPending()) return true;
+            state.inputSync?.flush();
             return flushSession() || true;
         }
 
         function disposeSurface() {
+            window.clearTimeout(state.textInputFlushTimer);
+            state.textInputFlushTimer = 0;
+            state.inputSync?.dispose();
+            state.inputSync = null;
+            window.clearTimeout(state.enterInputGuardTimer);
+            state.enterInputGuardTimer = 0;
+            state.enterInputGuardEditable = null;
+            state.enterInputGuardCount = 0;
             state.abortController?.abort();
             state.abortController = null;
             if (state.compositionCommitTimer) {

@@ -28,6 +28,24 @@
         return String(source || '').replace(/\r\n?/g, '\n').split('\n');
     }
 
+    function appendToSource(source, value) {
+        const text = String(source || '').replace(/\r\n?/g, '\n');
+        const appended = String(value ?? '').replace(/\r\n?/g, '\n');
+        if (!text) {
+            return {
+                success: true,
+                source: appended,
+                line: 1,
+            };
+        }
+        const line = text.split('\n').length + (text.endsWith('\n') ? 0 : 1);
+        return {
+            success: true,
+            source: `${text}${text.endsWith('\n') ? '' : '\n'}${appended}`,
+            line,
+        };
+    }
+
     function insertAtLine(source, value, requestedLine) {
         const lines = normalizeSourceLines(source);
         const line = Number(requestedLine);
@@ -55,6 +73,19 @@
         let output = String(source || '');
         const applied = [];
         for (const replacement of replacements) {
+            const hasAppend = replacement
+                && Object.prototype.hasOwnProperty.call(replacement, 'append');
+            if (hasAppend) {
+                const result = appendToSource(output, replacement.append);
+                output = result.source;
+                applied.push({
+                    type: 'append',
+                    line: result.line,
+                    append: String(replacement.append ?? ''),
+                });
+                continue;
+            }
+
             const hasInsert = replacement
                 && Object.prototype.hasOwnProperty.call(replacement, 'insert');
             if (hasInsert) {
@@ -139,6 +170,14 @@
             host.replaceChildren();
             replacements.forEach((replacement, index) => {
                 appendLine(host, 'hunk', `@@ replacement ${index + 1} @@`);
+                if (Object.prototype.hasOwnProperty.call(replacement || {}, 'append')) {
+                    appendLine(host, 'context', '@@ append at end @@');
+                    String(replacement.append ?? '')
+                        .replace(/\r\n?/g, '\n')
+                        .split('\n')
+                        .forEach((line) => appendLine(host, 'added', `+ ${line}`));
+                    return;
+                }
                 if (Object.prototype.hasOwnProperty.call(replacement || {}, 'insert')) {
                     appendLine(
                         host,

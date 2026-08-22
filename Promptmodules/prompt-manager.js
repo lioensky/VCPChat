@@ -352,7 +352,12 @@ class PromptManager {
       clearTimeout(this.rightClickTimer);
       this.rightClickTimer = null;
     }
+  }
 
+  /**
+   * 解绑容器事件监听（仅销毁时调用；正常运行期间解绑会导致模式按钮失效）
+   */
+  unbindContainerEvents() {
     this.boundContainerListeners.forEach(([type, handler]) => {
       this.containerElement?.removeEventListener(type, handler);
     });
@@ -528,15 +533,15 @@ class PromptManager {
     }
 
     // 2. 清理计时器
-    if (this.rightClickTimer) {
-      clearTimeout(this.rightClickTimer);
-      this.rightClickTimer = null;
-    }
+    this.cancelRightClickTimer();
 
-    // 3. 清理 DOM 引用
+    // 3. 解绑容器事件监听
+    this.unbindContainerEvents();
+
+    // 4. 清理 DOM 引用
     this.containerElement = null;
 
-    // 4. 重置模块引用
+    // 5. 重置模块引用
     this.originalModule = null;
     this.modularModule = null;
     this.presetModule = null;

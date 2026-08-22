@@ -1015,27 +1015,6 @@ function initialize(mainWindow, context) {
                 }
             }
 
-            // --- Agent Bubble Theme Injection ---
-            try {
-                // Settings already loaded, just check the flag
-                if (settings.enableAgentBubbleTheme) {
-                    let systemMsgIndex = messages.findIndex(m => m.role === 'system');
-                    if (systemMsgIndex === -1) {
-                        messages.unshift({ role: 'system', content: '' });
-                        systemMsgIndex = 0;
-                    }
-
-                    const injection = '输出规范要求：{{VarDivRender}}';
-                    if (!messages[systemMsgIndex].content.includes(injection)) {
-                        messages[systemMsgIndex].content += `\n\n${injection}`;
-                        messages[systemMsgIndex].content = messages[systemMsgIndex].content.trim();
-                    }
-                }
-            } catch (e) {
-                console.error('[Agent Bubble Theme] Failed to inject bubble theme info:', e);
-            }
-            // --- End of Injection ---
-
             // --- VCP Thought Chain Stripping ---
             try {
                 // 默认不注入元思考链，除非明确开启

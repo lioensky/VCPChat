@@ -135,11 +135,9 @@
           "48ccd6c4782cb6d3408131d10950321aa7e29efd550e5fdde387e044389c786f"
         ]
       }
-    }
-  ],
-  "invalidFrames": [
+    },
     {
-      "name": "owner_topic_conflict",
+      "name": "topic_id_rewrite_to_frame",
       "input": {
         "topicId": "topic-owner-a",
         "messages": [
@@ -152,8 +150,31 @@
           }
         ]
       },
-      "errorContains": "conflicts with frame topic"
-    },
+      "expected": {
+        "topicId": "topic-owner-a",
+        "messageCount": 1,
+        "warningCount": 0,
+        "attachmentHashes": [],
+        "canonicalMessages": [
+          {
+            "id": "message-owner-conflict",
+            "role": "user",
+            "content": "owner conflict",
+            "timestamp": 1700000002,
+            "isThinking": null,
+            "agentId": null,
+            "groupId": null,
+            "topicId": "topic-owner-a",
+            "isGroupMessage": null
+          }
+        ],
+        "contentHashes": [
+          "c93a37834218f0ac613767fae1bbd47577782e4f3aac81fbef8fd4ec950d9612"
+        ]
+      }
+    }
+  ],
+  "invalidFrames": [
     {
       "name": "tombstoned_message",
       "input": {

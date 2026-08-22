@@ -283,7 +283,7 @@
                 <!-- 设置面板 -->
                 <div class="settings-sections">
                     <!-- EQ 部分 (全宽) -->
-                    <div id="eq-section" class="settings-block full-width">
+                    <div id="eq-section" class="settings-block full-width eq-collapsed">
                         <div class="block-header">
                             <div class="block-title-group">
                                 <h4>均衡器</h4>
@@ -293,7 +293,7 @@
                                 <span class="slider round"></span>
                             </label>
                         </div>
-                        <div class="block-content">
+                        <div id="eq-block-content" class="block-content" aria-hidden="true">
                             <div class="eq-controls-row">
                                 <select id="eq-type-select" class="eq-type-select">
                                     <option value="IIR">IIR (低延迟)</option>
