@@ -290,6 +290,12 @@ impl Database {
                 now,
             ],
         )?;
+        transaction.execute(
+            "DELETE FROM tombstones
+             WHERE entity_type='owner' AND owner_type=?1 AND owner_id=?2
+               AND topic_id='' AND entity_id=?2",
+            params![owner.key.owner_type.as_str(), owner.key.owner_id],
+        )?;
 
         let active_topic_ids: HashSet<&str> = owner
             .topics
@@ -340,6 +346,16 @@ impl Database {
                     topic.metadata.to_string(),
                     source_path.to_string_lossy(),
                     now,
+                ],
+            )?;
+            transaction.execute(
+                "DELETE FROM tombstones
+                 WHERE entity_type='topic' AND owner_type=?1 AND owner_id=?2
+                   AND topic_id=?3 AND entity_id=?3",
+                params![
+                    owner.key.owner_type.as_str(),
+                    owner.key.owner_id,
+                    topic.topic_id,
                 ],
             )?;
         }
@@ -413,6 +429,16 @@ impl Database {
                 source.topic_metadata.to_string(),
                 source.source_path.to_string_lossy(),
                 now_ms(),
+            ],
+        )?;
+        transaction.execute(
+            "DELETE FROM tombstones
+             WHERE entity_type='topic' AND owner_type=?1 AND owner_id=?2
+               AND topic_id=?3 AND entity_id=?3",
+            params![
+                source.key.owner_type.as_str(),
+                source.key.owner_id,
+                source.key.topic_id,
             ],
         )?;
         transaction.commit()?;
