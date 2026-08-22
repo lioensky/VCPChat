@@ -82,7 +82,12 @@ function nativeBinaryFiles(projectRoot, moduleId) {
     }
     return roots.filter(root => fs.existsSync(root)).flatMap(root =>
         fs.readdirSync(root, { recursive: true, withFileTypes: true })
-            .filter(entry => entry.isFile() && entry.name.endsWith('.node'))
+            // node-gyp's obj.target tree contains build intermediates. It is
+            // not shipped by electron-builder and must not be part of the
+            // runtime closure checked after packaging.
+            .filter(entry => entry.isFile()
+                && entry.name.endsWith('.node')
+                && !entry.parentPath.split(path.sep).includes('obj.target'))
             .map(entry => normalize(path.relative(projectRoot, path.join(entry.parentPath, entry.name))))
     ).sort();
 }

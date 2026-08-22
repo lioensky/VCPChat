@@ -133,6 +133,20 @@ test('M5 runtime closure detects tampering and policy gaps', () => {
     assert.equal(validateRuntimePolicy(manifest).ok, false);
 });
 
+test('M5 runtime closure excludes node-gyp obj.target intermediates', () => {
+    const root = tempDir();
+    for (const file of ['main.js', 'preload.js', 'renderer.js', 'main.html', 'package.json', 'modules/bootstrap/contracts.js', 'modules/ui-system/webawesome-runtime-manifest.js', 'vendor/webawesome-runtime/vcp-runtime-manifest.json']) {
+        const target = path.join(root, file); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, file);
+    }
+    const release = path.join(root, 'node_modules', 'node-pty', 'build', 'Release', 'pty.node');
+    const intermediate = path.join(root, 'node_modules', 'node-pty', 'build', 'Release', 'obj.target', 'pty.node');
+    fs.mkdirSync(path.dirname(release), { recursive: true }); fs.mkdirSync(path.dirname(intermediate), { recursive: true });
+    fs.writeFileSync(release, 'runtime'); fs.writeFileSync(intermediate, 'intermediate');
+    const manifest = createRuntimeClosureManifest({ projectRoot: root, platform: 'linux', arch: 'x64' });
+    assert.equal(manifest.files.some(entry => entry.path.includes('obj.target')), false);
+    assert.equal(manifest.files.some(entry => entry.path.endsWith('build/Release/pty.node')), true);
+});
+
 test('M7 version switch is staged and rollback restores previous pointer', () => {
     const state = tempDir(); const first = tempDir(); const second = tempDir();
     const manifest = { schemaVersion: 1, version: '1.0.0', buildId: 'a', files: [{ path: 'main.js', size: 3, sha256: 'x' }] };

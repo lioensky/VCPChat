@@ -92,8 +92,8 @@ jobs:
       - name: Build locked CDS runtime
         run: npm run build
 
-      - name: Rebuild Electron native modules
-        run: npx electron-rebuild -f -w better-sqlite3,sharp
+      - name: Rebuild Electron native modules used by the app
+        run: npx electron-rebuild -f -w better-sqlite3,node-pty,sharp
 
       - name: Create unpacked Electron package
         run: npx electron-builder --dir --config.npmRebuild=false
