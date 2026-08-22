@@ -23,10 +23,6 @@ rayon = "1.10"
 crossbeam = "0.8"
 parking_lot = "0.12"
 
-# --- WASAPI Exclusive Mode (Windows only) ---
-[target.'cfg(windows)'.dependencies]
-wasapi = "0.22"
-
 # --- HTTP/WebSocket Server ---
 actix-web = "4"
 actix-ws = "0.3"
@@ -62,6 +58,10 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 # --- Optional: PyO3 for backward compat ---
 pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
 numpy = { version = "0.23", optional = true }
+
+# --- WASAPI Exclusive Mode (Windows only) ---
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.22"
 
 [features]
 default = []

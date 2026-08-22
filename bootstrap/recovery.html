@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VCPChat</title>
+  <link rel="stylesheet" href="recovery.css">
+</head>
+<body>
+  <main class="installer" aria-live="polite">
+    <section id="welcome" class="route welcome">
+      <div class="welcome-copy">
+        <div class="wordmark" role="img" aria-label="VCPChat"><svg class="wordmark-svg" viewBox="0 0 900 190" aria-hidden="true"><defs><linearGradient id="launcherWordmarkGradient" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#4f91ba"/><stop offset="50%" stop-color="#4f91ba"/><stop offset="50%" stop-color="#76b9e6"/><stop offset="100%" stop-color="#76b9e6"/></linearGradient><filter id="launcherWordmarkGlow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="3" result="blur"/><feComposite in="SourceGraphic" in2="blur" operator="over"/></filter></defs><text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" class="wordmark-text wordmark-base">VCPCHAT</text><text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" class="wordmark-text wordmark-flow wordmark-blue" filter="url(#launcherWordmarkGlow)">VCPCHAT</text><text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" class="wordmark-text wordmark-flow wordmark-purple" filter="url(#launcherWordmarkGlow)">VCPCHAT</text></svg></div>
+        <p>一个更懂你的 AI 聊天工作台。<br>我们会在后台完成首次准备，整个过程只需要几分钟。</p>
+      </div>
+      <button id="begin" class="install-button">准备 VCPChat <span aria-hidden="true">→</span></button>
+    </section>
+
+    <section id="workspace" class="route workspace" hidden>
+      <header class="workspace-header">
+        <div class="workspace-title"><span id="stageSpinner" class="spinner" hidden></span><h1 id="title">正在准备</h1></div>
+        <span id="progressCount" class="progress-count">0 / 0 步骤</span>
+      </header>
+      <div class="progress-track" role="progressbar" aria-label="VCPChat 准备进度"><div id="bar"></div></div>
+
+      <div class="workspace-body">
+        <ol id="stages" class="stages"></ol>
+        <aside id="liveOutput" class="live-output" hidden>
+          <header><span>运行详情</span><span id="logCount">0 行</span></header>
+          <pre id="log"></pre>
+        </aside>
+      </div>
+
+      <section id="plan" class="repair-plan" hidden aria-live="polite"></section>
+      <section id="checkDetails" class="check-details" hidden>
+        <h2>环境检查</h2>
+        <div id="checks" class="checks"></div>
+      </section>
+
+      <footer class="workspace-footer">
+        <button id="logs" class="details-button"><span aria-hidden="true">▤</span><span id="detailsLabel">显示详情</span><span aria-hidden="true">›</span></button>
+        <div class="footer-actions">
+          <button id="cancel" class="cancel-button" hidden>取消</button>
+          <button id="safe" class="secondary-button" hidden>安全启动</button>
+          <button id="repair" class="primary-button" hidden>按计划修复</button>
+          <button id="launch" class="primary-button" hidden>启动 VCPChat <span aria-hidden="true">→</span></button>
+        </div>
+      </footer>
+    </section>
+
+    <section id="success" class="route terminal-route" hidden>
+      <div class="wordmark small" role="img" aria-label="VCPChat"><svg class="wordmark-svg" viewBox="0 0 900 190" aria-hidden="true"><text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" class="wordmark-text wordmark-base">VCPCHAT</text></svg></div>
+      <h1>准备完成</h1>
+      <p>VCPChat 已经可以使用。</p>
+      <button id="successLaunch" class="install-button">打开 VCPChat <span aria-hidden="true">→</span></button>
+    </section>
+
+    <section id="failure" class="route terminal-route" hidden>
+      <div class="wordmark small" role="img" aria-label="VCPChat"><svg class="wordmark-svg" viewBox="0 0 900 190" aria-hidden="true"><text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle" class="wordmark-text wordmark-base">VCPCHAT</text></svg></div>
+      <h1 class="failure-title">准备未完成</h1>
+      <p id="failureMessage">VCPChat 没有完成这次准备。</p>
+      <div class="failure-actions">
+        <button id="failureRetry" class="install-button">重试准备 <span aria-hidden="true">↻</span></button>
+        <button id="failureLogs" class="secondary-button">打开诊断记录</button>
+      </div>
+    </section>
+  </main>
+  <script src="recovery-renderer.js"></script>
+</body>
+</html>
