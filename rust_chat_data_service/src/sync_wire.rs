@@ -281,10 +281,22 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
     let object = message
         .as_object()
         .context("canonical message must be an object")?;
+    let message_id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .context("canonical message id is missing")?;
+    let role = object
+        .get("role")
+        .and_then(Value::as_str)
+        .context("canonical message role is missing")?;
     let content = object
         .get("content")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    let timestamp = object
+        .get("timestamp")
+        .and_then(Value::as_u64)
+        .context("canonical message timestamp is missing")?;
     let mut hashes = object
         .get("attachments")
         .and_then(Value::as_array)
@@ -301,6 +313,9 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
     hashes.sort();
 
     let mut input = Map::new();
+    if let Some(agent_id) = object.get("agentId").filter(|value| !value.is_null()) {
+        input.insert("agentId".to_string(), agent_id.clone());
+    }
     if !hashes.is_empty() {
         input.insert(
             "attachmentHashes".to_string(),
@@ -308,6 +323,12 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
         );
     }
     input.insert("content".to_string(), Value::String(content.to_string()));
+    input.insert("id".to_string(), Value::String(message_id.to_string()));
+    if let Some(name) = object.get("name").filter(|value| !value.is_null()) {
+        input.insert("name".to_string(), name.clone());
+    }
+    input.insert("role".to_string(), Value::String(role.to_string()));
+    input.insert("timestamp".to_string(), Value::Number(timestamp.into()));
     Ok(sha256_hex(Value::Object(input).to_string().as_bytes()))
 }
 
@@ -334,7 +355,7 @@ mod tests {
     const GOLDEN: &[u8] = include_bytes!(
         "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
     );
-    const GOLDEN_SHA256: &str = "62d4eecb639feb1a6e46302dc4046c622a5477d6a53463320c891757be629a9b";
+    const GOLDEN_SHA256: &str = "187d599d33ef660de299aae77a68eb92313af3d603efe72f7f06ecb6ac1e0c1f";
 
     #[test]
     fn protocol_1_2_golden_bundle_matches_mobile() {

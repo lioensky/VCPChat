@@ -17,6 +17,7 @@ const {
   computeBinaryHash,
   computeDtoHash,
   computeAggregatedHash,
+  computeTopicLeafHash,
 } = require("./core/hash");
 const {
   startWsServer,
@@ -776,11 +777,13 @@ function computeAggregatedHashes(db, logger) {
     if (e.type === "agent" || e.type === "group") {
       const topicsOfEntity = topicMap.get(e.id) || [];
 
-      const childHashes = [];
-      topicsOfEntity.forEach((t) => {
-        childHashes.push(t.hash);
-        childHashes.push(t.aggregated_hash || "");
-      });
+      const childHashes = topicsOfEntity.map((topic) =>
+        computeTopicLeafHash(
+          topic.id,
+          topic.hash,
+          topic.aggregated_hash || "",
+        ),
+      );
       const rootHash = computeAggregatedHash(childHashes);
 
       if (rootHash !== e.aggregated_hash) {

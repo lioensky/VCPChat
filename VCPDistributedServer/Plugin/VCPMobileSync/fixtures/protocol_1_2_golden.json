@@ -70,6 +70,8 @@
           {
             "id": "message-empty",
             "role": "assistant",
+            "name": "Nova",
+            "agentId": "agent-nova",
             "content": "",
             "timestamp": 1700000001
           }
@@ -121,18 +123,19 @@
           {
             "id": "message-empty",
             "role": "assistant",
+            "name": "Nova",
             "content": "",
             "timestamp": 1700000001,
             "isThinking": null,
-            "agentId": null,
+            "agentId": "agent-nova",
             "groupId": null,
             "topicId": null,
             "isGroupMessage": null
           }
         ],
         "contentHashes": [
-          "f1bddfc028a86b52a400027e85b6db09e43b50a57298bea25fe3c77bbb61354b",
-          "48ccd6c4782cb6d3408131d10950321aa7e29efd550e5fdde387e044389c786f"
+          "4c020f54137f92cd790eeacd0f07acbb8e02baa7ccf0328fe48f70d1ce62c526",
+          "c7809741b18b9f3800949599b7dac8dd3c588147f6c2a3e064857f9b7484cf7d"
         ]
       }
     },
@@ -169,7 +172,7 @@
           }
         ],
         "contentHashes": [
-          "c93a37834218f0ac613767fae1bbd47577782e4f3aac81fbef8fd4ec950d9612"
+          "93e09bacfaebdf9bb21f776f1046e06951df5c4e06741331e42eca1b016d5851"
         ]
       }
     }

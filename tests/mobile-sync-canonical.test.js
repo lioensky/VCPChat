@@ -9,6 +9,12 @@ const { test } = require("node:test");
 const {
   canonicalizeTopicFrame,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical");
+const {
+  computeAggregatedHash,
+  computeMessageLeafHash,
+  computeMessageFingerprint,
+  computeTopicLeafHash,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/hash");
 
 const FIXTURE_PATH = path.join(
   __dirname,
@@ -20,7 +26,7 @@ const FIXTURE_PATH = path.join(
   "protocol_1_2_golden.json",
 );
 const EXPECTED_FIXTURE_SHA256 =
-  "62d4eecb639feb1a6e46302dc4046c622a5477d6a53463320c891757be629a9b";
+  "187d599d33ef660de299aae77a68eb92313af3d603efe72f7f06ecb6ac1e0c1f";
 
 test("协议 1.2 golden bundle 与 Mobile 字节一致", () => {
   const bytes = fs.readFileSync(FIXTURE_PATH);
@@ -44,6 +50,35 @@ test("canonicalizer 与 Mobile golden 输出和消息指纹一致", () => {
     assert.deepEqual(result.frame.messages, fixture.expected.canonicalMessages);
     assert.deepEqual(result.contentHashes, fixture.expected.contentHashes);
   }
+});
+
+test("消息与 Owner 聚合绑定实体身份", () => {
+  const message = {
+    id: "message-a",
+    role: "assistant",
+    name: "Nova",
+    agentId: "agent-a",
+    content: "same",
+    timestamp: 1,
+  };
+  assert.notEqual(
+    computeMessageFingerprint(message),
+    computeMessageFingerprint({ ...message, id: "message-b" }),
+  );
+  assert.notEqual(
+    computeAggregatedHash([computeMessageLeafHash("message-a", "same")]),
+    computeAggregatedHash([computeMessageLeafHash("message-b", "same")]),
+  );
+
+  const original = computeAggregatedHash([
+    computeTopicLeafHash("topic-a", "config-a", "content-a"),
+    computeTopicLeafHash("topic-b", "config-b", "content-b"),
+  ]);
+  const swapped = computeAggregatedHash([
+    computeTopicLeafHash("topic-a", "config-a", "content-b"),
+    computeTopicLeafHash("topic-b", "config-b", "content-a"),
+  ]);
+  assert.notEqual(original, swapped);
 });
 
 test("canonicalizer 拒绝 Owner/Topic 冲突与墓碑复活", () => {

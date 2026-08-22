@@ -143,7 +143,7 @@ CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名�
 
 `SERVICE_BUSY` 会先在插件内部做有界退避；若最终仍需跨端上报，`retry=manual`，因为此时内部自动重试已经耗尽。
 
-双端通过字节一致的 `fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 验证契约；对应 SHA-256 分别为 `434279b33a86a2206c1e4f47caccb4e72f05b2f9d48e093af95d5ebae6947adb` 与 `62d4eecb639feb1a6e46302dc4046c622a5477d6a53463320c891757be629a9b`。错误 fixture 的 `registeredSemantics` 还会逐项锁定跨端 code 的 `kind/retry`，避免两端注册表静默漂移。
+双端通过字节一致的 `fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 验证契约；对应 SHA-256 分别为 `434279b33a86a2206c1e4f47caccb4e72f05b2f9d48e093af95d5ebae6947adb` 与 `187d599d33ef660de299aae77a68eb92313af3d603efe72f7f06ecb6ac1e0c1f`。错误 fixture 的 `registeredSemantics` 还会逐项锁定跨端 code 的 `kind/retry`，避免两端注册表静默漂移。
 
 消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。
 
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS entity_index (
 CREATE TABLE IF NOT EXISTS message_index (
   msg_id TEXT NOT NULL,              -- 消息唯一 UUID
   topic_id TEXT NOT NULL,            -- 所属子话题 ID
-  hash TEXT NOT NULL,                -- 仅针对消息 content + 关联附件哈希求出的唯一内容指纹
+  hash TEXT NOT NULL,                -- 消息身份、持久同步字段与关联附件哈希的确定性指纹
   updated_at INTEGER NOT NULL,       -- 更新时间戳
   deleted_at INTEGER DEFAULT NULL,   -- 软删除标记
   PRIMARY KEY (topic_id, msg_id)

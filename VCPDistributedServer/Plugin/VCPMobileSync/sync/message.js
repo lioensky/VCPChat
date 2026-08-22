@@ -14,7 +14,11 @@ const {
   upsertMessageAttachment,
   updateTopicAggregatedHash,
 } = require("../core/db");
-const { computeMessageFingerprint, computeAggregatedHash } = require("../core/hash");
+const {
+  computeMessageFingerprint,
+  computeMessageLeafHash,
+  computeAggregatedHash,
+} = require("../core/hash");
 const { sanitizeId, writeIntentLock } = require("./entity");
 const { getExtensionFromType } = require("../utils/mime");
 const { getLogger } = require("../core/logger");
@@ -590,7 +594,7 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
       for (const m of validMessages) {
         const hash = computeMessageFingerprint(m);
         upsertMessageIndex(m.id, topicId, hash, now);
-        fingerprints.push(hash);
+        fingerprints.push(computeMessageLeafHash(m.id, hash));
 
         if (Array.isArray(m.attachments)) {
           m.attachments.forEach((att, index) => {

@@ -1446,8 +1446,11 @@ fn owner_content_hash(
         // 每轮可见；不再让整个 owner manifest 因一条 topic 炸成整表 500。
         match topic_manifest(database, &key) {
             Ok(topic) => {
-                hashes.push(topic.config_hash);
-                hashes.push(topic.content_hash);
+                hashes.push(topic_leaf_hash(
+                    &key.topic_id,
+                    &topic.config_hash,
+                    &topic.content_hash,
+                ));
             }
             Err(error) => {
                 tracing::warn!(
@@ -1458,8 +1461,7 @@ fn owner_content_hash(
                     "topic manifest failed during owner aggregation; using sentinel hashes"
                 );
                 let sentinel = unhealthy_topic_sentinel_hash(&key);
-                hashes.push(sentinel.clone());
-                hashes.push(sentinel);
+                hashes.push(topic_leaf_hash(&key.topic_id, &sentinel, &sentinel));
             }
         }
     }
@@ -1470,13 +1472,13 @@ fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
     ensure_topic_sync_source_healthy(database, key)?;
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT metadata_json FROM messages
+        "SELECT msg_id, metadata_json FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
     )?;
     let rows = statement
         .query_map(
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, String>(0),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
@@ -1487,7 +1489,10 @@ fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
     let hashes = rows
         .into_iter()
         .enumerate()
-        .map(|(index, raw)| message_hash_or_sentinel(&raw, &key.topic_id, &index.to_string()))
+        .map(|(index, (message_id, raw))| {
+            let message_hash = message_hash_or_sentinel(&raw, &key.topic_id, &index.to_string());
+            message_leaf_hash(&message_id, &message_hash)
+        })
         .collect::<Vec<_>>();
     Ok(aggregate_hash(hashes))
 }
@@ -1957,6 +1962,33 @@ fn aggregate_hash(mut hashes: Vec<String>) -> String {
     hex::encode(digest.finalize())
 }
 
+fn message_leaf_hash(message_id: &str, message_hash: &str) -> String {
+    sha256_hex(
+        stable_stringify(
+            &serde_json::json!({
+                "id": message_id,
+                "hash": message_hash,
+            }),
+            "",
+        )
+        .as_bytes(),
+    )
+}
+
+fn topic_leaf_hash(topic_id: &str, config_hash: &str, content_hash: &str) -> String {
+    sha256_hex(
+        stable_stringify(
+            &serde_json::json!({
+                "topicId": topic_id,
+                "configHash": config_hash,
+                "contentHash": content_hash,
+            }),
+            "",
+        )
+        .as_bytes(),
+    )
+}
+
 fn unique_manifest_item_by_id<'a>(
     local_by_key: &'a HashMap<String, ManifestItem>,
     id: &str,
@@ -2011,13 +2043,13 @@ mod tests {
     use std::{collections::HashMap, fs, sync::Arc};
 
     use super::{
-        aggregate_hash, manifest, message_diff, message_manifest, mobile_message_hash_from_json,
-        owner_content_hash, owner_manifest, pull_topic_messages, push_messages, topic_content_hash,
-        topic_hash_diff, topic_identity, topic_manifest, topic_manifests,
-        unique_manifest_item_by_id, validate_manifest_request, ManifestItem, ManifestRequest,
-        MessageDiffRequest, MessageDiffState, MessagesPullTopic, MessagesPushRequest,
-        MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicKey,
-        TopicSelector, TOMBSTONE_CONTENT_HASH,
+        aggregate_hash, manifest, message_diff, message_leaf_hash, message_manifest,
+        mobile_message_hash_from_json, owner_content_hash, owner_manifest, pull_topic_messages,
+        push_messages, topic_content_hash, topic_hash_diff, topic_identity, topic_leaf_hash,
+        topic_manifest, topic_manifests, unique_manifest_item_by_id, validate_manifest_request,
+        ManifestItem, ManifestRequest, MessageDiffRequest, MessageDiffState, MessagesPullTopic,
+        MessagesPushRequest, MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest,
+        TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2111,31 +2143,47 @@ mod tests {
     }
 
     #[test]
-    fn mobile_fingerprint_matches_content_only_contract() {
-        let value = json!({"id":"m1","content":"hello"});
-        let mut value = value;
-        value["role"] = json!("user");
-        value["timestamp"] = json!(1);
+    fn mobile_fingerprint_binds_message_identity_and_state() {
+        let value = json!({
+            "id":"m1",
+            "role":"user",
+            "name":"User",
+            "content":"hello",
+            "timestamp":1
+        });
         let mut warnings = WireWarnings::default();
-        let canonical = canonicalize_message(value, "topic", &mut warnings).expect("canonical");
+        let canonical =
+            canonicalize_message(value.clone(), "topic", &mut warnings).expect("canonical");
         let hash = message_fingerprint(&canonical).expect("hash");
-        assert_eq!(
-            hash,
-            "20b2dda940d741d9780897200aaef2ef356ab32b38c7de0d94306fb5a66b4a8e"
-        );
+        for (field, changed) in [
+            ("id", json!("m2")),
+            ("role", json!("assistant")),
+            ("name", json!("Other")),
+            ("timestamp", json!(2)),
+        ] {
+            let mut candidate = value.clone();
+            candidate[field] = changed;
+            let canonical = canonicalize_message(candidate, "topic", &mut warnings)
+                .expect("changed canonical message");
+            assert_ne!(hash, message_fingerprint(&canonical).expect("changed hash"));
+        }
     }
 
     #[test]
     fn aggregate_hash_is_order_independent() {
-        const OWNER_ROOT_GOLDEN: &str =
-            "1e33dc5103370a9970e5c719697e29dcc8bff3a3196de13fcbaaf1029c0436c4";
         assert_eq!(
             aggregate_hash(vec!["b".to_string(), "a".to_string()]),
             aggregate_hash(vec!["a".to_string(), "b".to_string()])
         );
-        assert_eq!(
-            aggregate_hash(vec!["config-a".to_string(), "content-a".to_string()]),
-            OWNER_ROOT_GOLDEN
+        assert_ne!(
+            aggregate_hash(vec![
+                topic_leaf_hash("topic-a", "config-a", "content-a"),
+                topic_leaf_hash("topic-b", "config-b", "content-b"),
+            ]),
+            aggregate_hash(vec![
+                topic_leaf_hash("topic-a", "config-a", "content-b"),
+                topic_leaf_hash("topic-b", "config-b", "content-a"),
+            ])
         );
     }
 
@@ -2970,10 +3018,8 @@ mod tests {
         )
         .expect("topic-b manifest");
         let expected = aggregate_hash(vec![
-            topic_a.config_hash,
-            topic_a.content_hash,
-            topic_b.config_hash,
-            topic_b.content_hash,
+            topic_leaf_hash("topic-a", &topic_a.config_hash, &topic_a.content_hash),
+            topic_leaf_hash("topic-b", &topic_b.config_hash, &topic_b.content_hash),
         ]);
         assert_eq!(
             owner_content_hash(&database, OwnerType::Agent, "agent-a").expect("agent root"),
@@ -3263,7 +3309,10 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(
             first,
-            aggregate_hash(vec![by_id["m1"].content_hash.clone(), expected_sentinel])
+            aggregate_hash(vec![
+                message_leaf_hash("m1", &by_id["m1"].content_hash),
+                message_leaf_hash("synthetic_1", &expected_sentinel),
+            ])
         );
     }
 
@@ -3526,8 +3575,8 @@ mod tests {
                 .expect("poison history source");
         }
 
-        // owner manifest 不再失败；毒 topic 的 config/content 双叶子均使用哨兵，
-        // 健康 topic 仍按 config/content 双叶子参与聚合。
+        // owner manifest 不再失败；毒 topic 的 keyed 叶子使用双哨兵，
+        // 健康 topic 仍以 topicId + config/content 的绑定状态参与聚合。
         let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
         let poisoned_a = agents
             .iter()
@@ -3545,10 +3594,8 @@ mod tests {
         .expect("topic-b manifest");
         let sentinel = sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
         let expected = aggregate_hash(vec![
-            sentinel.clone(),
-            sentinel,
-            healthy_b.config_hash,
-            healthy_b.content_hash,
+            topic_leaf_hash("topic-a", &sentinel, &sentinel),
+            topic_leaf_hash("topic-b", &healthy_b.config_hash, &healthy_b.content_hash),
         ]);
         assert_eq!(poisoned_a.content_hash, expected);
         assert_eq!(poisoned_a.config_hash.len(), 64);

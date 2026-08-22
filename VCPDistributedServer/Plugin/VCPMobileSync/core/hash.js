@@ -58,7 +58,7 @@ function computeBinaryHash(buffer) {
 }
 
 /**
- * 计算消息指纹 (仅 content + 附件哈希)
+ * 计算消息指纹（消息身份 + 持久同步字段 + 附件内容身份）
  * @param {object} msg - 消息对象
  * @returns {string} SHA-256 哈希
  */
@@ -74,8 +74,17 @@ function computeMessageFingerprint(msg) {
     .sort();
 
   const fingerprintObj = {
+    id: msg.id || "",
+    role: msg.role || "",
     content: msg.content || "",
+    timestamp: msg.timestamp || 0,
   };
+  if (typeof msg.name === "string") {
+    fingerprintObj.name = msg.name;
+  }
+  if (typeof msg.agentId === "string") {
+    fingerprintObj.agentId = msg.agentId;
+  }
   if (attachmentHashes.length > 0) {
     fingerprintObj.attachmentHashes = attachmentHashes;
   }
@@ -83,6 +92,20 @@ function computeMessageFingerprint(msg) {
   return crypto
     .createHash("sha256")
     .update(stableStringify(fingerprintObj))
+    .digest("hex");
+}
+
+function computeMessageLeafHash(messageId, messageHash) {
+  return crypto
+    .createHash("sha256")
+    .update(stableStringify({ id: messageId, hash: messageHash }))
+    .digest("hex");
+}
+
+function computeTopicLeafHash(topicId, configHash, contentHash) {
+  return crypto
+    .createHash("sha256")
+    .update(stableStringify({ topicId, configHash, contentHash }))
     .digest("hex");
 }
 
@@ -128,6 +151,8 @@ module.exports = {
   stableStringify,
   computeBinaryHash,
   computeMessageFingerprint,
+  computeMessageLeafHash,
+  computeTopicLeafHash,
   computeDtoHash,
   computeAggregatedHash,
 };
