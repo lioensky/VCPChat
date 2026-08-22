@@ -1,0 +1,197 @@
+/* ============================================================
+   内容页共享样式（Forum / Memo / Log）— vcp.page 层
+   这三个页面的 JS 会动态生成 glass / glass-input / jelly-btn /
+   glass-btn / nav-icon-btn 等 legacy 类名，无法整体改写 DOM，
+   因此在这里把这些 legacy 类统一映射到共享 token 的扁平视觉。
+   页面 css 中不得再重复定义这些类的颜色/圆角/尺寸。
+   ============================================================ */
+
+@layer vcp.page {
+  /* --- 平面化玻璃表面：glass 成为"抬升卡片"的别名 --- */
+  body.vcp-app-surface .glass {
+    background: var(--vcp-app-bg-raised);
+    border: 1px solid var(--vcp-app-border-subtle);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  body.vcp-app-surface .glass-hover {
+    transition: border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      box-shadow var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+  }
+
+  body.vcp-app-surface .glass-hover:hover {
+    border-color: var(--vcp-app-border-strong);
+    box-shadow: var(--vcp-app-shadow-sm);
+  }
+
+  /* --- 图标按钮 --- */
+  body.vcp-app-surface .nav-icon-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    width: var(--vcp-app-control-sm);
+    height: var(--vcp-app-control-sm);
+    min-width: var(--vcp-app-control-sm);
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--vcp-app-radius-pill);
+    color: var(--vcp-app-text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    -webkit-app-region: no-drag;
+    transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+  }
+
+  body.vcp-app-surface .nav-icon-btn:hover {
+    background: var(--vcp-app-fill-2);
+    color: var(--vcp-app-text);
+  }
+
+  body.vcp-app-surface .nav-icon-btn svg {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  /* --- 文本输入 --- */
+  body.vcp-app-surface .glass-input,
+  body.vcp-app-surface .search-glass {
+    box-sizing: border-box;
+    min-height: var(--vcp-app-control-md);
+    padding: var(--vcp-app-space-1) var(--vcp-app-space-3);
+    background: var(--vcp-app-bg-input);
+    border: 1px solid var(--vcp-app-border);
+    border-radius: var(--vcp-app-control-radius);
+    color: var(--vcp-app-text);
+    font-family: inherit;
+    font-size: var(--vcp-app-font-body);
+    caret-color: var(--vcp-app-accent);
+    transition: border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      box-shadow var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+  }
+
+  body.vcp-app-surface .glass-input:focus,
+  body.vcp-app-surface .search-glass:focus {
+    outline: none;
+    border-color: var(--vcp-app-accent);
+    box-shadow: 0 0 0 2px var(--vcp-app-focus-ring);
+  }
+
+  body.vcp-app-surface .glass-input::placeholder,
+  body.vcp-app-surface .search-glass::placeholder {
+    color: var(--vcp-app-text-secondary);
+  }
+
+  textarea.glass-input {
+    padding: var(--vcp-app-space-2) var(--vcp-app-space-3);
+    line-height: 1.6;
+  }
+
+  /* --- 主按钮（jelly-btn 是内容页 JS 的主行动按钮） --- */
+  body.vcp-app-surface .jelly-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: var(--vcp-app-control-md);
+    padding: 0 var(--vcp-app-space-4);
+    background: var(--vcp-app-accent);
+    border: 1px solid transparent;
+    border-radius: var(--vcp-app-radius-pill);
+    color: var(--vcp-app-on-accent);
+    font-family: inherit;
+    font-size: var(--vcp-app-font-body);
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--vcp-app-space-2);
+    transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+  }
+
+  body.vcp-app-surface .jelly-btn:hover {
+    background: var(--vcp-app-accent-hover);
+    border-color: var(--vcp-app-accent-hover);
+  }
+
+  /* --- 幽灵按钮（glass-btn） --- */
+  body.vcp-app-surface .glass-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: var(--vcp-app-control-md);
+    padding: 0 var(--vcp-app-space-3);
+    background: var(--vcp-app-fill-2);
+    border: 1px solid transparent;
+    border-radius: var(--vcp-app-radius-pill);
+    color: var(--vcp-app-text);
+    font-family: inherit;
+    font-size: var(--vcp-app-font-body);
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--vcp-app-space-2);
+    white-space: nowrap;
+    -webkit-app-region: no-drag;
+    transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+      color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+  }
+
+  body.vcp-app-surface .glass-btn:hover {
+    background: var(--vcp-app-fill-3);
+  }
+
+  body.vcp-app-surface .glass-btn.primary {
+    background: var(--vcp-app-accent);
+    color: var(--vcp-app-on-accent);
+  }
+
+  body.vcp-app-surface .glass-btn.primary:hover {
+    background: var(--vcp-app-accent-hover);
+    border-color: var(--vcp-app-accent-hover);
+  }
+
+  body.vcp-app-surface .glass-btn.danger {
+    color: var(--vcp-app-danger);
+  }
+
+  body.vcp-app-surface .glass-btn.danger:hover {
+    background: var(--vcp-app-danger-bg);
+  }
+
+  body.vcp-app-surface .glass-btn.danger-solid {
+    background: var(--vcp-app-danger);
+    color: var(--vcp-app-on-accent);
+  }
+
+  body.vcp-app-surface .glass-btn.danger-solid:hover {
+    background: var(--vcp-app-danger);
+    filter: brightness(1.08);
+  }
+
+  /* --- 模态框 --- */
+  body.vcp-app-surface .modal {
+    background: var(--vcp-app-backdrop);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  body.vcp-app-surface .modal-glass-content {
+    box-sizing: border-box;
+    width: min(700px, calc(100vw - 48px));
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    padding: var(--vcp-app-space-5);
+    background: var(--vcp-app-bg-raised);
+    border: 1px solid var(--vcp-app-border-subtle);
+    border-radius: var(--vcp-app-modal-radius);
+    box-shadow: var(--vcp-app-shadow-lg);
+  }
+}

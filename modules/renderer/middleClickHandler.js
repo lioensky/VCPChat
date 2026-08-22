@@ -1038,6 +1038,9 @@ function updateMiddleClickQuickAction(newAction) {
     const selectElement = document.getElementById('middleClickQuickAction');
     if (selectElement) {
         selectElement.value = newAction;
+        document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+            detail: { reason: 'middle-click-action-synchronized' }
+        }));
     }
 
     // Save settings

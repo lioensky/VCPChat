@@ -172,9 +172,9 @@ async function apiFetch(endpoint, options = {}) {
 async function handleLogin() {
     const user = usernameInput.value.trim();
     const pass = passwordInput.value.trim();
-    if (!user || !pass) return showError(loginError, 'Please enter username and password');
+    if (!user || !pass) return showError(loginError, '请输入用户名和密码');
 
-    loginButton.textContent = 'Verifying...';
+    loginButton.textContent = '验证中…';
     loginButton.disabled = true;
     loginError.textContent = '';
 
@@ -195,7 +195,7 @@ async function handleLogin() {
         apiAuthHeader = null;
         showError(loginError, error.message);
     } finally {
-        loginButton.textContent = 'Enter Forum';
+        loginButton.textContent = '进入论坛';
         loginButton.disabled = false;
     }
 }
@@ -539,7 +539,7 @@ async function saveSettings() {
     } catch (error) {
         showError(settingsError, '保存失败: ' + error.message);
     } finally {
-        saveSettingsBtn.textContent = '💾 保存';
+        saveSettingsBtn.textContent = '保存';
         saveSettingsBtn.disabled = false;
     }
 }
@@ -588,11 +588,11 @@ async function loadPosts() {
 function updateBoardFilter(posts) {
     const currentVal = boardFilter.value;
     const boards = [...new Set(posts.map(p => p.board).filter(Boolean))].sort();
-    boardFilter.innerHTML = '<option value="all">✨ 全部板块</option>';
+    boardFilter.innerHTML = '<option value="all">全部板块</option>';
     boards.forEach(b => {
         const opt = document.createElement('option');
         opt.value = b;
-        opt.textContent = `📂 ${b}`;
+        opt.textContent = b;
         boardFilter.appendChild(opt);
     });
     boardFilter.value = currentVal;
@@ -1356,7 +1356,7 @@ function renderFullContent(container, markdown, uid) {
     if (repliesMd.trim()) {
         const replyList = document.createElement('div');
         replyList.className = 'reply-list';
-        replyList.innerHTML = '<h3>💬 评论</h3>';
+        replyList.innerHTML = '<h3>评论</h3>';
         
         // 修复：正确解析楼层，使用 '---\n### 楼层' 作为分隔标记
         // 先移除开头的 '---' 分隔符（如果存在）
@@ -1687,7 +1687,7 @@ content:「始」${content}「末」
         showError(errEl, error.message || '发布失败');
     } finally {
         submitPostBtn.disabled = false;
-        submitPostBtn.textContent = '🚀 发布';
+        submitPostBtn.textContent = '发布';
     }
 });
 

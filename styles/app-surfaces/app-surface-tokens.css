@@ -1,0 +1,134 @@
+/*
+ * styles/app-surfaces/app-surface-tokens.css
+ * App Surface 共享视觉 token：颜色桥接 + 布局合同。
+ *
+ * 颜色不引入新色板：全部从 styles/themes.css 的旧主题变量桥接，
+ * 因此 18 套主题与 body.light-theme 明暗切换自动生效。
+ * 布局合同（标题栏/工具栏高度、页面内边距、内容宽度、列表行高、
+ * 控件尺寸）是六个 App Surface 的统一基准，页面专属文件只允许
+ * 消费这些 token，不得重新定义同语义的变量。
+ */
+@layer vcp.tokens {
+    body.vcp-app-surface {
+        color-scheme: dark;
+
+        /* --- 语义颜色（桥接旧主题变量） --- */
+        --vcp-app-bg: var(--primary-bg, oklch(0.22 0.02 230));
+        --vcp-app-bg-raised: var(--secondary-bg, oklch(0.27 0.02 230));
+        --vcp-app-bg-sunken: var(--tertiary-bg, var(--primary-bg, oklch(0.19 0.02 230)));
+        --vcp-app-bg-input: var(--input-bg, oklch(0.3 0.02 230 / 0.9));
+        --vcp-app-text: var(--primary-text, oklch(0.95 0.01 230));
+        --vcp-app-text-secondary: var(--secondary-text, oklch(0.7 0.02 230));
+        --vcp-app-text-disabled: color-mix(in srgb, var(--vcp-app-text-secondary) 58%, transparent);
+        --vcp-app-accent: var(--highlight-text, var(--button-bg, oklch(0.75 0.14 85)));
+        --vcp-app-accent-hover: var(--button-hover-bg, color-mix(in srgb, var(--vcp-app-accent) 88%, oklch(1 0 0)));
+        --vcp-app-on-accent: var(--text-on-accent, oklch(0.15 0.02 230));
+        --vcp-app-border: color-mix(in srgb, var(--vcp-app-text) 10%, transparent);
+        --vcp-app-border-subtle: color-mix(in srgb, var(--vcp-app-text) 6%, transparent);
+        --vcp-app-border-strong: color-mix(in srgb, var(--vcp-app-accent) 36%, var(--vcp-app-border));
+        --vcp-app-danger: var(--danger-color, oklch(0.6 0.2 25));
+        --vcp-app-success: var(--success-color, oklch(0.65 0.17 150));
+        --vcp-app-warning: var(--warning-color, oklch(0.78 0.15 85));
+        --vcp-app-info: var(--info-color, oklch(0.66 0.16 250));
+        --vcp-app-danger-bg: color-mix(in srgb, var(--vcp-app-danger) 14%, transparent);
+        --vcp-app-success-bg: color-mix(in srgb, var(--vcp-app-success) 14%, transparent);
+        --vcp-app-warning-bg: color-mix(in srgb, var(--vcp-app-warning) 14%, transparent);
+        --vcp-app-info-bg: color-mix(in srgb, var(--vcp-app-info) 14%, transparent);
+
+        /* 低透明度填充：减少边框分块，用层级代替描边 */
+        --vcp-app-fill-1: color-mix(in srgb, var(--vcp-app-text) 4%, transparent);
+        --vcp-app-fill-2: color-mix(in srgb, var(--vcp-app-text) 7%, transparent);
+        --vcp-app-fill-3: color-mix(in srgb, var(--vcp-app-text) 11%, transparent);
+        --vcp-app-selection-bg: color-mix(in srgb, var(--vcp-app-accent) 12%, transparent);
+        --vcp-app-selection-hover: color-mix(in srgb, var(--vcp-app-accent) 18%, transparent);
+        --vcp-app-focus-ring: color-mix(in srgb, var(--vcp-app-accent) 32%, transparent);
+        --vcp-app-backdrop: oklch(0 0 0 / 0.55);
+
+        /* --- 布局合同 --- */
+        --vcp-app-header-height: 48px;
+        --vcp-app-toolbar-height: 44px;
+        --vcp-app-footer-height: 28px;
+        --vcp-app-page-gutter: 24px;
+        --vcp-app-content-max-width: 1080px;
+        --vcp-app-content-max-width-document: 860px;
+        --vcp-app-row-height: 36px;
+        --vcp-app-row-height-compact: 30px;
+
+        /* --- 控件尺寸 --- */
+        --vcp-app-control-sm: 28px;
+        --vcp-app-control-md: 32px;
+        --vcp-app-control-lg: 36px;
+        --vcp-app-control-radius: 8px;
+        --vcp-app-card-radius: 12px;
+        --vcp-app-modal-radius: 16px;
+        --vcp-app-radius-pill: 999px;
+        --vcp-app-radius-xs: 4px;
+
+        /* --- 图标尺寸（Lucide 基准：24 网格 stroke 图标） --- */
+        --vcp-app-icon-sm: 14px;
+        --vcp-app-icon-md: 16px;
+        --vcp-app-icon-lg: 18px;
+
+        /* --- 间距阶梯 --- */
+        --vcp-app-space-1: 4px;
+        --vcp-app-space-2: 8px;
+        --vcp-app-space-3: 12px;
+        --vcp-app-space-4: 16px;
+        --vcp-app-space-5: 24px;
+        --vcp-app-space-6: 32px;
+
+        /* --- 字号与行高 --- */
+        --vcp-app-font-caption: 12px;
+        --vcp-app-font-body: 13px;
+        --vcp-app-font-emphasis: 14px;
+        --vcp-app-font-title: 16px;
+        --vcp-app-font-display: 20px;
+        --vcp-app-line-compact: 1.35;
+        --vcp-app-line-body: 1.5;
+        --vcp-app-line-relaxed: 1.65;
+
+        /* --- 阴影（深色默认）：极淡，只给浮层 --- */
+        --vcp-app-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.2);
+        --vcp-app-shadow-md: 0 4px 12px oklch(0 0 0 / 0.24);
+        --vcp-app-shadow-lg: 0 0 1px oklch(1 0 0 / 0.1), 0 12px 32px oklch(0 0 0 / 0.4);
+
+        /* --- 滚动条 --- */
+        --vcp-app-scrollbar-size: 6px;
+        --vcp-app-scrollbar-thumb: color-mix(in srgb, var(--vcp-app-text-secondary) 30%, transparent);
+        --vcp-app-scrollbar-thumb-hover: color-mix(in srgb, var(--vcp-app-text-secondary) 50%, transparent);
+
+        /* --- 动效 --- */
+        --vcp-app-duration-fast: 160ms;
+        --vcp-app-duration-normal: 260ms;
+        --vcp-app-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body.vcp-app-surface.light-theme {
+        color-scheme: light;
+        --vcp-app-backdrop: oklch(0.2 0.01 240 / 0.28);
+        --vcp-app-shadow-sm: 0 1px 2px oklch(0.12 0.01 230 / 0.05);
+        --vcp-app-shadow-md: 0 4px 12px oklch(0.12 0.01 230 / 0.06);
+        --vcp-app-shadow-lg: 0 0 1px oklch(0.12 0.01 230 / 0.08), 0 12px 32px oklch(0.12 0.01 230 / 0.1);
+    }
+
+    /* 窄窗口收缩：内边距与标题栏先降一档，不断布局 */
+    @media (max-width: 720px) {
+        body.vcp-app-surface {
+            --vcp-app-page-gutter: 12px;
+            --vcp-app-header-height: 44px;
+            --vcp-app-toolbar-height: 40px;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        body.vcp-app-surface,
+        body.vcp-app-surface *,
+        body.vcp-app-surface *::before,
+        body.vcp-app-surface *::after {
+            scroll-behavior: auto;
+            animation-duration: 1ms;
+            animation-iteration-count: 1;
+            transition-duration: 1ms;
+        }
+    }
+}

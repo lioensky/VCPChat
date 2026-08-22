@@ -7,6 +7,9 @@
     <title>VCP Memo 中心</title>
     <!-- 引入主题和样式 -->
     <link rel="stylesheet" href="../styles/themes.css">
+    <!-- App Surface 共享视觉层 -->
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surfaces.css">
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surface-content-pages.css">
     <link rel="stylesheet" href="../Forummodules/forum.css">
     <link rel="stylesheet" href="memo.css">
     <!-- KaTeX for LaTeX rendering -->
@@ -15,25 +18,23 @@
     <script defer src="../vendor/auto-render.min.js"></script>
     <script src="../vendor/marked.min.js"></script>
 </head>
-<body>
+<body class="vcp-app-surface">
     <!-- 沉浸式顶部导航栏 -->
-    <nav id="top-nav-bar" class="glass">
+    <nav id="top-nav-bar" class="vcp-app-header">
         <div class="nav-left">
-            <div class="nav-title">VCP Memo</div>
-            <div style="width: 1px; height: 20px; background: var(--glass-border); margin: 0 10px;"></div>
+            <div class="nav-title vcp-app-header-title">VCP Memo</div>
             <div class="search-container" style="display: flex; align-items: center; gap: 8px;">
-                <input type="search" id="search-memos" class="search-glass" placeholder="🔍 搜索日记...">
+                <input type="search" id="search-memos" class="search-glass" placeholder="搜索日记...">
                 <button id="search-scope-btn" class="nav-icon-btn scope-toggle-btn" title="当前范围：文件夹内">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 </button>
             </div>
         </div>
-        <div class="nav-right">
+        <div class="nav-right vcp-app-header-actions">
             <button id="create-memo-btn" class="jelly-btn" style="width: auto; padding: 8px 20px; font-size: 0.9rem;">
                 + 新建日记
             </button>
-            
-            <div style="width: 1px; height: 20px; background: var(--glass-border); margin: 0 10px;"></div>
+
             
             <button id="minimize-memo-btn" class="nav-icon-btn" title="最小化">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -41,7 +42,7 @@
             <button id="maximize-memo-btn" class="nav-icon-btn" title="最大化">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
             </button>
-            <button id="close-memo-btn" class="nav-icon-btn" title="关闭" style="color: var(--danger-color); opacity: 1;">
+            <button id="close-memo-btn" class="nav-icon-btn" title="关闭" style="color: var(--vcp-app-danger);">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
         </div>
@@ -66,7 +67,7 @@
                     <span>加载中...</span>
                 </div>
             </div>
-            <div class="sidebar-footer" style="padding: 10px; border-top: 1px solid var(--glass-border);">
+            <div class="sidebar-footer" style="padding: 10px; border-top: 1px solid var(--vcp-app-border);">
                 <button id="manage-hidden-btn" class="glass-btn" style="width: 100%; justify-content: center;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                     管理隐藏文件夹
@@ -83,15 +84,15 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         批量管理
                     </button>
-                    <div id="batch-actions" style="display: none; gap: 10px; align-items: center; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 10px; border: 1px solid var(--glass-border);">
-                        <span id="selected-count" style="font-size: 0.85rem; color: var(--accent-color); font-weight: bold;">已选 0 项</span>
+                    <div id="batch-actions" style="display: none; gap: 10px; align-items: center; background: var(--vcp-app-fill-1); padding: 5px 15px; border-radius: 8px; border: 1px solid var(--vcp-app-border);">
+                        <span id="selected-count" style="font-size: 0.85rem; color: var(--vcp-app-accent); font-weight: bold;">已选 0 项</span>
                         <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="font-size: 0.75rem; color: var(--text-secondary);">移动到:</span>
+                            <span style="font-size: 0.75rem; color: var(--vcp-app-text-secondary);">移动到:</span>
                             <select id="batch-move-select" class="glass-input" style="padding: 2px 10px; font-size: 0.8rem; width: auto; margin-bottom: 0;">
                                 <option value="">-- 选择文件夹 --</option>
                             </select>
                         </div>
-                        <button id="batch-delete-btn" class="glass-btn danger" style="padding: 5px 12px; font-size: 0.85rem;">🗑️ 批量删除</button>
+                        <button id="batch-delete-btn" class="glass-btn danger" style="padding: 5px 12px; font-size: 0.85rem;">批量删除</button>
                         <button id="batch-workbench-btn" class="glass-btn primary" style="padding: 5px 12px; font-size: 0.85rem;">🛠️ 进入工作台</button>
                         <button id="cancel-batch-btn" class="nav-icon-btn" title="取消">&times;</button>
                     </div>
@@ -127,77 +128,77 @@
                 <div id="editor-preview" class="editor-preview markdown-body"></div>
             </div>
             <div class="editor-footer">
-                <p id="editor-status" style="margin-right: auto; font-size: 0.8rem; color: var(--text-secondary);"></p>
-                <button id="delete-memo-btn" class="glass-btn danger">🗑️ 删除</button>
-                <button id="save-memo-btn" class="glass-btn primary">💾 保存修改</button>
+                <p id="editor-status" style="margin-right: auto; font-size: 0.8rem; color: var(--vcp-app-text-secondary);"></p>
+                <button id="delete-memo-btn" class="glass-btn danger">删除</button>
+                <button id="save-memo-btn" class="glass-btn primary">保存修改</button>
             </div>
         </div>
     </div>
 
     <!-- 新建日记 弹窗 -->
-    <div id="create-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
-        <div class="modal-glass-content glass" style="width: 90%; max-width: 600px; padding: 30px; border-radius: 20px;">
+    <div id="create-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000">
+        <div class="modal-glass-content glass" style="max-width: 600px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">📝 新建日记</h2>
+                <h2 style="margin: 0;">新建日记</h2>
                 <button id="close-create-modal-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">日期</label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">日期</label>
                 <input type="date" id="new-memo-date" class="glass-input" style="width: 100%;">
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">署名 <span style="opacity: 0.5; font-size: 0.8rem;">(maid)</span></label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">署名</label>
                 <input type="text" id="new-memo-maid" class="glass-input" style="width: 100%;" placeholder="如：Nova">
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">目标文件夹 <span style="opacity: 0.5; font-size: 0.8rem;">(folder, 可选，留空写入默认日记本)</span></label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">目标文件夹 <span style="opacity: 0.5; font-size: 0.8rem;">（可选，留空写入默认日记本）</span></label>
                 <input type="text" id="new-memo-folder" class="glass-input" style="width: 100%;" placeholder="如：Nova的知识">
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">文件名 <span style="opacity: 0.5; font-size: 0.8rem;">(可选，留空自动生成)</span></label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">文件名 <span style="opacity: 0.5; font-size: 0.8rem;">(可选，留空自动生成)</span></label>
                 <input type="text" id="new-memo-filename" class="glass-input" style="width: 100%;" placeholder="自定义文件名，如：日记提示词哲学">
             </div>
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">标签 <span style="opacity: 0.5; font-size: 0.8rem;">(必选，逗号分隔)</span></label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">标签 <span style="opacity: 0.5; font-size: 0.8rem;">(必选，逗号分隔)</span></label>
                 <input type="text" id="new-memo-tags" class="glass-input" style="width: 100%;" placeholder="如：日记系统重构, RAG语义检索, 提示词工程">
             </div>
             <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">内容</label>
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--vcp-app-text-secondary);">内容</label>
                 <textarea id="new-memo-content" class="glass-input" style="width: 100%; min-height: 150px; resize: vertical;" placeholder="写下今天的故事..."></textarea>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
-                <button id="submit-new-memo-btn" class="jelly-btn" style="width: auto; padding: 10px 30px;">🚀 发布</button>
+                <button id="submit-new-memo-btn" class="jelly-btn" style="width: auto; padding: 10px 30px;">发布</button>
             </div>
         </div>
     </div>
 
 
     <!-- 自定义确认弹窗 -->
-    <div id="custom-confirm-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10100; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
-        <div class="modal-glass-content glass" style="max-width: 450px; width: 90%; text-align: center; padding: 30px; border-radius: 20px;">
-            <h3 id="confirm-title" style="margin-top: 0; margin-bottom: 15px; color: var(--accent-color);">确认操作</h3>
-            <p id="confirm-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--text-primary);"></p>
+    <div id="custom-confirm-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10100">
+        <div class="modal-glass-content glass" style="max-width: 450px; text-align: center;">
+            <h3 id="confirm-title" style="margin-top: 0; margin-bottom: 15px; color: var(--vcp-app-accent);">确认操作</h3>
+            <p id="confirm-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--vcp-app-text);"></p>
             <div style="display: flex; gap: 15px; justify-content: center;">
                 <button id="confirm-cancel-btn" class="glass-btn" style="width: auto; padding: 10px 30px;">取消</button>
-                <button id="confirm-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--danger-color);">确定</button>
+                <button id="confirm-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--vcp-app-danger);">确定</button>
             </div>
         </div>
     </div>
 
     <!-- 自定义提示弹窗 -->
-    <div id="custom-alert-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10100; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
-        <div class="modal-glass-content glass" style="max-width: 400px; width: 90%; text-align: center; padding: 30px; border-radius: 20px;">
-            <h3 id="alert-title" style="margin-top: 0; margin-bottom: 15px; color: var(--accent-color);">提示</h3>
-            <p id="alert-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--text-primary);"></p>
+    <div id="custom-alert-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10100">
+        <div class="modal-glass-content glass" style="max-width: 400px; text-align: center;">
+            <h3 id="alert-title" style="margin-top: 0; margin-bottom: 15px; color: var(--vcp-app-accent);">提示</h3>
+            <p id="alert-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--vcp-app-text);"></p>
             <button id="alert-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">确定</button>
         </div>
     </div>
 
     <!-- 隐藏文件夹管理弹窗 -->
-    <div id="hidden-folders-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
-        <div class="modal-glass-content glass" style="width: 90%; max-width: 500px; padding: 30px; border-radius: 20px;">
+    <div id="hidden-folders-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000">
+        <div class="modal-glass-content glass" style="max-width: 500px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">🙈 隐藏文件夹管理</h2>
+                <h2 style="margin: 0;">隐藏文件夹管理</h2>
                 <button id="close-hidden-modal-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
             </div>
             <div id="hidden-folders-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px;">
@@ -210,10 +211,10 @@
     </div>
 
     <!-- 工作台发布后旧日记处理弹窗 -->
-    <div id="post-publish-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10200; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
-        <div class="modal-glass-content glass" style="max-width: 500px; width: 90%; text-align: center; padding: 30px; border-radius: 20px;">
-            <h3 style="margin-top: 0; margin-bottom: 10px; color: var(--accent-color);">✅ 整合日记发布成功</h3>
-            <p style="margin-bottom: 20px; line-height: 1.6; color: var(--text-secondary); font-size: 0.9rem;">如何处理已引用的 <strong id="post-publish-count">0</strong> 篇原始日记？</p>
+    <div id="post-publish-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10200">
+        <div class="modal-glass-content glass" style="max-width: 500px; text-align: center;">
+            <h3 style="margin-top: 0; margin-bottom: 10px; color: var(--vcp-app-accent);">✅ 整合日记发布成功</h3>
+            <p style="margin-bottom: 20px; line-height: 1.6; color: var(--vcp-app-text-secondary); font-size: 0.9rem;">如何处理已引用的 <strong id="post-publish-count">0</strong> 篇原始日记？</p>
             <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px;">
                 <button id="post-publish-keep-btn" class="glass-btn" style="width: 100%; padding: 12px; justify-content: center; font-size: 0.95rem;">
                     📌 保留原位 — 不做任何变动
@@ -222,14 +223,14 @@
                     📦 归档到「已整理」文件夹
                 </button>
                 <button id="post-publish-delete-btn" class="glass-btn danger" style="width: 100%; padding: 12px; justify-content: center; font-size: 0.95rem;">
-                    🗑️ 删除原始日记（不可撤销）
+                    删除原始日记（不可撤销）
                 </button>
             </div>
         </div>
     </div>
 
     <!-- 右键菜单 -->
-    <div id="context-menu" class="context-menu glass" style="display: none; position: fixed; z-index: 5000; min-width: 120px; padding: 5px 0; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
+    <div id="context-menu" class="context-menu glass" style="display: none; position: fixed; z-index: 5000; min-width: 120px; padding: 5px 0">
         <!-- 菜单项将由 JS 动态生成 -->
     </div>
 
@@ -286,7 +287,7 @@
                                 <input type="date" id="workbench-new-date" class="glass-input">
                             </div>
                             <div class="form-group">
-                                <label>署名 / 目标文件夹 <span style="opacity: 0.5; font-size: 0.8rem;">(maid)</span></label>
+                                <label>署名 / 目标文件夹</label>
                                 <input type="text" id="workbench-new-folder" class="glass-input" placeholder="如：Nova 或 [Nova的知识]Nova">
                             </div>
                         </div>
@@ -305,7 +306,7 @@
                             <textarea id="workbench-new-content" class="glass-input" style="flex: 1; min-height: 200px; resize: none;" placeholder="基于上方参考资料，写下你的整合发现..."></textarea>
                         </div>
                         <div class="form-footer">
-                            <button id="workbench-submit-btn" class="jelly-btn" style="width: auto; padding: 12px 40px;">🚀 发布整合日记</button>
+                            <button id="workbench-submit-btn" class="jelly-btn" style="width: auto; padding: 12px 40px;">发布整合日记</button>
                         </div>
                     </div>
                 </div>
@@ -320,11 +321,11 @@
     <script src="memo-workbench.js"></script>
 
     <!-- 联想配置弹窗 (提升 z-index 并优化尺寸) -->
-    <div id="assoc-config-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 6800; background: rgba(0,0,0,0.6); backdrop-filter: blur(15px);">
-        <div class="modal-glass-content glass" style="width: 90%; max-width: 650px; padding: 35px; border-radius: 20px;">
+    <div id="assoc-config-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 6800">
+        <div class="modal-glass-content glass" style="max-width: 650px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
                 <h2 style="margin: 0; display: flex; align-items: center; gap: 12px;">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-color);"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--vcp-app-accent);"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
                     联想参数配置
                 </h2>
                 <button id="close-assoc-config-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
@@ -333,25 +334,25 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;">
                 <div class="assoc-input-group">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <label style="font-size: 0.9rem; color: var(--secondary-text, var(--text-secondary));">联想深度 (Recall Count)</label>
-                        <span id="label-k-value" style="color: var(--accent-color); font-weight: bold;">10</span>
+                        <label style="font-size: 0.9rem; color: var(--vcp-app-text-secondary);">联想深度 (Recall Count)</label>
+                        <span id="label-k-value" style="color: var(--vcp-app-accent); font-weight: bold;">10</span>
                     </div>
                     <input type="range" id="input-assoc-k" min="1" max="100" value="10" class="glass-range" style="width: 100%;">
-                    <p class="small-text" style="margin-top: 5px; color: var(--secondary-text, var(--text-secondary));">控制返回的关联日记数量上限</p>
+                    <p class="small-text" style="margin-top: 5px; color: var(--vcp-app-text-secondary);">控制返回的关联日记数量上限</p>
                 </div>
 
                 <div class="assoc-input-group">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <label style="font-size: 0.9rem; color: var(--secondary-text, var(--text-secondary));">联想强度 (Tag Boost)</label>
+                        <label style="font-size: 0.9rem; color: var(--vcp-app-text-secondary);">联想强度 (Tag Boost)</label>
                     </div>
                     <input type="text" id="input-assoc-boost" value="0.6+" class="glass-input" style="width: 100%; margin-bottom: 0;" placeholder="0.6 或 0.6+ (启用浪潮V8深度引擎)">
-                    <p class="small-text" style="margin-top: 5px; color: var(--secondary-text, var(--text-secondary));">输入数值如 0.6，加 + 号启用浪潮V8测地线深度追忆引擎</p>
+                    <p class="small-text" style="margin-top: 5px; color: var(--vcp-app-text-secondary);">输入数值如 0.6，加 + 号启用浪潮V8测地线深度追忆引擎</p>
                 </div>
             </div>
 
             <div style="margin-bottom: 25px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label style="font-size: 0.9rem; color: var(--secondary-text, var(--text-secondary)); margin-bottom: 0;">搜索文件夹范围</label>
+                    <label style="font-size: 0.9rem; color: var(--vcp-app-text-secondary); margin-bottom: 0;">搜索文件夹范围</label>
                     <input type="text" id="assoc-folder-search" placeholder="快速过滤文件夹..." class="glass-input" style="width: 200px; padding: 5px 12px; font-size: 0.8rem; margin-bottom: 0;">
                 </div>
                 <div id="assoc-folder-tags" class="folder-tag-cloud" style="max-height: 200px;">
@@ -359,8 +360,8 @@
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--glass-border); padding-top: 25px; margin-top: 10px;">
-                <button id="start-assoc-btn" class="jelly-btn" style="width: 100%; padding: 14px; font-weight: bold; font-size: 1.1rem;">🚀 开启视觉化联想</button>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--vcp-app-border); padding-top: 25px; margin-top: 10px;">
+                <button id="start-assoc-btn" class="jelly-btn" style="width: 100%; padding: 14px; font-weight: bold; font-size: 1.1rem;">开启视觉化联想</button>
             </div>
         </div>
     </div>
@@ -383,7 +384,7 @@
             </div>
         </div>
 
-        <div class="graph-header glass">
+        <div class="graph-header">
             <div class="header-left">
                 <button id="close-graph-btn" class="nav-icon-btn" title="退出联想视图">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
@@ -420,7 +421,7 @@
                 </div>
                 <div class="detail-section">
                     <label>联想片段 / 完整文本:</label>
-                    <div id="detail-chunks" class="chunks-list" style="white-space: pre-wrap; font-family: var(--font-family); line-height: 1.6; max-height: 400px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
+                    <div id="detail-chunks" class="chunks-list" style="white-space: pre-wrap; font-family: var(--font-family); line-height: 1.6; max-height: 400px; overflow-y: auto; padding: 10px; background: var(--vcp-app-bg-sunken); border-radius: 8px;"></div>
                 </div>
                 <div class="detail-section">
                     <label>匹配标签:</label>
@@ -430,14 +431,14 @@
             <div class="panel-footer">
                 <button id="node-edit-btn" class="glass-btn">✏️ 编辑内容</button>
                 <button id="node-relink-btn" class="glass-btn primary">🧠 继续联想</button>
-                <button id="node-delete-btn" class="glass-btn danger">🗑️ 删除</button>
+                <button id="node-delete-btn" class="glass-btn danger">删除</button>
                 <button id="node-add-workbench-btn" class="glass-btn primary">🛠️ 加入工作台</button>
             </div>
         </div>
 
         <div class="graph-controls glass">
             <button id="reset-graph-btn" class="nav-icon-btn" title="重置视角">🎯</button>
-            <div style="width: 1px; height: 16px; background: var(--glass-border);"></div>
+            <div style="width: 1px; height: 16px; background: var(--vcp-app-border);"></div>
             <button id="zoom-in-btn" class="nav-icon-btn" title="放大">+</button>
             <button id="zoom-out-btn" class="nav-icon-btn" title="缩小">-</button>
         </div>

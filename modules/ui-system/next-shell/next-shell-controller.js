@@ -162,6 +162,21 @@
         });
     }
 
+    function resyncEmbeddedBoundsAfterLayout(view) {
+        if (view?.kind !== 'embedded' || !view.container.isConnected) return;
+        syncEmbeddedBounds(view);
+        // The host is toggled from hidden to visible in the same activation
+        // transaction. A second layout pass can change its measured height;
+        // reconcile after two frames so the native WebContentsView covers the
+        // complete host instead of leaving the loading surface exposed below.
+        const refresh = () => {
+            if (view.container.isConnected && appTabHost?.activeViewId === view.tab?.dataset?.viewId) {
+                syncEmbeddedBounds(view);
+            }
+        };
+        window.requestAnimationFrame?.(() => window.requestAnimationFrame?.(refresh));
+    }
+
     function syncEmbeddedActivation() {
         const activeView = appTabHost.views.get(appTabHost.activeViewId);
         const action = mounted && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
@@ -170,7 +185,7 @@
         const activation = embeddedAppController?.activate(action);
         if (!activation) return;
         trackTabPromise(`activate:${action || 'home'}`, activation).then(result => {
-            if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
+            if (result?.success && activeView?.kind === 'embedded') resyncEmbeddedBoundsAfterLayout(activeView);
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
     }
 
@@ -357,8 +372,9 @@
             if (!result?.success) throw new Error(result?.error || '应用无法内嵌打开。');
             container.dataset.state = 'ready';
             if (appTabHost.activeViewId === viewId && !restoringTabs) {
-                syncEmbeddedBounds(view);
+                resyncEmbeddedBoundsAfterLayout(view);
                 await embeddedAppController.activate(app.action);
+                resyncEmbeddedBoundsAfterLayout(view);
             }
         } catch (error) {
             console.error(`[NextUI] Failed to open embedded app ${app.id}:`, error);
@@ -799,6 +815,10 @@
         mountNativeTooltipBridge(mountScope);
         syncDensity();
         observeSidebarWidth();
+        listen(window, 'resize', () => {
+            const activeView = appTabHost?.views.get(appTabHost.activeViewId);
+            if (activeView?.kind === 'embedded') resyncEmbeddedBoundsAfterLayout(activeView);
+        });
         setupEmbeddedAppState();
         pendingTabRestore = readTabSession();
         listen(document.getElementById('nextUiCreateItemBtn'), 'click', openCreateDialog);

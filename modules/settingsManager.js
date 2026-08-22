@@ -542,7 +542,7 @@ const settingsManager = (() => {
     /**
      * Populates the assistant agent select dropdown with available agents.
      */
-    async function populateAssistantAgentSelect() {
+    async function populateAssistantAgentSelect({ canCommit = () => true } = {}) {
         const assistantAgentSelect = document.getElementById('assistantAgent');
         if (!assistantAgentSelect) {
             console.warn('[SettingsManager] populateAssistantAgentSelect: assistantAgentSelect element not found');
@@ -550,6 +550,7 @@ const settingsManager = (() => {
         }
 
         const agents = await electronAPI.getAgents();
+        if (!canCommit()) return;
         if (agents && !agents.error) {
             assistantAgentSelect.innerHTML = '<option value="">请选择一个Agent</option>'; // Clear and add placeholder
             agents.forEach(agent => {

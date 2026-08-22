@@ -42,6 +42,8 @@ const allowedSourceDifferences = new Set([
     'docs/next-ui-lifecycle-architecture.md',
     'docs/next-ui-development-roadmap.md',
     'docs/next-ui-current-state.md',
+    'docs/vcp-ui-provider-architecture.md',
+    'docs/vcp-ui-long-term-roadmap.md',
     'docs/classic-retirement-architecture.md',
     'docs/classic-retirement-inventory.md',
     'docs/main-chat-operation-sequence-testing.md',
@@ -78,6 +80,7 @@ const allowedSourceDifferences = new Set([
     'modules/messageRenderer.js',
     'modules/notificationRenderer.js',
     'modules/renderer/messageContextMenu.js',
+    'modules/renderer/middleClickHandler.js',
     'modules/renderer/streamManager.js',
     'modules/searchManager.js',
     'modules/settingsManager.js',
@@ -133,6 +136,9 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/ui-surface-policy.js',
     'modules/ui-system/vcp-ui.js',
     'modules/ui-system/settings-bridge.js',
+    'modules/ui-system/settings-surface-session.js',
+    'modules/ui-system/select-provider.js',
+    'modules/ui-system/select-webawesome-proxy.js',
     'modules/ui-system/ui-mode-controller.js',
     'modules/ui-system/vcp-page-rebuild.js',
     'modules/ui-system/vcp-ui-runtime-bootstrap.js',
@@ -218,6 +224,9 @@ const allowedSourceDifferences = new Set([
     'tests/stream-manager-terminal-cleanup.test.js',
     'tests/main-chat-sequence-model.test.js',
     'tests/settlement.test.js',
+    'tests/select-provider.test.js',
+    'tests/select-webawesome-proxy.test.js',
+    'tests/settings-surface-session.test.js',
     'tests/settings-settlement.test.js',
     'tests/support/main-chat-sequence.js',
     'style.css',
@@ -257,15 +266,16 @@ const allowedSourceDifferences = new Set([
 ]);
 const allowedSourceDifferencePatterns = [
     /^vendor\/webawesome(?:-runtime)?\//,
+    /^styles\/app-surfaces\//,
     /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\//,
     /^Notemodules\/notemini\.(?:html|js|css)$/,
 ];
 
 const upstreamClassicPatterns = [
-    /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\//,
-    /^Notemodules\/notes\.(?:html|js|css)$/,
-    /^Notemodules\/notemini\.(?:html|js|css)$/,
-    /^Translatormodules\/translator\.(?:html|js|css)$/,
+    /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\/.*\.js$/,
+    /^Notemodules\/notes\.js$/,
+    /^Notemodules\/notemini\.js$/,
+    /^Translatormodules\/translator\.js$/,
     /^RAGmodules\/RAG_Observer\.html$/,
 ];
 

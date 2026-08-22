@@ -3,6 +3,7 @@
  */
 
 import { handleSaveGlobalSettings } from './global-settings-manager.js';
+import { captureSettingsSurfaceSession, isCurrentSettingsSurfaceSession } from './ui-system/settings-surface-session.js';
 
 let eventListenersBound = false;
 
@@ -754,9 +755,19 @@ export function setupEventListeners(deps) {
     }
 
     // Rust助手配置UI交互处理
-    async function setupRustAssistantConfigListeners() {
-        // 首先加载当前的Rust配置并填充表单
-        await loadAndPopulateRustConfig();
+    function setupRustAssistantConfigListeners() {
+        // Hydration is per modal-open generation. Binding handlers is a
+        // one-time operation; the async read must never outlive its surface.
+        if (!document.documentElement.dataset.rustSettingsHydrateBound) {
+            document.addEventListener('modal-visibility-changed', event => {
+                if (event.detail?.modalId !== 'globalSettingsModal' || event.detail.active !== true) return;
+                void loadAndPopulateRustConfig(captureSettingsSurfaceSession());
+            });
+            document.documentElement.dataset.rustSettingsHydrateBound = 'true';
+        }
+        if (document.getElementById('globalSettingsModal')?.classList.contains('active')) {
+            void loadAndPopulateRustConfig(captureSettingsSurfaceSession());
+        }
 
         // 启用Rust助手时，显示规则容器
         const rustUseAssistantCheckbox = document.getElementById('rustUseAssistant');
@@ -801,7 +812,7 @@ export function setupEventListeners(deps) {
         }
     }
 
-    async function loadAndPopulateRustConfig() {
+    async function loadAndPopulateRustConfig(session = captureSettingsSurfaceSession()) {
         try {
             if (!chatAPI) {
                 console.warn('[EventListeners] electronAPI not available, skipping rust config load');
@@ -809,6 +820,7 @@ export function setupEventListeners(deps) {
             }
 
             const result = await chatAPI.getRustAssistantConfig?.() || {};
+            if (!isCurrentSettingsSurfaceSession(session)) return false;
             if (result.error) {
                 console.warn('[EventListeners] Failed to load rust config:', result.error);
                 return;
@@ -893,8 +905,26 @@ export function setupEventListeners(deps) {
             }
 
             console.log('[EventListeners] Rust config loaded and form populated successfully');
+            return true;
         } catch (error) {
             console.error('[EventListeners] Error loading rust config:', error);
+            return false;
+        } finally {
+            // Rust configuration is loaded on an independent async path from
+            // renderer.syncGlobalSettingsToUI(). Notify presentation adapters
+            // after this later write without manufacturing a user change.
+            if (isCurrentSettingsSurfaceSession(session)) {
+                document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+                    detail: {
+                        surface: 'global-settings',
+                        modalId: 'globalSettingsModal',
+                        active: true,
+                        generation: session.generation,
+                        root: session.root,
+                        reason: 'rust-controls-synchronized'
+                    }
+                }));
+            }
         }
     }
 

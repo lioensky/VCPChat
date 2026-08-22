@@ -396,8 +396,12 @@ assert.ok(legacySelect.classList.contains('vcp-ui-select-source'));
 assert.equal(enhancedSelect.element.querySelectorAll('wa-option').length, 2);
 assert.equal(enhancedSelect.element.value, 'one');
 legacySelect.value = 'two';
+enhancedSelect.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(enhancedSelect.element.value, 'two', 'native value writes sync to WA');
+assert.equal(enhancedSelect.element.value, 'two', 'explicit presentation refresh syncs a native value write to WA');
+['value', 'selectedIndex', 'add', 'remove', 'focus'].forEach(property => {
+    assert.equal(Object.hasOwn(legacySelect, property), false, `Select proxy must not patch source ${property}`);
+});
 legacySelect.add(new Option('Three', 'three'));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(enhancedSelect.element.querySelectorAll('wa-option').length, 3, 'native option additions sync to WA');
@@ -448,8 +452,8 @@ assert.equal(nativeSelectController.kernel, 'native');
 document.documentElement.dataset.uiMode = 'next';
 const upgradedSelectController = VCPUI.enhance('Select', lateUpgradeSelect);
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(upgradedSelectController.kernel, 'webawesome-proxy', 'native Select upgrades after WA becomes available');
-assert.notEqual(upgradedSelectController, nativeSelectController);
+assert.equal(upgradedSelectController.kernel, 'native', 'mounted Select keeps its original provider after WA becomes available');
+assert.equal(upgradedSelectController, nativeSelectController, 'provider changes require an explicit surface remount');
 upgradedSelectController.destroy();
 lateUpgradeSelect.remove();
 
@@ -536,6 +540,29 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'), 'global input enhanced');
 assert.ok(document.getElementById('globalSelect').classList.contains('vcp-ui-native-select'), 'global select enhanced');
 assert.ok(globalModal.querySelector('wa-select.vcp-ui-select-proxy'), 'global select uses the loaded Web Awesome kernel');
+const globalBusinessSelect = document.getElementById('globalSelect');
+let globalBusinessSelectChanges = 0;
+globalBusinessSelect.addEventListener('change', () => { globalBusinessSelectChanges += 1; });
+globalBusinessSelect.value = 'B';
+document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+    detail: { reason: 'business-controls-synchronized' }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(globalModal.querySelector('wa-select.vcp-ui-select-proxy').value, 'B',
+    'settings lifecycle refreshes the presentation after canonical business synchronization');
+globalBusinessSelect.value = 'A';
+document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+    detail: { reason: 'rust-controls-synchronized' }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(globalModal.querySelector('wa-select.vcp-ui-select-proxy').value, 'A',
+    'an independently settled settings producer refreshes the same presentation');
+assert.equal(globalBusinessSelectChanges, 0,
+    'presentation refresh must not manufacture a business change event');
+['value', 'selectedIndex', 'add', 'remove', 'focus'].forEach(property => {
+    assert.equal(Object.hasOwn(globalBusinessSelect, property), false,
+        `settings Select keeps its native ${property} descriptor`);
+});
 const globalFooter = globalModal.querySelector('.global-settings-footer');
 assert.ok(globalFooter.classList.contains('vcp-ui-settings-action-bar'), 'global save bar enhanced');
 assert.ok(globalModal.querySelector('.vcp-ui-settings-search'), 'settings search injected');
@@ -1145,9 +1172,8 @@ waSelect.update({ size: 'sm' });
 assert.equal(waSelect.getValue(), 'A', 'unrelated WA Select updates preserve setValue state');
 assert.equal(waSelect.element.querySelectorAll('wa-option').length, 2);
 assert.equal(waSelect.element.value, 'A');
-assert.equal(waSelect.element.selectedIndex, 0);
-assert.equal(waSelect.element.options.length, 2);
-assert.equal(waSelect.element.querySelector('select').value, 'A');
+assert.equal(waSelect.provider, 'webawesome-owned');
+assert.equal(waSelect.element.querySelector('select'), null, 'VCPUI-owned Select does not fabricate a detached native shim');
 
 const waCheckbox = VCPUI.create('Checkbox', { label: '同意', checked: true });
 assert.equal(waCheckbox.element.tagName.toLowerCase(), 'wa-checkbox');

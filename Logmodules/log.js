@@ -12,6 +12,7 @@ let serverBaseUrl = '';
 let apiAuthHeader = '';
 let allLines = [];
 let currentOffset = 0;
+let baseEmptyMessage = '暂无日志内容';
 let currentLogPath = '';
 let isReverseOrder = false;
 let lineLimit = 500;
@@ -175,8 +176,9 @@ async function initAuthAndServer() {
     try {
         const settings = await api?.loadSettings?.();
         if (!settings?.vcpServerUrl) {
-            setStatus('未配置 VCP 服务器 URL');
-            showToast('请先在主设置中配置 VCP 服务器 URL');
+            setStatus('未配置服务器');
+            setEmptyMessage('未配置 VCP 服务器地址：请在全局设置中配置后点击刷新');
+            showToast('请先在全局设置中配置 VCP 服务器地址');
             return;
         }
 
@@ -185,8 +187,9 @@ async function initAuthAndServer() {
 
         const forumConfig = await api?.loadForumConfig?.();
         if (!forumConfig?.username || !forumConfig?.password) {
-            setStatus('缺少论坛管理员凭据');
-            showToast('未找到论坛模块登录配置，请先在论坛模块登录并保存凭据');
+            setStatus('未登录论坛');
+            setEmptyMessage('未找到论坛登录凭据：请先在「论坛」应用中登录后点击刷新');
+            showToast('请先在「论坛」应用中登录，日志中心使用同一凭据');
             return;
         }
 
@@ -194,7 +197,8 @@ async function initAuthAndServer() {
         setStatus('已连接配置，准备读取日志');
     } catch (error) {
         console.error('[LogCenter] Init failed:', error);
-        setStatus(`初始化失败: ${error.message}`);
+        setStatus('初始化失败');
+        setEmptyMessage(`初始化失败：${error.message}`);
         showToast(`初始化失败: ${error.message}`);
     }
 }
@@ -251,6 +255,7 @@ async function fetchLog({ incremental, silent }) {
         }
 
         trimLines();
+        baseEmptyMessage = '暂无日志内容';
         render();
 
         const sizeText = data.fileSize ? formatBytes(data.fileSize) : '--';
@@ -259,7 +264,10 @@ async function fetchLog({ incremental, silent }) {
     } catch (error) {
         console.error('[LogCenter] Fetch log failed:', error);
         setStatus(`读取失败: ${error.message}`);
-        if (!silent) showToast(`读取日志失败: ${error.message}`);
+        if (!silent) {
+            if (allLines.length === 0) setEmptyMessage(`读取日志失败：${error.message}`);
+            showToast(`读取日志失败: ${error.message}`);
+        }
     } finally {
         isLoading = false;
         elements.refreshBtn?.classList.remove('spinning');
@@ -336,6 +344,9 @@ function render() {
 
     elements.lines.innerHTML = '';
     elements.lines.appendChild(fragment);
+    if (visibleLines.length === 0) {
+        elements.empty.textContent = allLines.length > 0 ? '没有匹配的日志行' : baseEmptyMessage;
+    }
     elements.empty.classList.toggle('active', visibleLines.length === 0);
 
     if (!isReverseOrder && shouldStickBottom) {
@@ -444,6 +455,14 @@ function updatePresetButtons() {
 
 function setStatus(message) {
     elements.status.textContent = message;
+}
+
+function setEmptyMessage(message) {
+    baseEmptyMessage = message;
+    if (elements.empty) {
+        elements.empty.textContent = message;
+        elements.empty.classList.add('active');
+    }
 }
 
 function setMeta(message) {

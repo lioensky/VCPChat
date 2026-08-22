@@ -328,6 +328,34 @@
         padding: 0 var(--vcp-ui-space-3);
     }
 
+    /* Explicit Select Provider experiment. This is capability-gated and is
+       not the auto/default path until macOS and Windows visual QA agree. */
+    @supports (appearance: base-select) and (selector(::picker(select))) {
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope select.vcp-ui-customizable-select,
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope select.vcp-ui-customizable-select::picker(select) {
+            appearance: base-select;
+        }
+
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope select.vcp-ui-customizable-select::picker(select) {
+            max-height: min(22rem, 60vh);
+            border: 1px solid var(--vcp-ui-border-strong);
+            border-radius: var(--vcp-ui-radius-control);
+            color: var(--vcp-ui-text-0);
+            background: var(--vcp-ui-bg-1);
+            box-shadow: var(--vcp-ui-shadow-lg);
+        }
+
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope select.vcp-ui-customizable-select option {
+            min-height: var(--vcp-ui-control-sm);
+            padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        }
+
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope select.vcp-ui-customizable-select option:checked {
+            color: var(--vcp-ui-on-accent);
+            background: var(--vcp-ui-accent);
+        }
+    }
+
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(.vcp-ui-native-input, .vcp-ui-native-select)[data-size="sm"] {
         height: var(--vcp-ui-control-sm);
     }

@@ -137,7 +137,7 @@ async function saveDistributedServerToggle() {
 
 async function refreshPlugins() {
     if (!api?.pluginManagerListPlugins) {
-        els.pluginGroups.innerHTML = '<div class="empty-state glass">插件管理 IPC 尚未注入，请确认主进程与预加载脚本已更新。</div>';
+        els.pluginGroups.innerHTML = '<div class="empty-state">插件管理 IPC 尚未注入，请确认主进程与预加载脚本已更新。</div>';
         return;
     }
 
@@ -151,7 +151,7 @@ async function refreshPlugins() {
         renderPlugins();
         showToast(`已扫描 ${allPlugins.length} 个插件`, 'success');
     } catch (error) {
-        els.pluginGroups.innerHTML = `<div class="empty-state glass">扫描插件失败：${escapeHtml(error.message)}</div>`;
+        els.pluginGroups.innerHTML = `<div class="empty-state">扫描插件失败：${escapeHtml(error.message)}</div>`;
         showToast(`扫描插件失败：${error.message}`, 'error');
     } finally {
         setLoading(false);
@@ -228,7 +228,7 @@ function renderPlugins() {
 
     const filtered = getFilteredPlugins();
     if (!filtered.length) {
-        els.pluginGroups.innerHTML = '<div class="empty-state glass">没有匹配当前筛选条件的插件。</div>';
+        els.pluginGroups.innerHTML = '<div class="empty-state">没有匹配当前筛选条件的插件。</div>';
         return;
     }
 
@@ -248,18 +248,14 @@ function renderSummary() {
     const enabled = allPlugins.filter(p => p.enabled && !p.parseError).length;
     const disabled = allPlugins.filter(p => !p.enabled && !p.parseError).length;
     const invalid = allPlugins.filter(p => p.parseError).length;
-    const commands = allPlugins.reduce((sum, p) => sum + getCommands(p).length, 0);
-    const withEnv = allPlugins.filter(p => p.hasConfigEnv).length;
 
     els.summaryDashboard.innerHTML = [
         ['总插件', allPlugins.length],
         ['已启用', enabled],
         ['已禁用', disabled],
-        ['异常', invalid],
-        ['命令数', commands],
-        ['含 config.env', withEnv]
-    ].map(([label, value]) => `
-        <div class="summary-card">
+        ['异常', invalid, invalid > 0]
+    ].map(([label, value, alert]) => `
+        <div class="summary-card${alert ? ' summary-card--alert' : ''}">
             <strong>${value}</strong>
             <span>${label}</span>
         </div>

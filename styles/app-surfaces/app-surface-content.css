@@ -1,0 +1,326 @@
+/*
+ * styles/app-surfaces/app-surface-content.css
+ * App Surface 共享内容件：按钮、输入、列表、卡片、状态徽标、
+ * 空态 / 加载态 / 错误态。
+ *
+ * 选择弱强调背景表达选中态，不使用大面积高饱和色块；
+ * 加载态用 Skeleton 保持布局稳定。
+ */
+@layer vcp.components {
+    /* --- 按钮（胶囊几何 + 填充式，无描边） --- */
+    body.vcp-app-surface .vcp-app-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-app-space-1);
+        height: var(--vcp-app-control-md);
+        padding-inline: var(--vcp-app-space-3);
+        border: 1px solid transparent;
+        border-radius: var(--vcp-app-radius-pill);
+        background: var(--vcp-app-fill-2);
+        color: var(--vcp-app-text);
+        font-size: var(--vcp-app-font-body);
+        line-height: 1;
+        cursor: pointer;
+        transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+            border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+    }
+
+    body.vcp-app-surface .vcp-app-btn:hover {
+        background: var(--vcp-app-fill-3);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--primary {
+        background: var(--vcp-app-accent);
+        border-color: transparent;
+        color: var(--vcp-app-on-accent);
+        font-weight: 600;
+    }
+
+    body.vcp-app-surface .vcp-app-btn--primary:hover {
+        background: var(--vcp-app-accent-hover);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--ghost {
+        background: transparent;
+        border-color: transparent;
+        color: var(--vcp-app-text-secondary);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--ghost:hover {
+        background: var(--vcp-app-fill-2);
+        color: var(--vcp-app-text);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--danger {
+        color: var(--vcp-app-danger);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--danger:hover {
+        background: var(--vcp-app-danger-bg);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--success {
+        color: var(--vcp-app-success);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--success:hover {
+        background: var(--vcp-app-success-bg);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--warning {
+        color: var(--vcp-app-warning);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--warning:hover {
+        background: var(--vcp-app-warning-bg);
+    }
+
+    body.vcp-app-surface .vcp-app-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+
+    body.vcp-app-surface .vcp-app-btn--sm {
+        height: var(--vcp-app-control-sm);
+        padding-inline: var(--vcp-app-space-2);
+        font-size: var(--vcp-app-font-caption);
+    }
+
+    body.vcp-app-surface .vcp-app-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--vcp-app-control-sm);
+        height: var(--vcp-app-control-sm);
+        flex: none;
+        border: none;
+        border-radius: var(--vcp-app-radius-pill);
+        background: transparent;
+        color: var(--vcp-app-text-secondary);
+        cursor: pointer;
+        transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard),
+            color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+    }
+
+    /* 工具栏内图标 16px */
+    body.vcp-app-surface .vcp-app-toolbar button svg {
+        width: var(--vcp-app-icon-md);
+        height: var(--vcp-app-icon-md);
+    }
+
+    body.vcp-app-surface .vcp-app-icon-btn:hover {
+        background: var(--vcp-app-fill-2);
+        color: var(--vcp-app-text);
+    }
+
+    /* --- 输入控件 --- */
+    body.vcp-app-surface .vcp-app-input {
+        height: var(--vcp-app-control-md);
+        padding-inline: var(--vcp-app-space-3);
+        border: 1px solid var(--vcp-app-border);
+        border-radius: var(--vcp-app-control-radius);
+        background: var(--vcp-app-bg-input);
+        color: var(--vcp-app-text);
+        font-size: var(--vcp-app-font-body);
+        transition: border-color var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+    }
+
+    body.vcp-app-surface .vcp-app-input::placeholder {
+        color: var(--vcp-app-text-disabled);
+    }
+
+    body.vcp-app-surface .vcp-app-input:focus {
+        border-color: var(--vcp-app-border-strong);
+        outline: none;
+    }
+
+    /* --- 列表 --- */
+    body.vcp-app-surface .vcp-app-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    body.vcp-app-surface .vcp-app-list-row {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-app-space-3);
+        min-height: var(--vcp-app-row-height);
+        padding-inline: var(--vcp-app-space-3);
+        border-radius: var(--vcp-app-control-radius);
+        color: var(--vcp-app-text);
+        cursor: pointer;
+        transition: background var(--vcp-app-duration-fast) var(--vcp-app-easing-standard);
+    }
+
+    body.vcp-app-surface .vcp-app-list-row:hover {
+        background: var(--vcp-app-fill-2);
+    }
+
+    body.vcp-app-surface .vcp-app-list-row.is-active,
+    body.vcp-app-surface .vcp-app-list-row[aria-selected="true"] {
+        background: var(--vcp-app-selection-bg);
+    }
+
+    body.vcp-app-surface .vcp-app-list-row.is-active:hover,
+    body.vcp-app-surface .vcp-app-list-row[aria-selected="true"]:hover {
+        background: var(--vcp-app-selection-hover);
+    }
+
+    body.vcp-app-surface .vcp-app-list-row-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    body.vcp-app-surface .vcp-app-list-row-title {
+        font-size: var(--vcp-app-font-body);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    body.vcp-app-surface .vcp-app-list-row-meta {
+        font-size: var(--vcp-app-font-caption);
+        color: var(--vcp-app-text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* --- 卡片（hairline + 淡阴影，仅用于可重复对象或确需边界的工具，不嵌套） --- */
+    body.vcp-app-surface .vcp-app-card {
+        background: var(--vcp-app-bg-raised);
+        border: 1px solid var(--vcp-app-border-subtle);
+        border-radius: var(--vcp-app-card-radius);
+        box-shadow: var(--vcp-app-shadow-sm);
+        padding: var(--vcp-app-space-4);
+    }
+
+    body.vcp-app-surface .vcp-app-card-title {
+        font-size: var(--vcp-app-font-emphasis);
+        font-weight: 600;
+        line-height: var(--vcp-app-line-compact);
+    }
+
+    body.vcp-app-surface .vcp-app-card-meta {
+        font-size: var(--vcp-app-font-caption);
+        color: var(--vcp-app-text-secondary);
+    }
+
+    /* --- 状态徽标 --- */
+    body.vcp-app-surface .vcp-app-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--vcp-app-space-1);
+        height: 20px;
+        padding-inline: var(--vcp-app-space-2);
+        border-radius: 999px;
+        font-size: var(--vcp-app-font-caption);
+        line-height: 1;
+        background: var(--vcp-app-fill-2);
+        color: var(--vcp-app-text-secondary);
+    }
+
+    body.vcp-app-surface .vcp-app-badge--success {
+        background: var(--vcp-app-success-bg);
+        color: var(--vcp-app-success);
+    }
+
+    body.vcp-app-surface .vcp-app-badge--warning {
+        background: var(--vcp-app-warning-bg);
+        color: var(--vcp-app-warning);
+    }
+
+    body.vcp-app-surface .vcp-app-badge--danger {
+        background: var(--vcp-app-danger-bg);
+        color: var(--vcp-app-danger);
+    }
+
+    body.vcp-app-surface .vcp-app-badge--info {
+        background: var(--vcp-app-info-bg);
+        color: var(--vcp-app-info);
+    }
+
+    /* --- 空态 / 错误态 / 加载态（同构：图标 + 标题 + 说明 + 操作） --- */
+    body.vcp-app-surface .vcp-app-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-app-space-2);
+        padding-block: var(--vcp-app-space-6);
+        padding-inline: var(--vcp-app-page-gutter);
+        text-align: center;
+    }
+
+    body.vcp-app-surface .vcp-app-state-icon {
+        font-size: var(--vcp-app-font-display);
+        line-height: 1;
+        color: var(--vcp-app-text-disabled);
+    }
+
+    body.vcp-app-surface .vcp-app-state-title {
+        font-size: var(--vcp-app-font-emphasis);
+        font-weight: 600;
+        color: var(--vcp-app-text);
+    }
+
+    body.vcp-app-surface .vcp-app-state-hint {
+        font-size: var(--vcp-app-font-body);
+        color: var(--vcp-app-text-secondary);
+        max-width: 420px;
+    }
+
+    body.vcp-app-surface .vcp-app-state-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-app-space-2);
+        margin-top: var(--vcp-app-space-2);
+    }
+
+    body.vcp-app-surface .vcp-app-state--error .vcp-app-state-icon,
+    body.vcp-app-surface .vcp-app-state--error .vcp-app-state-title {
+        color: var(--vcp-app-danger);
+    }
+
+    /* legacy .empty-state（Plugin Manager / Log 等页面的 JS 直接生成该类名）
+       统一为同一套空态视觉：居中次要文字 + 虚线占位卡片 */
+    body.vcp-app-surface .empty-state {
+        padding: var(--vcp-app-space-5);
+        color: var(--vcp-app-text-secondary);
+        font-size: var(--vcp-app-font-body);
+        text-align: center;
+        border: 1px dashed var(--vcp-app-border);
+        border-radius: var(--vcp-app-card-radius);
+    }
+
+    /* --- Skeleton：加载时保持布局稳定 --- */
+    body.vcp-app-surface .vcp-app-skeleton {
+        border-radius: var(--vcp-app-control-radius);
+        background: linear-gradient(
+            90deg,
+            var(--vcp-app-fill-1) 25%,
+            var(--vcp-app-fill-3) 50%,
+            var(--vcp-app-fill-1) 75%
+        );
+        background-size: 200% 100%;
+        animation: vcp-app-skeleton-shimmer 1.4s linear infinite;
+    }
+
+    body.vcp-app-surface .vcp-app-skeleton-row {
+        height: var(--vcp-app-row-height);
+        margin-block: var(--vcp-app-space-1);
+    }
+
+    @keyframes vcp-app-skeleton-shimmer {
+        from {
+            background-position: 200% 0;
+        }
+        to {
+            background-position: -200% 0;
+        }
+    }
+}
