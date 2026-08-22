@@ -43,7 +43,7 @@ function Welcome() {
       <span className="status-dot" aria-hidden="true" />
       <div><strong>{locating ? '正在检查项目' : sourceMissing ? '没有找到 VCPChat 项目' : '已找到 VCPChat 项目'}</strong><small>{status.source.note}</small></div>
     </section>
-    {mode === 'update' && update?.dirty ? <UpdateChoice snapshot={update} /> : <button className="primary-action" disabled={locating || sourceMissing} onClick={() => void startInstall()}>
+    {mode === 'update' && update?.available ? <UpdateChoice snapshot={update} /> : <button className="primary-action" disabled={locating || sourceMissing} onClick={() => void startInstall()}>
       {locating ? '正在检查' : mode === 'update' ? '开始更新' : '开始准备'} <ChevronRight size={17} aria-hidden="true" />
     </button>}
   </main>
@@ -56,9 +56,10 @@ function UpdateChoice({ snapshot }: { snapshot: import('./store').UpdateSnapshot
     setLaunchError(null)
     try { await launchVcpchat() } catch (value) { setLaunchError(String(value)) }
   }
+  const hasLocalChanges = snapshot.dirty
   return <section className="update-choice" aria-live="polite">
-    <div className="update-choice-copy"><strong>检测到本地修改</strong><p>{snapshot.note}</p>{expanded && <ul>{snapshot.changes.map((change) => <li key={change}>{change}</li>)}</ul>}</div>
-    <div className="update-choice-actions"><button className="primary-action" onClick={() => void startInstall('stash')}><RotateCcw size={16} />暂存修改并更新</button><button className="secondary-action" onClick={() => setExpanded((value) => !value)}>{expanded ? '隐藏修改' : `查看修改（${snapshot.changes.length}）`}</button><button className="text-action centered" onClick={() => void launchExisting()}>暂不更新，启动现有版本</button></div>
+    <div className="update-choice-copy"><strong>发现上游有新版本</strong><p>{hasLocalChanges ? '更新前检测到本地修改。你可以安全暂存后更新，也可以继续使用当前版本。' : snapshot.note}</p>{hasLocalChanges && expanded && <ul>{snapshot.changes.map((change) => <li key={change}>{change}</li>)}</ul>}</div>
+    <div className="update-choice-actions"><button className="primary-action" onClick={() => void startInstall(hasLocalChanges ? 'stash' : undefined)}><RotateCcw size={16} />更新到最新版本</button>{hasLocalChanges && <button className="secondary-action" onClick={() => setExpanded((value) => !value)}>{expanded ? '隐藏修改' : `查看修改（${snapshot.changes.length}）`}</button>}<button className="text-action centered" onClick={() => void launchExisting()}>跳过更新，启动当前版本</button></div>
     {launchError && <p className="inline-error" role="alert">{launchError}</p>}
   </section>
 }

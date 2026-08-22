@@ -47,8 +47,8 @@ button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 button:disabled { cursor: progress; opacity: .55; }
 .route { width: 100%; height: 100%; }
 
-.brand { color: var(--foreground); font-family: "VCP Orbitron", "Maven Pro", system-ui, sans-serif; font-size: 68px; font-weight: 900; letter-spacing: .07em; line-height: 1; }
-.brand.compact { font-size: 24px; }
+.brand { color: var(--foreground); font-family: "VCP Orbitron", "Maven Pro", system-ui, sans-serif; font-size: 68px; font-weight: 900; letter-spacing: 4px; line-height: 1; }
+.brand.compact { font-size: 24px; letter-spacing: 1.5px; }
 .welcome-route, .terminal-route { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 44px; text-align: center; }
 .welcome-copy { width: min(100%, 620px); }
 .welcome-copy h1 { margin: 28px 0 0; font-size: 24px; font-weight: 650; }

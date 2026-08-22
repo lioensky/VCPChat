@@ -76,9 +76,9 @@ test('update dirty state offers named stash strategy and preserves a recoverable
     assert.match(rust, /git stash apply --index \{oid\}/);
     assert.match(rust, /本地修改仍安全保存在 stash/);
     assert.match(source, /pub changes: Vec<String>/);
-    assert.match(app, /暂存修改并更新/);
+    assert.match(app, /更新到最新版本/);
     assert.match(app, /查看修改/);
-    assert.match(app, /暂不更新，启动现有版本/);
+    assert.match(app, /跳过更新，启动当前版本/);
     assert.match(app, /manualStashRecovery/);
     assert.match(store, /startInstall\(strategy\?: 'stash'\)/);
 });
