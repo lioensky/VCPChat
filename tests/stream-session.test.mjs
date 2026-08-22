@@ -77,6 +77,7 @@ test('normalizes transport terminal aliases into the four protocol outcomes', ()
         normalizeStreamTerminal({ type: 'unknown', detail: 'kept' }, { kind: 'cancelled', source: 'fallback' }),
         { kind: 'cancelled', source: 'fallback', type: 'unknown', detail: 'kept' },
     );
+    assert.throws(() => normalizeStreamTerminal({ type: 'unknown' }), /unknown chat stream terminal/);
 });
 
 test('reducer mirrors events and ignores a late event after terminal', () => {

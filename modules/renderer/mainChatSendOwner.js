@@ -66,6 +66,11 @@ export function createMainChatSendOwner({
         const mode = getInterruptibleMessage() ? 'interrupt' : 'send';
         button.dataset.mode = mode;
         button.classList.toggle('interrupt-mode', mode === 'interrupt');
+        // The send control is the main-chat composer status surface. Keep its
+        // busy state synchronized with the same interruptible-stream decision
+        // used for the command projection so assistive technology observes
+        // the operation without relying on CSS classes or button labels.
+        button.setAttribute('aria-busy', String(mode === 'interrupt'));
         button.innerHTML = mode === 'interrupt' ? INTERRUPT_BUTTON_HTML : defaultButtonHtml;
         button.title = mode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
         button.setAttribute('aria-label', mode === 'interrupt' ? '中止回复' : '发送消息');

@@ -43,6 +43,7 @@ test('send owner preserves send projection and dispatch', async () => {
     assert.equal(sendButton.dataset.mode, 'send');
     assert.equal(sendButton.innerHTML, '<span>send</span>');
     assert.equal(sendButton.attributes['aria-label'], '发送消息');
+    assert.equal(sendButton.attributes['aria-busy'], 'false');
     await owner.handleAction();
     assert.deepEqual(calls, [['send']]);
 });
@@ -56,6 +57,7 @@ test('send owner projects interrupt mode and dispatches the matching agent reque
     assert.equal(sendButton.classList.contains('interrupt-mode'), true);
     assert.equal(sendButton.title, '中止回复');
     assert.equal(sendButton.attributes['aria-label'], '中止回复');
+    assert.equal(sendButton.attributes['aria-busy'], 'true');
     await owner.handleAction();
     assert.deepEqual(calls, [
         ['agent-interrupt', 'message-a'],

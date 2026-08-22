@@ -1,5 +1,7 @@
 /** Pure stream-session protocol; readers, DOM, Electron and persistence stay outside. */
-const TERMINALS = new Set(['completed', 'failed', 'cancelled', 'discarded']);
+import { normalizeChatTerminal, STREAM_TERMINAL_KINDS } from './chatEventContract.js';
+
+const TERMINALS = new Set(STREAM_TERMINAL_KINDS);
 const freeze = value => Object.freeze(value);
 const deferred = () => {
     let resolve;
@@ -8,16 +10,12 @@ const deferred = () => {
 };
 
 export function normalizeStreamTerminal(input, fallback = {}) {
-    if (typeof input === 'string') input = { kind: input };
-    const source = input && typeof input === 'object' ? input : {};
-    const rawKind = String(source.kind || source.type || source.finishReason || '').toLowerCase();
-    let kind = rawKind;
-    if (['end', 'done', 'success', 'stop', 'completed'].includes(rawKind)) kind = 'completed';
-    else if (['abort', 'aborted', 'cancel', 'cancelled'].includes(rawKind)) kind = 'cancelled';
-    else if (['discard', 'discarded', 'stale'].includes(rawKind)) kind = 'discarded';
-    else if (['error', 'failed', 'disconnect', 'disconnected', 'reader-error'].includes(rawKind)) kind = 'failed';
-    if (!TERMINALS.has(kind)) kind = fallback.kind || 'failed';
-    return freeze({ ...fallback, ...source, kind });
+    try {
+        return normalizeChatTerminal(input, { ...fallback, ...(fallback.kind ? {} : { kind: undefined }) });
+    } catch (error) {
+        if (fallback.kind) return freeze({ ...fallback, ...(input && typeof input === 'object' ? input : { kind: input }) });
+        throw error;
+    }
 }
 
 export function createStreamSession(request = {}) {
