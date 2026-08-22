@@ -33,6 +33,9 @@ class ChatDataServiceLifecycle extends EventEmitter {
         this.restartAttempts = 0;
         this.stopping = false;
         this.circuitOpen = false;
+        // 最近一次 start() 的失败原因；用于区分瞬态故障（重启有意义）与
+        // 确定性失败（retryable=false，如版本不匹配——重启必然复现）。
+        this.lastStartError = null;
     }
 
     get isReady() {
@@ -65,9 +68,13 @@ class ChatDataServiceLifecycle extends EventEmitter {
         this.startPromise = this._spawnAndWaitForReady();
         try {
             this.client = await this.startPromise;
+            this.lastStartError = null;
             this._scheduleStabilityReset();
             this.emit('ready', this.handshake);
             return this.client;
+        } catch (error) {
+            this.lastStartError = error;
+            throw error;
         } finally {
             this.startPromise = null;
         }
@@ -183,6 +190,10 @@ class ChatDataServiceLifecycle extends EventEmitter {
 
                 this.emit('exit', { code, signal, wasReady, stopping: this.stopping });
                 if (!this.stopping && this.enabled) {
+                    // 确定性失败（retryable=false：版本/schema 不匹配、二进制缺失、
+                    // 配置错误）重启必然复现——直接熔断并给出可操作指引，
+                    // 不再杀-起循环 maxRestarts 次。
+                    if (this._blockNonRetryableRestart(this.lastStartError)) return;
                     this._scheduleRestart();
                 }
             });
@@ -197,6 +208,18 @@ class ChatDataServiceLifecycle extends EventEmitter {
                 this.restartAttempts = 0;
             }
         }, 60_000);
+    }
+
+    _blockNonRetryableRestart(error) {
+        if (!error || error.retryable !== false) return false;
+        this.circuitOpen = true;
+        const code = error.code || 'UNKNOWN';
+        const hint = code === 'PROTOCOL_MISMATCH' || code === 'SCHEMA_MISMATCH'
+            ? 'CDS 二进制与插件协议版本不匹配——请重建（cargo build --release）并替换 bin 目录内的 CDS 可执行文件。'
+            : '请修复上述启动错误后重启应用。';
+        this.logger.error?.(`[VCP-CDS] 启动失败且不可重试（${code}），本会话不再自动重启。${hint}`);
+        this.emit('circuit-open', { attempts: this.restartAttempts, reason: code });
+        return true;
     }
 
     _scheduleRestart() {
@@ -217,6 +240,9 @@ class ChatDataServiceLifecycle extends EventEmitter {
                 await this.start();
             } catch (error) {
                 this.logger.error?.('[VCP-CDS] Restart failed:', error);
+                // start() 在 spawn 之前抛出的确定性失败（如 BINARY_NOT_FOUND）
+                // 没有进程、不会触发 exit 事件，必须在这里同样熔断。
+                if (this._blockNonRetryableRestart(error)) return;
                 this._scheduleRestart();
             }
         }, delayMs);

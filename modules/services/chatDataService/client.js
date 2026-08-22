@@ -305,11 +305,14 @@ class ChatDataServiceClient {
             });
         }
         const health = await response.json();
-        if (health.protocolVersion !== this.protocolVersion) {
-            throw new ChatDataServiceError(
-                `VCP-CDS protocol mismatch: expected ${this.protocolVersion}, received ${health.protocolVersion}.`,
-                { code: 'PROTOCOL_MISMATCH', retryable: false }
-            );
+        // 版本门禁已收敛到 READY 握手（lifecycle.js validateHandshake，
+        // protocol+schema 双校验）；health() 只做连通性/形状验证，
+        // 不再对同一进程毫秒级重复比较同一版本号。
+        if (!health || typeof health !== 'object' || health.status !== 'ready') {
+            throw new ChatDataServiceError('VCP-CDS health check returned an unexpected payload.', {
+                code: 'HEALTH_CHECK_FAILED',
+                retryable: true
+            });
         }
         return health;
     }
@@ -364,13 +367,8 @@ class ChatDataServiceClient {
         return this.request('POST', '/v1/sync/message-diff', request, options);
     }
 
-    syncMessagesPull(request, options) {
-        return this.request('POST', '/v1/sync/messages/pull', request, {
-            timeoutMs: 120_000,
-            ...options
-        });
-    }
-
+    // v1 `/v1/sync/messages/pull` 已随 CDS 端一同弃用移除（S3-δ）：全有或全无
+    // 且无活调用方；消息拉取统一走 v2 流式（per-topic `_error` 帧隔离）。
     syncMessagesPullStream(request, options) {
         return this.requestNdjson('POST', '/v2/sync/messages/pull', request, {
             timeoutMs: 120_000,

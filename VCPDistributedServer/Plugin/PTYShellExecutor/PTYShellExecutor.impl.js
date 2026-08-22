@@ -537,6 +537,40 @@ const asyncTaskManager = new AsyncTaskManager();
 
 // --- GUI Window Management ---
 let guiWindow = null;
+let shellGuiReady = false;
+let shellDataBacklog = [];
+let shellDataBacklogBytes = 0;
+const SHELL_DATA_BACKLOG_LIMIT = 2 * 1024 * 1024;
+
+function bufferShellData(data) {
+    const text = typeof data === 'string' ? data : String(data);
+    const bytes = Buffer.byteLength(text, 'utf-8');
+    shellDataBacklog.push(text);
+    shellDataBacklogBytes += bytes;
+
+    while (shellDataBacklogBytes > SHELL_DATA_BACKLOG_LIMIT && shellDataBacklog.length > 0) {
+        const removed = shellDataBacklog.shift();
+        shellDataBacklogBytes -= Buffer.byteLength(removed, 'utf-8');
+    }
+}
+
+function flushShellDataBacklog(targetWebContents) {
+    if (!targetWebContents || targetWebContents.isDestroyed() || shellDataBacklog.length === 0) return;
+    const backlog = shellDataBacklog.join('');
+    shellDataBacklog = [];
+    shellDataBacklogBytes = 0;
+    targetWebContents.send('shell-data', backlog);
+}
+
+function sendShellData(data) {
+    if (!data) return;
+    const text = typeof data === 'string' ? data : data.toString('utf-8');
+    if (guiWindow && !guiWindow.isDestroyed() && shellGuiReady && guiWindow.webContents && !guiWindow.webContents.isDestroyed()) {
+        guiWindow.webContents.send('shell-data', text);
+        return;
+    }
+    bufferShellData(text);
+}
 
 function ensureGuiWindow() {
     if (!BrowserWindow) return; // 非 Electron 环境下跳过 GUI
@@ -544,6 +578,8 @@ function ensureGuiWindow() {
         guiWindow.focus();
         return;
     }
+
+    shellGuiReady = false;
 
     guiWindow = new BrowserWindow({
         width: 900,
@@ -567,6 +603,7 @@ function ensureGuiWindow() {
 
     guiWindow.on('closed', () => {
         guiWindow = null;
+        shellGuiReady = false;
         if (ptyProcess) {
             try {
                 ptyProcess.kill();
@@ -639,6 +676,7 @@ setupThemeWatcher();
 if (ipcMain) {
     ipcMain.on('shell-gui-ready', async (event) => {
         sendThemeUpdate(event.sender, true);
+        flushShellDataBacklog(event.sender);
         
         // 如果 PTY 尚未启动，则主动启动一个默认会话
         if (!ptyProcess) {
@@ -665,10 +703,18 @@ if (ipcMain) {
         }
     });
 
-    // 完整命令执行 - 添加换行符（用于输入框模式）
-    ipcMain.on('shell-command', (event, command) => {
-        if (ptyProcess && command) {
-            ptyProcess.write(`${command}\n`);
+    // 完整命令执行 - 走同步非交互 runner（用于输入框模式）
+    ipcMain.on('shell-command', async (event, command) => {
+        if (!command || !String(command).trim()) return;
+
+        isExecutingCommand = true;
+        try {
+            await executeSingleCommand(command);
+        } catch (err) {
+            const message = err && err.message ? err.message : String(err);
+            sendShellData(`\r\n[PTYShellExecutor] ${message}\r\n`);
+        } finally {
+            isExecutingCommand = false;
         }
     });
 
@@ -762,7 +808,7 @@ function stripOrphanedAnsiFragments(str) {
     return str
         // 清理孤立的 CSI 参数片段: [数字;数字m 或 [数字m 等
         // 这些是 \x1b 被分片后残留的部分
-        .replace(/\[[\d;]*[A-Za-z]/g, (match, offset, string) => {
+        .replace(/\[\??[\d;]+[mKJHABCDEFGsuHLhl]/g, (match, offset, string) => {
             // 检查前一个字符是否是 \x1b，如果是则保留（让其他正则处理）
             // 如果不是，说明是孤立片段，需要删除
             if (offset > 0 && string[offset - 1] === '\x1b') {
@@ -790,7 +836,7 @@ function stripOrphanedAnsiFragments(str) {
         .replace(/\x1b$/g, '')
         
         // 清理开头可能残留的 CSI 参数（没有 ESC 前缀）
-        .replace(/^[\d;]*[mKJHABCDEFGsu]/g, '');
+        .replace(/^\??[\d;]+[mKJHABCDEFGsuHLhl]/g, '');
 }
 
 /**
@@ -1059,9 +1105,7 @@ function createNewPtySession(preferredShell) {
     // 数据监听 - 转发到 GUI
     session.onData((data) => {
         if (isExecutingCommand) return;
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('shell-data', data);
-        }
+        sendShellData(data);
     });
 
     session.onExit(() => {
@@ -1170,9 +1214,7 @@ function createNewPipeSession(preferredShell) {
     // 数据监听 - 转发到 GUI（复用与 PTY 一致的 gating 逻辑）
     session.onData((data) => {
         if (isExecutingCommand) return;
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('shell-data', typeof data === 'string' ? data : data.toString('utf-8'));
-        }
+        sendShellData(typeof data === 'string' ? data : data.toString('utf-8'));
     });
 
     session.onExit(() => {
@@ -1225,91 +1267,164 @@ function createNewShellSessionImmediate(preferredShell) {
 }
 
 // --- 执行单条命令 ---
-function executeSingleCommand(ptyProcess, singleCommand) {
+function getSyncShellInvocation() {
+    const bashPaths = ['/usr/bin/bash', '/bin/bash', '/usr/local/bin/bash'];
+    for (const shell of bashPaths) {
+        if (fs.existsSync(shell)) return { shell, args: ['-lc'] };
+    }
+
+    const shPaths = ['/usr/bin/sh', '/bin/sh'];
+    for (const shell of shPaths) {
+        if (fs.existsSync(shell)) return { shell, args: ['-c'] };
+    }
+
+    return { shell: '/bin/sh', args: ['-c'] };
+}
+
+function wrapSyncCommand(singleCommand) {
+    // 同步执行固定走 POSIX shell，且不支持交互输入。
+    // 子 shell stdin 指向 /dev/null，避免 ssh/docker/mysql 等接管型命令吞噬本地输入流。
+    return `(\n${singleCommand}\n) < /dev/null`;
+}
+
+function cleanSyncOutput(str) {
+    if (!str || typeof str !== 'string') return str || '';
+    return stripFishWarnings(stripOrphanedAnsiFragments(stripFishIntegration(stripAnsi(str))))
+        .replace(/\r\n/g, '\n')
+        .trim();
+}
+
+function normalizeForTerminal(data) {
+    return String(data).replace(/\r?\n/g, '\r\n');
+}
+
+function formatTranscriptCommand(command) {
+    return String(command)
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .map((line, index) => `${index === 0 ? '$' : '>'} ${line}`)
+        .join('\r\n');
+}
+
+function writeSyncTranscriptStart(command, options, shell) {
+    const cwd = options.cwd || process.env.HOME || '/home';
+    sendShellData(`\r\n\x1b[90m[Agent Execute] cwd=${cwd} shell=${shell}\x1b[0m\r\n\x1b[36m${formatTranscriptCommand(command)}\x1b[0m\r\n`);
+}
+
+function writeSyncTranscriptEnd(code, signal) {
+    const signalText = signal ? ` signal=${signal}` : '';
+    sendShellData(`\r\n\x1b[90m[Agent Exit] code=${code === null || code === undefined ? 'null' : code}${signalText}\x1b[0m\r\n`);
+}
+
+function executeSingleCommand(singleCommand, options = {}) {
     return new Promise((resolve, reject) => {
-        if (!ptyProcess) {
-            return reject(new Error("PTY process is not available."));
-        }
-
-        const term = new Terminal({
-            cols: 120,
-            rows: 100,
-            allowProposedApi: true
-        });
-        const boundary = `__VCP_BOUNDARY_${crypto.randomUUID().replace(/-/g, '')}__`;
-        
-        let currentOutputSize = 0;
         const maxOutput = 1024 * 1024; // 同步执行限制 1MB
+        const { shell, args } = getSyncShellInvocation();
+        const wrappedCommand = wrapSyncCommand(singleCommand);
+        const proc = spawn(shell, [...args, wrappedCommand], {
+            cwd: options.cwd || process.env.HOME || '/home',
+            env: withPagerDisabledEnv({
+                ...process.env,
+                TERM: 'xterm-256color',
+                LANG: 'en_US.UTF-8',
+                LC_ALL: 'en_US.UTF-8',
+                COLORTERM: 'truecolor',
+                FORCE_COLOR: process.env.FORCE_COLOR || '1',
+                CLICOLOR_FORCE: process.env.CLICOLOR_FORCE || '1',
+                COLUMNS: String(options.cols || 120),
+                LINES: String(options.rows || 40)
+            }),
+            detached: process.platform !== 'win32',
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+        console.log(`[PTYShellExecutor] Sync runner pid=${proc.pid || 'unknown'} shell=${shell} cwd=${options.cwd || process.env.HOME || '/home'}`);
+        writeSyncTranscriptStart(singleCommand, options, shell);
 
-        const dataListener = (data) => {
+        const trackedProcess = {
+            kill: (signal = 'SIGTERM') => {
+                if (proc.pid) {
+                    killProcessGroup(proc.pid, signal);
+                } else {
+                    try { proc.kill(signal); } catch (_) { /* ignore */ }
+                }
+            }
+        };
+        childProcesses.add(trackedProcess);
+
+        let output = '';
+        let currentOutputSize = 0;
+        let settled = false;
+        let killTimer = null;
+
+        const appendOutput = (chunk) => {
+            const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), 'utf-8');
             const dataStr = data.toString('utf-8');
-            
-            // 限制同步输出大小，防止 OOM
+
             if (currentOutputSize < maxOutput) {
                 const remaining = maxOutput - currentOutputSize;
-                const toWrite = data.length > remaining ? data.slice(0, remaining) : data;
-                term.write(toWrite);
+                const toWrite = data.length > remaining ? data.subarray(0, remaining) : data;
+                output += toWrite.toString('utf-8');
                 currentOutputSize += toWrite.length;
-            }
-                
-            // [Piko Fix 2026-02-08] 边界检测修复
-            // 根因：@xterm/headless 6.0.0 中 term.write('', callback) 写入空字符串时
-            // 回调可能永远不触发，导致 resolve() 永远不被调用 → 60s 超时
-            if (dataStr.includes(boundary)) {
-                // 快速路径：当前数据包直接包含完整边界标记
-                setTimeout(() => {
-                    const text = getCleanTextFromBuffer(term);
-                    cleanup();
-                    resolve(text);
-                }, 50);
-            } else if (dataStr.includes('__VCP_BOUNDARY_') || dataStr.includes('__VCP_')) {
-                // 慢速路径：检测到部分边界（数据分片），延迟扫描 buffer
-                setTimeout(() => {
-                    const buffer = term.buffer.active;
-                    for (let i = buffer.length - 1; i >= Math.max(0, buffer.length - 30); i--) {
-                        const line = buffer.getLine(i);
-                        if (line && line.translateToString(true).includes(boundary)) {
-                            const text = getCleanTextFromBuffer(term);
-                            cleanup();
-                            resolve(text);
-                            return;
-                        }
-                    }
-                }, 50);
             }
 
             // 转发原始数据到 GUI
-            if (guiWindow && !guiWindow.isDestroyed()) {
-                guiWindow.webContents.send('shell-data', dataStr);
-            }
+            sendShellData(normalizeForTerminal(dataStr));
         };
 
-        const cleanup = () => {
+        const clearTimers = () => {
             clearTimeout(timeoutId);
-            ptyProcess.removeListener('data', dataListener);
-            if (term) term.dispose();
+            if (killTimer) clearTimeout(killTimer);
+        };
+
+        const finish = (callback) => {
+            if (settled) return;
+            settled = true;
+            clearTimers();
+            childProcesses.delete(trackedProcess);
+            callback();
+        };
+
+        const rejectAfterTimeout = (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            reject(err);
         };
 
         const timeoutId = setTimeout(() => {
-            cleanup();
             const err = new Error(`Command timed out after ${defaultConfig.commandTimeout / 1000} seconds.`);
             reporter.capture('syncCommandTimeout', err, { singleCommand });
-            reject(err);
+            sendShellData(`\r\n\x1b[31m[Agent Timeout] ${err.message}\x1b[0m\r\n`);
+            try { trackedProcess.kill('SIGTERM'); } catch (_) { /* ignore */ }
+            killTimer = setTimeout(() => {
+                try { trackedProcess.kill('SIGKILL'); } catch (_) { /* ignore */ }
+                childProcesses.delete(trackedProcess);
+            }, 1000);
+            rejectAfterTimeout(err);
         }, defaultConfig.commandTimeout);
 
-        ptyProcess.on('data', dataListener);
-        
-        // 发送指令
-        if (activeSessionMode === 'pty') {
-            // 只有 PTY 才能通过写入 Ctrl+C 可靠中断前台任务；pipe 模式下写入 \x03 只是普通字符
-            try { ptyProcess.write('\x03'); } catch (_) { /* ignore */ }
-            setTimeout(() => {
-                try { ptyProcess.write(`${singleCommand}\necho "${boundary}"\n`); } catch (_) { /* ignore */ }
-            }, 100);
-        } else {
-            // pipe 模式：不写入 Ctrl+C，直接发送命令
-            try { ptyProcess.write(`${singleCommand}\necho "${boundary}"\n`); } catch (_) { /* ignore */ }
-        }
+        if (proc.stdout) proc.stdout.on('data', appendOutput);
+        if (proc.stderr) proc.stderr.on('data', appendOutput);
+
+        proc.on('error', (err) => {
+            reporter.capture('syncCommandSpawnError', err, { singleCommand, shell });
+            finish(() => reject(err));
+        });
+
+        proc.on('exit', (code, signal) => {
+            if (settled) return;
+            writeSyncTranscriptEnd(code, signal);
+            finish(() => resolve(cleanSyncOutput(output)));
+        });
+
+        proc.on('close', (code, signal) => {
+            childProcesses.delete(trackedProcess);
+            if (killTimer) clearTimeout(killTimer);
+            if (settled) return;
+            writeSyncTranscriptEnd(code, signal);
+            finish(() => resolve(cleanSyncOutput(output)));
+        });
     });
 }
 
@@ -1444,11 +1559,6 @@ async function handleSyncExecute(args) {
             }
         }
 
-        // 获取参数
-        const preferredShell = args.shell || null;
-        const newSession = args.newSession === true || args.newSession === 'true';
-        const returnMode = args.returnMode || defaultConfig.returnMode;
-
         // 确保 GUI 窗口存在
         ensureGuiWindow();
 
@@ -1458,14 +1568,13 @@ async function handleSyncExecute(args) {
             await new Promise(resolve => setTimeout(resolve, 800)); // 等待 shell 初始化
             console.log(`[PTYShellExecutor] Session started with ${created.shellName} (mode=${created.mode})`);
         }
-
         // 执行命令
         const outputs = [];
         isExecutingCommand = true;
         
         try {
             for (const entry of commandEntries) {
-                const output = await executeSingleCommand(ptyProcess, entry.value);
+                const output = await executeSingleCommand(entry.value, { cwd: args.cwd });
                 outputs.push({ command: entry.value, output });
             }
         } finally {
@@ -1536,6 +1645,9 @@ function cleanup() {
 
     ptyProcess = null;
     activeSessionMode = null;
+    shellGuiReady = false;
+    shellDataBacklog = [];
+    shellDataBacklogBytes = 0;
 }
 
 module.exports = { processToolCall, cleanup };

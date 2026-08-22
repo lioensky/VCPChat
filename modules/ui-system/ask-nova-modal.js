@@ -1,3 +1,8 @@
+import { fixEmoticonUrl } from '../renderer/emoticonUrlFixer.js';
+
+const NOVA_STICKER_CATEGORY = 'Nova表情包';
+const NOVA_STICKER_PLACEHOLDER_REGEX = /\[表情包:([^\]\r\n]{1,100})\]/g;
+
 const TARGETS = Object.freeze({
     frontend: Object.freeze({
         id: 'frontend',
@@ -39,7 +44,7 @@ const TARGETS = Object.freeze({
 
 const ALLOWED_TAGS = new Set([
     'A', 'BLOCKQUOTE', 'BR', 'CODE', 'DEL', 'EM', 'H1', 'H2', 'H3', 'H4',
-    'HR', 'LI', 'OL', 'P', 'PRE', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH',
+    'HR', 'IMG', 'LI', 'OL', 'P', 'PRE', 'STRONG', 'TABLE', 'TBODY', 'TD', 'TH',
     'THEAD', 'TR', 'UL'
 ]);
 const DROP_CONTENT_TAGS = new Set(['IFRAME', 'OBJECT', 'SCRIPT', 'STYLE', 'TEMPLATE']);
@@ -75,6 +80,14 @@ function cloneSafeNode(node, outputDocument) {
             element.setAttribute('target', '_blank');
             element.setAttribute('rel', 'noreferrer noopener');
         }
+    } else if (tagName === 'IMG') {
+        const src = node.getAttribute('src');
+        if (isSafeExternalUrl(src)) {
+            element.setAttribute('src', src);
+            element.setAttribute('alt', node.getAttribute('alt') || '');
+            element.setAttribute('loading', 'lazy');
+            element.className = 'ask-nova-sticker';
+        }
     } else if (tagName === 'CODE') {
         const className = node.getAttribute('class') || '';
         const languageClass = className.split(/\s+/).find(name => /^language-[\w-]+$/.test(name));
@@ -87,9 +100,65 @@ function cloneSafeNode(node, outputDocument) {
     return element;
 }
 
+function stripStickerFilenameExtension(filename) {
+    return String(filename || '').trim().replace(/\.[^.\\/]+$/, '');
+}
+
+export function createNovaStickerMap(library) {
+    const stickerMap = new Map();
+    if (!Array.isArray(library)) return stickerMap;
+    library.forEach(item => {
+        if (item?.category !== NOVA_STICKER_CATEGORY || !item?.url) return;
+        const name = stripStickerFilenameExtension(item.filename);
+        if (name && !stickerMap.has(name)) stickerMap.set(name, item.url);
+    });
+    return stickerMap;
+}
+
+function replaceStickerPlaceholders(root, stickerMap, outputDocument) {
+    if (!(stickerMap instanceof Map) || stickerMap.size === 0) return;
+
+    const visit = node => {
+        [...node.childNodes].forEach(child => {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+                if (child.tagName === 'CODE' || child.tagName === 'PRE') return;
+                visit(child);
+                return;
+            }
+            if (child.nodeType !== Node.TEXT_NODE || !child.textContent?.includes('[表情包:')) return;
+
+            const text = child.textContent;
+            const replacement = outputDocument.createDocumentFragment();
+            let lastIndex = 0;
+            NOVA_STICKER_PLACEHOLDER_REGEX.lastIndex = 0;
+            for (const match of text.matchAll(NOVA_STICKER_PLACEHOLDER_REGEX)) {
+                const stickerName = match[1].trim();
+                const originalUrl = stickerMap.get(stickerName);
+                if (!originalUrl || !isSafeExternalUrl(originalUrl)) continue;
+                replacement.append(outputDocument.createTextNode(text.slice(lastIndex, match.index)));
+                const image = outputDocument.createElement('img');
+                const fixedUrl = fixEmoticonUrl(originalUrl);
+                image.src = isSafeExternalUrl(fixedUrl) ? fixedUrl : originalUrl;
+                image.alt = stickerName;
+                image.title = stickerName;
+                image.loading = 'lazy';
+                image.className = 'ask-nova-sticker';
+                replacement.append(image);
+                lastIndex = match.index + match[0].length;
+            }
+            if (lastIndex === 0) return;
+            replacement.append(outputDocument.createTextNode(text.slice(lastIndex)));
+            child.replaceWith(replacement);
+        });
+    };
+
+    visit(root);
+}
+
 export function renderSafeMarkdown(markdown, options = {}) {
     const outputDocument = options.document || document;
     const markedInstance = options.marked || window.marked;
+    const stickerMap = options.stickerMap;
     const fragment = outputDocument.createDocumentFragment();
     if (!markedInstance?.parse) {
         fragment.append(outputDocument.createTextNode(String(markdown || '')));
@@ -113,6 +182,7 @@ export function renderSafeMarkdown(markdown, options = {}) {
         const safeNode = cloneSafeNode(node, outputDocument);
         if (safeNode) fragment.append(safeNode);
     });
+    replaceStickerPlaceholders(fragment, stickerMap, outputDocument);
     return fragment;
 }
 
@@ -142,7 +212,17 @@ export function createAskNovaController(options = {}) {
     let activeModal = null;
     let destroyed = false;
     let openGeneration = 0;
+    let stickerMapPromise = null;
     const controllerScope = LifecycleScope ? new LifecycleScope('next:ask-nova-controller') : null;
+
+    function loadNovaStickerMap() {
+        if (!stickerMapPromise) {
+            stickerMapPromise = Promise.resolve(api.getEmoticonLibrary?.())
+                .then(createNovaStickerMap)
+                .catch(() => new Map());
+        }
+        return stickerMapPromise;
+    }
 
     async function open(targetId = 'frontend') {
         if (destroyed) return null;
@@ -191,6 +271,7 @@ export function createAskNovaController(options = {}) {
             return activeModal;
         }
 
+        const stickerMap = await loadNovaStickerMap();
         const sessions = Object.fromEntries(Object.values(TARGETS).map(target => [target.id, createSession(target)]));
         const state = {
             targetId: initialTarget.id,
@@ -333,7 +414,11 @@ export function createAskNovaController(options = {}) {
                 bubbleWrap.className = 'ask-nova-message-bubble-wrap';
                 const bubble = documentRef.createElement('div');
                 bubble.className = 'ask-nova-message-bubble';
-                bubble.append(renderSafeMarkdown(message.content, { document: documentRef, marked: markedInstance }));
+                bubble.append(renderSafeMarkdown(message.content, {
+                    document: documentRef,
+                    marked: markedInstance,
+                    stickerMap: message.role === 'assistant' ? stickerMap : null
+                }));
                 bubbleWrap.append(bubble);
                 if (message.role === 'assistant') {
                     const copy = documentRef.createElement('button');

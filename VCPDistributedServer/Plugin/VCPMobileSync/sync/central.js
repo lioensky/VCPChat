@@ -25,6 +25,21 @@ function withCdsErrorContext(error, fallback = {}) {
       code: "CDS_PROTOCOL_MISMATCH",
     });
   }
+  // CDS 错误层会把根因剥离后才上 HTTP（wire 上只剩 code/message/retryable）。
+  // 在翻译前把边界可见的全部证据（HTTP status / retryable / 原始 message）
+  // 落进插件日志，否则桌面侧无从区分"数据状态异常"与"CDS 内部故障"。
+  try {
+    const rawMessage = typeof root?.message === "string" ? root.message : "";
+    getLogger().logOperation(
+      fallback.stage || "central",
+      "cds_error",
+      String(root?.code || fallback.code || "UNKNOWN"),
+      "error",
+      `status=${root?.status ?? "n/a"} retryable=${root?.retryable ?? "n/a"} ${rawMessage.slice(0, 300)}`,
+    );
+  } catch {
+    // 日志通道失败不得影响错误传播
+  }
   return withSyncErrorContext(root, {
     ...fallback,
     origin: "desktop_cds",
@@ -137,6 +152,17 @@ class CentralSyncAdapter {
     const stage = payload.dataType === "topic"
       ? "topic_metadata"
       : "owner_metadata";
+    // 与 legacy 路径（sync/manifest.js）对齐：phase 必须与 dataType 对应
+    // （topic=2，其余=1），且 SYNC_DIFF_RESULTS 必须回填 phase——
+    // 移动端 diff_handler 对 phase 做硬门禁，缺失即中止整个 attempt。
+    const expectedPhase = payload.dataType === "topic" ? 2 : 1;
+    if (payload.phase !== expectedPhase) {
+      throw createSyncError(
+        "SYNC_PROTOCOL_INVALID",
+        `${payload.dataType} manifest phase must be ${expectedPhase}`,
+        { origin: "desktop_plugin", stage },
+      );
+    }
     try {
       const response = await this.requireClient().syncManifest({
         dataType: payload.dataType,
@@ -153,7 +179,7 @@ class CentralSyncAdapter {
       ) {
         throw cdsProtocolError("CDS returned an invalid manifest response", stage);
       }
-      return response;
+      return { ...response, phase: payload.phase };
     } catch (error) {
       throw withCdsErrorContext(error, {
         code: "SYNC_DB_QUERY_FAILED",
@@ -442,6 +468,13 @@ class CentralSyncAdapter {
       // Translate it here; only the complete Wire object may cross to Mobile.
       const canonical = canonicalizeTopicFrame(translateCdsPullFrame(rawFrame));
       const topicId = canonical.frame.topicId;
+      if (canonical.topicIdRewrites > 0) {
+        getLogger().logInfo(
+          "central",
+          `topicId 归一化：${topicId} 有 ${canonical.topicIdRewrites} 条消息重写为 frame topic（${canonical.topicIdRewriteSamples.join("; ")}）`,
+          "warn",
+        );
+      }
       if (!expected.has(topicId)) {
         throw createSyncError(
           "SYNC_PROTOCOL_INVALID",

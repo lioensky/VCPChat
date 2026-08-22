@@ -59,6 +59,11 @@ pub struct ManifestItem {
     pub owner_type: Option<OwnerType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<String>,
+    /// 缺口 B 降级标记：owner 的 config 不可读/不可解析时置位。
+    /// 纯内部状态（serde skip，不上 wire）——manifest() 据此把该条目降级为
+    /// SKIP（手机端本轮跳过），而非让单条故障炸掉整批 manifest（500）。
+    #[serde(skip)]
+    pub degraded: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -446,15 +451,29 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
     let mut local_by_key = HashMap::new();
     let mut local_ids = HashSet::new();
     for item in local {
-        anyhow::ensure!(
-            local_ids.insert(item.id.clone()),
-            "local manifest contains ambiguous topic id {}",
-            item.id
-        );
-        local_by_key.insert(
-            manifest_key(&item.id, item.owner_type, item.owner_id.as_deref()),
-            item,
-        );
+        let key = manifest_key(&item.id, item.owner_type, item.owner_id.as_deref());
+        if request.data_type == "topic" {
+            // topics 表 PK 为 (owner_type, owner_id, topic_id)：topic id 仅在
+            // 单个 owner 内唯一，跨 owner 重名（如每个 Agent 的 default 话题）
+            // 是合法数据形态。协议 1.1 下 topic 条目强制携带 ownerType/ownerId，
+            // diff 只走 manifest_key 精确匹配、不走 id-only 回退（歧义防护由
+            // unique_manifest_item_by_id 多匹配返回 None 承担），因此唯一性
+            // 按完整 key 校验；裸 id 全局查重会把多 owner 全量同步误报成 500。
+            anyhow::ensure!(
+                !local_by_key.contains_key(&key),
+                "local manifest contains duplicate topic key {}",
+                key
+            );
+        } else {
+            // agent/group manifest 按 owner_type 过滤查询，PK 已保证唯一；
+            // 此守卫仅作为 id-only 回退路径的防御性断言保留。
+            anyhow::ensure!(
+                local_ids.insert(item.id.clone()),
+                "local manifest contains ambiguous id {}",
+                item.id
+            );
+        }
+        local_by_key.insert(key, item);
     }
 
     let mut actions = Vec::new();
@@ -500,6 +519,23 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
             continue;
         }
 
+        // 缺口 B 降级：owner 条目在生成时 config 不可读（degraded）。
+        // 下游实体下载对手机端是 attempt-fatal，不能靠哨兵哈希把它推向 PULL；
+        // 降级为 SKIP——手机端本轮跳过该 owner，但 mismatchedContent=true 仍把
+        // owner 记入 changed set，其下健康 topic 在 Phase 2 照常同步
+        // （topic 元数据来自 DB，不读 owner config 文件）。
+        if local.degraded {
+            actions.push(ManifestAction {
+                id: local.id.clone(),
+                action: "SKIP".to_string(),
+                deleted_at: None,
+                owner_type: local.owner_type,
+                owner_id: local.owner_id.clone(),
+                mismatched_content: true,
+            });
+            continue;
+        }
+
         let remote_config = remote.config_hash.as_deref().unwrap_or(&remote.hash);
         let remote_content = remote.content_hash.as_deref().unwrap_or_default();
         let config_changed = local.config_hash != remote_config;
@@ -530,10 +566,16 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         if processed.contains(&key) {
             continue;
         }
+        // degraded 条目在尾部循环同样降级为 SKIP：手机还没有这个 owner 时，
+        // PULL 会走向 attempt-fatal 的实体下载——本轮跳过，待 config 自愈后
+        // 下轮正常 PULL。mismatchedContent=false：手机端没有该 owner，
+        // 不把它记入 changed set，避免为其下 topic 生成孤儿动作。
         actions.push(ManifestAction {
             id: local.id,
             action: if local.deleted_at.is_some() {
                 "PUSH_DELETE"
+            } else if local.degraded {
+                "SKIP"
             } else {
                 "PULL"
             }
@@ -583,8 +625,16 @@ pub fn message_manifest(
     let messages = rows
         .into_iter()
         .map(|(msg_id, metadata, updated_at, deleted_at)| {
-            let content_hash = mobile_message_hash_from_json(&metadata, &key.topic_id)
-                .with_context(|| format!("message {msg_id} cannot cross sync wire"))?;
+            // S3-ε：墓碑行跳过哈希——message_diff 的 active 表会过滤 deleted 行，
+            // 删除信号只消费 msg_id/updated_at/deleted_at；这也避开"DB 已墓碑但
+            // metadata 保留 status:\"removed\" 的历史行必然 canonicalize 失败"的毒点。
+            let content_hash = if deleted_at.is_some() {
+                TOMBSTONE_CONTENT_HASH.to_string()
+            } else {
+                // S3-ε：存活行单条失败降级为哨兵哈希（永不匹配 → 保守重拉），
+                // 不再单条毒化整个 topic 的 manifest。
+                message_hash_or_sentinel(&metadata, &key.topic_id, &msg_id)
+            };
             Ok(MessageManifestItem {
                 msg_id,
                 content_hash,
@@ -696,7 +746,20 @@ pub fn topic_hash_diff(
             changed_topics.push(state.topic_id);
             continue;
         };
-        let local = topic_manifest(database, &key)?;
+        // 条目级容错（S3-γ）：单个 topic 的 manifest 失败（source 不健康/含毒消息）
+        // 降级为保守重拉，而非炸掉整批——对齐 message_diff 的 TOPIC_HASH_FAILED 先例。
+        let local = match topic_manifest(database, &key) {
+            Ok(local) => local,
+            Err(error) => {
+                tracing::warn!(
+                    topic_id = %state.topic_id,
+                    error = %format!("{error:#}"),
+                    "topic manifest failed during hash diff; marking topic as changed"
+                );
+                changed_topics.push(state.topic_id);
+                continue;
+            }
+        };
         if (!state.config_hash.is_empty() && local.config_hash != state.config_hash)
             || local.content_hash != state.content_hash
         {
@@ -827,17 +890,6 @@ pub fn message_diff(
         response_type: "SYNC_DIFF_RESULTS_BATCH",
         results,
     })
-}
-
-pub fn pull_messages(
-    database: &Database,
-    request: MessagesPullRequest,
-) -> Result<Vec<MessagesPullFrame>> {
-    let mut frames = Vec::with_capacity(request.requests.len());
-    for topic in request.requests {
-        frames.push(pull_topic_messages(database, topic)?);
-    }
-    Ok(frames)
 }
 
 pub fn pull_topic_messages(
@@ -1138,8 +1190,43 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
 
     rows.into_iter()
         .map(|(owner_id, config_path, ts, deleted_at)| {
-            let config_hash = mobile_owner_config_hash(owner_type, Path::new(&config_path))?;
-            let content_hash = owner_content_hash(database, owner_type, &owner_id)?;
+            // 墓碑条目短路（S3-β）：已删 owner 的目录已物理删除，
+            // 磁盘读必然失败；删除信号不需要 hash 字段。
+            if deleted_at.is_some() {
+                return Ok(ManifestItem {
+                    id: owner_id.clone(),
+                    hash: String::new(),
+                    config_hash: String::new(),
+                    content_hash: String::new(),
+                    ts,
+                    deleted_at,
+                    owner_type: Some(owner_type),
+                    owner_id: Some(owner_id),
+                    degraded: false,
+                });
+            }
+            // 缺口 B 降级：活 owner 的 config 在两次 reconcile 之间被删/写半截/
+            // 不可读时，不再让单条失败炸掉整批 manifest（Phase 1 整表 500），
+            // 降级为 degraded 条目——manifest() 对其产出 SKIP（详见 manifest()）。
+            // owner_content_hash 内部已按 topic 哨兵化（缺口 C），到达这里的
+            // 失败基本只剩 config 本身的读/解析失败。
+            let hashes = (|| {
+                let config_hash = mobile_owner_config_hash(owner_type, Path::new(&config_path))?;
+                let content_hash = owner_content_hash(database, owner_type, &owner_id)?;
+                Ok::<_, anyhow::Error>((config_hash, content_hash))
+            })();
+            let (config_hash, content_hash, degraded) = match hashes {
+                Ok((config_hash, content_hash)) => (config_hash, content_hash, false),
+                Err(error) => {
+                    tracing::warn!(
+                        owner_type = %owner_type.as_str(),
+                        owner_id = %owner_id,
+                        error = %format!("{error:#}"),
+                        "owner manifest entry degraded: config unreadable; skipping owner this round"
+                    );
+                    (String::new(), String::new(), true)
+                }
+            };
             Ok(ManifestItem {
                 id: owner_id.clone(),
                 hash: config_hash.clone(),
@@ -1149,6 +1236,7 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
                 deleted_at,
                 owner_type: Some(owner_type),
                 owner_id: Some(owner_id),
+                degraded,
             })
         })
         .collect()
@@ -1182,7 +1270,40 @@ fn topic_manifests(
 
     keys.into_iter()
         .filter(|key| targeted_owners.is_none_or(|owners| owners.contains(&key.owner_id)))
-        .map(|key| topic_manifest(database, &key))
+        .map(|key| {
+            // 缺口 A 降级：活 topic 的 source 不健康（0 字节永久 invalid /
+            // exists-but-never-ingested 等 S5 毒态）时，单条 topic_manifest 失败
+            // 不再炸掉整批 manifest（Phase 2 整表 500），降级为哨兵条目——
+            // 哨兵 config_hash 迫使比对产出动作（topic 的 content-only 不匹配在
+            // manifest() 不出动作），ts 仲裁稳态偏 PULL（updated_at 每轮
+            // reconcile 刷新），毒 topic 由此进入 Phase 2.5/3 的 per-topic
+            // 隔离管线（topic_hash_diff 记 changed → message_diff ok:false），
+            // 每轮双端可见，而非静默跳过或整表爆炸。
+            match topic_manifest(database, &key) {
+                Ok(item) => Ok(item),
+                Err(error) => {
+                    tracing::warn!(
+                        owner_type = %key.owner_type.as_str(),
+                        owner_id = %key.owner_id,
+                        topic_id = %key.topic_id,
+                        error = %format!("{error:#}"),
+                        "topic manifest entry degraded: emitting sentinel hashes"
+                    );
+                    let sentinel = unhealthy_topic_sentinel_hash(&key);
+                    Ok(ManifestItem {
+                        id: key.topic_id.clone(),
+                        hash: sentinel.clone(),
+                        config_hash: sentinel.clone(),
+                        content_hash: sentinel,
+                        ts: topic_updated_at_or_now(database, &key),
+                        deleted_at: None,
+                        owner_type: Some(key.owner_type),
+                        owner_id: Some(key.owner_id.clone()),
+                        degraded: false,
+                    })
+                }
+            }
+        })
         .collect()
 }
 
@@ -1196,6 +1317,22 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
     drop(connection);
+    // 墓碑条目短路（S3-α）：删除信号只需要 id/ts/deleted_at/owner 身份，
+    // manifest diff 与移动端均不消费墓碑的 hash 字段；跳过 metadata 解析、
+    // config hash、健康检查与 content hash，避免已删 topic 炸掉整批 manifest。
+    if deleted_at.is_some() {
+        return Ok(ManifestItem {
+            id: key.topic_id.clone(),
+            hash: String::new(),
+            config_hash: String::new(),
+            content_hash: String::new(),
+            ts: updated_at,
+            deleted_at,
+            owner_type: Some(key.owner_type),
+            owner_id: Some(key.owner_id.clone()),
+            degraded: false,
+        });
+    }
     let metadata =
         serde_json::from_str::<Value>(&metadata_json).context("topic metadata is invalid")?;
     let config_hash = mobile_topic_config_hash(key, &metadata);
@@ -1209,6 +1346,7 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
         deleted_at,
         owner_type: Some(key.owner_type),
         owner_id: Some(key.owner_id.clone()),
+        degraded: false,
     })
 }
 
@@ -1231,14 +1369,29 @@ fn owner_content_hash(
     drop(connection);
     let mut hashes = Vec::new();
     for topic_id in topic_ids {
-        hashes.push(topic_content_hash(
-            database,
-            &TopicKey {
-                owner_type,
-                owner_id: owner_id.to_string(),
-                topic_id,
-            },
-        )?);
+        let key = TopicKey {
+            owner_type,
+            owner_id: owner_id.to_string(),
+            topic_id,
+        };
+        // 缺口 C 降级（ε 的上一层镜像）：单个 topic 的 content hash 失败
+        // （source 不健康）降级为哨兵参与聚合——owner 级毒化经 manifest()
+        // 转译为 SKIP+mismatchedContent，毒 topic 在 Phase 2/2.5/3 由
+        // topic 级哨兵管线（topic_manifests 降级 → γ → message_diff）接住并
+        // 每轮可见；不再让整个 owner manifest 因一条 topic 炸成整表 500。
+        match topic_content_hash(database, &key) {
+            Ok(hash) => hashes.push(hash),
+            Err(error) => {
+                tracing::warn!(
+                    owner_type = %owner_type.as_str(),
+                    owner_id = %owner_id,
+                    topic_id = %key.topic_id,
+                    error = %format!("{error:#}"),
+                    "topic content hash failed during owner aggregation; using sentinel hash"
+                );
+                hashes.push(unhealthy_topic_sentinel_hash(&key));
+            }
+        }
     }
     Ok(aggregate_hash(hashes))
 }
@@ -1258,10 +1411,14 @@ fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
     drop(connection);
+    // S3-ε：单条毒消息降级为哨兵哈希参与聚合，不再炸掉 topic/owner 整表 manifest。
+    // 哨兵永不可能等于移动端的诚实哈希 → topic 判定 changed → 经 diff/pull 暴露，
+    // 实际传输层（pull）仍 fail-closed，毒数据不会到达手机。
     let hashes = rows
         .into_iter()
-        .map(|raw| mobile_message_hash_from_json(&raw, &key.topic_id))
-        .collect::<Result<Vec<_>>>()?;
+        .enumerate()
+        .map(|(index, raw)| message_hash_or_sentinel(&raw, &key.topic_id, &index.to_string()))
+        .collect::<Vec<_>>();
     Ok(aggregate_hash(hashes))
 }
 
@@ -1450,6 +1607,66 @@ fn mobile_message_hash_from_json(raw: &str, topic_id: &str) -> Result<String> {
     let mut warnings = WireWarnings::default();
     let canonical = canonicalize_message(value, topic_id, &mut warnings)?;
     message_fingerprint(&canonical)
+}
+
+/// 墓碑消息行的 content_hash 占位符（S3-ε）：sha256("") 的著名常量。
+/// 墓碑条目的 hash 无任何消费者（message_diff 过滤 deleted 行；manifest diff
+/// 只产出 DELETE/PUSH_DELETE action；移动端只校验 deletedAt），但保持 64-hex
+/// 形态以兼容插件 handleMessageManifest 的全字段格式校验。
+const TOMBSTONE_CONTENT_HASH: &str =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/// S3-ε 存活行降级：一条无法 wire 化的消息在清单/聚合哈希中的哨兵值。
+/// 哨兵 = sha256("vcp-invalid-message:" + raw)，保证：
+/// - 64 位小写 hex，可通过 wire 哈希格式校验；
+/// - 内容由 raw 派生 → 同一毒行每次同步得到同一哨兵，不会哈希抖动；
+/// - 前驱带污染标记，实践中不可能等于诚实内容哈希 → 移动端永远判定
+///   changed → 走 diff/pull 暴露问题（传输层 fail-closed 不变），而非静默一致。
+fn message_hash_or_sentinel(raw: &str, topic_id: &str, msg_hint: &str) -> String {
+    match mobile_message_hash_from_json(raw, topic_id) {
+        Ok(hash) => hash,
+        Err(error) => {
+            tracing::warn!(
+                topic_id = %topic_id,
+                msg = %msg_hint,
+                error = %format!("{error:#}"),
+                "message cannot cross sync wire; emitting sentinel hash"
+            );
+            sha256_hex(format!("vcp-invalid-message:{raw}").as_bytes())
+        }
+    }
+}
+
+/// 缺口 A/C 的 topic 级哨兵哈希：活 topic 的 source 不健康时用于
+/// manifest 条目（topic_manifests 降级）与 owner 聚合（owner_content_hash
+/// 降级）。与消息级哨兵同理：确定性（同 topic 每轮同值）、64-hex 合规、
+/// 永不可能等于移动端的诚实哈希 → 比对必判 changed → 进入 per-topic
+/// 隔离管线暴露问题，而非静默一致或整表 500。
+fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
+    sha256_hex(
+        format!(
+            "vcp-unhealthy-topic:{}:{}:{}",
+            key.owner_type.as_str(),
+            key.owner_id,
+            key.topic_id
+        )
+        .as_bytes(),
+    )
+}
+
+/// topic_manifests 降级路径的 ts 兜底：行必然存在（key 来自 topics 表查询），
+/// 兜底 now 是为了守住 ts 仲裁的 PULL 偏向（local.ts 新于手机 → PULL），
+/// 避免降级条目被反向仲裁成 PUSH。
+fn topic_updated_at_or_now(database: &Database, key: &TopicKey) -> i64 {
+    let connection = database.connection.lock();
+    connection
+        .query_row(
+            "SELECT updated_at FROM topics
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or_else(|_| crate::storage::now_ms())
 }
 
 fn canonical_wire_hash(value: &str) -> Option<String> {
@@ -1716,18 +1933,24 @@ const fn is_zero(value: &usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, fs, sync::Arc};
+    use std::{
+        collections::{HashMap, HashSet},
+        fs,
+        sync::Arc,
+    };
 
     use super::{
-        aggregate_hash, message_manifest, pull_topic_messages, push_messages, topic_hash_diff,
-        topic_identity, unique_manifest_item_by_id, validate_manifest_request, ManifestItem,
+        aggregate_hash, manifest, message_manifest, mobile_message_hash_from_json, owner_manifest,
+        pull_topic_messages, push_messages, topic_content_hash, topic_hash_diff, topic_identity,
+        topic_manifests, unique_manifest_item_by_id, validate_manifest_request, ManifestItem,
         ManifestRequest, MessagesPullTopic, MessagesPushRequest, MessagesPushTopic,
-        RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicSelector,
+        RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector,
+        TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
         domain::OwnerType,
-        ingest::Reconciler,
+        ingest::{sha256_hex, Reconciler},
         storage::Database,
         sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
     };
@@ -1778,6 +2001,7 @@ mod tests {
             deleted_at: None,
             owner_type: Some(owner_type),
             owner_id: Some(owner_id.to_string()),
+            degraded: false,
         }
     }
 
@@ -2196,5 +2420,792 @@ mod tests {
         .expect("resolve compound identity");
         assert_eq!(identity.owner_type, OwnerType::Group);
         assert_eq!(identity.owner_id, "group-a");
+    }
+
+    /// S3-α：已删 topic 被短路（不再触碰 metadata/健康检查/content hash），
+    /// 且 manifest diff 能产出 PUSH_DELETE 删除信号；存活 topic 输出不变。
+    #[tokio::test]
+    async fn tombstoned_topic_is_short_circuited_and_emits_push_delete() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"alive","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        // 直接插入墓碑 topic：source 已不存在、metadata 是坏 JSON——
+        // 短路后这些都不应再被求值。
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "INSERT INTO topics (owner_type, owner_id, topic_id, topic_ordinal,
+                         config_hash, metadata_json, source_path, updated_at, deleted_at)
+                     VALUES ('agent','agent-a','topic-deleted',1,'','{corrupt json',
+                             '/nonexistent/history.json',5,123)",
+                    [],
+                )
+                .expect("insert tombstoned topic");
+        }
+
+        let items = topic_manifests(&database, None).expect("manifest with tombstone");
+        let tombstone = items
+            .iter()
+            .find(|item| item.id == "topic-deleted")
+            .expect("tombstone entry");
+        assert_eq!(tombstone.deleted_at, Some(123));
+        assert!(tombstone.hash.is_empty());
+        assert!(tombstone.config_hash.is_empty());
+        assert!(tombstone.content_hash.is_empty());
+        let alive = items
+            .iter()
+            .find(|item| item.id == "topic-a")
+            .expect("alive entry");
+        assert_eq!(alive.content_hash.len(), 64);
+        assert_eq!(alive.deleted_at, None);
+
+        // 端到端：本地独有的墓碑条目产出 PUSH_DELETE。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "topic".to_string(),
+                data: Vec::new(),
+                targeted_owners: Some(vec!["agent-a".to_string()]),
+            },
+        )
+        .expect("manifest diff");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "topic-deleted")
+            .expect("push delete action");
+        assert_eq!(action.action, "PUSH_DELETE");
+        assert_eq!(action.deleted_at, Some(123));
+    }
+
+    /// 回归：topic id 仅在单个 owner 内唯一。多个 targeted owner 各自拥有
+    /// 同名 topic（如每个 Agent 的 default 话题）时，topic manifest diff 不得
+    /// 误报 "ambiguous topic id" 500——这正是全量全新同步（targetedOwners
+    /// 包含全部 owner）此前必炸的场景。
+    #[tokio::test]
+    async fn topic_manifest_allows_same_topic_id_across_targeted_owners() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        // agent-a 追加 default 话题（fixture 原本只有 topic-a）。
+        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/default"))
+            .expect("create agent-a default topic dir");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/default/history.json"),
+            br#"[{"id":"a1","role":"user","content":"hello from a","timestamp":1}]"#,
+        )
+        .expect("write agent-a default history");
+        fs::write(
+            config.app_data.join("Agents/agent-a/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent A",
+                "topics": [
+                    {"id":"topic-a","name":"Topic A","createdAt":1},
+                    {"id":"default","name":"Default","createdAt":1}
+                ]
+            }))
+            .expect("serialize agent-a config"),
+        )
+        .expect("rewrite agent-a config");
+        // agent-b 只有 default 话题，与 agent-a 的 default 跨 owner 同名。
+        fs::create_dir_all(config.app_data.join("Agents/agent-b")).expect("create agent-b");
+        fs::create_dir_all(config.user_data_dir.join("agent-b/topics/default"))
+            .expect("create agent-b default topic dir");
+        fs::write(
+            config.app_data.join("Agents/agent-b/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent B",
+                "topics": [{"id":"default","name":"Default","createdAt":1}]
+            }))
+            .expect("serialize agent-b config"),
+        )
+        .expect("write agent-b config");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-b/topics/default/history.json"),
+            br#"[{"id":"b1","role":"user","content":"hello from b","timestamp":1}]"#,
+        )
+        .expect("write agent-b default history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "topic".to_string(),
+                data: Vec::new(),
+                targeted_owners: Some(vec!["agent-a".to_string(), "agent-b".to_string()]),
+            },
+        )
+        .expect("cross-owner duplicate topic ids must not fail the manifest diff");
+
+        let pulls: Vec<_> = response
+            .data
+            .iter()
+            .filter(|action| action.id == "default" && action.action == "PULL")
+            .collect();
+        assert_eq!(
+            pulls.len(),
+            2,
+            "both owners' default topics must produce PULL actions"
+        );
+        let owners: HashSet<_> = pulls
+            .iter()
+            .filter_map(|action| action.owner_id.as_deref())
+            .collect();
+        assert!(owners.contains("agent-a") && owners.contains("agent-b"));
+    }
+
+    /// S3-β：已删 owner（目录已物理删除）不再炸掉 owner manifest。
+    #[tokio::test]
+    async fn tombstoned_owner_is_short_circuited_without_disk_read() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            b"[]",
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "INSERT INTO owners (owner_type, owner_id, display_name, config_path,
+                         config_hash, updated_at, deleted_at)
+                     VALUES ('group','group-deleted','Deleted Group',
+                             '/nonexistent/group/config.json','',7,321)",
+                    [],
+                )
+                .expect("insert tombstoned owner");
+        }
+
+        let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
+        let tombstone = items
+            .iter()
+            .find(|item| item.id == "group-deleted")
+            .expect("tombstone entry");
+        assert_eq!(tombstone.deleted_at, Some(321));
+        assert!(tombstone.config_hash.is_empty() && tombstone.content_hash.is_empty());
+
+        // 存活 owner 路径不受影响。
+        let agents = owner_manifest(&database, OwnerType::Agent).expect("agent manifest");
+        let alive = agents
+            .iter()
+            .find(|item| item.id == "agent-a")
+            .expect("alive agent");
+        assert_eq!(alive.config_hash.len(), 64);
+    }
+
+    /// S3-γ：topic_hash_diff 对单个不健康 topic 降级为保守重拉，而非整批 500。
+    #[tokio::test]
+    async fn topic_hash_diff_marks_unhealthy_topic_changed_instead_of_failing() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"alive","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        // 把 source 标记为 invalid → topic_manifest 必然失败。
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE history_sources SET status='invalid', last_error='boom'
+                     WHERE topic_id='topic-a'",
+                    [],
+                )
+                .expect("poison history source");
+        }
+
+        let response = topic_hash_diff(
+            &database,
+            TopicHashDiffRequest {
+                hashes: HashMap::new(),
+                topics: vec![TopicHashState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: Some(OwnerType::Agent),
+                    owner_id: Some("agent-a".to_string()),
+                    config_hash: String::new(),
+                    content_hash: "f".repeat(64),
+                }],
+            },
+        )
+        .expect("diff must not fail on one unhealthy topic");
+        assert_eq!(response.changed_topics, vec!["topic-a".to_string()]);
+    }
+
+    /// S3-ε（墓碑行）：deleted 行跳过哈希，占位符为固定 64-hex 常量——
+    /// 覆盖"DB 已墓碑但 metadata 保留 status:\"removed\""的现实毒点。
+    #[tokio::test]
+    async fn message_manifest_tombstone_rows_use_placeholder_hash() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[
+                {"id":"m1","role":"user","content":"one","timestamp":1},
+                {"id":"m2","role":"assistant","content":"two","timestamp":2}
+            ]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute("UPDATE messages SET deleted_at=99 WHERE msg_id='m1'", [])
+                .expect("tombstone m1");
+            // metadata 里残留 status:"removed"——canonicalize 必炸的形态，
+            // 但 deleted 行短路后不应再被解析。
+            connection
+                .execute(
+                    "INSERT INTO messages (owner_type, owner_id, topic_id, msg_id, ordinal,
+                         role, content_raw, content_text, message_hash, metadata_json,
+                         updated_at, deleted_at)
+                     VALUES ('agent','agent-a','topic-a','m-gone',3,'user','','','x',
+                             '{\"id\":\"m-gone\",\"role\":\"user\",\"content\":\"gone\",\"timestamp\":3,\"status\":\"removed\"}',
+                             5,100)",
+                    [],
+                )
+                .expect("insert removed tombstone row");
+        }
+
+        let manifest = message_manifest(
+            &database,
+            &TopicSelector {
+                topic_id: "topic-a".to_string(),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-a".to_string()),
+            },
+        )
+        .expect("message manifest with tombstones");
+        let by_id: HashMap<_, _> = manifest
+            .messages
+            .iter()
+            .map(|message| (message.msg_id.as_str(), message))
+            .collect();
+        assert_eq!(by_id["m1"].content_hash, TOMBSTONE_CONTENT_HASH);
+        assert_eq!(by_id["m1"].deleted_at, Some(99));
+        assert_eq!(by_id["m-gone"].content_hash, TOMBSTONE_CONTENT_HASH);
+        assert_eq!(by_id["m-gone"].deleted_at, Some(100));
+        assert_eq!(by_id["m2"].content_hash.len(), 64);
+        assert_ne!(by_id["m2"].content_hash, TOMBSTONE_CONTENT_HASH);
+        assert_eq!(by_id["m2"].deleted_at, None);
+    }
+
+    /// S3-ε（存活行，Option A）：无法 wire 化的存活消息降级为确定性哨兵哈希，
+    /// message manifest 与 topic content hash 都不再整批失败。
+    #[tokio::test]
+    async fn live_poison_message_degrades_to_deterministic_sentinel() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"healthy","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        // 缺 id 的存活毒行（1.0 时代合法入库的形态）。
+        let poison_raw = r#"{"role":"user","content":"no id","timestamp":5}"#;
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "INSERT INTO messages (owner_type, owner_id, topic_id, msg_id, ordinal,
+                         role, content_raw, content_text, message_hash, metadata_json, updated_at)
+                     VALUES ('agent','agent-a','topic-a','synthetic_1',2,'user','','','x',
+                             ?1, 5)",
+                    [poison_raw],
+                )
+                .expect("insert poison row");
+        }
+
+        let selector = TopicSelector {
+            topic_id: "topic-a".to_string(),
+            owner_type: Some(OwnerType::Agent),
+            owner_id: Some("agent-a".to_string()),
+        };
+        let manifest = message_manifest(&database, &selector).expect("manifest with poison");
+        let by_id: HashMap<_, _> = manifest
+            .messages
+            .iter()
+            .map(|message| (message.msg_id.as_str(), message))
+            .collect();
+        let expected_sentinel = sha256_hex(format!("vcp-invalid-message:{poison_raw}").as_bytes());
+        assert_eq!(by_id["synthetic_1"].content_hash, expected_sentinel);
+        // 健康消息的哈希与无哨兵时逐字节一致。
+        assert_eq!(
+            by_id["m1"].content_hash,
+            mobile_message_hash_from_json(
+                r#"{"id":"m1","role":"user","content":"healthy","timestamp":1}"#,
+                "topic-a",
+            )
+            .expect("healthy hash")
+        );
+
+        // topic content hash 同样不再失败，且确定性（两次调用相等、包含哨兵）。
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: "topic-a".to_string(),
+        };
+        let first = topic_content_hash(&database, &key).expect("content hash with sentinel");
+        let second = topic_content_hash(&database, &key).expect("deterministic");
+        assert_eq!(first, second);
+        assert_eq!(
+            first,
+            aggregate_hash(vec![by_id["m1"].content_hash.clone(), expected_sentinel])
+        );
+    }
+
+    /// 缺口 A（F1）：活 topic 的 source 不健康时，topic_manifests 不再整批 500，
+    /// 降级为哨兵条目；比对逻辑据此产出 PULL（ts 仲裁稳态偏向），健康 topic
+    /// 输出逐字节不变。
+    #[tokio::test]
+    async fn unhealthy_live_topic_degrades_to_sentinel_and_pulls() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        // 第二个健康 topic 作为"零变化"对照。
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
+        )
+        .expect("write topic-a history");
+        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/topic-b"))
+            .expect("create topic-b dir");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-b/history.json"),
+            br#"[{"id":"m2","role":"user","content":"b","timestamp":2}]"#,
+        )
+        .expect("write topic-b history");
+        fs::write(
+            config.app_data.join("Agents/agent-a/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent A",
+                "topics": [
+                    {"id":"topic-a","name":"Topic A","createdAt":1},
+                    {"id":"topic-b","name":"Topic B","createdAt":2}
+                ]
+            }))
+            .expect("serialize config"),
+        )
+        .expect("write config");
+        reconciler.reconcile().await.expect("reconcile");
+
+        // 基线：毒化前健康 topic 的三字段输出。
+        let baseline = topic_manifests(&database, None).expect("baseline manifest");
+        let baseline_b = baseline
+            .iter()
+            .find(|item| item.id == "topic-b")
+            .map(|item| {
+                (
+                    item.hash.clone(),
+                    item.config_hash.clone(),
+                    item.content_hash.clone(),
+                )
+            })
+            .expect("baseline topic-b");
+
+        // 毒化 topic-a 的 source（对齐 S5 的 invalid 毒态）。
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE history_sources SET status='invalid', last_error='boom'
+                     WHERE topic_id='topic-a'",
+                    [],
+                )
+                .expect("poison history source");
+        }
+
+        // 整批不再失败；topic-a 三字段均为确定性哨兵。
+        let items = topic_manifests(&database, None).expect("manifest must not 500");
+        let degraded_a = items
+            .iter()
+            .find(|item| item.id == "topic-a")
+            .expect("degraded topic-a entry");
+        let sentinel = sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
+        assert_eq!(degraded_a.config_hash, sentinel);
+        assert_eq!(degraded_a.content_hash, sentinel);
+        assert_eq!(degraded_a.deleted_at, None);
+        // 健康 topic 逐字节不变。
+        let after_b = items
+            .iter()
+            .find(|item| item.id == "topic-b")
+            .map(|item| {
+                (
+                    item.hash.clone(),
+                    item.config_hash.clone(),
+                    item.content_hash.clone(),
+                )
+            })
+            .expect("topic-b after degradation");
+        assert_eq!(after_b, baseline_b);
+
+        // 端到端：remote 存活且 ts 旧 → 哨兵 config_hash 迫使出 PULL。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "topic".to_string(),
+                data: vec![RemoteManifestItem {
+                    id: "topic-a".to_string(),
+                    hash: "a".repeat(64),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some("b".repeat(64)),
+                    ts: 1,
+                    deleted_at: None,
+                    owner_type: Some(OwnerType::Agent),
+                    owner_id: Some("agent-a".to_string()),
+                }],
+                targeted_owners: Some(vec!["agent-a".to_string()]),
+            },
+        )
+        .expect("manifest diff with unhealthy topic");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "topic-a")
+            .expect("topic-a action");
+        assert_eq!(action.action, "PULL");
+        assert_eq!(action.owner_type, Some(OwnerType::Agent));
+        assert_eq!(action.owner_id.as_deref(), Some("agent-a"));
+    }
+
+    /// 缺口 A（F1）边界：降级 topic 遇 remote 墓碑仍出 DELETE（删除语义不被
+    /// 哨兵吞掉）；手机没有该 topic 时尾部循环出 PULL（进入 per-topic 隔离管线）。
+    #[tokio::test]
+    async fn unhealthy_topic_delete_precedence_and_tail_pull() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE history_sources SET status='invalid', last_error='boom'
+                     WHERE topic_id='topic-a'",
+                    [],
+                )
+                .expect("poison history source");
+        }
+
+        // remote 已删 → DELETE 优先于降级。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "topic".to_string(),
+                data: vec![RemoteManifestItem {
+                    id: "topic-a".to_string(),
+                    hash: "a".repeat(64),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some(String::new()),
+                    ts: 1,
+                    deleted_at: Some(7),
+                    owner_type: Some(OwnerType::Agent),
+                    owner_id: Some("agent-a".to_string()),
+                }],
+                targeted_owners: Some(vec!["agent-a".to_string()]),
+            },
+        )
+        .expect("manifest with remote tombstone");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "topic-a")
+            .expect("delete action");
+        assert_eq!(action.action, "DELETE");
+        assert_eq!(action.deleted_at, Some(7));
+
+        // remote 不含该 topic → 尾部循环对降级条目出 PULL。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "topic".to_string(),
+                data: Vec::new(),
+                targeted_owners: Some(vec!["agent-a".to_string()]),
+            },
+        )
+        .expect("manifest with empty remote");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "topic-a")
+            .expect("tail action");
+        assert_eq!(action.action, "PULL");
+    }
+
+    /// 缺口 C（F2）：owner_content_hash 聚合内单 topic 失败降级为哨兵——
+    /// owner manifest 不再整批 500；毒化经既有 content-only 分支转译为
+    /// SKIP+mismatchedContent；兄弟 owner 逐字节不变。
+    #[tokio::test]
+    async fn owner_content_hash_sentinel_keeps_owner_manifest_alive() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        // agent-a 增开 topic-b；另建健康 owner agent-b 作对照。
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
+        )
+        .expect("write topic-a history");
+        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/topic-b"))
+            .expect("create topic-b dir");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-b/history.json"),
+            br#"[{"id":"m2","role":"user","content":"b","timestamp":2}]"#,
+        )
+        .expect("write topic-b history");
+        fs::write(
+            config.app_data.join("Agents/agent-a/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent A",
+                "topics": [
+                    {"id":"topic-a","name":"Topic A","createdAt":1},
+                    {"id":"topic-b","name":"Topic B","createdAt":2}
+                ]
+            }))
+            .expect("serialize config"),
+        )
+        .expect("write agent-a config");
+        fs::create_dir_all(config.app_data.join("Agents/agent-b")).expect("create agent-b");
+        fs::create_dir_all(config.user_data_dir.join("agent-b/topics/topic-c"))
+            .expect("create topic-c dir");
+        fs::write(
+            config.app_data.join("Agents/agent-b/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent B",
+                "topics": [{"id":"topic-c","name":"Topic C","createdAt":3}]
+            }))
+            .expect("serialize config"),
+        )
+        .expect("write agent-b config");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-b/topics/topic-c/history.json"),
+            br#"[{"id":"m3","role":"user","content":"c","timestamp":3}]"#,
+        )
+        .expect("write topic-c history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let baseline_agents = owner_manifest(&database, OwnerType::Agent).expect("baseline");
+        let baseline_b = baseline_agents
+            .iter()
+            .find(|item| item.id == "agent-b")
+            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
+            .expect("baseline agent-b");
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE history_sources SET status='invalid', last_error='boom'
+                     WHERE topic_id='topic-a'",
+                    [],
+                )
+                .expect("poison history source");
+        }
+
+        // owner manifest 不再失败；agent-a content_hash = 哨兵与健康 topic 的聚合。
+        let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
+        let poisoned_a = agents
+            .iter()
+            .find(|item| item.id == "agent-a")
+            .expect("agent-a entry");
+        assert!(!poisoned_a.degraded, "config 可读时不得标记 degraded");
+        let healthy_b = topic_content_hash(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-b".to_string(),
+            },
+        )
+        .expect("topic-b hash");
+        let expected = aggregate_hash(vec![
+            sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a"),
+            healthy_b,
+        ]);
+        assert_eq!(poisoned_a.content_hash, expected);
+        assert_eq!(poisoned_a.config_hash.len(), 64);
+        // 兄弟 owner 逐字节不变。
+        let after_b = agents
+            .iter()
+            .find(|item| item.id == "agent-b")
+            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
+            .expect("agent-b after");
+        assert_eq!(after_b, baseline_b);
+
+        // 效果链：config 相等 + content 毒化 → 既有分支出 SKIP+mismatchedContent。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "agent".to_string(),
+                data: vec![RemoteManifestItem {
+                    id: "agent-a".to_string(),
+                    hash: poisoned_a.config_hash.clone(),
+                    config_hash: Some(poisoned_a.config_hash.clone()),
+                    content_hash: Some("0".repeat(64)),
+                    ts: 1,
+                    deleted_at: None,
+                    owner_type: None,
+                    owner_id: None,
+                }],
+                targeted_owners: None,
+            },
+        )
+        .expect("agent manifest diff");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "agent-a")
+            .expect("agent-a action");
+        assert_eq!(action.action, "SKIP");
+        assert!(action.mismatched_content);
+    }
+
+    /// 缺口 B（F3）：活 owner 的 config 在 reconcile 间隙被物理删除 →
+    /// 条目降级为 degraded；manifest() 出 SKIP（remote 存活带 mismatchedContent，
+    /// 尾部循环不带），不再整表 500。
+    #[tokio::test]
+    async fn unreadable_owner_config_degrades_to_skip() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        // reconcile 间隙删掉 config（目录还在、行还是活的）。
+        fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
+
+        let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
+        let degraded = agents
+            .iter()
+            .find(|item| item.id == "agent-a")
+            .expect("degraded entry");
+        assert!(degraded.degraded);
+        assert!(degraded.config_hash.is_empty() && degraded.content_hash.is_empty());
+
+        // remote 存活 → SKIP + mismatchedContent（owner 仍进 changed set，
+        // 其下 topic 的 Phase 2 同步不被连坐）。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "agent".to_string(),
+                data: vec![RemoteManifestItem {
+                    id: "agent-a".to_string(),
+                    hash: "a".repeat(64),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some("b".repeat(64)),
+                    ts: 1,
+                    deleted_at: None,
+                    owner_type: None,
+                    owner_id: None,
+                }],
+                targeted_owners: None,
+            },
+        )
+        .expect("agent manifest diff");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "agent-a")
+            .expect("skip action");
+        assert_eq!(action.action, "SKIP");
+        assert!(action.mismatched_content);
+
+        // remote 没有此 owner → 尾部循环 SKIP（避免新手机撞上坏 config 时
+        // 实体下载 attempt-fatal）。
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "agent".to_string(),
+                data: Vec::new(),
+                targeted_owners: None,
+            },
+        )
+        .expect("agent manifest tail");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "agent-a")
+            .expect("tail skip");
+        assert_eq!(action.action, "SKIP");
+        assert!(!action.mismatched_content);
+    }
+
+    /// 缺口 B（F3）边界：degraded owner 遇 remote 墓碑仍出 DELETE——
+    /// 删除语义优先于降级。
+    #[tokio::test]
+    async fn degraded_owner_delete_precedence() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+        fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
+
+        let response = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "agent".to_string(),
+                data: vec![RemoteManifestItem {
+                    id: "agent-a".to_string(),
+                    hash: "a".repeat(64),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some(String::new()),
+                    ts: 1,
+                    deleted_at: Some(9),
+                    owner_type: None,
+                    owner_id: None,
+                }],
+                targeted_owners: None,
+            },
+        )
+        .expect("manifest with remote tombstone");
+        let action = response
+            .data
+            .iter()
+            .find(|action| action.id == "agent-a")
+            .expect("delete action");
+        assert_eq!(action.action, "DELETE");
+        assert_eq!(action.deleted_at, Some(9));
     }
 }
