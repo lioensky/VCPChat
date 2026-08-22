@@ -321,6 +321,7 @@ const allowedSourceDifferencePatterns = [
     /^docs\/contracts\//,
     /^docs\/chat-kernel-evidence-and-contracts-roadmap\.md$/,
     /^docs\/chat-event-producer-consumer-roadmap\.md$/,
+    /^docs\/stream-switch-tool-wait-recovery\.md$/,
     /^scripts\/(?:build-chat-event-graph|check-chat-contracts|check-chat-evidence|check-artifact-plane|run-chat-contract-invariants|test-built-artifact-smoke|test-chat-contract-invalid|test-chat-transcript-snapshot|write-chat-evidence-manifest)\.mjs$/,
     // Evidence-plane runners are release contracts, not UI subtraction code.
     /^scripts\/(?:check-chat-release-evidence|test-artifact-plane-invalid|test-chat-evidence-manifest|test-chat-release-evidence-invalid|test-facade-registry-invalid|test-packaged-artifact-invalid|test-packaged-artifact-smoke)\.mjs$/,

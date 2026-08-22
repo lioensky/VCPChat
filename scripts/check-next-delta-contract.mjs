@@ -391,8 +391,8 @@ assert.doesNotMatch(accountMenuSource, /getMenuRegistry|renderContributions|data
     'account menu must not retain an empty dynamic contribution surface');
 assert.match(read('modules/ui-system/component-showcase.js'), /id: 'ui-component-library'/,
     'the user-visible component library must remain a registered internal application');
-assert.match(read('modules/ui-system/next-shell/launchpad-controller.js'), /getInternalApps\(\)\.forEach/,
-    'Launchpad must continue exposing registered internal applications to users');
+assert.match(read('modules/ui-system/next-shell/launchpad-controller.js'), /getInternalApps\(\)\.filter\(app => app\.discoverable !== false\)\.forEach/,
+    'Launchpad must expose discoverable internal applications while hiding internal test surfaces');
 
 const eventSource = read('modules/event-listeners.js');
 for (const id of [

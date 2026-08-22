@@ -96,4 +96,4 @@ function mountInteractiveChat(container, context = {}) {
     return async () => { submitInteractiveContent = null; form.removeEventListener('submit', onSubmit); form.querySelector('[data-action="cancel"]').removeEventListener('click', onCancel); await surface.dispose(); scope?.dispose?.('interactive-chat-unmounted'); container.replaceChildren(); };
 }
 
-register({ id: 'standalone-chat-compose', title: '独立聊天', icon: 'message-circle', kind: 'internal', mount: mountInteractiveChat });
+register({ id: 'standalone-chat-compose', title: '独立聊天', icon: 'message-circle', kind: 'internal', discoverable: false, mount: mountInteractiveChat });

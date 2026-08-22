@@ -36,3 +36,25 @@ test('launchpad renders shared catalogs and preserves embedded/window actions', 
     assert.equal(dom.window.document.activeElement, rerendered[1]);
     controller.dispose();
 });
+
+test('launchpad hides non-discoverable internal test apps while retaining other internal apps', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="nextUiAppGrid"></div></body>');
+    const opened = [];
+    const controller = new LaunchpadController({
+        document: dom.window.document,
+        getExternalApps: () => [],
+        getInternalApps: () => [
+            { id: 'standalone-chat-history', title: '聊天历史', discoverable: false },
+            { id: 'standalone-chat-compose', title: '独立聊天', discoverable: false },
+            { id: 'showcase', title: '组件库', icon: 'widgets' },
+        ],
+        getIcon: () => '',
+        openInternal: id => opened.push(id),
+    });
+    controller.mount();
+    assert.deepEqual([...dom.window.document.querySelectorAll('.next-ui-internal-app-item')]
+        .map(button => button.textContent), ['widgets组件库']);
+    assert.deepEqual(opened, []);
+    controller.dispose();
+    dom.window.close();
+});

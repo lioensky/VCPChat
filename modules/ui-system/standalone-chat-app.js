@@ -54,4 +54,4 @@ function mountStandaloneChat(container, context = {}) {
     return async () => { focusButton.removeEventListener('click', onFocus); uninstallBadge(); await surface.dispose(); pluginLoader.dispose(); presentationState.dispose(); slots.dispose(); scope?.dispose?.('standalone-chat-unmounted'); container.replaceChildren(); };
 }
 
-register({ id: 'standalone-chat-history', title: '聊天历史', icon: 'chat', kind: 'internal', mount: mountStandaloneChat });
+register({ id: 'standalone-chat-history', title: '聊天历史', icon: 'chat', kind: 'internal', discoverable: false, mount: mountStandaloneChat });
