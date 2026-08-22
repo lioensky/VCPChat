@@ -77,6 +77,34 @@
         }
     }
 
+    async function openLog() {
+        if (!api()?.openLogWindow) {
+            notify('无法打开 VCP 日志：功能不可用。');
+            return { success: false, error: 'openLogWindow unavailable' };
+        }
+        try {
+            await api().openLogWindow();
+            return { success: true };
+        } catch (error) {
+            notify(`打开 VCP 日志失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async function openRagObserver() {
+        if (!api()?.openRAGObserverWindow) {
+            notify('无法打开 VCP 监听：功能不可用。');
+            return { success: false, error: 'openRAGObserverWindow unavailable' };
+        }
+        try {
+            await api().openRAGObserverWindow();
+            return { success: true };
+        } catch (error) {
+            notify(`打开 VCP 监听失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+
     function toggleNotificationFilter() {
         return capability('filterManager', () => window.filterManager)?.toggleFilterMode?.();
     }
@@ -155,6 +183,8 @@
         createItem,
         openForum,
         openMemo,
+        openLog,
+        openRagObserver,
         toggleNotificationFilter,
         openNotificationFilterSettings,
         clearNotifications,
@@ -165,8 +195,9 @@
     const commandTitles = {
         minimize: '最小化窗口', minimizeToTray: '最小化到托盘', toggleMaximize: '切换最大化', close: '关闭窗口',
         openSettings: '打开全局设置', openThemes: '打开主题管理器', toggleTheme: '切换明暗主题', createItem: '创建助手或群组',
-        openForum: '打开论坛', openMemo: '打开记忆', toggleNotificationFilter: '切换通知过滤',
-        openNotificationFilterSettings: '打开通知过滤设置', clearNotifications: '清空通知', createAgent: '创建助手', createGroup: '创建群组',
+        openForum: '打开论坛', openMemo: '打开记忆', openLog: '打开 VCP 日志', openRagObserver: '打开 VCP 监听',
+        toggleNotificationFilter: '切换通知过滤', openNotificationFilterSettings: '打开通知过滤设置',
+        clearNotifications: '清空通知', createAgent: '创建助手', createGroup: '创建群组',
     };
     const commandIds = Object.fromEntries(Object.keys(handlers).map(name => [
         name,

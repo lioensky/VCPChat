@@ -151,7 +151,9 @@
         z-index: 90;
         top: calc(100% + var(--vcp-ui-space-2));
         right: 0;
-        width: 196px;
+        width: min(196px, calc(100vw - var(--vcp-ui-space-4)));
+        max-width: calc(100vw - var(--vcp-ui-space-4));
+        box-sizing: border-box;
         padding: var(--vcp-ui-space-2);
         border: 1px solid var(--vcp-ui-border);
         border-radius: var(--vcp-ui-radius-card);
@@ -251,12 +253,28 @@
         background: var(--vcp-ui-border);
     }
 
-    /* The all-apps popover may be wider than a resized notification rail.
-     * Relax clipping only while it is open; notification rows keep their own
-     * scroll containment and the closed rail retains its original boundary. */
-    html .vcp-ui-scope.notifications-sidebar:has(#appTrayDrawer:is(.active, .is-closing)) {
+    /* Popovers may be wider than a resized notification rail. Relax clipping
+     * only while one is open; notification rows retain their own scrolling and
+     * the closed rail keeps its original boundary. */
+    html .vcp-ui-scope.notifications-sidebar:has(#appTrayDrawer:is(.active, .is-closing)),
+    html .vcp-ui-scope.notifications-sidebar:has(#nextUiNotificationMenu:not([hidden])) {
         z-index: calc(var(--vcp-ui-z-dropdown) - 1);
         overflow: visible;
+    }
+
+    /* Once the rail is narrower than the menu, anchor to the rail's left edge
+     * instead of letting the fixed-width popover disappear beyond that edge. */
+    @container (max-width: 220px) {
+        html .vcp-ui-scope .next-ui-notification-actions {
+            position: static;
+        }
+
+        html .vcp-ui-scope .next-ui-notification-menu {
+            right: var(--vcp-ui-space-2);
+            left: var(--vcp-ui-space-2);
+            width: auto;
+            min-width: min(196px, calc(100vw - var(--vcp-ui-space-4)));
+        }
     }
 
     html .vcp-ui-scope #vchatAppTray {

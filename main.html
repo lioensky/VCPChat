@@ -914,22 +914,27 @@
                     </button>
                     <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
                         aria-label="通知选项" hidden>
-                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP Forum">
-                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
-                            <span>VCP Forum</span>
+                        <button id="nextUiNotificationLog" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开 VCP 日志">
+                            <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
+                            <span>VCP 日志</span>
                         </button>
-                        <button id="nextUiNotificationMemo" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP Memo">
-                            <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
-                            <span>VCP Memo</span>
+                        <button id="nextUiNotificationObserver" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开 VCP 监听">
+                            <span class="vcp-ui-icon" aria-hidden="true">activity</span>
+                            <span>VCP 监听</span>
                         </button>
                         <button id="nextUiNotificationFilterToggle" class="next-ui-notification-menu-item"
                             type="button" role="menuitemcheckbox" aria-checked="false"
-                            title="左键切换过滤模式，右键打开过滤设置">
+                            title="切换通知过滤模式">
                             <span class="vcp-ui-icon" aria-hidden="true">list_filter</span>
                             <span>过滤模式</span>
                             <span id="nextUiNotificationFilterState" class="next-ui-notification-menu-state">关闭</span>
+                        </button>
+                        <button id="nextUiNotificationSettings" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开通知栏行为设置">
+                            <span class="vcp-ui-icon" aria-hidden="true">settings</span>
+                            <span>通知栏设置</span>
                         </button>
                         <div class="next-ui-notification-menu-divider" role="separator"></div>
                         <button id="nextUiNotificationClear" class="next-ui-notification-menu-item danger"
