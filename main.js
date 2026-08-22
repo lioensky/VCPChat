@@ -1,5 +1,37 @@
 // main.js - Electron 主窗口
 
+// Bootstrap-only fatal evidence. The monitor does not consume the exception,
+// so Electron keeps its existing crash behavior while managed/packed launches
+// receive a machine-readable cause instead of a silent ready timeout.
+if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR) {
+    process.on('uncaughtExceptionMonitor', (error, origin) => {
+        try {
+            const bootstrapFs = require('fs');
+            const bootstrapPath = require('path');
+            const diagnostics = bootstrapPath.join(process.env.VCPCHAT_STATE_DIR, 'diagnostics');
+            bootstrapFs.mkdirSync(diagnostics, { recursive: true });
+            const safeOperationId = process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID.replace(/[^a-z0-9_-]/gi, '-');
+            bootstrapFs.writeFileSync(bootstrapPath.join(diagnostics, `fatal-${safeOperationId}.json`), `${JSON.stringify({
+                schemaVersion: 1,
+                operationId: process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID,
+                origin,
+                name: error?.name || 'Error',
+                message: error?.message || String(error),
+                stack: error?.stack || null,
+                at: new Date().toISOString(),
+            }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+        } catch { /* the original fatal error remains authoritative */ }
+    });
+}
+
+function reportLauncherProgress(stage, progress, message) {
+    if (process.env.VCP_LAUNCHER_PROTOCOL !== '1') return;
+    const payload = JSON.stringify({ stage, progress, message });
+    process.stdout.write(`VCP_STARTUP:${payload}\n`);
+}
+
+reportLauncherProgress('process-started', 0.08, 'VChat 进程已启动');
+
 // --- 模块加载性能诊断 ---
 const originalRequire = require;
 require = function (id) {
@@ -19,15 +51,7 @@ const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const { spawn } = require('child_process'); // For executing local python
 const { Worker } = require('worker_threads');
-
-function reportStartup(stage, progress, message) {
-    if (process.env.VCP_LAUNCHER_PROTOCOL !== '1') return;
-    const payload = JSON.stringify({ stage, progress, message });
-    process.stdout.write(`VCP_STARTUP:${payload}\n`);
-}
-
-reportStartup('process-started', 0.08, 'VChat 进程已启动');
-
+const bootstrapLaunchProtocol = require('./modules/bootstrap/launch-protocol');
 const fileManager = require('./modules/fileManager'); // Import the new file manager
 const groupChat = require('./Groupmodules/groupchat'); // Import the group chat module
 const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window IPC handlers
@@ -236,6 +260,9 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
+const NATIVE_SPLASH_READY_FILE = app.isPackaged
+    ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
+    : path.join(__dirname, '.vcp_ready');
 
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
@@ -278,6 +305,61 @@ let mainRendererCrashTimes = [];
 let mainRendererRecoveryTimer = null;
 let mainRendererStableTimer = null;
 let mainRendererFailurePromptOpen = false;
+const managedBootstrapOperationId = process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID?.trim() || null;
+const managedBootstrapStateRoot = process.env.VCPCHAT_STATE_DIR?.trim() || null;
+let managedBootstrapReadyPublished = false;
+
+function publishManagedBootstrapReady(checks) {
+    if (!managedBootstrapOperationId || !managedBootstrapStateRoot || managedBootstrapReadyPublished) return false;
+    try {
+        bootstrapLaunchProtocol.writeReadyRecord({
+            stateRoot: managedBootstrapStateRoot,
+            operationId: managedBootstrapOperationId,
+            buildId: process.env.VCPCHAT_BUILD_ID?.trim() || null,
+            checks,
+        });
+        managedBootstrapReadyPublished = true;
+        console.log(`[Main] Published managed bootstrap ready for ${managedBootstrapOperationId}.`);
+        return true;
+    } catch (error) {
+        console.warn('[Main] Failed to publish managed bootstrap ready:', error.message);
+        return false;
+    }
+}
+
+async function publishManagedBootstrapReadyAfterRenderer() {
+    if (!managedBootstrapOperationId || managedBootstrapReadyPublished || !mainWindow || mainWindow.isDestroyed()) return;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline && mainWindow && !mainWindow.isDestroyed()) {
+        try {
+            const ready = await mainWindow.webContents.executeJavaScript(
+                "document.documentElement.dataset.vcpRendererReady === 'true' && window.__vcpRendererReady === true",
+                true
+            );
+            if (ready) {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                if (!mainWindow.isVisible()) mainWindow.show();
+                mainWindow.focus();
+                mainWindow.moveTop();
+                if (!mainWindow.isVisible()) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    continue;
+                }
+                publishManagedBootstrapReady({
+                    mainWindow: 'visible',
+                    preload: 'ready',
+                    renderer: 'ready',
+                });
+                reportLauncherProgress('renderer-ready', 1, '准备完成');
+                return;
+            }
+        } catch (error) {
+            if (mainWindow?.webContents?.isDestroyed()) return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.warn('[Main] Renderer did not reach managed bootstrap readiness before the publication deadline.');
+}
 
 function clearMainRendererRecoveryTimers() {
     if (mainRendererRecoveryTimer) clearTimeout(mainRendererRecoveryTimer);
@@ -287,6 +369,7 @@ function clearMainRendererRecoveryTimers() {
 }
 
 function markMainRendererStable() {
+    void publishManagedBootstrapReadyAfterRenderer();
     if (mainRendererStableTimer) clearTimeout(mainRendererStableTimer);
     mainRendererStableTimer = setTimeout(() => {
         mainRendererCrashTimes = [];
@@ -363,7 +446,16 @@ function startAudioEngine() {
 
         // Use the Rust audio server binary (moved to audio_engine directory)
         const binaryName = process.platform === 'win32' ? 'audio_server.exe' : 'audio_server';
-        const rustBinaryPath = path.join(__dirname, 'audio_engine', binaryName);
+        const platformDirectory = `${process.platform}-${process.arch}`;
+        const audioRoot = app.isPackaged
+            ? path.join(process.resourcesPath, 'app.asar.unpacked', 'audio_engine')
+            : path.join(__dirname, 'audio_engine');
+        const platformBinaryPath = path.join(audioRoot, 'bin', platformDirectory, binaryName);
+        const legacyBinaryPath = path.join(audioRoot, binaryName);
+        const legacyMatchesPlatform = process.platform === 'win32' || (process.platform === 'linux' && process.arch === 'x64');
+        const rustBinaryPath = fs.existsSync(platformBinaryPath)
+            ? platformBinaryPath
+            : legacyMatchesPlatform ? legacyBinaryPath : platformBinaryPath;
         console.log(`[Main] Starting Rust Audio Engine from: ${rustBinaryPath}`);
 
         // Check if the binary exists
@@ -631,7 +723,15 @@ function createWindow({ deferLoad = false } = {}) {
 
 function loadMainWindow() {
     mainWindow.webContents.once('did-finish-load', () => {
-        reportStartup('renderer-ready', 1.0, '准备完成！');
+        const readyFile = NATIVE_SPLASH_READY_FILE;
+        fs.ensureFileSync(readyFile);
+
+        setTimeout(() => {
+            if (fs.existsSync(readyFile)) {
+                fs.unlinkSync(readyFile);
+            }
+        }, 3000);
+
         mainWindow.show();
     });
 
@@ -751,10 +851,53 @@ function createTray() {
 const gotTheLock = process.argv.includes('--allow-multiple-instances') || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    reportStartup('existing-instance', 1.0, 'VChat 已经在运行');
+    // Tell the managed bootstrapper why this child exits before publishing
+    // ready. This is an expected single-instance handoff, not a crash.
+    if (process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID && process.env.VCPCHAT_STATE_DIR) {
+        try {
+            const bootstrapFs = require('fs');
+            const bootstrapPath = require('path');
+            const markerPath = bootstrapPath.join(process.env.VCPCHAT_STATE_DIR, `already-running-${process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID}.json`);
+            bootstrapFs.mkdirSync(process.env.VCPCHAT_STATE_DIR, { recursive: true });
+            bootstrapFs.writeFileSync(markerPath, JSON.stringify({
+                operationId: process.env.VCPCHAT_BOOTSTRAP_OPERATION_ID,
+                at: new Date().toISOString(),
+            }), { encoding: 'utf8', flag: 'wx' });
+        } catch { /* single-instance exit remains authoritative */ }
+    }
+    // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
+    const isInternalLaunch = process.argv.includes('--desktop-only') || process.argv.includes('--rag-observer-only');
+
+    if (!isInternalLaunch) {
+        const readyFile = NATIVE_SPLASH_READY_FILE;
+        try {
+            fs.ensureFileSync(readyFile);
+            console.log('[Main] Second instance signaled NativeSplash to close.');
+        } catch (err) {
+            // 异常安全：只读/Docker 环境下静默降级，不影响单例聚焦
+            console.warn('[Main] Failed to create .vcp_ready in second instance:', err.message);
+        }
+    }
+    // Another primary instance cannot prove that this operation's project
+    // window rendered. Let the managed launcher observe this child exit rather
+    // than publishing a false ready record and closing the setup UI.
     app.quit();
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
+        // 当第一实例被第二实例唤醒时，延迟 1.5 秒清理可能由第二实例创建的信号文件。
+        // 1.5 秒足够 Rust 闪屏端（200ms轮询）检测并退出，且能 100% 避免冷启动信号残留。
+        const readyFile = NATIVE_SPLASH_READY_FILE;
+        setTimeout(() => {
+            try {
+                if (fs.existsSync(readyFile)) {
+                    fs.unlinkSync(readyFile);
+                    console.log('[Main] Cleaned up .vcp_ready signal created by second instance.');
+                }
+            } catch (err) {
+                console.warn('[Main] Failed to clean up second-instance .vcp_ready:', err.message);
+            }
+        }, 1500);
+
         const wantsRagOnly = commandLine.includes('--rag-observer-only');
         const wantsDesktop = commandLine.includes('--desktop-only');
 
@@ -778,6 +921,11 @@ if (!gotTheLock) {
         // 默认聚焦主窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
+            // macOS deliberately hides the main window when it is closed. A
+            // managed launcher handoff must make that existing instance
+            // visible again, otherwise Recovery exits while the app remains
+            // running invisibly in the background.
+            if (!mainWindow.isVisible()) mainWindow.show();
             mainWindow.focus();
             return;
         }
@@ -795,8 +943,7 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(async () => { // Make the function async
-        reportStartup('electron-ready', 0.16, 'Electron 核心已就绪');
-
+        reportLauncherProgress('electron-ready', 0.16, 'Electron 核心已就绪');
         // 全局处理普通 VChat 窗口的新窗口请求。VCP Loom 的远程 WebContentsView
         // 会由 VCPLoomManager 设置自己的隔离导航策略，因此不在这里提前覆盖。
         app.on('web-contents-created', (event, contents) => {
@@ -814,6 +961,14 @@ if (!gotTheLock) {
             });
         });
 
+        // Handle the emergency close request from the splash screen
+        ipcMain.on('close-app', () => {
+            console.log('[Main] Received close-app request from splash screen. Quitting.');
+            app.quit();
+        });
+
+        // The native splash screen is started by the batch file, so no action is needed here.
+
         // Pre-warm the audio engine in the background. This doesn't block the main window.
         if (process.env.VCPCHAT_E2E_TEST !== '1') startAudioEngine().catch(err => {
             console.error('[Main] Failed to pre-warm audio engine on startup:', err);
@@ -828,9 +983,9 @@ if (!gotTheLock) {
         fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
         fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
         fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
+        reportLauncherProgress('storage-ready', 0.27, '配置与数据目录已就绪');
         fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
         groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
-        reportStartup('storage-ready', 0.27, '配置与数据目录已就绪');
 
         const AppSettingsManager = require('./modules/utils/appSettingsManager');
         const AgentConfigManager = require('./modules/utils/agentConfigManager');
@@ -879,6 +1034,7 @@ if (!gotTheLock) {
             createTray();
 
             await ragHandlers.openRagObserverWindow();
+            publishManagedBootstrapReady({ mainWindow: 'ready', preload: 'ready', renderer: 'ready', surface: 'rag-observer' });
             return;
         }
 
@@ -924,7 +1080,7 @@ if (!gotTheLock) {
         // Create the native window first, but load the renderer only after IPC registration.
         createWindow({ deferLoad: true });
         createTray();
-        reportStartup('window-created', 0.38, '主窗口骨架已创建');
+        reportLauncherProgress('window-created', 0.38, '主窗口骨架已创建');
         // --- Application Menu ---
         const isMac = process.platform === 'darwin';
         const menuTemplate = [
@@ -1160,21 +1316,14 @@ if (!gotTheLock) {
         });
 
         await assistantHandlers.initialize({ SETTINGS_FILE });
-        reportStartup('assistant-ready', 0.56, '小助手已经醒来');
+        reportLauncherProgress('assistant-ready', 0.56, '小助手已经醒来');
         fileDialogHandlers.initialize(mainWindow, {
             getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             openChildWindows
         });
-        deepWikiHandlers.initialize({
-            mainWindow,
-            novaStickerLibraryProvider: () => emoticonHandlers.getEmoticonLibrary(),
-            userNameProvider: async () => {
-                const settings = await appSettingsManager.readSettings();
-                return settings?.userName || '';
-            }
-        });
+        deepWikiHandlers.initialize({ mainWindow });
         groupChatHandlers.initialize(mainWindow, {
             AGENT_DIR,
             USER_DATA_DIR,
@@ -1273,7 +1422,12 @@ if (!gotTheLock) {
             documentHandlers: docxHandlers,
             logger: console,
         });
-        desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+        desktopHandlers.initialize({
+            mainWindow,
+            openChildWindows,
+            settingsManager: appSettingsManager,
+            APP_DATA_ROOT_IN_PROJECT,
+        });
         await embeddedAppSessions?.closeAll();
         embeddedAppTasks?.dispose('main-window-reinitialized');
         embeddedAppTasks = new SenderTaskRegistry({ label: 'embedded-app-tasks' });
@@ -1369,8 +1523,8 @@ if (!gotTheLock) {
             mainWindow,
             openChildWindows
         });
-        reportStartup('workspace-ready', 0.76, '工作空间与功能模块已连接');
         desktopRemoteHandlers.initialize({ mainWindow });
+        reportLauncherProgress('workspace-ready', 0.76, '工作空间与功能模块已连接');
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
@@ -1459,7 +1613,7 @@ if (!gotTheLock) {
         // 主窗口页面完成加载、触发展示后再后台预热 Scriptorium。
         // 不 await：重型 CommonJS 解析不会延迟主窗口首屏；若用户更早打开
         // 文坊，临时 IPC 桥接会立即启动并等待同一个单例加载 Promise。
-        reportStartup('renderer-loading', 0.9, '正在绘制聊天界面');
+        reportLauncherProgress('renderer-loading', 0.9, '正在绘制聊天界面');
         void loadMainWindow()
             .then(() => loadDocxHandlers())
             .catch((error) => {
@@ -1550,6 +1704,12 @@ if (!gotTheLock) {
     });
 
     app.on('will-quit', () => {
+        // 0. Clean up the ready signal file for the native splash screen
+        const readyFile = NATIVE_SPLASH_READY_FILE;
+        if (fs.existsSync(readyFile)) {
+            fs.unlinkSync(readyFile);
+        }
+
         // 1. 停止所有底层监听器
         console.log('[Main] App is quitting. Stopping all listeners...');
         assistantHandlers.stopSelectionListener();

@@ -26,6 +26,14 @@ VCPChat 的核心价值在于其极致的**抽象与集成能力**。
 
 ## 安装与部署
 
+### 推荐入口
+
+普通用户请使用图形启动器：Windows 双击 [`launchers/VCPChat-Launcher.vbs`](launchers/VCPChat-Launcher.vbs)，macOS 使用 [`launchers/VCPChat-Launcher.command`](launchers/VCPChat-Launcher.command)，Linux 使用 [`launchers/VCPChat-Launcher.sh`](launchers/VCPChat-Launcher.sh)。构建后的 NSIS/MSI/DMG/AppImage 是发布产物，入口和产物边界见 [`docs/project-entrypoints.md`](docs/project-entrypoints.md)。
+
+开发者需要可恢复诊断时使用 `npm run vcpchat`；只有需要直接调试 Electron 主进程时才使用 `npm start`。旧版 BAT/VBS 入口仍保留兼容性，但不作为发布验收入口。
+
+安装器与工程债务状态见 [`docs/technical-debt.md`](docs/technical-debt.md)。提交前运行 `npm run check:release-surface`。
+
 1.  **克隆仓库**
 
     克隆此项目到您的本地计算机：

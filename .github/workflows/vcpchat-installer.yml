@@ -1,0 +1,78 @@
+name: VCPChat Installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/bootstrap-installer/**'
+      - 'launchers/**'
+      - 'modules/bootstrap/**'
+      - 'scripts/vcpchat-*.mjs'
+      - '.github/workflows/vcpchat-installer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:installer-contract
+      - run: npm run test:bootstrap
+
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macos-arm64
+            targets: app,dmg
+          - os: windows-2022
+            name: windows-x64
+            targets: portable
+          - os: ubuntu-22.04
+            name: linux-x64
+            targets: appimage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --ignore-scripts
+      - run: npm ci --prefix apps/bootstrap-installer --ignore-scripts
+      - name: Build installer bundles
+        if: runner.os != 'Windows'
+        run: npm --prefix apps/bootstrap-installer run tauri:build -- --bundles "${{ matrix.targets }}" --ci
+      - name: Build portable Windows bootstrap
+        if: runner.os == 'Windows'
+        run: npm run installer:portable
+      - name: Upload unsigned bundle evidence (non-Windows)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpchat-installer-${{ matrix.name }}
+          if-no-files-found: error
+          path: apps/bootstrap-installer/src-tauri/target/release/bundle/**
+      - name: Upload unsigned bundle evidence (Windows portable)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpchat-installer-${{ matrix.name }}
+          if-no-files-found: error
+          path: VCPChat-Setup.exe
+      # Signing/notarization is deliberately a separate protected release job.
+      # A green matrix build is platform packaging evidence, not a signed release.
