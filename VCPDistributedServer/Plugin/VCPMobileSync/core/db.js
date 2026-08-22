@@ -433,20 +433,16 @@ function softDeleteAvatarIndex(ownerId, ownerType, deletedAt = Date.now()) {
     .run(deletedAt, deletedAt, ownerId, ownerType);
 }
 
-function updateTopicAggregatedHash(topicId, aggregatedHash, updatedAt = Date.now()) {
+function updateTopicAggregatedHash(topicId, aggregatedHash) {
   if (!db) throw new Error("Database not initialized");
 
   return db.prepare(
     `UPDATE entity_index
-     SET updated_at = CASE
-           WHEN aggregated_hash IS NOT ? THEN ?
-           ELSE updated_at
-         END,
-         aggregated_hash = ?
+     SET aggregated_hash = ?
      WHERE id = ?
        AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')
        AND deleted_at IS NULL`,
-  ).run(aggregatedHash, updatedAt, aggregatedHash, topicId);
+  ).run(aggregatedHash, topicId);
 }
 
 /**

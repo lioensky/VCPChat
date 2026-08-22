@@ -14,7 +14,7 @@ function extractAgentTopicDTO(topic, ownerId) {
   return {
     id: topic.id,
     name: topic.name,
-    createdAt: parseInt(topic.createdAt),
+    createdAt: parseInt(topic.createdAt ?? 0),
     locked: topic.locked ?? AGENT_TOPIC_DEFAULTS.locked,
     unread: topic.unread ?? AGENT_TOPIC_DEFAULTS.unread,
     ownerId,
@@ -26,7 +26,7 @@ function extractGroupTopicDTO(topic, ownerId) {
   return {
     id: topic.id,
     name: topic.name,
-    createdAt: parseInt(topic.createdAt),
+    createdAt: parseInt(topic.createdAt ?? 0),
     ownerId,
   };
 }

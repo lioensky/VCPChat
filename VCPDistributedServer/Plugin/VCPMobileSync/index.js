@@ -755,8 +755,8 @@ function computeAggregatedHashes(db, logger) {
 
       if (rootHash !== e.aggregated_hash) {
         db.prepare(
-          "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND type = ?",
-        ).run(rootHash, Date.now(), e.id, e.type);
+          "UPDATE entity_index SET aggregated_hash = ? WHERE id = ? AND type = ?",
+        ).run(rootHash, e.id, e.type);
         updatedCount++;
       }
     }
@@ -776,8 +776,8 @@ function computeAggregatedHashes(db, logger) {
     for (const t of nullTopics) {
       if (t.aggregated_hash !== emptyContentHash) {
         db.prepare(
-          "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-        ).run(emptyContentHash, Date.now(), t.id);
+          "UPDATE entity_index SET aggregated_hash = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
+        ).run(emptyContentHash, t.id);
         updatedCount++;
       }
     }
@@ -917,8 +917,9 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     );
 
     // 索引主实体
+    const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
     const hash = computeDtoHash(
-      config,
+      dto,
       type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
     );
     upsertEntityIndex(id, type, configPath, hash, now);
@@ -935,8 +936,9 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
         ) {
           continue;
         }
+        const topicDto = extractTopicDTO(topic, id, type);
         const topicHash = computeDtoHash(
-          topic,
+          topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
         upsertEntityIndex(topic.id, "topic", configPath, topicHash, now);

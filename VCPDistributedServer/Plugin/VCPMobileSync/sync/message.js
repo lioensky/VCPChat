@@ -656,7 +656,7 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
       }
 
       const topicRootHash = computeAggregatedHash(fingerprints);
-      const updated = updateTopicAggregatedHash(topicId, topicRootHash, now);
+      const updated = updateTopicAggregatedHash(topicId, topicRootHash);
       if (updated.changes !== 1) {
         // 区分 0 行（孤儿话题：磁盘历史在、config 索引缺席）与 >1 行（跨 owner 歧义）
         const matches = db

@@ -255,12 +255,10 @@ impl Database {
                 config_path=excluded.config_path,
                 config_hash=excluded.config_hash,
                 updated_at=CASE
-                    WHEN owners.display_name IS NOT excluded.display_name
-                      OR owners.config_path IS NOT excluded.config_path
-                      OR owners.config_hash IS NOT excluded.config_hash
-                      OR owners.deleted_at IS NOT NULL
-                    THEN excluded.updated_at
-                    ELSE owners.updated_at
+                    WHEN owners.deleted_at IS NOT NULL THEN excluded.updated_at
+                    WHEN owners.config_hash IS excluded.config_hash THEN owners.updated_at
+                    WHEN ?7 IS NOT NULL AND owners.config_hash IS ?7 THEN owners.updated_at
+                    ELSE excluded.updated_at
                 END,
                 deleted_at=NULL",
             params![
@@ -270,6 +268,7 @@ impl Database {
                 owner.config_path.to_string_lossy(),
                 owner.config_hash,
                 now,
+                owner.source_config_hash,
             ],
         )?;
         transaction.execute(
@@ -307,14 +306,10 @@ impl Database {
                     config_hash=excluded.config_hash,
                     metadata_json=excluded.metadata_json,
                     updated_at=CASE
-                        WHEN topics.display_name IS NOT excluded.display_name
-                          OR topics.created_at IS NOT excluded.created_at
-                          OR topics.topic_ordinal IS NOT excluded.topic_ordinal
-                          OR topics.config_hash IS NOT excluded.config_hash
-                          OR topics.metadata_json IS NOT excluded.metadata_json
-                          OR topics.deleted_at IS NOT NULL
-                        THEN excluded.updated_at
-                        ELSE topics.updated_at
+                        WHEN topics.deleted_at IS NOT NULL THEN excluded.updated_at
+                        WHEN topics.config_hash IS excluded.config_hash THEN topics.updated_at
+                        WHEN ?11 IS NOT NULL AND topics.config_hash IS ?11 THEN topics.updated_at
+                        ELSE excluded.updated_at
                     END,
                     deleted_at=NULL",
                 params![
@@ -324,10 +319,11 @@ impl Database {
                     topic.display_name,
                     topic.created_at,
                     topic.ordinal,
-                    owner.config_hash,
+                    topic.config_hash,
                     topic.metadata.to_string(),
                     source_path.to_string_lossy(),
                     now,
+                    owner.source_config_hash,
                 ],
             )?;
             transaction.execute(
@@ -389,15 +385,9 @@ impl Database {
                 metadata_json=excluded.metadata_json,
                 source_path=excluded.source_path,
                 updated_at=CASE
-                    WHEN topics.display_name IS NOT excluded.display_name
-                      OR topics.created_at IS NOT excluded.created_at
-                      OR topics.topic_ordinal IS NOT excluded.topic_ordinal
-                      OR topics.config_hash IS NOT excluded.config_hash
-                      OR topics.metadata_json IS NOT excluded.metadata_json
-                      OR topics.source_path IS NOT excluded.source_path
-                      OR topics.deleted_at IS NOT NULL
-                    THEN excluded.updated_at
-                    ELSE topics.updated_at
+                    WHEN topics.deleted_at IS NOT NULL THEN excluded.updated_at
+                    WHEN topics.config_hash IS excluded.config_hash THEN topics.updated_at
+                    ELSE excluded.updated_at
                 END,
                 deleted_at=NULL",
             params![
@@ -558,15 +548,13 @@ impl Database {
         transaction.execute(
             "UPDATE topics SET
                 content_hash=NULL,
-                content_revision=?4,
-                updated_at=?5
+                content_revision=?4
              WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
             params![
                 source.key.owner_type.as_str(),
                 source.key.owner_id,
                 source.key.topic_id,
                 revision,
-                now,
             ],
         )?;
         transaction.execute(
@@ -701,7 +689,7 @@ impl Database {
             upsert_message_tombstone(&transaction, key, &msg_id, origin, deleted_at)?;
         }
         let changed = transaction.execute(
-            "UPDATE topics SET content_revision=?4, updated_at=?5
+            "UPDATE topics SET content_revision=?4
              WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
                AND deleted_at IS NULL",
             params![
@@ -709,7 +697,6 @@ impl Database {
                 key.owner_id,
                 key.topic_id,
                 revision,
-                now,
             ],
         )?;
         anyhow::ensure!(
@@ -1022,7 +1009,6 @@ impl Database {
             "UPDATE topics SET
                 content_hash=?4,
                 content_revision=?5,
-                updated_at=?6,
                 deleted_at=NULL
              WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
             params![
@@ -1031,7 +1017,6 @@ impl Database {
                 source.key.topic_id,
                 content_hash,
                 revision,
-                now,
             ],
         )?;
 

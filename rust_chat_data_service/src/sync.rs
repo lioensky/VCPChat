@@ -1811,6 +1811,13 @@ fn canonical_wire_hash(value: &str) -> Option<String> {
 fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String> {
     let root = serde_json::from_slice::<Value>(&fs::read(path)?)
         .with_context(|| format!("invalid owner config {}", path.display()))?;
+    mobile_owner_config_hash_from_value(owner_type, &root)
+}
+
+pub(crate) fn mobile_owner_config_hash_from_value(
+    owner_type: OwnerType,
+    root: &Value,
+) -> Result<String> {
     let object = root.as_object().context("owner config must be an object")?;
     let mut dto = Map::new();
 
@@ -1834,25 +1841,31 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
                 "model",
                 Value::String("gemini-2.5-flash".into()),
             );
-            insert_defaulted(
-                &mut dto,
-                object,
-                "temperature",
-                serde_json::Number::from_f64(1.0)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null),
+            dto.insert(
+                "temperature".into(),
+                normalize_float(&defaulted_value(
+                    object,
+                    "temperature",
+                    serde_json::Number::from_f64(1.0)
+                        .map(Value::Number)
+                        .unwrap_or(Value::Null),
+                )),
             );
-            insert_defaulted(
-                &mut dto,
-                object,
-                "contextTokenLimit",
-                Value::Number(1_000_000.into()),
+            dto.insert(
+                "contextTokenLimit".into(),
+                normalize_integer(&defaulted_value(
+                    object,
+                    "contextTokenLimit",
+                    Value::Number(1_000_000.into()),
+                )),
             );
-            insert_defaulted(
-                &mut dto,
-                object,
-                "maxOutputTokens",
-                Value::Number(64_000.into()),
+            dto.insert(
+                "maxOutputTokens".into(),
+                normalize_integer(&defaulted_value(
+                    object,
+                    "maxOutputTokens",
+                    Value::Number(64_000.into()),
+                )),
             );
             insert_defaulted(&mut dto, object, "streamOutput", Value::Bool(true));
         }
@@ -1891,15 +1904,20 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
                 "tagMatchMode",
                 Value::String("strict".into()),
             );
-            if let Some(value) = object.get("createdAt").filter(|value| !value.is_null()) {
-                dto.insert("createdAt".into(), normalize_integer(value));
-            }
+            dto.insert(
+                "createdAt".into(),
+                normalize_integer(&defaulted_value(
+                    object,
+                    "createdAt",
+                    Value::Number(0.into()),
+                )),
+            );
         }
     }
     Ok(hash_stable_object(&dto))
 }
 
-fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
+pub(crate) fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
     let source = metadata.as_object().cloned().unwrap_or_default();
     let mut dto = Map::new();
     dto.insert("id".into(), Value::String(key.topic_id.clone()));
@@ -1912,7 +1930,7 @@ fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
         source
             .get("createdAt")
             .map(normalize_integer)
-            .unwrap_or(Value::Null),
+            .unwrap_or_else(|| Value::Number(0.into())),
     );
     if key.owner_type == OwnerType::Agent {
         dto.insert(
@@ -1933,12 +1951,27 @@ fn insert_defaulted(
     key: &str,
     default: Value,
 ) {
-    let value = source
+    target.insert(key.to_string(), defaulted_value(source, key, default));
+}
+
+fn defaulted_value(source: &Map<String, Value>, key: &str, default: Value) -> Value {
+    source
         .get(key)
         .filter(|value| !value.is_null())
         .cloned()
-        .unwrap_or(default);
-    target.insert(key.to_string(), value);
+        .unwrap_or(default)
+}
+
+fn normalize_float(value: &Value) -> Value {
+    let number = match value {
+        Value::String(value) => value.parse::<f64>().ok(),
+        Value::Number(value) => value.as_f64(),
+        _ => None,
+    };
+    number
+        .and_then(serde_json::Number::from_f64)
+        .map(Value::Number)
+        .unwrap_or(Value::Null)
 }
 
 fn normalize_integer(value: &Value) -> Value {
@@ -1966,6 +1999,7 @@ fn stable_stringify(value: &Value, key: &str) -> String {
         Value::Number(value) if key == "temperature" => value
             .as_f64()
             .map(|number| {
+                let number = (number * 100.0).round() / 100.0;
                 if number.fract() == 0.0 {
                     format!("{number:.1}")
                 } else {
@@ -2095,12 +2129,13 @@ mod tests {
 
     use super::{
         aggregate_hash, manifest, message_diff, message_leaf_hash, message_manifest,
-        mobile_message_hash_from_json, owner_content_hash, owner_manifest, pull_topic_messages,
-        push_messages, topic_content_hash, topic_hash_diff, topic_identity, topic_leaf_hash,
-        topic_manifest, topic_manifests, unique_manifest_item_by_id, validate_manifest_request,
-        ManifestItem, ManifestRequest, MessageDiffRequest, MessageDiffState, MessageVersionState,
-        MessagesPullTopic, MessagesPushRequest, MessagesPushTopic, RemoteManifestItem,
-        TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
+        mobile_message_hash_from_json, mobile_owner_config_hash_from_value, owner_content_hash,
+        owner_manifest, pull_topic_messages, push_messages, topic_content_hash, topic_hash_diff,
+        topic_identity, topic_leaf_hash, topic_manifest, topic_manifests,
+        unique_manifest_item_by_id, validate_manifest_request, ManifestItem, ManifestRequest,
+        MessageDiffRequest, MessageDiffState, MessageVersionState, MessagesPullTopic,
+        MessagesPushRequest, MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest,
+        TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2144,6 +2179,53 @@ mod tests {
         let database = Database::open(&config.database_path).expect("open database");
         let reconciler = Reconciler::new(config.clone(), database.clone());
         (temp, config, database, reconciler)
+    }
+
+    #[test]
+    fn owner_hash_normalizes_temperature_and_numeric_strings_like_mobile_legacy() {
+        let base = json!({
+            "name": "Nova",
+            "systemPrompt": "system",
+            "model": "model-a",
+            "temperature": "0.704",
+            "contextTokenLimit": "1000",
+            "maxOutputTokens": "2000",
+            "streamOutput": true
+        });
+        let rounded = json!({
+            "name": "Nova",
+            "systemPrompt": "system",
+            "model": "model-a",
+            "temperature": 0.70,
+            "contextTokenLimit": 1000,
+            "maxOutputTokens": 2000,
+            "streamOutput": true
+        });
+        let changed = json!({
+            "name": "Nova",
+            "systemPrompt": "system",
+            "model": "model-a",
+            "temperature": 0.706,
+            "contextTokenLimit": 1000,
+            "maxOutputTokens": 2000,
+            "streamOutput": true
+        });
+        let base_hash =
+            mobile_owner_config_hash_from_value(OwnerType::Agent, &base).expect("hash base agent");
+        assert_eq!(
+            base_hash,
+            "a0d2b840400413446fb02e237d21747e735ee35af2684c25667a83ac5e066c4a"
+        );
+        assert_eq!(
+            base_hash,
+            mobile_owner_config_hash_from_value(OwnerType::Agent, &rounded)
+                .expect("hash rounded agent")
+        );
+        assert_ne!(
+            base_hash,
+            mobile_owner_config_hash_from_value(OwnerType::Agent, &changed)
+                .expect("hash changed agent")
+        );
     }
 
     fn manifest_item(id: &str, owner_type: OwnerType, owner_id: &str) -> ManifestItem {

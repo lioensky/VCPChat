@@ -72,6 +72,7 @@ pub struct OwnerRecord {
     pub display_name: String,
     pub config_path: PathBuf,
     pub config_hash: String,
+    pub source_config_hash: Option<String>,
     pub topics: Vec<TopicDefinition>,
 }
 
@@ -82,6 +83,7 @@ pub struct TopicDefinition {
     pub display_name: Option<String>,
     pub created_at: Option<i64>,
     pub ordinal: i64,
+    pub config_hash: String,
     pub metadata: Value,
 }
 

@@ -26,6 +26,7 @@ const GROUP_DEFAULTS = {
   useUnifiedModel: false,
   unifiedModel: "",
   tagMatchMode: "strict",
+  createdAt: 0,
   avatar: null,
   avatarCalculatedColor: null,
 };
@@ -61,11 +62,11 @@ const AGENT_TOPIC_DEFAULTS = {
  * @returns {object} 完整配置
  */
 function createAgentConfig(id, dto) {
-  const name = dto.name || AGENT_DEFAULTS.name;
+  const name = dto.name ?? AGENT_DEFAULTS.name;
   return {
     // 注意：Agent 配置不写入 id 字段，id 由目录名推导
     name,
-    systemPrompt: dto.systemPrompt || `你是 ${name}。`,
+    systemPrompt: dto.systemPrompt ?? `你是 ${name}。`,
     model: dto.model ?? AGENT_DEFAULTS.model,
     temperature: dto.temperature ?? AGENT_DEFAULTS.temperature,
     contextTokenLimit: dto.contextTokenLimit ?? AGENT_DEFAULTS.contextTokenLimit,
@@ -86,7 +87,7 @@ function createAgentConfig(id, dto) {
 function createGroupConfig(id, dto) {
   return {
     id,
-    name: dto.name || GROUP_DEFAULTS.name,
+    name: dto.name ?? GROUP_DEFAULTS.name,
     avatar: GROUP_DEFAULTS.avatar,
     avatarCalculatedColor: GROUP_DEFAULTS.avatarCalculatedColor,
     members: dto.members ?? GROUP_DEFAULTS.members,
@@ -97,7 +98,7 @@ function createGroupConfig(id, dto) {
     invitePrompt: dto.invitePrompt ?? GROUP_DEFAULTS.invitePrompt,
     useUnifiedModel: dto.useUnifiedModel ?? GROUP_DEFAULTS.useUnifiedModel,
     unifiedModel: dto.unifiedModel ?? GROUP_DEFAULTS.unifiedModel,
-    createdAt: dto.createdAt || Date.now(),
+    createdAt: dto.createdAt ?? GROUP_DEFAULTS.createdAt,
     topics: [],
   };
 }

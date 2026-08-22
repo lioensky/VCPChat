@@ -14,6 +14,7 @@ use crate::{
         TopicKey, TopicSource,
     },
     storage::{now_ms, Database, IngestCommit},
+    sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
 };
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -191,15 +192,22 @@ impl Reconciler {
             if configured_topic_ids.contains(topic_id.as_str()) {
                 continue;
             }
+            let key = TopicKey {
+                owner_type: configured_owner.key.owner_type,
+                owner_id: configured_owner.key.owner_id.clone(),
+                topic_id: topic_id.clone(),
+            };
+            let metadata = serde_json::json!({
+                "orphanHistory": true,
+                "compatibilityStatus": "history_not_listed_in_config"
+            });
             topics.push(TopicDefinition {
                 topic_id,
                 display_name: None,
                 created_at: None,
                 ordinal: next_ordinal,
-                metadata: serde_json::json!({
-                    "orphanHistory": true,
-                    "compatibilityStatus": "history_not_listed_in_config"
-                }),
+                config_hash: mobile_topic_config_hash(&key, &metadata),
+                metadata,
             });
             next_ordinal += 1;
         }
@@ -333,6 +341,7 @@ impl Reconciler {
             display_name,
             config_path: config_path.into(),
             config_hash: "physical-owner-recovery".to_string(),
+            source_config_hash: None,
             topics: Vec::new(),
         }))
     }
@@ -354,7 +363,7 @@ impl Reconciler {
                 .join("topics")
                 .join(&topic.topic_id)
                 .join("history.json"),
-            config_hash: owner.config_hash.clone(),
+            config_hash: topic.config_hash.clone(),
             topic_metadata: topic.metadata.clone(),
         }
     }
@@ -440,11 +449,17 @@ pub fn parse_owner_config(
                 .filter_map(|(ordinal, value)| {
                     let topic = value.as_object()?;
                     let topic_id = string_value(topic.get("id"))?;
+                    let key = TopicKey {
+                        owner_type,
+                        owner_id: owner_id.clone(),
+                        topic_id: topic_id.clone(),
+                    };
                     Some(TopicDefinition {
                         topic_id,
                         display_name: string_value(topic.get("name")),
                         created_at: integer_value(topic.get("createdAt")),
                         ordinal: ordinal as i64,
+                        config_hash: mobile_topic_config_hash(&key, value),
                         metadata: value.clone(),
                     })
                 })
@@ -452,6 +467,7 @@ pub fn parse_owner_config(
         })
         .unwrap_or_default();
 
+    let source_config_hash = sha256_hex(&bytes);
     Ok(OwnerRecord {
         key: OwnerKey {
             owner_type,
@@ -459,7 +475,8 @@ pub fn parse_owner_config(
         },
         display_name,
         config_path: config_path.to_path_buf(),
-        config_hash: sha256_hex(&bytes),
+        config_hash: mobile_owner_config_hash_from_value(owner_type, &root)?,
+        source_config_hash: Some(source_config_hash),
         topics,
     })
 }
@@ -731,7 +748,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{normalize_history, Reconciler};
+    use super::{normalize_history, parse_owner_config, sha256_hex, Reconciler};
     use crate::{
         config::{Cli, ServiceConfig},
         domain::{OwnerKey, OwnerType, TopicKey},
@@ -740,6 +757,7 @@ mod tests {
         search::{MessageSearchRequest, SearchIndex},
         storage::Database,
     };
+    use serde_json::Value;
 
     fn fixture() -> (TempDir, Arc<ServiceConfig>, Database, Reconciler) {
         let temp = TempDir::new().expect("create temp directory");
@@ -888,7 +906,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn noop_reconcile_preserves_owner_and_topic_updated_at() {
+    async fn config_hash_transition_and_content_changes_keep_clock_semantics() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -907,51 +925,162 @@ mod tests {
         );
         reconciler.reconcile().await.expect("initial reconcile");
 
+        let config_path = config.agents_dir.join("agent_stable/config.json");
+        let legacy_raw_hash = sha256_hex(&fs::read(&config_path).expect("read config"));
         {
             let connection = database.connection.lock();
             connection
                 .execute(
-                    "UPDATE owners SET updated_at=123
+                    "UPDATE owners SET config_hash=?1, updated_at=123
                      WHERE owner_type='agent' AND owner_id='agent_stable'",
-                    [],
+                    [&legacy_raw_hash],
                 )
                 .expect("set owner timestamp sentinel");
             connection
                 .execute(
-                    "UPDATE topics SET updated_at=456
+                    "UPDATE topics SET config_hash=?1, updated_at=456
                      WHERE owner_type='agent' AND owner_id='agent_stable'
                        AND topic_id='topic_stable'",
-                    [],
+                    [&legacy_raw_hash],
                 )
                 .expect("set topic timestamp sentinel");
         }
 
-        let stats = reconciler.reconcile().await.expect("no-op reconcile");
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("legacy hash transition");
         assert_eq!(stats.files_ingested, 0);
         assert_eq!(stats.files_skipped, 1);
-        let (owner_updated_at, topic_updated_at) = {
+        let parsed = parse_owner_config(OwnerType::Agent, "agent_stable".to_string(), &config_path)
+            .expect("parse canonical hashes");
+        let (owner_hash, topic_hash, owner_updated_at, topic_updated_at) = {
             let connection = database.connection.lock();
-            let owner_updated_at = connection
+            let owner = connection
                 .query_row(
-                    "SELECT updated_at FROM owners
+                    "SELECT config_hash, updated_at FROM owners
                      WHERE owner_type='agent' AND owner_id='agent_stable'",
                     [],
-                    |row| row.get::<_, i64>(0),
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
                 )
-                .expect("read owner timestamp");
-            let topic_updated_at = connection
+                .expect("read owner state");
+            let topic = connection
                 .query_row(
-                    "SELECT updated_at FROM topics
+                    "SELECT config_hash, updated_at FROM topics
                      WHERE owner_type='agent' AND owner_id='agent_stable'
                        AND topic_id='topic_stable'",
                     [],
-                    |row| row.get::<_, i64>(0),
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
                 )
-                .expect("read topic timestamp");
-            (owner_updated_at, topic_updated_at)
+                .expect("read topic state");
+            (owner.0, topic.0, owner.1, topic.1)
         };
+        assert_eq!(owner_hash, parsed.config_hash);
+        assert_eq!(topic_hash, parsed.topics[0].config_hash);
         assert_eq!(owner_updated_at, 123);
         assert_eq!(topic_updated_at, 456);
+
+        let mut physical: Value = serde_json::from_slice(
+            &fs::read(&config_path).expect("read config before private update"),
+        )
+        .expect("parse config before private update");
+        physical["current_topic_id"] = Value::String("topic_stable".to_string());
+        physical["topics"][0]["unreadSource"] = Value::String("manual".to_string());
+        fs::write(
+            &config_path,
+            serde_json::to_vec_pretty(&physical).expect("serialize private update"),
+        )
+        .expect("write private update");
+        reconciler
+            .reconcile()
+            .await
+            .expect("private-only reconcile");
+        {
+            let connection = database.connection.lock();
+            let state: (i64, i64, String) = connection
+                .query_row(
+                    "SELECT o.updated_at, t.updated_at, t.metadata_json FROM owners o JOIN topics t
+                       ON t.owner_type=o.owner_type AND t.owner_id=o.owner_id
+                     WHERE o.owner_type='agent' AND o.owner_id='agent_stable'
+                       AND t.topic_id='topic_stable'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .expect("read private-only state");
+            assert_eq!((state.0, state.1), (123, 456));
+            assert_eq!(
+                serde_json::from_str::<Value>(&state.2).expect("parse stored metadata")
+                    ["unreadSource"],
+                "manual"
+            );
+        }
+
+        physical["topics"][0]["unread"] = Value::Bool(true);
+        fs::write(
+            &config_path,
+            serde_json::to_vec_pretty(&physical).expect("serialize topic update"),
+        )
+        .expect("write topic update");
+        reconciler.reconcile().await.expect("topic DTO reconcile");
+        let (owner_after_topic, topic_after_dto): (i64, i64) = {
+            let connection = database.connection.lock();
+            connection
+                .query_row(
+                    "SELECT o.updated_at, t.updated_at FROM owners o JOIN topics t
+                       ON t.owner_type=o.owner_type AND t.owner_id=o.owner_id
+                     WHERE o.owner_type='agent' AND o.owner_id='agent_stable'
+                       AND t.topic_id='topic_stable'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("read topic DTO times")
+        };
+        assert_eq!(owner_after_topic, 123);
+        assert!(topic_after_dto > 456);
+
+        let revision_before: i64 = {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE topics SET updated_at=789
+                     WHERE owner_type='agent' AND owner_id='agent_stable'
+                       AND topic_id='topic_stable'",
+                    [],
+                )
+                .expect("set content-path timestamp sentinel");
+            connection
+                .query_row(
+                    "SELECT content_revision FROM topics
+                     WHERE owner_type='agent' AND owner_id='agent_stable'
+                       AND topic_id='topic_stable'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("read content revision")
+        };
+        write_history(
+            &config,
+            "agent_stable",
+            "topic_stable",
+            serde_json::json!([
+                {"id":"message_stable","role":"user","content":"changed","timestamp":1}
+            ]),
+        );
+        reconciler.reconcile().await.expect("content reconcile");
+        let (content_time, revision_after): (i64, i64) = {
+            let connection = database.connection.lock();
+            connection
+                .query_row(
+                    "SELECT updated_at, content_revision FROM topics
+                     WHERE owner_type='agent' AND owner_id='agent_stable'
+                       AND topic_id='topic_stable'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("read content state")
+        };
+        assert_eq!(content_time, 789);
+        assert!(revision_after > revision_before);
     }
 
     #[tokio::test]
