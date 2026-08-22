@@ -87,7 +87,7 @@ jobs:
       - name: Install package graph without native lifecycle scripts
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
-        run: npm ci --ignore-scripts --omit=optional
+        run: npm ci --ignore-scripts
 
       - name: Build locked CDS runtime
         run: npm run build
