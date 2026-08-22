@@ -58,11 +58,6 @@ pub struct ManifestItem {
     pub owner_type: Option<OwnerType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<String>,
-    /// 缺口 B 降级标记：owner 的 config 不可读/不可解析时置位。
-    /// 纯内部状态（serde skip，不上 wire）——manifest() 据此把该条目降级为
-    /// SKIP（手机端本轮跳过），而非让单条故障炸掉整批 manifest（500）。
-    #[serde(skip)]
-    pub degraded: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -528,23 +523,6 @@ pub fn manifest(database: &Database, mut request: ManifestRequest) -> Result<Man
             continue;
         }
 
-        // 缺口 B 降级：owner 条目在生成时 config 不可读（degraded）。
-        // 下游实体下载对手机端是 attempt-fatal，不能靠哨兵哈希把它推向 PULL；
-        // 降级为 SKIP——手机端本轮跳过该 owner，但 mismatchedContent=true 仍把
-        // owner 记入 changed set，其下健康 topic 在 Phase 2 照常同步
-        // （topic 元数据来自 DB，不读 owner config 文件）。
-        if local.degraded {
-            actions.push(ManifestAction {
-                id: local.id.clone(),
-                action: "SKIP".to_string(),
-                deleted_at: None,
-                owner_type: local.owner_type,
-                owner_id: local.owner_id.clone(),
-                mismatched_content: true,
-            });
-            continue;
-        }
-
         let remote_config = remote.config_hash.as_deref().unwrap_or(&remote.hash);
         let remote_content = remote.content_hash.as_deref().unwrap_or_default();
         let config_changed = local.config_hash != remote_config;
@@ -575,16 +553,10 @@ pub fn manifest(database: &Database, mut request: ManifestRequest) -> Result<Man
         if processed.contains(&key) {
             continue;
         }
-        // degraded 条目在尾部循环同样降级为 SKIP：手机还没有这个 owner 时，
-        // PULL 会走向 attempt-fatal 的实体下载——本轮跳过，待 config 自愈后
-        // 下轮正常 PULL。mismatchedContent=false：手机端没有该 owner，
-        // 不把它记入 changed set，避免为其下 topic 生成孤儿动作。
         actions.push(ManifestAction {
             id: local.id,
             action: if local.deleted_at.is_some() {
                 "DELETE"
-            } else if local.degraded {
-                "SKIP"
             } else {
                 "PULL"
             }
@@ -1289,29 +1261,25 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
                     deleted_at,
                     owner_type: Some(owner_type),
                     owner_id: Some(owner_id),
-                    degraded: false,
                 });
             }
-            // 缺口 B 降级：活 owner 的 config 在两次 reconcile 之间被删/写半截/
-            // 不可读时，不再让单条失败炸掉整批 manifest（Phase 1 整表 500），
-            // 降级为 degraded 条目——manifest() 对其产出 SKIP（详见 manifest()）。
-            // owner_content_hash 内部已按 topic 哨兵化（缺口 C），到达这里的
-            // 失败基本只剩 config 本身的读/解析失败。
+            // 活 owner 的 config 在两次 reconcile 之间被删、写半截或不可读时，
+            // 保留空哈希条目参与正常 diff；不得静默转成 SKIP。
             let hashes = (|| {
                 let config_hash = mobile_owner_config_hash(owner_type, Path::new(&config_path))?;
                 let content_hash = owner_content_hash(database, owner_type, &owner_id)?;
                 Ok::<_, anyhow::Error>((config_hash, content_hash))
             })();
-            let (config_hash, content_hash, degraded) = match hashes {
-                Ok((config_hash, content_hash)) => (config_hash, content_hash, false),
+            let (config_hash, content_hash) = match hashes {
+                Ok((config_hash, content_hash)) => (config_hash, content_hash),
                 Err(error) => {
                     tracing::warn!(
                         owner_type = %owner_type.as_str(),
                         owner_id = %owner_id,
                         error = %format!("{error:#}"),
-                        "owner manifest entry degraded: config unreadable; skipping owner this round"
+                        "owner manifest entry degraded: config unreadable"
                     );
-                    (String::new(), String::new(), true)
+                    (String::new(), String::new())
                 }
             };
             Ok(ManifestItem {
@@ -1323,7 +1291,6 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
                 deleted_at,
                 owner_type: Some(owner_type),
                 owner_id: Some(owner_id),
-                degraded,
             })
         })
         .collect()
@@ -1399,7 +1366,6 @@ fn topic_manifests(
                         deleted_at: None,
                         owner_type: Some(key.owner_type),
                         owner_id: Some(key.owner_id.clone()),
-                        degraded: false,
                     })
                 }
             }
@@ -1444,7 +1410,6 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
             deleted_at,
             owner_type: Some(key.owner_type),
             owner_id: Some(key.owner_id.clone()),
-            degraded: false,
         });
     }
     let metadata =
@@ -1460,7 +1425,6 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
         deleted_at,
         owner_type: Some(key.owner_type),
         owner_id: Some(key.owner_id.clone()),
-        degraded: false,
     })
 }
 
@@ -2238,7 +2202,6 @@ mod tests {
             deleted_at: None,
             owner_type: Some(owner_type),
             owner_id: Some(owner_id.to_string()),
-            degraded: false,
         }
     }
 
@@ -3812,7 +3775,6 @@ mod tests {
             .iter()
             .find(|item| item.id == "agent-a")
             .expect("agent-a entry");
-        assert!(!poisoned_a.degraded, "config 可读时不得标记 degraded");
         let healthy_b = topic_manifest(
             &database,
             &TopicKey {
@@ -3865,11 +3827,10 @@ mod tests {
         assert!(action.mismatched_content);
     }
 
-    /// 缺口 B（F3）：活 owner 的 config 在 reconcile 间隙被物理删除 →
-    /// 条目降级为 degraded；manifest() 出 SKIP（remote 存活带 mismatchedContent，
-    /// 尾部循环不带），不再整表 500。
+    /// 活 owner 的 config 在 reconcile 间隙被物理删除时，
+    /// degraded 哈希不得被转成静默 SKIP。
     #[tokio::test]
-    async fn unreadable_owner_config_degrades_to_skip() {
+    async fn unreadable_owner_config_is_not_silently_skipped() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -3888,11 +3849,9 @@ mod tests {
             .iter()
             .find(|item| item.id == "agent-a")
             .expect("degraded entry");
-        assert!(degraded.degraded);
         assert!(degraded.config_hash.is_empty() && degraded.content_hash.is_empty());
 
-        // remote 存活 → SKIP + mismatchedContent（owner 仍进 changed set，
-        // 其下 topic 的 Phase 2 同步不被连坐）。
+        // Desktop 更新时会进入 PULL，后续实体下载将如实报错。
         let response = manifest(
             &database,
             ManifestRequest {
@@ -3915,12 +3874,10 @@ mod tests {
             .data
             .iter()
             .find(|action| action.id == "agent-a")
-            .expect("skip action");
-        assert_eq!(action.action, "SKIP");
-        assert!(action.mismatched_content);
+            .expect("pull action");
+        assert_eq!(action.action, "PULL");
 
-        // remote 没有此 owner → 尾部循环 SKIP（避免新手机撞上坏 config 时
-        // 实体下载 attempt-fatal）。
+        // remote 没有此 owner 时也不得隐藏本地缺损事实。
         let response = manifest(
             &database,
             ManifestRequest {
@@ -3934,8 +3891,8 @@ mod tests {
             .data
             .iter()
             .find(|action| action.id == "agent-a")
-            .expect("tail skip");
-        assert_eq!(action.action, "SKIP");
+            .expect("tail pull");
+        assert_eq!(action.action, "PULL");
         assert!(!action.mismatched_content);
     }
 

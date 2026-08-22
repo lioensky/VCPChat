@@ -10,7 +10,6 @@ const {
   upsertEntityIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
-  cleanupOldDeletedRecords,
 } = require("./core/db");
 const {
   computeBinaryHash,
@@ -396,16 +395,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   // 中央模式由 CDS 的 notify/reconcile 独占历史监听和消息墓碑持久化。
   if (!centralSync && chokidar) {
     startFileWatcher(appDataPath);
-  }
-
-  if (!centralSync) {
-    setInterval(
-      () => {
-        cleanupOldDeletedRecords();
-      },
-      60 * 60 * 1000,
-    );
-    cleanupOldDeletedRecords();
   }
 }
 

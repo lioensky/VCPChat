@@ -445,40 +445,6 @@ function updateTopicAggregatedHash(topicId, aggregatedHash) {
   ).run(aggregatedHash, topicId);
 }
 
-/**
- * 清理过期的删除记录（超过 30 天）
- */
-function cleanupOldDeletedRecords() {
-  if (!db) return;
-
-  const logger = getLogger();
-  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-
-  const entityResult = db
-    .prepare(
-      `DELETE FROM entity_index WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-    )
-    .run(thirtyDaysAgo);
-  const messageResult = db
-    .prepare(
-      `DELETE FROM message_index WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-    )
-    .run(thirtyDaysAgo);
-  const avatarResult = db
-    .prepare(
-      `DELETE FROM avatar_index WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-    )
-    .run(thirtyDaysAgo);
-
-  if (
-    entityResult.changes > 0 ||
-    messageResult.changes > 0 ||
-    avatarResult.changes > 0
-  ) {
-    logger.logOperation("cleanup", "purge", "batch", "success", `entity=${entityResult.changes} message=${messageResult.changes} avatar=${avatarResult.changes}`);
-  }
-}
-
 module.exports = {
   initDb,
   getDb,
@@ -495,5 +461,4 @@ module.exports = {
   softDeleteMessageIndex,
   softDeleteAvatarIndex,
   updateTopicAggregatedHash,
-  cleanupOldDeletedRecords,
 };
