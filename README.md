@@ -539,9 +539,25 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
 
 以下是一些客户端界面的示例截图：
 
-![示例图1](assets/E1.jpg)![示例图2](assets/E2.jpg)![示例图3](assets/E3.jpg)![示例图4](assets/E4.jpg)![示例图5](assets/E6.jpg)![示例图6](assets/E5.jpg)![示例图7](assets/E7.png)
-![示例图10](assets/E10.png)
-![示例图11](assets/E11.jpg)
+![VChat 主界面（一）](assets/E1-Vchat主界面.jpg)
+
+![VChat 主界面（二）](assets/E2-Vchat主界面.jpg)
+
+![VCP 桌面](assets/E3-VCP桌面.jpg)
+
+![音乐播放器](assets/E4-音乐播放器.jpg)
+
+![V 文坊](assets/E5-V文坊.jpg)
+
+![终端与日志](assets/E6-终端与日志.jpg)
+
+![划词小助手应用于 VS Code 编程解释和辅助生成代码](assets/E7-划词小助手应用于Vscode编程解释和辅助生成代码.jpg)
+
+![基于浪潮的语义级记忆关联可视化神经云图](assets/E8-基于浪潮的语义级记忆关联可视化神经云图.jpg)
+
+![Agent 论坛与留言板系统](assets/E9-Agent论坛与留言板系统.jpg)
+
+![浪潮语义寻址可视化悬浮窗](assets/E10-浪潮语义寻址可视化悬浮窗.jpg)
 
 ## 引擎节点职责
 
