@@ -1637,10 +1637,12 @@ function renderStreamFrame(messageId) {
             }
         });
         } catch (error) {
-            // 🟢 捕获不完整 HTML 导致的 morphdom 异常
-            // 在流式输出过程中，这是预期内的行为，静默忽略即可
-            // 等待下一个 chunk 到达后，内容变得完整，渲染会自动恢复正常
-            console.debug('[StreamManager] morphdom skipped frame due to incomplete HTML, waiting for more chunks...');
+            // 增量 diff 失败时不能只等待下一 chunk：当前帧的 dirty 标记已经被消费，
+            // 而工具请求后端可能长时间等待回执，不会继续产生可触发重绘的新文本。
+            // 直接使用同一份已经过流式隔离/HTML 封印的 rawHtml 重建 tail，
+            // 保证首块为 TOOL_REQUEST 时不会保持空白直到导航或终态。
+            tailRoot.innerHTML = rawHtml;
+            console.debug('[StreamManager] morphdom rejected a stream frame; replaced the sealed tail directly.', error);
         }
     } else {
         tailRoot.innerHTML = rawHtml;

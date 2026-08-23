@@ -413,3 +413,57 @@ test('smooth stream terminal stops queued rendering and releases every runtime o
     await projection.dispose();
     dom.window.close();
 });
+
+
+test('tool-request-first stream falls back to direct DOM projection when morphdom rejects a frame', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM(
+        '<!doctype html><div id="chat"><article class="message-item" data-message-id="tool-first"><div class="md-content"><span class="thinking-indicator">思考中...</span></div></article></div>',
+        { url: 'https://vcpchat.local/', pretendToBeVisual: true }
+    );
+    const projection = createStreamProjection();
+    let morphAttempts = 0;
+    projection.attachStreamProjection(createDependencies(dom, {
+        morphdom() {
+            morphAttempts += 1;
+            throw new Error('controlled first-frame morph failure');
+        },
+        parseTail(text) {
+            const escaped = String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            return `<pre class="vcp-stream-tool-request-sealed"><code>${escaped}</code></pre>`;
+        },
+    }));
+
+    const item = dom.window.document.querySelector('.message-item');
+    await projection.startStreamingMessage({
+        id: 'tool-first',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+    }, item);
+
+    projection.appendStreamChunk(
+        'tool-first',
+        { content: '<<<[TOOL_REQUEST]>>>\ntool_name:「始」Demo「末」' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' }
+    );
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const content = item.querySelector('.md-content');
+    assert.ok(morphAttempts >= 1, 'the regression must exercise the morphdom failure path');
+    assert.match(
+        content.textContent,
+        /TOOL_REQUEST[\s\S]*Demo/,
+        'a failed incremental diff must immediately fall back instead of staying blank until navigation or terminal'
+    );
+    assert.ok(
+        content.querySelector('.vcp-stream-tool-request-sealed'),
+        'the sealed tool-request preview must remain visible after fallback'
+    );
+
+    await projection.dispose();
+    dom.window.close();
+});
