@@ -62,8 +62,7 @@ function initDb(dbPath) {
     CREATE TABLE IF NOT EXISTS attachment_index (
       hash TEXT PRIMARY KEY,
       file_path TEXT NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER DEFAULT NULL
+      updated_at INTEGER NOT NULL
     )
   `);
 
@@ -224,8 +223,7 @@ function upsertAttachmentIndex(hash, filePath, updatedAt = Date.now()) {
       VALUES (?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
         file_path = excluded.file_path,
-        updated_at = excluded.updated_at,
-        deleted_at = NULL
+        updated_at = excluded.updated_at
     `,
   ).run(hash, filePath, updatedAt);
 }

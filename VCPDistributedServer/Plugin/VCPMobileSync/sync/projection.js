@@ -14,7 +14,7 @@ const {
 async function resolveAttachmentPath(db, hash, allowedRoot = null) {
   const row = db
     .prepare(
-      "SELECT file_path FROM attachment_index WHERE hash = ? AND deleted_at IS NULL",
+      "SELECT file_path FROM attachment_index WHERE hash = ?",
     )
     .get(hash);
   if (!row || typeof row.file_path !== "string" || row.file_path.length === 0) {
