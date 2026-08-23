@@ -235,23 +235,43 @@ ipcMain.on('visible-text-response', (event, text) => {
     }
 });
 
-// --- 新增：窗口控制事件监听 ---
-ipcMain.on('minimize-window', () => {
-    if (guiWindow) guiWindow.minimize();
-});
+// --- PowerShell GUI 专属窗口控制 ---
+// 不复用应用级 minimize-window/maximize-window/close-window：ipcMain 是全局事件总线，
+// 使用通用通道会让日志中心等其它窗口的操作也落到此 guiWindow 上；而 PowerShell
+// 自身的消息还会与应用级处理器重复执行（最大化切换两次后等同于没有变化）。
+function isPowerShellGuiSender(event) {
+    return Boolean(
+        event
+        && guiWindow
+        && !guiWindow.isDestroyed()
+        && guiWindow.webContents
+        && !guiWindow.webContents.isDestroyed()
+        && event.sender === guiWindow.webContents
+    );
+}
 
-ipcMain.on('maximize-window', () => {
-    if (guiWindow) {
-        if (guiWindow.isMaximized()) {
-            guiWindow.unmaximize();
-        } else {
-            guiWindow.maximize();
-        }
+ipcMain.on('powershell-window:minimize', (event) => {
+    if (isPowerShellGuiSender(event)) {
+        guiWindow.minimize();
     }
 });
 
-ipcMain.on('close-window', () => {
-    if (guiWindow) guiWindow.close();
+ipcMain.on('powershell-window:toggle-maximize', (event) => {
+    if (!isPowerShellGuiSender(event)) {
+        return;
+    }
+
+    if (guiWindow.isMaximized()) {
+        guiWindow.unmaximize();
+    } else {
+        guiWindow.maximize();
+    }
+});
+
+ipcMain.on('powershell-window:close', (event) => {
+    if (isPowerShellGuiSender(event)) {
+        guiWindow.close();
+    }
 });
 
 // --- ANSI / terminal control projection for AI text summaries ---

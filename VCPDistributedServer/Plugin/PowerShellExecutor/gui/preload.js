@@ -44,8 +44,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke(channel, ...args);
   },
 
-  // --- 新增窗口控制API ---
- minimizeWindow: () => ipcRenderer.send('minimize-window'),
- maximizeWindow: () => ipcRenderer.send('maximize-window'),
- closeWindow: () => ipcRenderer.send('close-window')
+  // 使用 PowerShell GUI 专属通道，避免与日志中心等其它 BrowserWindow
+  // 共用应用级窗口控制事件而产生跨窗口联动。
+  minimizeWindow: () => ipcRenderer.send('powershell-window:minimize'),
+  maximizeWindow: () => ipcRenderer.send('powershell-window:toggle-maximize'),
+  closeWindow: () => ipcRenderer.send('powershell-window:close')
 });
