@@ -13,6 +13,7 @@ import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.
 import { createSurfaceTaskOwner } from './renderer/surfaceTaskOwner.js';
 import {
     findEarliestUnclosedToolBlock,
+    findToolRequestEnd,
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
 

@@ -405,3 +405,21 @@ test('反引号包裹的工具请求示例不建立流式严格隔离边界', as
 
     assert.equal(findEarliestUnclosedToolBlock(source), null);
 });
+
+test('消息渲染器必须把工具请求结束扫描器显式接入流式投影', () => {
+    const rendererSource = fs.readFileSync(
+        path.join(root, 'modules/messageRenderer.js'),
+        'utf8'
+    );
+
+    assert.match(
+        rendererSource,
+        /import\s*\{[\s\S]*?\bfindToolRequestEnd\b[\s\S]*?\}\s*from\s*['"]\.\/renderer\/toolRequestScanner\.js['"]/,
+        'messageRenderer 必须导入 findToolRequestEnd，避免首个工具块触发未定义引用'
+    );
+    assert.match(
+        rendererSource,
+        /findToolRequestEnd:\s*\(text,\s*startIndex\)\s*=>\s*findToolRequestEnd\(text,\s*startIndex\)/,
+        'StreamProjection 必须获得 ESCAPE 感知的工具请求结束扫描能力'
+    );
+});
