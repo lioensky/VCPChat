@@ -1433,15 +1433,26 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
     }
 
     // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
-    // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入。
+    // 这样可以避免 HTML 注释、代码块、推送块、工具请求块、工具结果块和
+    // 「始」「末」标记内的 <style> 被误当作真正的样式注入。
     // 即使只是结构化 HTML / 内联 style，也会进入该路径以跳过 HTML 缓存并统一保护扫描。
     const protectedBlocks = [];
+
+    // HTML 注释是字面量域。诸如
+    // <!-- 子组件拥有独立的 <style> 标签 -->
+    // 这样的说明不能让 STYLE_REGEX 从伪开始标签跨越吞到后续真实 </style>。
+    // 未闭合注释在流式中同样拥有当前尾部，直到 --> 到达前不得产生 CSS 副作用。
+    let textWithProtectedBlocks = content.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
 
     // 🔴 最高优先级：保护完整工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）。
     // 工具协议载荷属于不可信数据域，不是可执行的 assistant HTML 岛；其中任意
     // style/script/HTML 都只能作为工具数据处理，绝不能进入消息级 CSS 提取器。
     TOOL_RESULT_REGEX.lastIndex = 0;
-    let textWithProtectedBlocks = content.replace(TOOL_RESULT_REGEX, (match) => {
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(TOOL_RESULT_REGEX, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;

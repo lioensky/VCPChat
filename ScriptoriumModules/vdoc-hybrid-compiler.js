@@ -153,6 +153,27 @@
         ) || null;
     }
 
+    function scanHtmlCommentRegions(source, excludedRegions = []) {
+        const regions = [];
+        const pattern = /<!--[\s\S]*?(?:-->|$)/g;
+        let match;
+        while ((match = pattern.exec(source))) {
+            const start = match.index;
+            const end = start + match[0].length;
+            if (!overlapsRegion(start, end, excludedRegions)) {
+                regions.push({
+                    type: 'html-comment',
+                    start,
+                    end,
+                    source: match[0],
+                    closed: match[0].endsWith('-->'),
+                });
+            }
+            if (match[0].length === 0) pattern.lastIndex += 1;
+        }
+        return regions;
+    }
+
     function islandIdFromOpeningTag(tag) {
         const match = String(tag || '').match(
             /\bdata-vdoc-island\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
@@ -160,7 +181,7 @@
         return String(match?.[1] || match?.[2] || match?.[3] || '').trim();
     }
 
-    function findIslandEnd(source, start, openingTagEnd) {
+    function findIslandEnd(source, start, openingTagEnd, excludedRegions = []) {
         let depth = 1;
         let cursor = openingTagEnd;
         const tagPattern = /<\/?div\b[^>]*>|<(script|style)\b[^>]*>/gi;
@@ -168,6 +189,13 @@
             tagPattern.lastIndex = cursor;
             const match = tagPattern.exec(source);
             if (!match) return -1;
+            const excluded = containingRegion(match.index, excludedRegions);
+            if (excluded) {
+                // HTML 注释中的 div/style/script 都是说明文字，不能改变岛栈，
+                // 也不能让伪 style 开始标签跨越寻找后续真实闭合标签。
+                cursor = excluded.end;
+                continue;
+            }
             const tag = match[0];
             if (/^<(?:script|style)\b/i.test(tag)) {
                 const name = match[1].toLowerCase();
@@ -233,7 +261,12 @@
                 continue;
             }
             const id = islandIdFromOpeningTag(match[0]);
-            const end = findIslandEnd(source, match.index, pattern.lastIndex);
+            const end = findIslandEnd(
+                source,
+                match.index,
+                pattern.lastIndex,
+                excludedRegions
+            );
             if (!id) {
                 diagnostics.push(diagnostic(
                     'refuse',
@@ -904,9 +937,15 @@
             }
 
             if (!['html', 'island'].includes(region.type)) return;
+            const headingFences = scanFences(raw);
+            const headingComments = scanHtmlCommentRegions(raw, headingFences);
             const excluded = [
-                ...scanFences(raw),
-                ...scanStyleBlocks(raw),
+                ...headingFences,
+                ...headingComments,
+                ...scanStyleBlocks(raw, [
+                    ...headingFences,
+                    ...headingComments,
+                ]),
             ];
             const scriptPattern = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
             let scriptMatch;
@@ -1027,6 +1066,7 @@
         const inlineCodeRegions = scanInlineCodeRegions(source, fences);
         const codeDomains = [...fences, ...inlineCodeRegions]
             .sort((left, right) => left.start - right.start);
+        const htmlCommentRegions = scanHtmlCommentRegions(source, codeDomains);
         fences.filter((region) => !region.closed).forEach((region) => {
             diagnostics.push(diagnostic(
                 'warn',
@@ -1036,9 +1076,13 @@
                 region.start
             ));
         });
-        const islands = scanIslands(source, codeDomains, diagnostics);
+        const islands = scanIslands(source, [
+            ...codeDomains,
+            ...htmlCommentRegions,
+        ], diagnostics);
         const styleBlocks = scanStyleBlocks(source, [
             ...codeDomains,
+            ...htmlCommentRegions,
             ...islands,
         ]);
         const structuralRegions = [

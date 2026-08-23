@@ -828,7 +828,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return placeholder;
         });
 
-        // Step 3: CSS 提取前保护 TOOL_REQUEST 与 VCP 参数区域，避免参数内 <style> 被误注入。
+        // Step 3: CSS 提取前保护 HTML 注释、TOOL_REQUEST 与 VCP 参数区域，
+        // 避免这些字面量域内的 <style> 被误注入或跨越吞到后续真实 </style>。
         const styleProtectMap = new Map();
         let styleProtectId = 0;
         const protectForStyle = (match) => {
@@ -837,6 +838,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             styleProtectId++;
             return placeholder;
         };
+
+        // HTML 注释中的标签只是说明文字；未闭合注释同样保护到文档末尾。
+        processed = processed.replace(/<!--[\s\S]*?(?:-->|$)/g, protectForStyle);
 
         // 🔴 关键修复：使用 ESCAPE 感知的扫描器保护工具请求块，避免参数内的
         // 字面量 `<<<[END_TOOL_REQUEST]>>>` 导致工具块提前闭合，从而把后续

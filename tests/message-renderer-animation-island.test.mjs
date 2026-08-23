@@ -328,3 +328,62 @@ test('tesseract island survives preceding inline HTML tag literals', async () =>
         await disposeFixture(fixture);
     }
 });
+
+test('multiple nested style elements survive comment literals and tool-payload style mentions', async () => {
+    const content = [
+        '<div class="nested-root">',
+        '  <style>',
+        '    .nested-root { --accent: #00f0ff; }',
+        '    .nested-root .grid { display: grid; }',
+        '  </style>',
+        '  <div class="grid">',
+        '    <!-- child A owns an independent <style> tag -->',
+        '    <div class="child-a">',
+        '      <style>',
+        '        .child-a .ring { width: 90px; animation: nestedSpin 3s linear infinite; }',
+        '        @keyframes nestedSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }',
+        '      </style>',
+        '      <div class="ring"></div>',
+        '    </div>',
+        '    <!-- child B owns another independent <style> tag -->',
+        '    <div class="child-b">',
+        '      <style>',
+        '        .child-b .bar { height: 70px; animation: signalWave 1s ease-in-out infinite alternate; }',
+        '        @keyframes signalWave { from { filter: brightness(.8); } to { filter: brightness(1.3); } }',
+        '      </style>',
+        '      <div class="bar"></div>',
+        '    </div>',
+        '  </div>',
+        '</div>',
+        '',
+        '<<<[TOOL_REQUEST]>>>',
+        'tool_name:「始」DailyNote「末」,',
+        'Content:「始ESCAPE」说明文字中的 `<style>` 与真实 HTML 注释中的 <style> 都不能参与 CSS 提取。「末ESCAPE」',
+        '<<<[END_TOOL_REQUEST]>>>',
+    ].join('\n');
+
+    const fixture = await createRendererFixture(content);
+    try {
+        const { dom, messageItem } = fixture;
+        assert.equal(messageItem.dataset.vcpScopedStyleState, 'active');
+
+        const styleElement = dom.window.document.head.querySelector(
+            `style[data-vcp-scope-id="${messageItem.id}"]`,
+        );
+        assert.ok(styleElement, 'all real nested styles must merge into one owned scoped sheet');
+        assert.match(styleElement.textContent, new RegExp(`#${messageItem.id}\\s+\\.nested-root`));
+        assert.match(styleElement.textContent, new RegExp(`#${messageItem.id}\\s+\\.child-a \\.ring`));
+        assert.match(styleElement.textContent, new RegExp(`#${messageItem.id}\\s+\\.child-b \\.bar`));
+        assert.match(styleElement.textContent, /@keyframes\s+nestedSpin/);
+        assert.match(styleElement.textContent, /@keyframes\s+signalWave/);
+        assert.doesNotMatch(
+            styleElement.textContent,
+            /child A owns|child B owns|说明文字/,
+            'comment and tool payload literals must never leak into extracted CSS',
+        );
+        assert.ok(messageItem.querySelector('.child-a .ring'));
+        assert.ok(messageItem.querySelector('.child-b .bar'));
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
