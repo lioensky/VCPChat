@@ -1,5 +1,7 @@
 const TOOL_REQUEST_START_MARKER = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
+const TOOL_RESULT_START_MARKER = '[[VCP调用结果信息汇总:';
+const TOOL_RESULT_END_MARKER = 'VCP调用结果结束]]';
 
 // VCP 后端对协议标记采用语义理解，实际输出偶尔会丢失或多输出尖括号。
 // 这里允许左右各 2–4 个尖括号；中间的协议名称仍保持严格，避免把普通文本误判为结束标记。
@@ -196,6 +198,78 @@ function findToolRequestEnd(text, contentStart) {
     return scanToolRequestEnd(text, contentStart).endIndex;
 }
 
+function findUnclosedToolRequest(text) {
+    if (typeof text !== 'string' || !text.includes(TOOL_REQUEST_START_MARKER)) {
+        return null;
+    }
+
+    let cursor = 0;
+    while (cursor < text.length) {
+        const startIndex = text.indexOf(TOOL_REQUEST_START_MARKER, cursor);
+        if (startIndex === -1) return null;
+
+        if (isBacktickWrappedToolMarker(text, startIndex, TOOL_REQUEST_START_MARKER)) {
+            cursor = startIndex + TOOL_REQUEST_START_MARKER.length;
+            continue;
+        }
+
+        const contentStart = startIndex + TOOL_REQUEST_START_MARKER.length;
+        const endIndex = findToolRequestEnd(text, contentStart);
+        if (endIndex === -1) {
+            return {
+                type: 'tool-request',
+                startIndex,
+                prefix: text.slice(0, startIndex),
+                content: text.slice(startIndex)
+            };
+        }
+
+        cursor = endIndex;
+    }
+
+    return null;
+}
+
+function findUnclosedToolResult(text) {
+    if (typeof text !== 'string' || !text.includes(TOOL_RESULT_START_MARKER)) {
+        return null;
+    }
+
+    let cursor = 0;
+    while (cursor < text.length) {
+        const startIndex = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+        if (startIndex === -1) return null;
+
+        const endIndex = text.indexOf(
+            TOOL_RESULT_END_MARKER,
+            startIndex + TOOL_RESULT_START_MARKER.length
+        );
+        if (endIndex === -1) {
+            return {
+                type: 'tool-result',
+                startIndex,
+                prefix: text.slice(0, startIndex),
+                content: text.slice(startIndex)
+            };
+        }
+
+        cursor = endIndex + TOOL_RESULT_END_MARKER.length;
+    }
+
+    return null;
+}
+
+/**
+ * 返回流式文本中最早出现的未闭合工具协议块。
+ * 工具请求和工具结果载荷均属于不可信数据域；调用方必须在任何 HTML/CSS
+ * 副作用处理之前，以 startIndex 为边界隔离到当前流尾。
+ */
+function findEarliestUnclosedToolBlock(text) {
+    return [findUnclosedToolRequest(text), findUnclosedToolResult(text)]
+        .filter(Boolean)
+        .sort((a, b) => a.startIndex - b.startIndex)[0] || null;
+}
+
 function replaceToolRequestBlocks(text, replacer) {
     if (typeof text !== 'string' || !text.includes(TOOL_REQUEST_START_MARKER)) {
         return text;
@@ -256,7 +330,12 @@ function replaceToolRequestBlocks(text, replacer) {
 export {
     TOOL_REQUEST_START_MARKER,
     TOOL_REQUEST_END_MARKER,
+    TOOL_RESULT_START_MARKER,
+    TOOL_RESULT_END_MARKER,
     findToolRequestEnd,
+    findUnclosedToolRequest,
+    findUnclosedToolResult,
+    findEarliestUnclosedToolBlock,
     isBacktickWrappedToolMarker,
     replaceToolRequestBlocks,
     scanToolRequestEnd

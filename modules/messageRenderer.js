@@ -12,10 +12,7 @@ import { createRenderDependencies } from './renderer/renderDependencies.js';
 import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.js';
 import { createSurfaceTaskOwner } from './renderer/surfaceTaskOwner.js';
 import {
-    TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
-    TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
-    findToolRequestEnd,
-    isBacktickWrappedToolMarker as isBacktickWrappedMarker,
+    findEarliestUnclosedToolBlock,
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
 
@@ -1400,9 +1397,9 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null)
     // 即使只是结构化 HTML / 内联 style，也会进入该路径以跳过 HTML 缓存并统一保护扫描。
     const protectedBlocks = [];
 
-    // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
-    // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
-    // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配。
+    // 🔴 最高优先级：保护完整工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）。
+    // 工具协议载荷属于不可信数据域，不是可执行的 assistant HTML 岛；其中任意
+    // style/script/HTML 都只能作为工具数据处理，绝不能进入消息级 CSS 提取器。
     TOOL_RESULT_REGEX.lastIndex = 0;
     let textWithProtectedBlocks = content.replace(TOOL_RESULT_REGEX, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
@@ -1411,14 +1408,25 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null)
     });
     TOOL_RESULT_REGEX.lastIndex = 0;
 
-    // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
-    // 工具请求参数中可能包含完整 HTML 文档（如壁纸 HTML），其中的 <style> 不应被注入。
+    // 🔴 保护完整工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）。
     // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合。
     textWithProtectedBlocks = replaceToolRequestBlocks(textWithProtectedBlocks, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;
     });
+
+    // 🔴 流式严格封印：完整块替换后，若仍有未闭合的请求或结果，则从源码中
+    // 最早的未闭合协议入口一直保护到流尾。不能等待结束标记，因为在等待期间
+    // 已生成的 <style> 就足以产生 document.head 注入副作用。
+    const unclosedToolBlock = findEarliestUnclosedToolBlock(textWithProtectedBlocks);
+
+    if (unclosedToolBlock) {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(textWithProtectedBlocks.slice(unclosedToolBlock.startIndex));
+        textWithProtectedBlocks =
+            textWithProtectedBlocks.slice(0, unclosedToolBlock.startIndex) + placeholder;
+    }
 
     // 「始」「末」与「始ESCAPE」「末ESCAPE」只在工具请求围栏内部作为字段边界语法。
     // 工具请求块已在上一步整体保护；这里不再扫描工具围栏外的裸始末标记，
@@ -1916,48 +1924,17 @@ function findUnclosedStreamThoughtChain(text) {
     };
 }
 
-function findUnclosedStreamToolRequest(text) {
-    if (typeof text !== 'string' || !text.includes(TOOL_START_MARKER)) {
-        return null;
-    }
-
-    let cursor = 0;
-    while (cursor < text.length) {
-        const startIndex = text.indexOf(TOOL_START_MARKER, cursor);
-        if (startIndex === -1) return null;
-
-        if (isBacktickWrappedMarker(text, startIndex, TOOL_START_MARKER)) {
-            cursor = startIndex + TOOL_START_MARKER.length;
-            continue;
-        }
-
-        const contentStart = startIndex + TOOL_START_MARKER.length;
-        const endIndex = findToolRequestEnd(text, contentStart);
-        if (endIndex === -1) {
-            return {
-                prefix: text.slice(0, startIndex),
-                request: text.slice(startIndex),
-                startIndex
-            };
-        }
-
-        cursor = endIndex;
-    }
-
-    return null;
-}
-
 function parseStreamTailMarkdown(text) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
     const processedText = preprocessStreamTailContent(text);
 
-    // 未闭合工具请求和思维链都属于流式隔离域。按源码中更早出现的块决定封印边界，
-    // 因此思维链内部出现 TOOL_REQUEST 文本时不会被误当作外层工具调用，反之亦然。
-    const unclosedToolRequest = findUnclosedStreamToolRequest(processedText);
+    // 工具请求、工具结果和思维链都属于流式隔离域。按源码中最早出现的入口决定
+    // 封印边界，禁止后续协议扫描或 Markdown 原始 HTML 解释进入其不可信载荷。
+    const unclosedToolBlock = findEarliestUnclosedToolBlock(processedText);
     const unclosedThoughtChain = findUnclosedStreamThoughtChain(processedText);
-    const sealedBlock = [unclosedToolRequest, unclosedThoughtChain]
+    const sealedBlock = [unclosedToolBlock, unclosedThoughtChain]
         .filter(Boolean)
         .sort((a, b) => a.startIndex - b.startIndex)[0];
 
@@ -1966,10 +1943,12 @@ function parseStreamTailMarkdown(text) {
             ? markedInstance.parse(sealedBlock.prefix)
             : '';
         const isThoughtChain = sealedBlock === unclosedThoughtChain;
-        const sealedText = isThoughtChain ? sealedBlock.thought : sealedBlock.request;
+        const sealedText = isThoughtChain ? sealedBlock.thought : sealedBlock.content;
         const sealClass = isThoughtChain
             ? 'vcp-stream-thought-chain-sealed'
-            : 'vcp-stream-tool-request-sealed';
+            : (sealedBlock.type === 'tool-result'
+                ? 'vcp-stream-tool-result-sealed'
+                : 'vcp-stream-tool-request-sealed');
         return `${prefixHtml}<pre class="${sealClass}"><code>${escapeHtml(sealedText)}</code></pre>`;
     }
 
