@@ -90,6 +90,19 @@ function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function entityStage(type) {
+  return ["agent_topic", "group_topic"].includes(type)
+    ? "topic_metadata"
+    : "owner_metadata";
+}
+
+function failedTopicIds(type, id) {
+  return entityStage(type) === "topic_metadata" &&
+    typeof id === "string" && id.length > 0
+    ? [id]
+    : [];
+}
+
 class CentralSyncAdapter {
   constructor(options) {
     if (options?.chatDataService) {
@@ -253,6 +266,48 @@ class CentralSyncAdapter {
           typeof payload.topicId === "string" ? [payload.topicId] : [],
       });
     }
+  }
+
+  async downloadEntities(requests) {
+    const stage = requests.some((request) =>
+      ["agent_topic", "group_topic"].includes(request?.type)
+    )
+      ? "topic_metadata"
+      : "owner_metadata";
+    try {
+      const results = await this.requireClient().syncEntitiesPull({ requests });
+      if (!Array.isArray(results)) {
+        throw cdsProtocolError("CDS returned an invalid entity pull response", stage);
+      }
+      return results;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_ENTITY_READ_FAILED",
+        origin: "desktop_cds",
+        stage,
+      });
+    }
+  }
+
+  async downloadEntity(request) {
+    const results = await this.downloadEntities([request]);
+    if (results.length !== 1 || !isRecord(results[0])) {
+      throw cdsProtocolError(
+        "CDS single entity pull must return exactly one result",
+        entityStage(request.type),
+      );
+    }
+    const result = results[0];
+    if (result.success === true && result.data !== undefined) return result.data;
+    if (result.success === false && result.error?.code === "SYNC_ENTITY_NOT_FOUND") {
+      return null;
+    }
+    throw withCdsErrorContext(result.error || "CDS entity pull failed", {
+      code: "SYNC_ENTITY_READ_FAILED",
+      origin: "desktop_cds",
+      stage: entityStage(request.type),
+      failedTopicIds: failedTopicIds(request.type, request.id),
+    });
   }
 
   async handleTopicHashBatch(payload) {

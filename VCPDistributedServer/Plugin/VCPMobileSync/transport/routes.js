@@ -122,13 +122,22 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
 
   // 1. 下载实体
   router.get("/download-entity", async (req, res) => {
-    const { id, type } = req.query;
+    const { id, type, ownerType, ownerId } = req.query;
 
     try {
-      const dto = await downloadEntity({ id, type });
+      const request = {
+        id,
+        type,
+        ...(ownerType === undefined ? {} : { ownerType }),
+        ...(ownerId === undefined ? {} : { ownerId }),
+      };
+      const dto = centralSync
+        ? await centralSync.downloadEntity(request)
+        : await downloadEntity(request);
       if (!dto) {
         return sendHttpError(res, 404, "Entity not found", {
           code: "SYNC_ENTITY_NOT_FOUND",
+          origin: centralSync ? "desktop_cds" : "desktop_plugin",
           stage: entityStage(type),
           failedTopicIds: failedTopicIds(type, id),
         });
@@ -137,6 +146,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     } catch (e) {
       sendHttpError(res, 500, e, {
         code: "SYNC_ENTITY_READ_FAILED",
+        origin: centralSync ? "desktop_cds" : "desktop_plugin",
         stage: entityStage(type),
         failedTopicIds: failedTopicIds(type, id),
       });
@@ -156,9 +166,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     }
 
     try {
-      const results = (await downloadEntities(requests)).map((result) =>
+      const rawResults = centralSync
+        ? await centralSync.downloadEntities(requests)
+        : await downloadEntities(requests);
+      const results = rawResults.map((result) =>
         normalizeFailureResult(result, {
           code: "SYNC_ENTITY_READ_FAILED",
+          origin: centralSync ? "desktop_cds" : "desktop_plugin",
           stage: entityStage(result?.type),
           failedTopicIds: failedTopicIds(result?.type, result?.id),
         }),
@@ -167,6 +181,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     } catch (e) {
       sendHttpError(res, 500, e, {
         code: "SYNC_ENTITY_READ_FAILED",
+        origin: centralSync ? "desktop_cds" : "desktop_plugin",
         stage: "owner_metadata",
       });
     }

@@ -36,6 +36,7 @@ function createClient(overrides = {}) {
       type: "SYNC_DIFF_RESULTS_BATCH",
       results: {},
     }),
+    syncEntitiesPull: async () => [],
     syncEntityDelete: async () => ({ success: true }),
     syncMessagesPush: async () => ({ results: [] }),
     ...overrides,
@@ -87,6 +88,36 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
   });
   // 移动端 diff_handler 对 SYNC_DIFF_RESULTS.phase 是硬门禁，中央路径必须回填
   assert.equal(result.phase, 2);
+});
+
+test("中央实体 Pull 将复合身份原样转发给 CDS", async () => {
+  let captured;
+  const response = [{
+    id: "topic_1",
+    type: "agent_topic",
+    ownerType: "agent",
+    ownerId: "agent_1",
+    success: true,
+    data: { id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false, ownerId: "agent_1" },
+  }];
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncEntitiesPull: async (request) => {
+        captured = request;
+        return response;
+      },
+    }),
+  });
+  const requests = [{
+    id: "topic_1",
+    type: "agent_topic",
+    ownerType: "agent",
+    ownerId: "agent_1",
+  }];
+
+  assert.deepEqual(await adapter.downloadEntities(requests), response);
+  assert.deepEqual(captured, { requests });
+  assert.deepEqual(await adapter.downloadEntity(requests[0]), response[0].data);
 });
 
 test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () => {
@@ -504,6 +535,32 @@ test("CDS Node client 使用受保护的实体墓碑端点", async () => {
   assert.deepEqual(captured, [
     "POST",
     "/v1/sync/entity-delete",
+    request,
+    { signal: "signal" },
+  ]);
+});
+
+test("CDS Node client 使用实体批量 Pull 端点", async () => {
+  const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
+  let captured;
+  client.request = async (...args) => {
+    captured = args;
+    return [];
+  };
+  const request = {
+    requests: [{
+      id: "topic-a",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "agent-a",
+    }],
+  };
+
+  await client.syncEntitiesPull(request, { signal: "signal" });
+
+  assert.deepEqual(captured, [
+    "POST",
+    "/v2/sync/entities/pull",
     request,
     { signal: "signal" },
   ]);

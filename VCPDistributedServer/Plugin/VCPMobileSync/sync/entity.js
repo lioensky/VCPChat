@@ -70,6 +70,15 @@ function entityFailure(error, fallback, fields = {}) {
   };
 }
 
+function entityResultIdentity(request) {
+  return {
+    id: request.id,
+    type: request.type,
+    ...(request.ownerType === undefined ? {} : { ownerType: request.ownerType }),
+    ...(request.ownerId === undefined ? {} : { ownerId: request.ownerId }),
+  };
+}
+
 /**
  * 下载实体 - 从桌面端配置提取 DTO
  * @param {object} params
@@ -169,7 +178,7 @@ async function downloadEntities(requests) {
       results.push(entityFailure(
         seen.has(key) ? "duplicate entity request" : "invalid entity identity",
         { code: "SYNC_REQUEST_INVALID", stage: entityStage(req.type) },
-        { id: req.id, type: req.type },
+        entityResultIdentity(req),
       ));
       continue;
     }
@@ -181,7 +190,7 @@ async function downloadEntities(requests) {
         stage: entityStage(req.type),
         failedTopicIds:
           entityStage(req.type) === "topic_metadata" ? [safeId] : [],
-      }, { id: req.id, type: req.type }));
+      }, entityResultIdentity(req)));
       continue;
     }
 
@@ -223,7 +232,11 @@ async function downloadEntities(requests) {
         }
 
         if (dto) {
-          results.push({ id: req.id, type, success: true, data: dto });
+          results.push({
+            ...entityResultIdentity(req),
+            success: true,
+            data: dto,
+          });
         } else {
           results.push(entityFailure(
             "entity data was not found in its config",
@@ -233,7 +246,7 @@ async function downloadEntities(requests) {
               failedTopicIds:
                 entityStage(type) === "topic_metadata" ? [safeId] : [],
             },
-            { id: req.id, type },
+            entityResultIdentity(req),
           ));
         }
       }
@@ -245,7 +258,7 @@ async function downloadEntities(requests) {
           stage: entityStage(req.type),
           failedTopicIds:
             entityStage(req.type) === "topic_metadata" ? [req.id] : [],
-        }, { id: req.id, type: req.type }));
+        }, entityResultIdentity(req)));
       }
     }
   }

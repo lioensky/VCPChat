@@ -359,6 +359,10 @@ class ChatDataServiceClient {
         return this.request('POST', '/v2/sync/topic-identity', request, options);
     }
 
+    syncEntitiesPull(request, options) {
+        return this.request('POST', '/v2/sync/entities/pull', request, options);
+    }
+
     syncTopicDiff(request, options) {
         return this.request('POST', '/v1/sync/topic-diff', request, {
             timeoutMs: 270_000,

@@ -274,6 +274,48 @@ pub struct MessagesPullFrame {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntitiesPullRequest {
+    pub requests: Vec<EntityPullRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntityPullRequest {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub entity_type: String,
+    #[serde(default)]
+    pub owner_type: Option<OwnerType>,
+    #[serde(default)]
+    pub owner_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntityPullResult {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub entity_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_type: Option<OwnerType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_id: Option<String>,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<EntityPullError>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntityPullError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessagesPushRequest {
     pub topics: Vec<MessagesPushTopic>,
@@ -668,6 +710,110 @@ pub fn topic_identity(
         owner_type: key.owner_type,
         owner_id: key.owner_id,
     })
+}
+
+pub fn pull_entities(database: &Database, request: EntitiesPullRequest) -> Vec<EntityPullResult> {
+    request
+        .requests
+        .into_iter()
+        .map(|request| {
+            let result = pull_entity(database, &request);
+            let (success, data, error) = match result {
+                Ok(Some(data)) => (true, Some(data), None),
+                Ok(None) => (
+                    false,
+                    None,
+                    Some(EntityPullError {
+                        code: "SYNC_ENTITY_NOT_FOUND",
+                        message: "entity not found".to_string(),
+                    }),
+                ),
+                Err(error) => (
+                    false,
+                    None,
+                    Some(EntityPullError {
+                        code: "SYNC_ENTITY_READ_FAILED",
+                        message: error.to_string(),
+                    }),
+                ),
+            };
+            EntityPullResult {
+                id: request.id,
+                entity_type: request.entity_type,
+                owner_type: request.owner_type,
+                owner_id: request.owner_id,
+                success,
+                data,
+                error,
+            }
+        })
+        .collect()
+}
+
+fn pull_entity(database: &Database, request: &EntityPullRequest) -> Result<Option<Value>> {
+    match request.entity_type.as_str() {
+        "agent" | "group" => {
+            let owner_type = if request.entity_type == "agent" {
+                OwnerType::Agent
+            } else {
+                OwnerType::Group
+            };
+            let connection = database.connection.lock();
+            let row = connection
+                .query_row(
+                    "SELECT config_path, deleted_at FROM owners
+                     WHERE owner_type=?1 AND owner_id=?2",
+                    params![owner_type.as_str(), request.id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
+                )
+                .optional()?;
+            drop(connection);
+            let Some((config_path, None)) = row else {
+                return Ok(None);
+            };
+            let root = serde_json::from_slice::<Value>(&fs::read(&config_path)?)
+                .with_context(|| format!("invalid owner config {config_path}"))?;
+            Ok(Some(Value::Object(mobile_owner_sync_dto_from_value(
+                owner_type, &root,
+            )?)))
+        }
+        "agent_topic" | "group_topic" => {
+            let owner_type = request.owner_type.context("topic ownerType is required")?;
+            let owner_id = request
+                .owner_id
+                .as_deref()
+                .context("topic ownerId is required")?;
+            let connection = database.connection.lock();
+            let row = connection
+                .query_row(
+                    "SELECT metadata_json, deleted_at FROM topics
+                     WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+                    params![owner_type.as_str(), owner_id, request.id],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<i64>>(1)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            drop(connection);
+            let Some((Some(metadata_json), None)) = row else {
+                return Ok(None);
+            };
+            let metadata = serde_json::from_str::<Value>(&metadata_json)
+                .context("topic metadata is invalid")?;
+            let key = TopicKey {
+                owner_type,
+                owner_id: owner_id.to_string(),
+                topic_id: request.id.clone(),
+            };
+            let mut dto = mobile_topic_sync_dto(&key, &metadata);
+            dto.insert("ownerId".to_string(), Value::String(owner_id.to_string()));
+            Ok(Some(Value::Object(dto)))
+        }
+        _ => unreachable!("entity pull request is validated by the protocol boundary"),
+    }
 }
 
 pub fn topic_hash_diff(
@@ -1221,7 +1367,7 @@ fn local_manifest(
 fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<ManifestItem>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT owner_id, config_path, updated_at, deleted_at
+        "SELECT owner_id, config_hash, updated_at, deleted_at
          FROM owners
          WHERE owner_type=?1
          UNION ALL
@@ -1248,7 +1394,7 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
     drop(connection);
 
     rows.into_iter()
-        .map(|(owner_id, config_path, ts, deleted_at)| {
+        .map(|(owner_id, config_hash, ts, deleted_at)| {
             // 墓碑条目短路（S3-β）：已删 owner 的目录已物理删除，
             // 磁盘读必然失败；删除信号不需要 hash 字段。
             if deleted_at.is_some() {
@@ -1263,23 +1409,16 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
                     owner_id: Some(owner_id),
                 });
             }
-            // 活 owner 的 config 在两次 reconcile 之间被删、写半截或不可读时，
-            // 保留空哈希条目参与正常 diff；不得静默转成 SKIP。
-            let hashes = (|| {
-                let config_hash = mobile_owner_config_hash(owner_type, Path::new(&config_path))?;
-                let content_hash = owner_content_hash(database, owner_type, &owner_id)?;
-                Ok::<_, anyhow::Error>((config_hash, content_hash))
-            })();
-            let (config_hash, content_hash) = match hashes {
-                Ok((config_hash, content_hash)) => (config_hash, content_hash),
+            let content_hash = match owner_content_hash(database, owner_type, &owner_id) {
+                Ok(content_hash) => content_hash,
                 Err(error) => {
                     tracing::warn!(
                         owner_type = %owner_type.as_str(),
                         owner_id = %owner_id,
                         error = %format!("{error:#}"),
-                        "owner manifest entry degraded: config unreadable"
+                        "owner manifest content hash degraded"
                     );
-                    (String::new(), String::new())
+                    String::new()
                 }
             };
             Ok(ManifestItem {
@@ -1337,51 +1476,18 @@ fn topic_manifests(
 
     keys.into_iter()
         .filter(|key| targeted_owners.is_none_or(|owners| owners.contains(&key.owner_id)))
-        .map(|key| {
-            // 缺口 A 降级：活 topic 的 source 不健康（0 字节永久 invalid /
-            // exists-but-never-ingested 等 S5 毒态）时，单条 topic_manifest 失败
-            // 不再炸掉整批 manifest（Phase 2 整表 500），降级为哨兵条目——
-            // 哨兵 config_hash 迫使比对产出动作（topic 的 content-only 不匹配在
-            // manifest() 不出动作），ts 仲裁使用最后一次真实变化时间，毒 topic
-            // 由此进入 Phase 2.5/3 的 per-topic
-            // 隔离管线（topic_hash_diff 记 changed → message_diff ok:false），
-            // 每轮双端可见，而非静默跳过或整表爆炸。
-            match topic_manifest(database, &key) {
-                Ok(item) => Ok(item),
-                Err(error) => {
-                    tracing::warn!(
-                        owner_type = %key.owner_type.as_str(),
-                        owner_id = %key.owner_id,
-                        topic_id = %key.topic_id,
-                        error = %format!("{error:#}"),
-                        "topic manifest entry degraded: emitting sentinel hashes"
-                    );
-                    let sentinel = unhealthy_topic_sentinel_hash(&key);
-                    Ok(ManifestItem {
-                        id: key.topic_id.clone(),
-                        hash: sentinel.clone(),
-                        config_hash: sentinel.clone(),
-                        content_hash: sentinel,
-                        ts: topic_updated_at_or_now(database, &key),
-                        deleted_at: None,
-                        owner_type: Some(key.owner_type),
-                        owner_id: Some(key.owner_id.clone()),
-                    })
-                }
-            }
-        })
+        .map(|key| topic_manifest(database, &key))
         .collect()
 }
 
 fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     let connection = database.connection.lock();
-    let (metadata_json, updated_at, deleted_at): (String, i64, Option<i64>) = connection
-        .query_row(
-            "SELECT metadata_json, updated_at, deleted_at
+    let (config_hash, updated_at, deleted_at): (String, i64, Option<i64>) = connection.query_row(
+        "SELECT config_hash, updated_at, deleted_at
              FROM topics
              WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
              UNION ALL
-             SELECT '{}', t.deleted_at, t.deleted_at
+             SELECT '', t.deleted_at, t.deleted_at
              FROM tombstones t
              WHERE t.entity_type='topic'
                AND t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
@@ -1393,9 +1499,9 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
                      AND topic.topic_id=t.topic_id
                )
              LIMIT 1",
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )?;
+        params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
     drop(connection);
     // 墓碑条目短路（S3-α）：删除信号只需要 id/ts/deleted_at/owner 身份，
     // manifest diff 与移动端均不消费墓碑的 hash 字段；跳过 metadata 解析、
@@ -1412,10 +1518,19 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
             owner_id: Some(key.owner_id.clone()),
         });
     }
-    let metadata =
-        serde_json::from_str::<Value>(&metadata_json).context("topic metadata is invalid")?;
-    let config_hash = mobile_topic_config_hash(key, &metadata);
-    let content_hash = topic_content_hash(database, key)?;
+    let content_hash = match topic_content_hash(database, key) {
+        Ok(content_hash) => content_hash,
+        Err(error) => {
+            tracing::warn!(
+                owner_type = %key.owner_type.as_str(),
+                owner_id = %key.owner_id,
+                topic_id = %key.topic_id,
+                error = %format!("{error:#}"),
+                "topic manifest content hash degraded"
+            );
+            unhealthy_topic_sentinel_hash(key)
+        }
+    };
     Ok(ManifestItem {
         id: key.topic_id.clone(),
         hash: config_hash.clone(),
@@ -1749,21 +1864,6 @@ fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
     )
 }
 
-/// topic_manifests 降级路径的 ts 兜底：行必然存在（key 来自 topics 表查询），
-/// 兜底 now 是为了守住 ts 仲裁的 PULL 偏向（local.ts 新于手机 → PULL），
-/// 避免降级条目被反向仲裁成 PUSH。
-fn topic_updated_at_or_now(database: &Database, key: &TopicKey) -> i64 {
-    let connection = database.connection.lock();
-    connection
-        .query_row(
-            "SELECT updated_at FROM topics
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, i64>(0),
-        )
-        .unwrap_or_else(|_| crate::storage::now_ms())
-}
-
 fn canonical_wire_hash(value: &str) -> Option<String> {
     let normalized = value.to_ascii_lowercase();
     (normalized.len() == 64
@@ -1772,16 +1872,19 @@ fn canonical_wire_hash(value: &str) -> Option<String> {
         .then_some(normalized)
 }
 
-fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String> {
-    let root = serde_json::from_slice::<Value>(&fs::read(path)?)
-        .with_context(|| format!("invalid owner config {}", path.display()))?;
-    mobile_owner_config_hash_from_value(owner_type, &root)
-}
-
 pub(crate) fn mobile_owner_config_hash_from_value(
     owner_type: OwnerType,
     root: &Value,
 ) -> Result<String> {
+    Ok(hash_stable_object(&mobile_owner_sync_dto_from_value(
+        owner_type, root,
+    )?))
+}
+
+fn mobile_owner_sync_dto_from_value(
+    owner_type: OwnerType,
+    root: &Value,
+) -> Result<Map<String, Value>> {
     let object = root.as_object().context("owner config must be an object")?;
     let mut dto = Map::new();
 
@@ -1878,10 +1981,14 @@ pub(crate) fn mobile_owner_config_hash_from_value(
             );
         }
     }
-    Ok(hash_stable_object(&dto))
+    Ok(dto)
 }
 
 pub(crate) fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
+    hash_stable_object(&mobile_topic_sync_dto(key, metadata))
+}
+
+fn mobile_topic_sync_dto(key: &TopicKey, metadata: &Value) -> Map<String, Value> {
     let source = metadata.as_object().cloned().unwrap_or_default();
     let mut dto = Map::new();
     dto.insert("id".into(), Value::String(key.topic_id.clone()));
@@ -1906,7 +2013,7 @@ pub(crate) fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> Stri
             source.get("unread").cloned().unwrap_or(Value::Bool(false)),
         );
     }
-    hash_stable_object(&dto)
+    dto
 }
 
 fn insert_defaulted(
@@ -2094,12 +2201,13 @@ mod tests {
     use super::{
         aggregate_hash, manifest, message_diff, message_leaf_hash, message_manifest,
         mobile_message_hash_from_json, mobile_owner_config_hash_from_value, owner_content_hash,
-        owner_manifest, pull_topic_messages, push_messages, topic_content_hash, topic_hash_diff,
-        topic_identity, topic_leaf_hash, topic_manifest, topic_manifests,
-        unique_manifest_item_by_id, validate_manifest_request, ManifestItem, ManifestRequest,
-        MessageDiffRequest, MessageDiffState, MessageVersionState, MessagesPullTopic,
-        MessagesPushRequest, MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest,
-        TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
+        owner_manifest, pull_entities, pull_topic_messages, push_messages, topic_content_hash,
+        topic_hash_diff, topic_identity, topic_leaf_hash, topic_manifest, topic_manifests,
+        unique_manifest_item_by_id, validate_manifest_request, EntitiesPullRequest,
+        EntityPullRequest, ManifestItem, ManifestRequest, MessageDiffRequest, MessageDiffState,
+        MessageVersionState, MessagesPullTopic, MessagesPushRequest, MessagesPushTopic,
+        RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector,
+        TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2189,6 +2297,60 @@ mod tests {
             base_hash,
             mobile_owner_config_hash_from_value(OwnerType::Agent, &changed)
                 .expect("hash changed agent")
+        );
+    }
+
+    #[tokio::test]
+    async fn entity_pull_uses_cds_dto_projection_and_exact_topic_owner() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            b"[]",
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let results = pull_entities(
+            &database,
+            EntitiesPullRequest {
+                requests: vec![
+                    EntityPullRequest {
+                        id: "agent-a".to_string(),
+                        entity_type: "agent".to_string(),
+                        owner_type: None,
+                        owner_id: None,
+                    },
+                    EntityPullRequest {
+                        id: "topic-a".to_string(),
+                        entity_type: "agent_topic".to_string(),
+                        owner_type: Some(OwnerType::Agent),
+                        owner_id: Some("agent-a".to_string()),
+                    },
+                    EntityPullRequest {
+                        id: "topic-a".to_string(),
+                        entity_type: "agent_topic".to_string(),
+                        owner_type: Some(OwnerType::Agent),
+                        owner_id: Some("agent-missing".to_string()),
+                    },
+                ],
+            },
+        );
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(
+            results[0].data.as_ref().expect("agent DTO")["name"],
+            "Agent A"
+        );
+        let topic = results[1].data.as_ref().expect("topic DTO");
+        assert_eq!(topic["id"], "topic-a");
+        assert_eq!(topic["ownerId"], "agent-a");
+        assert_eq!(topic["locked"], true);
+        assert!(!results[2].success);
+        assert_eq!(
+            results[2].error.as_ref().expect("not found").code,
+            "SYNC_ENTITY_NOT_FOUND"
         );
     }
 
@@ -3827,10 +3989,9 @@ mod tests {
         assert!(action.mismatched_content);
     }
 
-    /// 活 owner 的 config 在 reconcile 间隙被物理删除时，
-    /// degraded 哈希不得被转成静默 SKIP。
+    /// Manifest 只使用 CDS 已提交的 DTO hash，不在读取阶段重算物理 config。
     #[tokio::test]
-    async fn unreadable_owner_config_is_not_silently_skipped() {
+    async fn owner_manifest_uses_committed_config_hash() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -3841,65 +4002,28 @@ mod tests {
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
 
+        let before = owner_manifest(&database, OwnerType::Agent)
+            .expect("baseline manifest")
+            .into_iter()
+            .find(|item| item.id == "agent-a")
+            .expect("baseline owner");
+
         // reconcile 间隙删掉 config（目录还在、行还是活的）。
         fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
 
         let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
-        let degraded = agents
+        let after = agents
             .iter()
             .find(|item| item.id == "agent-a")
-            .expect("degraded entry");
-        assert!(degraded.config_hash.is_empty() && degraded.content_hash.is_empty());
-
-        // Desktop 更新时会进入 PULL，后续实体下载将如实报错。
-        let response = manifest(
-            &database,
-            ManifestRequest {
-                data_type: "agent".to_string(),
-                data: vec![RemoteManifestItem {
-                    id: "agent-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some("b".repeat(64)),
-                    ts: 1,
-                    deleted_at: None,
-                    owner_type: None,
-                    owner_id: None,
-                }],
-                targeted_owners: None,
-            },
-        )
-        .expect("agent manifest diff");
-        let action = response
-            .data
-            .iter()
-            .find(|action| action.id == "agent-a")
-            .expect("pull action");
-        assert_eq!(action.action, "PULL");
-
-        // remote 没有此 owner 时也不得隐藏本地缺损事实。
-        let response = manifest(
-            &database,
-            ManifestRequest {
-                data_type: "agent".to_string(),
-                data: Vec::new(),
-                targeted_owners: None,
-            },
-        )
-        .expect("agent manifest tail");
-        let action = response
-            .data
-            .iter()
-            .find(|action| action.id == "agent-a")
-            .expect("tail pull");
-        assert_eq!(action.action, "PULL");
-        assert!(!action.mismatched_content);
+            .expect("owner after physical removal");
+        assert_eq!(after.config_hash, before.config_hash);
+        assert_eq!(after.content_hash, before.content_hash);
+        assert_eq!(after.ts, before.ts);
     }
 
-    /// 缺口 B（F3）边界：degraded owner 遇 Mobile 墓碑仍出 PUSH_DELETE——
-    /// 删除语义优先于降级。
+    /// 删除语义不依赖物理 config 是否仍可读取。
     #[tokio::test]
-    async fn degraded_owner_delete_precedence() {
+    async fn owner_delete_precedence_does_not_read_physical_config() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config

@@ -235,6 +235,7 @@ pub fn router(state: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024));
 
     let sync_v2 = Router::new()
+        .route("/v2/sync/entities/pull", post(sync_entities_pull))
         .route("/v2/sync/messages/pull", post(sync_messages_pull_stream))
         .route(
             "/v2/sync/messages/push-topic",
@@ -596,6 +597,72 @@ async fn sync_topic_identity(
     sync::topic_identity(state.reconciler.database(), &selector)
         .map(Json)
         .map_err(ServiceError::internal)
+}
+
+async fn sync_entities_pull(
+    State(state): State<AppState>,
+    Json(request): Json<sync::EntitiesPullRequest>,
+) -> ServiceResult<Json<Vec<sync::EntityPullResult>>> {
+    validate_entities_pull_request(&request)?;
+    Ok(Json(sync::pull_entities(
+        state.reconciler.database(),
+        request,
+    )))
+}
+
+fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> ServiceResult<()> {
+    if request.requests.len() > 1_000 {
+        return Err(ServiceError::InvalidRequest(
+            "sync entity pull accepts at most 1000 requests".to_string(),
+        ));
+    }
+    for item in &request.requests {
+        let safe_id = !item.id.is_empty()
+            && item
+                .id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+        if !safe_id {
+            return Err(ServiceError::InvalidRequest(
+                "sync entity pull id must use only ASCII letters, digits, '_' or '-'".to_string(),
+            ));
+        }
+        match item.entity_type.as_str() {
+            "agent" | "group" => {
+                if item.owner_type.is_some() || item.owner_id.is_some() {
+                    return Err(ServiceError::InvalidRequest(
+                        "sync owner pull must not include topic owner fields".to_string(),
+                    ));
+                }
+            }
+            "agent_topic" | "group_topic" => {
+                let expected_owner_type = if item.entity_type == "agent_topic" {
+                    OwnerType::Agent
+                } else {
+                    OwnerType::Group
+                };
+                let valid_owner_id = item.owner_id.as_deref().is_some_and(|owner_id| {
+                    !owner_id.is_empty()
+                        && owner_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                });
+                if item.owner_type != Some(expected_owner_type) || !valid_owner_id {
+                    return Err(ServiceError::InvalidRequest(
+                        "sync topic pull requires matching ownerType and a safe ownerId"
+                            .to_string(),
+                    ));
+                }
+            }
+            _ => {
+                return Err(ServiceError::InvalidRequest(
+                    "sync entity pull type must be agent, group, agent_topic, or group_topic"
+                        .to_string(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 // v1 `/v1/sync/messages/pull` 批量端点已弃用移除（S3-δ）：
