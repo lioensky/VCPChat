@@ -207,17 +207,15 @@ function ensureSpaceAfterTilde(text) {
  */
 function removeIndentationFromCodeBlockMarkers(text) {
     if (typeof text !== 'string') return text;
-    // Only remove indentation from the opening and closing fence markers
-    // Do NOT touch the content between them
+    // Only remove indentation from the opening and closing fence markers.
+    // Do not touch any other line; this helper does not need to track fence state.
     const lines = text.split('\n');
-    let inCodeBlock = false;
 
     return lines.map(line => {
         const trimmedLine = line.trim();
 
         // Check if this is a fence marker
         if (trimmedLine.startsWith('```')) {
-            inCodeBlock = !inCodeBlock;
             return trimmedLine; // Remove indentation from fence markers
         }
 

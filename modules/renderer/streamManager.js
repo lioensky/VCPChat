@@ -2162,8 +2162,8 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
         return null;
     }
 
-    // With the global render loop, we no longer need to manually drain the queue here or clear timers.
-    // The loop will continue to process chunks until the queue is empty and the message is finalized, then clean itself up.
+    // 终态入口已原子停止该消息的帧调度；不再排空平滑队列。
+    // 下方直接使用生产端规范终稿（缺失时才回退累计文本）完成最终 DOM 投影。
     activeStreamingMessages.delete(messageId);
 
     // 🟢 清理节流定时器
