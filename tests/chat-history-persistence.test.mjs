@@ -73,3 +73,35 @@ test('auxiliary session persistence updates transient history without claiming d
     });
     assert.deepEqual(sessionHistory.map(message => message.id), ['user-a', 'assistant-a']);
 });
+
+test('terminal persistence preserves concurrent durable fields outside the owned stream terminal', async () => {
+    let durable = [
+        { id: 'user-a', role: 'user', content: 'durable edited question', timestamp: 1, edited: true },
+        { id: 'assistant-a', role: 'assistant', content: 'partial', timestamp: 2, feedback: 'liked' },
+    ];
+    const persistence = createChatHistoryPersistence({
+        async getHistory() { return durable.map(message => ({ ...message })); },
+        async saveHistory(_itemId, _itemType, _topicId, history) { durable = history; },
+    });
+
+    await persistence.commit(projected([
+        { id: 'user-a', role: 'user', content: 'stale question', timestamp: 1 },
+        { id: 'assistant-a', role: 'assistant', content: 'answer a', timestamp: 2, finishReason: 'completed' },
+    ]));
+
+    assert.deepEqual(durable.find(message => message.id === 'user-a'), {
+        id: 'user-a',
+        role: 'user',
+        content: 'durable edited question',
+        timestamp: 1,
+        edited: true,
+    });
+    assert.deepEqual(durable.find(message => message.id === 'assistant-a'), {
+        id: 'assistant-a',
+        role: 'assistant',
+        content: 'answer a',
+        timestamp: 2,
+        feedback: 'liked',
+        finishReason: 'completed',
+    });
+});

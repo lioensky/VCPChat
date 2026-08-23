@@ -309,3 +309,107 @@ test('StreamProjection retires prior runtime state before same-message retry', a
     await projection.dispose();
     dom.window.close();
 });
+
+
+test('stale async initialization cannot revive state after same-message operation replacement', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    let releaseFirstPrepare;
+    let prepareCallCount = 0;
+    const transientStreamHistory = {
+        async prepare() {
+            prepareCallCount += 1;
+            if (prepareCallCount === 1) {
+                await new Promise(resolve => { releaseFirstPrepare = resolve; });
+            }
+            return [];
+        },
+        async finalize() { return null; },
+        discard() {},
+        dispose() {},
+        get pendingCount() { return 0; },
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        transientStreamHistory,
+        viewAuthority: { isCurrent: () => false },
+    }));
+
+    const base = {
+        id: 'async-retry',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+    };
+    const firstStart = projection.startStreamingMessage({ ...base, streamOperationId: 'op-a' });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await projection.startStreamingMessage({ ...base, streamOperationId: 'op-b' });
+    releaseFirstPrepare();
+    await firstStart;
+
+    assert.equal(
+        projection.appendStreamChunk(base.id, { content: 'old' }, base, 'op-a'),
+        false,
+        'replaced producer must not append after its delayed initialization resumes'
+    );
+    projection.appendStreamChunk(base.id, { content: 'new' }, base, 'op-b');
+    const snapshots = projection.snapshotConversation({
+        itemType: 'agent',
+        itemId: 'visible-agent',
+        topicId: 'visible-topic',
+    });
+    assert.equal(snapshots.length, 1);
+    assert.equal(snapshots[0].streamOperationId, 'op-b');
+    assert.equal(snapshots[0].accumulatedText, 'new');
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('smooth stream terminal stops queued rendering and releases every runtime owner', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM(
+        '<!doctype html><div id="chat"><article class="message-item" data-message-id="smooth-terminal"><div class="md-content"></div></article></div>',
+        { url: 'https://vcpchat.local/' }
+    );
+    const history = [];
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        globalSettingsRef: { get: () => ({ enableSmoothStreaming: true, minChunkBufferSize: 1 }) },
+        currentChatHistoryRef: {
+            get: () => history,
+            set: value => { history.splice(0, history.length, ...value); },
+        },
+        prepareFinalTextForRender: (_messageId, text, role) => ({ text, role, depth: 0 }),
+        renderPostProcessedHtml: async (content, html) => { content.textContent = html; },
+    }));
+
+    const item = dom.window.document.querySelector('.message-item');
+    await projection.startStreamingMessage({
+        id: 'smooth-terminal',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        streamOperationId: 'smooth-op',
+    }, item);
+    projection.appendStreamChunk(
+        'smooth-terminal',
+        { content: 'a long queued response that should still be pending visually' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'smooth-op'
+    );
+
+    const projected = await projection.projectStreamTerminal(
+        'smooth-terminal',
+        'completed',
+        { agentId: 'visible-agent', topicId: 'visible-topic', streamOperationId: 'smooth-op' },
+        { fullResponse: 'canonical terminal response', streamOperationId: 'smooth-op' }
+    );
+
+    assert.equal(projected?.content, 'canonical terminal response');
+    assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
+    assert.match(item.querySelector('.md-content').textContent, /canonical terminal response/);
+
+    await projection.dispose();
+    dom.window.close();
+});

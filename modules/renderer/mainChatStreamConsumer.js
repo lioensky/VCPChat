@@ -78,7 +78,23 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 { fullResponse, error, streamOperationId: operationId },
             );
             if (!projected) throw new Error(`Stream terminal projection failed: ${messageId}`);
-            const finalized = await capabilities.persistTerminal(projected);
+
+            capabilities.setPersistenceState?.(messageId, 'saving');
+            let finalized;
+            try {
+                finalized = await capabilities.persistTerminal(projected);
+                capabilities.setPersistenceState?.(messageId, 'saved');
+            } catch (persistenceError) {
+                // 最终 DOM 已按乐观策略完成投影；持久化失败必须留下明确、可诊断的未保存状态，
+                // 不能让用户把当前可见消息误认为已经写入 durable history。
+                capabilities.setPersistenceState?.(
+                    messageId,
+                    'unsaved',
+                    persistenceError?.message || String(persistenceError)
+                );
+                throw persistenceError;
+            }
+
             try {
                 await capabilities.afterPersist?.({ terminal, finalized, context, messageId });
             } catch (sideEffectError) {

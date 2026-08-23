@@ -404,6 +404,52 @@ function run() {
     );
     assert.match(literalParagraphSign.html, /正文↵符号/);
 
+    const inlineHtmlLiteralSource = [
+        '正文说明：`<style>`、`<div data-vdoc-island="fake">fake</div>` 都是代码字面量。',
+        '',
+        '<style>',
+        '.real-style { color: green; }',
+        '</style>',
+        '',
+        '<div data-vdoc-island="real-island">',
+        '    <div class="real-style">真实岛</div>',
+        '</div>',
+    ].join('\n');
+    const inlineHtmlLiteralCompiled = compiler.compile(inlineHtmlLiteralSource);
+    assert.deepEqual(
+        inlineHtmlLiteralCompiled.islands.map((island) => island.id),
+        ['real-island'],
+        'inline code 中的 data-vdoc-island 字面量不得进入 HTML 岛扫描器'
+    );
+    assert.equal(
+        inlineHtmlLiteralCompiled.editRegions.filter((region) =>
+            region.type === 'style'
+        ).length,
+        1,
+        'inline code 中的伪 <style> 不得与后续真实 </style> 跨域匹配'
+    );
+    assert.match(
+        inlineHtmlLiteralCompiled.html,
+        /<code>&lt;style&gt;<\/code>/,
+        'inline style 字面量必须保留为 Markdown code'
+    );
+    assert.match(
+        inlineHtmlLiteralCompiled.html,
+        /<code>&lt;div data-vdoc-island=&quot;fake&quot;&gt;fake&lt;\/div&gt;<\/code>/,
+        'inline div 岛字面量必须保留为 Markdown code'
+    );
+    const realStyleRegion = inlineHtmlLiteralCompiled.editRegions.find(
+        (region) => region.type === 'style'
+    );
+    assert.match(
+        inlineHtmlLiteralSource.slice(
+            realStyleRegion.sourceRange.start,
+            realStyleRegion.sourceRange.end
+        ),
+        /^<style>[\s\S]*\.real-style[\s\S]*<\/style>$/,
+        '真实 style 原子范围不得包含前方正文'
+    );
+
     const duplicated = compiler.validate([
         '<div data-vdoc-island="same"></div>',
         '',

@@ -16,6 +16,7 @@ import {
     findToolRequestEnd,
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
+import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
 
 import { createContentProcessor } from './renderer/contentProcessor.js';
 import { createMessageContextMenu } from './renderer/messageContextMenu.js';
@@ -1338,18 +1339,28 @@ function extractSpeakableTextFromContentElement(contentElement) {
  * @param {string} scopeId - The unique ID for scoping.
  * @returns {{processedContent: string, styleInjected: boolean}} The content with <style> tags removed, and a flag indicating if styles were injected.
  */
-function processAndInjectScopedCss(content, scopeId) {
+function processAndInjectScopedCss(content, scopeId, options = {}) {
     let cssContent = '';
     let styleInjected = false;
+    const injectStyles = options.injectStyles !== false;
 
     const processedContent = content.replace(STYLE_REGEX, (match, css) => {
         cssContent += css.trim() + '\n';
-        return ''; // Remove style tags from the content
+        // style 位于 DIV 动画岛内部时不能替换为空字符串：空行会终止
+        // CommonMark raw HTML block，导致岛内后续节点被重新分段。保留不可见
+        // 注释作为硬边界，既移除可执行 style，又维持 HTML 岛结构连续。
+        return '<!-- VCP-SCOPED-STYLE-EXTRACTED -->';
     });
 
-    if (cssContent.length > 0) {
+    if (injectStyles && cssContent.length > 0) {
         try {
             const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
+            if (!scopedCss.trim()) {
+                if (options.messageItem) {
+                    options.messageItem.dataset.vcpScopedStyleState = 'rejected';
+                }
+                throw new SyntaxError('Scoped CSS transform returned no safe rules');
+            }
             // Scope IDs are generated per message, but include the surface namespace
             // in the lookup as a hard boundary when two renderers share a document.
             const styleSelector = `style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"][data-vcp-surface-id="${escapeCssAttributeValue(surfaceId)}"]`;
@@ -1370,9 +1381,18 @@ function processAndInjectScopedCss(content, scopeId) {
             // 避免同一消息累积多个样式节点或出现旧规则覆盖新规则。
             styleElement.textContent = scopedCss;
             styleInjected = true;
+            if (options.messageItem) {
+                options.messageItem.dataset.vcpScopedStyleState = 'active';
+            }
 
-            console.debug(`[ScopedCSS] Updated scoped styles for ID: #${scopeId}`);
+            console.debug(`[ScopedCSS] Updated scoped styles for ID: #${scopeId}`, {
+                sourceLength: cssContent.length,
+                scopedLength: scopedCss.length
+            });
         } catch (error) {
+            if (options.messageItem) {
+                options.messageItem.dataset.vcpScopedStyleState = 'rejected';
+            }
             console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
         }
     }
@@ -1381,8 +1401,27 @@ function processAndInjectScopedCss(content, scopeId) {
 }
 
 
-function processAssistantScopedHtmlContent(content, scopeId, messageItem = null) {
+function removeOwnedMessageScopeStyle(scopeId) {
+    if (!scopeId) return;
+    for (const styleElement of ownedStyleElements) {
+        if (
+            styleElement.getAttribute('data-vcp-surface-id') === surfaceId
+            && styleElement.getAttribute('data-vcp-scope-id') === scopeId
+        ) {
+            styleElement.remove();
+            ownedStyleElements.delete(styleElement);
+        }
+    }
+}
+
+function processAssistantScopedHtmlContent(content, scopeId, messageItem = null, options = {}) {
     if (!scopeId || !containsAssistantHtmlNeedingScope(content)) {
+        // 规范终稿可能移除了流式预览阶段出现过的 style；此时必须撤销旧消息级样式。
+        if (options.injectStyles !== false && messageItem?.dataset?.vcpHtmlScopeCandidate === 'true') {
+            removeOwnedMessageScopeStyle(scopeId);
+            delete messageItem.dataset.vcpHtmlScopeCandidate;
+            delete messageItem.dataset.vcpInlineHtmlScoped;
+        }
         return content;
     }
 
@@ -1446,15 +1485,23 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null)
         return placeholder;
     });
 
-    // 保护代码块。
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(CODE_FENCE_REGEX, (match) => {
+    // 保护所有 Markdown 代码域。不能只保护固定三个反引号的 fenced code：
+    // 正文中的 inline code（例如 `<style>`、`<div>`）如果暴露给 STYLE_REGEX，
+    // 会从伪开始标签跨越匹配到后续动画岛的真实 </style>，吞掉整段 CSS 与 HTML。
+    // 共享扫描器同时覆盖可变长度反引号、波浪号围栏和未闭合流尾。
+    textWithProtectedBlocks = replaceMarkdownCodeDomains(textWithProtectedBlocks, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;
     });
 
     // 现在只会匹配不在保护区域内的 <style> 标签。
-    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
+    // 流式分片可选择只剥离 style；注入副作用由完整可见源码统一执行。
+    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(
+        textWithProtectedBlocks,
+        scopeId,
+        { ...options, messageItem }
+    );
 
     // 恢复所有被保护的块。
     // 🟢 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式。
@@ -1672,6 +1719,10 @@ function shouldBypassRenderHtmlCache(text, options = {}) {
     if (text.length < RENDER_HTML_CACHE_MIN_TEXT_LENGTH) return true;
     if (text.length > RENDER_HTML_CACHE_MAX_TEXT_LENGTH) return true;
 
+    // 大工具结果 HTML 含运行时 data-content-id，其完整文本由消息级 Map 持有，
+    // 不能跨消息/内容 revision 复用缓存 HTML，否则按钮会引用已释放的条目。
+    if (text.includes('[[VCP调用结果信息汇总:')) return true;
+
     // scoped CSS 有 scopeId 与 document.head 注入副作用，第一版保守跳过。
     // 同时用大小写无关的 HTML/CSS 风险识别覆盖 <STYLE>、结构化 HTML 与内联 style 场景。
     if ((options.messageRole || 'assistant') === 'assistant' && containsAssistantHtmlNeedingScope(text)) return true;
@@ -1694,9 +1745,11 @@ function buildRenderHtmlCacheKey(text, options = {}) {
     ].join('|');
 }
 
-function getRenderHtmlCache(key) {
+function getRenderHtmlCache(key, sourceText) {
     const entry = renderHtmlCache.get(key);
     if (!entry) return null;
+    // FNV-1a 与长度只用于快速索引；命中后必须比较原文，避免哈希碰撞返回其他消息 HTML。
+    if (entry.sourceText !== sourceText) return null;
 
     renderHtmlCache.delete(key);
     entry.lastUsed = Date.now();
@@ -1722,8 +1775,8 @@ function trimRenderHtmlCache() {
     }
 }
 
-function setRenderHtmlCache(key, html) {
-    const size = estimateStringBytes(html);
+function setRenderHtmlCache(key, html, sourceText) {
+    const size = estimateStringBytes(html) + estimateStringBytes(sourceText);
     if (size <= 0 || size > RENDER_HTML_CACHE_MAX_SINGLE_BYTES) {
         return;
     }
@@ -1736,6 +1789,7 @@ function setRenderHtmlCache(key, html) {
 
     renderHtmlCache.set(key, {
         html,
+        sourceText,
         size,
         hits: 0,
         lastUsed: Date.now()
@@ -1778,14 +1832,14 @@ function renderMarkdownToHtml(text, options = {}) {
     }
 
     const cacheKey = buildRenderHtmlCacheKey(text, options);
-    const cachedHtml = getRenderHtmlCache(cacheKey);
+    const cachedHtml = getRenderHtmlCache(cacheKey, text);
     if (cachedHtml !== null) {
         return cachedHtml;
     }
 
     renderHtmlCacheStats.misses += 1;
     const html = renderMarkdownToHtmlUncached(text, options);
-    setRenderHtmlCache(cacheKey, html);
+    setRenderHtmlCache(cacheKey, html, text);
     return html;
 }
 
@@ -2297,9 +2351,17 @@ function cleanupScopedStylesForMessage(messageItem, messageId = null) {
     }
 }
 
+function cleanupToolResultFullContentForRoot(root) {
+    root?.querySelectorAll?.('.vcp-tool-result-truncated-notice[data-content-id]').forEach(notice => {
+        const contentId = Number.parseInt(notice.dataset.contentId, 10);
+        if (Number.isInteger(contentId)) toolResultFullContentMap.delete(contentId);
+    });
+}
+
 function cleanupMessageDomResources(messageItem, messageId = null) {
     if (!messageItem) return;
 
+    cleanupToolResultFullContentForRoot(messageItem);
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
         imageHandler.cleanupContent?.(contentDiv);
@@ -3137,6 +3199,14 @@ async function renderAttachments(message, contentDiv) {
 async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     if (!contentDiv) return;
 
+    // 每次替换原始 HTML 都发布一个新的内容版本。任何较旧的异步 Mermaid、
+    // 高亮或动画任务恢复后都必须失效，不能继续处理同一节点上的新内容。
+    const replacesContent = typeof rawHtml === 'string';
+    const renderRevision = replacesContent
+        ? (Number(contentDiv._vcpRenderRevision) || 0) + 1
+        : (Number(contentDiv._vcpRenderRevision) || 0);
+    if (replacesContent) contentDiv._vcpRenderRevision = renderRevision;
+
     const {
         messageId = null,
         message = null,
@@ -3144,20 +3214,24 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         renderSessionId = getActiveRenderSessionId(),
         runHeavy = true,
         includeAttachments = true,
-        deferHighlights = true
+        deferHighlights = true,
+        processScripts = true
     } = options;
 
     const messageItem = contentDiv.closest?.('.message-item');
 
     const isStillValid = () => {
         if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) return false;
+        if (Number(contentDiv._vcpRenderRevision) !== renderRevision) return false;
         if (!contentDiv.isConnected) return false;
         if (messageItem && !messageItem.isConnected) return false;
         return true;
     };
 
     if (typeof rawHtml === 'string') {
-        // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器与动画/WebGL 资源。
+        // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
+        // 动画/WebGL 资源及大工具结果完整文本。
+        cleanupToolResultFullContentForRoot(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
         cleanupAnimationsInContent(contentDiv);
         imageHandler.setContentAndProcessImages(contentDiv, rawHtml, messageId);
@@ -3169,6 +3243,9 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         const existingAttachments = contentDiv.querySelector('.message-attachments');
         if (existingAttachments) existingAttachments.remove();
         await renderAttachments(message, contentDiv);
+        // 不在旧任务中扫描删除附件：同一节点可能已被新 revision 重新挂载。
+        // 新渲染开始时的统一 DOM 资源清理负责释放旧附件。
+        if (!isStillValid()) return;
     }
 
     if (!isStillValid()) return;
@@ -3186,6 +3263,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     }
 
     contentProcessor.processRenderedContent(contentDiv, settings);
+    if (!isStillValid()) return;
     await renderMermaidDiagrams(contentDiv);
 
     if (!isStillValid()) return;
@@ -3207,7 +3285,16 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         contentProcessor.highlightAllPatternsInMessage(contentDiv);
     }
 
-    processAnimationsInContent(contentDiv, visibilityOptimizer);
+    if (!isStillValid()) return;
+    // stable block 会在终态被规范整树替换；提前执行脚本会把 rAF、timer 和事件
+    // 绑定到即将销毁的局部 DOM。CSS 动画不依赖此处理器，可继续即时播放。
+    if (processScripts) {
+        processAnimationsInContent(contentDiv, visibilityOptimizer);
+        if (!isStillValid()) {
+            cleanupAnimationsInContent(contentDiv);
+            return;
+        }
+    }
     if (messageItem) {
         messageItem.dataset.vcpHeavyActivated = 'true';
         delete messageItem.dataset.vcpHeavyPending;
@@ -3834,13 +3921,15 @@ function updateMessageContent(messageId, newContent) {
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
-    renderPostProcessedHtml(contentDiv, rawHtml, {
+    void renderPostProcessedHtml(contentDiv, rawHtml, {
         messageId,
         message: messageInHistory ? { ...messageInHistory, content: newContent } : null,
         settings: globalSettings,
         renderSessionId: null,
         runHeavy: true,
         includeAttachments: !!messageInHistory
+    }).catch(error => {
+        console.error(`[MessageRenderer] Failed to post-process updated message ${messageId}:`, error);
     });
 }
 

@@ -1,4 +1,5 @@
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
+import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 const emoticonFixer = createEmoticonUrlFixer();
@@ -817,9 +818,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const codeBlockMap = new Map();
         let placeholderId = 0;
 
-        // Step 2: Now, find and protect ALL fenced code blocks (including the ones we just added).
-        // This prevents the CSS processor from touching styles inside code blocks.
-        processed = processed.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        // Step 2: 保护全部 Markdown 代码域，而不是仅保护固定三个反引号围栏。
+        // 正文中的 inline `<style>` 若暴露给后续 CSS 正则，会跨越匹配到真实动画岛
+        // 的 </style>；共享扫描器同时覆盖可变长度/波浪号围栏和未闭合流尾。
+        processed = replaceMarkdownCodeDomains(processed, (match) => {
             const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
             codeBlockMap.set(placeholder, match);
             placeholderId++;

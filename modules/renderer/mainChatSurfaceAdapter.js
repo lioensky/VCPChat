@@ -17,6 +17,20 @@ function createStreamCapabilities(root, services) {
             services.streamProjection.projectStreamTerminal(messageId, finishReason, context, payload)
         ),
         persistTerminal: projected => services.historyPersistence.commit(projected),
+        setPersistenceState(messageId, state, error = '') {
+            const messageItem = root.querySelector(`.message-item[data-message-id="${messageId}"]`);
+            if (!messageItem) return;
+            messageItem.dataset.vcpPersistenceState = state;
+            if (state === 'unsaved') {
+                messageItem.dataset.vcpPersistenceError = String(error || '持久化失败');
+                messageItem.setAttribute('aria-label', '消息尚未保存');
+                messageItem.title = `消息尚未保存：${error || '持久化失败'}`;
+            } else {
+                delete messageItem.dataset.vcpPersistenceError;
+                messageItem.removeAttribute('aria-label');
+                messageItem.removeAttribute('title');
+            }
+        },
         dispatchTerminal: detail => services.dispatchTerminal?.(detail),
         onSettled(value) {
             services.notifySendStateChanged?.(value);

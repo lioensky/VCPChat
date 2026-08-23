@@ -95,6 +95,64 @@
         return regions;
     }
 
+    function scanInlineCodeRegions(source, excludedRegions = []) {
+        const regions = [];
+        let cursor = 0;
+
+        while (cursor < source.length) {
+            const start = source.indexOf('`', cursor);
+            if (start < 0) break;
+            const excluded = excludedRegions.find((region) =>
+                start >= region.start && start < region.end
+            );
+            if (excluded) {
+                cursor = excluded.end;
+                continue;
+            }
+
+            let openingLength = 1;
+            while (source[start + openingLength] === '`') openingLength += 1;
+            let search = start + openingLength;
+            let end = -1;
+            while (search < source.length) {
+                const candidate = source.indexOf('`', search);
+                if (candidate < 0) break;
+                let closingLength = 1;
+                while (source[candidate + closingLength] === '`') {
+                    closingLength += 1;
+                }
+                if (closingLength === openingLength) {
+                    end = candidate + closingLength;
+                    break;
+                }
+                search = candidate + closingLength;
+            }
+
+            if (end < 0) {
+                // 静态文档中的孤立反引号按普通 Markdown 文本处理，不能保护到
+                // 文档末尾并屏蔽后续真实 style/island。
+                cursor = start + openingLength;
+                continue;
+            }
+            regions.push({
+                type: 'inline-code',
+                start,
+                end,
+                source: source.slice(start, end),
+                closed: true,
+            });
+            cursor = end;
+        }
+
+        return regions;
+    }
+
+    function containingRegion(offset, regions) {
+        return regions.find((region) =>
+            offset >= region.start && offset < region.end
+        ) || null;
+    }
+
     function islandIdFromOpeningTag(tag) {
         const match = String(tag || '').match(
             /\bdata-vdoc-island\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i
@@ -130,19 +188,35 @@
 
     function scanStyleBlocks(source, excludedRegions = []) {
         const regions = [];
-        const pattern = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+        const openingPattern = /<style\b[^>]*>/gi;
         let match;
-        while ((match = pattern.exec(source))) {
+        while ((match = openingPattern.exec(source))) {
+            const excluded = containingRegion(match.index, excludedRegions);
+            if (excluded) {
+                // 代码域里的 `<style>` 只是 Markdown 字面量。必须在寻找
+                // </style> 之前跳过，否则会跨越吞掉后续真实样式块。
+                openingPattern.lastIndex = excluded.end;
+                continue;
+            }
+
+            const closePattern = /<\/style\s*>/gi;
+            closePattern.lastIndex = openingPattern.lastIndex;
+            const closeMatch = closePattern.exec(source);
+            if (!closeMatch) continue;
             const start = match.index;
-            const end = start + match[0].length;
-            if (overlapsRegion(start, end, excludedRegions)) continue;
+            const end = closePattern.lastIndex;
+            if (overlapsRegion(start, end, excludedRegions)) {
+                openingPattern.lastIndex = end;
+                continue;
+            }
             regions.push({
                 type: 'style',
                 start,
                 end,
-                source: match[0],
+                source: source.slice(start, end),
                 closed: true,
             });
+            openingPattern.lastIndex = end;
         }
         return regions;
     }
@@ -950,6 +1024,9 @@
         const source = String(input ?? '');
         const diagnostics = [];
         const fences = scanFences(source);
+        const inlineCodeRegions = scanInlineCodeRegions(source, fences);
+        const codeDomains = [...fences, ...inlineCodeRegions]
+            .sort((left, right) => left.start - right.start);
         fences.filter((region) => !region.closed).forEach((region) => {
             diagnostics.push(diagnostic(
                 'warn',
@@ -959,9 +1036,9 @@
                 region.start
             ));
         });
-        const islands = scanIslands(source, fences, diagnostics);
+        const islands = scanIslands(source, codeDomains, diagnostics);
         const styleBlocks = scanStyleBlocks(source, [
-            ...fences,
+            ...codeDomains,
             ...islands,
         ]);
         const structuralRegions = [
@@ -1078,6 +1155,7 @@
         lineEndingOf,
         markdownLiveMarkerRanges,
         scanFences,
+        scanInlineCodeRegions,
         simpleHash,
         validate,
     });
