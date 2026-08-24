@@ -1114,8 +1114,9 @@ async function repairOwnerTopicProjection({
       const topicId = topic?.id;
       if (
         typeof topicId === "string" &&
+        sanitizeId(topicId) === topicId &&
         !projectedIds.has(topicId) &&
-        (topicId === "default" || physicalTopics.has(topicId))
+        topicId.length > 0
       ) {
         projectedTopics.push(topic);
         projectedIds.add(topicId);
@@ -1123,30 +1124,32 @@ async function repairOwnerTopicProjection({
     }
 
     let added = 0;
-    for (const topicId of [...physicalTopics].sort()) {
-      if (projectedIds.has(topicId)) continue;
-      const history = await readRecoveryHistory(
-        path.join(
-          appDataPath,
-          "UserData",
-          ownerId,
-          "topics",
-          topicId,
-          "history.json",
-        ),
-      );
-      const topicData = {
-        id: topicId,
-        name: `Recovered: ${topicId}`,
-        createdAt: recoveryTimestamp(history),
-      };
-      projectedTopics.push(
-        ownerType === "group"
-          ? createGroupTopic(topicData)
-          : createAgentTopic(topicData),
-      );
-      projectedIds.add(topicId);
-      added += 1;
+    if (configRecovered) {
+      for (const topicId of [...physicalTopics].sort()) {
+        if (projectedIds.has(topicId)) continue;
+        const history = await readRecoveryHistory(
+          path.join(
+            appDataPath,
+            "UserData",
+            ownerId,
+            "topics",
+            topicId,
+            "history.json",
+          ),
+        );
+        const topicData = {
+          id: topicId,
+          name: `Recovered: ${topicId}`,
+          createdAt: recoveryTimestamp(history),
+        };
+        projectedTopics.push(
+          ownerType === "group"
+            ? createGroupTopic(topicData)
+            : createAgentTopic(topicData),
+        );
+        projectedIds.add(topicId);
+        added += 1;
+      }
     }
 
     const removed = previousTopics.length - (projectedTopics.length - added);
@@ -1198,7 +1201,7 @@ async function scanPhysicalTopicTree(appDataPath) {
     if (!ownerId || sanitizeId(ownerId) !== ownerId) continue;
     const topicsPath = path.join(userDataPath, ownerId, "topics");
     const topicIds = (await listDirectories(topicsPath))
-      .filter((topicId) => topicId !== "default" && sanitizeId(topicId) === topicId);
+      .filter((topicId) => sanitizeId(topicId) === topicId);
     const matchingOwners = ownersById.get(ownerId) || [];
     if (matchingOwners.length !== 1) {
       if (topicIds.length > 0) {
@@ -1224,8 +1227,8 @@ async function scanPhysicalTopicTree(appDataPath) {
 }
 
 /**
- * 启动 reconcile 前，把 UserData 的物理 Topic 集合投影回 Agent/Group config。
- * 物理目录存在即为 live；旧索引墓碑不参与本步骤。
+ * 启动 reconcile 前，仅在配置无法恢复时用物理历史重建 Topic 列表。
+ * 有效配置中的零 Topic 与空 Topic 都保持原样。
  */
 async function repairTopicProjectionsFromDisk(
   appDataPath,
@@ -1261,8 +1264,8 @@ async function repairTopicProjectionsFromDisk(
 }
 
 /**
- * legacy 索引只保留物理树仍存在的 live 行。删除墓碑在同一事务中级联到消息，
- * 用于收敛“物理删除完成、进程在索引写入前退出”的窗口。
+ * Legacy Owner 以物理目录为准；Topic 以 config 元数据为准。
+ * 删除墓碑在同一事务中级联到消息，用于收敛删除中断窗口。
  */
 async function reconcileMissingPhysicalIndexes(
   appDataPath,
@@ -1275,6 +1278,7 @@ async function reconcileMissingPhysicalIndexes(
   const liveOwners = new Set();
   const liveTopics = new Map();
   const ambiguousOwners = new Set();
+  const unreadableConfigOwners = new Set();
   for (const owner of owners.values()) {
     const ownerKey = `${owner.ownerType}\0${owner.ownerId}`;
     liveOwners.add(`${owner.ownerType}:${owner.ownerId}`);
@@ -1282,8 +1286,22 @@ async function reconcileMissingPhysicalIndexes(
       ambiguousOwners.add(ownerKey);
       continue;
     }
-    for (const topicId of owner.physicalTopics) {
-      liveTopics.set(`${ownerKey}\0${topicId}`, true);
+    const ownerRoot = owner.ownerType === "group" ? "AgentGroups" : "Agents";
+    const configPath = path.join(appDataPath, ownerRoot, owner.ownerId, "config.json");
+    try {
+      const config = parseJsonObject(await fs.readFile(configPath, "utf-8"), configPath);
+      const topics = Array.isArray(config.topics) ? config.topics : [];
+      for (const topic of topics) {
+        if (
+          typeof topic?.id === "string" &&
+          topic.id.length > 0 &&
+          sanitizeId(topic.id) === topic.id
+        ) {
+          liveTopics.set(`${ownerKey}\0${topic.id}`, true);
+        }
+      }
+    } catch {
+      unreadableConfigOwners.add(ownerKey);
     }
   }
 
@@ -1293,8 +1311,7 @@ async function reconcileMissingPhysicalIndexes(
   ).all();
   const topicRows = database.prepare(
     `SELECT id, type, owner_type, owner_id, file_path, deleted_at FROM entity_index
-     WHERE id <> 'default'
-       AND type = 'topic'`,
+     WHERE type = 'topic'`,
   ).all();
   const staleOwners = ownerRows.filter(
     (row) => !liveOwners.has(`${row.owner_type}:${row.owner_id}`),
@@ -1312,7 +1329,8 @@ async function reconcileMissingPhysicalIndexes(
   );
 
   const staleTopicRows = topicRows.filter((row) => {
-    if (ambiguousOwners.has(`${row.owner_type}\0${row.owner_id}`)) return false;
+    const ownerKey = `${row.owner_type}\0${row.owner_id}`;
+    if (ambiguousOwners.has(ownerKey) || unreadableConfigOwners.has(ownerKey)) return false;
     if (staleOwnerPaths.has(row.file_path)) return true;
     return !liveTopics.has(`${row.owner_type}\0${row.owner_id}\0${row.id}`);
   });

@@ -549,11 +549,6 @@ fn validate_entity_delete_request(
             EntityDeleteTarget::Owner(owner_type, request.id)
         }
         "topic" => {
-            if request.id == "default" {
-                return Err(ServiceError::InvalidRequest(
-                    "the default topic is not part of MobileSync".to_string(),
-                ));
-            }
             let owner_type = request.owner_type.ok_or_else(|| {
                 ServiceError::InvalidRequest(
                     "sync topic delete requires ownerType and ownerId".to_string(),
@@ -983,34 +978,33 @@ mod tests {
 
     #[test]
     fn entity_delete_validation_requires_exact_topic_owner() {
-        let missing_owner = request("topic", "topic-a", 1);
+        let missing_owner = request("topic", "default", 1);
         assert!(matches!(
             validate_entity_delete_request(missing_owner),
             Err(ServiceError::InvalidRequest(_))
         ));
 
-        let mut valid = request("topic", "topic-a", 1);
-        valid.owner_type = Some(OwnerType::Group);
-        valid.owner_id = Some("group-a".to_string());
+        let mut valid = request("topic", "default", 1);
+        valid.owner_type = Some(OwnerType::Agent);
+        valid.owner_id = Some("agent-a".to_string());
         let (target, deleted_at) =
             validate_entity_delete_request(valid).expect("validate exact topic owner");
         assert_eq!(deleted_at, 1);
         assert!(matches!(
             target,
             EntityDeleteTarget::Topic(TopicKey {
-                owner_type: OwnerType::Group,
+                owner_type: OwnerType::Agent,
                 owner_id,
                 topic_id,
-            }) if owner_id == "group-a" && topic_id == "topic-a"
+            }) if owner_id == "agent-a" && topic_id == "default"
         ));
     }
 
     #[test]
-    fn entity_delete_validation_rejects_unsafe_ids_default_and_timestamp_bounds() {
+    fn entity_delete_validation_rejects_unsafe_ids_and_timestamp_bounds() {
         for invalid in [
             request("agent", "../agent", 1),
             request("group", "group/a", 1),
-            request("topic", "default", 1),
             request("agent", "agent-a", -1),
             request("agent", "agent-a", 9_007_199_254_740_992),
         ] {

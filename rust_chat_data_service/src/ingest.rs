@@ -76,11 +76,7 @@ impl Reconciler {
             .collect::<HashSet<_>>();
         let mut ambiguous_history_owner_ids = HashSet::new();
         for owner_id in duplicate_ids {
-            if self
-                .physical_topic_ids(&owner_id)?
-                .iter()
-                .any(|topic_id| topic_id.as_str() != "default")
-            {
+            if !self.physical_topic_ids(&owner_id)?.is_empty() {
                 ambiguous_history_owner_ids.insert(owner_id);
             }
         }
@@ -128,7 +124,7 @@ impl Reconciler {
                         stats.messages_ingested += commit.message_count;
                     }
                     Ok(None) => {
-                        // A physical topic directory (or configured default) with no prior
+                        // A physical or configured topic with no prior
                         // valid source is a legitimate empty topic. Only a previously
                         // ingested source can become missing.
                         if let Some(commit) = self
@@ -204,26 +200,17 @@ impl Reconciler {
     }
 
     fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
+        if configured_owner.source_config_hash.is_some() {
+            return Ok(configured_owner.clone());
+        }
         let physical_topic_ids = self.physical_topic_ids(&configured_owner.key.owner_id)?;
 
-        let physical_topic_id_set = physical_topic_ids
-            .iter()
-            .map(String::as_str)
-            .collect::<HashSet<_>>();
         let configured_topic_ids = configured_owner
             .topics
             .iter()
             .map(|topic| topic.topic_id.as_str())
             .collect::<HashSet<_>>();
-        let mut topics = configured_owner
-            .topics
-            .iter()
-            .filter(|topic| {
-                topic.topic_id == "default"
-                    || physical_topic_id_set.contains(topic.topic_id.as_str())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let mut topics = configured_owner.topics.clone();
         let mut next_ordinal = configured_owner
             .topics
             .iter()
@@ -1128,7 +1115,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stale_config_cannot_resurrect_topic_after_physical_delete() {
+    async fn config_deletion_preserves_tombstone_and_config_only_topic() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -1146,7 +1133,7 @@ mod tests {
             ]),
         );
         let initial = reconciler.reconcile().await.expect("initial reconcile");
-        assert_eq!(initial.topics_seen, 1);
+        assert_eq!(initial.topics_seen, 2);
 
         let key = TopicKey {
             owner_type: OwnerType::Agent,
@@ -1161,6 +1148,13 @@ mod tests {
             .join("agent_stale_topic/topics/topic_deleted");
         let stale_history_path = topic_directory.join("history.json");
         fs::remove_dir_all(&topic_directory).expect("delete physical topic directory");
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent_stale_topic",
+            "Stale Topic Agent",
+            &["topic_never_physical"],
+        );
 
         assert!(reconciler
             .ingest_path(&stale_history_path, "notify")
@@ -1171,7 +1165,7 @@ mod tests {
             .reconcile()
             .await
             .expect("reconcile stale config");
-        assert_eq!(stats.topics_seen, 0);
+        assert_eq!(stats.topics_seen, 1);
         assert!(database
             .active_messages_for_topic(&key)
             .expect("load messages after reconcile")
@@ -1206,7 +1200,7 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .expect("load persisted topic tombstone");
-        let never_created: i64 = connection
+        let config_only_topics: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM topics
                  WHERE owner_type='agent' AND owner_id='agent_stale_topic'
@@ -1218,11 +1212,11 @@ mod tests {
         assert_eq!(topic_deleted_at, Some(321));
         assert_eq!(message_deleted_at, Some(321));
         assert_eq!(persisted_tombstone, 321);
-        assert_eq!(never_created, 0);
+        assert_eq!(config_only_topics, 1);
     }
 
     #[tokio::test]
-    async fn physical_topic_missing_from_config_is_ingested_as_stable_orphan() {
+    async fn physical_topic_missing_from_valid_config_is_not_resurrected() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -1240,70 +1234,31 @@ mod tests {
             ]),
         );
 
-        let first = reconciler.reconcile().await.expect("initial reconcile");
-        assert_eq!(first.topics_seen, 1);
-        assert_eq!(first.files_ingested, 1);
-        assert_eq!(first.messages_ingested, 1);
+        let stats = reconciler.reconcile().await.expect("reconcile");
+        assert_eq!(stats.topics_seen, 0);
+        assert_eq!(stats.files_ingested, 0);
+        assert_eq!(stats.messages_ingested, 0);
         let key = TopicKey {
             owner_type: OwnerType::Agent,
             owner_id: "agent_orphan_topic".to_string(),
             topic_id: "topic_orphan".to_string(),
         };
-        let messages = database
+        assert!(database
             .active_messages_for_topic(&key)
-            .expect("load orphan messages");
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].content_text, "physical truth");
-
-        let before = {
-            let connection = database.connection.lock();
-            connection
-                .query_row(
-                    "SELECT topic_ordinal, metadata_json, updated_at FROM topics
-                     WHERE owner_type='agent' AND owner_id='agent_orphan_topic'
-                       AND topic_id='topic_orphan' AND deleted_at IS NULL",
-                    [],
-                    |row| {
-                        Ok((
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, i64>(2)?,
-                        ))
-                    },
-                )
-                .expect("load orphan topic")
-        };
-        assert_eq!(before.0, 0);
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&before.1).expect("parse orphan metadata"),
-            serde_json::json!({
-                "orphanHistory": true,
-                "compatibilityStatus": "history_not_listed_in_config"
-            })
-        );
-
-        let second = reconciler.reconcile().await.expect("repeat reconcile");
-        assert_eq!(second.files_ingested, 0);
-        assert_eq!(second.files_skipped, 1);
-        let after = {
-            let connection = database.connection.lock();
-            connection
-                .query_row(
-                    "SELECT topic_ordinal, metadata_json, updated_at FROM topics
-                     WHERE owner_type='agent' AND owner_id='agent_orphan_topic'
-                       AND topic_id='topic_orphan' AND deleted_at IS NULL",
-                    [],
-                    |row| {
-                        Ok((
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, i64>(2)?,
-                        ))
-                    },
-                )
-                .expect("reload orphan topic")
-        };
-        assert_eq!(after, before);
+            .expect("load orphan messages")
+            .is_empty());
+        let indexed: i64 = database
+            .connection
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM topics
+                 WHERE owner_type='agent' AND owner_id='agent_orphan_topic'
+                   AND topic_id='topic_orphan' AND deleted_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count orphan topic");
+        assert_eq!(indexed, 0);
     }
 
     #[tokio::test]

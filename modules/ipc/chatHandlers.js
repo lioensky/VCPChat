@@ -613,23 +613,10 @@ function initialize(mainWindow, context) {
 
                 let remainingTopics;
                 await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
-                    let filtered = (existingConfig.topics || []).filter(topic => topic.id !== topicIdToDelete);
-                    if (filtered.length === 0) {
-                        filtered = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
-                    }
+                    const filtered = (existingConfig.topics || []).filter(topic => topic.id !== topicIdToDelete);
                     remainingTopics = filtered;
                     return { ...existingConfig, topics: filtered };
                 });
-
-                // 如果删空了并创建了默认话题，确保其 history 目录存在
-                if (remainingTopics.length === 1 && remainingTopics[0].id === 'default') {
-                    const defaultTopicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', 'default');
-                    await fs.ensureDir(defaultTopicHistoryDir);
-                    const historyPath = path.join(defaultTopicHistoryDir, 'history.json');
-                    if (!await fs.pathExists(historyPath)) {
-                        await fs.writeJson(historyPath, [], { spaces: 2 });
-                    }
-                }
 
                 const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
                 if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);

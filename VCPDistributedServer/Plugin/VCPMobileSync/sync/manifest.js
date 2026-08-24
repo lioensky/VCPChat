@@ -133,17 +133,7 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
     });
   }
 
-  const rows = dataType === "topic"
-    ? db
-        .prepare(
-          "SELECT * FROM entity_index WHERE id <> 'default' AND type = 'topic'",
-        )
-        .all()
-    : db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
-
-  const syncRows = dataType === "topic"
-    ? rows.filter((row) => row.id !== "default")
-    : rows;
+  const syncRows = db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
   const filteredRows = dataType === "topic" && ownerFilter
     ? syncRows.filter((row) => {
         return ownerFilter.has(`${row.owner_type}\0${row.owner_id}`);
@@ -299,8 +289,7 @@ function handleSyncManifest(payload, database = getDb()) {
     throw syncContractError("Topic manifest requires targetedOwners");
   }
   const normalizedRemoteItems = remoteItems
-    .map((item, index) => normalizeRemoteManifestItem(item, dataType, index))
-    .filter((item) => dataType !== "topic" || item.id !== "default");
+    .map((item, index) => normalizeRemoteManifestItem(item, dataType, index));
   if (dataType === "topic") {
     for (const item of normalizedRemoteItems) {
       if (!ownerFilter.has(`${item.ownerType}\0${item.ownerId}`)) {
@@ -464,15 +453,6 @@ function handleMessageManifest(payload, database = getDb()) {
     throw syncContractError(
       "GET_MESSAGE_MANIFEST requires ownerType and ownerId",
     );
-  }
-  if (topicId === "default") {
-    return {
-      type: "MESSAGE_MANIFEST_RESULTS",
-      topicId,
-      ownerType,
-      ownerId,
-      messages: [],
-    };
   }
   assertHistoryTopicHealthy({ topicId, ownerType, ownerId });
 

@@ -153,16 +153,14 @@ function initialize(context) {
 
                     agentData.name = config.name || folderName;
                     agentData.config = config;
-                    agentData.topics = (config.topics && Array.isArray(config.topics) && config.topics.length > 0)
-                        ? config.topics
-                        : [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+                    agentData.topics = Array.isArray(config.topics) ? config.topics : [];
                     
                     // Inject correct paths
                     agentData.config.id = folderName;
                     agentData.config.agentDataPath = path.join(AGENT_DIR, '..', 'UserData', folderName);
                 } else {
                     // Default config for missing config.json
-                    agentData.topics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+                    agentData.topics = [];
                     agentData.config = {
                         name: folderName,
                         topics: agentData.topics,

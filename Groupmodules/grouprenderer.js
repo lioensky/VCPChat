@@ -371,17 +371,6 @@ window.GroupRenderer = (() => {
             } else if (topics.error) {
                 console.error(`加载群组 ${groupId} 的话题列表失败:`, topics.error);
                 messageRenderer.renderMessage({ role: 'system', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });
-            } else {
-                // No topics, create a default one or prompt
-                const defaultTopicResult = await electronAPI.createNewTopicForGroup(groupId, "主要群聊");
-                if (defaultTopicResult.success) {
-                    currentTopicIdRef.set(defaultTopicResult.topicId);
-                    messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
-                    await loadGroupChatHistory(groupId, defaultTopicResult.topicId);
-                } else {
-                    messageRenderer.renderMessage({ role: 'system', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
-                    await loadGroupChatHistory(groupId, null); // Show "no topic"
-                }
             }
         } catch (e) {
             console.error(`选择群组 ${groupId} 时发生错误: `, e);
@@ -1078,6 +1067,8 @@ window.GroupRenderer = (() => {
                     const topics = await electronAPI.getGroupTopics(groupId);
                     if (topics && topics.length > 0) {
                         handleGroupTopicSelection(groupId, topics[0].id);
+                    } else {
+                        messageRenderer.renderMessage({ role: 'system', content: '请选择或创建一个话题以开始聊天。', timestamp: Date.now() });
                     }
                 }
                 await mainRendererFunctions.loadTopicList();

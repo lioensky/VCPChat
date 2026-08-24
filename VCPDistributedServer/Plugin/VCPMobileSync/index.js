@@ -100,7 +100,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   const logger = resetLogger();
   logger.startSession("system");
 
-  // Topic 物理目录是生存性真源；config.topics 只在初始索引前被动修正一次。
+  // 仅在配置不可恢复时才用历史目录重建 Topic；有效的空列表保持不变。
   await repairTopicProjectionsFromDisk(appDataPath);
 
   // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
@@ -478,10 +478,6 @@ async function reconcileLocalFiles(appDataPath) {
   logger.startPhase("reconcile", 0);
   logger.logInfo("reconcile", "正在执行轻量级索引扫描...");
 
-  // 阶段 B 前仍排除 default；Topic 数据库类型已由 schema 升级统一为 topic。
-  db.prepare("DELETE FROM entity_index WHERE id = 'default'").run();
-  db.prepare("DELETE FROM message_index WHERE topic_id = 'default'").run();
-
   const agentsDir = path.join(appDataPath, "Agents");
   const groupsDir = path.join(appDataPath, "AgentGroups");
   const userDataDir = path.join(appDataPath, "UserData");
@@ -671,7 +667,6 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
 
       if (Array.isArray(config.topics)) {
         for (const topic of config.topics) {
-          if (topic.id === "default") continue;
           const topicDto = extractTopicDTO(topic, id, type);
           const topicHash = computeDtoHash(
             topicDto,
@@ -750,7 +745,7 @@ async function scanHistory(userDataDir, db, logger) {
       throw error;
     }
     for (const topicEntry of topicFolders) {
-      if (!topicEntry.isDirectory() || topicEntry.name === "default") continue;
+      if (!topicEntry.isDirectory()) continue;
       const topicId = topicEntry.name;
       const historyPath = path.join(topicsDir, topicId, "history.json");
       try {
@@ -791,6 +786,10 @@ async function scanHistory(userDataDir, db, logger) {
           result.warningTopicCount += 1;
         }
       } catch (error) {
+        if (error.code === "ENOENT") {
+          result.skippedCount += 1;
+          continue;
+        }
         // 条目级降级：孤儿话题、损坏 JSON 等单话题故障不应中止整批。
         // 失败时不更新 history_source_state，保证后续启动仍会重试。
         for (const candidateOwnerType of matchingOwnerTypes) {
@@ -830,9 +829,7 @@ function computeAggregatedHashes(db, logger) {
   const topicMap = new Map(); // Map<ownerKey, Array<{hash, aggregated_hash}>>
   entities
     .filter(
-      (e) =>
-        e.id !== "default" &&
-        e.type === "topic",
+      (e) => e.type === "topic",
     )
     .forEach((t) => {
       const ownerKey = `${t.owner_type}\0${t.owner_id}`;
@@ -867,7 +864,6 @@ function computeAggregatedHashes(db, logger) {
   // 3. 兜底：为所有缺失 aggregated_hash 的 topic 写入标准空聚合值 (V2: 对齐手机端 computeAggregatedHash([]))
   const nullTopics = entities.filter(
     (e) =>
-      e.id !== "default" &&
       e.type === "topic" &&
       (e.aggregated_hash === null || e.aggregated_hash === ""),
   );
@@ -1059,32 +1055,30 @@ function startFileWatcher(appDataPath) {
         })) {
           return;
         }
-        if (id !== "default") {
-          let topic = getEntityIndex({
+        let topic = getEntityIndex({
+          id,
+          type: "topic",
+          ownerType,
+          ownerId,
+        });
+        if (!topic || topic.deleted_at !== null) {
+          const ownerRoot = ownerType === "group" ? "AgentGroups" : "Agents";
+          await ingestConfigToDb(
+            path.join(appDataPath, ownerRoot, ownerId, "config.json"),
+            ownerType,
+            appDataPath,
+          );
+          topic = getEntityIndex({
             id,
             type: "topic",
             ownerType,
             ownerId,
           });
-          if (!topic || topic.deleted_at !== null) {
-            const ownerRoot = ownerType === "group" ? "AgentGroups" : "Agents";
-            await ingestConfigToDb(
-              path.join(appDataPath, ownerRoot, ownerId, "config.json"),
-              ownerType,
-              appDataPath,
-            );
-            topic = getEntityIndex({
-              id,
-              type: "topic",
-              ownerType,
-              ownerId,
-            });
-          }
-          if (!topic || topic.deleted_at !== null) {
-            throw new Error(
-              `History topic ${ownerType}/${ownerId}/${id} has no live config index`,
-            );
-          }
+        }
+        if (!topic || topic.deleted_at !== null) {
+          throw new Error(
+            `History topic ${ownerType}/${ownerId}/${id} has no live config index`,
+          );
         }
         logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
         await ingestHistoryToDb(filePath, {
@@ -1170,11 +1164,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     if (Array.isArray(config.topics)) {
       topicLen = config.topics.length;
       for (const topic of config.topics) {
-        if (
-          topic.id === "default" ||
-          sanitizeId(topic.id) !== topic.id ||
-          !physicalTopics.has(topic.id)
-        ) {
+        if (sanitizeId(topic.id) !== topic.id) {
           continue;
         }
         const topicDto = extractTopicDTO(topic, id, type);
@@ -1197,18 +1187,28 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           hash: topicHash,
           updatedAt: now,
         });
-        if (!previous || previous.deleted_at !== null) {
-          newTopics.push({
-            topicId: topic.id,
-            ownerType: type,
-            ownerId: id,
-            historyPath: path.join(topicsDir, topic.id, "history.json"),
-          });
+        if (
+          (!previous || previous.deleted_at !== null) &&
+          physicalTopics.has(topic.id)
+        ) {
+          const historyPath = path.join(topicsDir, topic.id, "history.json");
+          try {
+            if ((await fs.stat(historyPath)).isFile()) {
+              newTopics.push({
+                topicId: topic.id,
+                ownerType: type,
+                ownerId: id,
+                historyPath,
+              });
+            }
+          } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+          }
         }
       }
     }
 
-    // config 事件只能更新仍有物理目录的 Topic；同时收敛此前漏掉的删除事件。
+    // 配置中的空 Topic 也属于 live；同时收敛此前漏掉的删除事件。
     await reconcileMissingPhysicalIndexes(appDataPath, null, db, now);
 
     // V2: 触发层级冒泡

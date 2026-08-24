@@ -616,11 +616,7 @@ window.topicListManager = (() => {
             syncManageUi();
             topicListUl.innerHTML = `<li><p>无法加载 ${itemNameForLoading} 的配置信息: ${itemConfigFull?.error || '未知错误'}</p></li>`;
         } else {
-            let topicsToProcess = itemConfigFull.topics || [];
-            if (currentSelectedItem.type === 'agent' && topicsToProcess.length === 0) {
-                const defaultAgentTopic = { id: "default", name: "主要对话", createdAt: Date.now() };
-                topicsToProcess.push(defaultAgentTopic);
-            }
+            const topicsToProcess = itemConfigFull.topics || [];
 
             availableTopics = [...topicsToProcess];
             currentItemConfig = itemConfigFull;
@@ -819,11 +815,6 @@ window.topicListManager = (() => {
         const currentSelectedItem = currentSelectedItemRef.get();
         const topicsToDelete = availableTopics.filter(topic => selectedTopicIds.has(topic.id));
         if (topicsToDelete.length === 0) return;
-        if (topicsToDelete.length >= availableTopics.length) {
-            uiHelper.showToastNotification('至少需要保留一个话题。', 'warning');
-            return;
-        }
-
         const flowlockedTopic = currentSelectedItem.type === 'agent'
             ? topicsToDelete.find(topic => window.flowlockManager?.isTopicLocked?.(currentSelectedItem.id, topic.id))
             : null;

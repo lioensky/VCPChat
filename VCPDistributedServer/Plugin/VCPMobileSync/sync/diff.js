@@ -24,7 +24,7 @@ function requireCompoundTopicStates(payload) {
       { code: "SYNC_PROTOCOL_INVALID" },
     );
   }
-  const topicStates = payload.topics.filter((state) => state?.topicId !== "default");
+  const topicStates = payload.topics;
   if (topicStates.length > 10_000) {
     throw Object.assign(new Error("Topic hash batch exceeds 10000 topics"), {
       code: "SYNC_BUDGET_EXCEEDED",
@@ -81,7 +81,6 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
 
   for (const state of topicStates) {
     const topicId = state.topicId;
-    if (topicId === "default") continue;
     try {
       const topicRow = db
         .prepare(
@@ -199,16 +198,6 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       ownerType: localState.ownerType,
       ownerId: localState.ownerId,
     };
-    if (topicId === "default") {
-      results.push({
-        ...resultIdentity,
-        ok: true,
-        toPull: [],
-        toPush: false,
-        toDelete: [],
-      });
-      continue;
-    }
     const localEntries = Object.entries(localState.messages);
     messageCount += localEntries.length;
     if (localEntries.length > 10_000 || messageCount > 100_000) {

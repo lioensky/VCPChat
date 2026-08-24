@@ -69,7 +69,7 @@ function publishUnhealthyHistoryHash({ topicId, ownerType, ownerId }) {
       .prepare(
         `SELECT id, hash, aggregated_hash FROM entity_index
          WHERE type = 'topic' AND owner_type = ? AND owner_id = ?
-           AND id <> 'default' AND deleted_at IS NULL`,
+           AND deleted_at IS NULL`,
       )
       .all(ownerType, ownerId);
     const ownerHash = computeAggregatedHash(
@@ -738,7 +738,6 @@ async function ingestHistoryToDb(
   source = "watcher",
   { history: suppliedHistory, sourceStats: suppliedStats } = {},
 ) {
-  if (topicId === "default") return { messageCount: 0, warningCount: 0 };
   const db = getDb();
   const logger = getLogger();
   if (!db) throw new Error("Database not initialized");

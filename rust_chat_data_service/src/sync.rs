@@ -371,12 +371,6 @@ pub struct MessagesPushResponse {
 
 const MAX_SYNC_ITEMS: usize = 10_000;
 const MAX_SAFE_JSON_INTEGER: i64 = (1_i64 << 53) - 1;
-const RESERVED_SYNC_TOPIC_ID: &str = "default";
-
-fn is_syncable_topic_id(topic_id: &str) -> bool {
-    topic_id != RESERVED_SYNC_TOPIC_ID
-}
-
 fn is_lower_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -489,14 +483,11 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
     Ok(())
 }
 
-pub fn manifest(database: &Database, mut request: ManifestRequest) -> Result<ManifestResponse> {
+pub fn manifest(database: &Database, request: ManifestRequest) -> Result<ManifestResponse> {
     anyhow::ensure!(
         request.data.len() <= MAX_SYNC_ITEMS,
         "manifest exceeds {MAX_SYNC_ITEMS} items"
     );
-    if request.data_type == "topic" {
-        request.data.retain(|item| is_syncable_topic_id(&item.id));
-    }
     validate_manifest_request(&request)?;
     let local = local_manifest(
         database,
@@ -845,15 +836,9 @@ pub fn topic_hash_diff(
         request.topics.len() <= 10_000,
         "topic hash diff exceeds 10000 topics"
     );
-    let states = request
-        .topics
-        .into_iter()
-        .filter(|state| is_syncable_topic_id(&state.topic_id))
-        .collect::<Vec<_>>();
-
     let mut changed_topics = Vec::new();
     let mut seen_topics = HashSet::new();
-    for state in states {
+    for state in request.topics {
         anyhow::ensure!(
             !state.topic_id.is_empty(),
             "topic hash diff topicId is empty"
@@ -959,15 +944,6 @@ pub fn message_diff(
             total_messages <= 100_000,
             "message diff exceeds 100000 messages"
         );
-        if !is_syncable_topic_id(&requested_key.topic_id) {
-            results.push(MessageDiffResult::success(
-                &requested_key,
-                Vec::new(),
-                false,
-                Vec::new(),
-            ));
-            continue;
-        }
         anyhow::ensure!(
             state.topic_hash.is_empty() || canonical_wire_hash(&state.topic_hash).is_some(),
             "message diff topicHash is invalid for {}",
@@ -1446,7 +1422,6 @@ fn topic_manifests(
     let mut statement = connection.prepare(
         "SELECT owner_type, owner_id, topic_id
          FROM topics
-         WHERE topic_id <> 'default'
          UNION ALL
          SELECT t.owner_type, t.owner_id, t.topic_id
          FROM tombstones t
@@ -1455,7 +1430,6 @@ fn topic_manifests(
           AND topic.owner_id=t.owner_id
           AND topic.topic_id=t.topic_id
          WHERE t.entity_type='topic'
-           AND t.topic_id <> 'default'
            AND t.entity_id=t.topic_id
            AND topic.topic_id IS NULL
          ORDER BY owner_type, owner_id, topic_id",
@@ -1563,8 +1537,7 @@ fn owner_content_hash(
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
         "SELECT topic_id FROM topics
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id <> 'default'
-           AND deleted_at IS NULL
+         WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL
          ORDER BY topic_id ASC",
     )?;
     let topic_ids = statement
@@ -1665,11 +1638,6 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
 }
 
 fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicKey> {
-    anyhow::ensure!(
-        is_syncable_topic_id(&selector.topic_id),
-        "topic {} is reserved and excluded from mobile sync",
-        selector.topic_id
-    );
     let connection = database.connection.lock();
     if let (Some(owner_type), Some(owner_id)) = (selector.owner_type, selector.owner_id.as_deref())
     {
@@ -2208,7 +2176,11 @@ const fn is_zero(value: &usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, fs, sync::Arc};
+    use std::{
+        collections::{HashMap, HashSet},
+        fs,
+        sync::Arc,
+    };
 
     use super::{
         aggregate_hash, manifest, message_diff, message_leaf_hash, message_manifest,
@@ -2636,44 +2608,6 @@ mod tests {
         )
         .expect_err("malformed topic hash must fail");
         assert!(malformed.to_string().contains("invalid hash"));
-    }
-
-    #[test]
-    fn reserved_default_topic_is_a_noop_in_phase2_and_phase3_diff() {
-        let (_temp, _config, database, _reconciler) = sync_fixture();
-        let topic_response = topic_hash_diff(
-            &database,
-            TopicHashDiffRequest {
-                topics: vec![TopicHashState {
-                    topic_id: "default".to_string(),
-                    owner_type: OwnerType::Agent,
-                    owner_id: "agent-a".to_string(),
-                    config_hash: "not-a-hash".to_string(),
-                    content_hash: "not-a-hash".to_string(),
-                }],
-            },
-        )
-        .expect("reserved topic hash state must be ignored");
-        assert!(topic_response.changed_topics.is_empty());
-
-        let message_response = message_diff(
-            &database,
-            MessageDiffRequest {
-                topics: vec![MessageDiffState {
-                    topic_id: "default".to_string(),
-                    owner_type: OwnerType::Agent,
-                    owner_id: "agent-a".to_string(),
-                    topic_hash: "not-a-hash".to_string(),
-                    messages: HashMap::from([(String::new(), version("not-a-hash", 1))]),
-                }],
-            },
-        )
-        .expect("reserved Phase 3 state must be ignored");
-        let decision = &message_response.results[0];
-        assert!(decision.ok);
-        assert_eq!(decision.to_pull.as_deref(), Some(&[][..]));
-        assert_eq!(decision.to_push, Some(false));
-        assert_eq!(decision.to_delete.as_deref(), Some(&[][..]));
     }
 
     #[tokio::test]
@@ -3238,10 +3172,8 @@ mod tests {
         assert_eq!(action.deleted_at, Some(123));
     }
 
-    /// `default` 是桌面内部保留话题，不参与 Mobile manifest；无论它出现在
-    /// 本地多个 owner 还是旧 Mobile 的远端清单中，都不能产生同步动作。
     #[tokio::test]
-    async fn reserved_default_topic_is_excluded_from_mobile_manifests() {
+    async fn default_topics_are_distinct_manifest_entities() {
         let (_temp, config, database, reconciler) = sync_fixture();
         // agent-a 追加 default 话题（fixture 原本只有 topic-a）。
         fs::create_dir_all(config.user_data_dir.join("agent-a/topics/default"))
@@ -3295,7 +3227,15 @@ mod tests {
             ]),
         )
         .expect("topic manifests");
-        assert!(items.iter().all(|item| item.id != "default"));
+        let default_owners = items
+            .iter()
+            .filter(|item| item.id == "default")
+            .map(|item| item.owner_id.as_deref())
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            default_owners,
+            HashSet::from([Some("agent-a"), Some("agent-b")])
+        );
         assert!(items.iter().any(|item| item.id == "topic-a"));
 
         let hash = "a".repeat(64);
@@ -3319,12 +3259,41 @@ mod tests {
                 ]),
             },
         )
-        .expect("reserved remote topic must be ignored");
-        assert!(response.data.iter().all(|action| action.id != "default"));
+        .expect("diff default topics");
+        let default_actions = response
+            .data
+            .iter()
+            .filter(|action| action.id == "default")
+            .map(|action| action.owner_id.as_deref())
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            default_actions,
+            HashSet::from([Some("agent-a"), Some("agent-b")])
+        );
+        let agent_a_messages = message_manifest(
+            &database,
+            &TopicSelector {
+                topic_id: "default".to_string(),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-a".to_string()),
+            },
+        )
+        .expect("agent-a default messages");
+        let agent_b_messages = message_manifest(
+            &database,
+            &TopicSelector {
+                topic_id: "default".to_string(),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-b".to_string()),
+            },
+        )
+        .expect("agent-b default messages");
+        assert_eq!(agent_a_messages.messages[0].msg_id, "a1");
+        assert_eq!(agent_b_messages.messages[0].msg_id, "b1");
     }
 
     #[tokio::test]
-    async fn owner_root_matches_mobile_topic_leaf_contract_and_ignores_default() {
+    async fn owner_root_matches_mobile_topic_leaf_contract_with_default() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::create_dir_all(config.user_data_dir.join("agent-a/topics/default"))
             .expect("create default topic");
@@ -3366,26 +3335,6 @@ mod tests {
         )
         .expect("write agent config");
 
-        fs::create_dir_all(config.groups_dir.join("group-default")).expect("create group");
-        fs::create_dir_all(config.user_data_dir.join("group-default/topics/default"))
-            .expect("create group default");
-        fs::write(
-            config.groups_dir.join("group-default/config.json"),
-            serde_json::to_vec(&json!({
-                "name": "Group",
-                "topics": [{"id":"default","name":"Default","createdAt":1}]
-            }))
-            .expect("serialize group config"),
-        )
-        .expect("write group config");
-        fs::write(
-            config
-                .user_data_dir
-                .join("group-default/topics/default/history.json"),
-            br#"[{"id":"gd","role":"user","content":"group","timestamp":1}]"#,
-        )
-        .expect("write group default");
-
         reconciler.reconcile().await.expect("reconcile");
         let topic_a = topic_manifest(
             &database,
@@ -3405,20 +3354,28 @@ mod tests {
             },
         )
         .expect("topic-b manifest");
+        let default_topic = topic_manifest(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "default".to_string(),
+            },
+        )
+        .expect("default manifest");
         let expected = aggregate_hash(vec![
             topic_leaf_hash("topic-a", &topic_a.config_hash, &topic_a.content_hash),
             topic_leaf_hash("topic-b", &topic_b.config_hash, &topic_b.content_hash),
+            topic_leaf_hash(
+                "default",
+                &default_topic.config_hash,
+                &default_topic.content_hash,
+            ),
         ]);
         assert_eq!(
             owner_content_hash(&database, OwnerType::Agent, "agent-a").expect("agent root"),
             expected
         );
-        assert_eq!(
-            owner_content_hash(&database, OwnerType::Group, "group-default")
-                .expect("empty group root"),
-            ""
-        );
-
         fs::write(
             &default_path,
             br#"[{"id":"d","role":"user","content":"changed","timestamp":4}]"#,
@@ -3428,7 +3385,7 @@ mod tests {
             .reconcile()
             .await
             .expect("reconcile default change");
-        assert_eq!(
+        assert_ne!(
             owner_content_hash(&database, OwnerType::Agent, "agent-a")
                 .expect("agent root after default change"),
             expected
