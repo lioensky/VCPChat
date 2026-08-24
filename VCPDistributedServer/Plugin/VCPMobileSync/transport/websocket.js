@@ -28,10 +28,7 @@ function errorStageForPayload(payload, versionAccepted, currentStage) {
   if (payload?.type === "SYNC_ERROR") return "shutdown";
   if (payload?.type === "SYNC_MESSAGE_DIFF_BATCH") return "messages";
   if (payload?.type === "GET_MESSAGE_MANIFEST") return "messages";
-  if (
-    payload?.type === "SYNC_TOPIC_HASH_BATCH" ||
-    payload?.type === "SYNC_TOPIC_HASH_BATCH_V2"
-  ) {
+  if (payload?.type === "SYNC_TOPIC_HASH_BATCH_V2") {
     return "topic_validation";
   }
   if (payload?.type === "SYNC_MANIFEST") {

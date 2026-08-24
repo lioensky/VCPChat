@@ -508,13 +508,16 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 10. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
   // 避免旧私有墓碑与 CDS 墓碑发生双写。
   router.post("/delete-message", express.json(), async (req, res) => {
-    const { msgId, deletedAt, topicId } = req.body;
+    const { msgId, deletedAt, topicId, ownerType, ownerId } = req.body;
 
     if (
       typeof msgId !== "string" ||
       msgId.length === 0 ||
       typeof topicId !== "string" ||
       topicId.length === 0 ||
+      !["agent", "group"].includes(ownerType) ||
+      typeof ownerId !== "string" ||
+      ownerId.length === 0 ||
       !Number.isSafeInteger(deletedAt) ||
       deletedAt < 0
     ) {
@@ -529,13 +532,21 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     try {
       if (centralSync) {
         return res.json(
-          await centralSync.deleteMessage({ topicId, msgId, deletedAt }),
+          await centralSync.deleteMessage({
+            topicId,
+            ownerType,
+            ownerId,
+            msgId,
+            deletedAt,
+          }),
         );
       }
       const result = await deleteMessage({
         msgId,
         deletedAt,
         topicId,
+        ownerType,
+        ownerId,
         appDataPath,
       });
       const response = normalizeFailureResult(result, {

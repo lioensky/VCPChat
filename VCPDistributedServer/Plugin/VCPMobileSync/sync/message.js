@@ -43,6 +43,10 @@ const {
 
 const unhealthyHistoryTopics = new Map();
 
+function topicIdentityKey(ownerType, ownerId, topicId) {
+  return `${ownerType}\0${ownerId}\0${topicId}`;
+}
+
 function markHistoryTopicUnhealthy(topicId, error) {
   if (typeof topicId === "string" && topicId.length > 0) {
     unhealthyHistoryTopics.set(topicId, String(error?.message || error));
@@ -180,10 +184,10 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
   for (const { topicId, ownerType, ownerId, msgIds = [] } of requests) {
     const safeTopicId = sanitizeId(topicId);
     try {
-      if (!safeTopicId || safeTopicId !== topicId || seenTopics.has(safeTopicId)) {
+      if (!safeTopicId || safeTopicId !== topicId) {
         throw createSyncError(
           "SYNC_REQUEST_INVALID",
-          "Message pull topic IDs must be non-empty and unique",
+          "Message pull topic ID is invalid",
           { stage: "messages", failedTopicIds: [topicId] },
         );
       }
@@ -209,7 +213,15 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
           { stage: "messages", failedTopicIds: [safeTopicId] },
         );
       }
-      seenTopics.add(safeTopicId);
+      const topicKey = topicIdentityKey(ownerType, ownerId, safeTopicId);
+      if (seenTopics.has(topicKey)) {
+        throw createSyncError(
+          "SYNC_REQUEST_INVALID",
+          "Message pull contains a duplicate topic identity",
+          { stage: "messages", failedTopicIds: [safeTopicId] },
+        );
+      }
+      seenTopics.add(topicKey);
       assertHistoryTopicHealthy(safeTopicId);
       requestedMessages += msgIds.length;
       if (msgIds.length > 10_000 || requestedMessages > MAX_NDJSON_MESSAGES) {
@@ -219,7 +231,12 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
           { stage: "messages", failedTopicIds: [safeTopicId] },
         );
       }
-      const row = getEntityIndex(safeTopicId, "topic");
+      const row = getEntityIndex({
+        id: safeTopicId,
+        type: "topic",
+        ownerType,
+        ownerId,
+      });
       if (!row) {
         await writer.write({
           topicId,
@@ -236,8 +253,8 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
         continue;
       }
 
-      const parentId = path.basename(path.dirname(row.file_path));
-      const actualOwnerType = row.file_path.includes("AgentGroups") ? "group" : "agent";
+      const parentId = row.owner_id;
+      const actualOwnerType = row.owner_type;
       if (
         ownerType !== actualOwnerType ||
         ownerId !== parentId
@@ -283,9 +300,11 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
       const indexedTimes = new Map(
         db
           .prepare(
-            "SELECT msg_id, updated_at FROM message_index WHERE topic_id = ? AND deleted_at IS NULL",
+            `SELECT msg_id, updated_at FROM message_index
+             WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+               AND deleted_at IS NULL`,
           )
-          .all(safeTopicId)
+          .all(ownerType, ownerId, safeTopicId)
           .map((indexRow) => [indexRow.msg_id, indexRow.updated_at]),
       );
       for (const message of messages) {
@@ -355,8 +374,8 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
  */
 async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
   const db = getDb();
-  const parentId = path.basename(path.dirname(row.file_path));
-  const isGroup = row.file_path.includes("AgentGroups");
+  const parentId = row.owner_id;
+  const isGroup = row.owner_type === "group";
   const historyDir = path.join(
     appDataPath,
     "UserData",
@@ -437,13 +456,18 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
   try {
     for await (const line of readNdjsonLines(req)) {
       let topicId = null;
+      let ownerType = null;
+      let ownerId = null;
       let streamFatal = false;
       try {
         const frame = parseJsonWithoutDuplicateKeys(decodeNdjsonLine(line));
         topicId = frame.topicId;
-        const { messages, ownerType, ownerId } = frame;
+        ownerType = frame.ownerType;
+        ownerId = frame.ownerId;
+        const { messages } = frame;
         const safeTopicId = sanitizeId(topicId);
         if (!safeTopicId || safeTopicId !== topicId) {
+          streamFatal = true;
           throw createSyncError(
             "SYNC_REQUEST_INVALID",
             "topicId is missing or contains unsupported characters",
@@ -462,6 +486,7 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           typeof ownerId !== "string" ||
           ownerId.length === 0
         ) {
+          streamFatal = true;
           throw createSyncError(
             "SYNC_REQUEST_INVALID",
             "Message push requires exact ownerType and ownerId",
@@ -482,7 +507,8 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
         }
-        if (seenTopics.has(safeTopicId)) {
+        const topicKey = topicIdentityKey(ownerType, ownerId, safeTopicId);
+        if (seenTopics.has(topicKey)) {
           streamFatal = true;
           throw createSyncError(
             "SYNC_REQUEST_INVALID",
@@ -490,12 +516,19 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
         }
-        seenTopics.add(safeTopicId);
+        seenTopics.add(topicKey);
 
-        const row = getEntityIndex(safeTopicId, "topic");
+        const row = getEntityIndex({
+          id: safeTopicId,
+          type: "topic",
+          ownerType,
+          ownerId,
+        });
         if (!row) {
           await writer.write({
             topicId,
+            ownerType,
+            ownerId,
             success: false,
             neededAttachmentHashes: [],
             error: normalizeSyncError("topic not found", {
@@ -507,10 +540,8 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           errorCount++;
           continue;
         }
-        const actualOwnerId = path.basename(path.dirname(row.file_path));
-        const actualOwnerType = row.file_path.includes("AgentGroups")
-          ? "group"
-          : "agent";
+        const actualOwnerId = row.owner_id;
+        const actualOwnerType = row.owner_type;
         if (
           ownerType !== actualOwnerType ||
           ownerId !== actualOwnerId
@@ -525,9 +556,15 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         writeIntentLock.add(safeTopicId);
         addedIntentLocks.add(safeTopicId);
         const result = await doUploadSingleTopic(safeTopicId, messages, appDataPath, row);
-        await ingestHistoryToDb(result.historyPath, safeTopicId, "batch_push");
+        await ingestHistoryToDb(
+          result.historyPath,
+          { topicId: safeTopicId, ownerType, ownerId },
+          "batch_push",
+        );
         await writer.write({
           topicId: safeTopicId,
+          ownerType,
+          ownerId,
           success: true,
           neededAttachmentHashes: result.neededAttachmentHashes,
         });
@@ -538,6 +575,8 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         if (typeof topicId === "string" && topicId.length > 0) {
           await writer.write({
             topicId,
+            ownerType,
+            ownerId,
             success: false,
             neededAttachmentHashes: [],
             error: normalizeSyncError(e, {
@@ -578,7 +617,7 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
  * 将 history.json 摄入到消息索引。
  *
  * reconcile 调用方可传入已读取的 history 与 stat，避免同一文件先校验、
- * 后摄取时发生第二次完整读取。普通 watcher/push 调用仍保持向后兼容。
+ * 后摄取时发生第二次完整读取；watcher/push 调用则自行读取文件。
  */
 function resolveMessageUpdatedAt(message, hash, previous, detectedAt) {
   if (Number.isSafeInteger(message.updatedAt) && message.updatedAt >= 0) {
@@ -591,7 +630,7 @@ function resolveMessageUpdatedAt(message, hash, previous, detectedAt) {
 
 async function ingestHistoryToDb(
   filePath,
-  topicId,
+  { topicId, ownerType, ownerId },
   source = "watcher",
   { history: suppliedHistory, sourceStats: suppliedStats } = {},
 ) {
@@ -633,9 +672,10 @@ async function ingestHistoryToDb(
     const applyIndex = db.transaction(() => {
       const existing = db
         .prepare(
-          "SELECT msg_id, hash, updated_at, deleted_at FROM message_index WHERE topic_id = ?",
+          `SELECT msg_id, hash, updated_at, deleted_at FROM message_index
+           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
         )
-        .all(topicId);
+        .all(ownerType, ownerId, topicId);
       const existingById = new Map(existing.map((row) => [row.msg_id, row]));
       for (const m of validMessages) {
         const hash = computeMessageFingerprint(m);
@@ -644,7 +684,14 @@ async function ingestHistoryToDb(
           continue;
         }
         const updatedAt = resolveMessageUpdatedAt(m, hash, previous, now);
-        upsertMessageIndex(m.id, topicId, hash, updatedAt);
+        upsertMessageIndex({
+          ownerType,
+          ownerId,
+          topicId,
+          msgId: m.id,
+          hash,
+          updatedAt,
+        });
         fingerprints.push(computeMessageLeafHash(m.id, hash));
 
         if (Array.isArray(m.attachments)) {
@@ -666,9 +713,11 @@ async function ingestHistoryToDb(
         if (row.deleted_at === null && !liveIds.has(row.msg_id)) {
           const removed = db
             .prepare(
-              "UPDATE message_index SET deleted_at = ? WHERE topic_id = ? AND msg_id = ? AND deleted_at IS NULL",
+              `UPDATE message_index SET deleted_at = ?
+               WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?
+                 AND deleted_at IS NULL`,
             )
-            .run(now, topicId, row.msg_id);
+            .run(now, ownerType, ownerId, topicId, row.msg_id);
           if (removed.changes !== 1) {
             throw new Error(`Message tombstone missed ${topicId}/${row.msg_id}`);
           }
@@ -676,16 +725,20 @@ async function ingestHistoryToDb(
       }
 
       const topicRootHash = computeAggregatedHash(fingerprints);
-      const updated = updateTopicAggregatedHash(topicId, topicRootHash);
+      const updated = updateTopicAggregatedHash(
+        { topicId, ownerType, ownerId },
+        topicRootHash,
+      );
       if (updated.changes !== 1) {
-        // 区分 0 行（孤儿话题：磁盘历史在、config 索引缺席）与 >1 行（跨 owner 歧义）
         const matches = db
           .prepare(
-            "SELECT COUNT(*) AS n FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL",
+            `SELECT COUNT(*) AS n FROM entity_index
+             WHERE type = 'topic' AND owner_type = ? AND owner_id = ? AND id = ?
+               AND deleted_at IS NULL`,
           )
-          .get(topicId).n;
+          .get(ownerType, ownerId, topicId).n;
         throw new Error(
-          `Topic ${topicId} is ${matches === 0 ? "missing" : "ambiguous"} in the local index (matches=${matches})`,
+          `Topic ${ownerType}/${ownerId}/${topicId} is missing in the local index (matches=${matches})`,
         );
       }
 
@@ -882,13 +935,26 @@ async function downloadAttachment(hash) {
  * 物理修剪 history.json 中的被删除消息
  * @param {string} topicId 
  * @param {string} msgId 
+ * @param {string} ownerType
+ * @param {string} ownerId
  */
-async function pruneMessageFromPhysicalHistory(topicId, msgId, appDataPath) {
+async function pruneMessageFromPhysicalHistory(
+  topicId,
+  msgId,
+  ownerType,
+  ownerId,
+  appDataPath,
+) {
   const safeTopicId = sanitizeId(topicId);
-  const row = getEntityIndex(safeTopicId, "topic");
+  const row = getEntityIndex({
+    id: safeTopicId,
+    type: "topic",
+    ownerType,
+    ownerId,
+  });
   if (!row) return;
 
-  const parentId = path.basename(path.dirname(row.file_path));
+  const parentId = row.owner_id;
 
   const historyPath = path.join(
     appDataPath,
@@ -906,7 +972,11 @@ async function pruneMessageFromPhysicalHistory(topicId, msgId, appDataPath) {
     const filtered = history.filter((m) => m.id !== msgId);
     if (filtered.length !== history.length) {
       await writeHistoryAtomic(historyPath, filtered, sourceHash);
-      await ingestHistoryToDb(historyPath, safeTopicId, "batch_push");
+      await ingestHistoryToDb(
+        historyPath,
+        { topicId: safeTopicId, ownerType, ownerId },
+        "batch_push",
+      );
     }
   } finally {
     release();

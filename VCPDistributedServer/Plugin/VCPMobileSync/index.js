@@ -28,7 +28,7 @@ const {
   handleSyncManifest,
   handleMessageManifest,
 } = require("./sync/manifest");
-const { handleSyncTopicHashBatch, handleSyncMessageDiffBatch } = require("./sync/diff");
+const { handleSyncMessageDiffBatch } = require("./sync/diff");
 const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const {
@@ -143,13 +143,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           return centralSync
             ? centralSync.handleMessageManifest(payload)
             : handleMessageManifest(payload);
-        }
-        case "SYNC_TOPIC_HASH_BATCH": {
-          const topicCount = Object.keys(payload.hashes || {}).length;
-          logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
-          return centralSync
-            ? centralSync.handleTopicHashBatch(payload)
-            : handleSyncTopicHashBatch(payload);
         }
         case "SYNC_TOPIC_HASH_BATCH_V2": {
           const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
@@ -276,7 +269,10 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               if (
                 typeof topicId !== "string" ||
                 !sanitizeId(topicId) ||
-                sanitizeId(topicId) !== topicId
+                sanitizeId(topicId) !== topicId ||
+                !["agent", "group"].includes(rawOwnerType) ||
+                typeof rawOwnerId !== "string" ||
+                sanitizeId(rawOwnerId) !== rawOwnerId
               ) {
                 const error = new Error(
                   "Message delete requires a non-empty topicId",
@@ -286,6 +282,8 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               }
               await centralSync.deleteMessage({
                 topicId: sanitizeId(topicId),
+                ownerType: rawOwnerType,
+                ownerId: rawOwnerId,
                 msgId: safeId,
                 deletedAt,
               });
@@ -323,7 +321,13 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
 
           if (dataType === "message") {
             const safeTopicId = sanitizeId(topicId);
-            if (!safeTopicId || safeTopicId !== topicId) {
+            if (
+              !safeTopicId ||
+              safeTopicId !== topicId ||
+              !["agent", "group"].includes(rawOwnerType) ||
+              typeof rawOwnerId !== "string" ||
+              sanitizeId(rawOwnerId) !== rawOwnerId
+            ) {
               const error = new Error("Message delete requires a non-empty topicId");
               error.code = "SYNC_DELETE_INVALID";
               throw error;
@@ -332,6 +336,8 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               msgId: safeId,
               deletedAt,
               topicId: safeTopicId,
+              ownerType: rawOwnerType,
+              ownerId: rawOwnerId,
               appDataPath,
             });
             if (!result?.success) {
@@ -470,10 +476,9 @@ async function reconcileLocalFiles(appDataPath) {
   logger.startPhase("reconcile", 0);
   logger.logInfo("reconcile", "正在执行轻量级索引扫描...");
 
-  // 物理清除任何残留的 default 脏话题索引以及冗余的 agent_topic / group_topic 类型记录
+  // 阶段 B 前仍排除 default；Topic 数据库类型已由 schema 升级统一为 topic。
   db.prepare("DELETE FROM entity_index WHERE id = 'default'").run();
   db.prepare("DELETE FROM message_index WHERE topic_id = 'default'").run();
-  db.prepare("DELETE FROM entity_index WHERE type = 'agent_topic' OR type = 'group_topic'").run();
 
   const agentsDir = path.join(appDataPath, "Agents");
   const groupsDir = path.join(appDataPath, "AgentGroups");
@@ -628,7 +633,7 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
       if (!config || typeof config !== "object" || Array.isArray(config)) {
         throw new Error("Entity config root must be an object");
       }
-      const id = config.id || entry.name;
+      const id = entry.name;
 
       // 索引主实体 (V2: 使用 DTO 提取以对齐默认值处理)
       const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
@@ -636,7 +641,15 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
         dto,
         type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
       );
-      upsertEntityIndex(id, type, configPath, hash, now);
+      upsertEntityIndex({
+        id,
+        type,
+        ownerType: type,
+        ownerId: id,
+        filePath: configPath,
+        hash,
+        updatedAt: now,
+      });
       count++;
 
       const topicLen = Array.isArray(config.topics) ? config.topics.length : 0;
@@ -664,7 +677,15 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
               ? GROUP_TOPIC_SYNC_FIELDS
               : AGENT_TOPIC_SYNC_FIELDS,
           );
-          upsertEntityIndex(topic.id, "topic", configPath, topicHash, now);
+          upsertEntityIndex({
+            id: topic.id,
+            type: "topic",
+            ownerType: type,
+            ownerId: id,
+            filePath: configPath,
+            hash: topicHash,
+            updatedAt: now,
+          });
         }
       }
     } catch (error) {
@@ -691,6 +712,20 @@ async function scanHistory(userDataDir, db, logger) {
     warningCount: 0,
     warningTopicCount: 0,
   };
+  const ownerTypes = new Map();
+  for (const owner of db
+    .prepare(
+      `SELECT owner_type, owner_id FROM entity_index
+       WHERE (type = 'agent' OR type = 'group') AND deleted_at IS NULL`,
+    )
+    .all()) {
+    if (ownerTypes.has(owner.owner_id)) {
+      throw new Error(
+        `Physical history owner ${owner.owner_id} is ambiguous between Agent and Group`,
+      );
+    }
+    ownerTypes.set(owner.owner_id, owner.owner_type);
+  }
   let visitedCount = 0;
   let entries;
   try {
@@ -702,8 +737,10 @@ async function scanHistory(userDataDir, db, logger) {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (SYSTEM_FOLDERS.includes(entry.name)) continue;
+    const ownerId = entry.name;
+    const ownerType = ownerTypes.get(ownerId);
 
-    const topicsDir = path.join(userDataDir, entry.name, "topics");
+    const topicsDir = path.join(userDataDir, ownerId, "topics");
     let topicFolders;
     try {
       topicFolders = await fs.readdir(topicsDir, { withFileTypes: true });
@@ -716,6 +753,11 @@ async function scanHistory(userDataDir, db, logger) {
       const topicId = topicEntry.name;
       const historyPath = path.join(topicsDir, topicId, "history.json");
       try {
+        if (!ownerType) {
+          throw new Error(
+            `History owner ${ownerId} has no live Agent or Group index`,
+          );
+        }
         const sourceStats = await fs.stat(historyPath);
         if (!sourceStats.isFile()) continue;
         if (
@@ -733,7 +775,7 @@ async function scanHistory(userDataDir, db, logger) {
         const { history } = await readHistoryStrict(historyPath);
         const ingestResult = await ingestHistoryToDb(
           historyPath,
-          topicId,
+          { topicId, ownerType, ownerId },
           "reconcile",
           { history, sourceStats },
         );
@@ -768,31 +810,29 @@ function computeAggregatedHashes(db, logger) {
   let updatedCount = 0;
   const entities = db
     .prepare(
-      "SELECT id, type, hash, aggregated_hash, file_path FROM entity_index WHERE deleted_at IS NULL",
+      `SELECT id, type, owner_type, owner_id, hash, aggregated_hash, file_path
+       FROM entity_index WHERE deleted_at IS NULL`,
     )
     .all();
 
   // 1. 预加载所有 Topic 并按 Parent ID 分组，消除 N+1 查询
-  const topicMap = new Map(); // Map<parentId, Array<{hash, aggregated_hash}>>
+  const topicMap = new Map(); // Map<ownerKey, Array<{hash, aggregated_hash}>>
   entities
     .filter(
       (e) =>
         e.id !== "default" &&
-        (e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic"),
+        e.type === "topic",
     )
     .forEach((t) => {
-      if (t.file_path) {
-        const parts = t.file_path.split(/[\\/]/);
-        const parentId = parts[parts.length - 2];
-        if (!topicMap.has(parentId)) topicMap.set(parentId, []);
-        topicMap.get(parentId).push(t);
-      }
+      const ownerKey = `${t.owner_type}\0${t.owner_id}`;
+      if (!topicMap.has(ownerKey)) topicMap.set(ownerKey, []);
+      topicMap.get(ownerKey).push(t);
     });
 
   // 2. 为 Agent 和 Group 计算聚合指纹 (V2: 聚合子话题的 config_hash 和 content_hash)
   for (const e of entities) {
     if (e.type === "agent" || e.type === "group") {
-      const topicsOfEntity = topicMap.get(e.id) || [];
+      const topicsOfEntity = topicMap.get(`${e.owner_type}\0${e.owner_id}`) || [];
 
       const childHashes = topicsOfEntity.map((topic) =>
         computeTopicLeafHash(
@@ -805,8 +845,9 @@ function computeAggregatedHashes(db, logger) {
 
       if (rootHash !== e.aggregated_hash) {
         db.prepare(
-          "UPDATE entity_index SET aggregated_hash = ? WHERE id = ? AND type = ?",
-        ).run(rootHash, e.id, e.type);
+          `UPDATE entity_index SET aggregated_hash = ?
+           WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?`,
+        ).run(rootHash, e.type, e.owner_type, e.owner_id, e.id);
         updatedCount++;
       }
     }
@@ -816,7 +857,7 @@ function computeAggregatedHashes(db, logger) {
   const nullTopics = entities.filter(
     (e) =>
       e.id !== "default" &&
-      (e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic") &&
+      e.type === "topic" &&
       (e.aggregated_hash === null || e.aggregated_hash === ""),
   );
   if (nullTopics.length > 0) {
@@ -826,8 +867,9 @@ function computeAggregatedHashes(db, logger) {
     for (const t of nullTopics) {
       if (t.aggregated_hash !== emptyContentHash) {
         db.prepare(
-          "UPDATE entity_index SET aggregated_hash = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-        ).run(emptyContentHash, t.id);
+          `UPDATE entity_index SET aggregated_hash = ?
+           WHERE type = 'topic' AND owner_type = ? AND owner_id = ? AND id = ?`,
+        ).run(emptyContentHash, t.owner_type, t.owner_id, t.id);
         updatedCount++;
       }
     }
@@ -918,7 +960,26 @@ function startFileWatcher(appDataPath) {
           await ingestConfigToDb(filePath, type, appDataPath);
         }
       } else if (isHistory) {
-        await ingestHistoryToDb(filePath, id);
+        const ownerId = sanitizeId(getHistoryOwnerIdFromPath(filePath));
+        const owners = ownerId
+          ? getDb()
+              .prepare(
+                `SELECT owner_type FROM entity_index
+                 WHERE owner_id = ? AND (type = 'agent' OR type = 'group')
+                   AND deleted_at IS NULL`,
+              )
+              .all(ownerId)
+          : [];
+        if (owners.length !== 1) {
+          throw new Error(
+            `History owner ${ownerId || "unknown"} is ${owners.length === 0 ? "missing" : "ambiguous"}`,
+          );
+        }
+        await ingestHistoryToDb(filePath, {
+          topicId: id,
+          ownerType: owners[0].owner_type,
+          ownerId,
+        });
       }
     } catch (e) {
       logger.logOperation("watcher", "file", id, "error", `${event} failed: ${e.message}`);
@@ -938,6 +999,15 @@ function getTopicIdFromPath(filePath) {
   return null;
 }
 
+function getHistoryOwnerIdFromPath(filePath) {
+  const parts = filePath.split(path.sep);
+  const topicIdx = parts.lastIndexOf("topics");
+  if (topicIdx > 0 && parts[topicIdx - 1]) {
+    return parts[topicIdx - 1];
+  }
+  return null;
+}
+
 /**
  * 摄取配置文件到索引
  */
@@ -951,7 +1021,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     const content = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(content);
     const now = Date.now();
-    const id = config.id || path.basename(path.dirname(configPath));
+    const id = path.basename(path.dirname(configPath));
     const ownerId = path.basename(path.dirname(configPath));
     const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
     let topicEntries = [];
@@ -972,7 +1042,15 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
       dto,
       type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
     );
-    upsertEntityIndex(id, type, configPath, hash, now);
+    upsertEntityIndex({
+      id,
+      type,
+      ownerType: type,
+      ownerId: id,
+      filePath: configPath,
+      hash,
+      updatedAt: now,
+    });
 
     // 索引子话题
     let topicLen = 0;
@@ -991,7 +1069,15 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
-        upsertEntityIndex(topic.id, "topic", configPath, topicHash, now);
+        upsertEntityIndex({
+          id: topic.id,
+          type: "topic",
+          ownerType: type,
+          ownerId: id,
+          filePath: configPath,
+          hash: topicHash,
+          updatedAt: now,
+        });
       }
     }
 

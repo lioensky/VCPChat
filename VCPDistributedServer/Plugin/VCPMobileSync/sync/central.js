@@ -216,23 +216,23 @@ class CentralSyncAdapter {
 
   async handleMessageManifest(payload) {
     try {
+      const requestKey = topicIdentityKey(payload);
+      if (!requestKey) {
+        throw cdsProtocolError(
+          "Message manifest requires exact topic owner identity",
+          "messages",
+        );
+      }
       const result = await this.requireClient().syncMessageManifest({
         topicId: payload.topicId,
-        ...(payload.ownerType === undefined
-          ? {}
-          : { ownerType: payload.ownerType }),
-        ...(payload.ownerId === undefined ? {} : { ownerId: payload.ownerId }),
+        ownerType: payload.ownerType,
+        ownerId: payload.ownerId,
       });
       const seenMessageIds = new Set();
       if (
         !isRecord(result) ||
         result.type !== "MESSAGE_MANIFEST_RESULTS" ||
-        result.topicId !== payload.topicId ||
-        !["agent", "group"].includes(result.ownerType) ||
-        typeof result.ownerId !== "string" ||
-        result.ownerId.length === 0 ||
-        (payload.ownerType !== undefined && result.ownerType !== payload.ownerType) ||
-        (payload.ownerId !== undefined && result.ownerId !== payload.ownerId) ||
+        topicIdentityKey(result) !== requestKey ||
         !Array.isArray(result.messages) ||
         result.messages.some((message) => {
           if (
@@ -540,10 +540,11 @@ class CentralSyncAdapter {
           { stage: "messages" },
         );
       }
-      if (expected.has(request.topicId)) {
+      const requestKey = topicIdentityKey(request);
+      if (expected.has(requestKey)) {
         throw createSyncError(
           "SYNC_REQUEST_INVALID",
-          `Central pull contains duplicate topic ${request.topicId}`,
+          `Central pull contains duplicate topic identity ${request.topicId}`,
           { stage: "messages", failedTopicIds: [request.topicId] },
         );
       }
@@ -569,10 +570,7 @@ class CentralSyncAdapter {
           { stage: "messages", failedTopicIds: [request.topicId] },
         );
       }
-      expected.set(request.topicId, {
-        ownerType: request.ownerType,
-        ownerId: request.ownerId,
-      });
+      expected.set(requestKey, request);
       return {
         topicId: request.topicId,
         ownerType: request.ownerType,
@@ -590,6 +588,7 @@ class CentralSyncAdapter {
       // Translate it here; only the complete Wire object may cross to Mobile.
       const canonical = canonicalizeTopicFrame(translateCdsPullFrame(rawFrame));
       const topicId = canonical.frame.topicId;
+      const responseKey = topicIdentityKey(canonical.frame);
       if (canonical.topicIdRewrites > 0) {
         getLogger().logInfo(
           "central",
@@ -597,21 +596,21 @@ class CentralSyncAdapter {
           "warn",
         );
       }
-      if (!expected.has(topicId)) {
+      if (!responseKey || !expected.has(responseKey)) {
         throw createSyncError(
           "SYNC_PROTOCOL_INVALID",
           `CDS pull returned unexpected topic ${topicId}`,
           { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
         );
       }
-      if (seen.has(topicId)) {
+      if (seen.has(responseKey)) {
         throw createSyncError(
           "SYNC_PROTOCOL_INVALID",
           `CDS pull returned duplicate topic ${topicId}`,
           { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
         );
       }
-      const identity = expected.get(topicId);
+      const identity = expected.get(responseKey);
       if (
         canonical.frame.ownerType !== identity.ownerType ||
         canonical.frame.ownerId !== identity.ownerId
@@ -622,11 +621,13 @@ class CentralSyncAdapter {
           { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
         );
       }
-      seen.add(topicId);
+      seen.add(responseKey);
       await writer.write(canonical.frame);
     }
     if (seen.size !== expected.size) {
-      const missing = [...expected.keys()].filter((topicId) => !seen.has(topicId));
+      const missing = [...expected.entries()]
+        .filter(([key]) => !seen.has(key))
+        .map(([, request]) => request.topicId);
       throw createSyncError(
         "SYNC_MESSAGE_READ_FAILED",
         `CDS pull omitted topics: ${missing.slice(0, 8).join(", ")}`,
@@ -654,9 +655,13 @@ class CentralSyncAdapter {
     let messageCount = 0;
     for await (const line of readNdjsonLines(req)) {
       let topicId = null;
+      let ownerType = null;
+      let ownerId = null;
       try {
         const frame = parseJsonWithoutDuplicateKeys(decodeNdjsonLine(line));
         topicId = frame?.topicId;
+        ownerType = frame?.ownerType;
+        ownerId = frame?.ownerId;
         if (
           typeof topicId !== "string" ||
           topicId.length === 0 ||
@@ -681,12 +686,13 @@ class CentralSyncAdapter {
             "SYNC_BUDGET_EXCEEDED",
           );
         }
-        if (seen.has(topicId)) {
+        const requestKey = topicIdentityKey(frame);
+        if (seen.has(requestKey)) {
           throw new SyncProtocolError(
-            `Central message push contains duplicate topic ${topicId}`,
+            `Central message push contains duplicate topic identity ${topicId}`,
           );
         }
-        seen.add(topicId);
+        seen.add(requestKey);
 
         const identity = await client.syncTopicIdentity({
           topicId,
@@ -740,6 +746,8 @@ class CentralSyncAdapter {
         }
         await writer.write({
           topicId,
+          ownerType,
+          ownerId,
           success: true,
           neededAttachmentHashes: projected.neededAttachmentHashes,
         });
@@ -755,6 +763,8 @@ class CentralSyncAdapter {
         if (typeof topicId !== "string" || topicId.length === 0) throw error;
         await writer.write({
           topicId,
+          ownerType,
+          ownerId,
           success: false,
           neededAttachmentHashes: [],
           error: normalizeSyncError(error, {
@@ -834,35 +844,27 @@ class CentralSyncAdapter {
     }
   }
 
-  async deleteMessage({ topicId, msgId, deletedAt }) {
+  async deleteMessage({ topicId, ownerType, ownerId, msgId, deletedAt }) {
     if (
       typeof topicId !== "string" ||
       topicId.length === 0 ||
+      !["agent", "group"].includes(ownerType) ||
+      typeof ownerId !== "string" ||
+      ownerId.length === 0 ||
       typeof msgId !== "string" ||
       msgId.length === 0 ||
       !Number.isSafeInteger(deletedAt) ||
       deletedAt < 0
     ) {
-      throw new Error("Central message deletion requires valid topicId, msgId, and deletedAt");
-    }
-    const client = this.requireClient();
-    const identity = await client.syncTopicIdentity({ topicId });
-    if (
-      identity?.topicId !== topicId ||
-      !["agent", "group"].includes(identity?.ownerType) ||
-      typeof identity?.ownerId !== "string" ||
-      identity.ownerId.length === 0
-    ) {
-      throw createSyncError(
-        "SYNC_PROTOCOL_INVALID",
-        `CDS returned an invalid identity for topic ${topicId}`,
-        { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
+      throw new Error(
+        "Central message deletion requires valid owner, topicId, msgId, and deletedAt",
       );
     }
+    const client = this.requireClient();
     const result = await client.syncMessagesPushTopic({
       topicId,
-      ownerType: identity.ownerType,
-      ownerId: identity.ownerId,
+      ownerType,
+      ownerId,
       messages: [],
       deletedMessageIds: [],
       deletedMessageTombstones: [{ msgId, deletedAt }],
@@ -878,7 +880,7 @@ class CentralSyncAdapter {
         },
       );
     }
-    return { success: true, topicId, msgId };
+    return { success: true, topicId, ownerType, ownerId, msgId };
   }
 
   logEnabled() {

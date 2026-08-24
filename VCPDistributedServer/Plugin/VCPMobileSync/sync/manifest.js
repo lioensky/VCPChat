@@ -76,28 +76,6 @@ function manifestIdentity(item, dataType) {
   return dataType === "topic" ? topicIdentity(item) : item.id;
 }
 
-function topicOwnerFromPath(filePath) {
-  requireNonEmptyString(filePath, "topic file_path");
-  const normalized = filePath.replace(/\\/g, "/");
-  const parts = normalized.split("/").filter(Boolean);
-  const ownerId = parts.at(-2);
-  if (!ownerId) {
-    throw syncContractError("Topic index has no owner directory", "SYNC_INDEX_INVALID");
-  }
-  const ownerType = parts.includes("AgentGroups")
-    ? "group"
-    : parts.includes("Agents")
-      ? "agent"
-      : null;
-  if (!ownerType) {
-    throw syncContractError(
-      `Topic ${ownerId} has a file path outside Agents/AgentGroups`,
-      "SYNC_INDEX_INVALID",
-    );
-  }
-  return { ownerId, ownerType };
-}
-
 function requireAvatarOwner(id) {
   const separator = id.indexOf(":");
   if (separator <= 0 || separator === id.length - 1) {
@@ -158,7 +136,7 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
   const rows = dataType === "topic"
     ? db
         .prepare(
-          "SELECT * FROM entity_index WHERE id <> 'default' AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
+          "SELECT * FROM entity_index WHERE id <> 'default' AND type = 'topic'",
         )
         .all()
     : db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
@@ -168,8 +146,7 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
     : rows;
   const filteredRows = dataType === "topic" && ownerFilter
     ? syncRows.filter((row) => {
-        const owner = topicOwnerFromPath(row.file_path);
-        return ownerFilter.has(`${owner.ownerType}\0${owner.ownerId}`);
+        return ownerFilter.has(`${row.owner_type}\0${row.owner_id}`);
       })
     : syncRows;
   if (filteredRows.length > MAX_MANIFEST_ITEMS) {
@@ -183,7 +160,18 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
     const seen = new Set();
     return filteredRows.map((row) => {
       const id = requireNonEmptyString(row.id, `${dataType} manifest id`);
-      const owner = dataType === "topic" ? topicOwnerFromPath(row.file_path) : null;
+      const owner = dataType === "topic"
+        ? {
+            ownerType: requireNonEmptyString(row.owner_type, `Topic ${id} ownerType`),
+            ownerId: requireNonEmptyString(row.owner_id, `Topic ${id} ownerId`),
+          }
+        : null;
+      if (owner && !matchesTopicOwnerType(owner.ownerType)) {
+        throw syncContractError(
+          `Topic ${id} has invalid ownerType ${owner.ownerType}`,
+          "SYNC_INDEX_INVALID",
+        );
+      }
       const identity = dataType === "topic"
         ? `${owner.ownerType}\0${owner.ownerId}\0${id}`
         : id;
@@ -466,16 +454,35 @@ function handleMessageManifest(payload, database = getDb()) {
   if (!topicId || topicId !== payload.topicId) {
     throw syncContractError("GET_MESSAGE_MANIFEST.topicId is invalid");
   }
+  const ownerType = payload.ownerType;
+  const ownerId = payload.ownerId;
+  if (
+    !matchesTopicOwnerType(ownerType) ||
+    typeof ownerId !== "string" ||
+    ownerId.length === 0
+  ) {
+    throw syncContractError(
+      "GET_MESSAGE_MANIFEST requires ownerType and ownerId",
+    );
+  }
   if (topicId === "default") {
-    return { type: "MESSAGE_MANIFEST_RESULTS", topicId, messages: [] };
+    return {
+      type: "MESSAGE_MANIFEST_RESULTS",
+      topicId,
+      ownerType,
+      ownerId,
+      messages: [],
+    };
   }
   assertHistoryTopicHealthy(topicId);
 
   const rows = db
     .prepare(
-      "SELECT msg_id, hash as content_hash, updated_at, deleted_at FROM message_index WHERE topic_id = ?",
+      `SELECT msg_id, hash as content_hash, updated_at, deleted_at
+       FROM message_index
+       WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
     )
-    .all(topicId);
+    .all(ownerType, ownerId, topicId);
   if (rows.length > MAX_MANIFEST_ITEMS) {
     throw syncContractError(
       `Message manifest ${topicId} exceeds 10000 messages`,
@@ -516,6 +523,8 @@ function handleMessageManifest(payload, database = getDb()) {
   return {
     type: "MESSAGE_MANIFEST_RESULTS",
     topicId,
+    ownerType,
+    ownerId,
     messages,
   };
 }
