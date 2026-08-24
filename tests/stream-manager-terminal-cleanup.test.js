@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { JSDOM } = require('jsdom');
 
 const originalWindow = global.window;
@@ -466,4 +467,132 @@ test('tool-request-first stream falls back to direct DOM projection when morphdo
 
     await projection.dispose();
     dom.window.close();
+});
+
+test('active stream recreates a missing message DOM on the next render frame', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        url: 'https://vcpchat.local/',
+        pretendToBeVisual: true,
+    });
+    const root = dom.window.document.getElementById('chat');
+    let renderCount = 0;
+    const renderMessage = async message => {
+        renderCount += 1;
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.innerHTML = '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        renderMessage,
+        parseTail: text => `<p>${text}</p>`,
+    }));
+
+    const initialItem = await renderMessage({
+        id: 'recover-active',
+        isThinking: true,
+    });
+    await projection.startStreamingMessage({
+        id: 'recover-active',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        streamOperationId: 'recover-op',
+    }, initialItem);
+
+    initialItem.remove();
+    projection.appendStreamChunk(
+        'recover-active',
+        { content: 'recovered live text' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'recover-op'
+    );
+    await new Promise(resolve => setTimeout(resolve, 140));
+
+    const recoveredItems = root.querySelectorAll('[data-message-id="recover-active"]');
+    assert.equal(recoveredItems.length, 1, 'recovery must create exactly one message projection');
+    assert.equal(renderCount, 2, 'concurrent frames must share one recovery operation');
+    assert.ok(recoveredItems[0].classList.contains('streaming'));
+    assert.match(recoveredItems[0].querySelector('.md-content')?.textContent || '', /recovered live text/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('terminal projection recreates a missing message DOM from canonical final content', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        url: 'https://vcpchat.local/',
+        pretendToBeVisual: true,
+    });
+    const root = dom.window.document.getElementById('chat');
+    const history = [];
+    const renderMessage = async message => {
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.innerHTML = '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        currentChatHistoryRef: {
+            get: () => history,
+            set: value => { history.splice(0, history.length, ...value); },
+        },
+        renderMessage,
+        prepareFinalTextForRender: (_messageId, text, role) => ({ text, role, depth: 0 }),
+        parseFull: text => `<p>${text}</p>`,
+        renderPostProcessedHtml: async (content, html) => { content.innerHTML = html; },
+    }));
+
+    const initialItem = await renderMessage({
+        id: 'recover-terminal',
+        isThinking: true,
+    });
+    await projection.startStreamingMessage({
+        id: 'recover-terminal',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        streamOperationId: 'terminal-recover-op',
+    }, initialItem);
+    initialItem.remove();
+
+    const projected = await projection.projectStreamTerminal(
+        'recover-terminal',
+        'completed',
+        {
+            agentId: 'visible-agent',
+            topicId: 'visible-topic',
+            streamOperationId: 'terminal-recover-op',
+        },
+        {
+            fullResponse: 'canonical recovered terminal',
+            streamOperationId: 'terminal-recover-op',
+        }
+    );
+
+    const recoveredItems = root.querySelectorAll('[data-message-id="recover-terminal"]');
+    assert.equal(projected?.content, 'canonical recovered terminal');
+    assert.equal(recoveredItems.length, 1);
+    assert.equal(recoveredItems[0].classList.contains('streaming'), false);
+    assert.equal(recoveredItems[0].classList.contains('thinking'), false);
+    assert.match(recoveredItems[0].querySelector('.md-content')?.textContent || '', /canonical recovered terminal/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('thinking and streaming messages opt out of content-visibility clipping', () => {
+    const chatCss = fs.readFileSync('styles/chat.css', 'utf8');
+    assert.match(
+        chatCss,
+        /\.message-item\.streaming,\s*\.message-item\.thinking\s*\{[\s\S]*?content-visibility:\s*visible;[\s\S]*?contain-intrinsic-size:\s*auto;[\s\S]*?\}/
+    );
 });

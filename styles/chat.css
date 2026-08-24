@@ -119,6 +119,14 @@ body.light-theme #moon-icon {
     contain-intrinsic-size: auto 100px;
 }
 
+/* 活动流会持续改变高度、执行 DOM diff 并触发自动滚动，不参与离屏绘制裁剪。
+ * 终态移除 thinking/streaming 类后，会自动恢复基础规则的 content-visibility: auto。 */
+.message-item.streaming,
+.message-item.thinking {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+}
+
 .message-item:last-child {
     margin-bottom: 0;
 }

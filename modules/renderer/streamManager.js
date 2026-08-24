@@ -186,6 +186,9 @@ let transientCleanupWindow = null;
 let desktopPushConsumer = null;
 let disposed = false;
 const pendingAsyncOperations = new Set();
+// 活动流的运行态仍在、但当前 Surface 的消息 DOM 丢失时，只允许一个补建任务。
+// 该状态只拥有 UI 投影，不修改 durable/transient history。
+const streamDomRecoveryOperations = new Map();
 const ownedTimeouts = new Set();
 const scheduledAnimationFrames = new Set();
 
@@ -1234,6 +1237,94 @@ function getCachedMessageDom(messageId) {
     return cached;
 }
 
+function requestStreamDomRecovery(messageId) {
+    const recoveryKey = String(messageId);
+    const existingRecovery = streamDomRecoveryOperations.get(recoveryKey);
+    if (existingRecovery) return existingRecovery;
+
+    const context = messageContextMap.get(messageId);
+    const streamMessageModel = streamMessageModels.get(messageId);
+    const expectedRuntimeKey = messageRuntimeKeys.get(recoveryKey);
+    if (
+        disposed
+        || !context
+        || !streamMessageModel
+        || !expectedRuntimeKey
+        || !isMessageActive(messageId)
+        || !isMessageForCurrentView(context)
+        || terminalProjectingMessages.has(recoveryKey)
+    ) {
+        return null;
+    }
+
+    const recovery = (async () => {
+        // 历史加载或其他投影可能已经在本微任务开始前恢复了节点。
+        const alreadyRestored = getCachedMessageDom(messageId);
+        if (alreadyRestored) return alreadyRestored.messageItem;
+
+        const accumulatedText = accumulatedStreamText.get(messageId) || '';
+        const hasVisibleContent = accumulatedText.trim() !== '';
+        const recoveryMessage = {
+            ...streamMessageModel,
+            ...context,
+            id: messageId,
+            content: hasVisibleContent ? accumulatedText : (streamMessageModel.content || '思考中...'),
+            isThinking: !hasVisibleContent,
+            timestamp: streamMessageModel.timestamp || Date.now(),
+            streamOperationId: context.streamOperationId || streamMessageModel.streamOperationId || null,
+        };
+        const render = refs.chatDomRenderer?.renderMessage
+            ? refs.chatDomRenderer.renderMessage.bind(refs.chatDomRenderer)
+            : refs.renderMessage;
+        if (typeof render !== 'function') return null;
+
+        const recoveredItem = await render(recoveryMessage, false);
+        const stillOwnsRecovery = (
+            !disposed
+            && messageRuntimeKeys.get(recoveryKey) === expectedRuntimeKey
+            && isMessageActive(messageId)
+            && isMessageForCurrentView(messageContextMap.get(messageId) || context)
+            && !terminalProjectingMessages.has(recoveryKey)
+        );
+
+        if (!stillOwnsRecovery) {
+            // 异步补建期间发生导航、重试或终态切换；该任务不再拥有当前投影。
+            recoveredItem?.remove?.();
+            messageDomCache.delete(messageId);
+            return null;
+        }
+
+        const messageItem = recoveredItem?.isConnected
+            ? recoveredItem
+            : refs.chatMessagesDiv?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
+        const contentDiv = messageItem?.querySelector?.('.md-content');
+        if (!messageItem || !contentDiv) return null;
+
+        messageItem.classList.add('streaming');
+        if (hasVisibleContent) messageItem.classList.remove('thinking');
+        messageDomCache.set(messageId, { messageItem, contentDiv });
+        return messageItem;
+    })();
+
+    const trackedRecovery = trackAsyncOperation(recovery);
+    streamDomRecoveryOperations.set(recoveryKey, trackedRecovery);
+    trackedRecovery
+        .then(messageItem => {
+            if (messageItem?.isConnected && !terminalProjectingMessages.has(recoveryKey)) {
+                renderStreamFrame(messageId);
+            }
+        })
+        .catch(error => {
+            console.error(`[StreamManager] Failed to recover stream DOM for ${messageId}:`, error);
+        })
+        .finally(() => {
+            if (streamDomRecoveryOperations.get(recoveryKey) === trackedRecovery) {
+                streamDomRecoveryOperations.delete(recoveryKey);
+            }
+        });
+    return trackedRecovery;
+}
+
 /**
  * Sets up onload and onerror handlers for an emoticon image to fix its URL on error
  * and prevent flickering by controlling its visibility.
@@ -1438,9 +1529,13 @@ function renderStreamFrame(messageId) {
 
     if (!isForCurrentView) return;
 
-    // 🟢 使用缓存的 DOM 引用
+    // 🟢 使用缓存的 DOM 引用。活动流属于当前视图但 DOM 丢失时，
+    // 启动单实例异步补建；后续网络块不必等待导航或刷新才能重新出现。
     const cachedDom = getCachedMessageDom(messageId);
-    if (!cachedDom) return;
+    if (!cachedDom) {
+        requestStreamDomRecovery(messageId);
+        return;
+    }
 
     const { contentDiv, messageItem } = cachedDom;
     const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
@@ -2239,8 +2334,35 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
 
     // Update UI if it's the current view
     if (shouldProjectToDom) {
-        const messageItem = messageDomCache.get(messageId)?.messageItem
-            || chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        // 如果流帧补建已在终态到达前启动，先等待它退出。终态锁会使旧补建
+        // 放弃其节点，随后由这里使用规范终稿建立唯一的最终投影。
+        const pendingRecovery = streamDomRecoveryOperations.get(String(messageId));
+        if (pendingRecovery) await Promise.allSettled([pendingRecovery]);
+
+        let messageItem = messageDomCache.get(messageId)?.messageItem;
+        if (!messageItem?.isConnected) {
+            messageDomCache.delete(messageId);
+            messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
+        }
+
+        if (!messageItem) {
+            const finalMessage = {
+                ...message,
+                ...storedContext,
+                id: messageId,
+                content: finalFullText,
+                isThinking: false,
+                finishReason,
+                streamOperationId: storedContext.streamOperationId || expectedOperationId || null,
+            };
+            const render = refs.chatDomRenderer?.renderMessage
+                ? refs.chatDomRenderer.renderMessage.bind(refs.chatDomRenderer)
+                : refs.renderMessage;
+            if (typeof render === 'function') {
+                messageItem = await render(finalMessage, false);
+            }
+        }
+
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
 
@@ -2321,6 +2443,7 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
     cleanupDesktopPushState(messageId);
 
     // Terminal means ownership has ended; no delayed cache lease survives `done`.
+    streamDomRecoveryOperations.delete(String(messageId));
     messageDomCache.delete(messageId);
     messageInitializationStatus.delete(messageId);
     preBufferedChunks.delete(messageId);
@@ -2362,6 +2485,7 @@ async function projectStreamTerminal(messageId, finishReason, context, finalPayl
 function discardStreamingMessage(messageId) {
     if (disposed) return false;
     terminalProjectingMessages.delete(String(messageId));
+    streamDomRecoveryOperations.delete(String(messageId));
     const scrollTimer = scrollThrottleTimers.get(messageId);
     if (scrollTimer) clearOwnedTimeout(scrollTimer);
     scrollThrottleTimers.delete(messageId);
@@ -2415,6 +2539,7 @@ async function dispose() {
         pendingDirectRenderMessages.clear();
         accumulatedStreamText.clear();
         streamSegmentStates.clear();
+        streamDomRecoveryOperations.clear();
         messageDomCache.clear();
         preBufferedChunks.clear();
         messageInitializationStatus.clear();
