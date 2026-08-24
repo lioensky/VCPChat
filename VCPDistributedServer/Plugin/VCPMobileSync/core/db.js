@@ -59,26 +59,9 @@ function normalizeMessageIndexIdentity({ ownerType, ownerId, topicId, msgId }) {
   return { ownerType, ownerId, topicId, msgId };
 }
 
-function ownerFromLegacyConfigPath(filePath) {
-  const parts = String(filePath || "")
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean);
-  if (parts.length < 3 || parts.at(-1).toLowerCase() !== "config.json") {
-    throw new Error(`Legacy entity index has an invalid config path: ${filePath}`);
-  }
-  const root = parts.at(-3);
-  const ownerId = parts.at(-2);
-  const ownerType = root === "Agents" ? "agent" : root === "AgentGroups" ? "group" : null;
-  if (!ownerType || !ownerId) {
-    throw new Error(`Legacy entity index owner cannot be resolved from: ${filePath}`);
-  }
-  return { ownerType, ownerId };
-}
-
 function createEntityIndexTable(tableName) {
   db.exec(`
-    CREATE TABLE ${tableName} (
+    CREATE TABLE IF NOT EXISTS ${tableName} (
       id TEXT NOT NULL,
       type TEXT NOT NULL,
       owner_type TEXT NOT NULL,
@@ -93,124 +76,9 @@ function createEntityIndexTable(tableName) {
   `);
 }
 
-function ensureEntityIndexSchema() {
-  const columns = db.prepare("PRAGMA table_info(entity_index)").all();
-  if (columns.length === 0) {
-    createEntityIndexTable("entity_index");
-    return false;
-  }
-
-  const names = new Set(columns.map((column) => column.name));
-  const primaryKey = columns
-    .filter((column) => column.pk > 0)
-    .sort((left, right) => left.pk - right.pk)
-    .map((column) => column.name);
-  const targetPrimaryKey = ["type", "owner_type", "owner_id", "id"];
-  const targetColumns = [
-    "id",
-    "type",
-    "owner_type",
-    "owner_id",
-    "file_path",
-    "hash",
-    "aggregated_hash",
-    "updated_at",
-    "deleted_at",
-  ];
-  if (
-    columns.length === targetColumns.length &&
-    targetColumns.every((name) => names.has(name)) &&
-    primaryKey.length === targetPrimaryKey.length &&
-    primaryKey.every((name, index) => name === targetPrimaryKey[index])
-  ) {
-    return false;
-  }
-
-  const legacyColumns = [
-    "id",
-    "type",
-    "file_path",
-    "hash",
-    "aggregated_hash",
-    "updated_at",
-    "deleted_at",
-  ];
-  const legacyPrimaryKey = ["id", "type"];
-  const isLegacySchema =
-    columns.length === legacyColumns.length &&
-    legacyColumns.every((name) => names.has(name)) &&
-    primaryKey.length === legacyPrimaryKey.length &&
-    primaryKey.every((name, index) => name === legacyPrimaryKey[index]);
-  if (!isLegacySchema) {
-    throw new Error("Unsupported entity_index schema; refusing an ambiguous upgrade");
-  }
-
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const groups = new Map();
-    for (const row of db.prepare("SELECT * FROM entity_index").all()) {
-      const { ownerType, ownerId } = ownerFromLegacyConfigPath(row.file_path);
-      const identity = normalizeEntityIndexIdentity({
-        id: row.id,
-        type: row.type,
-        ownerType,
-        ownerId,
-      });
-      const key = `${identity.type}\0${ownerType}\0${ownerId}\0${row.id}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push({ ...row, ...identity, sourceType: row.type });
-    }
-
-    db.exec("DROP TABLE IF EXISTS entity_index_next");
-    createEntityIndexTable("entity_index_next");
-    const insert = db.prepare(`
-      INSERT INTO entity_index_next (
-        id, type, owner_type, owner_id, file_path, hash,
-        aggregated_hash, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const candidates of groups.values()) {
-      const canonical = candidates.find((candidate) => candidate.sourceType === "topic");
-      if (!canonical && candidates.length !== 1) {
-        throw new Error(
-          `Legacy topic index ${candidates[0].ownerType}/${candidates[0].ownerId}/${candidates[0].id} cannot be merged safely`,
-        );
-      }
-      const selected = canonical || candidates[0];
-      let deletedAt = selected.deleted_at;
-      if (deletedAt !== null && deletedAt !== undefined) {
-        const tombstoneTimes = candidates
-          .map((candidate) => candidate.deleted_at)
-          .filter((value) => value !== null && value !== undefined);
-        deletedAt = Math.min(...tombstoneTimes);
-      }
-      insert.run(
-        selected.id,
-        selected.type,
-        selected.ownerType,
-        selected.ownerId,
-        selected.file_path,
-        selected.hash,
-        selected.aggregated_hash,
-        selected.updated_at,
-        deletedAt,
-      );
-    }
-
-    db.exec("DROP TABLE entity_index");
-    db.exec("ALTER TABLE entity_index_next RENAME TO entity_index");
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-  return true;
-}
-
 function createMessageIndexTable(tableName) {
   db.exec(`
-    CREATE TABLE ${tableName} (
+    CREATE TABLE IF NOT EXISTS ${tableName} (
       owner_type TEXT NOT NULL,
       owner_id TEXT NOT NULL,
       topic_id TEXT NOT NULL,
@@ -221,96 +89,6 @@ function createMessageIndexTable(tableName) {
       PRIMARY KEY (owner_type, owner_id, topic_id, msg_id)
     )
   `);
-}
-
-function ensureMessageIndexSchema() {
-  const columns = db.prepare("PRAGMA table_info(message_index)").all();
-  if (columns.length === 0) {
-    createMessageIndexTable("message_index");
-    return false;
-  }
-
-  const names = new Set(columns.map((column) => column.name));
-  const primaryKey = columns
-    .filter((column) => column.pk > 0)
-    .sort((left, right) => left.pk - right.pk)
-    .map((column) => column.name);
-  const targetColumns = [
-    "owner_type",
-    "owner_id",
-    "topic_id",
-    "msg_id",
-    "hash",
-    "updated_at",
-    "deleted_at",
-  ];
-  const targetPrimaryKey = ["owner_type", "owner_id", "topic_id", "msg_id"];
-  if (
-    columns.length === targetColumns.length &&
-    targetColumns.every((name) => names.has(name)) &&
-    primaryKey.length === targetPrimaryKey.length &&
-    primaryKey.every((name, index) => name === targetPrimaryKey[index])
-  ) {
-    return false;
-  }
-
-  const legacyColumns = ["msg_id", "topic_id", "hash", "updated_at", "deleted_at"];
-  const legacyPrimaryKey = ["topic_id", "msg_id"];
-  const isLegacySchema =
-    columns.length === legacyColumns.length &&
-    legacyColumns.every((name) => names.has(name)) &&
-    primaryKey.length === legacyPrimaryKey.length &&
-    primaryKey.every((name, index) => name === legacyPrimaryKey[index]);
-  if (!isLegacySchema) {
-    throw new Error("Unsupported message_index schema; refusing an ambiguous upgrade");
-  }
-
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const topicsById = new Map();
-    for (const topic of db
-      .prepare(
-        `SELECT id, owner_type, owner_id FROM entity_index WHERE type = 'topic'`,
-      )
-      .all()) {
-      if (!topicsById.has(topic.id)) topicsById.set(topic.id, []);
-      topicsById.get(topic.id).push(topic);
-    }
-
-    db.exec("DROP TABLE IF EXISTS message_index_next");
-    createMessageIndexTable("message_index_next");
-    const insert = db.prepare(`
-      INSERT INTO message_index_next (
-        owner_type, owner_id, topic_id, msg_id, hash, updated_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    for (const row of db.prepare("SELECT * FROM message_index").all()) {
-      const topics = topicsById.get(row.topic_id) || [];
-      if (topics.length !== 1) {
-        throw new Error(
-          `Legacy message index ${row.topic_id}/${row.msg_id} has ${topics.length === 0 ? "no owner" : "an ambiguous owner"}`,
-        );
-      }
-      const topic = topics[0];
-      insert.run(
-        topic.owner_type,
-        topic.owner_id,
-        row.topic_id,
-        row.msg_id,
-        row.hash,
-        row.updated_at,
-        row.deleted_at,
-      );
-    }
-
-    db.exec("DROP TABLE message_index");
-    db.exec("ALTER TABLE message_index_next RENAME TO message_index");
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-  return true;
 }
 
 /**
@@ -324,10 +102,10 @@ function initDb(dbPath) {
   db = new Database(dbPath);
 
   // 1. 实体索引表 (Agent, Group, Topic)
-  const entityIndexMigrated = ensureEntityIndexSchema();
+  createEntityIndexTable("entity_index");
 
   // 2. 消息索引表
-  const messageIndexMigrated = ensureMessageIndexSchema();
+  createMessageIndexTable("message_index");
 
   // 3. 附件索引表
   db.exec(`
@@ -351,47 +129,24 @@ function initDb(dbPath) {
     )
   `);
 
-  // 5. 消息附件关联表 (与手机端对等)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS message_attachments (
-      msg_id TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      attachment_order INTEGER NOT NULL,
-      display_name TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (msg_id, attachment_order)
-    )
-  `);
-
-  // 6. history.json 源文件版本。消息 updated_at 不能用于判断物理文件
+  // 5. history.json 源文件版本。消息 updated_at 不能用于判断物理文件
   // 是否变化；保存 mtime + size 后，后续启动只需 stat，避免重复读取、
   // 解析和散列数千个未变化的历史文件。
   db.exec(`
     CREATE TABLE IF NOT EXISTS history_source_state (
-      topic_id TEXT PRIMARY KEY,
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      topic_id TEXT NOT NULL,
       file_path TEXT NOT NULL,
       file_size INTEGER NOT NULL,
       mtime_ms REAL NOT NULL,
       indexed_at INTEGER NOT NULL,
-      index_version INTEGER NOT NULL
+      index_version INTEGER NOT NULL,
+      PRIMARY KEY (owner_type, owner_id, topic_id)
     )
   `);
-  const historyStateColumns = db
-    .prepare("PRAGMA table_info(history_source_state)")
-    .all();
-  if (!historyStateColumns.some((column) => column.name === "index_version")) {
-    db.exec(
-      "ALTER TABLE history_source_state ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0",
-    );
-  }
 
   const logger = getLogger();
-  if (entityIndexMigrated) {
-    logger.logInfo("reconcile", "Legacy entity_index 已升级为复合身份结构。");
-  }
-  if (messageIndexMigrated) {
-    logger.logInfo("reconcile", "Legacy message_index 已升级为复合身份结构。");
-  }
   logger.logInfo("reconcile", "数据库初始化完成。");
   return db;
 }
@@ -533,21 +288,6 @@ function upsertAttachmentIndex(hash, filePath, updatedAt = Date.now()) {
 }
 
 /**
- * 更新消息附件关联
- */
-function upsertMessageAttachment(msgId, hash, order, displayName, createdAt = Date.now()) {
-  if (!db) return;
-
-  db.prepare(`
-    INSERT INTO message_attachments (msg_id, hash, attachment_order, display_name, created_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(msg_id, attachment_order) DO UPDATE SET
-      hash = excluded.hash,
-      display_name = excluded.display_name
-  `).run(msgId, hash, order, displayName, createdAt);
-}
-
-/**
  * 更新头像索引
  * @param {string} ownerId - 所有者 ID
  * @param {string} ownerType - 所有者类型
@@ -601,40 +341,60 @@ function getEntityIndex(identity) {
 /**
  * 获取 history.json 最近一次成功索引时的文件版本。
  */
-function getHistorySourceState(topicId) {
+function getHistorySourceState({ ownerType, ownerId, topicId }) {
   if (!db) return null;
+  const identity = normalizeEntityIndexIdentity({
+    id: topicId,
+    type: "topic",
+    ownerType,
+    ownerId,
+  });
   return db
     .prepare(
-      "SELECT topic_id, file_path, file_size, mtime_ms, indexed_at, index_version FROM history_source_state WHERE topic_id = ?",
+      `SELECT owner_type, owner_id, topic_id, file_path, file_size,
+              mtime_ms, indexed_at, index_version
+       FROM history_source_state
+       WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
     )
-    .get(topicId) || null;
+    .get(identity.ownerType, identity.ownerId, identity.id) || null;
 }
 
 /**
  * 仅在一个话题完整摄取成功后记录文件版本。失败文件不写状态，
  * 以便下次启动继续验证并恢复，而不是把损坏内容误判为已索引。
  */
-function upsertHistorySourceState(
+function upsertHistorySourceState({
+  ownerType,
+  ownerId,
   topicId,
   filePath,
   fileSize,
   mtimeMs,
   indexedAt = Date.now(),
-) {
+}) {
   if (!db) return;
+  const identity = normalizeEntityIndexIdentity({
+    id: topicId,
+    type: "topic",
+    ownerType,
+    ownerId,
+  });
   db.prepare(`
     INSERT INTO history_source_state (
-      topic_id, file_path, file_size, mtime_ms, indexed_at, index_version
+      owner_type, owner_id, topic_id, file_path, file_size,
+      mtime_ms, indexed_at, index_version
     )
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(topic_id) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(owner_type, owner_id, topic_id) DO UPDATE SET
       file_path = excluded.file_path,
       file_size = excluded.file_size,
       mtime_ms = excluded.mtime_ms,
       indexed_at = excluded.indexed_at,
       index_version = excluded.index_version
   `).run(
-    topicId,
+    identity.ownerType,
+    identity.ownerId,
+    identity.id,
     filePath,
     fileSize,
     mtimeMs,
@@ -646,8 +406,15 @@ function upsertHistorySourceState(
 /**
  * 源路径也参与版本判断，避免相同 topicId 被移动或错误复用后沿用旧状态。
  */
-function isHistorySourceCurrent(topicId, filePath, fileSize, mtimeMs) {
-  const state = getHistorySourceState(topicId);
+function isHistorySourceCurrent({
+  ownerType,
+  ownerId,
+  topicId,
+  filePath,
+  fileSize,
+  mtimeMs,
+}) {
+  const state = getHistorySourceState({ ownerType, ownerId, topicId });
   return Boolean(
     state &&
     state.index_version === HISTORY_INDEX_VERSION &&
@@ -727,8 +494,10 @@ function upsertEntityTombstone({
         deletedAt,
       );
   if (identity.type === "topic") {
-    // history_source_state 仍在 A3 才升级复合键；暂时保留既有清理语义。
-    db.prepare("DELETE FROM history_source_state WHERE topic_id = ?").run(identity.id);
+    db.prepare(
+      `DELETE FROM history_source_state
+       WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+    ).run(identity.ownerType, identity.ownerId, identity.id);
   }
   return result;
 }
@@ -814,7 +583,6 @@ module.exports = {
   upsertEntityIndex,
   upsertMessageIndex,
   upsertAttachmentIndex,
-  upsertMessageAttachment,
   upsertAvatarIndex,
   getEntityIndex,
   getHistorySourceState,

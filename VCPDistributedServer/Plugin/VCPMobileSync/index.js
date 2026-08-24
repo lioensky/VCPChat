@@ -102,7 +102,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   // Topic 物理目录是生存性真源；config.topics 只在初始索引前被动修正一次。
   await repairTopicProjectionsFromDisk(appDataPath);
 
-  // 中央模式不再打开持久化 sync_state.db。保留一个仅服务于附件、头像和
+  // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
   // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
   if (centralSync) {
     initDb(":memory:");
@@ -113,7 +113,8 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     centralSync.logEnabled();
     await reconcileCompatibilityAssets(appDataPath);
   } else {
-    const dbPath = path.join(__dirname, "sync_state.db");
+    // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
+    const dbPath = path.join(__dirname, "sync_state_v2.db");
     initDb(dbPath);
     await reconcileLocalFiles(appDataPath);
   }
@@ -761,12 +762,14 @@ async function scanHistory(userDataDir, db, logger) {
         const sourceStats = await fs.stat(historyPath);
         if (!sourceStats.isFile()) continue;
         if (
-          isHistorySourceCurrent(
+          isHistorySourceCurrent({
+            ownerType,
+            ownerId,
             topicId,
-            historyPath,
-            sourceStats.size,
-            sourceStats.mtimeMs,
-          )
+            filePath: historyPath,
+            fileSize: sourceStats.size,
+            mtimeMs: sourceStats.mtimeMs,
+          })
         ) {
           result.skippedCount += 1;
           continue;

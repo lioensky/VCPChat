@@ -11,7 +11,6 @@ const {
   getEntityIndex,
   upsertMessageIndex,
   upsertAttachmentIndex,
-  upsertMessageAttachment,
   upsertHistorySourceState,
   updateTopicAggregatedHash,
 } = require("../core/db");
@@ -694,20 +693,7 @@ async function ingestHistoryToDb(
         });
         fingerprints.push(computeMessageLeafHash(m.id, hash));
 
-        if (Array.isArray(m.attachments)) {
-          m.attachments.forEach((att, index) => {
-            if (att.hash) {
-              upsertMessageAttachment(
-                m.id,
-                att.hash,
-                index,
-                att.name || "unnamed",
-                att.createdAt ?? now,
-              );
-              attachmentCount++;
-            }
-          });
-        }
+        attachmentCount += Array.isArray(m.attachments) ? m.attachments.length : 0;
       }
       for (const row of existing) {
         if (row.deleted_at === null && !liveIds.has(row.msg_id)) {
@@ -748,12 +734,14 @@ async function ingestHistoryToDb(
       }
     });
     applyIndex();
-    upsertHistorySourceState(
+    upsertHistorySourceState({
+      ownerType,
+      ownerId,
       topicId,
       filePath,
-      sourceStats.size,
-      sourceStats.mtimeMs,
-    );
+      fileSize: sourceStats.size,
+      mtimeMs: sourceStats.mtimeMs,
+    });
     clearHistoryTopicUnhealthy(topicId);
 
     if (source !== "reconcile") {
