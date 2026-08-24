@@ -82,11 +82,6 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
   for (const state of topicStates) {
     const topicId = state.topicId;
     if (topicId === "default") continue;
-    assertHistoryTopicHealthy({
-      topicId,
-      ownerType: state.ownerType,
-      ownerId: state.ownerId,
-    });
     try {
       const topicRow = db
         .prepare(

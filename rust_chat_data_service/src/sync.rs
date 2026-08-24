@@ -773,21 +773,30 @@ fn pull_entity(database: &Database, request: &EntityPullRequest) -> Result<Optio
             let connection = database.connection.lock();
             let row = connection
                 .query_row(
-                    "SELECT config_path, deleted_at FROM owners
+                    "SELECT config_path, config_hash, deleted_at FROM owners
                      WHERE owner_type=?1 AND owner_id=?2",
                     params![owner_type.as_str(), request.id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                        ))
+                    },
                 )
                 .optional()?;
             drop(connection);
-            let Some((config_path, None)) = row else {
+            let Some((config_path, committed_hash, None)) = row else {
                 return Ok(None);
             };
             let root = serde_json::from_slice::<Value>(&fs::read(&config_path)?)
                 .with_context(|| format!("invalid owner config {config_path}"))?;
-            Ok(Some(Value::Object(mobile_owner_sync_dto_from_value(
-                owner_type, &root,
-            )?)))
+            let dto = mobile_owner_sync_dto_from_value(owner_type, &root)?;
+            anyhow::ensure!(
+                hash_stable_object(&dto) == committed_hash,
+                "owner config changed after its manifest was committed"
+            );
+            Ok(Some(Value::Object(dto)))
         }
         "agent_topic" | "group_topic" => {
             let owner_type = request.owner_type.context("topic ownerType is required")?;
@@ -892,9 +901,7 @@ pub fn topic_hash_diff(
                 continue;
             }
         };
-        if (!state.config_hash.is_empty() && local.config_hash != state.config_hash)
-            || local.content_hash != state.content_hash
-        {
+        if local.config_hash != state.config_hash || local.content_hash != state.content_hash {
             changed_topics.push(requested_key);
         }
     }
@@ -1287,6 +1294,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
             owner_id: topic.owner_id.clone(),
         },
     )?;
+    ensure_topic_sync_source_healthy(reconciler.database(), &key)?;
     let history_path = reconciler
         .config()
         .user_data_dir

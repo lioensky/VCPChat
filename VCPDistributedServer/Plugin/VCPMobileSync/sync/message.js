@@ -17,6 +17,7 @@ const {
 const {
   computeMessageFingerprint,
   computeMessageLeafHash,
+  computeTopicLeafHash,
   computeAggregatedHash,
 } = require("../core/hash");
 const {
@@ -50,6 +51,43 @@ function topicIdentityKey(ownerType, ownerId, topicId) {
   return `${ownerType}\0${ownerId}\0${topicId}`;
 }
 
+function publishUnhealthyHistoryHash({ topicId, ownerType, ownerId }) {
+  const db = getDb();
+  if (!db) return;
+  const contentHash = crypto
+    .createHash("sha256")
+    .update(`vcp-unhealthy-topic:${ownerType}:${ownerId}:${topicId}`)
+    .digest("hex");
+  db.transaction(() => {
+    const updated = updateTopicAggregatedHash(
+      { topicId, ownerType, ownerId },
+      contentHash,
+    );
+    if (updated.changes !== 1) return;
+    const topics = db
+      .prepare(
+        `SELECT id, hash, aggregated_hash FROM entity_index
+         WHERE type = 'topic' AND owner_type = ? AND owner_id = ?
+           AND id <> 'default' AND deleted_at IS NULL`,
+      )
+      .all(ownerType, ownerId);
+    const ownerHash = computeAggregatedHash(
+      topics.map((topic) =>
+        computeTopicLeafHash(
+          topic.id,
+          topic.hash,
+          topic.aggregated_hash || "",
+        )
+      ),
+    );
+    db.prepare(
+      `UPDATE entity_index SET aggregated_hash = ?
+       WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?
+         AND deleted_at IS NULL`,
+    ).run(ownerHash, ownerType, ownerType, ownerId, ownerId);
+  })();
+}
+
 function markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error) {
   if (
     typeof topicId === "string" &&
@@ -58,10 +96,17 @@ function markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error) {
     typeof ownerId === "string" &&
     ownerId.length > 0
   ) {
-    unhealthyHistoryTopics.set(
-      topicIdentityKey(ownerType, ownerId, topicId),
-      String(error?.message || error),
-    );
+    const key = topicIdentityKey(ownerType, ownerId, topicId);
+    const reason = String(error?.message || error);
+    unhealthyHistoryTopics.set(key, reason);
+    try {
+      publishUnhealthyHistoryHash({ topicId, ownerType, ownerId });
+    } catch (indexError) {
+      unhealthyHistoryTopics.set(
+        key,
+        `${reason}; failed to publish unhealthy hash: ${indexError.message}`,
+      );
+    }
   }
 }
 
@@ -320,26 +365,44 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
           );
         }
       }
-      const indexedTimes = new Map(
+      const indexedStates = new Map(
         db
           .prepare(
-            `SELECT msg_id, updated_at FROM message_index
+            `SELECT msg_id, hash, updated_at FROM message_index
              WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
                AND deleted_at IS NULL`,
           )
           .all(ownerType, ownerId, safeTopicId)
-          .map((indexRow) => [indexRow.msg_id, indexRow.updated_at]),
+          .map((indexRow) => [indexRow.msg_id, indexRow]),
       );
-      for (const message of messages) {
-        const updatedAt = indexedTimes.get(message.id);
-        if (!Number.isSafeInteger(updatedAt) || updatedAt < 0) {
+      if (wanted.size === 0) {
+        const physicalIds = new Set(messages.map((message) => message.id));
+        if (
+          physicalIds.size !== indexedStates.size ||
+          [...indexedStates.keys()].some((id) => !physicalIds.has(id))
+        ) {
           throw createSyncError(
             "SYNC_INDEX_INVALID",
-            `message index timestamp is invalid for ${safeTopicId}/${message.id}`,
+            `physical history changed after ${safeTopicId} was indexed`,
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
         }
-        message.updatedAt = updatedAt;
+      }
+      for (const message of messages) {
+        const indexed = indexedStates.get(message.id);
+        if (
+          !indexed ||
+          !Number.isSafeInteger(indexed.updated_at) ||
+          indexed.updated_at < 0 ||
+          computeMessageFingerprint(message) !== indexed.hash
+        ) {
+          throw createSyncError(
+            "SYNC_INDEX_INVALID",
+            `message ${safeTopicId}/${message.id} changed after it was indexed`,
+            { stage: "messages", failedTopicIds: [safeTopicId] },
+          );
+        }
+        message.updatedAt = indexed.updated_at;
       }
       await writer.write({
         topicId: safeTopicId,
@@ -575,6 +638,11 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
         }
+        assertHistoryTopicHealthy({
+          topicId: safeTopicId,
+          ownerType,
+          ownerId,
+        });
 
         addedIntentLocks.add(addWriteIntent({
           id: safeTopicId,

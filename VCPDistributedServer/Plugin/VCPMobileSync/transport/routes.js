@@ -208,11 +208,11 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         );
       }
 
-      const { id, type, data } = req.body;
+      const { id, type, ownerType, ownerId, data } = req.body;
 
       try {
         const result = normalizeFailureResult(
-          await uploadEntity({ id, type, data, appDataPath }),
+          await uploadEntity({ id, type, ownerType, ownerId, data, appDataPath }),
           {
             code: "SYNC_ENTITY_WRITE_FAILED",
             stage: entityStage(type),
