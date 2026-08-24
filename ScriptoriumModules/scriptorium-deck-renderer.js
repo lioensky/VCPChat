@@ -34,7 +34,6 @@
     margin: 32px auto 88px;
     overflow: hidden;
     place-items: stretch;
-    color: #1d2421;
     background: #fffdf8;
     box-shadow: 0 18px 55px rgba(0, 0, 0, .34);
     transform: scale(var(--vdoc-zoom, 1));
@@ -60,7 +59,6 @@ ${primitives.editDecorationsCss()}
     ) !important;
     padding: 0 !important;
     overflow: hidden;
-    color: #1d2421;
     background: #fffdf8;
     box-shadow: 0 18px 55px rgba(0, 0, 0, .34);
     transform: scale(var(--vdoc-zoom, 1));
@@ -80,6 +78,7 @@ ${primitives.editDecorationsCss()}
 `;
             return [
                 primitives.baseCss(model().manifest.scene, options),
+                ':host { color: #1d2421; }',
                 customCss,
                 advancedCss,
                 layoutCss,
@@ -216,6 +215,7 @@ ${primitives.editDecorationsCss()}
     height: 100%;
     overflow: hidden;
     contain: strict;
+    color: #1d2421;
     background: #fffdf8;
     pointer-events: none;
 }
@@ -226,7 +226,6 @@ ${primitives.editDecorationsCss()}
     width: ${scene.page.width};
     height: ${scene.page.height};
     overflow: hidden;
-    color: #1d2421;
     background: #fffdf8;
     transform-origin: center;
 }
