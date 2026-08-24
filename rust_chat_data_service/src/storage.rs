@@ -14,7 +14,8 @@ use serde_json::Value;
 use crate::{
     config::SCHEMA_VERSION,
     domain::{
-        MessageView, NormalizedMessage, OwnerKey, OwnerRecord, OwnerType, TopicKey, TopicSource,
+        MessageView, NormalizedMessage, OwnerKey, OwnerRecord, OwnerType, TopicDefinition,
+        TopicKey, TopicSource,
     },
 };
 
@@ -147,7 +148,6 @@ pub struct IngestCommit {
     pub topic: TopicKey,
     pub revision: i64,
     pub changed: bool,
-    pub removed_row_ids: Vec<i64>,
     pub message_count: usize,
 }
 
@@ -508,75 +508,39 @@ impl Database {
             .map_err(Into::into)
     }
 
-    pub fn mark_history_source_missing(
-        &self,
-        source: &TopicSource,
-        origin: &str,
-    ) -> Result<Option<IngestCommit>> {
+    pub fn mark_history_source_missing(&self, source: &TopicSource, _origin: &str) -> Result<bool> {
         let now = now_ms();
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
-        let previous: Option<(Option<String>, String)> = transaction
+        let previous_status: Option<String> = transaction
             .query_row(
-                "SELECT content_hash, status FROM history_sources WHERE source_path=?1",
+                "SELECT status FROM history_sources WHERE source_path=?1",
                 [source.source_path.to_string_lossy().as_ref()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| row.get(0),
             )
             .optional()?;
-        let Some((previous_hash, previous_status)) = previous else {
+        let Some(previous_status) = previous_status else {
             transaction.commit()?;
-            return Ok(None);
+            return Ok(false);
         };
-        if previous_hash.is_none() || previous_status == "missing" {
+        if previous_status == "missing" {
             transaction.commit()?;
-            return Ok(None);
+            return Ok(false);
         }
 
-        let revision = next_global_revision(&transaction)?;
-        let existing = load_active_message_ids(&transaction, &source.key)?;
-        let mut removed_row_ids = Vec::with_capacity(existing.len());
-        for (msg_id, row_id) in existing {
-            transaction.execute(
-                "UPDATE messages SET deleted_at=?2, updated_at=?2 WHERE row_id=?1",
-                params![row_id, now],
-            )?;
-            upsert_message_tombstone(&transaction, &source.key, &msg_id, origin, now)?;
-            removed_row_ids.push(row_id);
-        }
-
-        transaction.execute(
-            "UPDATE topics SET
-                content_hash=NULL,
-                content_revision=?4
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-            params![
-                source.key.owner_type.as_str(),
-                source.key.owner_id,
-                source.key.topic_id,
-                revision,
-            ],
-        )?;
         transaction.execute(
             "UPDATE history_sources SET
                 mtime_ns=0,
                 file_size=0,
-                content_hash=NULL,
-                last_revision=?2,
-                indexed_at=?3,
+                indexed_at=?2,
                 status='missing',
-                last_error=NULL
+                last_error='previously indexed history source is missing'
              WHERE source_path=?1",
-            params![source.source_path.to_string_lossy(), revision, now,],
+            params![source.source_path.to_string_lossy(), now],
         )?;
         transaction.commit()?;
-        Ok(Some(IngestCommit {
-            topic: source.key.clone(),
-            revision,
-            changed: true,
-            removed_row_ids,
-            message_count: 0,
-        }))
+        Ok(true)
     }
 
     /// Reconciles deletion timestamps supplied by the sync wire after the
@@ -890,7 +854,6 @@ impl Database {
                 topic: source.key.clone(),
                 revision,
                 changed: false,
-                removed_row_ids: Vec::new(),
                 message_count: messages.len(),
             });
         }
@@ -904,8 +867,6 @@ impl Database {
             .filter(|message| !tombstoned_ids.contains(message.msg_id.as_str()))
             .map(|message| message.msg_id.as_str())
             .collect();
-        let mut removed_row_ids = Vec::new();
-
         for (msg_id, (row_id, _, _)) in &existing {
             if !incoming_ids.contains(msg_id.as_str()) {
                 transaction.execute(
@@ -913,7 +874,6 @@ impl Database {
                     params![row_id, now],
                 )?;
                 upsert_message_tombstone(&transaction, &source.key, &msg_id, origin, now)?;
-                removed_row_ids.push(*row_id);
             }
         }
 
@@ -1048,7 +1008,6 @@ impl Database {
             topic: source.key.clone(),
             revision,
             changed: true,
-            removed_row_ids,
             message_count: incoming_ids.len(),
         })
     }
@@ -1186,6 +1145,61 @@ impl Database {
             .optional()
             .map(|value| value.flatten())
             .map_err(Into::into)
+    }
+
+    pub fn topic_is_tombstoned(&self, key: &TopicKey) -> Result<bool> {
+        let connection = self.connection.lock();
+        connection
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM topics
+                    WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                      AND deleted_at IS NOT NULL
+                    UNION ALL
+                    SELECT 1 FROM tombstones
+                    WHERE entity_type='topic' AND owner_type=?1 AND owner_id=?2
+                      AND topic_id=?3 AND entity_id=?3
+                 )",
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
+    pub fn topic_recovery_definition(&self, key: &TopicKey) -> Result<Option<TopicDefinition>> {
+        let connection = self.connection.lock();
+        let row = connection
+            .query_row(
+                "SELECT display_name, created_at, topic_ordinal, config_hash, metadata_json
+                 FROM topics
+                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                   AND deleted_at IS NULL",
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((display_name, created_at, ordinal, config_hash, Some(metadata_json))) = row
+        else {
+            return Ok(None);
+        };
+        let metadata = serde_json::from_str(&metadata_json)
+            .context("stored topic recovery metadata is invalid")?;
+        Ok(Some(TopicDefinition {
+            topic_id: key.topic_id.clone(),
+            display_name,
+            created_at,
+            ordinal,
+            config_hash,
+            metadata,
+        }))
     }
 
     pub fn owner_by_id(

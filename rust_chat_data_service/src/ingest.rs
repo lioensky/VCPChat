@@ -124,15 +124,20 @@ impl Reconciler {
                         stats.messages_ingested += commit.message_count;
                     }
                     Ok(None) => {
-                        // A physical or configured topic with no prior
-                        // valid source is a legitimate empty topic. Only a previously
+                        // A physical topic with no prior valid source is a legitimate
+                        // empty topic. Only a previously
                         // ingested source can become missing.
-                        if let Some(commit) = self
+                        if self
                             .database
                             .mark_history_source_missing(&source, "reconcile")?
                         {
-                            stats.files_deleted += 1;
-                            stats.messages_deleted += commit.removed_row_ids.len();
+                            stats.files_invalid += 1;
+                            tracing::warn!(
+                                owner_type = %source.key.owner_type,
+                                owner_id = %source.key.owner_id,
+                                topic_id = %source.key.topic_id,
+                                "previously indexed history source is missing"
+                            );
                         } else {
                             stats.files_skipped += 1;
                         }
@@ -200,17 +205,26 @@ impl Reconciler {
     }
 
     fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
-        if configured_owner.source_config_hash.is_some() {
-            return Ok(configured_owner.clone());
-        }
         let physical_topic_ids = self.physical_topic_ids(&configured_owner.key.owner_id)?;
-
-        let configured_topic_ids = configured_owner
-            .topics
-            .iter()
-            .map(|topic| topic.topic_id.as_str())
-            .collect::<HashSet<_>>();
-        let mut topics = configured_owner.topics.clone();
+        let physical_topic_set = physical_topic_ids.iter().cloned().collect::<HashSet<_>>();
+        let mut topics = Vec::new();
+        let mut active_topic_ids = HashSet::new();
+        for topic in &configured_owner.topics {
+            if !physical_topic_set.contains(&topic.topic_id)
+                || !active_topic_ids.insert(topic.topic_id.clone())
+            {
+                continue;
+            }
+            let key = TopicKey {
+                owner_type: configured_owner.key.owner_type,
+                owner_id: configured_owner.key.owner_id.clone(),
+                topic_id: topic.topic_id.clone(),
+            };
+            if self.database.topic_is_tombstoned(&key)? {
+                continue;
+            }
+            topics.push(topic.clone());
+        }
         let mut next_ordinal = configured_owner
             .topics
             .iter()
@@ -220,7 +234,7 @@ impl Reconciler {
             + 1;
 
         for topic_id in physical_topic_ids {
-            if configured_topic_ids.contains(topic_id.as_str()) {
+            if active_topic_ids.contains(&topic_id) {
                 continue;
             }
             let key = TopicKey {
@@ -228,18 +242,50 @@ impl Reconciler {
                 owner_id: configured_owner.key.owner_id.clone(),
                 topic_id: topic_id.clone(),
             };
-            let metadata = serde_json::json!({
-                "orphanHistory": true,
-                "compatibilityStatus": "history_not_listed_in_config"
-            });
+            if self.database.topic_is_tombstoned(&key)? {
+                continue;
+            }
+            if let Some(mut recovered) = self.database.topic_recovery_definition(&key)? {
+                if mobile_topic_config_hash(&key, &recovered.metadata) == recovered.config_hash {
+                    recovered.ordinal = next_ordinal;
+                    topics.push(recovered);
+                    active_topic_ids.insert(topic_id);
+                    next_ordinal += 1;
+                    continue;
+                }
+                tracing::warn!(
+                    owner_type = %key.owner_type,
+                    owner_id = %key.owner_id,
+                    topic_id = %key.topic_id,
+                    "stored topic recovery hash is inconsistent; using minimal metadata"
+                );
+            }
+            let recovered_name = format!("Recovered: {topic_id}");
+            let metadata = if key.owner_type == OwnerType::Agent {
+                serde_json::json!({
+                    "id": topic_id.clone(),
+                    "name": recovered_name.clone(),
+                    "createdAt": 0,
+                    "locked": true,
+                    "unread": false,
+                    "creatorSource": "recovery"
+                })
+            } else {
+                serde_json::json!({
+                    "id": topic_id.clone(),
+                    "name": recovered_name.clone(),
+                    "createdAt": 0
+                })
+            };
             topics.push(TopicDefinition {
                 topic_id,
-                display_name: None,
-                created_at: None,
+                display_name: Some(recovered_name),
+                created_at: Some(0),
                 ordinal: next_ordinal,
                 config_hash: mobile_topic_config_hash(&key, &metadata),
                 metadata,
             });
+            active_topic_ids.insert(key.topic_id);
             next_ordinal += 1;
         }
 
@@ -364,6 +410,7 @@ impl Reconciler {
             .owner_by_id(owner_type, &owner_id)?
             .map(|(_, display_name)| display_name)
             .unwrap_or_else(|| owner_id.clone());
+        let recovery_config = serde_json::json!({ "name": display_name.clone() });
         Ok(Some(OwnerRecord {
             key: OwnerKey {
                 owner_type,
@@ -371,7 +418,7 @@ impl Reconciler {
             },
             display_name,
             config_path: config_path.into(),
-            config_hash: "physical-owner-recovery".to_string(),
+            config_hash: mobile_owner_config_hash_from_value(owner_type, &recovery_config)?,
             source_config_hash: None,
             topics: Vec::new(),
         }))
@@ -429,7 +476,6 @@ impl Reconciler {
                     topic: source.key.clone(),
                     revision: self.database.topic_revision(&source.key)?.unwrap_or(0),
                     changed: false,
-                    removed_row_ids: Vec::new(),
                     message_count: 0,
                 }));
             }
@@ -1115,7 +1161,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn config_deletion_preserves_tombstone_and_config_only_topic() {
+    async fn config_deletion_preserves_tombstone_and_ignores_config_only_topic() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -1133,7 +1179,7 @@ mod tests {
             ]),
         );
         let initial = reconciler.reconcile().await.expect("initial reconcile");
-        assert_eq!(initial.topics_seen, 2);
+        assert_eq!(initial.topics_seen, 1);
 
         let key = TopicKey {
             owner_type: OwnerType::Agent,
@@ -1212,11 +1258,11 @@ mod tests {
         assert_eq!(topic_deleted_at, Some(321));
         assert_eq!(message_deleted_at, Some(321));
         assert_eq!(persisted_tombstone, 321);
-        assert_eq!(config_only_topics, 1);
+        assert_eq!(config_only_topics, 0);
     }
 
     #[tokio::test]
-    async fn physical_topic_missing_from_valid_config_is_not_resurrected() {
+    async fn physical_topic_missing_from_valid_config_is_recovered() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -1235,18 +1281,21 @@ mod tests {
         );
 
         let stats = reconciler.reconcile().await.expect("reconcile");
-        assert_eq!(stats.topics_seen, 0);
-        assert_eq!(stats.files_ingested, 0);
-        assert_eq!(stats.messages_ingested, 0);
+        assert_eq!(stats.topics_seen, 1);
+        assert_eq!(stats.files_ingested, 1);
+        assert_eq!(stats.messages_ingested, 1);
         let key = TopicKey {
             owner_type: OwnerType::Agent,
             owner_id: "agent_orphan_topic".to_string(),
             topic_id: "topic_orphan".to_string(),
         };
-        assert!(database
-            .active_messages_for_topic(&key)
-            .expect("load orphan messages")
-            .is_empty());
+        assert_eq!(
+            database
+                .active_messages_for_topic(&key)
+                .expect("load orphan messages")
+                .len(),
+            1
+        );
         let indexed: i64 = database
             .connection
             .lock()
@@ -1258,7 +1307,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("count orphan topic");
-        assert_eq!(indexed, 0);
+        assert_eq!(indexed, 1);
     }
 
     #[tokio::test]
@@ -1472,7 +1521,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deleting_history_is_removed_from_tantivy_and_revisions_converge() {
+    async fn missing_history_preserves_tantivy_and_revisions_converge() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -1521,24 +1570,28 @@ mod tests {
                 .join("agent_search_delete/topics/topic_1/history.json"),
         )
         .expect("delete history");
-        reconciler.reconcile().await.expect("deletion reconcile");
+        let missing = reconciler.reconcile().await.expect("missing reconcile");
+        assert_eq!(missing.files_invalid, 1);
         assert_eq!(
             index
                 .reconcile_revisions()
-                .expect("reconcile deleted search topic"),
+                .expect("reconcile missing search topic"),
+            0
+        );
+        assert_eq!(
+            index
+                .search_messages(&request)
+                .expect("search after source loss")
+                .len(),
             1
         );
-        assert!(index
-            .search_messages(&request)
-            .expect("search after delete")
-            .is_empty());
 
         let stats = database.stats().expect("revision stats");
         assert_eq!(stats.content_revision, stats.indexed_revision);
     }
 
     #[tokio::test]
-    async fn deleting_history_soft_deletes_messages_but_keeps_configured_topic() {
+    async fn missing_history_keeps_messages_and_marks_source_unhealthy() {
         let (_temp, config, database, reconciler) = fixture();
         write_owner(
             &config,
@@ -1579,13 +1632,26 @@ mod tests {
         .expect("delete history");
         let result = reconciler.reconcile().await.expect("deletion reconcile");
 
-        assert_eq!(result.files_deleted, 1);
-        assert_eq!(result.messages_deleted, 2);
+        assert_eq!(result.files_invalid, 1);
+        assert_eq!(result.files_deleted, 0);
+        assert_eq!(result.messages_deleted, 0);
         let after = database.stats().expect("stats after deletion");
         assert_eq!(after.owners, 1);
         assert_eq!(after.topics, 1);
-        assert_eq!(after.messages, 0);
-        assert!(after.content_revision > before.content_revision);
+        assert_eq!(after.messages, 2);
+        assert_eq!(after.content_revision, before.content_revision);
+        assert_eq!(
+            database
+                .source_metadata(
+                    &config
+                        .user_data_dir
+                        .join("agent_delete_history/topics/topic_1/history.json"),
+                )
+                .expect("load missing source state")
+                .expect("missing source remains indexed")
+                .status,
+            "missing"
+        );
     }
 
     #[tokio::test]

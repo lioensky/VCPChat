@@ -680,7 +680,7 @@ test("从未见过的 Topic 删除会用显式 Owner 身份保存墓碑", async 
   }
 });
 
-test("启动 repair 不会用物理历史改写有效 Topic 配置", async (t) => {
+test("启动 repair 用普通 backup 补回物理 Topic 元数据", async (t) => {
   const { entity } = loadSqliteModules();
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-repair-topic-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -700,22 +700,35 @@ test("启动 repair 不会用物理历史改写有效 Topic 配置", async (t) =
     ],
   };
   fs.writeFileSync(configPath, JSON.stringify(originalConfig));
+  const backupConfig = {
+    name: "Existing Agent",
+    topics: [
+      { id: topicId, name: "Recovered From Backup", createdAt: 42 },
+      { id: "topic-old-ghost", name: "Old Ghost", createdAt: 2 },
+    ],
+  };
+  fs.writeFileSync(`${configPath}.backup`, JSON.stringify(backupConfig));
   fs.writeFileSync(
     path.join(topicDir, "history.json"),
     JSON.stringify([{ id: "message-repair", timestamp: 42 }]),
   );
 
   assert.deepEqual(await entity.repairTopicProjectionsFromDisk(directory), {
-    ownersChanged: 0,
-    topicsAdded: 0,
-    topicsRemoved: 0,
+    ownersChanged: 1,
+    topicsAdded: 1,
+    topicsRemoved: 2,
   });
   const repaired = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  assert.deepEqual(repaired, originalConfig);
-  assert.equal(fs.existsSync(`${configPath}.backup`), false);
+  assert.deepEqual(repaired.topics, [
+    { id: topicId, name: "Recovered From Backup", createdAt: 42 },
+  ]);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(`${configPath}.backup`, "utf8")),
+    backupConfig,
+  );
 });
 
-test("启动 repair 从有效 backup 恢复配置但不合并物理孤儿", async (t) => {
+test("启动 repair 从有效 backup 恢复配置并服从 Topic 墓碑", async (t) => {
   const { database, entity } = loadSqliteModules();
   const db = database.initDb(":memory:");
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-repair-corrupt-"));
@@ -733,7 +746,11 @@ test("启动 repair 从有效 backup 恢复配置但不合并物理孤儿", asyn
     fs.writeFileSync(configPath, "{broken", "utf8");
     const backup = {
       name: "Backed Up Agent",
-      topics: [{ id: "topic-backup-ghost", name: "Ghost", createdAt: 1 }],
+      topics: [
+        { id: topicId, name: "Recovered From Backup", createdAt: 73 },
+        { id: "topic-backup-ghost", name: "Ghost", createdAt: 1 },
+        { id: "topic-tombstoned", name: "Deleted", createdAt: 2 },
+      ],
     };
     fs.writeFileSync(`${configPath}.backup`, JSON.stringify(backup));
     fs.writeFileSync(
@@ -777,8 +794,9 @@ test("启动 repair 从有效 backup 恢复配置但不合并物理孤儿", asyn
     assert.equal(repaired.name, "Backed Up Agent");
     assert.deepEqual(
       repaired.topics.map((topic) => topic.id),
-      ["topic-backup-ghost"],
+      [topicId],
     );
+    assert.equal(repaired.topics[0].name, "Recovered From Backup");
     assert.deepEqual(
       JSON.parse(fs.readFileSync(`${configPath}.backup`, "utf8")),
       backup,

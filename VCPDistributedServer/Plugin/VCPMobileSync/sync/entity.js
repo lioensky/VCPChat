@@ -134,6 +134,29 @@ function assertEntityDtoMatchesIndex(dto, row, type, id) {
   }
 }
 
+function topicDtoMatchingIndex(candidates, topicId, row, type) {
+  const isGroup = row.owner_type === "group";
+  for (const config of [candidates.primary, candidates.backup, candidates.topicBackup]) {
+    const topic = (Array.isArray(config?.topics) ? config.topics : [])
+      .find((value) => value?.id === topicId);
+    if (!topic) continue;
+    const dto = isGroup
+      ? extractGroupTopicDTO(topic, row.owner_id)
+      : extractAgentTopicDTO(topic, row.owner_id);
+    if (entityDtoHash(dto, type, row.owner_type) === row.hash) return dto;
+  }
+  return null;
+}
+
+function ownerDtoMatchingIndex(candidates, row, type) {
+  for (const config of [candidates.primary, candidates.backup, candidates.topicBackup]) {
+    if (!config) continue;
+    const dto = type === "group" ? extractGroupDTO(config) : extractAgentDTO(config);
+    if (entityDtoHash(dto, type) === row.hash) return dto;
+  }
+  return null;
+}
+
 async function getPhysicalOwnerTypes(appDataPath, ownerId) {
   const ownerTypes = [];
   if (await isDirectory(path.join(appDataPath, "Agents", ownerId))) {
@@ -220,32 +243,20 @@ async function downloadEntity({ id, type, ownerType = null, ownerId = null }) {
   }
 
   try {
-    const content = await fs.readFile(row.file_path, "utf-8");
-    const config = JSON.parse(content);
-    const isGroup = row.owner_type === "group";
-    const indexedOwnerId = row.owner_id;
+    const candidates = await readConfigForRepair(row.file_path, row.owner_type);
 
     if (type === "topic" || type === "agent_topic" || type === "group_topic") {
-      const topic = (config.topics || []).find((t) => t.id === safeId);
-      if (!topic) return null;
-
-      if (isGroup) {
-        const dto = extractGroupTopicDTO(topic, indexedOwnerId);
-        assertEntityDtoMatchesIndex(dto, row, type, safeId);
-        return dto;
-      } else {
-        const dto = extractAgentTopicDTO(topic, indexedOwnerId);
-        assertEntityDtoMatchesIndex(dto, row, type, safeId);
-        return dto;
-      }
+      const dto = topicDtoMatchingIndex(candidates, safeId, row, type);
+      if (!dto) throw new Error(`No recoverable metadata matches indexed topic ${safeId}`);
+      return dto;
     } else if (type === "agent") {
-      const dto = extractAgentDTO(config);
-      assertEntityDtoMatchesIndex(dto, row, type, safeId);
+      const dto = ownerDtoMatchingIndex(candidates, row, type);
+      if (!dto) throw new Error(`No recoverable config matches indexed agent ${safeId}`);
       logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
       return dto;
     } else if (type === "group") {
-      const dto = extractGroupDTO(config);
-      assertEntityDtoMatchesIndex(dto, row, type, safeId);
+      const dto = ownerDtoMatchingIndex(candidates, row, type);
+      if (!dto) throw new Error(`No recoverable config matches indexed group ${safeId}`);
       logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
       return dto;
     }
@@ -320,7 +331,6 @@ async function downloadEntities(requests) {
     if (!fileGroups.has(row.file_path)) {
       fileGroups.set(row.file_path, {
         ownerType: row.owner_type,
-        ownerId: row.owner_id,
         reqs: [],
       });
     }
@@ -329,11 +339,9 @@ async function downloadEntities(requests) {
 
   const logger = getLogger();
 
-  for (const [filePath, { ownerType, ownerId, reqs }] of fileGroups) {
+  for (const [filePath, { ownerType, reqs }] of fileGroups) {
     try {
-      const content = await fs.readFile(filePath, "utf-8");
-      const config = JSON.parse(content);
-      const isGroup = ownerType === "group";
+      const candidates = await readConfigForRepair(filePath, ownerType);
 
       for (const { req, safeId, row } of reqs) {
         let dto = null;
@@ -341,18 +349,13 @@ async function downloadEntities(requests) {
         const phase = (type === "topic" || type === "agent_topic" || type === "group_topic") ? "topic_metadata" : "owner_metadata";
 
         if (type === "topic" || type === "agent_topic" || type === "group_topic") {
-          const topic = (config.topics || []).find((t) => t.id === safeId);
-          if (topic) {
-            dto = isGroup
-              ? extractGroupTopicDTO(topic, ownerId)
-              : extractAgentTopicDTO(topic, ownerId);
-          }
+          dto = topicDtoMatchingIndex(candidates, safeId, row, type);
         } else if (type === "agent") {
           logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
-          dto = extractAgentDTO(config);
+          dto = ownerDtoMatchingIndex(candidates, row, type);
         } else if (type === "group") {
           logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
-          dto = extractGroupDTO(config);
+          dto = ownerDtoMatchingIndex(candidates, row, type);
         }
 
         if (dto) {
@@ -375,7 +378,7 @@ async function downloadEntities(requests) {
           results.push(entityFailure(
             "entity data was not found in its config",
             {
-              code: "SYNC_ENTITY_NOT_FOUND",
+              code: "SYNC_ENTITY_READ_FAILED",
               stage: entityStage(type),
               failedTopicIds:
                 entityStage(type) === "topic_metadata" ? [safeId] : [],
@@ -993,29 +996,25 @@ function parseJsonObject(content, label) {
   return parsed;
 }
 
-async function readConfigForRepair(configPath) {
+async function readOptionalConfig(filePath) {
   try {
-    return {
-      config: parseJsonObject(await fs.readFile(configPath, "utf-8"), configPath),
-      source: "primary",
-    };
-  } catch {}
-
-  const backupPath = `${configPath}.backup`;
-  try {
-    return {
-      config: parseJsonObject(await fs.readFile(backupPath, "utf-8"), backupPath),
-      source: "backup",
-    };
+    return parseJsonObject(await fs.readFile(filePath, "utf-8"), filePath);
   } catch {
-    return {
-      config: null,
-      source: null,
-    };
+    return null;
   }
 }
 
-async function writeJsonAtomic(filePath, value) {
+async function readConfigForRepair(configPath, ownerType) {
+  return {
+    primary: await readOptionalConfig(configPath),
+    backup: await readOptionalConfig(`${configPath}.backup`),
+    topicBackup: ownerType === "agent"
+      ? await readOptionalConfig(path.join(path.dirname(configPath), "config.topic.backup.json"))
+      : null,
+  };
+}
+
+async function writeJsonAtomic(filePath, value, { preserveBackup = false } = {}) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const temporary = `${filePath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const backupPath = `${filePath}.backup`;
@@ -1026,8 +1025,10 @@ async function writeJsonAtomic(filePath, value) {
     try {
       expectedCurrent = await fs.readFile(filePath, "utf-8");
       parseJsonObject(expectedCurrent, filePath);
-      await fs.writeFile(backupTemporary, expectedCurrent, "utf-8");
-      await fs.rename(backupTemporary, backupPath);
+      if (!preserveBackup) {
+        await fs.writeFile(backupTemporary, expectedCurrent, "utf-8");
+        await fs.rename(backupTemporary, backupPath);
+      }
     } catch (error) {
       if (
         error.code !== "ENOENT" &&
@@ -1086,14 +1087,15 @@ async function repairOwnerTopicProjection({
   ownerId,
   ownerType,
   physicalTopics,
+  recoverTopics,
 }) {
   const ownerRoot = ownerType === "group" ? "AgentGroups" : "Agents";
   const configPath = path.join(appDataPath, ownerRoot, ownerId, "config.json");
   const release = await acquireLock(configPath);
   try {
-    const recovered = await readConfigForRepair(configPath);
-    let config = recovered.config;
-    let configRecovered = false;
+    const candidates = await readConfigForRepair(configPath, ownerType);
+    let config = candidates.primary || candidates.backup || candidates.topicBackup;
+    let configRecovered = candidates.primary === null;
     if (!config) {
       // 没有任何物理 Topic 时不存在可恢复的数据，保留损坏文件供人工处理。
       if (physicalTopics.size === 0) {
@@ -1108,6 +1110,53 @@ async function repairOwnerTopicProjection({
     }
 
     const previousTopics = Array.isArray(config.topics) ? config.topics : [];
+    const topicCandidates = (candidate) => new Map(
+      (Array.isArray(candidate?.topics) ? candidate.topics : [])
+        .filter((topic) =>
+          topic &&
+          typeof topic === "object" &&
+          !Array.isArray(topic) &&
+          typeof topic.id === "string" &&
+          sanitizeId(topic.id) === topic.id &&
+          topic.id.length > 0
+        )
+        .map((topic) => [topic.id, topic]),
+    );
+    const primaryTopics = topicCandidates(candidates.primary);
+    const backupTopics = topicCandidates(candidates.backup);
+    const topicBackupTopics = topicCandidates(candidates.topicBackup);
+    const recoveryTopicIds = [...physicalTopics]
+      .filter((topicId) => !primaryTopics.has(topicId))
+      .sort();
+    const metadataTopicIds = recoveryTopicIds.filter(
+      (topicId) =>
+        !backupTopics.has(topicId) && !topicBackupTopics.has(topicId),
+    );
+    const recoveredTopics = recoverTopics && recoveryTopicIds.length > 0
+      ? await recoverTopics({
+          ownerType,
+          ownerId,
+          topicIds: recoveryTopicIds,
+          metadataTopicIds,
+        })
+      : new Map();
+    if (!(recoveredTopics instanceof Map)) {
+      throw new Error("Topic recovery provider must return a Map");
+    }
+
+    const database = getDb();
+    const isTombstoned = (topicId) => {
+      if (recoveredTopics.get(topicId)?.deleted === true) return true;
+      const indexed = database
+        ? getEntityIndex({
+            id: topicId,
+            type: "topic",
+            ownerType,
+            ownerId,
+          })
+        : null;
+      return indexed?.deleted_at != null;
+    };
     const projectedTopics = [];
     const projectedIds = new Set();
     for (const topic of previousTopics) {
@@ -1115,6 +1164,8 @@ async function repairOwnerTopicProjection({
       if (
         typeof topicId === "string" &&
         sanitizeId(topicId) === topicId &&
+        physicalTopics.has(topicId) &&
+        !isTombstoned(topicId) &&
         !projectedIds.has(topicId) &&
         topicId.length > 0
       ) {
@@ -1124,9 +1175,18 @@ async function repairOwnerTopicProjection({
     }
 
     let added = 0;
-    if (configRecovered) {
-      for (const topicId of [...physicalTopics].sort()) {
-        if (projectedIds.has(topicId)) continue;
+    for (const topicId of [...physicalTopics].sort()) {
+      if (projectedIds.has(topicId) || isTombstoned(topicId)) continue;
+      let topicData = backupTopics.get(topicId);
+      if (!topicData) {
+        const recoveredTopic = recoveredTopics.get(topicId);
+        if (recoveredTopic?.deleted === false && recoveredTopic.topic) {
+          const { ownerId: _ownerId, ...topic } = recoveredTopic.topic;
+          topicData = topic;
+        }
+      }
+      if (!topicData) topicData = topicBackupTopics.get(topicId);
+      if (!topicData) {
         const history = await readRecoveryHistory(
           path.join(
             appDataPath,
@@ -1137,30 +1197,29 @@ async function repairOwnerTopicProjection({
             "history.json",
           ),
         );
-        const topicData = {
+        const fallback = {
           id: topicId,
           name: `Recovered: ${topicId}`,
           createdAt: recoveryTimestamp(history),
         };
-        projectedTopics.push(
-          ownerType === "group"
-            ? createGroupTopic(topicData)
-            : createAgentTopic(topicData),
-        );
-        projectedIds.add(topicId);
-        added += 1;
+        topicData = ownerType === "group"
+          ? createGroupTopic(fallback)
+          : createAgentTopic(fallback);
       }
+      projectedTopics.push({ ...topicData, id: topicId });
+      projectedIds.add(topicId);
+      added += 1;
     }
 
     const removed = previousTopics.length - (projectedTopics.length - added);
     const changed =
       configRecovered ||
-      recovered.source === "backup" ||
       !Array.isArray(config.topics) ||
       JSON.stringify(previousTopics) !== JSON.stringify(projectedTopics);
     if (changed) {
       config.topics = projectedTopics;
-      await writeJsonAtomic(configPath, config);
+      // 修复写入不能把已知可读的恢复副本替换成刚刚检测到的损坏投影。
+      await writeJsonAtomic(configPath, config, { preserveBackup: true });
     }
     return { changed, added, removed };
   } finally {
@@ -1227,12 +1286,14 @@ async function scanPhysicalTopicTree(appDataPath) {
 }
 
 /**
- * 启动 reconcile 前，仅在配置无法恢复时用物理历史重建 Topic 列表。
- * 有效配置中的零 Topic 与空 Topic 都保持原样。
+ * 启动 reconcile 前把物理 Topic 投影回 config 元数据。当前配置、普通
+ * backup、CDS 已提交值和 TopicSponsor backup 均只提供元数据；物理目录
+ * 与已有墓碑共同决定 Topic 是否存活。
  */
 async function repairTopicProjectionsFromDisk(
   appDataPath,
   physicalOwners = null,
+  recoverTopics = null,
 ) {
   const owners = physicalOwners || await scanPhysicalTopicTree(appDataPath);
 
@@ -1245,6 +1306,7 @@ async function repairTopicProjectionsFromDisk(
       ownerId: owner.ownerId,
       ownerType: owner.ownerType,
       physicalTopics: owner.physicalTopics,
+      recoverTopics,
     });
     if (result.changed) stats.ownersChanged += 1;
     stats.topicsAdded += result.added;
@@ -1264,7 +1326,7 @@ async function repairTopicProjectionsFromDisk(
 }
 
 /**
- * Legacy Owner 以物理目录为准；Topic 以 config 元数据为准。
+ * Legacy Owner 与 Topic 均以物理目录为存活事实；config 只提供 Topic 元数据。
  * 删除墓碑在同一事务中级联到消息，用于收敛删除中断窗口。
  */
 async function reconcileMissingPhysicalIndexes(
@@ -1278,7 +1340,6 @@ async function reconcileMissingPhysicalIndexes(
   const liveOwners = new Set();
   const liveTopics = new Map();
   const ambiguousOwners = new Set();
-  const unreadableConfigOwners = new Set();
   for (const owner of owners.values()) {
     const ownerKey = `${owner.ownerType}\0${owner.ownerId}`;
     liveOwners.add(`${owner.ownerType}:${owner.ownerId}`);
@@ -1286,22 +1347,8 @@ async function reconcileMissingPhysicalIndexes(
       ambiguousOwners.add(ownerKey);
       continue;
     }
-    const ownerRoot = owner.ownerType === "group" ? "AgentGroups" : "Agents";
-    const configPath = path.join(appDataPath, ownerRoot, owner.ownerId, "config.json");
-    try {
-      const config = parseJsonObject(await fs.readFile(configPath, "utf-8"), configPath);
-      const topics = Array.isArray(config.topics) ? config.topics : [];
-      for (const topic of topics) {
-        if (
-          typeof topic?.id === "string" &&
-          topic.id.length > 0 &&
-          sanitizeId(topic.id) === topic.id
-        ) {
-          liveTopics.set(`${ownerKey}\0${topic.id}`, true);
-        }
-      }
-    } catch {
-      unreadableConfigOwners.add(ownerKey);
+    for (const topicId of owner.physicalTopics) {
+      liveTopics.set(`${ownerKey}\0${topicId}`, true);
     }
   }
 
@@ -1330,7 +1377,7 @@ async function reconcileMissingPhysicalIndexes(
 
   const staleTopicRows = topicRows.filter((row) => {
     const ownerKey = `${row.owner_type}\0${row.owner_id}`;
-    if (ambiguousOwners.has(ownerKey) || unreadableConfigOwners.has(ownerKey)) return false;
+    if (ambiguousOwners.has(ownerKey)) return false;
     if (staleOwnerPaths.has(row.file_path)) return true;
     return !liveTopics.has(`${row.owner_type}\0${row.owner_id}\0${row.id}`);
   });

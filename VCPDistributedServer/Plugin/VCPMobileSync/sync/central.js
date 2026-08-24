@@ -173,6 +173,71 @@ class CentralSyncAdapter {
     throw new Error("VCP-CDS reconcile retry loop exhausted");
   }
 
+  async loadTopicRecoveryStates({
+    ownerType,
+    ownerId,
+    topicIds,
+    metadataTopicIds = topicIds,
+  }) {
+    const requested = new Set(topicIds);
+    const metadataRequested = new Set(metadataTopicIds);
+    const manifest = await this.handleSyncManifest({
+      type: "SYNC_MANIFEST",
+      phase: 2,
+      dataType: "topic",
+      data: [],
+      targetedOwners: [{ ownerType, ownerId }],
+    });
+
+    const states = new Map();
+    const liveIds = [];
+    for (const item of manifest.data) {
+      if (!requested.has(item.id)) continue;
+      if (item.ownerType !== ownerType || item.ownerId !== ownerId) {
+        throw cdsProtocolError(
+          "CDS recovery manifest returned a mismatched owner",
+          "topic_metadata",
+        );
+      }
+      if (item.action === "DELETE") {
+        states.set(item.id, { deleted: true, topic: null });
+      } else if (item.action === "PULL" && metadataRequested.has(item.id)) {
+        liveIds.push(item.id);
+      } else if (item.action === "PULL") {
+        states.set(item.id, { deleted: false, topic: null });
+      } else {
+        throw cdsProtocolError(
+          "CDS recovery manifest returned an unexpected action",
+          "topic_metadata",
+        );
+      }
+    }
+
+    if (liveIds.length === 0) return states;
+    const type = ownerType === "group" ? "group_topic" : "agent_topic";
+    const results = await this.downloadEntities(
+      liveIds.map((id) => ({ id, type, ownerType, ownerId })),
+    );
+    if (results.length !== liveIds.length) {
+      throw cdsProtocolError(
+        "CDS recovery pull returned an incomplete topic set",
+        "topic_metadata",
+        liveIds.slice(0, 8),
+      );
+    }
+    for (const result of results) {
+      if (result.success !== true || !isRecord(result.data)) {
+        throw cdsProtocolError(
+          "CDS recovery pull could not read committed topic metadata",
+          "topic_metadata",
+          liveIds.slice(0, 8),
+        );
+      }
+      states.set(result.id, { deleted: false, topic: result.data });
+    }
+    return states;
+  }
+
   async handleSyncManifest(payload) {
     const stage = payload.dataType === "topic"
       ? "topic_metadata"

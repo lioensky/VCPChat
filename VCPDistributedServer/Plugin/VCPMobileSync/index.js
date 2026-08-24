@@ -11,6 +11,7 @@ const {
   upsertEntityIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
+  getHistorySourceState,
   isHistorySourceCurrent,
 } = require("./core/db");
 const {
@@ -100,12 +101,14 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   const logger = resetLogger();
   logger.startSession("system");
 
-  // 仅在配置不可恢复时才用历史目录重建 Topic；有效的空列表保持不变。
-  await repairTopicProjectionsFromDisk(appDataPath);
-
   // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
   // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
   if (centralSync) {
+    await repairTopicProjectionsFromDisk(
+      appDataPath,
+      null,
+      (request) => centralSync.loadTopicRecoveryStates(request),
+    );
     initDb(":memory:");
     // CDS 会在 READY 后自行启动一次 reconcile；若它已持有锁，启动门禁就
     // 继续等待同一既有动作完成。只有非 SERVICE_BUSY 的真实失败才终止注册，
@@ -117,6 +120,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
     const dbPath = path.join(__dirname, "sync_state_v2.db");
     initDb(dbPath);
+    await repairTopicProjectionsFromDisk(appDataPath);
     await reconcileLocalFiles(appDataPath);
   }
 
@@ -650,8 +654,18 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
       });
       count++;
 
-      const topicLen = Array.isArray(config.topics) ? config.topics.length : 0;
-      if (topicLen > 0) topicCount += topicLen;
+      const topicsDir = path.join(appDataPath, "UserData", id, "topics");
+      let topicEntries = [];
+      try {
+        topicEntries = await fs.readdir(topicsDir, { withFileTypes: true });
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      const physicalTopics = new Set(
+        topicEntries
+          .filter((topicEntry) => topicEntry.isDirectory())
+          .map((topicEntry) => topicEntry.name),
+      );
       const avatarExts = ["png", "jpg", "jpeg", "webp", "gif"];
       for (const ext of avatarExts) {
         const avatarPath = path.join(entityDir, `avatar.${ext}`);
@@ -667,6 +681,19 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
 
       if (Array.isArray(config.topics)) {
         for (const topic of config.topics) {
+          if (
+            sanitizeId(topic?.id) !== topic?.id ||
+            !physicalTopics.has(topic.id)
+          ) {
+            continue;
+          }
+          const previous = getEntityIndex({
+            id: topic.id,
+            type: "topic",
+            ownerType: type,
+            ownerId: id,
+          });
+          if (previous?.deleted_at != null) continue;
           const topicDto = extractTopicDTO(topic, id, type);
           const topicHash = computeDtoHash(
             topicDto,
@@ -683,6 +710,7 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
             hash: topicHash,
             updatedAt: now,
           });
+          topicCount += 1;
         }
       }
     } catch (error) {
@@ -787,6 +815,25 @@ async function scanHistory(userDataDir, db, logger) {
         }
       } catch (error) {
         if (error.code === "ENOENT") {
+          const previousSource = ownerType
+            ? getHistorySourceState({ ownerType, ownerId, topicId })
+            : null;
+          if (previousSource) {
+            const missingError = new Error(
+              `Previously indexed history source is missing: ${historyPath}`,
+            );
+            markHistoryTopicUnhealthy(
+              { topicId, ownerType, ownerId },
+              missingError,
+            );
+            logger.logOperation(
+              "reconcile",
+              "history",
+              topicId,
+              "error",
+              missingError.message,
+            );
+          }
           result.skippedCount += 1;
           continue;
         }
@@ -1162,22 +1209,25 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     // 索引子话题
     let topicLen = 0;
     if (Array.isArray(config.topics)) {
-      topicLen = config.topics.length;
       for (const topic of config.topics) {
-        if (sanitizeId(topic.id) !== topic.id) {
+        if (
+          sanitizeId(topic?.id) !== topic?.id ||
+          !physicalTopics.has(topic.id)
+        ) {
           continue;
         }
-        const topicDto = extractTopicDTO(topic, id, type);
-        const topicHash = computeDtoHash(
-          topicDto,
-          type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
-        );
         const previous = getEntityIndex({
           id: topic.id,
           type: "topic",
           ownerType: type,
           ownerId: id,
         });
+        if (previous?.deleted_at != null) continue;
+        const topicDto = extractTopicDTO(topic, id, type);
+        const topicHash = computeDtoHash(
+          topicDto,
+          type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
+        );
         upsertEntityIndex({
           id: topic.id,
           type: "topic",
@@ -1187,6 +1237,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           hash: topicHash,
           updatedAt: now,
         });
+        topicLen += 1;
         if (
           (!previous || previous.deleted_at !== null) &&
           physicalTopics.has(topic.id)
@@ -1208,7 +1259,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
       }
     }
 
-    // 配置中的空 Topic 也属于 live；同时收敛此前漏掉的删除事件。
+    // Topic 存活由物理目录决定；配置只更新仍有物理实体的元数据。
     await reconcileMissingPhysicalIndexes(appDataPath, null, db, now);
 
     // V2: 触发层级冒泡
