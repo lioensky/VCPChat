@@ -2501,6 +2501,74 @@
         </div>
     </template>
 
+    <template id="toolChangeAuditModalTemplate">
+        <div class="modal vcp-ui-scope tool-change-audit-modal" id="toolChangeAuditModal"
+            role="dialog" aria-modal="true" aria-labelledby="toolChangeAuditTitle" tabindex="-1">
+            <div class="modal-content tool-change-audit-modal-content">
+                <button class="close-button tool-change-audit-close" id="closeToolChangeAuditModal"
+                    type="button" aria-label="关闭变更审计">×</button>
+
+                <header class="tool-change-audit-header">
+                    <div>
+                        <span class="tool-change-audit-eyebrow">TOOL CHANGE REVIEW</span>
+                        <h2 id="toolChangeAuditTitle">工具变更审计</h2>
+                    </div>
+                    <span class="tool-change-audit-status" id="toolChangeAuditStatus">等待审核</span>
+                </header>
+
+                <dl class="tool-change-audit-meta" aria-label="工具审核请求信息">
+                    <div>
+                        <dt>工具</dt>
+                        <dd id="toolChangeAuditToolName">—</dd>
+                    </div>
+                    <div>
+                        <dt>助手</dt>
+                        <dd id="toolChangeAuditMaid">—</dd>
+                    </div>
+                    <div>
+                        <dt>请求 ID</dt>
+                        <dd id="toolChangeAuditRequestId">—</dd>
+                    </div>
+                    <div>
+                        <dt>请求时间</dt>
+                        <dd id="toolChangeAuditTimestamp">—</dd>
+                    </div>
+                </dl>
+
+                <div class="tool-change-audit-summary" id="toolChangeAuditSummary" aria-live="polite"></div>
+
+                <section class="tool-change-audit-comparison" aria-label="变更前后内容对比">
+                    <article class="tool-change-audit-pane tool-change-audit-pane-before">
+                        <h3><span aria-hidden="true">−</span> 变更前</h3>
+                        <pre id="toolChangeAuditBefore"></pre>
+                    </article>
+                    <article class="tool-change-audit-pane tool-change-audit-pane-after">
+                        <h3><span aria-hidden="true">+</span> 变更后</h3>
+                        <pre id="toolChangeAuditAfter"></pre>
+                    </article>
+                </section>
+
+                <section class="tool-change-audit-diff-section" aria-labelledby="toolChangeAuditDiffTitle">
+                    <h3 id="toolChangeAuditDiffTitle">逐行差异</h3>
+                    <div class="tool-change-audit-diff" id="toolChangeAuditDiff" role="region"
+                        aria-label="逐行增删差异" tabindex="0"></div>
+                </section>
+
+                <label class="tool-change-audit-reason" for="toolChangeAuditReason">
+                    <span>审核理由 <small>可选，拒绝时建议填写修正建议</small></span>
+                    <textarea id="toolChangeAuditReason" maxlength="1000" rows="3"
+                        placeholder="输入接受说明或拒绝原因，最多 1000 字"></textarea>
+                </label>
+
+                <footer class="tool-change-audit-actions">
+                    <button type="button" class="button-secondary" id="cancelToolChangeAudit">稍后处理</button>
+                    <button type="button" class="vcp-btn vcp-btn-danger" id="rejectToolChangeAudit">拒绝变更</button>
+                    <button type="button" class="vcp-btn vcp-btn-success" id="approveToolChangeAudit">接受变更</button>
+                </footer>
+            </div>
+        </div>
+    </template>
+
     <div id="floating-toast-notifications-container"></div>
 
     <!-- Pretext 文本布局引擎（纯算术高度预算，避免 reflow） -->
