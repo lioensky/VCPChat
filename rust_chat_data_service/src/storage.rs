@@ -897,8 +897,11 @@ impl Database {
 
         let revision = next_global_revision(&transaction)?;
         let existing = load_active_message_states(&transaction, &source.key)?;
+        // Physical history is detection input, not an undelete protocol.
+        let tombstoned_ids = load_message_tombstone_ids(&transaction, &source.key)?;
         let incoming_ids: HashSet<&str> = messages
             .iter()
+            .filter(|message| !tombstoned_ids.contains(message.msg_id.as_str()))
             .map(|message| message.msg_id.as_str())
             .collect();
         let mut removed_row_ids = Vec::new();
@@ -915,6 +918,9 @@ impl Database {
         }
 
         for message in messages {
+            if tombstoned_ids.contains(message.msg_id.as_str()) {
+                continue;
+            }
             let effective_updated_at = resolve_message_updated_at(
                 message,
                 existing
@@ -991,18 +997,6 @@ impl Database {
                     ],
                 )?;
             }
-
-            transaction.execute(
-                "DELETE FROM tombstones
-                 WHERE entity_type='message' AND owner_type=?1 AND owner_id=?2
-                   AND topic_id=?3 AND entity_id=?4",
-                params![
-                    source.key.owner_type.as_str(),
-                    source.key.owner_id,
-                    source.key.topic_id,
-                    message.msg_id,
-                ],
-            )?;
         }
 
         transaction.execute(
@@ -1055,7 +1049,7 @@ impl Database {
             revision,
             changed: true,
             removed_row_ids,
-            message_count: messages.len(),
+            message_count: incoming_ids.len(),
         })
     }
 
@@ -1465,6 +1459,24 @@ fn load_active_message_states(
     rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
 }
 
+fn load_message_tombstone_ids(
+    transaction: &Transaction<'_>,
+    key: &TopicKey,
+) -> Result<HashSet<String>> {
+    let mut statement = transaction.prepare(
+        "SELECT msg_id FROM messages
+         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NOT NULL
+         UNION
+         SELECT entity_id FROM tombstones
+         WHERE entity_type='message' AND owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+    )?;
+    let rows = statement.query_map(
+        params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+        |row| row.get(0),
+    )?;
+    rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
 fn resolve_message_updated_at(
     message: &NormalizedMessage,
     previous: Option<(&str, i64)>,
@@ -1642,6 +1654,105 @@ mod tests {
                 detected_at,
             ),
             400
+        );
+    }
+
+    #[test]
+    fn physical_ingest_does_not_revive_message_rows_or_tombstone_only_ids() {
+        let (_directory, database) = test_database();
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: "topic-a".to_string(),
+        };
+        let source = TopicSource {
+            key: key.clone(),
+            display_name: Some("Topic".to_string()),
+            created_at: Some(1),
+            topic_ordinal: 0,
+            source_path: PathBuf::from("topic-a/history.json"),
+            config_hash: "config-hash".to_string(),
+            topic_metadata: Value::Object(Default::default()),
+        };
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute_batch(
+                    "INSERT INTO owners(
+                        owner_type, owner_id, display_name, config_path, config_hash,
+                        updated_at, deleted_at
+                     ) VALUES('agent', 'agent-a', 'Agent', 'config.json', 'owner-hash', 1, NULL);
+                     INSERT INTO topics(
+                        owner_type, owner_id, topic_id, config_hash, metadata_json,
+                        source_path, updated_at, deleted_at
+                     ) VALUES(
+                        'agent', 'agent-a', 'topic-a', 'config-hash', '{}',
+                        'topic-a/history.json', 1, NULL
+                     );
+                     INSERT INTO messages(
+                        owner_type, owner_id, topic_id, msg_id, ordinal, role,
+                        content_raw, content_text, message_hash, metadata_json,
+                        updated_at, deleted_at
+                     ) VALUES(
+                        'agent', 'agent-a', 'topic-a', 'message-a', 0, 'user',
+                        'old', 'old', 'old-hash', '{}', 10, 11
+                     );
+                     INSERT INTO tombstones(
+                        entity_type, owner_type, owner_id, topic_id, entity_id,
+                        deleted_at, origin
+                     ) VALUES
+                        ('message', 'agent', 'agent-a', 'topic-a', 'message-a', 11, 'test'),
+                        ('message', 'agent', 'agent-a', 'topic-a', 'message-never-seen', 22, 'test');",
+                )
+                .expect("seed topic and message tombstones");
+        }
+
+        let mut restored = normalized_message("hash-restored", Some(1), Some(30));
+        let mut never_seen = normalized_message("hash-never-seen", Some(2), Some(30));
+        never_seen.msg_id = "message-never-seen".to_string();
+        never_seen.ordinal = 1;
+        let mut new_message = normalized_message("hash-new", Some(3), Some(30));
+        new_message.msg_id = "message-new".to_string();
+        new_message.ordinal = 2;
+        restored.ordinal = 0;
+
+        let commit = database
+            .ingest_topic(
+                &source,
+                &[restored, never_seen, new_message],
+                3,
+                3,
+                "source-stale-save",
+                "notify",
+            )
+            .expect("ingest stale physical history");
+        assert_eq!(commit.message_count, 1);
+
+        let connection = database.connection.lock();
+        let state: (Option<i64>, i64, i64, i64) = connection
+            .query_row(
+                "SELECT
+                    (SELECT deleted_at FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND msg_id='message-a'),
+                    (SELECT COUNT(*) FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND msg_id='message-never-seen'),
+                    (SELECT COUNT(*) FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND msg_id='message-new'
+                       AND deleted_at IS NULL),
+                    (SELECT COUNT(*) FROM tombstones
+                     WHERE entity_type='message' AND owner_type='agent'
+                       AND owner_id='agent-a' AND topic_id='topic-a')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("query post-ingest state");
+        assert_eq!(
+            state,
+            (Some(11), 0, 1, 2),
+            "physical ingest must preserve both tombstone forms and accept only the new message"
         );
     }
 
