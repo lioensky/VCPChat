@@ -1407,7 +1407,13 @@ async function updateHistory(filePath, searchString, replaceString, encoding = '
 async function applyDiff(parameters) {
   try {
     const filePath = getPathParameter(parameters);
-    const { diffContent, searchString, replaceString, encoding = 'utf8' } = parameters;
+    const diffContent = getParameterValue(parameters, 'diffContent');
+    // Official mutation parameter names are target/replace. Keep the legacy
+    // searchString/replaceString aliases for backwards compatibility.
+    // getParameterValue() also makes both naming styles case-insensitive.
+    const target = getParameterValue(parameters, 'target', 'searchString');
+    const replacement = getParameterValue(parameters, 'replace', 'replaceString');
+    const encoding = getParameterValue(parameters, 'encoding') || 'utf8';
 
     // Read raw file content directly instead of going through readFile(),
     // because readFile() returns display-oriented multimodal content with headers.
@@ -1442,12 +1448,12 @@ async function applyDiff(parameters) {
       const normResult = applyDiffLogic(normOriginal, normDiff);
 
       newContent = helper.denormalize(normResult);
-    } else if (searchString !== undefined && replaceString !== undefined) {
-      const replaceResult = helper.safeReplace(originalContent, searchString, replaceString);
+    } else if (target !== undefined && replacement !== undefined) {
+      const replaceResult = helper.safeReplace(originalContent, target, replacement);
       if (!replaceResult.success) {
         throw new Error(
-          `Diff application failed: searchString not found after CRLF normalization. ` +
-          `Search: "${String(searchString).substring(0, 80)}..."`
+          `Diff application failed: target not found after CRLF normalization. ` +
+          `Target: "${String(target).substring(0, 80)}..."`
         );
       }
 
@@ -1457,7 +1463,7 @@ async function applyDiff(parameters) {
         newLength: newContent.length
       });
     } else {
-      throw new Error('ApplyDiff requires either "diffContent" or both "searchString" and "replaceString" parameters.');
+      throw new Error('ApplyDiff requires either "diffContent" or both "target" and "replace" parameters (legacy "searchString"/"replaceString" are also supported).');
     }
 
     const editResult = await editFile(resolvedPath, newContent, encoding);
@@ -1564,7 +1570,12 @@ async function processBatchRequest(request) {
           result = await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
           break;
         case 'UpdateHistory':
-          result = await updateHistory(getPathParameter(parameters), parameters.searchString, parameters.replaceString, parameters.encoding);
+          result = await updateHistory(
+            getPathParameter(parameters),
+            getParameterValue(parameters, 'target', 'searchString'),
+            getParameterValue(parameters, 'replace', 'replaceString'),
+            getParameterValue(parameters, 'encoding')
+          );
           break;
         case 'ApplyDiff':
           result = await applyDiff(parameters);
@@ -1672,7 +1683,12 @@ async function processRequest(request) {
     case 'CreateCanvas':
       return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
     case 'UpdateHistory':
-      return await updateHistory(getPathParameter(parameters), parameters.searchString, parameters.replaceString, parameters.encoding);
+      return await updateHistory(
+        getPathParameter(parameters),
+        getParameterValue(parameters, 'target', 'searchString'),
+        getParameterValue(parameters, 'replace', 'replaceString'),
+        getParameterValue(parameters, 'encoding')
+      );
     case 'ApplyDiff':
       return await applyDiff(parameters);
     default:
