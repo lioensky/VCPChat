@@ -1071,17 +1071,22 @@ async function scanPhysicalTopicTree(appDataPath) {
   }
 
   const owners = new Map();
+  const ownersById = new Map();
   for (const [ownerType, rootName] of [
     ["agent", "Agents"],
     ["group", "AgentGroups"],
   ]) {
     for (const ownerId of await listDirectories(path.join(appDataPath, rootName))) {
       if (!ownerId || sanitizeId(ownerId) !== ownerId) continue;
-      const existing = owners.get(ownerId);
-      if (existing && existing.ownerType !== ownerType) {
-        throw new Error(`Physical owner ${ownerId} is ambiguous between agent and group`);
-      }
-      owners.set(ownerId, { ownerType, physicalTopics: new Set() });
+      const owner = {
+        ownerType,
+        ownerId,
+        physicalTopics: new Set(),
+        historyAmbiguous: false,
+      };
+      owners.set(`${ownerType}\0${ownerId}`, owner);
+      if (!ownersById.has(ownerId)) ownersById.set(ownerId, []);
+      ownersById.get(ownerId).push(owner);
     }
   }
 
@@ -1091,23 +1096,26 @@ async function scanPhysicalTopicTree(appDataPath) {
     const topicsPath = path.join(userDataPath, ownerId, "topics");
     const topicIds = (await listDirectories(topicsPath))
       .filter((topicId) => topicId !== "default" && sanitizeId(topicId) === topicId);
-    const owner = owners.get(ownerId);
-    if (!owner) {
+    const matchingOwners = ownersById.get(ownerId) || [];
+    if (matchingOwners.length !== 1) {
       if (topicIds.length > 0) {
+        for (const owner of matchingOwners) owner.historyAmbiguous = true;
         getLogger().logOperation(
           "reconcile",
           "repair_projection",
           ownerId,
           "error",
-          "UserData owner has no unambiguous Agents/AgentGroups directory; skipped",
+          matchingOwners.length === 0
+            ? "UserData owner has no Agents/AgentGroups directory; skipped"
+            : "UserData owner is ambiguous between Agent and Group; skipped",
         );
       }
       continue;
     }
+    const owner = matchingOwners[0];
     for (const topicId of topicIds) {
       owner.physicalTopics.add(topicId);
     }
-    owners.set(ownerId, owner);
   }
   return owners;
 }
@@ -1123,11 +1131,12 @@ async function repairTopicProjectionsFromDisk(
   const owners = physicalOwners || await scanPhysicalTopicTree(appDataPath);
 
   const stats = { ownersChanged: 0, topicsAdded: 0, topicsRemoved: 0 };
-  for (const ownerId of [...owners.keys()].sort()) {
-    const owner = owners.get(ownerId);
+  for (const ownerKey of [...owners.keys()].sort()) {
+    const owner = owners.get(ownerKey);
+    if (owner.historyAmbiguous) continue;
     const result = await repairOwnerTopicProjection({
       appDataPath,
-      ownerId,
+      ownerId: owner.ownerId,
       ownerType: owner.ownerType,
       physicalTopics: owner.physicalTopics,
     });
@@ -1162,10 +1171,16 @@ async function reconcileMissingPhysicalIndexes(
   const owners = physicalOwners || await scanPhysicalTopicTree(appDataPath);
   const liveOwners = new Set();
   const liveTopics = new Map();
-  for (const [ownerId, owner] of owners) {
-    liveOwners.add(`${owner.ownerType}:${ownerId}`);
+  const ambiguousOwners = new Set();
+  for (const owner of owners.values()) {
+    const ownerKey = `${owner.ownerType}\0${owner.ownerId}`;
+    liveOwners.add(`${owner.ownerType}:${owner.ownerId}`);
+    if (owner.historyAmbiguous) {
+      ambiguousOwners.add(ownerKey);
+      continue;
+    }
     for (const topicId of owner.physicalTopics) {
-      liveTopics.set(`${owner.ownerType}\0${ownerId}\0${topicId}`, true);
+      liveTopics.set(`${ownerKey}\0${topicId}`, true);
     }
   }
 
@@ -1194,6 +1209,7 @@ async function reconcileMissingPhysicalIndexes(
   );
 
   const staleTopicRows = topicRows.filter((row) => {
+    if (ambiguousOwners.has(`${row.owner_type}\0${row.owner_id}`)) return false;
     if (staleOwnerPaths.has(row.file_path)) return true;
     return !liveTopics.has(`${row.owner_type}\0${row.owner_id}\0${row.id}`);
   });
@@ -1268,7 +1284,25 @@ async function reconcileMissingPhysicalIndexes(
   const {
     clearHistoryOwnerUnhealthy,
     clearHistoryTopicUnhealthy,
+    markHistoryTopicUnhealthy,
   } = require("./message");
+  for (const topic of topicRows) {
+    if (
+      topic.deleted_at === null &&
+      ambiguousOwners.has(`${topic.owner_type}\0${topic.owner_id}`)
+    ) {
+      markHistoryTopicUnhealthy(
+        {
+          topicId: topic.id,
+          ownerType: topic.owner_type,
+          ownerId: topic.owner_id,
+        },
+        new Error(
+          `Physical history owner ${topic.owner_id} is ambiguous between Agent and Group`,
+        ),
+      );
+    }
+  }
   for (const owner of staleOwners) {
     clearHistoryOwnerUnhealthy(owner.owner_type, owner.owner_id);
   }

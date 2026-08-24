@@ -7,6 +7,7 @@ const path = require("path");
 const {
   initDb,
   getDb,
+  getEntityIndex,
   upsertEntityIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
@@ -720,12 +721,8 @@ async function scanHistory(userDataDir, db, logger) {
        WHERE (type = 'agent' OR type = 'group') AND deleted_at IS NULL`,
     )
     .all()) {
-    if (ownerTypes.has(owner.owner_id)) {
-      throw new Error(
-        `Physical history owner ${owner.owner_id} is ambiguous between Agent and Group`,
-      );
-    }
-    ownerTypes.set(owner.owner_id, owner.owner_type);
+    if (!ownerTypes.has(owner.owner_id)) ownerTypes.set(owner.owner_id, []);
+    ownerTypes.get(owner.owner_id).push(owner.owner_type);
   }
   let visitedCount = 0;
   let entries;
@@ -739,7 +736,10 @@ async function scanHistory(userDataDir, db, logger) {
     if (!entry.isDirectory()) continue;
     if (SYSTEM_FOLDERS.includes(entry.name)) continue;
     const ownerId = entry.name;
-    const ownerType = ownerTypes.get(ownerId);
+    const matchingOwnerTypes = ownerTypes.get(ownerId) || [];
+    const ownerType = matchingOwnerTypes.length === 1
+      ? matchingOwnerTypes[0]
+      : null;
 
     const topicsDir = path.join(userDataDir, ownerId, "topics");
     let topicFolders;
@@ -756,7 +756,9 @@ async function scanHistory(userDataDir, db, logger) {
       try {
         if (!ownerType) {
           throw new Error(
-            `History owner ${ownerId} has no live Agent or Group index`,
+            matchingOwnerTypes.length === 0
+              ? `History owner ${ownerId} has no live Agent or Group index`
+              : `Physical history owner ${ownerId} is ambiguous between Agent and Group`,
           );
         }
         const sourceStats = await fs.stat(historyPath);
@@ -791,7 +793,12 @@ async function scanHistory(userDataDir, db, logger) {
       } catch (error) {
         // 条目级降级：孤儿话题、损坏 JSON 等单话题故障不应中止整批。
         // 失败时不更新 history_source_state，保证后续启动仍会重试。
-        markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error);
+        for (const candidateOwnerType of matchingOwnerTypes) {
+          markHistoryTopicUnhealthy(
+            { topicId, ownerType: candidateOwnerType, ownerId },
+            error,
+          );
+        }
         logger.logOperation("reconcile", "history", topicId, "error", error.message);
       } finally {
         visitedCount += 1;
@@ -913,6 +920,34 @@ function startFileWatcher(appDataPath) {
         (isOwnerDirectory || isTopicDirectory)
       ) {
         try {
+          if (
+            parts[0] === "UserData" &&
+            parts[2] === "topics" &&
+            parts.length === 4 &&
+            sanitizeId(parts[1]) === parts[1] &&
+            sanitizeId(parts[3]) === parts[3]
+          ) {
+            const ownerId = parts[1];
+            const topicId = parts[3];
+            const owners = getDb()
+              .prepare(
+                `SELECT owner_type FROM entity_index
+                 WHERE owner_id = ? AND (type = 'agent' OR type = 'group')
+                   AND deleted_at IS NULL`,
+              )
+              .all(ownerId);
+            if (
+              owners.length === 1 &&
+              isWriteLocked({
+                id: topicId,
+                type: "topic",
+                ownerType: owners[0].owner_type,
+                ownerId,
+              })
+            ) {
+              return;
+            }
+          }
           const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
           computeAggregatedHashes(getDb(), logger);
           logger.logOperation(
@@ -967,7 +1002,32 @@ function startFileWatcher(appDataPath) {
             return;
           }
           logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
-          await ingestConfigToDb(filePath, type, appDataPath);
+          const newTopics = await ingestConfigToDb(filePath, type, appDataPath);
+          if (newTopics.length > 0) {
+            const ownerCount = getDb()
+              .prepare(
+                `SELECT COUNT(*) AS n FROM entity_index
+                 WHERE owner_id = ? AND (type = 'agent' OR type = 'group')
+                   AND deleted_at IS NULL`,
+              )
+              .get(id).n;
+            if (ownerCount === 1) {
+              for (const topic of newTopics) {
+                try {
+                  await ingestHistoryToDb(
+                    topic.historyPath,
+                    {
+                      topicId: topic.topicId,
+                      ownerType: topic.ownerType,
+                      ownerId: topic.ownerId,
+                    },
+                  );
+                } catch {
+                  // ingestHistoryToDb 已记录并标记精确 Topic 的错误；继续处理同批其他 Topic。
+                }
+              }
+            }
+          }
         }
       } else if (isHistory) {
         const ownerId = sanitizeId(getHistoryOwnerIdFromPath(filePath));
@@ -981,9 +1041,16 @@ function startFileWatcher(appDataPath) {
               .all(ownerId)
           : [];
         if (owners.length !== 1) {
-          throw new Error(
+          const error = new Error(
             `History owner ${ownerId || "unknown"} is ${owners.length === 0 ? "missing" : "ambiguous"}`,
           );
+          for (const owner of owners) {
+            markHistoryTopicUnhealthy(
+              { topicId: id, ownerType: owner.owner_type, ownerId },
+              error,
+            );
+          }
+          throw error;
         }
         const ownerType = owners[0].owner_type;
         if (isWriteLocked({
@@ -993,6 +1060,33 @@ function startFileWatcher(appDataPath) {
           ownerId,
         })) {
           return;
+        }
+        if (id !== "default") {
+          let topic = getEntityIndex({
+            id,
+            type: "topic",
+            ownerType,
+            ownerId,
+          });
+          if (!topic || topic.deleted_at !== null) {
+            const ownerRoot = ownerType === "group" ? "AgentGroups" : "Agents";
+            await ingestConfigToDb(
+              path.join(appDataPath, ownerRoot, ownerId, "config.json"),
+              ownerType,
+              appDataPath,
+            );
+            topic = getEntityIndex({
+              id,
+              type: "topic",
+              ownerType,
+              ownerId,
+            });
+          }
+          if (!topic || topic.deleted_at !== null) {
+            throw new Error(
+              `History topic ${ownerType}/${ownerId}/${id} has no live config index`,
+            );
+          }
         }
         logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
         await ingestHistoryToDb(filePath, {
@@ -1033,9 +1127,10 @@ function getHistoryOwnerIdFromPath(filePath) {
  */
 async function ingestConfigToDb(configPath, type, appDataPath) {
   const db = getDb();
-  if (!db) return;
+  if (!db) return [];
 
   const logger = getLogger();
+  const newTopics = [];
 
   try {
     const content = await fs.readFile(configPath, "utf-8");
@@ -1089,6 +1184,12 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
+        const previous = getEntityIndex({
+          id: topic.id,
+          type: "topic",
+          ownerType: type,
+          ownerId: id,
+        });
         upsertEntityIndex({
           id: topic.id,
           type: "topic",
@@ -1098,6 +1199,14 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           hash: topicHash,
           updatedAt: now,
         });
+        if (!previous || previous.deleted_at !== null) {
+          newTopics.push({
+            topicId: topic.id,
+            ownerType: type,
+            ownerId: id,
+            historyPath: path.join(topicsDir, topic.id, "history.json"),
+          });
+        }
       }
     }
 
@@ -1108,8 +1217,10 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     computeAggregatedHashes(db, logger);
 
     logger.logOperation("watcher", type, id, "success", `hash updated, topics=${topicLen}`);
+    return newTopics;
   } catch (e) {
     logger.logOperation("watcher", type, configPath, "error", e.message);
+    return [];
   }
 }
 

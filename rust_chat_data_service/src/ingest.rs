@@ -62,6 +62,28 @@ impl Reconciler {
     pub async fn reconcile(&self) -> Result<ReconcileStats> {
         let started = now_ms();
         let (owners, duplicate_owner_ids) = self.scan_owner_registry()?;
+        let agent_owner_ids = owners
+            .keys()
+            .filter(|key| key.owner_type == OwnerType::Agent)
+            .map(|key| key.owner_id.clone())
+            .collect::<HashSet<_>>();
+        let duplicate_ids = owners
+            .keys()
+            .filter(|key| {
+                key.owner_type == OwnerType::Group && agent_owner_ids.contains(&key.owner_id)
+            })
+            .map(|key| key.owner_id.clone())
+            .collect::<HashSet<_>>();
+        let mut ambiguous_history_owner_ids = HashSet::new();
+        for owner_id in duplicate_ids {
+            if self
+                .physical_topic_ids(&owner_id)?
+                .iter()
+                .any(|topic_id| topic_id.as_str() != "default")
+            {
+                ambiguous_history_owner_ids.insert(owner_id);
+            }
+        }
         let mut stats = ReconcileStats {
             owners_seen: owners.len(),
             duplicate_owner_ids,
@@ -69,13 +91,35 @@ impl Reconciler {
         };
 
         for configured_owner in owners.values() {
-            let owner = self.effective_owner(configured_owner)?;
+            let history_ambiguous =
+                ambiguous_history_owner_ids.contains(&configured_owner.key.owner_id);
+            let owner = if history_ambiguous {
+                configured_owner.clone()
+            } else {
+                self.effective_owner(configured_owner)?
+            };
             self.database.upsert_owner(&owner)?;
             for topic in &owner.topics {
                 stats.topics_seen += 1;
                 let source = self.topic_source(&owner, topic);
                 self.database.upsert_topic_source(&source)?;
                 stats.files_checked += 1;
+
+                if history_ambiguous {
+                    let error = format!(
+                        "history owner {} is ambiguous between Agent and Group",
+                        source.key.owner_id
+                    );
+                    self.database.mark_source_invalid(&source, &error)?;
+                    stats.files_invalid += 1;
+                    tracing::warn!(
+                        owner_type = %source.key.owner_type,
+                        owner_id = %source.key.owner_id,
+                        topic_id = %source.key.topic_id,
+                        "ambiguous history source was not ingested"
+                    );
+                    continue;
+                }
 
                 match self.ingest_source_if_changed(&source, "reconcile").await {
                     Ok(Some(commit)) => {
