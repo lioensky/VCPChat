@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const Module = require("node:module");
@@ -105,8 +104,7 @@ const fixturePath = path.join(
   "fixtures",
   "error_contract_1_2_golden.json",
 );
-const fixtureBytes = fs.readFileSync(fixturePath);
-const fixture = JSON.parse(fixtureBytes);
+const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
 
 function createWsFrameReader(socket) {
   const frames = [];
@@ -175,13 +173,7 @@ class FakeHttpResponse extends EventEmitter {
   }
 }
 
-test("Wire 1.2 golden errors are strict and stable", () => {
-  assert.equal(fixture.wireProtocol, "1.2");
-  assert.equal(fixture.pluginVersion, "1.2.0");
-  assert.equal(
-    crypto.createHash("sha256").update(fixtureBytes).digest("hex"),
-    "b97f753848da12cf4b44016bd2defe8eacc317ee3c2cbdb6b0db656c37d9c766",
-  );
+test("golden errors are strict and match the local registry", () => {
   for (const entry of fixture.validErrors) {
     assert.deepEqual(parseSyncError(entry.error), entry.error);
   }
@@ -381,8 +373,8 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       if (payload.type === "VERSION_CHECK") {
         return {
           type: "VERSION_ACK",
-          pluginVersion: "1.2.0",
-          protocolVersion: "1.2",
+          pluginVersion: "1.3.0",
+          protocolVersion: "1.3",
         };
       }
       throw Object.assign(new Error("owner identity conflict"), {
@@ -403,7 +395,7 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
   socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
     mobileVersion: "1.1.4",
-    protocolVersion: "1.2",
+    protocolVersion: "1.3",
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
 

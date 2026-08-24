@@ -90,6 +90,18 @@ function version(hash, updatedAt = 1) {
   return { hash, updatedAt };
 }
 
+function compoundTopics(topics) {
+  return Object.entries(topics).map(([topicId, state]) => ({ topicId, ...state }));
+}
+
+function topicResult(response, topicId) {
+  return response.results.find((result) => result.topicId === topicId);
+}
+
+function agentOwners(...ownerIds) {
+  return ownerIds.map((ownerId) => ({ ownerType: "agent", ownerId }));
+}
+
 test("中央索引配置优先级是插件显式值 > Facade > 默认 true", () => {
   assert.equal(
     resolveCentralIndexPreference(
@@ -116,7 +128,7 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
   const remoteHash = "a".repeat(64);
   const result = handleSyncMessageDiffBatch(
     {
-      topics: {
+      topics: compoundTopics({
         "topic-live": {
           topicHash: "c".repeat(64),
           ownerType: "agent",
@@ -129,7 +141,7 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
           ownerId: "agent-a",
           messages: {},
         },
-      },
+      }),
     },
     fakeDiffDatabase({
       topics: {
@@ -144,13 +156,19 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
     }),
   );
 
-  assert.deepEqual(result.results["topic-live"], {
+  assert.deepEqual(topicResult(result, "topic-live"), {
+    topicId: "topic-live",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: true,
     toPull: [],
     toPush: true,
     toDelete: [],
   });
-  assert.deepEqual(result.results["topic-missing"], {
+  assert.deepEqual(topicResult(result, "topic-missing"), {
+    topicId: "topic-missing",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: false,
     error: {
       code: "TOPIC_NOT_FOUND",
@@ -176,7 +194,7 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
   const topicId = "topic-tombstones";
   const result = handleSyncMessageDiffBatch(
     {
-      topics: {
+      topics: compoundTopics({
         [topicId]: {
           topicHash: "9".repeat(64),
           ownerType: "agent",
@@ -191,7 +209,7 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
             "mobile-only-deleted": version("DELETED"),
           },
         },
-      },
+      }),
     },
     fakeDiffDatabase({
       topics: {
@@ -243,7 +261,10 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
     }),
   );
 
-  assert.deepEqual(result.results[topicId], {
+  assert.deepEqual(topicResult(result, topicId), {
+    topicId,
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: true,
     toPull: ["desktop-only-live", "hash-mismatch"],
     toPush: true,
@@ -257,7 +278,7 @@ test("Phase 3 live 冲突按时间优胜并以 Hash 打破同时间平局", () =
   const high = "e".repeat(64);
   const result = handleSyncMessageDiffBatch(
     {
-      topics: {
+      topics: compoundTopics({
         [topicId]: {
           topicHash: "9".repeat(64),
           ownerType: "agent",
@@ -269,7 +290,7 @@ test("Phase 3 live 冲突按时间优胜并以 Hash 打破同时间平局", () =
             "desktop-tie-wins": version(low, 40),
           },
         },
-      },
+      }),
     },
     fakeDiffDatabase({
       topics: {
@@ -289,7 +310,10 @@ test("Phase 3 live 冲突按时间优胜并以 Hash 打破同时间平局", () =
     }),
   );
 
-  assert.deepEqual(result.results[topicId], {
+  assert.deepEqual(topicResult(result, topicId), {
+    topicId,
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: true,
     toPull: ["desktop-newer", "desktop-tie-wins"],
     toPush: true,
@@ -320,14 +344,14 @@ test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
   const topicHash = "a".repeat(64);
   const result = handleSyncMessageDiffBatch(
     {
-      topics: {
+      topics: compoundTopics({
         "topic-equal-root": {
           topicHash,
           ownerType: "agent",
           ownerId: "agent-a",
           messages: { "mobile-only-deleted": version("DELETED") },
         },
-      },
+      }),
     },
     fakeDiffDatabase({
       topics: {
@@ -339,7 +363,10 @@ test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
     }),
   );
 
-  assert.deepEqual(result.results["topic-equal-root"], {
+  assert.deepEqual(topicResult(result, "topic-equal-root"), {
+    topicId: "topic-equal-root",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: true,
     toPull: [],
     toPush: true,
@@ -352,14 +379,14 @@ test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成"
     () =>
       handleSyncMessageDiffBatch(
         {
-          topics: {
+          topics: compoundTopics({
             topic: {
               topicHash: "",
               ownerType: "agent",
               ownerId: "agent-a",
               messages: { message: version("not-a-hash") },
             },
-          },
+          }),
         },
         fakeDiffDatabase(),
       ),
@@ -368,20 +395,21 @@ test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成"
 
   const result = handleSyncMessageDiffBatch(
     {
-      topics: {
+      topics: compoundTopics({
         topic: {
           topicHash: "",
           ownerType: "agent",
           ownerId: "agent-a",
           messages: {},
         },
-      },
+      }),
     },
     fakeDiffDatabase({ fail: true }),
   );
-  assert.equal(result.results.topic.ok, false);
-  assert.equal(result.results.topic.error.code, "MESSAGE_DIFF_FAILED");
-  assert.match(result.results.topic.error.message, /injected database failure/);
+  const failed = topicResult(result, "topic");
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error.code, "MESSAGE_DIFF_FAILED");
+  assert.match(failed.error.message, /injected database failure/);
 });
 
 test("Phase 2.5 topic hash 对错误类型和超预算 fail closed", () => {
@@ -392,7 +420,13 @@ test("Phase 2.5 topic hash 对错误类型和超预算 fail closed", () => {
   assert.throws(
     () =>
       handleSyncTopicHashBatchV2({
-        hashes: { topic: { configHash: "bad", contentHash: "" } },
+        topics: [{
+          topicId: "topic",
+          ownerType: "agent",
+          ownerId: "agent-a",
+          configHash: "bad",
+          contentHash: "",
+        }],
       }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
@@ -411,9 +445,6 @@ test("issue #20: 未初始化数据库不会伪装成无变化 topic", () => {
     () =>
       handleSyncTopicHashBatchV2(
         {
-          hashes: {
-            "topic-issue-20": { configHash: hash, contentHash: hash },
-          },
           topics: [
             {
               topicId: "topic-issue-20",
@@ -498,14 +529,14 @@ test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () =
   });
 
   assert.deepEqual(
-    getLocalManifest("topic", ["agent-a"], database).map((item) => item.id),
+    getLocalManifest("topic", agentOwners("agent-a"), database).map((item) => item.id),
     ["topic-a"],
   );
   const result = handleSyncManifest(
     {
       dataType: "topic",
       phase: 2,
-      targetedOwners: ["agent-a"],
+      targetedOwners: agentOwners("agent-a"),
       data: [{
         id: "topic-a",
         hash,
@@ -520,26 +551,27 @@ test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () =
   );
   assert.deepEqual(result.data, []);
 
-  assert.throws(
-    () => handleSyncManifest(
-      {
-        dataType: "topic",
-        phase: 2,
-        targetedOwners: ["agent-a", "agent-b"],
-        data: [{
-          id: "topic-a",
-          hash,
-          configHash: hash,
-          contentHash: "",
-          ts: 1,
-          ownerType: "agent",
-          ownerId: "agent-b",
-        }],
-      },
-      database,
-    ),
-    (error) => error.code === "SYNC_OWNER_CONFLICT",
+  const splitOwners = handleSyncManifest(
+    {
+      dataType: "topic",
+      phase: 2,
+      targetedOwners: agentOwners("agent-a", "agent-b"),
+      data: [{
+        id: "topic-a",
+        hash,
+        configHash: hash,
+        contentHash: "",
+        ts: 1,
+        ownerType: "agent",
+        ownerId: "agent-b",
+      }],
+    },
+    database,
   );
+  assert.deepEqual(splitOwners.data, [
+    { id: "topic-a", action: "PUSH", ownerType: "agent", ownerId: "agent-b" },
+    { id: "topic-a", action: "PULL", ownerType: "agent", ownerId: "agent-a" },
+  ]);
 });
 
 test("legacy manifest、hash 与 message diff 全部排除 default", () => {
@@ -577,20 +609,26 @@ test("legacy manifest、hash 与 message diff 全部排除 default", () => {
   );
   assert.deepEqual(
     handleSyncMessageDiffBatch({
-      topics: {
+      topics: compoundTopics({
         default: {
           topicHash: hash,
           ownerType: "agent",
           ownerId: "agent-a",
           messages: {},
         },
-      },
+      }),
     }, database),
     {
       type: "SYNC_DIFF_RESULTS_BATCH",
-      results: {
-        default: { ok: true, toPull: [], toPush: false, toDelete: [] },
-      },
+      results: [{
+        topicId: "default",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        ok: true,
+        toPull: [],
+        toPush: false,
+        toDelete: [],
+      }],
     },
   );
   assert.deepEqual(
@@ -601,7 +639,7 @@ test("legacy manifest、hash 与 message diff 全部排除 default", () => {
     handleSyncManifest({
       dataType: "topic",
       phase: 2,
-      targetedOwners: ["agent-a"],
+      targetedOwners: agentOwners("agent-a"),
       data: [{
         id: "default",
         hash,
@@ -704,7 +742,7 @@ test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () 
       { dataType: "agent", phase: 1, data: [item, item] },
       database,
     ),
-    /duplicate id/,
+    /duplicate entity identity/,
   );
   const result = handleSyncManifest(
     {

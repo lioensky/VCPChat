@@ -1,4 +1,4 @@
-name: VCPMobileSync 1.2
+name: VCPMobileSync
 
 on:
   workflow_dispatch:

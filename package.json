@@ -66,7 +66,7 @@
     "test:electron-stability": "npm run test:electron-ui-apps && npm run test:electron-main-chat-sequences && npm run test:electron-lifecycle-stress",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-error-contract.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-sqlite-delete.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-package.test.js",
+    "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-error-contract.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-sqlite-delete.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-degraded-mode.test.js tests/mobile-sync-package.test.js",
     "test:cds": "cargo test --manifest-path rust_chat_data_service/Cargo.toml --locked",
     "check:cds:fmt": "cargo fmt --manifest-path rust_chat_data_service/Cargo.toml -- --check",
     "check:cds:clippy": "cargo clippy --manifest-path rust_chat_data_service/Cargo.toml --locked --all-targets -- -D warnings"

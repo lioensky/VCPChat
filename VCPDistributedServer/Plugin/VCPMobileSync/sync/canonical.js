@@ -3,7 +3,6 @@
 const { computeMessageFingerprint } = require("../core/hash");
 const { parseSyncError } = require("../error-contract");
 
-const WIRE_PROTOCOL_VERSION = "1.2";
 const MAX_WARNING_SAMPLES = 8;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_SQLITE_INTEGER = BigInt("9223372036854775807");
@@ -400,7 +399,6 @@ module.exports = {
   BoundedWarnings,
   MAX_WARNING_SAMPLES,
   SyncProtocolError,
-  WIRE_PROTOCOL_VERSION,
   canonicalSha256,
   canonicalizeAttachment,
   canonicalizeHistory,

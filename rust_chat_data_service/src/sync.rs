@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    domain::{OwnerType, TopicKey},
+    domain::{OwnerKey, OwnerType, TopicKey},
     ingest::{sha256_hex, Reconciler},
     storage::{Database, IngestCommit},
     sync_wire::{canonicalize_for_wire, canonicalize_message, message_fingerprint, WireWarnings},
@@ -24,7 +24,7 @@ pub struct ManifestRequest {
     pub data_type: String,
     pub data: Vec<RemoteManifestItem>,
     #[serde(default)]
-    pub targeted_owners: Option<Vec<String>>,
+    pub targeted_owners: Option<Vec<OwnerKey>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -126,9 +126,6 @@ pub struct MessageManifestResponse {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TopicHashDiffRequest {
-    #[serde(default)]
-    pub hashes: HashMap<String, Value>,
-    #[serde(default)]
     pub topics: Vec<TopicHashState>,
 }
 
@@ -136,10 +133,8 @@ pub struct TopicHashDiffRequest {
 #[serde(rename_all = "camelCase")]
 pub struct TopicHashState {
     pub topic_id: String,
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
     #[serde(default)]
     pub config_hash: String,
     #[serde(default)]
@@ -151,23 +146,21 @@ pub struct TopicHashState {
 pub struct TopicHashDiffResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
-    pub changed_topics: Vec<String>,
+    pub changed_topics: Vec<TopicKey>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDiffRequest {
-    #[serde(default)]
-    pub topics: HashMap<String, MessageDiffState>,
+    pub topics: Vec<MessageDiffState>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDiffState {
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
+    pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
     #[serde(default)]
     pub topic_hash: String,
     #[serde(default)]
@@ -184,6 +177,9 @@ pub struct MessageVersionState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDiffResult {
+    pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_pull: Option<Vec<String>>,
@@ -203,8 +199,16 @@ pub struct MessageDeleteAction {
 }
 
 impl MessageDiffResult {
-    fn success(to_pull: Vec<String>, to_push: bool, to_delete: Vec<MessageDeleteAction>) -> Self {
+    fn success(
+        topic: &TopicKey,
+        to_pull: Vec<String>,
+        to_push: bool,
+        to_delete: Vec<MessageDeleteAction>,
+    ) -> Self {
         Self {
+            topic_id: topic.topic_id.clone(),
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id.clone(),
             ok: true,
             to_pull: Some(to_pull),
             to_push: Some(to_push),
@@ -213,8 +217,11 @@ impl MessageDiffResult {
         }
     }
 
-    fn failure(code: &str, message: impl Into<String>) -> Self {
+    fn failure(topic: &TopicKey, code: &str, message: impl Into<String>) -> Self {
         Self {
+            topic_id: topic.topic_id.clone(),
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id.clone(),
             ok: false,
             to_pull: None,
             to_push: None,
@@ -239,7 +246,7 @@ pub struct SyncDecisionError {
 pub struct MessageDiffResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
-    pub results: HashMap<String, MessageDiffResult>,
+    pub results: Vec<MessageDiffResult>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -389,32 +396,29 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
     );
 
     let targeted_owners = request.targeted_owners.as_deref();
-    if request.data_type == "topic" {
+    let targeted_owner_keys = if request.data_type == "topic" {
         let owners = targeted_owners.context("topic manifest requires targetedOwners")?;
         anyhow::ensure!(
             owners.len() <= MAX_SYNC_ITEMS,
             "targetedOwners exceeds {MAX_SYNC_ITEMS} items"
         );
-        let unique = owners.iter().collect::<HashSet<_>>();
+        let unique = owners.iter().cloned().collect::<HashSet<_>>();
         anyhow::ensure!(
-            unique.len() == owners.len() && owners.iter().all(|owner| !owner.is_empty()),
-            "targetedOwners contains empty or duplicate owner IDs"
+            unique.len() == owners.len() && owners.iter().all(|owner| !owner.owner_id.is_empty()),
+            "targetedOwners contains an empty or duplicate owner identity"
         );
+        Some(unique)
     } else {
         anyhow::ensure!(
             targeted_owners.is_none(),
             "targetedOwners is only valid for topic manifests"
         );
-    }
+        None
+    };
 
-    let mut seen_ids = HashSet::new();
+    let mut seen_identities = HashSet::new();
     for item in &request.data {
         anyhow::ensure!(!item.id.is_empty(), "manifest item id must not be empty");
-        anyhow::ensure!(
-            seen_ids.insert(item.id.as_str()),
-            "manifest contains duplicate id {}",
-            item.id
-        );
         anyhow::ensure!(
             is_lower_sha256(&item.hash),
             "manifest item {} hash must be lowercase SHA-256",
@@ -450,7 +454,7 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
                 item.id
             );
         }
-        if request.data_type == "topic" {
+        let identity = if request.data_type == "topic" {
             let owner_type = item
                 .owner_type
                 .context("topic manifest item requires ownerType")?;
@@ -459,14 +463,28 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
                 .as_deref()
                 .filter(|owner_id| !owner_id.is_empty())
                 .context("topic manifest item requires ownerId")?;
+            let owner = OwnerKey {
+                owner_type,
+                owner_id: owner_id.to_string(),
+            };
             anyhow::ensure!(
-                targeted_owners.is_some_and(|owners| owners.iter().any(|id| id == owner_id)),
+                targeted_owner_keys
+                    .as_ref()
+                    .is_some_and(|owners| owners.contains(&owner)),
                 "topic manifest item {} has unexpected owner {}:{}",
                 item.id,
                 owner_type.as_str(),
                 owner_id
             );
-        }
+            manifest_key(&item.id, Some(owner_type), Some(owner_id))
+        } else {
+            item.id.clone()
+        };
+        anyhow::ensure!(
+            seen_identities.insert(identity),
+            "manifest contains a duplicate entity identity for {}",
+            item.id
+        );
     }
     Ok(())
 }
@@ -522,12 +540,6 @@ pub fn manifest(database: &Database, mut request: ManifestRequest) -> Result<Man
     for remote in &request.data {
         let key = manifest_key(&remote.id, remote.owner_type, remote.owner_id.as_deref());
         let exact = local_by_key.get(&key);
-        if request.data_type == "topic"
-            && exact.is_none()
-            && unique_manifest_item_by_id(&local_by_key, &remote.id).is_some()
-        {
-            anyhow::bail!("topic {} owner conflicts with the CDS index", remote.id);
-        }
         let local = if request.data_type == "topic" {
             exact
         } else {
@@ -821,71 +833,24 @@ pub fn topic_hash_diff(
     request: TopicHashDiffRequest,
 ) -> Result<TopicHashDiffResponse> {
     anyhow::ensure!(
-        request.topics.len().saturating_add(request.hashes.len()) <= 10_000,
+        request.topics.len() <= 10_000,
         "topic hash diff exceeds 10000 topics"
     );
-    let mut states = request
+    let states = request
         .topics
         .into_iter()
         .filter(|state| is_syncable_topic_id(&state.topic_id))
         .collect::<Vec<_>>();
-    let mut seen_topic_ids = states
-        .iter()
-        .map(|state| state.topic_id.clone())
-        .collect::<HashSet<_>>();
-    anyhow::ensure!(
-        seen_topic_ids.len() == states.len(),
-        "topic hash diff contains duplicate topic ids"
-    );
-    for (topic_id, value) in request.hashes {
-        if !is_syncable_topic_id(&topic_id) {
-            continue;
-        }
-        anyhow::ensure!(
-            seen_topic_ids.insert(topic_id.clone()),
-            "topic hash diff contains duplicate topic {topic_id}"
-        );
-        let (config_hash, content_hash) = match value {
-            Value::Object(object) => {
-                let config_hash = object
-                    .get("configHash")
-                    .and_then(Value::as_str)
-                    .context("topic hash configHash must be a string")?
-                    .to_string();
-                let content_hash = object
-                    .get("contentHash")
-                    .and_then(Value::as_str)
-                    .context("topic hash contentHash must be a string")?
-                    .to_string();
-                (config_hash, content_hash)
-            }
-            Value::String(content_hash) => (String::new(), content_hash),
-            _ => anyhow::bail!("topic hash state must be a string or object"),
-        };
-        states.push(TopicHashState {
-            topic_id,
-            owner_type: None,
-            owner_id: None,
-            config_hash,
-            content_hash,
-        });
-    }
 
     let mut changed_topics = Vec::new();
+    let mut seen_topics = HashSet::new();
     for state in states {
         anyhow::ensure!(
             !state.topic_id.is_empty(),
             "topic hash diff topicId is empty"
         );
         anyhow::ensure!(
-            state.owner_type.is_some() == state.owner_id.is_some(),
-            "topic hash diff ownerType and ownerId must be supplied together"
-        );
-        anyhow::ensure!(
-            state
-                .owner_id
-                .as_deref()
-                .is_none_or(|owner_id| !owner_id.is_empty()),
+            !state.owner_id.is_empty(),
             "topic hash diff ownerId must be non-empty"
         );
         anyhow::ensure!(
@@ -895,13 +860,22 @@ pub fn topic_hash_diff(
             "topic hash diff contains an invalid hash for {}",
             state.topic_id
         );
-        let selector = TopicSelector {
-            topic_id: state.topic_id.clone(),
+        let requested_key = TopicKey {
             owner_type: state.owner_type,
             owner_id: state.owner_id,
+            topic_id: state.topic_id,
+        };
+        anyhow::ensure!(
+            seen_topics.insert(requested_key.clone()),
+            "topic hash diff contains a duplicate topic identity"
+        );
+        let selector = TopicSelector {
+            topic_id: requested_key.topic_id.clone(),
+            owner_type: Some(requested_key.owner_type),
+            owner_id: Some(requested_key.owner_id.clone()),
         };
         let Ok(key) = resolve_topic(database, &selector) else {
-            changed_topics.push(state.topic_id);
+            changed_topics.push(requested_key);
             continue;
         };
         // 条目级容错（S3-γ）：单个 topic 的 manifest 失败（source 不健康/含毒消息）
@@ -910,21 +884,27 @@ pub fn topic_hash_diff(
             Ok(local) => local,
             Err(error) => {
                 tracing::warn!(
-                    topic_id = %state.topic_id,
+                    topic_id = %requested_key.topic_id,
                     error = %format!("{error:#}"),
                     "topic manifest failed during hash diff; marking topic as changed"
                 );
-                changed_topics.push(state.topic_id);
+                changed_topics.push(requested_key);
                 continue;
             }
         };
         if (!state.config_hash.is_empty() && local.config_hash != state.config_hash)
             || local.content_hash != state.content_hash
         {
-            changed_topics.push(state.topic_id);
+            changed_topics.push(requested_key);
         }
     }
-    changed_topics.sort();
+    changed_topics.sort_by(|left, right| {
+        (left.owner_type.as_str(), &left.owner_id, &left.topic_id).cmp(&(
+            right.owner_type.as_str(),
+            &right.owner_id,
+            &right.topic_id,
+        ))
+    });
 
     Ok(TopicHashDiffResponse {
         response_type: "SYNC_TOPIC_HASH_RESULTS",
@@ -940,9 +920,27 @@ pub fn message_diff(
         request.topics.len() <= 10_000,
         "message diff exceeds 10000 topics"
     );
-    let mut results = HashMap::new();
+    let mut results = Vec::with_capacity(request.topics.len());
+    let mut seen_topics = HashSet::new();
     let mut total_messages = 0_usize;
-    for (topic_id, state) in request.topics {
+    for state in request.topics {
+        let requested_key = TopicKey {
+            owner_type: state.owner_type,
+            owner_id: state.owner_id.clone(),
+            topic_id: state.topic_id.clone(),
+        };
+        anyhow::ensure!(
+            !requested_key.topic_id.is_empty(),
+            "message diff topicId must be non-empty"
+        );
+        anyhow::ensure!(
+            !requested_key.owner_id.is_empty(),
+            "message diff ownerId must be non-empty"
+        );
+        anyhow::ensure!(
+            seen_topics.insert(requested_key.clone()),
+            "message diff contains a duplicate topic identity"
+        );
         anyhow::ensure!(
             state.messages.len() <= 10_000,
             "message diff topic exceeds 10000 messages"
@@ -954,28 +952,19 @@ pub fn message_diff(
             total_messages <= 100_000,
             "message diff exceeds 100000 messages"
         );
-        if !is_syncable_topic_id(&topic_id) {
-            results.insert(
-                topic_id,
-                MessageDiffResult::success(Vec::new(), false, Vec::new()),
-            );
+        if !is_syncable_topic_id(&requested_key.topic_id) {
+            results.push(MessageDiffResult::success(
+                &requested_key,
+                Vec::new(),
+                false,
+                Vec::new(),
+            ));
             continue;
         }
         anyhow::ensure!(
-            !topic_id.is_empty(),
-            "message diff topicId must be non-empty"
-        );
-        let owner_type = state
-            .owner_type
-            .context("message diff ownerType is required")?;
-        let owner_id = state
-            .owner_id
-            .as_deref()
-            .filter(|owner_id| !owner_id.is_empty())
-            .context("message diff ownerId is required")?;
-        anyhow::ensure!(
             state.topic_hash.is_empty() || canonical_wire_hash(&state.topic_hash).is_some(),
-            "message diff topicHash is invalid for {topic_id}"
+            "message diff topicHash is invalid for {}",
+            requested_key.topic_id
         );
         for (message_id, version) in &state.messages {
             anyhow::ensure!(
@@ -984,25 +973,28 @@ pub fn message_diff(
             );
             anyhow::ensure!(
                 version.hash == "DELETED" || canonical_wire_hash(&version.hash).is_some(),
-                "message diff contains an invalid content hash for {topic_id}/{message_id}"
+                "message diff contains an invalid content hash for {}/{message_id}",
+                requested_key.topic_id
             );
             anyhow::ensure!(
                 (0..=9_007_199_254_740_991).contains(&version.updated_at),
-                "message diff contains an invalid update time for {topic_id}/{message_id}"
+                "message diff contains an invalid update time for {}/{message_id}",
+                requested_key.topic_id
             );
         }
         let selector = TopicSelector {
-            topic_id: topic_id.clone(),
-            owner_type: Some(owner_type),
-            owner_id: Some(owner_id.to_string()),
+            topic_id: requested_key.topic_id.clone(),
+            owner_type: Some(requested_key.owner_type),
+            owner_id: Some(requested_key.owner_id.clone()),
         };
         let key = match resolve_topic(database, &selector) {
             Ok(key) => key,
             Err(error) => {
-                results.insert(
-                    topic_id,
-                    MessageDiffResult::failure("TOPIC_NOT_FOUND", format!("{error:#}")),
-                );
+                results.push(MessageDiffResult::failure(
+                    &requested_key,
+                    "TOPIC_NOT_FOUND",
+                    format!("{error:#}"),
+                ));
                 continue;
             }
         };
@@ -1010,20 +1002,22 @@ pub fn message_diff(
         let local_topic = match topic_manifest(database, &key) {
             Ok(local_topic) => local_topic,
             Err(error) => {
-                results.insert(
-                    topic_id,
-                    MessageDiffResult::failure("TOPIC_HASH_FAILED", format!("{error:#}")),
-                );
+                results.push(MessageDiffResult::failure(
+                    &requested_key,
+                    "TOPIC_HASH_FAILED",
+                    format!("{error:#}"),
+                ));
                 continue;
             }
         };
         let manifest = match message_manifest(database, &selector) {
             Ok(manifest) => manifest,
             Err(error) => {
-                results.insert(
-                    topic_id,
-                    MessageDiffResult::failure("MESSAGE_MANIFEST_FAILED", format!("{error:#}")),
-                );
+                results.push(MessageDiffResult::failure(
+                    &requested_key,
+                    "MESSAGE_MANIFEST_FAILED",
+                    format!("{error:#}"),
+                ));
                 continue;
             }
         };
@@ -1050,10 +1044,12 @@ pub fn message_diff(
             && state.topic_hash == local_topic.content_hash
             && !remote_has_tombstones
         {
-            results.insert(
-                topic_id,
-                MessageDiffResult::success(Vec::new(), false, Vec::new()),
-            );
+            results.push(MessageDiffResult::success(
+                &key,
+                Vec::new(),
+                false,
+                Vec::new(),
+            ));
             continue;
         }
 
@@ -1100,10 +1096,9 @@ pub fn message_diff(
                 !active.contains_key(id) && !tombstones.contains_key(id)
             }
         });
-        results.insert(
-            topic_id,
-            MessageDiffResult::success(to_pull, to_push, to_delete),
-        );
+        results.push(MessageDiffResult::success(
+            &key, to_pull, to_push, to_delete,
+        ));
     }
 
     Ok(MessageDiffResponse {
@@ -1354,7 +1349,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
 fn local_manifest(
     database: &Database,
     data_type: &str,
-    targeted_owners: Option<&[String]>,
+    targeted_owners: Option<&[OwnerKey]>,
 ) -> Result<Vec<ManifestItem>> {
     match data_type {
         "agent" => owner_manifest(database, OwnerType::Agent),
@@ -1437,7 +1432,7 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
 
 fn topic_manifests(
     database: &Database,
-    targeted_owners: Option<&[String]>,
+    targeted_owners: Option<&[OwnerKey]>,
 ) -> Result<Vec<ManifestItem>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
@@ -1474,8 +1469,17 @@ fn topic_manifests(
     drop(statement);
     drop(connection);
 
+    let targeted_owners =
+        targeted_owners.map(|owners| owners.iter().cloned().collect::<HashSet<_>>());
     keys.into_iter()
-        .filter(|key| targeted_owners.is_none_or(|owners| owners.contains(&key.owner_id)))
+        .filter(|key| {
+            targeted_owners.as_ref().is_none_or(|owners| {
+                owners.contains(&OwnerKey {
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                })
+            })
+        })
         .map(|key| topic_manifest(database, &key))
         .collect()
 }
@@ -2211,13 +2215,20 @@ mod tests {
     };
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::OwnerType,
+        domain::{OwnerKey, OwnerType},
         ingest::{sha256_hex, Reconciler},
         storage::Database,
         sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
     };
     use serde_json::json;
     use tempfile::TempDir;
+
+    fn owner_key(owner_type: OwnerType, owner_id: &str) -> OwnerKey {
+        OwnerKey {
+            owner_type,
+            owner_id: owner_id.to_string(),
+        }
+    }
 
     fn sync_fixture() -> (TempDir, Arc<ServiceConfig>, Database, Reconciler) {
         let temp = TempDir::new().expect("create temp directory");
@@ -2467,9 +2478,29 @@ mod tests {
                 owner_type: Some(OwnerType::Agent),
                 owner_id: Some("agent-a".to_string()),
             }],
-            targeted_owners: Some(vec!["agent-a".to_string()]),
+            targeted_owners: Some(vec![owner_key(OwnerType::Agent, "agent-a")]),
         };
         validate_manifest_request(&valid).expect("valid topic manifest");
+
+        let mut split_owners = valid.clone();
+        split_owners
+            .targeted_owners
+            .as_mut()
+            .expect("targeted owners")
+            .push(owner_key(OwnerType::Group, "group-a"));
+        let mut group_topic = split_owners.data[0].clone();
+        group_topic.owner_type = Some(OwnerType::Group);
+        group_topic.owner_id = Some("group-a".to_string());
+        split_owners.data.push(group_topic);
+        validate_manifest_request(&split_owners)
+            .expect("same topic id under different owners is valid");
+
+        let mut duplicate = split_owners;
+        duplicate.data.push(duplicate.data[0].clone());
+        assert!(validate_manifest_request(&duplicate)
+            .expect_err("duplicate full topic identity must fail")
+            .to_string()
+            .contains("duplicate entity identity"));
 
         let mut missing_owner = valid.clone();
         missing_owner.data[0].owner_id = None;
@@ -2567,39 +2598,36 @@ mod tests {
     #[test]
     fn topic_hash_diff_rejects_duplicate_and_malformed_states_before_db_work() {
         let (_temp, _config, database, _reconciler) = sync_fixture();
+        let state = TopicHashState {
+            topic_id: "topic-a".to_string(),
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            config_hash: String::new(),
+            content_hash: String::new(),
+        };
         let duplicate = topic_hash_diff(
             &database,
             TopicHashDiffRequest {
-                hashes: HashMap::from([(
-                    "topic-a".to_string(),
-                    json!({"configHash":"", "contentHash":""}),
-                )]),
-                topics: vec![TopicHashState {
-                    topic_id: "topic-a".to_string(),
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
-                    config_hash: String::new(),
-                    content_hash: String::new(),
-                }],
+                topics: vec![state.clone(), state],
             },
         )
         .expect_err("duplicate topic state must fail");
-        assert!(duplicate.to_string().contains("duplicate topic"));
+        assert!(duplicate.to_string().contains("duplicate topic identity"));
 
         let malformed = topic_hash_diff(
             &database,
             TopicHashDiffRequest {
-                hashes: HashMap::from([(
-                    "topic-a".to_string(),
-                    json!({"configHash":1, "contentHash":""}),
-                )]),
-                topics: Vec::new(),
+                topics: vec![TopicHashState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    config_hash: "not-a-hash".to_string(),
+                    content_hash: String::new(),
+                }],
             },
         )
         .expect_err("malformed topic hash must fail");
-        assert!(malformed
-            .to_string()
-            .contains("configHash must be a string"));
+        assert!(malformed.to_string().contains("invalid hash"));
     }
 
     #[test]
@@ -2608,11 +2636,10 @@ mod tests {
         let topic_response = topic_hash_diff(
             &database,
             TopicHashDiffRequest {
-                hashes: HashMap::from([("default".to_string(), json!(1))]),
                 topics: vec![TopicHashState {
                     topic_id: "default".to_string(),
-                    owner_type: None,
-                    owner_id: None,
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
                     config_hash: "not-a-hash".to_string(),
                     content_hash: "not-a-hash".to_string(),
                 }],
@@ -2624,19 +2651,17 @@ mod tests {
         let message_response = message_diff(
             &database,
             MessageDiffRequest {
-                topics: HashMap::from([(
-                    "default".to_string(),
-                    MessageDiffState {
-                        owner_type: None,
-                        owner_id: None,
-                        topic_hash: "not-a-hash".to_string(),
-                        messages: HashMap::from([(String::new(), version("not-a-hash", 1))]),
-                    },
-                )]),
+                topics: vec![MessageDiffState {
+                    topic_id: "default".to_string(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_hash: "not-a-hash".to_string(),
+                    messages: HashMap::from([(String::new(), version("not-a-hash", 1))]),
+                }],
             },
         )
         .expect("reserved Phase 3 state must be ignored");
-        let decision = &message_response.results["default"];
+        let decision = &message_response.results[0];
         assert!(decision.ok);
         assert_eq!(decision.to_pull.as_deref(), Some(&[][..]));
         assert_eq!(decision.to_push, Some(false));
@@ -2888,29 +2913,27 @@ mod tests {
         let response = message_diff(
             &database,
             MessageDiffRequest {
-                topics: HashMap::from([(
-                    "topic-a".to_string(),
-                    MessageDiffState {
-                        owner_type: Some(OwnerType::Agent),
-                        owner_id: Some("agent-a".to_string()),
-                        topic_hash: String::new(),
-                        messages: HashMap::from([
-                            (
-                                "desktop-deleted".to_string(),
-                                version(
-                                    mobile_message_hash_from_json(deleted_raw, "topic-a")
-                                        .expect("mobile hash"),
-                                    1,
-                                ),
+                topics: vec![MessageDiffState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_hash: String::new(),
+                    messages: HashMap::from([
+                        (
+                            "desktop-deleted".to_string(),
+                            version(
+                                mobile_message_hash_from_json(deleted_raw, "topic-a")
+                                    .expect("mobile hash"),
+                                1,
                             ),
-                            ("desktop-live".to_string(), version("DELETED", 1)),
-                        ]),
-                    },
-                )]),
+                        ),
+                        ("desktop-live".to_string(), version("DELETED", 1)),
+                    ]),
+                }],
             },
         )
         .expect("message diff");
-        let decision = &response.results["topic-a"];
+        let decision = &response.results[0];
         assert!(decision.ok);
         assert_eq!(decision.to_pull.as_deref(), Some(&[][..]));
         assert_eq!(decision.to_push, Some(true));
@@ -2962,22 +2985,20 @@ mod tests {
         let response = message_diff(
             &database,
             MessageDiffRequest {
-                topics: HashMap::from([(
-                    "topic-a".to_string(),
-                    MessageDiffState {
-                        owner_type: Some(OwnerType::Agent),
-                        owner_id: Some("agent-a".to_string()),
-                        topic_hash,
-                        messages: HashMap::from([
-                            ("live".to_string(), version(live_hash, 1)),
-                            ("mobile-only-deleted".to_string(), version("DELETED", 1)),
-                        ]),
-                    },
-                )]),
+                topics: vec![MessageDiffState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_hash,
+                    messages: HashMap::from([
+                        ("live".to_string(), version(live_hash, 1)),
+                        ("mobile-only-deleted".to_string(), version("DELETED", 1)),
+                    ]),
+                }],
             },
         )
         .expect("message diff");
-        let decision = &response.results["topic-a"];
+        let decision = &response.results[0];
         assert_eq!(decision.to_pull.as_deref(), Some(&[][..]));
         assert_eq!(decision.to_push, Some(true));
         assert_eq!(decision.to_delete.as_deref(), Some(&[][..]));
@@ -3034,24 +3055,22 @@ mod tests {
         let response = message_diff(
             &database,
             MessageDiffRequest {
-                topics: HashMap::from([(
-                    "topic-a".to_string(),
-                    MessageDiffState {
-                        owner_type: Some(OwnerType::Agent),
-                        owner_id: Some("agent-a".to_string()),
-                        topic_hash: String::new(),
-                        messages: HashMap::from([
-                            ("mobile-newer".to_string(), version("f".repeat(64), 20)),
-                            ("desktop-newer".to_string(), version("f".repeat(64), 10)),
-                            ("mobile-tie".to_string(), version("f".repeat(64), 30)),
-                            ("desktop-tie".to_string(), version("0".repeat(64), 40)),
-                        ]),
-                    },
-                )]),
+                topics: vec![MessageDiffState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_hash: String::new(),
+                    messages: HashMap::from([
+                        ("mobile-newer".to_string(), version("f".repeat(64), 20)),
+                        ("desktop-newer".to_string(), version("f".repeat(64), 10)),
+                        ("mobile-tie".to_string(), version("f".repeat(64), 30)),
+                        ("desktop-tie".to_string(), version("0".repeat(64), 40)),
+                    ]),
+                }],
             },
         )
         .expect("message diff");
-        let decision = &response.results["topic-a"];
+        let decision = &response.results[0];
         assert_eq!(
             decision.to_pull.as_deref(),
             Some(&["desktop-newer".to_string(), "desktop-tie".to_string()][..])
@@ -3198,7 +3217,7 @@ mod tests {
             ManifestRequest {
                 data_type: "topic".to_string(),
                 data: Vec::new(),
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+                targeted_owners: Some(vec![owner_key(OwnerType::Agent, "agent-a")]),
             },
         )
         .expect("manifest diff");
@@ -3262,7 +3281,10 @@ mod tests {
 
         let items = topic_manifests(
             &database,
-            Some(&["agent-a".to_string(), "agent-b".to_string()]),
+            Some(&[
+                owner_key(OwnerType::Agent, "agent-a"),
+                owner_key(OwnerType::Agent, "agent-b"),
+            ]),
         )
         .expect("topic manifests");
         assert!(items.iter().all(|item| item.id != "default"));
@@ -3283,7 +3305,10 @@ mod tests {
                     owner_type: Some(OwnerType::Agent),
                     owner_id: Some("agent-a".to_string()),
                 }],
-                targeted_owners: Some(vec!["agent-a".to_string(), "agent-b".to_string()]),
+                targeted_owners: Some(vec![
+                    owner_key(OwnerType::Agent, "agent-a"),
+                    owner_key(OwnerType::Agent, "agent-b"),
+                ]),
             },
         )
         .expect("reserved remote topic must be ignored");
@@ -3527,18 +3552,24 @@ mod tests {
         let response = topic_hash_diff(
             &database,
             TopicHashDiffRequest {
-                hashes: HashMap::new(),
                 topics: vec![TopicHashState {
                     topic_id: "topic-a".to_string(),
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
                     config_hash: String::new(),
                     content_hash: "f".repeat(64),
                 }],
             },
         )
         .expect("diff must not fail on one unhealthy topic");
-        assert_eq!(response.changed_topics, vec!["topic-a".to_string()]);
+        assert_eq!(
+            response.changed_topics,
+            vec![TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            }]
+        );
     }
 
     /// S3-ε（墓碑行）：deleted 行跳过哈希，占位符为固定 64-hex 常量——
@@ -3773,7 +3804,7 @@ mod tests {
                     owner_type: Some(OwnerType::Agent),
                     owner_id: Some("agent-a".to_string()),
                 }],
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+                targeted_owners: Some(vec![owner_key(OwnerType::Agent, "agent-a")]),
             },
         )
         .expect("manifest diff with unhealthy topic");
@@ -3826,7 +3857,7 @@ mod tests {
                     owner_type: Some(OwnerType::Agent),
                     owner_id: Some("agent-a".to_string()),
                 }],
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+                targeted_owners: Some(vec![owner_key(OwnerType::Agent, "agent-a")]),
             },
         )
         .expect("manifest with remote tombstone");
@@ -3844,7 +3875,7 @@ mod tests {
             ManifestRequest {
                 data_type: "topic".to_string(),
                 data: Vec::new(),
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+                targeted_owners: Some(vec![owner_key(OwnerType::Agent, "agent-a")]),
             },
         )
         .expect("manifest with empty remote");

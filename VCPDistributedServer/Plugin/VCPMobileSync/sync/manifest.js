@@ -49,13 +49,31 @@ function requireTargetedOwners(dataType, targetedOwners) {
   if (targetedOwners.length > MAX_MANIFEST_ITEMS) {
     throw syncContractError("targetedOwners exceeds 10000 owners", "SYNC_BUDGET_EXCEEDED");
   }
-  const owners = targetedOwners.map((ownerId, index) =>
-    requireNonEmptyString(ownerId, `targetedOwners[${index}]`),
-  );
+  const owners = targetedOwners.map((owner, index) => {
+    if (!owner || typeof owner !== "object" || Array.isArray(owner)) {
+      throw syncContractError(`targetedOwners[${index}] must be an owner identity`);
+    }
+    if (!matchesTopicOwnerType(owner.ownerType)) {
+      throw syncContractError(`targetedOwners[${index}] requires agent/group ownerType`);
+    }
+    const ownerId = requireNonEmptyString(
+      owner.ownerId,
+      `targetedOwners[${index}] ownerId`,
+    );
+    return `${owner.ownerType}\0${ownerId}`;
+  });
   if (new Set(owners).size !== owners.length) {
-    throw syncContractError("targetedOwners contains duplicate owner IDs");
+    throw syncContractError("targetedOwners contains a duplicate owner identity");
   }
   return new Set(owners);
+}
+
+function topicIdentity(item) {
+  return `${item.ownerType}\0${item.ownerId}\0${item.id}`;
+}
+
+function manifestIdentity(item, dataType) {
+  return dataType === "topic" ? topicIdentity(item) : item.id;
 }
 
 function topicOwnerFromPath(filePath) {
@@ -100,7 +118,7 @@ function requireAvatarOwner(id) {
 /**
  * 获取本地清单
  * @param {string} dataType - 数据类型 (agent/group/topic/avatar)
- * @param {string[]} targetedOwners - 仅针对特定所有者的过滤列表 (V2)
+ * @param {object[]} targetedOwners - 仅针对特定所有者的复合身份列表
  * @returns {object[]} 本地实体列表
  */
 function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
@@ -149,7 +167,10 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
     ? rows.filter((row) => row.id !== "default")
     : rows;
   const filteredRows = dataType === "topic" && ownerFilter
-    ? syncRows.filter((row) => ownerFilter.has(topicOwnerFromPath(row.file_path).ownerId))
+    ? syncRows.filter((row) => {
+        const owner = topicOwnerFromPath(row.file_path);
+        return ownerFilter.has(`${owner.ownerType}\0${owner.ownerId}`);
+      })
     : syncRows;
   if (filteredRows.length > MAX_MANIFEST_ITEMS) {
     throw syncContractError(
@@ -162,9 +183,13 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
     const seen = new Set();
     return filteredRows.map((row) => {
       const id = requireNonEmptyString(row.id, `${dataType} manifest id`);
-      if (!seen.add(id)) {
+      const owner = dataType === "topic" ? topicOwnerFromPath(row.file_path) : null;
+      const identity = dataType === "topic"
+        ? `${owner.ownerType}\0${owner.ownerId}\0${id}`
+        : id;
+      if (!seen.add(identity)) {
         throw syncContractError(
-          `${dataType} manifest contains duplicate id ${id}`,
+          `${dataType} manifest contains a duplicate entity identity for ${id}`,
           "SYNC_INDEX_INVALID",
         );
       }
@@ -184,7 +209,6 @@ function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
         ),
       };
       if (dataType === "topic") {
-        const owner = topicOwnerFromPath(row.file_path);
         result.ownerType = owner.ownerType;
         result.ownerId = owner.ownerId;
       }
@@ -246,18 +270,6 @@ function matchesTopicOwnerType(value) {
   return value === "agent" || value === "group";
 }
 
-function assertSameTopicOwner(remote, local) {
-  if (
-    remote.ownerType !== local.ownerType ||
-    remote.ownerId !== local.ownerId
-  ) {
-    throw syncContractError(
-      `Topic ${remote.id} owner conflicts with the desktop index`,
-      "SYNC_OWNER_CONFLICT",
-    );
-  }
-}
-
 function actionIdentity(item, dataType) {
   return dataType === "topic"
     ? { ownerType: item.ownerType, ownerId: item.ownerId }
@@ -301,25 +313,35 @@ function handleSyncManifest(payload, database = getDb()) {
   const normalizedRemoteItems = remoteItems
     .map((item, index) => normalizeRemoteManifestItem(item, dataType, index))
     .filter((item) => dataType !== "topic" || item.id !== "default");
-  const remoteById = new Map();
-  for (const item of normalizedRemoteItems) {
-    if (remoteById.has(item.id)) {
-      throw syncContractError(`${dataType} manifest contains duplicate id ${item.id}`);
+  if (dataType === "topic") {
+    for (const item of normalizedRemoteItems) {
+      if (!ownerFilter.has(`${item.ownerType}\0${item.ownerId}`)) {
+        throw syncContractError(
+          `Topic manifest ${item.id} has an unexpected owner`,
+        );
+      }
     }
-    remoteById.set(item.id, item);
+  }
+  const remoteByKey = new Map();
+  for (const item of normalizedRemoteItems) {
+    const identity = manifestIdentity(item, dataType);
+    if (remoteByKey.has(identity)) {
+      throw syncContractError(`${dataType} manifest contains a duplicate entity identity`);
+    }
+    remoteByKey.set(identity, item);
   }
 
   const localItems = getLocalManifest(dataType, targetedOwners, database);
-  const localById = new Map(localItems.map((item) => [item.id, item]));
+  const localByKey = new Map(
+    localItems.map((item) => [manifestIdentity(item, dataType), item]),
+  );
   const results = [];
-  const processedIds = new Set();
+  const processedKeys = new Set();
 
   for (const remote of normalizedRemoteItems) {
-    const local = localById.get(remote.id);
+    const identity = manifestIdentity(remote, dataType);
+    const local = localByKey.get(identity);
     const remoteDeletedAt = remote.deletedAt;
-    if (dataType === "topic" && local) {
-      assertSameTopicOwner(remote, local);
-    }
 
     if (remoteDeletedAt !== null) {
       if (!local || local.deletedAt === null) {
@@ -330,14 +352,14 @@ function handleSyncManifest(payload, database = getDb()) {
           ...actionIdentity(remote, dataType),
         });
       }
-      processedIds.add(remote.id);
+      processedKeys.add(identity);
     } else if (!local) {
       results.push({
         id: remote.id,
         action: "PUSH",
         ...actionIdentity(remote, dataType),
       });
-      processedIds.add(remote.id);
+      processedKeys.add(identity);
     } else if (local.deletedAt !== null) {
       results.push({
         id: local.id,
@@ -345,7 +367,7 @@ function handleSyncManifest(payload, database = getDb()) {
         deletedAt: local.deletedAt,
         ...actionIdentity(local, dataType),
       });
-      processedIds.add(local.id);
+      processedKeys.add(identity);
     } else {
       // V2: 双哈希比对
       const remoteConfig = remote.configHash || remote.hash;
@@ -373,7 +395,9 @@ function handleSyncManifest(payload, database = getDb()) {
       // 2. 比较内容 (仅 Agent/Group)
       if ((dataType === "agent" || dataType === "group") && localContent !== remoteContent) {
         // 如果内容不匹配，标记 mismatchedContent 引导手机端发起 targeted topic sync
-        const existingResult = results.find(r => r.id === remote.id);
+        const existingResult = results.find(
+          (result) => manifestIdentity(result, dataType) === identity,
+        );
         if (existingResult) {
           existingResult.mismatchedContent = true;
         } else {
@@ -381,14 +405,15 @@ function handleSyncManifest(payload, database = getDb()) {
         }
       }
       
-      processedIds.add(remote.id);
+      processedKeys.add(identity);
     }
   }
 
   for (const local of localItems) {
+    const identity = manifestIdentity(local, dataType);
     if (
-      !processedIds.has(local.id) &&
-      !remoteById.has(local.id)
+      !processedKeys.has(identity) &&
+      !remoteByKey.has(identity)
     ) {
       if (local.deletedAt !== null) {
         results.push({
@@ -411,7 +436,7 @@ function handleSyncManifest(payload, database = getDb()) {
   const pullCount = results.filter((r) => r.action === "PULL").length;
   const deleteCount = results.filter((r) => r.action === "DELETE").length;
   const skipCount = normalizedRemoteItems.filter((remote) => {
-    const local = localById.get(remote.id);
+    const local = localByKey.get(manifestIdentity(remote, dataType));
     return local && local.deletedAt === null && remote.deletedAt === null && local.hash === remote.hash;
   }).length;
 

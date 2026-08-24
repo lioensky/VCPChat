@@ -177,7 +177,7 @@ test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
   );
 });
 
-test("中央 pull 将 CDS 字符串错误补全为 Wire 1.2 对象", async () => {
+test("中央 pull 将 CDS 字符串错误补全为结构化对象", async () => {
   const adapter = createCentralSyncAdapter({
     client: {
       async *syncMessagesPullStream() {

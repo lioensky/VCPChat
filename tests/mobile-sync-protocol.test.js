@@ -10,21 +10,21 @@ const {
   parseJsonWithoutDuplicateKeys,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
 
-test("VCPMobileSync 错误契约版本与移动端 1.2.0 对齐", () => {
-  assert.equal(manifest.version, "1.2.0");
+test("VCPMobileSync 错误契约版本与移动端 1.3.0 对齐", () => {
+  assert.equal(manifest.version, "1.3.0");
   assert.deepEqual(
     createVersionAck(
       {
         type: "VERSION_CHECK",
         mobileVersion: "1.1.4",
-        protocolVersion: "1.2",
+        protocolVersion: "1.3",
       },
       manifest.version,
     ),
     {
       type: "VERSION_ACK",
-      pluginVersion: "1.2.0",
-      protocolVersion: "1.2",
+      pluginVersion: "1.3.0",
+      protocolVersion: "1.3",
     },
   );
 });

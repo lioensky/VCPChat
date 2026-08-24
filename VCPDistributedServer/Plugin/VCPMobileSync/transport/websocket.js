@@ -238,7 +238,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
       } catch (e) {
         terminated = true;
         const logger = getLogger();
-        // Wire 1.2 错误契约：边界只允许补齐缺失的 origin/stage，不得把上游
+        // 结构化错误契约：边界只允许补齐缺失的 origin/stage，不得把上游
         // 已确认的 desktop_cds / mobile_sync 改写为 desktop_plugin，
         // 否则移动端与桌面日志会同时丢失真实故障源。
         const error = withSyncErrorContext(e, {

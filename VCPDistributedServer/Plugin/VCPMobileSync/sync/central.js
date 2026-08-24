@@ -90,6 +90,20 @@ function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function topicIdentityKey(value) {
+  if (
+    !isRecord(value) ||
+    typeof value.topicId !== "string" ||
+    value.topicId.length === 0 ||
+    !["agent", "group"].includes(value.ownerType) ||
+    typeof value.ownerId !== "string" ||
+    value.ownerId.length === 0
+  ) {
+    return null;
+  }
+  return `${value.ownerType}\0${value.ownerId}\0${value.topicId}`;
+}
+
 function entityStage(type) {
   return ["agent_topic", "group_topic"].includes(type)
     ? "topic_metadata"
@@ -311,25 +325,36 @@ class CentralSyncAdapter {
   }
 
   async handleTopicHashBatch(payload) {
-    const hasCompoundStates = Array.isArray(payload.topics) && payload.topics.length > 0;
     try {
+      if (!Array.isArray(payload.topics)) {
+        throw cdsProtocolError(
+          "Topic hash request must carry compound topic states",
+          "topic_validation",
+        );
+      }
+      const expected = new Set();
+      for (const topic of payload.topics) {
+        const key = topicIdentityKey(topic);
+        if (!key || expected.has(key)) {
+          throw cdsProtocolError(
+            "Topic hash request contains an invalid or duplicate topic identity",
+            "topic_validation",
+          );
+        }
+        expected.add(key);
+      }
       const response = await this.requireClient().syncTopicDiff({
-        hashes: hasCompoundStates ? {} : payload.hashes,
-        ...(hasCompoundStates ? { topics: payload.topics } : {}),
+        topics: payload.topics,
       });
-      const expected = new Set(
-        hasCompoundStates
-          ? payload.topics.map((topic) => topic?.topicId)
-          : Object.keys(payload.hashes || {}),
-      );
+      const changedKeys = Array.isArray(response?.changedTopics)
+        ? response.changedTopics.map(topicIdentityKey)
+        : [];
       if (
         !isRecord(response) ||
         response.type !== "SYNC_TOPIC_HASH_RESULTS" ||
         !Array.isArray(response.changedTopics) ||
-        response.changedTopics.some(
-          (topicId) => typeof topicId !== "string" || !expected.has(topicId),
-        ) ||
-        new Set(response.changedTopics).size !== response.changedTopics.length
+        changedKeys.some((key) => key === null || !expected.has(key)) ||
+        new Set(changedKeys).size !== changedKeys.length
       ) {
         throw cdsProtocolError(
           "CDS returned an invalid topic hash response",
@@ -348,35 +373,57 @@ class CentralSyncAdapter {
 
   async handleMessageDiffBatch(payload) {
     try {
+      if (!Array.isArray(payload.topics)) {
+        throw cdsProtocolError(
+          "Message diff request must carry compound topic states",
+          "messages",
+        );
+      }
+      const expected = new Set();
+      for (const topic of payload.topics) {
+        const key = topicIdentityKey(topic);
+        if (!key || expected.has(key)) {
+          throw cdsProtocolError(
+            "Message diff request contains an invalid or duplicate topic identity",
+            "messages",
+          );
+        }
+        expected.add(key);
+      }
       const response = await this.requireClient().syncMessageDiff({
         topics: payload.topics,
       });
       if (
         !isRecord(response) ||
         response.type !== "SYNC_DIFF_RESULTS_BATCH" ||
-        !isRecord(response.results)
+        !Array.isArray(response.results)
       ) {
         throw cdsProtocolError(
           "CDS returned an invalid message diff response",
           "messages",
         );
       }
-      const expectedTopicIds = Object.keys(
-        isRecord(payload.topics) ? payload.topics : {},
-      );
-      const resultTopicIds = Object.keys(response.results);
-      if (
-        resultTopicIds.length !== expectedTopicIds.length ||
-        resultTopicIds.some((topicId) => !expectedTopicIds.includes(topicId))
-      ) {
+      const actual = new Set();
+      if (response.results.some((result) => {
+        const key = topicIdentityKey(result);
+        if (!key || !expected.has(key) || actual.has(key)) return true;
+        actual.add(key);
+        return false;
+      }) || actual.size !== expected.size) {
         throw cdsProtocolError(
           "CDS message diff response does not cover the requested topics",
           "messages",
-          expectedTopicIds,
+          payload.topics.map((topic) => topic.topicId).slice(0, 8),
         );
       }
-      const results = {};
-      for (const [topicId, decision] of Object.entries(response.results)) {
+      const results = [];
+      for (const decision of response.results) {
+        const topicId = decision.topicId;
+        const resultIdentity = {
+          topicId,
+          ownerType: decision.ownerType,
+          ownerId: decision.ownerId,
+        };
         if (!isRecord(decision)) {
           throw cdsProtocolError(
             `CDS returned an invalid message diff decision for ${topicId}`,
@@ -397,7 +444,8 @@ class CentralSyncAdapter {
               [topicId],
             );
           }
-          results[topicId] = {
+          results.push({
+            ...resultIdentity,
             ok: false,
             error: normalizeSyncError(decision.error, {
               code: "MESSAGE_DIFF_FAILED",
@@ -405,7 +453,7 @@ class CentralSyncAdapter {
               stage: "messages",
               failedTopicIds: [topicId],
             }),
-          };
+          });
           continue;
         }
         const toDelete = decision.toDelete;
@@ -437,7 +485,8 @@ class CentralSyncAdapter {
             [topicId],
           );
         }
-        results[topicId] = {
+        results.push({
+          ...resultIdentity,
           ok: true,
           toPull: decision.toPull,
           toPush: decision.toPush,
@@ -445,7 +494,7 @@ class CentralSyncAdapter {
             msgId: item.msgId,
             deletedAt: item.deletedAt,
           })),
-        };
+        });
       }
       return { ...response, results };
     } catch (error) {
@@ -454,8 +503,8 @@ class CentralSyncAdapter {
         origin: "desktop_cds",
         stage: "messages",
         failedTopicIds:
-          payload.topics && typeof payload.topics === "object"
-            ? Object.keys(payload.topics).slice(0, 8)
+          Array.isArray(payload.topics)
+            ? payload.topics.map((topic) => topic?.topicId).filter(Boolean).slice(0, 8)
             : [],
       });
     }

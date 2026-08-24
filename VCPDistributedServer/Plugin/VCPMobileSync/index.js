@@ -152,7 +152,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             : handleSyncTopicHashBatch(payload);
         }
         case "SYNC_TOPIC_HASH_BATCH_V2": {
-          const topicCount = Object.keys(payload.hashes || {}).length;
+          const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
           if (centralSync) {
             return centralSync.handleTopicHashBatch(payload);
@@ -161,7 +161,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           return handleSyncTopicHashBatchV2(payload);
         }
         case "SYNC_MESSAGE_DIFF_BATCH": {
-          const topicCount = Object.keys(payload.topics || {}).length;
+          const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
           return centralSync
             ? centralSync.handleMessageDiffBatch(payload)

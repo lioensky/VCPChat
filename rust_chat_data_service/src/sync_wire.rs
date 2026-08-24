@@ -355,20 +355,14 @@ pub fn canonicalize_for_wire(
 
 #[cfg(test)]
 mod tests {
-    use sha2::{Digest, Sha256};
-
     use super::{canonicalize_message, message_fingerprint, normalize_integer, WireWarnings};
 
     const GOLDEN: &[u8] = include_bytes!(
         "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
     );
-    const GOLDEN_SHA256: &str = "0aae238ea2699b4246cf78ecd4ee044b820a0586d3821224ad59b925e531f6c0";
-
     #[test]
-    fn protocol_1_2_golden_bundle_matches_mobile() {
-        assert_eq!(hex::encode(Sha256::digest(GOLDEN)), GOLDEN_SHA256);
+    fn golden_bundle_matches_the_canonical_message_contract() {
         let bundle: serde_json::Value = serde_json::from_slice(GOLDEN).expect("golden JSON");
-        assert_eq!(bundle["wireProtocol"], "1.2");
 
         for fixture in bundle["validFrames"].as_array().expect("valid frames") {
             let input = &fixture["input"];

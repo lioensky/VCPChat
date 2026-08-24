@@ -34,11 +34,22 @@ function createClient(overrides = {}) {
     }),
     syncMessageDiff: async () => ({
       type: "SYNC_DIFF_RESULTS_BATCH",
-      results: {},
+      results: [],
     }),
     syncEntitiesPull: async () => [],
     syncEntityDelete: async () => ({ success: true }),
     syncMessagesPush: async () => ({ results: [] }),
+    ...overrides,
+  };
+}
+
+function topicState(overrides = {}) {
+  return {
+    topicId: "topic-a",
+    ownerType: "agent",
+    ownerId: "agent-a",
+    topicHash: "",
+    messages: {},
     ...overrides,
   };
 }
@@ -77,14 +88,14 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
   const result = await adapter.handleSyncManifest({
     dataType: "topic",
     data: [{ id: "topic_1", hash: "remote" }],
-    targetedOwners: ["agent_1"],
+    targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
     phase: 2,
   });
 
   assert.deepEqual(captured, {
     dataType: "topic",
     data: [{ id: "topic_1", hash: "remote" }],
-    targetedOwners: ["agent_1"],
+    targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
   });
   // 移动端 diff_handler 对 SYNC_DIFF_RESULTS.phase 是硬门禁，中央路径必须回填
   assert.equal(result.phase, 2);
@@ -129,7 +140,7 @@ test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () 
     adapter.handleSyncManifest({
       dataType: "topic",
       data: [],
-      targetedOwners: ["agent_1"],
+      targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
       phase: 1,
     }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
@@ -146,14 +157,6 @@ test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () 
 
 test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic", async () => {
   let captured;
-  const adapter = createCentralSyncAdapter({
-    client: createClient({
-      syncTopicDiff: async (request) => {
-        captured = request;
-        return { type: "SYNC_TOPIC_HASH_RESULTS", changedTopics: [] };
-      },
-    }),
-  });
   const state = {
     topicId: "topic_1",
     ownerType: "agent",
@@ -161,8 +164,23 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
     configHash: "a".repeat(64),
     contentHash: "",
   };
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncTopicDiff: async (request) => {
+        captured = request;
+        return {
+          type: "SYNC_TOPIC_HASH_RESULTS",
+          changedTopics: [{
+            topicId: state.topicId,
+            ownerType: state.ownerType,
+            ownerId: state.ownerId,
+          }],
+        };
+      },
+    }),
+  });
 
-  await adapter.handleTopicHashBatch({
+  const result = await adapter.handleTopicHashBatch({
     hashes: {
       topic_1: {
         configHash: state.configHash,
@@ -172,7 +190,12 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
     topics: [state],
   });
 
-  assert.deepEqual(captured, { hashes: {}, topics: [state] });
+  assert.deepEqual(captured, { topics: [state] });
+  assert.deepEqual(result.changedTopics, [{
+    topicId: "topic_1",
+    ownerType: "agent",
+    ownerId: "agent_1",
+  }]);
 });
 
 test("中央启动门禁可在 SERVICE_BUSY 时持续等待既有 reconcile", async () => {
@@ -232,7 +255,7 @@ test("CDS 不可用时中央适配器显式失败而非静默写旧库", async (
   const adapter = createCentralSyncAdapter(null);
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: {} }),
+    () => adapter.handleMessageDiffBatch({ topics: [] }),
     (error) => error.code === "CDS_UNAVAILABLE",
   );
 });
@@ -250,7 +273,7 @@ test("中央适配器保留未知 CDS 根因并补齐来源、阶段与 Topic", 
   });
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: { "topic-a": {} } }),
+    () => adapter.handleMessageDiffBatch({ topics: [topicState()] }),
     (error) => {
       assert.equal(error.code, "UPSTREAM_EXTENSION_FAILED");
       assert.equal(error.origin, "desktop_cds");
@@ -312,23 +335,27 @@ test("中央 Phase 3 的二字段错误会在插件边界补全而不改写根�
     client: createClient({
       syncMessageDiff: async () => ({
         type: "SYNC_DIFF_RESULTS_BATCH",
-        results: {
-          "topic-a": {
+        results: [
+          {
+            ...topicState(),
             ok: false,
             error: {
               code: "TOPIC_HASH_FAILED",
               message: "failed to read topic hash",
             },
           },
-        },
+        ],
       }),
     }),
   });
 
   const response = await adapter.handleMessageDiffBatch({
-    topics: { "topic-a": {} },
+    topics: [topicState()],
   });
-  assert.deepEqual(response.results["topic-a"], {
+  assert.deepEqual(response.results[0], {
+    topicId: "topic-a",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: false,
     error: {
       code: "TOPIC_HASH_FAILED",
@@ -347,20 +374,21 @@ test("中央适配器将畸形 CDS Phase 3 成功帧归为上游协议错误", a
     client: createClient({
       syncMessageDiff: async () => ({
         type: "SYNC_DIFF_RESULTS_BATCH",
-        results: {
-          "topic-a": {
+        results: [
+          {
+            ...topicState(),
             ok: true,
             toPull: [],
             toPush: false,
             error: { code: "INTERNAL_ERROR", message: "contradictory" },
           },
-        },
+        ],
       }),
     }),
   });
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: { "topic-a": {} } }),
+    () => adapter.handleMessageDiffBatch({ topics: [topicState()] }),
     (error) => {
       assert.equal(error.code, "SYNC_PROTOCOL_INVALID");
       assert.equal(error.origin, "desktop_cds");
@@ -377,22 +405,26 @@ test("中央适配器严格保留 Phase 3 message tombstone 决策", async () =>
     client: createClient({
       syncMessageDiff: async () => ({
         type: "SYNC_DIFF_RESULTS_BATCH",
-        results: {
-          "topic-a": {
+        results: [
+          {
+            ...topicState(),
             ok: true,
             toPull: ["message-pull"],
             toPush: false,
             toDelete: [{ msgId: "message-delete", deletedAt: 321 }],
           },
-        },
+        ],
       }),
     }),
   });
 
   const response = await adapter.handleMessageDiffBatch({
-    topics: { "topic-a": {} },
+    topics: [topicState()],
   });
-  assert.deepEqual(response.results["topic-a"], {
+  assert.deepEqual(response.results[0], {
+    topicId: "topic-a",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: true,
     toPull: ["message-pull"],
     toPush: false,
@@ -405,19 +437,20 @@ test("中央适配器拒绝缺失 toDelete 的漂移 CDS 成功帧", async () =>
     client: createClient({
       syncMessageDiff: async () => ({
         type: "SYNC_DIFF_RESULTS_BATCH",
-        results: {
-          "topic-a": {
+        results: [
+          {
+            ...topicState(),
             ok: true,
             toPull: [],
             toPush: false,
           },
-        },
+        ],
       }),
     }),
   });
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: { "topic-a": {} } }),
+    () => adapter.handleMessageDiffBatch({ topics: [topicState()] }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
 });
