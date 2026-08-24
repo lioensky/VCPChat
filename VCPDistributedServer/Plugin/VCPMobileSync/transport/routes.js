@@ -17,8 +17,6 @@ const {
 const {
   downloadMessagesStreamRaw,
   uploadMessagesBatchRaw,
-  downloadAttachment,
-  uploadAttachmentStream,
 } = require("../sync/message");
 const { getLogger } = require("../core/logger");
 const {
@@ -331,64 +329,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     },
   );
 
-  // 5. 上传附件
-  router.post(
-    "/upload-attachment",
-    async (req, res) => {
-      const { hash, name, type } = req.query;
-      if (!hash) {
-        return sendHttpError(res, 400, "Missing hash", {
-          code: "MOBILE_ATTACHMENT_INVALID",
-          stage: "messages",
-        });
-      }
-
-      const rawLength = req.headers["content-length"];
-      const declaredLength = rawLength === undefined
-        ? undefined
-        : Number(rawLength);
-
-      try {
-        const result = await uploadAttachmentStream({
-          hash,
-          input: req,
-          declaredLength,
-          name,
-          type,
-          appDataPath,
-        });
-        res.json(result);
-      } catch (e) {
-        sendHttpError(res, 500, e, {
-          code: "SYNC_ATTACHMENT_WRITE_FAILED",
-          stage: "messages",
-        });
-      }
-    },
-  );
-
-  // 6. 下载附件
-  router.get("/download-attachment", async (req, res) => {
-    const { hash } = req.query;
-
-    try {
-      const result = await downloadAttachment(hash);
-      if (!result) {
-        return sendHttpError(res, 404, "Attachment not found", {
-          code: "SYNC_ATTACHMENT_NOT_FOUND",
-          stage: "messages",
-        });
-      }
-      res.sendFile(result.filePath);
-    } catch (e) {
-      sendHttpError(res, 500, e, {
-        code: "SYNC_ATTACHMENT_READ_FAILED",
-        stage: "messages",
-      });
-    }
-  });
-
-  // 7. 下载头像
+  // 5. 下载头像
   router.get("/download-avatar", async (req, res) => {
     const id = req.query.id || null;
     const type = req.query.type || "agent";
@@ -410,7 +351,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     }
   });
 
-  // 8. 上传头像
+  // 6. 上传头像
   router.post(
     "/upload-avatar",
     express.raw({ type: "*/*", limit: "20mb" }),
@@ -434,7 +375,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     },
   );
 
-  // 9. 删除实体
+  // 7. 删除实体
   router.post("/delete-entity", express.json(), async (req, res) => {
     const { id, type, ownerType = null, ownerId = null, deletedAt } = req.body;
     const allowedTypes = new Set([
@@ -505,7 +446,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     }
   });
 
-  // 10. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
+  // 8. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
   // 避免旧私有墓碑与 CDS 墓碑发生双写。
   router.post("/delete-message", express.json(), async (req, res) => {
     const { msgId, deletedAt, topicId, ownerType, ownerId } = req.body;

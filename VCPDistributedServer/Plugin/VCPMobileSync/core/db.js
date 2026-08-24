@@ -182,6 +182,7 @@ function upsertEntityIndex({
       UPDATE entity_index 
       SET hash = ?, updated_at = ?
       WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?
+        AND deleted_at IS NULL
     `,
     ).run(
       hash,
@@ -193,13 +194,13 @@ function upsertEntityIndex({
     );
     if (result.changes !== 1) {
       throw new Error(
-        `Entity index update missed ${identity.type}/${identity.ownerType}/${identity.ownerId}/${identity.id}`,
+        `Entity index update missed or found a tombstone for ${identity.type}/${identity.ownerType}/${identity.ownerId}/${identity.id}`,
       );
     }
     return result;
   } else {
     // 标准 upsert (含文件路径)
-    db.prepare(
+    const result = db.prepare(
       `
       INSERT INTO entity_index (
         id, type, owner_type, owner_id, file_path, hash, updated_at
@@ -207,8 +208,8 @@ function upsertEntityIndex({
       ON CONFLICT(type, owner_type, owner_id, id) DO UPDATE SET
         file_path = excluded.file_path,
         hash = excluded.hash,
-        updated_at = CASE WHEN entity_index.hash <> excluded.hash THEN excluded.updated_at ELSE entity_index.updated_at END,
-        deleted_at = NULL
+        updated_at = CASE WHEN entity_index.hash <> excluded.hash THEN excluded.updated_at ELSE entity_index.updated_at END
+      WHERE entity_index.deleted_at IS NULL
     `,
     ).run(
       identity.id,
@@ -219,6 +220,12 @@ function upsertEntityIndex({
       hash,
       updatedAt,
     );
+    if (result.changes !== 1) {
+      throw new Error(
+        `Entity index is tombstoned for ${identity.type}/${identity.ownerType}/${identity.ownerId}/${identity.id}`,
+      );
+    }
+    return result;
   }
 }
 

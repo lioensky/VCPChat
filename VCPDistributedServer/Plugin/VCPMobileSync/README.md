@@ -42,7 +42,7 @@ VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Dou
 | 👥 **群组 (Group)** | 群成员列表、群发言策略、群系统提示词、活跃配置等 | `AgentGroups/{id}/config.json` |
 | 💬 **话题 (Topic)** | 挂载于智能体或群组之下的独立子话题元数据 | `Agents|groups` 下的 topics 数组 |
 | ✉️ **消息历史 (Message)** | 包含思维链 (Thinking) 节点、Markdown 文本及元数据的完整聊天链路 | `UserData/{parentId}/topics/{topicId}/history.json` |
-| 📎 **附件 (Attachment)** | Mobile→Desktop 可按 hash 上传二进制；Desktop→Mobile 只同步合法元数据，手机缺文件时显示桌面专用占位 | `UserData/attachments/{hash}.{ext}` |
+| 📎 **附件 (Attachment)** | 双向只同步消息内附件元数据与内容 Hash；二进制文件保留在各端本机 CAS | `UserData/attachments/{hash}.{ext}` |
 | 🖼️ **自定义头像 (Avatar)** | 智能体、群组及用户本身的个性化头像二进制数据 | `Agents|groups/{id}/avatar.png` 及 `user_avatar.png` |
 
 > [!NOTE]

@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -13,9 +12,6 @@ const { test } = require("node:test");
 const {
   createCentralSyncAdapter,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/central");
-const {
-  uploadAttachmentStream,
-} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
 const {
   NdjsonWriter,
   readNdjsonLines,
@@ -220,7 +216,7 @@ test("中央 pull 将 CDS 字符串错误补全为结构化对象", async () => 
   }]);
 });
 
-test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash", async (t) => {
+test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-central-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const hash = "b".repeat(64);
@@ -240,7 +236,6 @@ test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash"
       return {
         topicId: topic.topicId,
         success: true,
-        neededAttachmentHashes: [],
       };
     },
   };
@@ -284,7 +279,12 @@ test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash"
 
   assert.equal(response.ended, true);
   assert.deepEqual(response.frames(), [
-    { topicId: "topic-a", success: true, neededAttachmentHashes: [hash] },
+    {
+      topicId: "topic-a",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      success: true,
+    },
   ]);
   assert.equal(pushedTopic.ownerType, "agent");
   assert.equal(pushedTopic.ownerId, "agent-a");
@@ -332,8 +332,9 @@ test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", a
 
   assert.deepEqual(response.frames(), [{
     topicId: "topic-a",
+    ownerType: "agent",
+    ownerId: "agent-a",
     success: false,
-    neededAttachmentHashes: [],
     error: {
       code: "SYNC_MESSAGE_WRITE_FAILED",
       origin: "desktop_cds",
@@ -360,7 +361,6 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
         topicId: topic.topicId,
         success: true,
         changed: true,
-        neededAttachmentHashes: [],
       };
     },
   };
@@ -420,55 +420,6 @@ test("CDS Topic/Message diff 批次使用 270 秒 HTTP 硬上限", () => {
         options: { timeoutMs: 270_000 },
       },
     ],
-  );
-});
-
-test("附件上传流校验 SHA-256 后再原子落盘和提交索引", async (t) => {
-  const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-attachment-"));
-  t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
-  const bytes = Buffer.from("verified attachment", "utf8");
-  const hash = crypto.createHash("sha256").update(bytes).digest("hex");
-  let indexed = null;
-
-  const result = await uploadAttachmentStream({
-    hash,
-    input: Readable.from([bytes.subarray(0, 4), bytes.subarray(4)]),
-    declaredLength: bytes.length,
-    name: "proof.txt",
-    type: "text/plain",
-    appDataPath,
-    indexAttachment: (indexedHash, filePath) => {
-      indexed = { hash: indexedHash, filePath };
-      assert.equal(fs.readFileSync(filePath, "utf8"), bytes.toString("utf8"));
-    },
-  });
-
-  assert.deepEqual(result, { success: true, hash });
-  assert.equal(indexed.hash, hash);
-  assert.equal(path.basename(indexed.filePath), `${hash}.txt`);
-  assert.deepEqual(
-    fs.readdirSync(path.dirname(indexed.filePath)),
-    [`${hash}.txt`],
-  );
-
-  await assert.rejects(
-    () =>
-      uploadAttachmentStream({
-        hash: "c".repeat(64),
-        input: Readable.from([bytes]),
-        declaredLength: bytes.length,
-        name: "bad.txt",
-        type: "text/plain",
-        appDataPath,
-        indexAttachment: () => assert.fail("mismatched bytes must not be indexed"),
-      }),
-    /content hash mismatch/,
-  );
-  assert.equal(
-    fs.readdirSync(path.join(appDataPath, "UserData", "attachments")).some(
-      (name) => name.endsWith(".upload"),
-    ),
-    false,
   );
 });
 

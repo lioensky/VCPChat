@@ -241,10 +241,14 @@ impl Database {
         &self.path
     }
 
-    pub fn upsert_owner(&self, owner: &OwnerRecord) -> Result<()> {
+    pub fn upsert_owner(&self, owner: &OwnerRecord) -> Result<bool> {
         let now = now_ms();
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if owner_is_tombstoned(&transaction, &owner.key)? {
+            transaction.commit()?;
+            return Ok(false);
+        }
 
         transaction.execute(
             "INSERT INTO owners(
@@ -255,12 +259,11 @@ impl Database {
                 config_path=excluded.config_path,
                 config_hash=excluded.config_hash,
                 updated_at=CASE
-                    WHEN owners.deleted_at IS NOT NULL THEN excluded.updated_at
                     WHEN owners.config_hash IS excluded.config_hash THEN owners.updated_at
                     WHEN ?7 IS NOT NULL AND owners.config_hash IS ?7 THEN owners.updated_at
                     ELSE excluded.updated_at
-                END,
-                deleted_at=NULL",
+                END
+             WHERE owners.deleted_at IS NULL",
             params![
                 owner.key.owner_type.as_str(),
                 owner.key.owner_id,
@@ -271,19 +274,17 @@ impl Database {
                 owner.source_config_hash,
             ],
         )?;
-        transaction.execute(
-            "DELETE FROM tombstones
-             WHERE entity_type='owner' AND owner_type=?1 AND owner_id=?2
-               AND topic_id='' AND entity_id=?2",
-            params![owner.key.owner_type.as_str(), owner.key.owner_id],
-        )?;
-
-        let active_topic_ids: HashSet<&str> = owner
-            .topics
-            .iter()
-            .map(|topic| topic.topic_id.as_str())
-            .collect();
+        let mut active_topic_ids = HashSet::new();
         for topic in &owner.topics {
+            let key = TopicKey {
+                owner_type: owner.key.owner_type,
+                owner_id: owner.key.owner_id.clone(),
+                topic_id: topic.topic_id.clone(),
+            };
+            if topic_is_tombstoned_in_transaction(&transaction, &key)? {
+                continue;
+            }
+            active_topic_ids.insert(topic.topic_id.as_str());
             let source_path = owner
                 .config_path
                 .parent()
@@ -306,12 +307,11 @@ impl Database {
                     config_hash=excluded.config_hash,
                     metadata_json=excluded.metadata_json,
                     updated_at=CASE
-                        WHEN topics.deleted_at IS NOT NULL THEN excluded.updated_at
                         WHEN topics.config_hash IS excluded.config_hash THEN topics.updated_at
                         WHEN ?11 IS NOT NULL AND topics.config_hash IS ?11 THEN topics.updated_at
                         ELSE excluded.updated_at
-                    END,
-                    deleted_at=NULL",
+                    END
+                 WHERE topics.deleted_at IS NULL",
                 params![
                     owner.key.owner_type.as_str(),
                     owner.key.owner_id,
@@ -324,16 +324,6 @@ impl Database {
                     source_path.to_string_lossy(),
                     now,
                     owner.source_config_hash,
-                ],
-            )?;
-            transaction.execute(
-                "DELETE FROM tombstones
-                 WHERE entity_type='topic' AND owner_type=?1 AND owner_id=?2
-                   AND topic_id=?3 AND entity_id=?3",
-                params![
-                    owner.key.owner_type.as_str(),
-                    owner.key.owner_id,
-                    topic.topic_id,
                 ],
             )?;
         }
@@ -366,12 +356,22 @@ impl Database {
         }
 
         transaction.commit()?;
-        Ok(())
+        Ok(true)
     }
 
-    pub fn upsert_topic_source(&self, source: &TopicSource) -> Result<()> {
+    pub fn upsert_topic_source(&self, source: &TopicSource) -> Result<bool> {
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let owner_key = OwnerKey {
+            owner_type: source.key.owner_type,
+            owner_id: source.key.owner_id.clone(),
+        };
+        if owner_is_tombstoned(&transaction, &owner_key)?
+            || topic_is_tombstoned_in_transaction(&transaction, &source.key)?
+        {
+            transaction.commit()?;
+            return Ok(false);
+        }
         transaction.execute(
             "INSERT INTO topics(
                 owner_type, owner_id, topic_id, display_name, created_at,
@@ -385,11 +385,10 @@ impl Database {
                 metadata_json=excluded.metadata_json,
                 source_path=excluded.source_path,
                 updated_at=CASE
-                    WHEN topics.deleted_at IS NOT NULL THEN excluded.updated_at
                     WHEN topics.config_hash IS excluded.config_hash THEN topics.updated_at
                     ELSE excluded.updated_at
-                END,
-                deleted_at=NULL",
+                END
+             WHERE topics.deleted_at IS NULL",
             params![
                 source.key.owner_type.as_str(),
                 source.key.owner_id,
@@ -403,18 +402,8 @@ impl Database {
                 now_ms(),
             ],
         )?;
-        transaction.execute(
-            "DELETE FROM tombstones
-             WHERE entity_type='topic' AND owner_type=?1 AND owner_id=?2
-               AND topic_id=?3 AND entity_id=?3",
-            params![
-                source.key.owner_type.as_str(),
-                source.key.owner_id,
-                source.key.topic_id,
-            ],
-        )?;
         transaction.commit()?;
-        Ok(())
+        Ok(true)
     }
 
     pub fn reconcile_missing_owners(
@@ -809,6 +798,15 @@ impl Database {
         let now = now_ms();
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let owner_key = OwnerKey {
+            owner_type: source.key.owner_type,
+            owner_id: source.key.owner_id.clone(),
+        };
+        anyhow::ensure!(
+            !owner_is_tombstoned(&transaction, &owner_key)?
+                && !topic_is_tombstoned_in_transaction(&transaction, &source.key)?,
+            "history source owner or topic is deleted"
+        );
 
         let previous_hash: Option<String> = transaction
             .query_row(
@@ -959,12 +957,12 @@ impl Database {
             }
         }
 
-        transaction.execute(
+        let changed = transaction.execute(
             "UPDATE topics SET
                 content_hash=?4,
-                content_revision=?5,
-                deleted_at=NULL
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+                content_revision=?5
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+               AND deleted_at IS NULL",
             params![
                 source.key.owner_type.as_str(),
                 source.key.owner_id,
@@ -973,6 +971,7 @@ impl Database {
                 revision,
             ],
         )?;
+        anyhow::ensure!(changed == 1, "history source topic is missing or deleted");
 
         transaction.execute(
             "INSERT INTO history_sources(
@@ -1289,6 +1288,44 @@ impl Database {
         connection.execute_batch("PRAGMA wal_checkpoint(PASSIVE);")?;
         Ok(())
     }
+}
+
+fn owner_is_tombstoned(transaction: &Transaction<'_>, key: &OwnerKey) -> Result<bool> {
+    transaction
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM owners
+                WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NOT NULL
+                UNION ALL
+                SELECT 1 FROM tombstones
+                WHERE entity_type='owner' AND owner_type=?1 AND owner_id=?2
+                  AND topic_id='' AND entity_id=?2
+             )",
+            params![key.owner_type.as_str(), key.owner_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
+}
+
+fn topic_is_tombstoned_in_transaction(
+    transaction: &Transaction<'_>,
+    key: &TopicKey,
+) -> Result<bool> {
+    transaction
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM topics
+                WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                  AND deleted_at IS NOT NULL
+                UNION ALL
+                SELECT 1 FROM tombstones
+                WHERE entity_type='topic' AND owner_type=?1 AND owner_id=?2
+                  AND topic_id=?3 AND entity_id=?3
+             )",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
 }
 
 fn mark_topic_deleted(
@@ -1778,6 +1815,24 @@ mod tests {
             .apply_sync_owner_tombstone(OwnerType::Agent, "agent-a", 200, "mobile_sync")
             .expect("persist missing owner tombstone");
 
+        let accepted = database
+            .upsert_owner(&OwnerRecord {
+                key: OwnerKey {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                },
+                display_name: "Agent".to_string(),
+                config_path: PathBuf::from("agent-a/config.json"),
+                config_hash: "owner-hash".to_string(),
+                source_config_hash: None,
+                topics: Vec::new(),
+            })
+            .expect("attempt physical owner ingest");
+        assert!(
+            !accepted,
+            "ordinary owner ingest must preserve the tombstone"
+        );
+
         {
             let connection = database.connection.lock();
             let owners: i64 = connection
@@ -1865,6 +1920,49 @@ mod tests {
                 .expect("query topic tombstone");
             assert_eq!(tombstone, 321);
         }
+
+        let topic = TopicDefinition {
+            topic_id: key.topic_id.clone(),
+            display_name: Some("Topic".to_string()),
+            created_at: Some(1),
+            ordinal: 0,
+            config_hash: "topic-hash".to_string(),
+            metadata: Value::Object(Default::default()),
+        };
+        assert!(database
+            .upsert_owner(&OwnerRecord {
+                key: OwnerKey {
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                },
+                display_name: "Group".to_string(),
+                config_path: PathBuf::from("group-a/config.json"),
+                config_hash: "owner-hash".to_string(),
+                source_config_hash: None,
+                topics: vec![topic],
+            })
+            .expect("ingest live owner around tombstoned topic"));
+        let source = TopicSource {
+            key: key.clone(),
+            display_name: Some("Topic".to_string()),
+            created_at: Some(1),
+            topic_ordinal: 0,
+            source_path: PathBuf::from("topic-a/history.json"),
+            config_hash: "topic-hash".to_string(),
+            topic_metadata: Value::Object(Default::default()),
+        };
+        assert!(
+            !database
+                .upsert_topic_source(&source)
+                .expect("attempt physical topic ingest"),
+            "ordinary topic ingest must preserve the tombstone"
+        );
+        assert!(
+            database
+                .ingest_topic(&source, &[], 1, 0, "source-hash", "notify")
+                .is_err(),
+            "history ingest must fail closed for a tombstoned topic"
+        );
 
         database
             .apply_sync_topic_tombstone(&key, 400, "mobile_sync")

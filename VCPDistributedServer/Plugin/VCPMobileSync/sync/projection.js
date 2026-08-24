@@ -71,7 +71,6 @@ async function projectMobileMessage({
     timestamp: canonical.timestamp,
     updatedAt: canonical.updatedAt,
   };
-  const neededAttachmentHashes = new Set();
   const attachmentsDir = path.join(appDataPath, "UserData", "attachments");
 
   if (Array.isArray(canonical.attachments) && canonical.attachments.length > 0) {
@@ -82,7 +81,6 @@ async function projectMobileMessage({
         attachment.hash,
         attachmentsDir,
       );
-      if (!existingPath) neededAttachmentHashes.add(attachment.hash);
       const extension = existingPath
         ? path.extname(existingPath)
         : getExtensionFromType(attachment.type);
@@ -115,10 +113,7 @@ async function projectMobileMessage({
     desktop.avatarColor = canonical.avatarColor || "rgb(128, 128, 128)";
   }
 
-  return {
-    message: desktop,
-    neededAttachmentHashes: [...neededAttachmentHashes],
-  };
+  return desktop;
 }
 
 async function projectMobileTopic({
@@ -147,10 +142,9 @@ async function projectMobileTopic({
     throw new SyncProtocolError(`Mobile push for ${topicId} exceeds 10000 messages`);
   }
   const projected = [];
-  const needed = new Set();
   const seen = new Set();
   for (const rawMessage of messages) {
-    const result = await projectMobileMessage({
+    const message = await projectMobileMessage({
       rawMessage,
       topicId,
       parentId: ownerId,
@@ -158,18 +152,16 @@ async function projectMobileTopic({
       db,
       appDataPath,
     });
-    if (seen.has(result.message.id)) {
+    if (seen.has(message.id)) {
       throw new SyncProtocolError(
-        `Mobile push for ${topicId} contains duplicate message ${result.message.id}`,
+        `Mobile push for ${topicId} contains duplicate message ${message.id}`,
       );
     }
-    seen.add(result.message.id);
-    projected.push(result.message);
-    for (const hash of result.neededAttachmentHashes) needed.add(hash);
+    seen.add(message.id);
+    projected.push(message);
   }
   return {
     messages: projected,
-    neededAttachmentHashes: [...needed].sort(),
   };
 }
 

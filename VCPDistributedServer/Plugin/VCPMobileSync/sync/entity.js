@@ -467,6 +467,16 @@ async function uploadEntitiesBatch(items, appDataPath) {
     let row = getEntityIndex(
       entityIndexIdentity(safeId, type, ownerType, ownerId),
     );
+    const parent = getEntityIndex(entityIndexIdentity(ownerId, ownerType));
+
+    if (row?.deleted_at != null || parent?.deleted_at != null) {
+      results.push(entityFailure("Entity or its owner is deleted", {
+        code: "SYNC_ENTITY_NOT_FOUND",
+        stage: "topic_metadata",
+        failedTopicIds: [safeId],
+      }, entityResultIdentity(item)));
+      continue;
+    }
 
     if (row) {
       configPath = row.file_path;
@@ -695,6 +705,25 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
   let row = getEntityIndex(
     entityIndexIdentity(safeId, type, topicOwnerType, topicOwnerId),
   );
+  if (row?.deleted_at != null) {
+    return entityFailure("Entity is deleted", {
+      code: "SYNC_ENTITY_NOT_FOUND",
+      stage: phase,
+      failedTopicIds: isTopic ? [safeId] : [],
+    }, resultIdentity);
+  }
+  if (isTopic) {
+    const parent = getEntityIndex(
+      entityIndexIdentity(topicOwnerId, topicOwnerType),
+    );
+    if (parent?.deleted_at != null) {
+      return entityFailure("Topic owner is missing or deleted", {
+        code: "SYNC_ENTITY_NOT_FOUND",
+        stage: phase,
+        failedTopicIds: [safeId],
+      }, resultIdentity);
+    }
+  }
   let configPath;
   let isNewEntity = false;
   const expectedConfigPath = path.join(

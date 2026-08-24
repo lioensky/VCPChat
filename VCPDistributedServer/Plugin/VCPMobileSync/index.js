@@ -638,6 +638,15 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
     if (!entry.isDirectory()) continue;
     if (SYSTEM_FOLDERS.includes(entry.name)) continue;
 
+    const id = entry.name;
+    const previousOwner = getEntityIndex({
+      id,
+      type,
+      ownerType: type,
+      ownerId: id,
+    });
+    if (previousOwner?.deleted_at != null) continue;
+
     const entityDir = path.join(baseDir, entry.name);
     const configPath = path.join(entityDir, "config.json");
 
@@ -647,8 +656,6 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
       if (!config || typeof config !== "object" || Array.isArray(config)) {
         throw new Error("Entity config root must be an object");
       }
-      const id = entry.name;
-
       // 索引主实体 (V2: 使用 DTO 提取以对齐默认值处理)
       const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
       const hash = computeDtoHash(
@@ -1189,6 +1196,13 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     const now = Date.now();
     const id = path.basename(path.dirname(configPath));
     const ownerId = path.basename(path.dirname(configPath));
+    const previousOwner = getEntityIndex({
+      id,
+      type,
+      ownerType: type,
+      ownerId,
+    });
+    if (previousOwner?.deleted_at != null) return [];
     const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
     let topicEntries = [];
     try {

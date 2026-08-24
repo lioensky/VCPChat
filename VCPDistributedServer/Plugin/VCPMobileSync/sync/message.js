@@ -10,7 +10,6 @@ const {
   getDb,
   getEntityIndex,
   upsertMessageIndex,
-  upsertAttachmentIndex,
   upsertHistorySourceState,
   updateTopicAggregatedHash,
 } = require("../core/db");
@@ -26,7 +25,6 @@ const {
   addWriteIntent,
   releaseWriteIntent,
 } = require("./entity");
-const { getExtensionFromType } = require("../utils/mime");
 const { getLogger } = require("../core/logger");
 const { acquireLock } = require("../utils/lock");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
@@ -462,7 +460,7 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
  * @param {object[]} messages - 消息列表
  * @param {string} appDataPath - AppData 路径
  * @param {object} row - entity_index 行
- * @returns {Promise<{success: boolean, neededAttachmentHashes?: string[], error?: string}>}
+ * @returns {Promise<{success: boolean, historyPath: string}>}
  */
 async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
   const db = getDb();
@@ -506,7 +504,6 @@ async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
 
     return {
       success: true,
-      neededAttachmentHashes: projected.neededAttachmentHashes,
       historyPath,
     };
   } finally {
@@ -627,7 +624,6 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             ownerType,
             ownerId,
             success: false,
-            neededAttachmentHashes: [],
             error: normalizeSyncError("topic not found", {
               code: "TOPIC_NOT_FOUND",
               stage: "messages",
@@ -672,7 +668,6 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           ownerType,
           ownerId,
           success: true,
-          neededAttachmentHashes: result.neededAttachmentHashes,
         });
         successCount++;
       } catch (e) {
@@ -684,7 +679,6 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             ownerType,
             ownerId,
             success: false,
-            neededAttachmentHashes: [],
             error: normalizeSyncError(e, {
               code: "SYNC_MESSAGE_WRITE_FAILED",
               stage: "messages",
@@ -884,146 +878,6 @@ async function ingestHistoryToDb(
 }
 
 /**
- * 上传附件
- * @param {object} params
- * @param {string} params.hash - 附件哈希
- * @param {Buffer} params.data - 附件二进制数据
- * @param {string} params.name - 文件名
- * @param {string} params.type - MIME 类型
- * @param {string} params.appDataPath - AppData 路径
- */
-async function uploadAttachment({ hash, data, name, type, appDataPath }) {
-  if (!Buffer.isBuffer(data)) {
-    throw new Error("Attachment upload requires a Buffer");
-  }
-  const { Readable } = require("stream");
-  return uploadAttachmentStream({
-    hash,
-    input: Readable.from([data]),
-    declaredLength: data.length,
-    name,
-    type,
-    appDataPath,
-  });
-}
-
-const MAX_ATTACHMENT_UPLOAD_BYTES = 512 * 1024 * 1024;
-
-async function uploadAttachmentStream({
-  hash,
-  input,
-  declaredLength,
-  name,
-  type,
-  appDataPath,
-  indexAttachment = upsertAttachmentIndex,
-}) {
-  const logger = getLogger();
-  if (
-    typeof hash !== "string" ||
-    !/^[a-f0-9]{64}$/.test(hash)
-  ) {
-    throw new Error("Attachment upload requires a lowercase SHA-256 hash");
-  }
-  if (
-    declaredLength !== undefined &&
-    (!Number.isSafeInteger(declaredLength) ||
-      declaredLength < 0 ||
-      declaredLength > MAX_ATTACHMENT_UPLOAD_BYTES)
-  ) {
-    throw new Error("Attachment upload exceeds the 512 MiB limit");
-  }
-  const attachmentsDir = path.join(appDataPath, "UserData", "attachments");
-  await fs.mkdir(attachmentsDir, { recursive: true });
-
-  const ext = getExtensionFromType(type);
-  const filePath = path.join(attachmentsDir, `${hash}${ext}`);
-  const temporary = path.join(
-    attachmentsDir,
-    `.${hash}.${crypto.randomUUID()}.upload`,
-  );
-  const file = await fs.open(temporary, "wx");
-  const hasher = crypto.createHash("sha256");
-  let total = 0;
-
-  try {
-    let position = 0;
-    for await (const rawChunk of input) {
-      const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
-      total += chunk.length;
-      if (total > MAX_ATTACHMENT_UPLOAD_BYTES) {
-        throw new Error("Attachment upload exceeds the 512 MiB limit");
-      }
-      hasher.update(chunk);
-      let offset = 0;
-      while (offset < chunk.length) {
-        const { bytesWritten } = await file.write(
-          chunk,
-          offset,
-          chunk.length - offset,
-          position,
-        );
-        if (bytesWritten <= 0) throw new Error("Attachment upload made no write progress");
-        offset += bytesWritten;
-        position += bytesWritten;
-      }
-    }
-    if (declaredLength !== undefined && total !== declaredLength) {
-      throw new Error(
-        `Attachment Content-Length mismatch: expected ${declaredLength}, received ${total}`,
-      );
-    }
-    const actualHash = hasher.digest("hex");
-    if (actualHash !== hash) {
-      throw new Error(
-        `Attachment content hash mismatch: expected ${hash}, received ${actualHash}`,
-      );
-    }
-    await file.sync();
-    await file.close();
-    await fs.rename(temporary, filePath);
-    if (process.platform !== "win32") {
-      const parent = await fs.open(attachmentsDir, "r");
-      try {
-        await parent.sync();
-      } finally {
-        await parent.close();
-      }
-    }
-    indexAttachment(hash, filePath);
-  } catch (error) {
-    await file.close().catch(() => {});
-    await fs.unlink(temporary).catch(() => {});
-    throw error;
-  }
-
-  logger.logOperation("messages", "upload_attachment", hash.substring(0, 16), "success", `name=${name}, size=${total} bytes`);
-  return { success: true, hash };
-}
-
-/**
- * 下载附件
- * @param {string} hash - 附件哈希
- * @returns {Promise<{filePath: string}|null>}
- */
-async function downloadAttachment(hash) {
-  const db = getDb();
-  const logger = getLogger();
-  if (!db) return null;
-
-  const row = db
-    .prepare("SELECT file_path FROM attachment_index WHERE hash = ?")
-    .get(hash);
-  if (!row) {
-    logger.logOperation("messages", "download_attachment", hash.substring(0, 16), "error", "not found");
-    return null;
-  }
-
-  logger.logOperation("messages", "download_attachment", hash.substring(0, 16), "success");
-  return { filePath: row.file_path };
-}
-
-/**
  * 物理修剪 history.json 中的被删除消息
  * @param {string} topicId 
  * @param {string} msgId 
@@ -1086,9 +940,6 @@ async function pruneMessageFromPhysicalHistory(
 module.exports = {
   downloadMessagesStreamRaw,
   uploadMessagesBatchRaw,
-  uploadAttachment,
-  uploadAttachmentStream,
-  downloadAttachment,
   resolveMessageUpdatedAt,
   ingestHistoryToDb,
   pruneMessageFromPhysicalHistory,

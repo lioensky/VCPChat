@@ -814,7 +814,6 @@ class CentralSyncAdapter {
           ownerType,
           ownerId,
           success: true,
-          neededAttachmentHashes: projected.neededAttachmentHashes,
         });
       } catch (error) {
         if (
@@ -831,7 +830,6 @@ class CentralSyncAdapter {
           ownerType,
           ownerId,
           success: false,
-          neededAttachmentHashes: [],
           error: normalizeSyncError(error, {
             code: "SYNC_MESSAGE_WRITE_FAILED",
             origin: "desktop_cds",

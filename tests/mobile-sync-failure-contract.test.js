@@ -38,6 +38,7 @@ entityDatabase.upsertEntityIndex = ({
     hash,
     deleted_at: null,
   });
+  return { changes: 1 };
 };
 const {
   handleSyncTopicHashBatchV2,

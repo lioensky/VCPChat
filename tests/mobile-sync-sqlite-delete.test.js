@@ -310,6 +310,51 @@ test("history source 旧缓存只失效一次，Topic 墓碑会清除当前缓�
   }
 });
 
+test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
+  const { database } = loadSqliteModules();
+  const db = database.initDb(":memory:");
+
+  try {
+    for (const identity of [
+      {
+        id: "agent-a",
+        type: "agent",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        filePath: "/virtual/Agents/agent-a/config.json",
+      },
+      {
+        id: "topic-a",
+        type: "topic",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        filePath: "/virtual/Agents/agent-a/config.json",
+      },
+    ]) {
+      database.upsertEntityTombstone({ ...identity, deletedAt: 200 });
+      assert.throws(
+        () => database.upsertEntityIndex({
+          ...identity,
+          hash: "f".repeat(64),
+        }),
+        /tombstoned/,
+      );
+      assert.equal(
+        entityRow(
+          db,
+          identity.id,
+          identity.type,
+          identity.ownerType,
+          identity.ownerId,
+        ).deleted_at,
+        200,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
 test("SQLite 墓碑绑定覆盖实体、Topic、消息和头像，并保留最早删除时间", () => {
   const { database } = loadSqliteModules();
   const db = database.initDb(":memory:");

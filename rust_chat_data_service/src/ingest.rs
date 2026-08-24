@@ -94,11 +94,15 @@ impl Reconciler {
             } else {
                 self.effective_owner(configured_owner)?
             };
-            self.database.upsert_owner(&owner)?;
+            if !self.database.upsert_owner(&owner)? {
+                continue;
+            }
             for topic in &owner.topics {
-                stats.topics_seen += 1;
                 let source = self.topic_source(&owner, topic);
-                self.database.upsert_topic_source(&source)?;
+                if !self.database.upsert_topic_source(&source)? {
+                    continue;
+                }
+                stats.topics_seen += 1;
                 stats.files_checked += 1;
 
                 if history_ambiguous {
@@ -199,8 +203,12 @@ impl Reconciler {
                 format!("physical history topic {topic_id} disappeared while preparing ingestion")
             })?;
         let source = self.topic_source(&owner, &topic);
-        self.database.upsert_owner(&owner)?;
-        self.database.upsert_topic_source(&source)?;
+        if !self.database.upsert_owner(&owner)? {
+            return Ok(None);
+        }
+        if !self.database.upsert_topic_source(&source)? {
+            return Ok(None);
+        }
         self.ingest_source_if_changed(&source, origin).await
     }
 
