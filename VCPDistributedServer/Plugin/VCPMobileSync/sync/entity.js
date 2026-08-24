@@ -54,7 +54,7 @@ const {
   GROUP_TOPIC_SYNC_FIELDS,
 } = require("../dto/topic.dto");
 
-const writeIntentLock = new Set();
+const writeIntentLock = new Map();
 
 function entityStage(type) {
   return ["topic", "agent_topic", "group_topic"].includes(type)
@@ -73,6 +73,24 @@ function entityIdentityKey({ id, type, ownerType, ownerId }) {
   return ["topic", "agent_topic", "group_topic"].includes(type)
     ? `${ownerType}\0${ownerId}\0${id}`
     : `${type}\0${id}`;
+}
+
+function addWriteIntent(identity) {
+  const key = entityIdentityKey(identity);
+  writeIntentLock.set(key, (writeIntentLock.get(key) || 0) + 1);
+  return key;
+}
+
+function releaseWriteIntent(key) {
+  setTimeout(() => {
+    const count = writeIntentLock.get(key);
+    if (count === undefined) return;
+    if (count <= 1) {
+      writeIntentLock.delete(key);
+    } else {
+      writeIntentLock.set(key, count - 1);
+    }
+  }, 1000);
 }
 
 function entityFailure(error, fallback, fields = {}) {
@@ -350,10 +368,6 @@ async function uploadEntitiesBatch(items, appDataPath) {
       continue;
     }
     seenTopics.add(identityKey);
-    if (safeId) {
-      writeIntentLock.add(safeId);
-      addedIntentLocks.add(safeId);
-    }
     let configPath;
     let row = getEntityIndex(
       entityIndexIdentity(safeId, type, ownerType, ownerId),
@@ -387,6 +401,12 @@ async function uploadEntitiesBatch(items, appDataPath) {
       }, entityResultIdentity(item)));
       continue;
     }
+    addedIntentLocks.add(addWriteIntent({
+      id: safeId,
+      type,
+      ownerType,
+      ownerId,
+    }));
 
     if (!fileGroups.has(configPath)) {
       fileGroups.set(configPath, { items: [] });
@@ -498,11 +518,9 @@ async function uploadEntitiesBatch(items, appDataPath) {
       }
     }
   } finally {
-    setTimeout(() => {
-      for (const id of addedIntentLocks) {
-        writeIntentLock.delete(id);
-      }
-    }, 1000);
+    for (const key of addedIntentLocks) {
+      releaseWriteIntent(key);
+    }
   }
 
   return results;
@@ -634,7 +652,9 @@ async function uploadEntity({ id, type, data, appDataPath }) {
     }
   }
 
-  writeIntentLock.add(safeId);
+  const writeIntentKey = addWriteIntent(
+    entityIndexIdentity(safeId, type, topicOwnerType, topicOwnerId),
+  );
 
   const release = await acquireLock(configPath);
   try {
@@ -730,7 +750,7 @@ async function uploadEntity({ id, type, data, appDataPath }) {
     }, { id: safeId });
   } finally {
     release();
-    setTimeout(() => writeIntentLock.delete(safeId), 1000);
+    releaseWriteIntent(writeIntentKey);
   }
 }
 
@@ -1245,6 +1265,21 @@ async function reconcileMissingPhysicalIndexes(
     throw error;
   }
 
+  const {
+    clearHistoryOwnerUnhealthy,
+    clearHistoryTopicUnhealthy,
+  } = require("./message");
+  for (const owner of staleOwners) {
+    clearHistoryOwnerUnhealthy(owner.owner_type, owner.owner_id);
+  }
+  for (const topic of staleTopicRows) {
+    clearHistoryTopicUnhealthy({
+      topicId: topic.id,
+      ownerType: topic.owner_type,
+      ownerId: topic.owner_id,
+    });
+  }
+
   return stats;
 }
 
@@ -1357,7 +1392,7 @@ async function uploadAvatar({ id, type, data, appDataPath }) {
   // Group 头像需要额外更新 config.json 的 avatar 字段
   if (isGroup) {
     const configPath = path.join(entityDir, "config.json");
-    writeIntentLock.add(safeId);
+    const writeIntentKey = addWriteIntent(entityIndexIdentity(safeId, "group"));
     const release = await acquireLock(configPath);
     try {
       const content = await fs.readFile(configPath, "utf-8");
@@ -1380,7 +1415,7 @@ async function uploadAvatar({ id, type, data, appDataPath }) {
       throw e;
     } finally {
       release();
-      setTimeout(() => writeIntentLock.delete(safeId), 1000);
+      releaseWriteIntent(writeIntentKey);
     }
   }
 
@@ -1390,11 +1425,11 @@ async function uploadAvatar({ id, type, data, appDataPath }) {
 
 /**
  * 检查写入意图锁
- * @param {string} id - 实体 ID
+ * @param {object} identity - 完整 Owner 或 Topic 身份
  * @returns {boolean}
  */
-function isWriteLocked(id) {
-  return writeIntentLock.has(sanitizeId(id));
+function isWriteLocked(identity) {
+  return writeIntentLock.has(entityIdentityKey(identity));
 }
 
 /**
@@ -1460,15 +1495,22 @@ async function deleteEntity({
   }
   const actualPhase = isTopic ? "topic_metadata" : "owner_metadata";
 
-  if (isTopic) {
-    writeIntentLock.add(safeId);
-  }
+  const writeIntentKey = isTopic
+    ? addWriteIntent({
+        id: safeId,
+        type,
+        ownerType,
+        ownerId: safeOwnerId,
+      })
+    : null;
 
-  const row = type === "avatar"
-    ? null
-    : getEntityIndex(entityIndexIdentity(safeId, type, ownerType, safeOwnerId));
-
+  let row = null;
   try {
+    if (type !== "avatar") {
+      row = getEntityIndex(
+        entityIndexIdentity(safeId, type, ownerType, safeOwnerId),
+      );
+    }
     if (type === "avatar") {
       if (!["agent", "group", "user"].includes(ownerType)) {
         throw new Error("Avatar deletion requires a valid ownerType");
@@ -1520,6 +1562,12 @@ async function deleteEntity({
            WHEN deleted_at IS NULL THEN ? ELSE MIN(deleted_at, ?) END
          WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
       ).run(deletedAt, deletedAt, ownerType, safeOwnerId, safeId);
+      const { clearHistoryTopicUnhealthy } = require("./message");
+      clearHistoryTopicUnhealthy({
+        topicId: safeId,
+        ownerType,
+        ownerId: safeOwnerId,
+      });
 
       // config.topics 是被动投影；损坏或暂时不可写都不能反向阻塞物理删除。
       try {
@@ -1605,6 +1653,8 @@ async function deleteEntity({
        WHERE type = 'topic' AND owner_type = ? AND owner_id = ?`,
     ).run(deletedAt, deletedAt, type, safeId);
     await fs.rm(userDataDir, { recursive: true, force: true });
+    const { clearHistoryOwnerUnhealthy } = require("./message");
+    clearHistoryOwnerUnhealthy(type, safeId);
     logger.logOperation(
       actualPhase,
       "delete",
@@ -1622,9 +1672,7 @@ async function deleteEntity({
       failedTopicIds: isTopic ? [safeId] : [],
     });
   } finally {
-    if (isTopic) {
-      setTimeout(() => writeIntentLock.delete(safeId), 1000);
-    }
+    if (writeIntentKey) releaseWriteIntent(writeIntentKey);
   }
 }
 
@@ -1735,7 +1783,8 @@ module.exports = {
   repairTopicProjectionsFromDisk,
   reconcileMissingPhysicalIndexes,
   sanitizeId,
-  writeIntentLock,
+  addWriteIntent,
+  releaseWriteIntent,
   deleteEntity,
   deleteMessage,
 };

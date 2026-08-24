@@ -82,7 +82,11 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
   for (const state of topicStates) {
     const topicId = state.topicId;
     if (topicId === "default") continue;
-    assertHistoryTopicHealthy(topicId);
+    assertHistoryTopicHealthy({
+      topicId,
+      ownerType: state.ownerType,
+      ownerId: state.ownerId,
+    });
     try {
       const topicRow = db
         .prepare(
@@ -235,7 +239,11 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       }
     }
     try {
-      assertHistoryTopicHealthy(topicId);
+      assertHistoryTopicHealthy({
+        topicId,
+        ownerType: localState.ownerType,
+        ownerId: localState.ownerId,
+      });
       // 1. 快速路径：比较 topic 级 aggregated_hash
       const topicRow = db
         .prepare(

@@ -19,7 +19,11 @@ const {
   computeMessageLeafHash,
   computeAggregatedHash,
 } = require("../core/hash");
-const { sanitizeId, writeIntentLock } = require("./entity");
+const {
+  sanitizeId,
+  addWriteIntent,
+  releaseWriteIntent,
+} = require("./entity");
 const { getExtensionFromType } = require("../utils/mime");
 const { getLogger } = require("../core/logger");
 const { acquireLock } = require("../utils/lock");
@@ -46,21 +50,41 @@ function topicIdentityKey(ownerType, ownerId, topicId) {
   return `${ownerType}\0${ownerId}\0${topicId}`;
 }
 
-function markHistoryTopicUnhealthy(topicId, error) {
-  if (typeof topicId === "string" && topicId.length > 0) {
-    unhealthyHistoryTopics.set(topicId, String(error?.message || error));
+function markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error) {
+  if (
+    typeof topicId === "string" &&
+    topicId.length > 0 &&
+    ["agent", "group"].includes(ownerType) &&
+    typeof ownerId === "string" &&
+    ownerId.length > 0
+  ) {
+    unhealthyHistoryTopics.set(
+      topicIdentityKey(ownerType, ownerId, topicId),
+      String(error?.message || error),
+    );
   }
 }
 
-function clearHistoryTopicUnhealthy(topicId) {
-  unhealthyHistoryTopics.delete(topicId);
+function clearHistoryTopicUnhealthy({ topicId, ownerType, ownerId }) {
+  unhealthyHistoryTopics.delete(topicIdentityKey(ownerType, ownerId, topicId));
 }
 
-function assertHistoryTopicHealthy(topicId) {
-  const reason = unhealthyHistoryTopics.get(topicId);
+function clearHistoryOwnerUnhealthy(ownerType, ownerId) {
+  const prefix = `${ownerType}\0${ownerId}\0`;
+  for (const key of unhealthyHistoryTopics.keys()) {
+    if (key.startsWith(prefix)) unhealthyHistoryTopics.delete(key);
+  }
+}
+
+function assertHistoryTopicHealthy({ topicId, ownerType, ownerId }) {
+  const reason = unhealthyHistoryTopics.get(
+    topicIdentityKey(ownerType, ownerId, topicId),
+  );
   if (reason !== undefined) {
     throw Object.assign(
-      new Error(`History source for topic ${topicId} is invalid: ${reason}`),
+      new Error(
+        `History source for topic ${ownerType}/${ownerId}/${topicId} is invalid: ${reason}`,
+      ),
       { code: "HISTORY_SOURCE_INVALID" },
     );
   }
@@ -221,7 +245,7 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
         );
       }
       seenTopics.add(topicKey);
-      assertHistoryTopicHealthy(safeTopicId);
+      assertHistoryTopicHealthy({ topicId: safeTopicId, ownerType, ownerId });
       requestedMessages += msgIds.length;
       if (msgIds.length > 10_000 || requestedMessages > MAX_NDJSON_MESSAGES) {
         throw createSyncError(
@@ -552,8 +576,12 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           );
         }
 
-        writeIntentLock.add(safeTopicId);
-        addedIntentLocks.add(safeTopicId);
+        addedIntentLocks.add(addWriteIntent({
+          id: safeTopicId,
+          type: "topic",
+          ownerType,
+          ownerId,
+        }));
         const result = await doUploadSingleTopic(safeTopicId, messages, appDataPath, row);
         await ingestHistoryToDb(
           result.historyPath,
@@ -604,11 +632,9 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
   } finally {
     res.end();
     // 延迟 1000ms 释放所有 writeIntentLock（文件监控器此时可安全摄入）
-    setTimeout(() => {
-      for (const tid of addedIntentLocks) {
-        writeIntentLock.delete(tid);
-      }
-    }, 1000);
+    for (const key of addedIntentLocks) {
+      releaseWriteIntent(key);
+    }
   }
 }
 
@@ -742,7 +768,7 @@ async function ingestHistoryToDb(
       fileSize: sourceStats.size,
       mtimeMs: sourceStats.mtimeMs,
     });
-    clearHistoryTopicUnhealthy(topicId);
+    clearHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
 
     if (source !== "reconcile") {
       logger.logOperation(
@@ -769,7 +795,7 @@ async function ingestHistoryToDb(
       warningCount: canonical.warningCount,
     };
   } catch (e) {
-    markHistoryTopicUnhealthy(topicId, e);
+    markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, e);
     // 启动 reconcile 由外层统一按 history 话题记录错误，避免同一故障
     // 同时产生 ingest 与 history 两条控制台/文件/WS 日志。
     if (source !== "reconcile") {
@@ -954,11 +980,18 @@ async function pruneMessageFromPhysicalHistory(
   );
 
   const release = await acquireLock(historyPath);
+  let writeIntentKey = null;
   try {
     const { history, sourceHash } = await readHistoryStrict(historyPath);
 
     const filtered = history.filter((m) => m.id !== msgId);
     if (filtered.length !== history.length) {
+      writeIntentKey = addWriteIntent({
+        id: safeTopicId,
+        type: "topic",
+        ownerType,
+        ownerId,
+      });
       await writeHistoryAtomic(historyPath, filtered, sourceHash);
       await ingestHistoryToDb(
         historyPath,
@@ -968,6 +1001,7 @@ async function pruneMessageFromPhysicalHistory(
     }
   } finally {
     release();
+    if (writeIntentKey) releaseWriteIntent(writeIntentKey);
   }
 }
 
@@ -985,4 +1019,5 @@ module.exports = {
   assertHistoryTopicHealthy,
   markHistoryTopicUnhealthy,
   clearHistoryTopicUnhealthy,
+  clearHistoryOwnerUnhealthy,
 };

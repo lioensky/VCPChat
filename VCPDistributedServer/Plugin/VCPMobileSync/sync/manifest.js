@@ -474,7 +474,7 @@ function handleMessageManifest(payload, database = getDb()) {
       messages: [],
     };
   }
-  assertHistoryTopicHealthy(topicId);
+  assertHistoryTopicHealthy({ topicId, ownerType, ownerId });
 
   const rows = db
     .prepare(

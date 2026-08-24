@@ -791,7 +791,7 @@ async function scanHistory(userDataDir, db, logger) {
       } catch (error) {
         // 条目级降级：孤儿话题、损坏 JSON 等单话题故障不应中止整批。
         // 失败时不更新 history_source_state，保证后续启动仍会重试。
-        markHistoryTopicUnhealthy(topicId, error);
+        markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error);
         logger.logOperation("reconcile", "history", topicId, "error", error.message);
       } finally {
         visitedCount += 1;
@@ -951,15 +951,22 @@ function startFileWatcher(appDataPath) {
       ? getTopicIdFromPath(filePath)
       : path.basename(path.dirname(filePath));
     id = sanitizeId(id);
-    if (!id || isWriteLocked(id)) return;
-
-    logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
+    if (!id) return;
 
     try {
       if (isConfig) {
         // 只有 Agents 或 AgentGroups 目录下的 config.json 才作为实体索引
         if (isAgentPath || isGroupPath) {
           const type = isAgentPath ? "agent" : "group";
+          if (isWriteLocked({
+            id,
+            type,
+            ownerType: type,
+            ownerId: id,
+          })) {
+            return;
+          }
+          logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
           await ingestConfigToDb(filePath, type, appDataPath);
         }
       } else if (isHistory) {
@@ -978,9 +985,19 @@ function startFileWatcher(appDataPath) {
             `History owner ${ownerId || "unknown"} is ${owners.length === 0 ? "missing" : "ambiguous"}`,
           );
         }
+        const ownerType = owners[0].owner_type;
+        if (isWriteLocked({
+          id,
+          type: "topic",
+          ownerType,
+          ownerId,
+        })) {
+          return;
+        }
+        logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
         await ingestHistoryToDb(filePath, {
           topicId: id,
-          ownerType: owners[0].owner_type,
+          ownerType,
           ownerId,
         });
       }
