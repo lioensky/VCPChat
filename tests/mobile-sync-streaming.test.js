@@ -349,7 +349,9 @@ test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", a
 test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", async () => {
   let pushedTopic = null;
   const client = {
-    async syncTopicIdentity({ topicId }) {
+    async syncTopicIdentity({ topicId, ownerType, ownerId }) {
+      assert.equal(ownerType, "group");
+      assert.equal(ownerId, "group-a");
       return { topicId, ownerType: "group", ownerId: "group-a" };
     },
     async syncMessagesPushTopic(topic) {
@@ -367,10 +369,18 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
   assert.deepEqual(
     await adapter.deleteMessage({
       topicId: "topic-a",
+      ownerType: "group",
+      ownerId: "group-a",
       msgId: "message-a",
       deletedAt: 42,
     }),
-    { success: true, topicId: "topic-a", msgId: "message-a" },
+    {
+      success: true,
+      topicId: "topic-a",
+      ownerType: "group",
+      ownerId: "group-a",
+      msgId: "message-a",
+    },
   );
   assert.deepEqual(pushedTopic, {
     topicId: "topic-a",

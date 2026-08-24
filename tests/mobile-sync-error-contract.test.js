@@ -401,7 +401,7 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
 
   socket.emit(
     "message",
-    JSON.stringify({ type: "SYNC_TOPIC_HASH_BATCH", hashes: {} }),
+    JSON.stringify({ type: "SYNC_TOPIC_HASH_BATCH_V2", topics: [] }),
   );
   assert.deepEqual(await nextFrame("SYNC_ERROR"), {
     type: "SYNC_ERROR",
