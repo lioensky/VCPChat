@@ -2505,15 +2505,33 @@
         <div class="modal vcp-ui-scope tool-change-audit-modal" id="toolChangeAuditModal"
             role="dialog" aria-modal="true" aria-labelledby="toolChangeAuditTitle" tabindex="-1">
             <div class="modal-content tool-change-audit-modal-content">
-                <button class="close-button tool-change-audit-close" id="closeToolChangeAuditModal"
-                    type="button" aria-label="关闭变更审计">×</button>
-
                 <header class="tool-change-audit-header">
                     <div>
                         <span class="tool-change-audit-eyebrow">TOOL CHANGE REVIEW</span>
                         <h2 id="toolChangeAuditTitle">工具变更审计</h2>
                     </div>
-                    <span class="tool-change-audit-status" id="toolChangeAuditStatus">等待审核</span>
+                    <div class="tool-change-audit-header-actions">
+                        <button type="button" class="tool-change-audit-wrap-toggle" id="toolChangeAuditWrapToggle"
+                            aria-pressed="false" title="切换代码与差异内容的自动换行">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 6h18"></path>
+                                <path d="M3 12h15a3 3 0 0 1 0 6h-4"></path>
+                                <path d="m16 16-2 2 2 2"></path>
+                                <path d="M3 18h7"></path>
+                            </svg>
+                            <span>自动换行</span>
+                        </button>
+                        <span class="tool-change-audit-status" id="toolChangeAuditStatus">等待审核</span>
+                        <button class="tool-change-audit-close" id="closeToolChangeAuditModal"
+                            type="button" aria-label="关闭变更审计" title="关闭变更审计">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M18 6 6 18"></path>
+                                <path d="m6 6 12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </header>
 
                 <dl class="tool-change-audit-meta" aria-label="工具审核请求信息">

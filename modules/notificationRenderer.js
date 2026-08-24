@@ -127,7 +127,8 @@ function openToolChangeAuditModal(approvalData, options = {}) {
     const afterElement = document.getElementById('toolChangeAuditAfter');
     const diffElement = document.getElementById('toolChangeAuditDiff');
     const reasonInput = document.getElementById('toolChangeAuditReason');
-    if (!modal || !beforeElement || !afterElement || !diffElement || !reasonInput) return false;
+    const wrapToggle = document.getElementById('toolChangeAuditWrapToggle');
+    if (!modal || !beforeElement || !afterElement || !diffElement || !reasonInput || !wrapToggle) return false;
 
     const beforeText = formatToolChangePreviewValue(changePreview.target);
     const afterText = formatToolChangePreviewValue(changePreview.replace);
@@ -146,6 +147,20 @@ function openToolChangeAuditModal(approvalData, options = {}) {
     afterElement.textContent = afterText || '（空内容）';
     reasonInput.value = typeof options.reason === 'string' ? options.reason : '';
     diffElement.replaceChildren();
+
+    const setWrapEnabled = (enabled) => {
+        modal.classList.toggle('is-wrap-enabled', enabled);
+        wrapToggle.classList.toggle('active', enabled);
+        wrapToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        wrapToggle.title = enabled
+            ? '关闭代码与差异内容的自动换行'
+            : '开启代码与差异内容的自动换行';
+    };
+    setWrapEnabled(false);
+    wrapToggle.onclick = event => {
+        event.stopPropagation();
+        setWrapEnabled(wrapToggle.getAttribute('aria-pressed') !== 'true');
+    };
 
     diff.forEach((line) => {
         const row = document.createElement('div');
