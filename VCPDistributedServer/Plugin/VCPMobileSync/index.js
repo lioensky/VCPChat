@@ -170,8 +170,20 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           const phase = payload.phase || "owner_metadata";
           logger.startPhase(phase, 0);
 
-          // 所有 manifest 已在 SYNC_MANIFEST 阶段由手机端主动发送并处理完毕。
-          // PHASE_START 仅作为阶段确认，不再返回冗余的 PHASE_MANIFESTS。
+          // Mobile 会在首批 Owner Manifest 前发送 owner_metadata PHASE_START。
+          // WebSocket 的单一 messageChain 会让后续帧等待此处完成，因此在 ACK
+          // 前刷新 CDS，后续 Manifest 只能读取已经观察到桌面业务写入的提交视图。
+          if (centralSync && phase === "owner_metadata") {
+            try {
+              await centralSync.reconcile();
+            } catch (error) {
+              throw withSyncErrorContext(error, {
+                origin: "desktop_cds",
+                stage: "owner_metadata",
+              });
+            }
+          }
+
           return createPhaseAck(payload);
         }
         case "PHASE_COMPLETED": {

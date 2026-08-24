@@ -1156,6 +1156,78 @@ test("legacy watcher 与全量扫描共用 DTO 默认值", async (t) => {
   );
 });
 
+test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
+  let onMessage = null;
+  let reconcileCalls = 0;
+  let releasePhaseReconcile;
+  const phaseReconcileGate = new Promise((resolve) => {
+    releasePhaseReconcile = resolve;
+  });
+  const { database, index } = loadSqliteModules({
+    captureOnMessage(handler) {
+      onMessage = handler;
+    },
+  });
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-phase-barrier-"));
+  const projectBasePath = path.join(directory, "VCPDistributedServer");
+  fs.mkdirSync(projectBasePath, { recursive: true });
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  t.after(() => releasePhaseReconcile?.());
+
+  await index.registerRoutes(
+    { use() {} },
+    {
+      MobileSyncToken: "phase-barrier-test-token",
+      MobileSyncPort: "15976",
+      MobileSyncUseCentralIndex: true,
+    },
+    projectBasePath,
+    {
+      chatDataService: {
+        client: {
+          async reconcile() {
+            reconcileCalls += 1;
+            if (reconcileCalls === 2) await phaseReconcileGate;
+            return { stats: {} };
+          },
+        },
+        mobileSyncUseCentralIndex: true,
+      },
+    },
+  );
+
+  assert.equal(typeof onMessage, "function");
+  assert.equal(reconcileCalls, 1, "中央模式注册时应先完成启动 reconcile");
+  const db = database.getDb();
+  t.after(() => db.close());
+
+  const phaseAckPromise = onMessage({
+    type: "PHASE_START",
+    phase: "owner_metadata",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reconcileCalls, 2);
+  assert.equal(
+    await Promise.race([
+      phaseAckPromise.then(() => "settled"),
+      new Promise((resolve) => setImmediate(() => resolve("pending"))),
+    ]),
+    "pending",
+    "reconcile 完成前不得返回 Phase ACK",
+  );
+
+  releasePhaseReconcile();
+  assert.deepEqual(await phaseAckPromise, {
+    type: "PHASE_ACK",
+    phase: "owner_metadata",
+  });
+  assert.deepEqual(
+    await onMessage({ type: "PHASE_START", phase: "topic_metadata" }),
+    { type: "PHASE_ACK", phase: "topic_metadata" },
+  );
+  assert.equal(reconcileCalls, 2, "后续 Phase 不应重复 reconcile");
+});
+
 test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", async (t) => {
   let onMessage = null;
   const { database, index } = loadSqliteModules({
