@@ -134,22 +134,19 @@ function assertEntityDtoMatchesIndex(dto, row, type, id) {
   }
 }
 
-function getLiveOwnerTypes(ownerId) {
-  const db = getDb();
-  if (!db) return [];
-  return db
-    .prepare(
-      `SELECT owner_type FROM entity_index
-       WHERE owner_id = ? AND (type = 'agent' OR type = 'group')
-         AND deleted_at IS NULL
-       ORDER BY owner_type`,
-    )
-    .all(ownerId)
-    .map((row) => row.owner_type);
+async function getPhysicalOwnerTypes(appDataPath, ownerId) {
+  const ownerTypes = [];
+  if (await isDirectory(path.join(appDataPath, "Agents", ownerId))) {
+    ownerTypes.push("agent");
+  }
+  if (await isDirectory(path.join(appDataPath, "AgentGroups", ownerId))) {
+    ownerTypes.push("group");
+  }
+  return ownerTypes;
 }
 
-function assertUniquePhysicalHistoryOwner(ownerType, ownerId) {
-  const ownerTypes = getLiveOwnerTypes(ownerId);
+async function assertUniquePhysicalHistoryOwner(appDataPath, ownerType, ownerId) {
+  const ownerTypes = await getPhysicalOwnerTypes(appDataPath, ownerId);
   if (ownerTypes.length !== 1 || ownerTypes[0] !== ownerType) {
     throw Object.assign(
       new Error(
@@ -493,7 +490,7 @@ async function uploadEntitiesBatch(items, appDataPath) {
     const ownerKey = `${ownerType}\0${ownerId}`;
     if (!validatedHistoryOwners.has(ownerKey)) {
       try {
-        assertUniquePhysicalHistoryOwner(ownerType, ownerId);
+        await assertUniquePhysicalHistoryOwner(appDataPath, ownerType, ownerId);
         validatedHistoryOwners.add(ownerKey);
       } catch (error) {
         results.push(entityFailure(error, {
@@ -748,7 +745,11 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
 
   if (isTopic) {
     try {
-      assertUniquePhysicalHistoryOwner(topicOwnerType, topicOwnerId);
+      await assertUniquePhysicalHistoryOwner(
+        appDataPath,
+        topicOwnerType,
+        topicOwnerId,
+      );
     } catch (error) {
       return entityFailure(error, {
         code: "SYNC_OWNER_CONFLICT",
@@ -1683,7 +1684,10 @@ async function deleteEntity({
         "topics",
         safeId,
       );
-      const liveOwnerTypes = getLiveOwnerTypes(safeOwnerId);
+      const liveOwnerTypes = await getPhysicalOwnerTypes(
+        appDataPath,
+        safeOwnerId,
+      );
       const targetOwnerLive = liveOwnerTypes.includes(ownerType);
       const topicDirExists = await isDirectory(topicDir);
       if (targetOwnerLive && liveOwnerTypes.length > 1 && topicDirExists) {
@@ -1777,7 +1781,7 @@ async function deleteEntity({
           safeId,
         );
     const userDataDir = path.join(appDataPath, "UserData", safeId);
-    const liveOwnerTypes = getLiveOwnerTypes(safeId);
+    const liveOwnerTypes = await getPhysicalOwnerTypes(appDataPath, safeId);
     const targetOwnerLive = liveOwnerTypes.includes(type);
     const hasPhysicalTopics = await ownerHasPhysicalTopics(appDataPath, safeId);
     if (targetOwnerLive && liveOwnerTypes.length > 1 && hasPhysicalTopics) {
@@ -1900,6 +1904,7 @@ async function deleteMessage({
     if (!topic || topic.deleted_at != null) {
       throw new Error(`Message topic ${ownerType}/${ownerId}/${safeTopicId} is missing`);
     }
+    await assertUniquePhysicalHistoryOwner(appDataPath, ownerType, ownerId);
     const { assertHistoryTopicHealthy } = require("./message");
     assertHistoryTopicHealthy({
       topicId: safeTopicId,
@@ -1961,6 +1966,7 @@ module.exports = {
   repairTopicProjectionsFromDisk,
   reconcileMissingPhysicalIndexes,
   sanitizeId,
+  assertUniquePhysicalHistoryOwner,
   addWriteIntent,
   releaseWriteIntent,
   deleteEntity,

@@ -818,6 +818,7 @@ async function scanHistory(userDataDir, db, logger) {
  */
 function computeAggregatedHashes(db, logger) {
   let updatedCount = 0;
+  const emptyContentHash = computeAggregatedHash([]);
   const entities = db
     .prepare(
       `SELECT id, type, owner_type, owner_id, hash, aggregated_hash, file_path
@@ -848,7 +849,7 @@ function computeAggregatedHashes(db, logger) {
         computeTopicLeafHash(
           topic.id,
           topic.hash,
-          topic.aggregated_hash || "",
+          topic.aggregated_hash || emptyContentHash,
         ),
       );
       const rootHash = computeAggregatedHash(childHashes);
@@ -871,9 +872,6 @@ function computeAggregatedHashes(db, logger) {
       (e.aggregated_hash === null || e.aggregated_hash === ""),
   );
   if (nullTopics.length > 0) {
-    const { computeAggregatedHash } = require("./core/hash");
-    const emptyContentHash = computeAggregatedHash([]);
-    
     for (const t of nullTopics) {
       if (t.aggregated_hash !== emptyContentHash) {
         db.prepare(
