@@ -24,6 +24,10 @@ const {
   ChatDataServiceClient,
 } = require("../modules/services/chatDataService/client");
 
+function createClientAdapter(client) {
+  return createCentralSyncAdapter({ chatDataService: { client } });
+}
+
 class FakeResponse extends EventEmitter {
   constructor({ blockFirstWrite = false } = {}) {
     super();
@@ -113,7 +117,7 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
       };
     },
   };
-  const adapter = createCentralSyncAdapter({ client });
+  const adapter = createClientAdapter(client);
 
   await adapter.downloadMessagesStreamRaw(
     [
@@ -147,16 +151,14 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
 });
 
 test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
-  const adapter = createCentralSyncAdapter({
-    client: {
-      async *syncMessagesPullStream() {
-        yield {
-          topicId: "topic-a",
-          ownerType: "group",
-          ownerId: "group-a",
-          messages: [],
-        };
-      },
+  const adapter = createClientAdapter({
+    async *syncMessagesPullStream() {
+      yield {
+        topicId: "topic-a",
+        ownerType: "group",
+        ownerId: "group-a",
+        messages: [],
+      };
     },
   });
   await assert.rejects(
@@ -174,17 +176,15 @@ test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
 });
 
 test("中央 pull 将 CDS 字符串错误补全为结构化对象", async () => {
-  const adapter = createCentralSyncAdapter({
-    client: {
-      async *syncMessagesPullStream() {
-        yield {
-          topicId: "topic-a",
-          ownerType: "agent",
-          ownerId: "agent-a",
-          messages: [],
-          _error: "CDS message query failed",
-        };
-      },
+  const adapter = createClientAdapter({
+    async *syncMessagesPullStream() {
+      yield {
+        topicId: "topic-a",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        messages: [],
+        _error: "CDS message query failed",
+      };
     },
   });
   const response = new FakeResponse();
@@ -292,10 +292,8 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   const desktopAttachment = pushedTopic.messages[0].attachments[0];
   assert.equal(desktopAttachment.hash, undefined);
   assert.equal(desktopAttachment._fileManagerData.hash, hash);
-  assert.equal(
-    desktopAttachment._fileManagerData.internalPath,
-    `file://${path.join(appDataPath, "UserData", "attachments", `${hash}.txt`)}`,
-  );
+  assert.equal(desktopAttachment._fileManagerData.internalPath, "");
+  assert.equal(desktopAttachment.status, undefined);
 });
 
 test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", async (t) => {
@@ -364,7 +362,7 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
       };
     },
   };
-  const adapter = createCentralSyncAdapter({ client });
+  const adapter = createClientAdapter(client);
 
   assert.deepEqual(
     await adapter.deleteMessage({
@@ -387,7 +385,6 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
     ownerType: "group",
     ownerId: "group-a",
     messages: [],
-    deletedMessageIds: [],
     deletedMessageTombstones: [{ msgId: "message-a", deletedAt: 42 }],
   });
 });

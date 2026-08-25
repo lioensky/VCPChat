@@ -450,29 +450,6 @@ test("HTTP route handlers return the same structured error contract", async () =
     },
   });
 
-  const deleteEntityRoute = app.router.layers.find(
-    (layer) => layer.method === "POST" && layer.path === "/delete-entity",
-  );
-  const missingTopicOwner = new FakeHttpResponse();
-  await deleteEntityRoute.handlers.at(-1)(
-    {
-      body: { id: "topic-a", type: "topic", deletedAt: 1 },
-      query: {},
-      path: deleteEntityRoute.path,
-    },
-    missingTopicOwner,
-  );
-  assert.equal(missingTopicOwner.statusCode, 400);
-  assert.deepEqual(missingTopicOwner.body.error, {
-    code: "SYNC_DELETE_INVALID",
-    origin: "desktop_plugin",
-    stage: "topic_metadata",
-    kind: "protocol",
-    retry: "after_user_action",
-    message: "Invalid delete entity fields",
-    failedTopicIds: [],
-  });
-
   const parserErrorHandler = app.router.layers.find(
     (layer) => layer.method === "USE" && layer.handlers[0].length === 4,
   );

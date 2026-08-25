@@ -104,31 +104,11 @@ function topicIdentityKey(value) {
   return `${value.ownerType}\0${value.ownerId}\0${value.topicId}`;
 }
 
-function entityStage(type) {
-  return ["agent_topic", "group_topic"].includes(type)
-    ? "topic_metadata"
-    : "owner_metadata";
-}
-
-function failedTopicIds(type, id) {
-  return entityStage(type) === "topic_metadata" &&
-    typeof id === "string" && id.length > 0
-    ? [id]
-    : [];
-}
-
 class CentralSyncAdapter {
-  constructor(options) {
-    if (options?.chatDataService) {
-      this.chatDataService = options.chatDataService;
-      this.appDataPath = options.appDataPath || null;
-      this.compatibilityDb = options.compatibilityDb || null;
-    } else {
-      // Backward-compatible constructor for the existing contract tests.
-      this.chatDataService = options;
-      this.appDataPath = null;
-      this.compatibilityDb = null;
-    }
+  constructor(options = {}) {
+    this.chatDataService = options?.chatDataService || null;
+    this.appDataPath = options?.appDataPath || null;
+    this.compatibilityDb = options?.compatibilityDb || null;
   }
 
   get client() {
@@ -366,27 +346,6 @@ class CentralSyncAdapter {
         stage,
       });
     }
-  }
-
-  async downloadEntity(request) {
-    const results = await this.downloadEntities([request]);
-    if (results.length !== 1 || !isRecord(results[0])) {
-      throw cdsProtocolError(
-        "CDS single entity pull must return exactly one result",
-        entityStage(request.type),
-      );
-    }
-    const result = results[0];
-    if (result.success === true && result.data !== undefined) return result.data;
-    if (result.success === false && result.error?.code === "SYNC_ENTITY_NOT_FOUND") {
-      return null;
-    }
-    throw withCdsErrorContext(result.error || "CDS entity pull failed", {
-      code: "SYNC_ENTITY_READ_FAILED",
-      origin: "desktop_cds",
-      stage: entityStage(request.type),
-      failedTopicIds: failedTopicIds(request.type, request.id),
-    });
   }
 
   async handleTopicHashBatch(payload) {
@@ -661,10 +620,22 @@ class CentralSyncAdapter {
           "warn",
         );
       }
-      if (!responseKey || !expected.has(responseKey)) {
+      if (!responseKey) {
         throw createSyncError(
           "SYNC_PROTOCOL_INVALID",
           `CDS pull returned unexpected topic ${topicId}`,
+          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
+        );
+      }
+      if (!expected.has(responseKey)) {
+        const ownerConflict = [...expected.values()].some(
+          (request) => request.topicId === topicId,
+        );
+        throw createSyncError(
+          ownerConflict ? "SYNC_OWNER_CONFLICT" : "SYNC_PROTOCOL_INVALID",
+          ownerConflict
+            ? `CDS pull returned conflicting owner identity for ${topicId}`
+            : `CDS pull returned unexpected topic ${topicId}`,
           { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
         );
       }
@@ -672,17 +643,6 @@ class CentralSyncAdapter {
         throw createSyncError(
           "SYNC_PROTOCOL_INVALID",
           `CDS pull returned duplicate topic ${topicId}`,
-          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-        );
-      }
-      const identity = expected.get(responseKey);
-      if (
-        canonical.frame.ownerType !== identity.ownerType ||
-        canonical.frame.ownerId !== identity.ownerId
-      ) {
-        throw createSyncError(
-          "SYNC_OWNER_CONFLICT",
-          `CDS pull returned conflicting owner identity for ${topicId}`,
           { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
         );
       }
@@ -805,7 +765,6 @@ class CentralSyncAdapter {
           ownerType: identity.ownerType,
           ownerId: identity.ownerId,
           messages: projected.messages,
-          deletedMessageIds: [],
           deletedMessageTombstones: [],
         });
         if (result?.topicId !== topicId || typeof result?.success !== "boolean") {
@@ -946,7 +905,6 @@ class CentralSyncAdapter {
       ownerType,
       ownerId,
       messages: [],
-      deletedMessageIds: [],
       deletedMessageTombstones: [{ msgId, deletedAt }],
     });
     if (result?.topicId !== topicId || result?.success !== true) {
@@ -971,11 +929,10 @@ class CentralSyncAdapter {
   }
 }
 
-function createCentralSyncAdapter(chatDataService) {
-  return new CentralSyncAdapter(chatDataService);
+function createCentralSyncAdapter(options) {
+  return new CentralSyncAdapter(options);
 }
 
 module.exports = {
-  CentralSyncAdapter,
   createCentralSyncAdapter,
 };

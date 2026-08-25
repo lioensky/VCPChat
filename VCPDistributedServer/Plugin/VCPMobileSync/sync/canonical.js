@@ -183,7 +183,7 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
   const role = requireNonEmptyString(value.role, `Message ${id} role`);
   // topicId 是来源元数据而非消息身份：frame topic 才是双端存储权威，消息指纹
   // 也不含 topicId。话题分支会合法地让消息携带旧话题的 topicId（1.0 时代从未
-  // 校验过），因此 Wire 1.1 硬切引入的"topicId 必须等于 frame topic"硬校验
+  // 校验过），因此早期引入的"topicId 必须等于 frame topic"硬校验
   // 降级为 frame 权威归一化：不一致（或非字符串）时重写为 frame topic。
   // 注意：重写计数不得混入 warnings（附件告警在 push 路径是硬失败门禁）。
   if (
@@ -324,7 +324,6 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
       frame: { topicId, ...ownerIdentity, messages: [], _error: error },
       warningCount: 0,
       warningSamples: [],
-      contentHashes: [],
     };
   }
   if (!Array.isArray(value.messages)) {
@@ -384,7 +383,6 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
     warningSamples: [...warnings.samples],
     topicIdRewrites: topicIdRewrites.count,
     topicIdRewriteSamples: [...topicIdRewrites.samples],
-    contentHashes: messages.map(messageContentHash),
   };
 }
 

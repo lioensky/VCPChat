@@ -37,8 +37,8 @@ use crate::{
     storage::now_ms,
     sync::{
         self, ManifestRequest, ManifestResponse, MessageDiffRequest, MessageDiffResponse,
-        MessageManifestResponse, MessagesPullRequest, MessagesPushRequest, MessagesPushResponse,
-        TopicHashDiffRequest, TopicHashDiffResponse, TopicSelector,
+        MessageManifestResponse, MessagesPullRequest, TopicHashDiffRequest, TopicHashDiffResponse,
+        TopicSelector,
     },
     watcher::WatcherMetrics,
 };
@@ -228,7 +228,6 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/sync/topic-diff", post(sync_topic_diff))
         .route("/v1/sync/message-diff", post(sync_message_diff))
         .route("/v1/sync/entity-delete", post(sync_entity_delete))
-        .route("/v1/sync/messages/push", post(sync_messages_push))
         .route("/v1/flush", post(flush))
         .route("/v1/shutdown", post(shutdown))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
@@ -660,8 +659,7 @@ fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> Servic
     Ok(())
 }
 
-// v1 `/v1/sync/messages/pull` 批量端点已弃用移除（S3-δ）：
-// 全有或全无语义且无活调用方；消息拉取统一走 v2 流式（per-topic `_error` 帧隔离）。
+// 消息拉取只保留 v2 流式端点，以 per-topic `_error` 帧隔离单 Topic 失败。
 const MAX_SYNC_TOPICS: usize = 10_000;
 const MAX_SYNC_MESSAGES: usize = 100_000;
 const MAX_SYNC_FRAME_BYTES: usize = 32 * 1024 * 1024;
@@ -837,36 +835,16 @@ fn validate_pull_request(request: &MessagesPullRequest) -> ServiceResult<()> {
     Ok(())
 }
 
-async fn sync_messages_push(
-    State(state): State<AppState>,
-    Json(request): Json<MessagesPushRequest>,
-) -> ServiceResult<Json<MessagesPushResponse>> {
-    let response = sync::push_messages(&state.reconciler, request).await;
-    if let Some(search) = &state.search {
-        for result in &response.results {
-            if result.success && result.changed {
-                search
-                    .reconcile_revisions()
-                    .map_err(ServiceError::internal)?;
-                break;
-            }
-        }
-    }
-    Ok(Json(response))
-}
-
 async fn sync_messages_push_topic(
     State(state): State<AppState>,
     Json(topic): Json<sync::MessagesPushTopic>,
 ) -> ServiceResult<Json<sync::MessagesPushResult>> {
     if topic.topic_id.is_empty()
         || topic.messages.len() > 10_000
-        || topic.deleted_message_ids.len() > 10_000
         || topic.deleted_message_tombstones.len() > 10_000
         || topic
             .messages
             .len()
-            .saturating_add(topic.deleted_message_ids.len())
             .saturating_add(topic.deleted_message_tombstones.len())
             > 10_000
     {
@@ -874,17 +852,7 @@ async fn sync_messages_push_topic(
             "sync push topicId is required and messages are limited to 10000".to_string(),
         ));
     }
-    let response = sync::push_messages(
-        &state.reconciler,
-        MessagesPushRequest {
-            topics: vec![topic],
-        },
-    )
-    .await;
-    let result =
-        response.results.into_iter().next().ok_or_else(|| {
-            ServiceError::internal(anyhow::anyhow!("sync push omitted topic result"))
-        })?;
+    let result = sync::push_topic_messages(&state.reconciler, topic).await;
     if result.success && result.changed {
         if let Some(search) = &state.search {
             search

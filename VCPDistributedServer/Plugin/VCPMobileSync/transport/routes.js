@@ -5,13 +5,11 @@
 const express = require("express");
 const { checkIdempotency, recordOperation } = require("../core/idempotency");
 const {
-  downloadEntity,
   downloadEntities,
   uploadEntity,
   uploadEntitiesBatch,
   downloadAvatar,
   uploadAvatar,
-  deleteEntity,
   deleteMessage,
 } = require("../sync/entity");
 const {
@@ -118,40 +116,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     next();
   });
 
-  // 1. 下载实体
-  router.get("/download-entity", async (req, res) => {
-    const { id, type, ownerType, ownerId } = req.query;
-
-    try {
-      const request = {
-        id,
-        type,
-        ...(ownerType === undefined ? {} : { ownerType }),
-        ...(ownerId === undefined ? {} : { ownerId }),
-      };
-      const dto = centralSync
-        ? await centralSync.downloadEntity(request)
-        : await downloadEntity(request);
-      if (!dto) {
-        return sendHttpError(res, 404, "Entity not found", {
-          code: "SYNC_ENTITY_NOT_FOUND",
-          origin: centralSync ? "desktop_cds" : "desktop_plugin",
-          stage: entityStage(type),
-          failedTopicIds: failedTopicIds(type, id),
-        });
-      }
-      res.json(dto);
-    } catch (e) {
-      sendHttpError(res, 500, e, {
-        code: "SYNC_ENTITY_READ_FAILED",
-        origin: centralSync ? "desktop_cds" : "desktop_plugin",
-        stage: entityStage(type),
-        failedTopicIds: failedTopicIds(type, id),
-      });
-    }
-  });
-
-  // 1.1 批量下载实体
+  // 1. 批量下载实体
   router.post("/download-entities", express.json({ limit: "10mb" }), async (req, res) => {
     const { requests } = req.body;
     if (!Array.isArray(requests) || requests.length > 1_000) {
@@ -378,79 +343,8 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     },
   );
 
-  // 7. 删除实体
-  router.post("/delete-entity", express.json(), async (req, res) => {
-    const { id, type, ownerType = null, ownerId = null, deletedAt } = req.body;
-    const allowedTypes = new Set([
-      "agent",
-      "group",
-      "topic",
-      "agent_topic",
-      "group_topic",
-      "avatar",
-    ]);
-
-    if (
-      typeof id !== "string" ||
-      id.length === 0 ||
-      !allowedTypes.has(type) ||
-      !Number.isSafeInteger(deletedAt) ||
-      deletedAt < 0 ||
-      (type === "avatar" && !["agent", "group", "user"].includes(ownerType)) ||
-      (["topic", "agent_topic", "group_topic"].includes(type) &&
-        (!["agent", "group"].includes(ownerType) ||
-          typeof ownerId !== "string" ||
-          ownerId.length === 0)) ||
-      (type === "agent_topic" && ownerType !== "agent") ||
-      (type === "group_topic" && ownerType !== "group")
-    ) {
-      return sendHttpError(res, 400, "Invalid delete entity fields", {
-        code: "SYNC_DELETE_INVALID",
-        stage: entityStage(type),
-      });
-    }
-
-    try {
-      const result = await deleteEntity({
-        id,
-        type,
-        ownerType,
-        ownerId,
-        deletedAt,
-        appDataPath,
-      });
-      const response = normalizeFailureResult(result, {
-        code: "SYNC_DELETE_FAILED",
-        stage: entityStage(type),
-        failedTopicIds: failedTopicIds(type, id),
-      });
-      if (
-        centralSync &&
-        response?.success === true &&
-        type !== "avatar"
-      ) {
-        const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
-        await centralSync.deleteEntityTombstone({
-          dataType: isTopic ? "topic" : type,
-          id,
-          deletedAt,
-          ...(isTopic
-            ? { ownerType: result.ownerType, ownerId: result.ownerId }
-            : {}),
-        });
-      }
-      res.status(response?.success === true ? 200 : 409).json(response);
-    } catch (e) {
-      sendHttpError(res, 500, e, {
-        code: "SYNC_DELETE_FAILED",
-        stage: entityStage(type),
-        failedTopicIds: failedTopicIds(type, id),
-      });
-    }
-  });
-
-  // 8. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
-  // 避免旧私有墓碑与 CDS 墓碑发生双写。
+  // 7. 重放离线消息墓碑。中央模式把原始 deletedAt 交给 CDS 原子提交，
+  // 避免插件私有墓碑与 CDS 墓碑发生双写。
   router.post("/delete-message", express.json(), async (req, res) => {
     const { msgId, deletedAt, topicId, ownerType, ownerId } = req.body;
 

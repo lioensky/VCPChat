@@ -362,7 +362,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 });
               }
             }
-            return { type: "SYNC_ACK", id: safeId };
+            return null;
           }
 
           if (dataType === "message") {
@@ -430,7 +430,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             logger.logOperation("websocket", "delete_notify", safeId, "success", `type=${dataType}`);
           }
 
-          return { type: "SYNC_ACK", id: rawId };
+          return null;
         }
         default:
           logger.logOperation("websocket", "unknown_message", payload.type, "warn");
@@ -473,7 +473,7 @@ async function reconcileCompatibilityAssets(appDataPath) {
       if (!/^[a-f0-9]{64}$/.test(hash)) {
         hash = computeBinaryHash(await fs.readFile(filePath));
       }
-      upsertAttachmentIndex(hash, filePath, now);
+      upsertAttachmentIndex(hash, filePath);
     }
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -648,7 +648,7 @@ async function reconcileLocalFiles(appDataPath) {
       hash = computeBinaryHash(buffer);
     }
 
-    upsertAttachmentIndex(hash, filePath, now);
+    upsertAttachmentIndex(hash, filePath);
     attachmentCount++;
   }
 

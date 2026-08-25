@@ -133,8 +133,7 @@ function initDb(dbPath, { avatarDbPath = null } = {}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS attachment_index (
       hash TEXT PRIMARY KEY,
-      file_path TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
+      file_path TEXT NOT NULL
     )
   `);
 
@@ -154,7 +153,6 @@ function initDb(dbPath, { avatarDbPath = null } = {}) {
       file_path TEXT NOT NULL,
       file_size INTEGER NOT NULL,
       mtime_ms REAL NOT NULL,
-      indexed_at INTEGER NOT NULL,
       index_version INTEGER NOT NULL,
       PRIMARY KEY (owner_type, owner_id, topic_id)
     )
@@ -296,20 +294,18 @@ function upsertMessageIndex({
  * 更新附件索引
  * @param {string} hash - 哈希值
  * @param {string} filePath - 文件路径
- * @param {number} updatedAt - 更新时间戳
  */
-function upsertAttachmentIndex(hash, filePath, updatedAt = Date.now()) {
+function upsertAttachmentIndex(hash, filePath) {
   if (!db) throw new Error("Database not initialized");
 
   db.prepare(
     `
-      INSERT INTO attachment_index (hash, file_path, updated_at)
-      VALUES (?, ?, ?)
+      INSERT INTO attachment_index (hash, file_path)
+      VALUES (?, ?)
       ON CONFLICT(hash) DO UPDATE SET
-        file_path = excluded.file_path,
-        updated_at = excluded.updated_at
+        file_path = excluded.file_path
     `,
-  ).run(hash, filePath, updatedAt);
+  ).run(hash, filePath);
 }
 
 /**
@@ -387,7 +383,7 @@ function getHistorySourceState({ ownerType, ownerId, topicId }) {
   return db
     .prepare(
       `SELECT owner_type, owner_id, topic_id, file_path, file_size,
-              mtime_ms, indexed_at, index_version
+              mtime_ms, index_version
        FROM history_source_state
        WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
     )
@@ -405,7 +401,6 @@ function upsertHistorySourceState({
   filePath,
   fileSize,
   mtimeMs,
-  indexedAt = Date.now(),
 }) {
   if (!db) return;
   const identity = normalizeEntityIndexIdentity({
@@ -417,14 +412,13 @@ function upsertHistorySourceState({
   db.prepare(`
     INSERT INTO history_source_state (
       owner_type, owner_id, topic_id, file_path, file_size,
-      mtime_ms, indexed_at, index_version
+      mtime_ms, index_version
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(owner_type, owner_id, topic_id) DO UPDATE SET
       file_path = excluded.file_path,
       file_size = excluded.file_size,
       mtime_ms = excluded.mtime_ms,
-      indexed_at = excluded.indexed_at,
       index_version = excluded.index_version
   `).run(
     identity.ownerType,
@@ -433,7 +427,6 @@ function upsertHistorySourceState({
     filePath,
     fileSize,
     mtimeMs,
-    indexedAt,
     HISTORY_INDEX_VERSION,
   );
 }
@@ -457,17 +450,6 @@ function isHistorySourceCurrent({
     state.file_size === fileSize &&
     state.mtime_ms === mtimeMs
   );
-}
-
-/**
- * 获取所有指定类型的实体
- * @param {string} type - 实体类型
- * @returns {object[]}
- */
-function getEntitiesByType(type) {
-  if (!db) return [];
-  const normalizedType = isTopicEntityType(type) ? "topic" : type;
-  return db.prepare("SELECT * FROM entity_index WHERE type = ?").all(normalizedType);
 }
 
 /**
@@ -679,7 +661,6 @@ module.exports = {
   getHistorySourceState,
   upsertHistorySourceState,
   isHistorySourceCurrent,
-  getEntitiesByType,
   upsertEntityTombstone,
   upsertMessageTombstone,
   softDeleteAvatarIndex,

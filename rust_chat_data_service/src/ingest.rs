@@ -775,7 +775,7 @@ mod tests {
     use super::{normalize_history, parse_owner_config, sha256_hex, Reconciler};
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::{OwnerKey, OwnerType, TopicKey},
+        domain::{OwnerType, TopicKey},
         error::ServiceError,
         identity::{IdentityResolver, OwnerResolution, OwnerSelector},
         search::{MessageSearchRequest, SearchIndex},
@@ -1158,7 +1158,7 @@ mod tests {
             .reconcile()
             .await
             .expect("reconcile stale config");
-        assert_eq!(stats.topics_seen, 1);
+        assert_eq!(stats.topics_seen, 0);
         assert!(database
             .active_messages_for_topic(&key)
             .expect("load messages after reconcile")

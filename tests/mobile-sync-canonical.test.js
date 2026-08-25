@@ -35,7 +35,10 @@ test("canonicalizer 符合消息 golden 输出和消息指纹", () => {
     assert.equal(result.frame.messages.length, fixture.expected.messageCount);
     assert.equal(result.warningCount, fixture.expected.warningCount);
     assert.deepEqual(result.frame.messages, fixture.expected.canonicalMessages);
-    assert.deepEqual(result.contentHashes, fixture.expected.contentHashes);
+    assert.deepEqual(
+      result.frame.messages.map(computeMessageFingerprint),
+      fixture.expected.contentHashes,
+    );
   }
 });
 

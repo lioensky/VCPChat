@@ -872,7 +872,7 @@ impl Database {
                     "UPDATE messages SET deleted_at=?2, updated_at=?2 WHERE row_id=?1",
                     params![row_id, now],
                 )?;
-                upsert_message_tombstone(&transaction, &source.key, &msg_id, origin, now)?;
+                upsert_message_tombstone(&transaction, &source.key, msg_id, origin, now)?;
             }
         }
 

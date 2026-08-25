@@ -36,8 +36,20 @@ test("批量上传区分父 config 缺失与损坏", async () => {
     const results = await uploadEntitiesBatch(
       [
         // 父目录不存在时按实体缺失处理。
-        { id: "topicOrphan1", type: "agent_topic", data: { ownerId: "agentMissing1", name: "孤立话题" } },
-        { id: "topicBroken1", type: "agent_topic", data: { ownerId: "agentBroken1", name: "坏父话题" } },
+        {
+          id: "topicOrphan1",
+          type: "agent_topic",
+          ownerType: "agent",
+          ownerId: "agentMissing1",
+          data: { ownerId: "agentMissing1", name: "孤立话题" },
+        },
+        {
+          id: "topicBroken1",
+          type: "agent_topic",
+          ownerType: "agent",
+          ownerId: "agentBroken1",
+          data: { ownerId: "agentBroken1", name: "坏父话题" },
+        },
       ],
       appDataPath,
     );

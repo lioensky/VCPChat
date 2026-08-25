@@ -32,9 +32,7 @@ const { acquireLock } = require("../utils/lock");
 const { getExtensionFromType } = require("../utils/mime");
 const { getLogger } = require("../core/logger");
 const {
-  createSyncError,
   normalizeSyncError,
-  withSyncErrorContext,
 } = require("../error-contract");
 
 const {
@@ -49,7 +47,6 @@ const {
 } = require("../dto/group.dto");
 const {
   extractTopicDTO,
-  applyTopicDTO,
   extractAgentTopicDTO,
   extractGroupTopicDTO,
   applyAgentTopicDTO,
@@ -220,76 +217,6 @@ async function isDirectory(directory) {
 }
 
 /**
- * 下载实体 - 从桌面端配置提取 DTO
- * @param {object} params
- * @param {string} params.id - 实体 ID
- * @param {string} params.type - 实体类型 (agent/group/topic/avatar)
- * @returns {Promise<object|null>} DTO
- */
-async function downloadEntity({ id, type, ownerType = null, ownerId = null }) {
-  const db = getDb();
-  const logger = getLogger();
-  if (!db) {
-    throw createSyncError("SYNC_DB_UNAVAILABLE", "Database not initialized", {
-      stage: entityStage(type),
-    });
-  }
-
-  const safeId = sanitizeId(id);
-  const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
-  if (
-    !safeId ||
-    safeId !== id ||
-    !["agent", "group", "topic", "agent_topic", "group_topic"].includes(type) ||
-    (isTopic &&
-      (!["agent", "group"].includes(ownerType) ||
-        typeof ownerId !== "string" ||
-        sanitizeId(ownerId) !== ownerId ||
-        (type === "agent_topic" && ownerType !== "agent") ||
-        (type === "group_topic" && ownerType !== "group")))
-  ) {
-    throw createSyncError("SYNC_REQUEST_INVALID", "Invalid entity identity", {
-      stage: entityStage(type),
-    });
-  }
-  const phase = (type === "topic" || type === "agent_topic" || type === "group_topic") ? "topic_metadata" : "owner_metadata";
-
-  const row = getEntityIndex(entityIndexIdentity(safeId, type, ownerType, ownerId));
-
-  if (!row || row.deleted_at != null) {
-    logger.logOperation(phase, "download", safeId, "error", `${type} not found in index`);
-    return null;
-  }
-
-  try {
-    const candidates = await readConfigForRepair(row.file_path, row.owner_type);
-
-    if (type === "topic" || type === "agent_topic" || type === "group_topic") {
-      const dto = topicDtoMatchingIndex(candidates, safeId, row, type);
-      if (!dto) throw new Error(`No recoverable metadata matches indexed topic ${safeId}`);
-      return dto;
-    } else if (type === "agent") {
-      const dto = ownerDtoMatchingIndex(candidates, row, type);
-      if (!dto) throw new Error(`No recoverable config matches indexed agent ${safeId}`);
-      logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
-      return dto;
-    } else if (type === "group") {
-      const dto = ownerDtoMatchingIndex(candidates, row, type);
-      if (!dto) throw new Error(`No recoverable config matches indexed group ${safeId}`);
-      logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
-      return dto;
-    }
-  } catch (e) {
-    logger.logOperation(phase, "download", safeId, "error", e.message);
-    throw withSyncErrorContext(e, {
-      code: "SYNC_ENTITY_READ_FAILED",
-      stage: phase,
-      failedTopicIds: entityStage(type) === "topic_metadata" ? [safeId] : [],
-    });
-  }
-}
-
-/**
  * 批量下载实体
  * @param {object[]} requests - 请求列表 [{id, type}]
  * @returns {Promise<object[]>} DTO 列表
@@ -307,11 +234,10 @@ async function downloadEntities(requests) {
     const validType = [
       "agent",
       "group",
-      "topic",
       "agent_topic",
       "group_topic",
     ].includes(req.type);
-    const isTopic = ["topic", "agent_topic", "group_topic"].includes(req.type);
+    const isTopic = ["agent_topic", "group_topic"].includes(req.type);
     const validOwner =
       !isTopic ||
       (["agent", "group"].includes(req.ownerType) &&
@@ -365,9 +291,11 @@ async function downloadEntities(requests) {
       for (const { req, safeId, row } of reqs) {
         let dto = null;
         const type = req.type;
-        const phase = (type === "topic" || type === "agent_topic" || type === "group_topic") ? "topic_metadata" : "owner_metadata";
+        const phase = (type === "agent_topic" || type === "group_topic")
+          ? "topic_metadata"
+          : "owner_metadata";
 
-        if (type === "topic" || type === "agent_topic" || type === "group_topic") {
+        if (type === "agent_topic" || type === "group_topic") {
           dto = topicDtoMatchingIndex(candidates, safeId, row, type);
         } else if (type === "agent") {
           logger.logOperation(phase, "download", safeId, "success", `type=${type}`);
@@ -555,19 +483,16 @@ async function uploadEntitiesBatch(items, appDataPath) {
         // 依次应用该文件下的所有更新
         for (const item of group.items) {
           const { id, type, data } = item;
-          const isTopic = type === "topic" || type === "agent_topic" || type === "group_topic";
 
           try {
-            if (isTopic) {
-              config = await handleTopicUpload({
-                config,
-                id,
-                entityType: type,
-                data,
-                configPath,
-                appDataPath,
-              });
-            }
+            config = await handleTopicUpload({
+              config,
+              id,
+              entityType: type,
+              data,
+              configPath,
+              appDataPath,
+            });
 
             results.push({
               ...entityResultIdentity(item),
@@ -592,25 +517,13 @@ async function uploadEntitiesBatch(items, appDataPath) {
 
         // 批量更新索引
         for (const item of group.items.filter((item) => successfulIds.has(item.id))) {
-          const { id, type } = item;
-          const isTopic = type === "topic" || type === "agent_topic" || type === "group_topic";
-          if (isTopic) {
-            updateTopicIndex(
-              id,
-              configPath,
-              config,
-              item.ownerType,
-              item.ownerId,
-            );
-          } else {
-            const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
-            const hash = computeDtoHash(dto, type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS);
-            upsertEntityIndex({
-              ...entityIndexIdentity(id, type, item.ownerType, item.ownerId),
-              filePath: configPath,
-              hash,
-            });
-          }
+          updateTopicIndex(
+            item.id,
+            configPath,
+            config,
+            item.ownerType,
+            item.ownerId,
+          );
         }
         const committedTopic = group.items.find((item) => successfulIds.has(item.id));
         recomputeOwnerAggregatedHash(
@@ -618,10 +531,8 @@ async function uploadEntitiesBatch(items, appDataPath) {
           committedTopic.ownerId,
         );
       } catch (e) {
-        // 文件级错误，标记该组所有 item 为失败。
-        // 缺口 D：父 config 不存在（ENOENT）时与单条路径（entity.js:497-510）
-        // 对齐为 SYNC_ENTITY_NOT_FOUND——手机端可据此区分"先补建父 Agent"与
-        // 真正的写入失败；其余错误保持 SYNC_ENTITY_BATCH_FAILED。
+        // 文件级错误会让该组所有 item 失败。父 config 不存在时返回
+        // SYNC_ENTITY_NOT_FOUND，手机端可据此区分缺失父 Owner 与普通写入失败。
         const isMissingParent = e && e.code === "ENOENT";
         logger.logOperation("topic_metadata", "batch_upload", configPath, "error", e.message);
         const groupIds = new Set(group.items.map(entityIdentityKey));
@@ -681,8 +592,7 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
       stage: entityStage(type),
     }, entityResultIdentity({ id, type, ownerType, ownerId }));
   }
-  const isTopic =
-    type === "topic" || type === "agent_topic" || type === "group_topic";
+  const isTopic = type === "agent_topic" || type === "group_topic";
   const topicOwnerType = isTopic ? ownerType : type;
   const topicOwnerId = isTopic ? ownerId : safeId;
   const resultIdentity = entityResultIdentity({
@@ -1844,19 +1754,24 @@ async function deleteEntity({
         try {
           const releaseProjection = await acquireLock(configPath);
           try {
-            const recovered = await readConfigForRepair(configPath);
-            if (recovered.config) {
-              const previousTopics = Array.isArray(recovered.config.topics)
-                ? recovered.config.topics
+            const candidates = await readConfigForRepair(configPath, ownerType);
+            const config =
+              candidates.primary || candidates.backup || candidates.topicBackup;
+            const recoveredFromFallback = !candidates.primary && Boolean(config);
+            if (config) {
+              const previousTopics = Array.isArray(config.topics)
+                ? config.topics
                 : [];
               const topics = previousTopics.filter((topic) => topic?.id !== safeId);
               if (
-                recovered.source === "backup" ||
-                !Array.isArray(recovered.config.topics) ||
+                recoveredFromFallback ||
+                !Array.isArray(config.topics) ||
                 topics.length !== previousTopics.length
               ) {
-                recovered.config.topics = topics;
-                await writeJsonAtomic(configPath, recovered.config);
+                config.topics = topics;
+                await writeJsonAtomic(configPath, config, {
+                  preserveBackup: recoveredFromFallback,
+                });
               }
             }
           } finally {
@@ -1882,7 +1797,6 @@ async function deleteEntity({
       return {
         success: true,
         id: safeId,
-        type,
         ownerType,
         ownerId: safeOwnerId,
       };
@@ -1939,7 +1853,7 @@ async function deleteEntity({
       `type=${type}, physicalHistoryRemoved=${removePhysicalHistory}`,
     );
 
-    return { success: true, id: safeId, type };
+    return { success: true, id: safeId };
   } catch (e) {
     logger.logOperation(actualPhase, "delete", safeId, "error", e.message);
     return entityFailure(e, {
@@ -2052,7 +1966,6 @@ function sanitizeId(id) {
 }
 
 module.exports = {
-  downloadEntity,
   downloadEntities,
   uploadEntity,
   uploadEntitiesBatch,

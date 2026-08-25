@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
 const {
-  createCentralSyncAdapter,
+  createCentralSyncAdapter: createAdapter,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/central");
 const {
   ChatDataServiceClient,
@@ -38,9 +38,12 @@ function createClient(overrides = {}) {
     }),
     syncEntitiesPull: async () => [],
     syncEntityDelete: async () => ({ success: true }),
-    syncMessagesPush: async () => ({ results: [] }),
     ...overrides,
   };
+}
+
+function createCentralSyncAdapter(chatDataService) {
+  return createAdapter({ chatDataService });
 }
 
 function topicState(overrides = {}) {
@@ -54,13 +57,15 @@ function topicState(overrides = {}) {
   };
 }
 
-test("中央适配器保持旧消息 Manifest 字段格式", async () => {
+test("中央适配器保持 Mobile 消息 Manifest 字段格式", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient(),
   });
 
   const result = await adapter.handleMessageManifest({
     topicId: "topic_1",
+    ownerType: "agent",
+    ownerId: "agent_1",
   });
 
   assert.equal(result.type, "MESSAGE_MANIFEST_RESULTS");
@@ -128,7 +133,6 @@ test("中央实体 Pull 将复合身份原样转发给 CDS", async () => {
 
   assert.deepEqual(await adapter.downloadEntities(requests), response);
   assert.deepEqual(captured, { requests });
-  assert.deepEqual(await adapter.downloadEntity(requests[0]), response[0].data);
 });
 
 test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () => {

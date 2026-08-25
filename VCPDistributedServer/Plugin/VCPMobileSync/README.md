@@ -1,15 +1,15 @@
 # VCPMobileSync (VCP 移动端双向增量同步服务插件)
 
-[![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg?style=flat-square)](./plugin-manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.3.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
-[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.2-orange.svg?style=flat-square)](#协议-12-硬切与兼容边界)
+[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.3-orange.svg?style=flat-square)](#协议-13-硬切与兼容边界)
 
 **让 VCPChat 桌面端和 VCPMobile 手机端的数据进行可诊断、失败即停的双向增量同步。**
 
-VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Double-Track 3-Tier（双轨三层）** 同步架构。它不仅为普通用户提供直观的一键双向数据合并能力，其底层更设计了严苛的多层级 Merkle 聚合指纹算法与 NDJSON 流式吞吐防线，保障海量聊天数据与大文件附件在局域网内以极低延迟、强事务安全性进行无损传输。
+VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 Legacy/CDS 双模式的三阶段增量同步架构。实体配置、消息正文、墓碑、头像字节以及消息内附件元数据按各自合同传输；附件二进制始终保留在两端本机 CAS，不属于同步数据面。
 
 > [!IMPORTANT]
-> 本版本只修改 MobileSync 插件、VCP-CDS 同步接口及其启动/打包接线，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步本来就会投影并写入 `history.json`；1.2 延续严格解析、来源 hash 校验、原子替换和失败传播，并把全部跨端错误统一为结构化对象，但不会回写桌面旧消息的附件结构。
+> 本版本只修改 MobileSync 插件、VCP-CDS 同步接口及其启动/打包接线，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步会投影并写入 `history.json`；Wire 1.3 延续严格解析、来源 Hash 校验、原子替换和结构化失败传播。
 
 ---
 
@@ -40,7 +40,7 @@ VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Dou
 | :--- | :--- | :--- |
 | 👤 **智能体 (Agent)** | 名称、系统提示词、温度、采样参数、当前关联的模型配置 | `Agents/{id}/config.json` |
 | 👥 **群组 (Group)** | 群成员列表、群发言策略、群系统提示词、活跃配置等 | `AgentGroups/{id}/config.json` |
-| 💬 **话题 (Topic)** | 挂载于智能体或群组之下的独立子话题元数据 | `Agents|groups` 下的 topics 数组 |
+| 💬 **话题 (Topic)** | 挂载于智能体或群组之下的独立子话题元数据 | Owner `config.json.topics[]`；物理存活由 `UserData/{ownerId}/topics/{topicId}/` 决定 |
 | ✉️ **消息历史 (Message)** | 包含思维链 (Thinking) 节点、Markdown 文本及元数据的完整聊天链路 | `UserData/{parentId}/topics/{topicId}/history.json` |
 | 📎 **附件 (Attachment)** | 双向只同步消息内附件元数据与内容 Hash；二进制文件保留在各端本机 CAS | `UserData/attachments/{hash}.{ext}` |
 | 🖼️ **自定义头像 (Avatar)** | 智能体、群组及用户本身的个性化头像二进制数据 | `Agents|AgentGroups/{id}/avatar.{png,jpg,jpeg,gif,webp}` 及 `UserData/user_avatar.png` |
@@ -92,20 +92,20 @@ pnpm exec electron-rebuild --only better-sqlite3
 1. **启动服务**：
    打开 VCPChat 桌面端 $\rightarrow$ **全局设置** $\rightarrow$ **高级功能** $\rightarrow$ 开启「VCP分布式服务器」 $\rightarrow$ **重启客户端**。
 2. **首次同步**：
-   * 中央索引默认开启，由 VCP-CDS 扫描 `history.json` 并维护 `AppData/databases/chat_data.sqlite3`。显式设置 `MobileSyncUseCentralIndex=false` 后，只有重启后的新同步 session 才切换到旧 `sync_state.db` 路径。
+   * 中央索引默认开启，由 VCP-CDS 扫描 `history.json` 并维护 `AppData/databases/chat_data.sqlite3`。显式设置 `MobileSyncUseCentralIndex=false` 后，只有重启后的新同步 session 才切换到插件 `sync_state_v2.db` 路径。
    * 等待 VCP-CDS 与 MobileSync 服务就绪后，在手机端点击「立即同步」即可开始全量传输。
 3. **日常静默**：
    * 只要桌面端服务器开启，手机端会利用高稳定性通道在后台保持实时或手动的增量数据对齐，仅同步变化内容（每次通常仅需几十 KB 流量）。
 
 ---
 
-## 协议 1.2 硬切与兼容边界
+## 协议 1.3 硬切与兼容边界
 
 公开握手固定为：
 
 ```text
-VERSION_CHECK { mobileVersion, protocolVersion: "1.2" }
-VERSION_ACK   { pluginVersion: "1.2.0", protocolVersion: "1.2" }
+VERSION_CHECK { mobileVersion, protocolVersion: "1.3" }
+VERSION_ACK   { pluginVersion: "1.3.0", protocolVersion: "1.3" }
 ```
 
 Phase 3 每个 Topic 的 decision 必须是以下判别联合之一；缺字段、错类型、重复 Topic、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态：
@@ -115,9 +115,7 @@ Phase 3 每个 Topic 的 decision 必须是以下判别联合之一；缺字段�
 { ok: false, error: SyncError }
 ```
 
-Wire 1.2 与 1.1 不支持混跑。插件 1.2.0、VCP-CDS internal protocol 2 和 VCPMobile 1.1.4 必须作为同一兼容批次发布或回滚。
-
-本次桌面批次配对的 Mobile 本地提交为 `226b79f546abc93d7878b33dc202f1c176bd8c4e`；发布时必须以该提交或其无语义差异后继提交构建 APK。
+Wire 1.3 与早期版本不支持混跑。插件 1.3.0、VCP-CDS internal protocol 2 和配对的 VCPMobile 必须作为同一兼容批次发布或回滚。
 
 错误在 WebSocket、HTTP、NDJSON 和逐 Topic 结果中复用同一个对象：
 
@@ -143,11 +141,11 @@ CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名�
 
 `SERVICE_BUSY` 会先在插件内部做有界退避；若最终仍需跨端上报，`retry=manual`，因为此时内部自动重试已经耗尽。
 
-`fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 分别验证错误语义与消息规范化结果。错误 fixture 的 `registeredSemantics` 会逐项锁定本端 code 的 `kind/retry`；平台专属错误码允许只存在于对应端。
+`fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 的文件名作为既有测试资产保留，分别验证当前错误语义与消息规范化结果。错误 fixture 的 `registeredSemantics` 会逐项锁定本端 code 的 `kind/retry`；平台专属错误码允许只存在于对应端。
 
 消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。
 
-Topic manifest 与消息流都使用 `ownerType + ownerId + topicId` 复合身份。协议 1.2 不通过 `LIKE`、目录前缀或同名 Topic 猜 Owner；缺失身份、Owner 冲突或重复 Topic 会直接终止 attempt。
+Topic manifest 与消息流都使用 `ownerType + ownerId + topicId` 复合身份。协议 1.3 不通过 `LIKE`、目录前缀或同名 Topic 猜 Owner；缺失身份、Owner 冲突或重复 Topic 会直接终止 attempt。
 
 ## 🛡️ 三阶段增量同步协议
 
@@ -163,10 +161,7 @@ graph TD
 ```
 
 ### Phase 1: 轻量级索引扫描 (Reconcile)
-每次插件启动或触发文件监听器变化时，主线程会拉起轻量级物理扫描任务：
-1. 递归遍历 `Agents`、`AgentGroups` 以及 `UserData` 目录下的所有实体文件夹及 `history.json` 物理文件。
-2. 利用特定的**白名单数据传输模型 (DTO)** 对数据进行清洗，并计算各自的 SHA-256 哈希值。
-3. 建立并缓存在本地的 SQLite 数据库 `sync_state.db` 中，作为比对的“黄金标准数据集”。
+同步端口只在初始提交视图就绪后开放。中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3`；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在 ACK 前刷新所选模式的提交视图，使后续 Manifest 不依赖 watcher 补账。
 
 ### Phase 2: 双哈希差分比对 (Double-Hash Merkle Diff)
 在比对阶段，插件放弃了传统的全量拉取策略，采用 **双哈希（`configHash` 与 `contentHash`）比对机制**：
@@ -188,71 +183,19 @@ graph TD
 
 ## 📐 硬核数据模型与表结构
 
-默认中央模式的 Owner、Topic、Message、附件关系、Tombstone 与 history source 状态由 VCP-CDS 的 `chat_data.sqlite3` 管理。以下 `sync_state.db` 表仅用于显式关闭中央索引后的 legacy 路径：
+默认中央模式的 Owner、Topic、Message、附件关系、Tombstone 与 history source 状态由 VCP-CDS `chat_data.sqlite3` 管理。插件仍负责配置文件写入定位、本机 Attachment 路径解析和 Avatar。
 
-### 1. 实体索引表 (`entity_index`)
-负责缓存智能体、群组以及子话题的元数据与聚合哈希。
-```sql
-CREATE TABLE IF NOT EXISTS entity_index (
-  id TEXT NOT NULL,                  -- 实体唯一 UUID / ID
-  type TEXT NOT NULL,                -- 实体类型 ('agent' | 'group' | 'topic' | 'agent_topic' | 'group_topic')
-  file_path TEXT NOT NULL,           -- 物理对应的 config.json 绝对路径
-  hash TEXT NOT NULL,                -- 对应 DTO 白名单字段的元数据 SHA-256 哈希 (configHash)
-  aggregated_hash TEXT,              -- 自底向上冒泡计算出的 Merkle 聚合根哈希 (contentHash)
-  updated_at INTEGER NOT NULL,       -- 最后更新时间戳 (用于时间截断比对)
-  deleted_at INTEGER DEFAULT NULL,   -- 软删除时间戳 (NULL 表示正常，有值表示已标记软删除墓碑)
-  PRIMARY KEY (id, type)
-);
-```
+显式关闭中央索引时，`sync_state_v2.db` 使用完整复合身份：
 
-### 2. 消息索引表 (`message_index`)
-负责精准追踪海量历史消息的唯一指纹。
-```sql
-CREATE TABLE IF NOT EXISTS message_index (
-  msg_id TEXT NOT NULL,              -- 消息唯一 UUID
-  topic_id TEXT NOT NULL,            -- 所属子话题 ID
-  hash TEXT NOT NULL,                -- 消息身份、持久同步字段与关联附件哈希的确定性指纹
-  updated_at INTEGER NOT NULL,       -- 更新时间戳
-  deleted_at INTEGER DEFAULT NULL,   -- 软删除标记
-  PRIMARY KEY (topic_id, msg_id)
-);
-```
+| 表 | 主键/职责 |
+| :--- | :--- |
+| `entity_index` | `(type, owner_type, owner_id, id)`；Owner/Topic DTO Hash、聚合 Hash、时间与墓碑 |
+| `message_index` | `(owner_type, owner_id, topic_id, msg_id)`；消息版本与墓碑 |
+| `attachment_index` | `hash`；只保存本机已有 Attachment 的物理路径 |
+| `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、时间与墓碑 |
+| `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、路径与索引版本快路径 |
 
-### 3. 附件索引表 (`attachment_index`)
-负责追踪多媒体及文本文件的绝对路径与二进制指纹。
-```sql
-CREATE TABLE IF NOT EXISTS attachment_index (
-  hash TEXT PRIMARY KEY,             -- 附件二进制数据的 SHA-256 哈希值
-  file_path TEXT NOT NULL,           -- 附件在桌面端的物理存储路径 (AppData/UserData/attachments/...)
-  updated_at INTEGER NOT NULL,       
-  deleted_at INTEGER DEFAULT NULL    
-);
-```
-
-### 4. 头像索引表 (`avatar_index`)
-```sql
-CREATE TABLE IF NOT EXISTS avatar_index (
-  owner_id TEXT NOT NULL,            -- 头像所属者 ID (智能体 ID, 群组 ID 或 'user_avatar')
-  owner_type TEXT NOT NULL,          -- 类型 ('agent' | 'group' | 'user')
-  file_path TEXT NOT NULL,           -- 物理路径
-  hash TEXT NOT NULL,                -- 二进制哈希
-  updated_at INTEGER NOT NULL,
-  deleted_at INTEGER DEFAULT NULL,
-  PRIMARY KEY (owner_id, owner_type)
-);
-```
-
-### 5. 消息附件关联表 (`message_attachments`)
-```sql
-CREATE TABLE IF NOT EXISTS message_attachments (
-  msg_id TEXT NOT NULL,              -- 关联的消息 ID
-  hash TEXT NOT NULL,                -- 附件哈希
-  attachment_order INTEGER NOT NULL, -- 附件展示/排列序号
-  display_name TEXT NOT NULL,        -- 附件展示文件名
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (msg_id, attachment_order)
-);
-```
+CDS 的 `message_attachments` 保存消息关系与元数据；Legacy 不再维护重复的附件关系表，附件二进制也不跨端同步。
 
 ---
 
@@ -275,7 +218,7 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 1. 删除消息携带明确的 `topicId`、`msgId` 与非负安全整数 `deletedAt`，不能靠“上传列表里缺少该消息”猜测删除。
 2. 中央路径先从桌面原生历史中移除消息并严格摄取，再在同一复合 Owner/Topic 身份下写入显式 CDS Tombstone；本机从未见过的消息也会留下墓碑。
 3. 重试不会改写墓碑时间，重复通知保留最早的已提交 `deletedAt`；缺失或错误的逐项结果会让相关 Topic 失败。
-4. legacy 路径继续使用旧索引墓碑，但同样会原子裁剪 `history.json` 并严格重建索引。
+4. Legacy 路径使用自身复合索引墓碑，但同样会原子裁剪 `history.json` 并严格重建索引。
 
 ### 并发读写锁与原子写入防线
 由于文件监听器（`chokidar`）、HTTP 路由及 WebSocket 消息收发在 Node.js 中全部是异步并发处理的，在进行大批量写入 `history.json` 时，多个线程同时写入极易导致文件读写冲突或物理文件损坏破损。
@@ -315,9 +258,9 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面插件 1.2.0 / wire protocol 1.2 / VCP-CDS internal protocol 2 / VCPMobile 1.1.4
-* **当前版本**：`1.2.0`
+* **适配标准**：VCPChat 桌面插件 1.3.0 / wire protocol 1.3 / VCP-CDS internal protocol 2 / 配对 VCPMobile
+* **当前版本**：`1.3.0`
 * **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
-* **升级要求**：协议版本采用精确匹配，不支持 1.1/1.2 混跑；桌面和 Mobile 必须成对升级、成对回滚
+* **升级要求**：协议版本采用精确匹配，不支持跨版本混跑；桌面和 Mobile 必须成对升级、成对回滚
 * **架构师 / 作者**：Nova
 * **开源许可**：VCP 闭环生态核心插件

@@ -72,7 +72,7 @@ function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
         return { get: (...args) => topics[args.at(-1)] };
       }
       if (sql.includes("FROM message_index")) {
-        return { all: (topicId) => messages[topicId] || [] };
+        return { all: (...args) => messages[args.at(-1)] || [] };
       }
       throw new Error(`unexpected SQL in fake database: ${sql}`);
     },
@@ -103,7 +103,10 @@ function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {
         };
       }
       if (sql.includes("FROM message_index")) {
-        return { all: (topicId) => messages.filter((row) => row.topic_id === topicId) };
+        return {
+          all: (...args) =>
+            messages.filter((row) => row.topic_id === args.at(-1)),
+        };
       }
       throw new Error(`unexpected SQL in fake manifest database: ${sql}`);
     },
@@ -494,8 +497,8 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
     appDataPath: directory,
   });
 
-  assert.deepEqual(agentResult, { success: true, id: agentId });
-  assert.deepEqual(groupResult, { success: true, id: groupId });
+  assert.deepEqual(agentResult, { success: true, id: agentId, type: "agent" });
+  assert.deepEqual(groupResult, { success: true, id: groupId, type: "group" });
   assert.equal(
     JSON.parse(
       fs.readFileSync(
@@ -785,9 +788,14 @@ test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () 
   ]);
 });
 
-test("损坏 history 的旧索引不能走 topic hash 或消息 manifest 快速成功", () => {
+test("损坏 history 的已提交索引不能走 topic hash 或消息 manifest 快速成功", () => {
   const topicId = "topic-unhealthy";
-  markHistoryTopicUnhealthy(topicId, new Error("invalid JSON"));
+  const identity = {
+    topicId,
+    ownerType: "agent",
+    ownerId: "agent-a",
+  };
+  markHistoryTopicUnhealthy(identity, new Error("invalid JSON"));
   try {
     assert.throws(
       () => handleSyncTopicHashBatchV2(
@@ -806,13 +814,13 @@ test("损坏 history 的旧索引不能走 topic hash 或消息 manifest 快速�
     );
     assert.throws(
       () => handleMessageManifest(
-        { topicId },
+        identity,
         fakeManifestDatabase(),
       ),
       (error) => error.code === "HISTORY_SOURCE_INVALID",
     );
   } finally {
-    clearHistoryTopicUnhealthy(topicId);
+    clearHistoryTopicUnhealthy(identity);
   }
 });
 

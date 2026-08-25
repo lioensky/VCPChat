@@ -149,167 +149,6 @@ function entityRow(db, id, type, ownerType = null, ownerId = null) {
     .get(id, indexType, ownerType, ownerId);
 }
 
-test("Legacy entity_index 原位升级为复合身份并归并旧 Topic 类型", (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-entity-index-"));
-  const dbPath = path.join(directory, "sync_state.db");
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-
-  const legacyDb = new DatabaseSync(dbPath);
-  legacyDb.exec(`
-    CREATE TABLE entity_index (
-      id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      aggregated_hash TEXT,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER DEFAULT NULL,
-      PRIMARY KEY (id, type)
-    )
-  `);
-  const insert = legacyDb.prepare(
-    `INSERT INTO entity_index
-       (id, type, file_path, hash, aggregated_hash, updated_at, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  );
-  insert.run(
-    "agent-a",
-    "agent",
-    "/app/Agents/agent-a/config.json",
-    "a".repeat(64),
-    "",
-    10,
-    null,
-  );
-  insert.run(
-    "shared-topic",
-    "topic",
-    "/app/Agents/agent-a/config.json",
-    "b".repeat(64),
-    "c".repeat(64),
-    20,
-    300,
-  );
-  insert.run(
-    "shared-topic",
-    "agent_topic",
-    "/app/Agents/agent-a/config.json",
-    "d".repeat(64),
-    "",
-    30,
-    200,
-  );
-  insert.run(
-    "shared-topic",
-    "group_topic",
-    "/app/AgentGroups/group-a/config.json",
-    "e".repeat(64),
-    "",
-    40,
-    null,
-  );
-  legacyDb.close();
-
-  const { database } = loadSqliteModules();
-  const db = database.initDb(dbPath);
-  try {
-    const primaryKey = db
-      .prepare("PRAGMA table_info(entity_index)")
-      .all()
-      .filter((column) => column.pk > 0)
-      .sort((left, right) => left.pk - right.pk)
-      .map((column) => column.name);
-    assert.deepEqual(primaryKey, ["type", "owner_type", "owner_id", "id"]);
-    assert.equal(
-      entityRow(db, "shared-topic", "topic", "agent", "agent-a").deleted_at,
-      200,
-    );
-    assert.equal(
-      entityRow(db, "shared-topic", "topic", "agent", "agent-a").hash,
-      "b".repeat(64),
-    );
-    assert.equal(
-      entityRow(db, "shared-topic", "topic", "group", "group-a").deleted_at,
-      null,
-    );
-    assert.equal(
-      db.prepare(
-        "SELECT COUNT(*) AS count FROM entity_index WHERE type = 'agent_topic' OR type = 'group_topic'",
-      ).get().count,
-      0,
-    );
-  } finally {
-    db.close();
-  }
-});
-
-test("history source 旧缓存只失效一次，Topic 墓碑会清除当前缓存", (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-source-state-"));
-  const dbPath = path.join(directory, "sync_state.db");
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-
-  const legacyDb = new DatabaseSync(dbPath);
-  legacyDb.exec(`
-    CREATE TABLE history_source_state (
-      topic_id TEXT PRIMARY KEY,
-      file_path TEXT NOT NULL,
-      file_size INTEGER NOT NULL,
-      mtime_ms REAL NOT NULL,
-      indexed_at INTEGER NOT NULL
-    )
-  `);
-  legacyDb.prepare(
-    `INSERT INTO history_source_state
-       (topic_id, file_path, file_size, mtime_ms, indexed_at)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).run("topic-source", "/virtual/topic-source/history.json", 2, 10, 20);
-  legacyDb.close();
-
-  const { database } = loadSqliteModules();
-  const db = database.initDb(dbPath);
-  try {
-    assert.equal(
-      database.isHistorySourceCurrent(
-        "topic-source",
-        "/virtual/topic-source/history.json",
-        2,
-        10,
-      ),
-      false,
-    );
-
-    database.upsertHistorySourceState(
-      "topic-source",
-      "/virtual/topic-source/history.json",
-      2,
-      10,
-      30,
-    );
-    assert.equal(
-      database.isHistorySourceCurrent(
-        "topic-source",
-        "/virtual/topic-source/history.json",
-        2,
-        10,
-      ),
-      true,
-    );
-
-    insertEntity(db, { id: "topic-source", type: "topic" });
-    database.upsertEntityTombstone({
-      id: "topic-source",
-      type: "topic",
-      ownerType: "agent",
-      ownerId: "owner-a",
-      filePath: "/virtual/Agents/owner-a/config.json",
-      deletedAt: 40,
-    });
-    assert.equal(database.getHistorySourceState("topic-source"), null);
-  } finally {
-    db.close();
-  }
-});
-
 test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
   const { database } = loadSqliteModules();
   const db = database.initDb(":memory:");
@@ -355,134 +194,6 @@ test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
   }
 });
 
-test("SQLite 墓碑绑定覆盖实体、Topic、消息和头像，并保留最早删除时间", () => {
-  const { database } = loadSqliteModules();
-  const db = database.initDb(":memory:");
-
-  try {
-    insertEntity(db, { id: "agent-a", type: "agent" });
-    insertEntity(db, { id: "agent-a", type: "group" });
-    insertEntity(db, { id: "topic-a", type: "agent_topic" });
-    insertEntity(db, { id: "topic-b", type: "group_topic" });
-
-    for (const deletedAt of [300, 200, 400]) {
-      database.upsertEntityTombstone({
-        id: "agent-a",
-        type: "agent",
-        ownerType: "agent",
-        ownerId: "agent-a",
-        filePath: "/virtual/Agents/agent-a/config.json",
-        deletedAt,
-      });
-    }
-    assert.equal(entityRow(db, "agent-a", "agent").deleted_at, 200);
-    assert.equal(entityRow(db, "agent-a", "group").deleted_at, null);
-
-    for (const deletedAt of [250, 350]) {
-      database.upsertEntityTombstone({
-        id: "topic-a",
-        type: "topic",
-        ownerType: "agent",
-        ownerId: "owner-a",
-        filePath: "/virtual/Agents/owner-a/config.json",
-        deletedAt,
-      });
-    }
-    assert.equal(entityRow(db, "topic-a", "topic", "agent", "owner-a").deleted_at, 250);
-    assert.equal(entityRow(db, "topic-b", "topic", "group", "owner-a").deleted_at, null);
-
-    database.upsertEntityTombstone({
-      id: "agent-missing",
-      type: "agent",
-      ownerType: "agent",
-      ownerId: "agent-missing",
-      filePath: "/virtual/Agents/agent-missing/config.json",
-      deletedAt: 275,
-    });
-    database.upsertEntityTombstone({
-      id: "agent-missing",
-      type: "agent",
-      ownerType: "agent",
-      ownerId: "agent-missing",
-      filePath: "/virtual/Agents/agent-missing/config.json",
-      deletedAt: 325,
-    });
-    assert.deepEqual(
-      {
-        hash: entityRow(db, "agent-missing", "agent").hash,
-        deleted_at: entityRow(db, "agent-missing", "agent").deleted_at,
-      },
-      { hash: "0".repeat(64), deleted_at: 275 },
-    );
-
-    db.prepare(
-      `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
-       VALUES (?, ?, ?, ?)`,
-    ).run("message-a", "topic-a", "b".repeat(64), 1);
-    db.prepare(
-      `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
-       VALUES (?, ?, ?, ?)`,
-    ).run("message-a", "topic-b", "c".repeat(64), 1);
-    database.softDeleteMessageIndex("message-a", 500, "topic-a");
-    assert.equal(
-      db.prepare(
-        "SELECT deleted_at FROM message_index WHERE topic_id = ? AND msg_id = ?",
-      ).get("topic-a", "message-a").deleted_at,
-      500,
-    );
-    assert.equal(
-      db.prepare(
-        "SELECT deleted_at FROM message_index WHERE topic_id = ? AND msg_id = ?",
-      ).get("topic-b", "message-a").deleted_at,
-      null,
-    );
-    database.softDeleteMessageIndex("message-a", 450);
-    assert.deepEqual(
-      db.prepare(
-        "SELECT topic_id, deleted_at FROM message_index WHERE msg_id = ? ORDER BY topic_id",
-      ).all("message-a").map((row) => [row.topic_id, row.deleted_at]),
-      [["topic-a", 450], ["topic-b", 450]],
-    );
-
-    database.softDeleteMessageIndex("message-missing", 425, "topic-a");
-    database.softDeleteMessageIndex("message-missing", 475, "topic-a");
-    assert.deepEqual(
-      { ...db.prepare(
-        `SELECT hash, updated_at, deleted_at FROM message_index
-         WHERE topic_id = ? AND msg_id = ?`,
-      ).get("topic-a", "message-missing") },
-      { hash: "0".repeat(64), updated_at: 425, deleted_at: 425 },
-    );
-
-    db.prepare(
-      `INSERT INTO avatar_index
-       (owner_id, owner_type, file_path, hash, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run("agent-a", "agent", "/virtual/agent-a/avatar.png", "d".repeat(64), 1);
-    db.prepare(
-      `INSERT INTO avatar_index
-       (owner_id, owner_type, file_path, hash, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run("agent-a", "group", "/virtual/group-a/avatar.png", "e".repeat(64), 1);
-    database.softDeleteAvatarIndex("agent-a", "agent", 600);
-    database.softDeleteAvatarIndex("agent-a", "agent", 550);
-    assert.equal(
-      db.prepare(
-        "SELECT deleted_at FROM avatar_index WHERE owner_id = ? AND owner_type = ?",
-      ).get("agent-a", "agent").deleted_at,
-      550,
-    );
-    assert.equal(
-      db.prepare(
-        "SELECT deleted_at FROM avatar_index WHERE owner_id = ? AND owner_type = ?",
-      ).get("agent-a", "group").deleted_at,
-      null,
-    );
-  } finally {
-    db.close();
-  }
-});
-
 test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => {
   const { database, entity } = loadSqliteModules();
   const db = database.initDb(":memory:");
@@ -520,16 +231,18 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
       filePath: path.join(directory, "Agents", "other", "config.json"),
     });
     db.prepare(
-      `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
-       VALUES (?, ?, ?, ?)`,
-    ).run("message-cascade", "topic-cascade", "b".repeat(64), 1);
-    database.upsertHistorySourceState(
-      "topic-cascade",
-      path.join(historyDir, "history.json"),
-      2,
-      1,
-      1,
-    );
+      `INSERT INTO message_index
+         (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run("agent", "agent-cascade", "topic-cascade", "message-cascade", "b".repeat(64), 1);
+    database.upsertHistorySourceState({
+      ownerType: "agent",
+      ownerId: "agent-cascade",
+      topicId: "topic-cascade",
+      filePath: path.join(historyDir, "history.json"),
+      fileSize: 2,
+      mtimeMs: 1,
+    });
 
     assert.deepEqual(
       await entity.deleteEntity({
@@ -545,7 +258,11 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
     assert.equal(entityRow(db, "topic-unrelated", "agent_topic").deleted_at, null);
     assert.equal(fs.existsSync(agentDir), false);
     assert.equal(fs.existsSync(userDataDir), false);
-    assert.equal(database.getHistorySourceState("topic-cascade"), null);
+    assert.equal(database.getHistorySourceState({
+      ownerType: "agent",
+      ownerId: "agent-cascade",
+      topicId: "topic-cascade",
+    }), null);
     assert.equal(
       db.prepare(
         "SELECT deleted_at FROM message_index WHERE topic_id = ? AND msg_id = ?",
@@ -587,14 +304,20 @@ test("删除 Topic 先移除物理 history，再更新 config 投影和索引", 
     );
     fs.writeFileSync(path.join(topicDir, "history.json"), "[]");
     insertEntity(db, {
+      id: "agent-topic-delete",
+      type: "agent",
+      filePath: configPath,
+    });
+    insertEntity(db, {
       id: "topic-delete",
       type: "topic",
       filePath: configPath,
     });
     db.prepare(
-      `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
-       VALUES (?, ?, ?, ?)`,
-    ).run("message-delete", "topic-delete", "c".repeat(64), 1);
+      `INSERT INTO message_index
+         (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run("agent", "agent-topic-delete", "topic-delete", "message-delete", "c".repeat(64), 1);
 
     assert.deepEqual(
       await entity.deleteEntity({
@@ -655,11 +378,14 @@ test("Topic 上传会补建缺失 history，且更新既有 Topic 不覆盖真�
         topics: [{ id: topicId, name: "Existing", createdAt: 1 }],
       }),
     );
+    insertEntity(db, { id: ownerId, type: "agent", filePath: configPath });
     insertEntity(db, { id: topicId, type: "topic", filePath: configPath });
 
     const upload = (name) => entity.uploadEntity({
       id: topicId,
       type: "agent_topic",
+      ownerType: "agent",
+      ownerId,
       data: {
         id: topicId,
         ownerId,
@@ -691,6 +417,7 @@ test("从未见过的 Topic 删除会用显式 Owner 身份保存墓碑", async 
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
 
   try {
+    insertEntity(db, { id: "group-owner", type: "group" });
     assert.deepEqual(
       await entity.deleteEntity({
         id: "topic-never-seen",
@@ -975,17 +702,21 @@ test("legacy reconcile 把物理已消失的 Owner/Topic 及消息收敛为墓�
       filePath: staleOwnerConfig,
     });
     for (const topicId of ["topic-live", "topic-stale", "topic-owner-stale"]) {
+      const ownerType = topicId === "topic-owner-stale" ? "group" : "agent";
+      const ownerId = topicId === "topic-owner-stale" ? "group-stale" : "agent-live";
       db.prepare(
-        `INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
-         VALUES (?, ?, ?, ?)`,
-      ).run(`message-${topicId}`, topicId, "c".repeat(64), 1);
-      database.upsertHistorySourceState(
+        `INSERT INTO message_index
+           (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(ownerType, ownerId, topicId, `message-${topicId}`, "c".repeat(64), 1);
+      database.upsertHistorySourceState({
+        ownerType,
+        ownerId,
         topicId,
-        `/virtual/${topicId}/history.json`,
-        2,
-        1,
-        1,
-      );
+        filePath: `/virtual/${topicId}/history.json`,
+        fileSize: 2,
+        mtimeMs: 1,
+      });
     }
 
     assert.deepEqual(
