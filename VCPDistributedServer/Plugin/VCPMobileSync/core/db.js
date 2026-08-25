@@ -13,7 +13,6 @@ try {
 const { getLogger } = require("./logger");
 
 let db = null;
-let avatarDb = null;
 const HISTORY_INDEX_VERSION = 2;
 const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
 const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
@@ -123,11 +122,9 @@ function createAvatarIndexTable(database) {
 /**
  * 初始化数据库
  * @param {string} dbPath - 数据库文件路径
- * @param {object} [options]
- * @param {string|null} [options.avatarDbPath] - 可选的持久 Avatar 兼容索引
  * @returns {object|null} 数据库实例
  */
-function initDb(dbPath, { avatarDbPath = null } = {}) {
+function initDb(dbPath) {
   if (!Database) return null;
 
   db = new Database(dbPath);
@@ -144,10 +141,9 @@ function initDb(dbPath, { avatarDbPath = null } = {}) {
     )
   `);
 
-  // 3. 头像索引表。CDS 模式的其余兼容索引保持进程内派生视图，
-  // Avatar 则复用已有 sync_state_v2.db 跨重启保存墓碑。
-  avatarDb = avatarDbPath ? new Database(avatarDbPath) : db;
-  createAvatarIndexTable(avatarDb);
+  // 3. Legacy Avatar 提交视图。中央模式的持久状态由 CDS 自己维护；
+  // 此表只会随中央模式的其余兼容目录一起存在于内存中。
+  createAvatarIndexTable(db);
 
   const logger = getLogger();
   logger.logInfo("reconcile", "数据库初始化完成。");
@@ -160,10 +156,6 @@ function initDb(dbPath, { avatarDbPath = null } = {}) {
  */
 function getDb() {
   return db;
-}
-
-function getAvatarDb() {
-  return avatarDb || db;
 }
 
 function upsertOwnerState({
@@ -312,7 +304,7 @@ function upsertAvatarIndex(
   hash,
   updatedAt = Date.now(),
 ) {
-  const database = getAvatarDb();
+  const database = db;
   if (!database) return;
 
   return database.prepare(
@@ -329,7 +321,7 @@ function upsertAvatarIndex(
 }
 
 function getAvatarIndex(ownerId, ownerType) {
-  const database = getAvatarDb();
+  const database = db;
   if (!database) return null;
   return database.prepare(
     `SELECT owner_id, owner_type, file_path, hash, updated_at, deleted_at
@@ -557,7 +549,7 @@ function softDeleteAvatarIndex(
   deletedAt = Date.now(),
   filePath = "",
 ) {
-  const database = getAvatarDb();
+  const database = db;
   if (!database) return;
 
   return database.prepare(
@@ -601,7 +593,6 @@ function updateTopicContentHash({ ownerType, ownerId, topicId }, contentHash) {
 module.exports = {
   initDb,
   getDb,
-  getAvatarDb,
   upsertOwnerState,
   upsertTopicState,
   upsertMessageState,

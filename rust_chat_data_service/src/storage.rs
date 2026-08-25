@@ -14,8 +14,8 @@ use serde_json::Value;
 use crate::{
     config::SCHEMA_VERSION,
     domain::{
-        MessageView, NormalizedMessage, OwnerKey, OwnerRecord, OwnerType, TopicDefinition,
-        TopicKey, TopicSource,
+        AvatarKey, AvatarOwnerType, AvatarRecord, MessageView, NormalizedMessage, OwnerKey,
+        OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
     sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS owners (
     display_name TEXT NOT NULL,
     config_path TEXT NOT NULL,
     config_hash TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER,
+    PRIMARY KEY (owner_type, owner_id)
+);
+
+CREATE TABLE IF NOT EXISTS avatars (
+    owner_type TEXT NOT NULL CHECK(owner_type IN ('agent', 'group', 'user')),
+    owner_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    hash TEXT NOT NULL,
     updated_at INTEGER NOT NULL,
     deleted_at INTEGER,
     PRIMARY KEY (owner_type, owner_id)
@@ -197,6 +207,9 @@ ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
 
 DROP TABLE tombstones;
 "#;
+
+const AVATAR_TOMBSTONE_HASH: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
 
 #[derive(Debug, Clone)]
 pub struct SourceMetadata {
@@ -431,6 +444,117 @@ impl Database {
         Ok(true)
     }
 
+    pub fn upsert_avatar(
+        &self,
+        key: &AvatarKey,
+        file_path: &Path,
+        hash: &str,
+        updated_at: i64,
+    ) -> Result<bool> {
+        let connection = self.connection.lock();
+        let changed = connection.execute(
+            "INSERT INTO avatars(
+                owner_type, owner_id, file_path, hash, updated_at, deleted_at
+             ) VALUES(?1, ?2, ?3, ?4, ?5, NULL)
+             ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+                file_path=excluded.file_path,
+                hash=excluded.hash,
+                updated_at=CASE
+                    WHEN avatars.hash IS excluded.hash THEN avatars.updated_at
+                    ELSE excluded.updated_at
+                END
+             WHERE avatars.deleted_at IS NULL",
+            params![
+                key.owner_type.as_str(),
+                key.owner_id,
+                file_path.to_string_lossy(),
+                hash,
+                updated_at,
+            ],
+        )?;
+        Ok(changed == 1)
+    }
+
+    pub fn avatar_state(&self, key: &AvatarKey) -> Result<Option<AvatarRecord>> {
+        let connection = self.connection.lock();
+        connection
+            .query_row(
+                "SELECT owner_type, owner_id, file_path, hash, updated_at, deleted_at
+                 FROM avatars
+                 WHERE owner_type=?1 AND owner_id=?2",
+                params![key.owner_type.as_str(), key.owner_id],
+                |row| {
+                    let owner_type = parse_avatar_owner_type(row.get::<_, String>(0)?);
+                    Ok(AvatarRecord {
+                        owner_type,
+                        owner_id: row.get(1)?,
+                        file_path: PathBuf::from(row.get::<_, String>(2)?),
+                        hash: row.get(3)?,
+                        updated_at: row.get(4)?,
+                        deleted_at: row.get(5)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn avatar_parent_is_tombstoned(&self, key: &AvatarKey) -> Result<bool> {
+        let Some(owner_type) = key.owner_type.owner_type() else {
+            return Ok(false);
+        };
+        let connection = self.connection.lock();
+        connection
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM owners
+                    WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NOT NULL
+                 )",
+                params![owner_type.as_str(), key.owner_id],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
+    pub fn reconcile_missing_avatars(
+        &self,
+        active: &HashSet<AvatarKey>,
+        deleted_at: i64,
+    ) -> Result<usize> {
+        let mut connection = self.connection.lock();
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let known = {
+            let mut statement = transaction
+                .prepare("SELECT owner_type, owner_id FROM avatars WHERE deleted_at IS NULL")?;
+            let rows = statement.query_map([], |row| {
+                Ok(AvatarKey {
+                    owner_type: parse_avatar_owner_type(row.get::<_, String>(0)?),
+                    owner_id: row.get(1)?,
+                })
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+
+        let mut deleted = 0;
+        for key in known {
+            if active.contains(&key) {
+                continue;
+            }
+            mark_avatar_deleted(&transaction, &key, deleted_at)?;
+            deleted += 1;
+        }
+        transaction.commit()?;
+        Ok(deleted)
+    }
+
+    pub fn apply_sync_avatar_tombstone(&self, key: &AvatarKey, deleted_at: i64) -> Result<()> {
+        let mut connection = self.connection.lock();
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        mark_avatar_deleted(&transaction, key, deleted_at)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn upsert_topic_source(&self, source: &TopicSource) -> Result<bool> {
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -527,6 +651,14 @@ impl Database {
                 "UPDATE owners SET deleted_at=?3, updated_at=?3
                  WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL",
                 params![owner.owner_type.as_str(), owner.owner_id, now],
+            )?;
+            mark_avatar_deleted(
+                &transaction,
+                &AvatarKey {
+                    owner_type: avatar_owner_type_from_owner(owner.owner_type),
+                    owner_id: owner.owner_id.clone(),
+                },
+                now,
             )?;
             deleted += 1;
         }
@@ -758,6 +890,15 @@ impl Database {
                 params![owner_type.as_str(), owner_id, effective_at],
             )?;
         }
+
+        mark_avatar_deleted(
+            &transaction,
+            &AvatarKey {
+                owner_type: avatar_owner_type_from_owner(owner_type),
+                owner_id: owner_id.to_string(),
+            },
+            effective_at,
+        )?;
 
         transaction.commit()?;
         Ok(())
@@ -1324,6 +1465,34 @@ fn topic_is_tombstoned_in_transaction(
         .map_err(Into::into)
 }
 
+fn mark_avatar_deleted(
+    transaction: &Transaction<'_>,
+    key: &AvatarKey,
+    deleted_at: i64,
+) -> Result<()> {
+    transaction.execute(
+        "INSERT INTO avatars(
+            owner_type, owner_id, file_path, hash, updated_at, deleted_at
+         ) VALUES(?1, ?2, '', ?3, ?4, ?4)
+         ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+            updated_at=CASE
+                WHEN avatars.deleted_at IS NULL THEN excluded.deleted_at
+                ELSE MIN(avatars.updated_at, excluded.deleted_at)
+            END,
+            deleted_at=CASE
+                WHEN avatars.deleted_at IS NULL THEN excluded.deleted_at
+                ELSE MIN(avatars.deleted_at, excluded.deleted_at)
+            END",
+        params![
+            key.owner_type.as_str(),
+            key.owner_id,
+            AVATAR_TOMBSTONE_HASH,
+            deleted_at,
+        ],
+    )?;
+    Ok(())
+}
+
 fn mark_topic_deleted(
     transaction: &Transaction<'_>,
     key: &TopicKey,
@@ -1564,6 +1733,21 @@ fn parse_owner_type(value: String) -> OwnerType {
         OwnerType::Group
     } else {
         OwnerType::Agent
+    }
+}
+
+fn parse_avatar_owner_type(value: String) -> AvatarOwnerType {
+    match value.as_str() {
+        "group" => AvatarOwnerType::Group,
+        "user" => AvatarOwnerType::User,
+        _ => AvatarOwnerType::Agent,
+    }
+}
+
+const fn avatar_owner_type_from_owner(owner_type: OwnerType) -> AvatarOwnerType {
+    match owner_type {
+        OwnerType::Agent => AvatarOwnerType::Agent,
+        OwnerType::Group => AvatarOwnerType::Group,
     }
 }
 

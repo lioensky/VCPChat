@@ -41,6 +41,103 @@ impl FromStr for OwnerType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AvatarOwnerType {
+    Agent,
+    Group,
+    User,
+}
+
+impl AvatarOwnerType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Agent => "agent",
+            Self::Group => "group",
+            Self::User => "user",
+        }
+    }
+
+    pub const fn owner_type(self) -> Option<OwnerType> {
+        match self {
+            Self::Agent => Some(OwnerType::Agent),
+            Self::Group => Some(OwnerType::Group),
+            Self::User => None,
+        }
+    }
+}
+
+impl fmt::Display for AvatarOwnerType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for AvatarOwnerType {
+    type Err = ServiceError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "agent" => Ok(Self::Agent),
+            "group" => Ok(Self::Group),
+            "user" => Ok(Self::User),
+            _ => Err(ServiceError::InvalidRequest(format!(
+                "unsupported avatar owner type: {value}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvatarKey {
+    pub owner_type: AvatarOwnerType,
+    pub owner_id: String,
+}
+
+impl AvatarKey {
+    pub fn wire_id(&self) -> String {
+        format!("{}:{}", self.owner_type.as_str(), self.owner_id)
+    }
+
+    pub fn from_wire_id(value: &str) -> Result<Self, ServiceError> {
+        let (owner_type, owner_id) = value.split_once(':').ok_or_else(|| {
+            ServiceError::InvalidRequest("avatar id must be '<ownerType>:<ownerId>'".to_string())
+        })?;
+        if owner_id.is_empty()
+            || owner_id.contains(':')
+            || !owner_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err(ServiceError::InvalidRequest(
+                "avatar owner id must use only ASCII letters, digits, '_' or '-'".to_string(),
+            ));
+        }
+        let owner_type = owner_type.parse::<AvatarOwnerType>()?;
+        if owner_type == AvatarOwnerType::User && owner_id != "user_avatar" {
+            return Err(ServiceError::InvalidRequest(
+                "user avatar owner id must be user_avatar".to_string(),
+            ));
+        }
+        Ok(Self {
+            owner_type,
+            owner_id: owner_id.to_string(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvatarRecord {
+    pub owner_type: AvatarOwnerType,
+    pub owner_id: String,
+    pub file_path: PathBuf,
+    pub hash: String,
+    pub updated_at: i64,
+    pub deleted_at: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnerKey {

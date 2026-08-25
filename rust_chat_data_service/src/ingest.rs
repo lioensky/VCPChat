@@ -10,8 +10,8 @@ use std::{
 use crate::{
     config::ServiceConfig,
     domain::{
-        NormalizedAttachment, NormalizedMessage, OwnerKey, OwnerRecord, OwnerType, TopicDefinition,
-        TopicKey, TopicSource,
+        AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedAttachment, NormalizedMessage,
+        OwnerKey, OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
     storage::{now_ms, Database, IngestCommit},
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
@@ -28,6 +28,8 @@ use tokio::time::sleep;
 pub struct ReconcileStats {
     pub owners_seen: usize,
     pub owners_deleted: usize,
+    pub avatars_seen: usize,
+    pub avatars_deleted: usize,
     pub topics_seen: usize,
     pub files_checked: usize,
     pub files_skipped: usize,
@@ -61,6 +63,7 @@ impl Reconciler {
     pub async fn reconcile(&self) -> Result<ReconcileStats> {
         let started = now_ms();
         let owners = self.scan_owner_registry()?;
+        let mut live_owner_keys = HashSet::new();
         let mut stats = ReconcileStats {
             owners_seen: owners.len(),
             ..Default::default()
@@ -71,6 +74,7 @@ impl Reconciler {
             if !self.database.upsert_owner(&owner)? {
                 continue;
             }
+            live_owner_keys.insert(owner.key.clone());
             for topic in &owner.topics {
                 let source = self.topic_source(&owner, topic);
                 if !self.database.upsert_topic_source(&source)? {
@@ -119,10 +123,116 @@ impl Reconciler {
 
         let active_owner_keys = owners.keys().cloned().collect::<HashSet<_>>();
         stats.owners_deleted = self.database.reconcile_missing_owners(&active_owner_keys)?;
+        let (avatars_seen, avatars_deleted) = self.reconcile_avatars(&live_owner_keys)?;
+        stats.avatars_seen = avatars_seen;
+        stats.avatars_deleted = avatars_deleted;
 
         self.database.set_last_reconcile_at(now_ms())?;
         stats.duration_ms = now_ms() - started;
         Ok(stats)
+    }
+
+    pub fn commit_avatar(&self, key: &AvatarKey) -> Result<AvatarRecord> {
+        if self.database.avatar_parent_is_tombstoned(key)? {
+            anyhow::bail!("avatar parent is deleted");
+        }
+        if let Some(owner_type) = key.owner_type.owner_type() {
+            let parent_is_committed = self
+                .database
+                .owner_by_id(owner_type, &key.owner_id)?
+                .is_some();
+            if !parent_is_committed {
+                let config_path = match key.owner_type {
+                    AvatarOwnerType::Agent => self.config.agents_dir.join(&key.owner_id),
+                    AvatarOwnerType::Group => self.config.groups_dir.join(&key.owner_id),
+                    AvatarOwnerType::User => unreachable!(),
+                }
+                .join("config.json");
+                anyhow::ensure!(
+                    config_path.is_file(),
+                    "avatar parent has not been committed and has no physical config"
+                );
+            }
+        }
+
+        let path = self
+            .physical_avatar_path(key)
+            .with_context(|| format!("avatar file is missing for {}", key.wire_id()))?;
+        let hash = sha256_hex(
+            &fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?,
+        );
+        anyhow::ensure!(
+            self.database.upsert_avatar(key, &path, &hash, now_ms())?,
+            "avatar is tombstoned"
+        );
+        self.database
+            .avatar_state(key)?
+            .context("committed avatar state is missing")
+    }
+
+    fn reconcile_avatars(&self, live_owners: &HashSet<OwnerKey>) -> Result<(usize, usize)> {
+        let detected_at = now_ms();
+        let mut active = HashSet::new();
+        let mut seen = 0;
+
+        let user_key = AvatarKey {
+            owner_type: AvatarOwnerType::User,
+            owner_id: "user_avatar".to_string(),
+        };
+        if self.commit_physical_avatar(&user_key, detected_at)? {
+            active.insert(user_key);
+            seen += 1;
+        }
+
+        for owner in live_owners {
+            let key = AvatarKey {
+                owner_type: match owner.owner_type {
+                    OwnerType::Agent => AvatarOwnerType::Agent,
+                    OwnerType::Group => AvatarOwnerType::Group,
+                },
+                owner_id: owner.owner_id.clone(),
+            };
+            if self.commit_physical_avatar(&key, detected_at)? {
+                active.insert(key);
+                seen += 1;
+            }
+        }
+
+        let deleted = self
+            .database
+            .reconcile_missing_avatars(&active, detected_at)?;
+        Ok((seen, deleted))
+    }
+
+    fn commit_physical_avatar(&self, key: &AvatarKey, detected_at: i64) -> Result<bool> {
+        let Some(path) = self.physical_avatar_path(key) else {
+            return Ok(false);
+        };
+        let bytes =
+            fs::read(&path).with_context(|| format!("failed to read avatar {}", path.display()))?;
+        let hash = sha256_hex(&bytes);
+        self.database
+            .upsert_avatar(key, &path, &hash, detected_at)?;
+        Ok(true)
+    }
+
+    fn physical_avatar_path(&self, key: &AvatarKey) -> Option<std::path::PathBuf> {
+        if key.owner_type == AvatarOwnerType::User {
+            let path = self.config.user_data_dir.join("user_avatar.png");
+            return path.is_file().then_some(path);
+        }
+        let directory = match key.owner_type {
+            AvatarOwnerType::Agent => self.config.agents_dir.join(&key.owner_id),
+            AvatarOwnerType::Group => self.config.groups_dir.join(&key.owner_id),
+            AvatarOwnerType::User => unreachable!(),
+        };
+        for extension in ["png", "jpg", "jpeg", "webp", "gif"] {
+            let path = directory.join(format!("avatar.{extension}"));
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+        None
     }
 
     pub async fn ingest_path(&self, path: &Path, _origin: &str) -> Result<Option<IngestCommit>> {
@@ -636,6 +746,36 @@ pub fn parse_history_path(user_data_dir: &Path, path: &Path) -> Option<(String, 
     } else {
         None
     }
+}
+
+pub fn is_avatar_path(
+    path: &Path,
+    agents_dir: &Path,
+    groups_dir: &Path,
+    user_data_dir: &Path,
+) -> bool {
+    if path == user_data_dir.join("user_avatar.png") {
+        return true;
+    }
+    [agents_dir, groups_dir].into_iter().any(|root| {
+        let Ok(relative) = path.strip_prefix(root) else {
+            return false;
+        };
+        let components = relative.components().collect::<Vec<_>>();
+        if components.len() != 2 {
+            return false;
+        }
+        let file_name = components[1].as_os_str().to_string_lossy();
+        [
+            "avatar.png",
+            "avatar.jpg",
+            "avatar.jpeg",
+            "avatar.webp",
+            "avatar.gif",
+        ]
+        .iter()
+        .any(|candidate| file_name.eq_ignore_ascii_case(candidate))
+    })
 }
 
 async fn read_stable_file(path: &Path) -> Result<Vec<u8>> {

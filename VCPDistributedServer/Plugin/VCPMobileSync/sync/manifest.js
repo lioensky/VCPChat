@@ -2,7 +2,7 @@
  * 清单生成与比对逻辑
  */
 
-const { getDb, getAvatarDb } = require("../core/db");
+const { getDb } = require("../core/db");
 const {
   computeAggregatedHash,
   computeTopicLeafHash,
@@ -133,7 +133,7 @@ function buildOwnerContentHashes(db) {
  * @returns {object[]} 本地实体列表
  */
 function getLocalManifest(dataType, targetedOwners = null, database = null) {
-  const db = database || (dataType === "avatar" ? getAvatarDb() : getDb());
+  const db = database || getDb();
   if (!db) {
     throw syncContractError("Database not initialized", "SYNC_DB_UNAVAILABLE");
   }

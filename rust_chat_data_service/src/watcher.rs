@@ -19,7 +19,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ingest::{parse_history_path, Reconciler},
+    ingest::{is_avatar_path, parse_history_path, Reconciler},
     search::SearchIndex,
 };
 
@@ -232,6 +232,12 @@ async fn run_ingest_worker(
                 let Some(path) = path else { break };
                 if is_owner_config(&path, &reconciler.config().agents_dir)
                     || is_owner_config(&path, &reconciler.config().groups_dir)
+                    || is_avatar_path(
+                        &path,
+                        &reconciler.config().agents_dir,
+                        &reconciler.config().groups_dir,
+                        &reconciler.config().user_data_dir,
+                    )
                 {
                     metrics.reconcile_required.store(true, Ordering::Release);
                     continue;
@@ -338,6 +344,7 @@ fn is_relevant_path(
 ) -> bool {
     is_owner_config(path, agents_dir)
         || is_owner_config(path, groups_dir)
+        || is_avatar_path(path, agents_dir, groups_dir, user_data_dir)
         || parse_history_path(user_data_dir, path).is_some()
 }
 

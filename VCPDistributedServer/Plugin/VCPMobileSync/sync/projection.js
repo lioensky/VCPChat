@@ -47,6 +47,7 @@ async function projectMobileMessage({
   ownerType,
   db,
   appDataPath,
+  resolveAgentAvatarPath = null,
 }) {
   if (!Number.isSafeInteger(rawMessage?.updatedAt) || rawMessage.updatedAt < 0) {
     throw new SyncProtocolError(
@@ -110,9 +111,14 @@ async function projectMobileMessage({
   if (canonical.role !== "user") {
     const avatarAgentId = canonical.agentId || (ownerType === "agent" ? parentId : null);
     if (avatarAgentId) {
-      const avatar = getAvatarIndex(avatarAgentId, "agent");
-      if (avatar?.deleted_at == null && avatar?.file_path) {
-        desktop.avatarUrl = `file://${avatar.file_path}`;
+      const avatarPath = resolveAgentAvatarPath
+        ? await resolveAgentAvatarPath(avatarAgentId)
+        : (() => {
+            const avatar = getAvatarIndex(avatarAgentId, "agent");
+            return avatar?.deleted_at == null ? avatar?.file_path : null;
+          })();
+      if (avatarPath) {
+        desktop.avatarUrl = `file://${avatarPath}`;
       }
     }
   }
@@ -127,6 +133,7 @@ async function projectMobileTopic({
   messages,
   db,
   appDataPath,
+  resolveAgentAvatarPath = null,
 }) {
   if (
     typeof topicId !== "string" ||
@@ -147,6 +154,15 @@ async function projectMobileTopic({
   }
   const projected = [];
   const seen = new Set();
+  const avatarPaths = new Map();
+  const cachedAvatarPathResolver = resolveAgentAvatarPath
+    ? (agentId) => {
+        if (!avatarPaths.has(agentId)) {
+          avatarPaths.set(agentId, Promise.resolve(resolveAgentAvatarPath(agentId)));
+        }
+        return avatarPaths.get(agentId);
+      }
+    : null;
   for (const rawMessage of messages) {
     const message = await projectMobileMessage({
       rawMessage,
@@ -155,6 +171,7 @@ async function projectMobileTopic({
       ownerType,
       db,
       appDataPath,
+      resolveAgentAvatarPath: cachedAvatarPathResolver,
     });
     if (seen.has(message.id)) {
       throw new SyncProtocolError(

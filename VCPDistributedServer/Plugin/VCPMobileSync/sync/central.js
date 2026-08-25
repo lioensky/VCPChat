@@ -104,6 +104,37 @@ function topicIdentityKey(value) {
   return `${value.ownerType}\0${value.ownerId}\0${value.topicId}`;
 }
 
+function isAvatarIdentity(ownerType, ownerId) {
+  return (
+    ["agent", "group", "user"].includes(ownerType) &&
+    typeof ownerId === "string" &&
+    /^[a-zA-Z0-9_-]+$/.test(ownerId) &&
+    (ownerType !== "user" || ownerId === "user_avatar")
+  );
+}
+
+function validateAvatarState(value, ownerType, ownerId, { requireLive = false } = {}) {
+  if (
+    !isRecord(value) ||
+    value.ownerType !== ownerType ||
+    value.ownerId !== ownerId ||
+    typeof value.filePath !== "string" ||
+    typeof value.hash !== "string" ||
+    !/^[a-f0-9]{64}$/.test(value.hash) ||
+    !Number.isSafeInteger(value.updatedAt) ||
+    value.updatedAt < 0 ||
+    (value.deletedAt !== null && value.deletedAt !== undefined &&
+      (!Number.isSafeInteger(value.deletedAt) || value.deletedAt < 0)) ||
+    (requireLive && (value.deletedAt != null || value.filePath.length === 0))
+  ) {
+    throw cdsProtocolError(
+      "CDS returned an invalid avatar state",
+      "owner_metadata",
+    );
+  }
+  return value;
+}
+
 class CentralSyncAdapter {
   constructor(options = {}) {
     this.chatDataService = options?.chatDataService || null;
@@ -351,6 +382,70 @@ class CentralSyncAdapter {
         code: "SYNC_ENTITY_READ_FAILED",
         origin: "desktop_cds",
         stage,
+      });
+    }
+  }
+
+  async loadAvatarState(ownerType, ownerId) {
+    if (!isAvatarIdentity(ownerType, ownerId)) {
+      throw createSyncError(
+        "SYNC_REQUEST_INVALID",
+        "Avatar state requires a valid owner identity",
+        { origin: "desktop_plugin", stage: "owner_metadata" },
+      );
+    }
+    try {
+      const value = await this.requireClient().request(
+        "POST",
+        "/v1/sync/avatar-state",
+        { ownerType, ownerId },
+      );
+      return validateAvatarState(value, ownerType, ownerId);
+    } catch (error) {
+      if (error?.code === "NOT_FOUND") return null;
+      throw withCdsErrorContext(error, {
+        code: "SYNC_AVATAR_READ_FAILED",
+        origin: "desktop_cds",
+        stage: "owner_metadata",
+      });
+    }
+  }
+
+  async commitAvatar(ownerType, ownerId, expectedHash) {
+    if (
+      !isAvatarIdentity(ownerType, ownerId) ||
+      typeof expectedHash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(expectedHash)
+    ) {
+      throw createSyncError(
+        "SYNC_REQUEST_INVALID",
+        "Avatar commit requires a valid owner identity and expected hash",
+        { origin: "desktop_plugin", stage: "owner_metadata" },
+      );
+    }
+    try {
+      const value = validateAvatarState(
+        await this.requireClient().request(
+          "POST",
+          "/v1/sync/avatar-commit",
+          { ownerType, ownerId },
+        ),
+        ownerType,
+        ownerId,
+        { requireLive: true },
+      );
+      if (value.hash !== expectedHash) {
+        throw cdsProtocolError(
+          "Avatar changed before CDS committed it",
+          "owner_metadata",
+        );
+      }
+      return value;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_AVATAR_WRITE_FAILED",
+        origin: "desktop_cds",
+        stage: "owner_metadata",
       });
     }
   }
@@ -751,6 +846,10 @@ class CentralSyncAdapter {
             messages: frame.messages,
             db,
             appDataPath: this.appDataPath,
+            resolveAgentAvatarPath: async (agentId) => {
+              const avatar = await this.loadAvatarState("agent", agentId);
+              return avatar?.deletedAt == null ? avatar?.filePath || null : null;
+            },
           });
         } catch (projectionError) {
           await writer.write({
@@ -833,21 +932,31 @@ class CentralSyncAdapter {
     deletedAt,
   }) {
     const isTopic = dataType === "topic";
+    const isAvatar = dataType === "avatar";
     const stage = isTopic ? "topic_metadata" : "owner_metadata";
     const failedTopicIds = isTopic && typeof id === "string" ? [id] : [];
     const safeId =
       typeof id === "string" &&
       id.length > 0 &&
       /^[a-zA-Z0-9_-]+$/.test(id);
-    const validOwnerFields = isTopic
-      ? ["agent", "group"].includes(ownerType) &&
+    let validOwnerFields;
+    if (isTopic) {
+      validOwnerFields =
+        ["agent", "group"].includes(ownerType) &&
         typeof ownerId === "string" &&
         ownerId.length > 0 &&
-        /^[a-zA-Z0-9_-]+$/.test(ownerId)
-      : (ownerType === undefined || ownerType === null) &&
+        /^[a-zA-Z0-9_-]+$/.test(ownerId);
+    } else if (isAvatar) {
+      validOwnerFields =
+        isAvatarIdentity(ownerType, id) &&
         (ownerId === undefined || ownerId === null);
+    } else {
+      validOwnerFields =
+        (ownerType === undefined || ownerType === null) &&
+        (ownerId === undefined || ownerId === null);
+    }
     if (
-      !["agent", "group", "topic"].includes(dataType) ||
+      !["agent", "group", "topic", "avatar"].includes(dataType) ||
       !safeId ||
       !validOwnerFields ||
       !Number.isSafeInteger(deletedAt) ||
@@ -869,6 +978,7 @@ class CentralSyncAdapter {
       id,
       deletedAt,
       ...(isTopic ? { ownerType, ownerId } : {}),
+      ...(isAvatar ? { ownerType } : {}),
     };
     try {
       const result = await this.requireClient().syncEntityDelete(request);
@@ -931,7 +1041,7 @@ class CentralSyncAdapter {
   logEnabled() {
     getLogger().logInfo(
       "central",
-      "VCPMobileSync 消息同步索引已切换到 VCP-CDS；旧消息扫描和 watcher 已停用。",
+      "VCPMobileSync 提交索引已切换到 VCP-CDS；Legacy 持久索引和 watcher 已停用。",
     );
   }
 }

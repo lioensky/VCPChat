@@ -7,7 +7,6 @@ const path = require("path");
 const {
   initDb,
   getDb,
-  getAvatarDb,
   getOwnerState,
   getTopicState,
   upsertOwnerState,
@@ -112,9 +111,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
       null,
       (request) => centralSync.loadTopicRecoveryStates(request),
     );
-    initDb(":memory:", {
-      avatarDbPath: path.join(__dirname, "sync_state_v2.db"),
-    });
+    initDb(":memory:");
     // CDS 会在 READY 后自行启动一次 reconcile；若它已持有锁，启动门禁就
     // 继续等待同一既有动作完成。只有非 SERVICE_BUSY 的真实失败才终止注册，
     // 因而 CDS 缺席或索引失败时不会提前开放 MobileSync 端口。
@@ -140,18 +137,11 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         case "SYNC_MANIFEST": {
           logger.logOperation("websocket", "message", payload.type, "info", `dataType=${payload.dataType}`);
 
-          if (payload.dataType === "avatar") {
-            if (centralSync) {
-              await refreshCompatibilityOwners(appDataPath);
-            }
+          if (payload.dataType === "avatar" && !centralSync) {
             await reconcileAvatarFiles(appDataPath);
           }
 
-          // VCP-CDS 只持有 Owner、Topic 与 Message 的中央索引。
-          // Avatar 仍由本插件的兼容资产目录（持久 avatar_index + 物理文件）
-          // 负责。不能把 avatar Manifest 转给 CDS，否则 CDS 会把本地清单
-          // 视为空集，生成错误的全量 PUSH，并破坏 Owner Metadata 阶段。
-          if (centralSync && payload.dataType !== "avatar") {
+          if (centralSync) {
             return centralSync.handleSyncManifest(payload);
           }
           return handleSyncManifest(payload);
@@ -341,6 +331,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 ownerId: isTopicDelete ? rawOwnerId : null,
                 deletedAt,
                 appDataPath,
+                persistAvatarIndex: false,
               });
               if (!result?.success) {
                 throw withSyncErrorContext(
@@ -348,19 +339,20 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                   entityDeleteContext,
                 );
               }
-              if (dataType !== "avatar") {
-                await centralSync.deleteEntityTombstone({
-                  dataType: isTopicDelete ? "topic" : dataType,
-                  id: safeId,
-                  deletedAt,
-                  ...(isTopicDelete
-                    ? {
-                        ownerType: result.ownerType,
-                        ownerId: result.ownerId,
-                      }
+              await centralSync.deleteEntityTombstone({
+                dataType: isTopicDelete ? "topic" : dataType,
+                id: safeId,
+                deletedAt,
+                ...(isTopicDelete
+                  ? {
+                      ownerType: result.ownerType,
+                      ownerId: result.ownerId,
+                    }
                   : {}),
-                });
-              }
+                ...(dataType === "avatar"
+                  ? { ownerType: avatarOwnerType }
+                  : {}),
+              });
             }
             return null;
           }
@@ -452,7 +444,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
 }
 
 /**
- * 中央模式兼容目录：只定位配置 DTO、头像和本机附件文件。
+ * 中央模式兼容目录：只定位配置 DTO 和本机附件文件。
  * history.json、消息提交状态、消息墓碑和 Topic 内容 Hash 全部由 CDS 负责。
  */
 async function reconcileCompatibilityAssets(appDataPath) {
@@ -480,7 +472,6 @@ async function reconcileCompatibilityAssets(appDataPath) {
   }
 
   await refreshCompatibilityOwners(appDataPath, now);
-  await reconcileAvatarFiles(appDataPath, now);
 }
 
 async function refreshCompatibilityOwners(appDataPath, updatedAt = Date.now()) {
@@ -506,7 +497,7 @@ async function refreshCompatibilityOwners(appDataPath, updatedAt = Date.now()) {
 }
 
 async function reconcileAvatarFiles(appDataPath, updatedAt = Date.now()) {
-  const database = getAvatarDb();
+  const database = getDb();
   if (!database) throw new Error("Avatar database not initialized");
 
   const physicalAvatars = new Set();

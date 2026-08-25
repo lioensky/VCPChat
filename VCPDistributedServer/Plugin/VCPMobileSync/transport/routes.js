@@ -302,7 +302,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     const type = req.query.type || "agent";
 
     try {
-      const result = await downloadAvatar(id, type);
+      const result = await downloadAvatar(id, type, centralSync);
       if (!result) {
         return sendHttpError(res, 404, "Avatar not found", {
           code: "SYNC_AVATAR_NOT_FOUND",
@@ -332,6 +332,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           data: req.body,
           appDataPath,
           mimeType: req.get("content-type"),
+          centralSync,
         });
         res.json(result);
       } catch (e) {

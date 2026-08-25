@@ -7,7 +7,6 @@ const path = require("path");
 const crypto = require("crypto");
 const {
   getDb,
-  getAvatarDb,
   getOwnerState,
   getTopicState,
   getAvatarIndex,
@@ -1392,10 +1391,8 @@ async function reconcileMissingPhysicalIndexes(
  * @param {string} type - 所有者类型 (agent/group)
  * @returns {Promise<{data: Buffer,mimeType: string}|null>}
  */
-async function downloadAvatar(id, type) {
-  const db = getAvatarDb();
+async function downloadAvatar(id, type, centralSync = null) {
   const logger = getLogger();
-  if (!db) return null;
 
   const safeId = sanitizeId(id);
   if (
@@ -1406,20 +1403,20 @@ async function downloadAvatar(id, type) {
   ) {
     throw new Error("Invalid avatar owner identity");
   }
-  const row = db
-    .prepare(
-      "SELECT file_path, hash FROM avatar_index WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL",
-    )
-    .get(type, safeId);
-  if (!row) {
+  const row = centralSync
+    ? await centralSync.loadAvatarState(type, safeId)
+    : getAvatarIndex(safeId, type);
+  const filePath = row?.filePath || row?.file_path;
+  const deletedAt = row?.deletedAt ?? row?.deleted_at;
+  if (!row || deletedAt != null || !filePath) {
     logger.logOperation("owner_metadata", "download_avatar", id, "error", `type=${type} not found`);
     return null;
   }
-  const stats = await fs.stat(row.file_path);
+  const stats = await fs.stat(filePath);
   if (!stats.isFile() || stats.size > MAX_AVATAR_BYTES) {
     throw new Error("Avatar index does not point to a supported file");
   }
-  const data = await fs.readFile(row.file_path);
+  const data = await fs.readFile(filePath);
   if (computeBinaryHash(data) !== row.hash) {
     throw new Error("Avatar changed after its manifest was indexed");
   }
@@ -1438,7 +1435,14 @@ async function downloadAvatar(id, type) {
  * @param {string} params.appDataPath - AppData 路径
  * @param {string} params.mimeType - HTTP Content-Type
  */
-async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType }) {
+async function uploadAvatar({
+  id,
+  type,
+  data,
+  appDataPath,
+  mimeType: rawMimeType,
+  centralSync = null,
+}) {
   const logger = getLogger();
   const safeId = sanitizeId(id);
   if (
@@ -1463,13 +1467,13 @@ async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType
   }
   const isGroup = type === "group";
   const isUser = type === "user";
-  if (!isUser) {
+  if (!isUser && !centralSync) {
     const parent = getOwnerState({ ownerType: type, ownerId: safeId });
     if (!parent || parent.deleted_at != null) {
       throw new Error(`Avatar owner ${type}/${safeId} is missing or deleted`);
     }
   }
-  if (getAvatarIndex(safeId, type)?.deleted_at != null) {
+  if (!centralSync && getAvatarIndex(safeId, type)?.deleted_at != null) {
     throw new Error(`Avatar ${type}/${safeId} is deleted`);
   }
   const baseDirName = isGroup ? "AgentGroups" : "Agents";
@@ -1515,14 +1519,16 @@ async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType
       await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
       await fs.rename(tmpPath, configPath);
 
-      // 更新 Owner 提交状态（使用同步 DTO Hash）。
-      const groupHash = computeDtoHash(extractGroupDTO(config), GROUP_SYNC_FIELDS);
-      upsertOwnerState({
-        ownerType: "group",
-        ownerId: safeId,
-        configPath,
-        configHash: groupHash,
-      });
+      if (!centralSync) {
+        // Legacy 的 Owner 提交视图与同一物理配置同步更新。
+        const groupHash = computeDtoHash(extractGroupDTO(config), GROUP_SYNC_FIELDS);
+        upsertOwnerState({
+          ownerType: "group",
+          ownerId: safeId,
+          configPath,
+          configHash: groupHash,
+        });
+      }
     } catch (e) {
       logger.logOperation("owner_metadata", "upload_avatar", safeId, "error", `update group config failed: ${e.message}`);
       await fs.unlink(temporary).catch(() => {});
@@ -1565,10 +1571,18 @@ async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType
   }
 
   const hash = computeBinaryHash(data);
-  const indexed = upsertAvatarIndex(safeId, type, avatarPath, hash);
-  if (indexed?.changes !== 1) {
+  try {
+    if (centralSync) {
+      await centralSync.commitAvatar(type, safeId, hash);
+    } else {
+      const indexed = upsertAvatarIndex(safeId, type, avatarPath, hash);
+      if (indexed?.changes !== 1) {
+        throw new Error(`Avatar ${type}/${safeId} is deleted`);
+      }
+    }
+  } catch (error) {
     await fs.unlink(avatarPath).catch(() => {});
-    throw new Error(`Avatar ${type}/${safeId} is deleted`);
+    throw error;
   }
 
   logger.logOperation("owner_metadata", "upload_avatar", safeId, "success", `type=${type}`);
@@ -1600,6 +1614,7 @@ async function deleteEntity({
   ownerId = null,
   deletedAt,
   appDataPath,
+  persistAvatarIndex = true,
 }) {
   const db = getDb();
   const logger = getLogger();
@@ -1665,7 +1680,9 @@ async function deleteEntity({
       if (!["agent", "group", "user"].includes(ownerType)) {
         throw new Error("Avatar deletion requires a valid ownerType");
       }
-      const indexedAvatar = getAvatarIndex(safeId, ownerType);
+      const indexedAvatar = persistAvatarIndex
+        ? getAvatarIndex(safeId, ownerType)
+        : null;
       const avatarPaths = ownerType === "user"
         ? [path.join(appDataPath, "UserData", "user_avatar.png")]
         : AVATAR_EXTENSIONS.map((extension) =>
@@ -1681,12 +1698,14 @@ async function deleteEntity({
           if (error.code !== "ENOENT") throw error;
         });
       }
-      softDeleteAvatarIndex(
-        safeId,
-        ownerType,
-        deletedAt,
-        indexedAvatar?.file_path || avatarPaths[0],
-      );
+      if (persistAvatarIndex) {
+        softDeleteAvatarIndex(
+          safeId,
+          ownerType,
+          deletedAt,
+          indexedAvatar?.file_path || avatarPaths[0],
+        );
+      }
       logger.logOperation(
         actualPhase,
         "delete",
@@ -1819,7 +1838,9 @@ async function deleteEntity({
       configPath,
       deletedAt,
     });
-    softDeleteAvatarIndex(safeId, type, deletedAt);
+    if (persistAvatarIndex) {
+      softDeleteAvatarIndex(safeId, type, deletedAt);
+    }
     db.prepare(
       `UPDATE messages
        SET deleted_at = CASE

@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    domain::{OwnerKey, OwnerType, TopicKey},
+    domain::{AvatarKey, OwnerKey, OwnerType, TopicKey},
     ingest::{sha256_hex, Reconciler},
     storage::{Database, IngestCommit},
     sync_wire::{canonicalize_for_wire, canonicalize_message, message_fingerprint, WireWarnings},
@@ -31,8 +31,9 @@ pub struct ManifestRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteManifestItem {
     pub id: String,
-    pub config_hash: String,
-    pub content_hash: String,
+    pub config_hash: Option<String>,
+    pub content_hash: Option<String>,
+    pub hash: Option<String>,
     pub ts: i64,
     #[serde(default)]
     pub deleted_at: Option<i64>,
@@ -46,6 +47,7 @@ pub struct RemoteManifestItem {
 #[serde(rename_all = "camelCase")]
 pub struct ManifestItem {
     pub id: String,
+    /// Primary entity hash: Owner/Topic config Hash or Avatar bytes Hash.
     pub config_hash: String,
     pub content_hash: String,
     pub ts: i64,
@@ -359,9 +361,26 @@ fn is_lower_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
+fn remote_manifest_state_hash<'a>(
+    item: &'a RemoteManifestItem,
+    data_type: &str,
+) -> Result<&'a str> {
+    match data_type {
+        "avatar" => item
+            .hash
+            .as_deref()
+            .context("avatar manifest item requires hash"),
+        "owner" | "topic" => item
+            .config_hash
+            .as_deref()
+            .context("entity manifest item requires configHash"),
+        _ => anyhow::bail!("unsupported manifest dataType {data_type}"),
+    }
+}
+
 fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
     anyhow::ensure!(
-        matches!(request.data_type.as_str(), "owner" | "topic"),
+        matches!(request.data_type.as_str(), "owner" | "topic" | "avatar"),
         "unsupported manifest dataType {}",
         request.data_type
     );
@@ -394,16 +413,19 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
     let mut seen_identities = HashSet::new();
     for item in &request.data {
         anyhow::ensure!(!item.id.is_empty(), "manifest item id must not be empty");
+        let state_hash = remote_manifest_state_hash(item, &request.data_type)?;
         anyhow::ensure!(
-            is_lower_sha256(&item.config_hash),
-            "manifest item {} configHash must be lowercase SHA-256",
+            is_lower_sha256(state_hash),
+            "manifest item {} state hash must be lowercase SHA-256",
             item.id
         );
-        anyhow::ensure!(
-            item.content_hash.is_empty() || is_lower_sha256(&item.content_hash),
-            "manifest item {} contentHash must be empty or lowercase SHA-256",
-            item.id
-        );
+        if let Some(content_hash) = item.content_hash.as_deref() {
+            anyhow::ensure!(
+                content_hash.is_empty() || is_lower_sha256(content_hash),
+                "manifest item {} contentHash must be empty or lowercase SHA-256",
+                item.id
+            );
+        }
         anyhow::ensure!(
             (0..=MAX_SAFE_JSON_INTEGER).contains(&item.ts),
             "manifest item {} timestamp must be a non-negative safe integer",
@@ -416,7 +438,22 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
                 item.id
             );
         }
-        let identity = if request.data_type == "owner" {
+        let identity = if request.data_type == "avatar" {
+            AvatarKey::from_wire_id(&item.id)?;
+            anyhow::ensure!(
+                item.config_hash.is_none()
+                    && item.content_hash.is_none()
+                    && item.hash.is_some()
+                    && item.owner_type.is_none()
+                    && item.owner_id.is_none(),
+                "avatar manifest item must only carry id, hash, ts, and deletedAt"
+            );
+            manifest_key(&item.id, None, None)
+        } else if request.data_type == "owner" {
+            anyhow::ensure!(
+                item.hash.is_none() && item.content_hash.is_some(),
+                "owner manifest item requires contentHash and must not carry hash"
+            );
             let owner_type = item
                 .owner_type
                 .context("owner manifest item requires ownerType")?;
@@ -426,6 +463,10 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
             );
             manifest_key(&item.id, Some(owner_type), None)
         } else {
+            anyhow::ensure!(
+                item.hash.is_none() && item.content_hash.is_some(),
+                "topic manifest item requires contentHash and must not carry hash"
+            );
             let owner_type = item
                 .owner_type
                 .context("topic manifest item requires ownerType")?;
@@ -521,8 +562,10 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
             continue;
         }
 
-        let config_changed = local.config_hash != remote.config_hash;
-        let content_changed = local.content_hash != remote.content_hash;
+        let config_changed =
+            local.config_hash != remote_manifest_state_hash(remote, &request.data_type)?;
+        let content_changed =
+            local.content_hash != remote.content_hash.as_deref().unwrap_or_default();
         if config_changed {
             actions.push(ManifestAction {
                 id: local.id.clone(),
@@ -1245,8 +1288,43 @@ fn local_manifest(
     match data_type {
         "owner" => owner_manifest(database),
         "topic" => topic_manifests(database, targeted_owners),
+        "avatar" => avatar_manifest(database),
         _ => Ok(Vec::new()),
     }
+}
+
+fn avatar_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
+    let connection = database.connection.lock();
+    let mut statement = connection.prepare(
+        "SELECT owner_type, owner_id, hash, updated_at, deleted_at
+         FROM avatars
+         ORDER BY owner_type, owner_id",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    rows.into_iter()
+        .map(|(owner_type, owner_id, hash, ts, deleted_at)| {
+            let key = AvatarKey::from_wire_id(&format!("{owner_type}:{owner_id}"))?;
+            Ok(ManifestItem {
+                id: key.wire_id(),
+                config_hash: hash,
+                content_hash: String::new(),
+                ts,
+                deleted_at,
+                owner_type: None,
+                owner_id: None,
+            })
+        })
+        .collect()
 }
 
 fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
@@ -2037,18 +2115,18 @@ mod tests {
     };
 
     use super::{
-        aggregate_hash, manifest, message_diff, message_leaf_hash, message_manifest,
-        mobile_message_hash_from_json, mobile_owner_config_hash_from_value, owner_content_hash,
-        owner_manifest, pull_entities, pull_topic_messages, push_topic_messages,
-        topic_content_hash, topic_hash_diff, topic_identity, topic_leaf_hash, topic_manifest,
-        topic_manifests, validate_manifest_request, EntitiesPullRequest, EntityPullRequest,
-        ManifestRequest, MessageDiffRequest, MessageDiffState, MessageVersionState,
-        MessagesPullTopic, MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest,
-        TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
+        aggregate_hash, avatar_manifest, manifest, message_diff, message_leaf_hash,
+        message_manifest, mobile_message_hash_from_json, mobile_owner_config_hash_from_value,
+        owner_content_hash, owner_manifest, pull_entities, pull_topic_messages,
+        push_topic_messages, topic_content_hash, topic_hash_diff, topic_identity, topic_leaf_hash,
+        topic_manifest, topic_manifests, validate_manifest_request, EntitiesPullRequest,
+        EntityPullRequest, ManifestRequest, MessageDiffRequest, MessageDiffState,
+        MessageVersionState, MessagesPullTopic, MessagesPushTopic, RemoteManifestItem,
+        TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::{OwnerKey, OwnerType},
+        domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType},
         ingest::{sha256_hex, Reconciler},
         storage::Database,
         sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
@@ -2142,6 +2220,67 @@ mod tests {
             mobile_owner_config_hash_from_value(OwnerType::Agent, &changed)
                 .expect("hash changed agent")
         );
+    }
+
+    #[test]
+    fn avatar_commit_and_manifest_use_cds_state_before_owner_reconcile() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let key = AvatarKey {
+            owner_type: AvatarOwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+        };
+        fs::write(
+            config.agents_dir.join("agent-a/avatar.png"),
+            b"avatar-bytes",
+        )
+        .expect("write avatar");
+
+        let committed = reconciler
+            .commit_avatar(&key)
+            .expect("commit avatar before owner reconcile");
+        assert_eq!(committed.hash, sha256_hex(b"avatar-bytes"));
+        assert_eq!(
+            avatar_manifest(&database).expect("avatar manifest").len(),
+            1
+        );
+
+        let remote = RemoteManifestItem {
+            id: key.wire_id(),
+            config_hash: None,
+            content_hash: None,
+            hash: Some(committed.hash),
+            ts: committed.updated_at,
+            deleted_at: None,
+            owner_type: None,
+            owner_id: None,
+        };
+        let equal = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "avatar".to_string(),
+                data: vec![remote.clone()],
+                targeted_owners: None,
+            },
+        )
+        .expect("equal avatar manifest");
+        assert!(equal.data.is_empty());
+
+        database
+            .apply_sync_avatar_tombstone(&key, 7)
+            .expect("tombstone avatar");
+        assert!(reconciler.commit_avatar(&key).is_err());
+        let deleted = manifest(
+            &database,
+            ManifestRequest {
+                data_type: "avatar".to_string(),
+                data: vec![remote],
+                targeted_owners: None,
+            },
+        )
+        .expect("deleted avatar manifest");
+        assert_eq!(deleted.data.len(), 1);
+        assert_eq!(deleted.data[0].action, "DELETE");
+        assert_eq!(deleted.data[0].deleted_at, Some(7));
     }
 
     #[tokio::test]
@@ -2257,8 +2396,9 @@ mod tests {
             data_type: "owner".to_string(),
             data: vec![RemoteManifestItem {
                 id: "agent-a".to_string(),
-                config_hash: hash.clone(),
-                content_hash: String::new(),
+                config_hash: Some(hash.clone()),
+                content_hash: Some(String::new()),
+                hash: None,
                 ts: 1,
                 deleted_at: None,
                 owner_type: Some(OwnerType::Agent),
@@ -2285,8 +2425,9 @@ mod tests {
             data_type: "topic".to_string(),
             data: vec![RemoteManifestItem {
                 id: "topic-a".to_string(),
-                config_hash: hash,
-                content_hash: String::new(),
+                config_hash: Some(hash),
+                content_hash: Some(String::new()),
+                hash: None,
                 ts: 1,
                 deleted_at: Some(0),
                 owner_type: Some(OwnerType::Agent),
@@ -2364,8 +2505,9 @@ mod tests {
         let remote_item =
             |owner_type: OwnerType, id: &str, deleted_at: Option<i64>| RemoteManifestItem {
                 id: id.to_string(),
-                config_hash: hash.clone(),
-                content_hash: String::new(),
+                config_hash: Some(hash.clone()),
+                content_hash: Some(String::new()),
+                hash: None,
                 ts: 1,
                 deleted_at,
                 owner_type: Some(owner_type),
@@ -3076,8 +3218,9 @@ mod tests {
                 data_type: "topic".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "default".to_string(),
-                    config_hash: hash.clone(),
-                    content_hash: hash,
+                    config_hash: Some(hash.clone()),
+                    content_hash: Some(hash),
+                    hash: None,
                     ts: 1,
                     deleted_at: None,
                     owner_type: Some(OwnerType::Agent),
@@ -3530,8 +3673,9 @@ mod tests {
                 data_type: "topic".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "topic-a".to_string(),
-                    config_hash: "a".repeat(64),
-                    content_hash: "b".repeat(64),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some("b".repeat(64)),
+                    hash: None,
                     ts: 1,
                     deleted_at: None,
                     owner_type: Some(OwnerType::Agent),
@@ -3582,8 +3726,9 @@ mod tests {
                 data_type: "topic".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "topic-a".to_string(),
-                    config_hash: "a".repeat(64),
-                    content_hash: String::new(),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some(String::new()),
+                    hash: None,
                     ts: 1,
                     deleted_at: Some(7),
                     owner_type: Some(OwnerType::Agent),
@@ -3740,8 +3885,9 @@ mod tests {
                 data_type: "owner".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "agent-a".to_string(),
-                    config_hash: poisoned_a.config_hash.clone(),
-                    content_hash: "0".repeat(64),
+                    config_hash: Some(poisoned_a.config_hash.clone()),
+                    content_hash: Some("0".repeat(64)),
+                    hash: None,
                     ts: 1,
                     deleted_at: None,
                     owner_type: Some(OwnerType::Agent),
@@ -3812,8 +3958,9 @@ mod tests {
                 data_type: "owner".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "agent-a".to_string(),
-                    config_hash: "a".repeat(64),
-                    content_hash: String::new(),
+                    config_hash: Some("a".repeat(64)),
+                    content_hash: Some(String::new()),
+                    hash: None,
                     ts: 1,
                     deleted_at: Some(9),
                     owner_type: Some(OwnerType::Agent),

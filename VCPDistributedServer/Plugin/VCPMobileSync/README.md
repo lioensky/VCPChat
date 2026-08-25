@@ -92,7 +92,7 @@ pnpm exec electron-rebuild --only better-sqlite3
 1. **启动服务**：
    打开 VCPChat 桌面端 $\rightarrow$ **全局设置** $\rightarrow$ **高级功能** $\rightarrow$ 开启「VCP分布式服务器」 $\rightarrow$ **重启客户端**。
 2. **首次同步**：
-   * 中央索引默认开启，由 VCP-CDS 扫描 `history.json` 并维护 `AppData/databases/chat_data.sqlite3`。显式设置 `MobileSyncUseCentralIndex=false` 后，只有重启后的新同步 session 才切换到插件 `sync_state_v2.db` 路径。
+   * 中央索引默认开启，由 VCP-CDS 扫描 Owner、`history.json` 与 Avatar，并维护 `AppData/databases/chat_data.sqlite3`。显式设置 `MobileSyncUseCentralIndex=false` 后，只有重启后的新同步 session 才切换到插件 `sync_state_v2.db` 路径。
    * 等待 VCP-CDS 与 MobileSync 服务就绪后，在手机端点击「立即同步」即可开始全量传输。
 3. **日常静默**：
    * 只要桌面端服务器开启，手机端会利用高稳定性通道在后台保持实时或手动的增量数据对齐，仅同步变化内容（每次通常仅需几十 KB 流量）。
@@ -161,7 +161,7 @@ graph TD
 ```
 
 ### Phase 1: 轻量级索引扫描 (Reconcile)
-同步端口只在初始提交视图就绪后开放。中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3`；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在 ACK 前刷新所选模式的提交视图，使后续 Manifest 不依赖 watcher 补账。Phase 1 使用一份 `dataType=owner` 清单，条目以 `ownerType + id` 区分 Agent/Group；具体实体传输仍使用 `agent` 或 `group` DTO。
+同步端口只在初始提交视图就绪后开放。中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3` 中的 Owner、Topic、Message 与 Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在 ACK 前刷新所选模式的提交视图，使后续 Manifest 不依赖 watcher 补账。Phase 1 使用一份 `dataType=owner` 清单，条目以 `ownerType + id` 区分 Agent/Group；具体实体传输仍使用 `agent` 或 `group` DTO。Avatar bytes 始终由插件读写物理文件，中央模式只把其 Hash、路径、时间与墓碑提交到 CDS。
 
 ### Phase 2: 双哈希差分比对 (Double-Hash Merkle Diff)
 在比对阶段，插件放弃了传统的全量拉取策略，采用 **双哈希（`configHash` 与 `contentHash`）比对机制**：
@@ -183,7 +183,7 @@ graph TD
 
 ## 📐 硬核数据模型与表结构
 
-默认中央模式的 Owner、Topic、Message、附件关系、Tombstone 与 history source 状态由 VCP-CDS `chat_data.sqlite3` 管理。插件仍负责配置文件写入定位、本机 Attachment 路径解析和 Avatar。
+默认中央模式的 Owner、Topic、Message、Avatar、附件关系、Tombstone 与 history source 状态由 VCP-CDS `chat_data.sqlite3` 管理。插件仍负责配置文件和 Avatar bytes 的物理读写，以及本机 Attachment 路径解析；中央模式不会持久化 `sync_state_v2.db`。
 
 显式关闭中央索引时，`sync_state_v2.db` 使用完整复合身份：
 

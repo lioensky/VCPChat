@@ -29,7 +29,9 @@ use uuid::Uuid;
 
 use crate::{
     config::{PROTOCOL_VERSION, SCHEMA_VERSION},
-    domain::{MemoryWindow, OwnerType, SearchHit, TopicKey},
+    domain::{
+        AvatarKey, AvatarOwnerType, AvatarRecord, MemoryWindow, OwnerType, SearchHit, TopicKey,
+    },
     error::{ServiceError, ServiceResult},
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
     ingest::{ReconcileStats, Reconciler},
@@ -200,7 +202,7 @@ struct EntityDeleteRequest {
     id: String,
     deleted_at: i64,
     #[serde(default)]
-    owner_type: Option<OwnerType>,
+    owner_type: Option<String>,
     #[serde(default)]
     owner_id: Option<String>,
 }
@@ -213,6 +215,14 @@ struct EntityDeleteResponse {
 enum EntityDeleteTarget {
     Owner(OwnerType, String),
     Topic(TopicKey),
+    Avatar(AvatarKey),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AvatarStateRequest {
+    owner_type: AvatarOwnerType,
+    owner_id: String,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -228,6 +238,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/sync/topic-diff", post(sync_topic_diff))
         .route("/v1/sync/message-diff", post(sync_message_diff))
         .route("/v1/sync/entity-delete", post(sync_entity_delete))
+        .route("/v1/sync/avatar-state", post(sync_avatar_state))
+        .route("/v1/sync/avatar-commit", post(sync_avatar_commit))
         .route("/v1/flush", post(flush))
         .route("/v1/shutdown", post(shutdown))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
@@ -506,6 +518,10 @@ async fn sync_entity_delete(
             .reconciler
             .database()
             .apply_sync_topic_tombstone(&key, deleted_at),
+        EntityDeleteTarget::Avatar(key) => state
+            .reconciler
+            .database()
+            .apply_sync_avatar_tombstone(&key, deleted_at),
     }
     .map_err(ServiceError::internal)?;
 
@@ -546,11 +562,14 @@ fn validate_entity_delete_request(
             EntityDeleteTarget::Owner(owner_type, request.id)
         }
         "topic" => {
-            let owner_type = request.owner_type.ok_or_else(|| {
-                ServiceError::InvalidRequest(
-                    "sync topic delete requires ownerType and ownerId".to_string(),
-                )
-            })?;
+            let owner_type = request
+                .owner_type
+                .ok_or_else(|| {
+                    ServiceError::InvalidRequest(
+                        "sync topic delete requires ownerType and ownerId".to_string(),
+                    )
+                })?
+                .parse::<OwnerType>()?;
             let owner_id = request.owner_id.filter(|owner_id| {
                 !owner_id.is_empty()
                     && owner_id
@@ -568,13 +587,71 @@ fn validate_entity_delete_request(
                 topic_id: request.id,
             })
         }
+        "avatar" => {
+            if request.owner_id.is_some() {
+                return Err(ServiceError::InvalidRequest(
+                    "sync avatar delete must not include topic ownerId".to_string(),
+                ));
+            }
+            let owner_type = request
+                .owner_type
+                .ok_or_else(|| {
+                    ServiceError::InvalidRequest(
+                        "sync avatar delete requires ownerType".to_string(),
+                    )
+                })?
+                .parse::<AvatarOwnerType>()?;
+            validate_avatar_key(AvatarKey {
+                owner_type,
+                owner_id: request.id,
+            })
+            .map(EntityDeleteTarget::Avatar)?
+        }
         _ => {
             return Err(ServiceError::InvalidRequest(
-                "sync entity delete dataType must be agent, group, or topic".to_string(),
+                "sync entity delete dataType must be agent, group, topic, or avatar".to_string(),
             ));
         }
     };
     Ok((target, request.deleted_at))
+}
+
+async fn sync_avatar_state(
+    State(state): State<AppState>,
+    Json(request): Json<AvatarStateRequest>,
+) -> ServiceResult<Json<AvatarRecord>> {
+    let key = validate_avatar_key(AvatarKey {
+        owner_type: request.owner_type,
+        owner_id: request.owner_id,
+    })?;
+    state
+        .reconciler
+        .database()
+        .avatar_state(&key)
+        .map_err(ServiceError::internal)?
+        .map(Json)
+        .ok_or_else(|| ServiceError::NotFound(format!("avatar {}", key.wire_id())))
+}
+
+async fn sync_avatar_commit(
+    State(state): State<AppState>,
+    Json(request): Json<AvatarStateRequest>,
+) -> ServiceResult<Json<AvatarRecord>> {
+    let key = validate_avatar_key(AvatarKey {
+        owner_type: request.owner_type,
+        owner_id: request.owner_id,
+    })?;
+    let _guard = state.reconcile_lock.lock().await;
+    state
+        .reconciler
+        .commit_avatar(&key)
+        .map(Json)
+        .map_err(ServiceError::internal)
+}
+
+fn validate_avatar_key(key: AvatarKey) -> ServiceResult<AvatarKey> {
+    let wire_id = key.wire_id();
+    AvatarKey::from_wire_id(&wire_id)
 }
 
 async fn sync_topic_identity(
@@ -951,7 +1028,7 @@ mod tests {
         ));
 
         let mut valid = request("topic", "default", 1);
-        valid.owner_type = Some(OwnerType::Agent);
+        valid.owner_type = Some("agent".to_string());
         valid.owner_id = Some("agent-a".to_string());
         let (target, deleted_at) =
             validate_entity_delete_request(valid).expect("validate exact topic owner");
