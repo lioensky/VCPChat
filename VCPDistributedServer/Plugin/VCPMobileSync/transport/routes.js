@@ -342,7 +342,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           stage: "owner_metadata",
         });
       }
-      res.sendFile(result.filePath);
+      res.type(result.mimeType).send(result.data);
     } catch (e) {
       sendHttpError(res, 500, e, {
         code: "SYNC_AVATAR_READ_FAILED",
@@ -364,6 +364,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           type,
           data: req.body,
           appDataPath,
+          mimeType: req.get("content-type"),
         });
         res.json(result);
       } catch (e) {

@@ -21,7 +21,6 @@ const {
 } = require("../core/hash");
 const {
   sanitizeId,
-  assertUniquePhysicalHistoryOwner,
   addWriteIntent,
   releaseWriteIntent,
 } = require("./entity");
@@ -280,11 +279,6 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
           { stage: "messages", failedTopicIds: [safeTopicId] },
         );
       }
-      await assertUniquePhysicalHistoryOwner(
-        appDataPath,
-        ownerType,
-        ownerId,
-      );
       const topicKey = topicIdentityKey(ownerType, ownerId, safeTopicId);
       if (seenTopics.has(topicKey)) {
         throw createSyncError(
@@ -596,11 +590,6 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
         }
-        await assertUniquePhysicalHistoryOwner(
-          appDataPath,
-          ownerType,
-          ownerId,
-        );
         const topicKey = topicIdentityKey(ownerType, ownerId, safeTopicId);
         if (seenTopics.has(topicKey)) {
           streamFatal = true;

@@ -7,13 +7,16 @@ const path = require("path");
 const crypto = require("crypto");
 const {
   getDb,
+  getAvatarDb,
   getEntityIndex,
+  getAvatarIndex,
   upsertEntityIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
   upsertEntityTombstone,
   upsertMessageTombstone,
   softDeleteAvatarIndex,
+  recomputeOwnerAggregatedHash,
 } = require("../core/db");
 const {
   computeBinaryHash,
@@ -27,12 +30,14 @@ const {
   createGroupTopic,
 } = require("../config/defaults");
 const { acquireLock } = require("../utils/lock");
+const { getExtensionFromType } = require("../utils/mime");
 const { getLogger } = require("../core/logger");
 const {
   createSyncError,
   normalizeSyncError,
   withSyncErrorContext,
 } = require("../error-contract");
+
 const {
   extractAgentDTO,
   applyAgentDTO,
@@ -53,6 +58,55 @@ const {
   AGENT_TOPIC_SYNC_FIELDS,
   GROUP_TOPIC_SYNC_FIELDS,
 } = require("../dto/topic.dto");
+
+const AVATAR_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+const MAX_AVATAR_BYTES = 20 * 1024 * 1024;
+const AVATAR_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+]);
+
+function detectAvatarMime(data) {
+  if (data.length >= 8 && data.subarray(0, 8).equals(
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  )) {
+    return "image/png";
+  }
+  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (data.length >= 6) {
+    const signature = data.subarray(0, 6).toString("ascii");
+    if (signature === "GIF87a" || signature === "GIF89a") return "image/gif";
+  }
+  if (
+    data.length >= 12 &&
+    data.subarray(0, 4).toString("ascii") === "RIFF" &&
+    data.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  throw new Error("Avatar upload bytes are not png, jpeg, gif, or webp");
+}
+
+function resolveAvatarMime(rawMimeType, data) {
+  const value = typeof rawMimeType === "string"
+    ? rawMimeType.split(";", 1)[0].trim().toLowerCase()
+    : "";
+  if (!AVATAR_MIME_TYPES.has(value)) {
+    throw new Error("Avatar upload requires png, jpeg, gif, or webp Content-Type");
+  }
+  const requestedMimeType = value === "image/jpg" ? "image/jpeg" : value;
+  const mimeType = detectAvatarMime(data);
+  return {
+    mimeType,
+    extension: getExtensionFromType(mimeType),
+    mimeMismatch: requestedMimeType !== mimeType,
+  };
+}
 
 const writeIntentLock = new Map();
 
@@ -157,43 +211,9 @@ function ownerDtoMatchingIndex(candidates, row, type) {
   return null;
 }
 
-async function getPhysicalOwnerTypes(appDataPath, ownerId) {
-  const ownerTypes = [];
-  if (await isDirectory(path.join(appDataPath, "Agents", ownerId))) {
-    ownerTypes.push("agent");
-  }
-  if (await isDirectory(path.join(appDataPath, "AgentGroups", ownerId))) {
-    ownerTypes.push("group");
-  }
-  return ownerTypes;
-}
-
-async function assertUniquePhysicalHistoryOwner(appDataPath, ownerType, ownerId) {
-  const ownerTypes = await getPhysicalOwnerTypes(appDataPath, ownerId);
-  if (ownerTypes.length !== 1 || ownerTypes[0] !== ownerType) {
-    throw Object.assign(
-      new Error(
-        `Physical history owner ${ownerId} is not uniquely owned by ${ownerType}`,
-      ),
-      { code: "SYNC_OWNER_CONFLICT" },
-    );
-  }
-}
-
 async function isDirectory(directory) {
   try {
     return (await fs.stat(directory)).isDirectory();
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
-async function ownerHasPhysicalTopics(appDataPath, ownerId) {
-  const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
-  try {
-    const entries = await fs.readdir(topicsDir, { withFileTypes: true });
-    return entries.some((entry) => entry.isDirectory());
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -421,7 +441,6 @@ async function uploadEntitiesBatch(items, appDataPath) {
   const fileGroups = new Map(); // Map<configPath, { items: [] }>
   const addedIntentLocks = new Set();
   const seenTopics = new Set();
-  const validatedHistoryOwners = new Set();
 
   for (const item of items) {
     const { id, type, ownerType, ownerId, data } = item;
@@ -499,20 +518,6 @@ async function uploadEntitiesBatch(items, appDataPath) {
         failedTopicIds: [safeId],
       }, entityResultIdentity(item)));
       continue;
-    }
-    const ownerKey = `${ownerType}\0${ownerId}`;
-    if (!validatedHistoryOwners.has(ownerKey)) {
-      try {
-        await assertUniquePhysicalHistoryOwner(appDataPath, ownerType, ownerId);
-        validatedHistoryOwners.add(ownerKey);
-      } catch (error) {
-        results.push(entityFailure(error, {
-          code: "SYNC_OWNER_CONFLICT",
-          stage: "topic_metadata",
-          failedTopicIds: [safeId],
-        }, entityResultIdentity(item)));
-        continue;
-      }
     }
     addedIntentLocks.add(addWriteIntent({
       id: safeId,
@@ -608,6 +613,11 @@ async function uploadEntitiesBatch(items, appDataPath) {
             });
           }
         }
+        const committedTopic = group.items.find((item) => successfulIds.has(item.id));
+        recomputeOwnerAggregatedHash(
+          committedTopic.ownerType,
+          committedTopic.ownerId,
+        );
       } catch (e) {
         // 文件级错误，标记该组所有 item 为失败。
         // 缺口 D：父 config 不存在（ENOENT）时与单条路径（entity.js:497-510）
@@ -775,22 +785,6 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
     }, resultIdentity);
   }
 
-  if (isTopic) {
-    try {
-      await assertUniquePhysicalHistoryOwner(
-        appDataPath,
-        topicOwnerType,
-        topicOwnerId,
-      );
-    } catch (error) {
-      return entityFailure(error, {
-        code: "SYNC_OWNER_CONFLICT",
-        stage: "topic_metadata",
-        failedTopicIds: [safeId],
-      }, resultIdentity);
-    }
-  }
-
   const writeIntentKey = addWriteIntent(
     entityIndexIdentity(safeId, type, topicOwnerType, topicOwnerId),
   );
@@ -861,6 +855,7 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
         topicOwnerType,
         topicOwnerId,
       );
+      recomputeOwnerAggregatedHash(topicOwnerType, topicOwnerId);
     } else {
       const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
       const hash = computeDtoHash(
@@ -1276,11 +1271,9 @@ async function scanPhysicalTopicTree(appDataPath) {
         ownerType,
         ownerId,
         physicalTopics: new Set(),
-        historyAmbiguous: false,
       };
       owners.set(`${ownerType}\0${ownerId}`, owner);
-      if (!ownersById.has(ownerId)) ownersById.set(ownerId, []);
-      ownersById.get(ownerId).push(owner);
+      ownersById.set(ownerId, owner);
     }
   }
 
@@ -1290,23 +1283,19 @@ async function scanPhysicalTopicTree(appDataPath) {
     const topicsPath = path.join(userDataPath, ownerId, "topics");
     const topicIds = (await listDirectories(topicsPath))
       .filter((topicId) => sanitizeId(topicId) === topicId);
-    const matchingOwners = ownersById.get(ownerId) || [];
-    if (matchingOwners.length !== 1) {
+    const owner = ownersById.get(ownerId);
+    if (!owner) {
       if (topicIds.length > 0) {
-        for (const owner of matchingOwners) owner.historyAmbiguous = true;
         getLogger().logOperation(
           "reconcile",
           "repair_projection",
           ownerId,
           "error",
-          matchingOwners.length === 0
-            ? "UserData owner has no Agents/AgentGroups directory; skipped"
-            : "UserData owner is ambiguous between Agent and Group; skipped",
+          "UserData owner has no Agents/AgentGroups directory; skipped",
         );
       }
       continue;
     }
-    const owner = matchingOwners[0];
     for (const topicId of topicIds) {
       owner.physicalTopics.add(topicId);
     }
@@ -1329,7 +1318,6 @@ async function repairTopicProjectionsFromDisk(
   const stats = { ownersChanged: 0, topicsAdded: 0, topicsRemoved: 0 };
   for (const ownerKey of [...owners.keys()].sort()) {
     const owner = owners.get(ownerKey);
-    if (owner.historyAmbiguous) continue;
     const result = await repairOwnerTopicProjection({
       appDataPath,
       ownerId: owner.ownerId,
@@ -1368,14 +1356,9 @@ async function reconcileMissingPhysicalIndexes(
   const owners = physicalOwners || await scanPhysicalTopicTree(appDataPath);
   const liveOwners = new Set();
   const liveTopics = new Map();
-  const ambiguousOwners = new Set();
   for (const owner of owners.values()) {
     const ownerKey = `${owner.ownerType}\0${owner.ownerId}`;
     liveOwners.add(`${owner.ownerType}:${owner.ownerId}`);
-    if (owner.historyAmbiguous) {
-      ambiguousOwners.add(ownerKey);
-      continue;
-    }
     for (const topicId of owner.physicalTopics) {
       liveTopics.set(`${ownerKey}\0${topicId}`, true);
     }
@@ -1405,8 +1388,6 @@ async function reconcileMissingPhysicalIndexes(
   );
 
   const staleTopicRows = topicRows.filter((row) => {
-    const ownerKey = `${row.owner_type}\0${row.owner_id}`;
-    if (ambiguousOwners.has(ownerKey)) return false;
     if (staleOwnerPaths.has(row.file_path)) return true;
     return !liveTopics.has(`${row.owner_type}\0${row.owner_id}\0${row.id}`);
   });
@@ -1419,11 +1400,6 @@ async function reconcileMissingPhysicalIndexes(
        SET deleted_at = ?
        WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?
          AND deleted_at IS NULL`,
-    );
-    const deleteAvatar = database.prepare(
-      `UPDATE avatar_index
-       SET deleted_at = ?
-       WHERE owner_id = ? AND owner_type = ? AND deleted_at IS NULL`,
     );
     const deleteTopic = database.prepare(
       `UPDATE entity_index
@@ -1451,7 +1427,6 @@ async function reconcileMissingPhysicalIndexes(
         owner.owner_id,
         owner.id,
       ).changes;
-      deleteAvatar.run(effectiveDeletedAt, owner.id, owner.type);
     }
     for (const topic of staleTopicRows) {
       const effectiveDeletedAt = Math.min(
@@ -1478,28 +1453,18 @@ async function reconcileMissingPhysicalIndexes(
     throw error;
   }
 
+  for (const owner of staleOwners) {
+    softDeleteAvatarIndex(
+      owner.id,
+      owner.type,
+      staleOwnerDeletedAtByPath.get(owner.file_path),
+    );
+  }
+
   const {
     clearHistoryOwnerUnhealthy,
     clearHistoryTopicUnhealthy,
-    markHistoryTopicUnhealthy,
   } = require("./message");
-  for (const topic of topicRows) {
-    if (
-      topic.deleted_at === null &&
-      ambiguousOwners.has(`${topic.owner_type}\0${topic.owner_id}`)
-    ) {
-      markHistoryTopicUnhealthy(
-        {
-          topicId: topic.id,
-          ownerType: topic.owner_type,
-          ownerId: topic.owner_id,
-        },
-        new Error(
-          `Physical history owner ${topic.owner_id} is ambiguous between Agent and Group`,
-        ),
-      );
-    }
-  }
   for (const owner of staleOwners) {
     clearHistoryOwnerUnhealthy(owner.owner_type, owner.owner_id);
   }
@@ -1518,10 +1483,10 @@ async function reconcileMissingPhysicalIndexes(
  * 下载头像
  * @param {string} id - 所有者 ID
  * @param {string} type - 所有者类型 (agent/group)
- * @returns {Promise<{filePath: string}|null>}
+ * @returns {Promise<{data: Buffer,mimeType: string}|null>}
  */
 async function downloadAvatar(id, type) {
-  const db = getDb();
+  const db = getAvatarDb();
   const logger = getLogger();
   if (!db) return null;
 
@@ -1536,7 +1501,7 @@ async function downloadAvatar(id, type) {
   }
   const row = db
     .prepare(
-      "SELECT file_path FROM avatar_index WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL",
+      "SELECT file_path, hash FROM avatar_index WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL",
     )
     .get(type, safeId);
   if (!row) {
@@ -1544,10 +1509,17 @@ async function downloadAvatar(id, type) {
     return null;
   }
   const stats = await fs.stat(row.file_path);
-  if (!stats.isFile()) throw new Error("Avatar index does not point to a file");
+  if (!stats.isFile() || stats.size > MAX_AVATAR_BYTES) {
+    throw new Error("Avatar index does not point to a supported file");
+  }
+  const data = await fs.readFile(row.file_path);
+  if (computeBinaryHash(data) !== row.hash) {
+    throw new Error("Avatar changed after its manifest was indexed");
+  }
+  const mimeType = detectAvatarMime(data);
 
   logger.logOperation("owner_metadata", "download_avatar", id, "success", `type=${type}`);
-  return { filePath: row.file_path };
+  return { data, mimeType };
 }
 
 /**
@@ -1557,8 +1529,9 @@ async function downloadAvatar(id, type) {
  * @param {string} params.type - 所有者类型 (agent/group)
  * @param {Buffer} params.data - 头像二进制数据
  * @param {string} params.appDataPath - AppData 路径
+ * @param {string} params.mimeType - HTTP Content-Type
  */
-async function uploadAvatar({ id, type, data, appDataPath }) {
+async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType }) {
   const logger = getLogger();
   const safeId = sanitizeId(id);
   if (
@@ -1566,10 +1539,20 @@ async function uploadAvatar({ id, type, data, appDataPath }) {
     safeId !== id ||
     !["agent", "group", "user"].includes(type) ||
     !Buffer.isBuffer(data) ||
-    data.length > 20 * 1024 * 1024 ||
+    data.length > MAX_AVATAR_BYTES ||
     (type === "user" && safeId !== "user_avatar")
   ) {
     throw new Error("Avatar upload has an invalid owner or exceeds 20 MiB");
+  }
+  const { extension, mimeMismatch } = resolveAvatarMime(rawMimeType, data);
+  if (mimeMismatch) {
+    logger.logOperation(
+      "owner_metadata",
+      "upload_avatar_mime",
+      safeId,
+      "warn",
+      "Content-Type disagreed with avatar bytes; physical format was used",
+    );
   }
   const isGroup = type === "group";
   const isUser = type === "user";
@@ -1579,13 +1562,15 @@ async function uploadAvatar({ id, type, data, appDataPath }) {
       throw new Error(`Avatar owner ${type}/${safeId} is missing or deleted`);
     }
   }
+  if (getAvatarIndex(safeId, type)?.deleted_at != null) {
+    throw new Error(`Avatar ${type}/${safeId} is deleted`);
+  }
   const baseDirName = isGroup ? "AgentGroups" : "Agents";
   const entityDir = isUser
     ? path.join(appDataPath, "UserData")
     : path.join(appDataPath, baseDirName, safeId);
 
-  // 默认保存为 png
-  const avatarFileName = isUser ? "user_avatar.png" : "avatar.png";
+  const avatarFileName = isUser ? "user_avatar.png" : `avatar${extension}`;
   const avatarPath = path.join(entityDir, avatarFileName);
 
   // 确保目录存在
@@ -1617,8 +1602,23 @@ async function uploadAvatar({ id, type, data, appDataPath }) {
     throw error;
   }
 
+  if (!isUser) {
+    for (const oldExtension of AVATAR_EXTENSIONS) {
+      const oldPath = path.join(entityDir, `avatar${oldExtension}`);
+      if (oldPath !== avatarPath) {
+        await fs.unlink(oldPath).catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
+    }
+  }
+
   const hash = computeBinaryHash(data);
-  upsertAvatarIndex(safeId, type, avatarPath, hash);
+  const indexed = upsertAvatarIndex(safeId, type, avatarPath, hash);
+  if (indexed?.changes !== 1) {
+    await fs.unlink(avatarPath).catch(() => {});
+    throw new Error(`Avatar ${type}/${safeId} is deleted`);
+  }
 
   // Group 头像需要额外更新 config.json 的 avatar 字段
   if (isGroup) {
@@ -1746,13 +1746,34 @@ async function deleteEntity({
       if (!["agent", "group", "user"].includes(ownerType)) {
         throw new Error("Avatar deletion requires a valid ownerType");
       }
-      softDeleteAvatarIndex(safeId, ownerType, deletedAt);
+      const indexedAvatar = getAvatarIndex(safeId, ownerType);
+      const avatarPaths = ownerType === "user"
+        ? [path.join(appDataPath, "UserData", "user_avatar.png")]
+        : AVATAR_EXTENSIONS.map((extension) =>
+            path.join(
+              appDataPath,
+              ownerType === "group" ? "AgentGroups" : "Agents",
+              safeId,
+              `avatar${extension}`,
+            )
+          );
+      for (const avatarPath of avatarPaths) {
+        await fs.unlink(avatarPath).catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
+      softDeleteAvatarIndex(
+        safeId,
+        ownerType,
+        deletedAt,
+        indexedAvatar?.file_path || avatarPaths[0],
+      );
       logger.logOperation(
         actualPhase,
         "delete",
         safeId,
         "success",
-        "type=avatar, soft deleted",
+        "type=avatar, physical file removed and tombstoned",
       );
       return { success: true, id: safeId };
     }
@@ -1778,22 +1799,14 @@ async function deleteEntity({
         "topics",
         safeId,
       );
-      const liveOwnerTypes = await getPhysicalOwnerTypes(
+      const ownerDir = path.join(
         appDataPath,
+        ownerType === "group" ? "AgentGroups" : "Agents",
         safeOwnerId,
       );
-      const targetOwnerLive = liveOwnerTypes.includes(ownerType);
+      const targetOwnerLive = await isDirectory(ownerDir);
       const topicDirExists = await isDirectory(topicDir);
-      if (targetOwnerLive && liveOwnerTypes.length > 1 && topicDirExists) {
-        throw Object.assign(
-          new Error(
-            `Cannot delete physical topic ${safeOwnerId}/${safeId} while Agent and Group share the owner ID`,
-          ),
-          { code: "SYNC_OWNER_CONFLICT" },
-        );
-      }
-      const removePhysicalTopic =
-        targetOwnerLive && liveOwnerTypes.length === 1 && topicDirExists;
+      const removePhysicalTopic = topicDirExists;
       if (removePhysicalTopic) {
         await fs.rm(topicDir, { recursive: true, force: true });
       }
@@ -1817,6 +1830,7 @@ async function deleteEntity({
         ownerType,
         ownerId: safeOwnerId,
       });
+      recomputeOwnerAggregatedHash(ownerType, safeOwnerId);
 
       // config.topics 是被动投影；损坏或暂时不可写都不能反向阻塞物理删除。
       if (targetOwnerLive) {
@@ -1875,17 +1889,6 @@ async function deleteEntity({
           safeId,
         );
     const userDataDir = path.join(appDataPath, "UserData", safeId);
-    const liveOwnerTypes = await getPhysicalOwnerTypes(appDataPath, safeId);
-    const targetOwnerLive = liveOwnerTypes.includes(type);
-    const hasPhysicalTopics = await ownerHasPhysicalTopics(appDataPath, safeId);
-    if (targetOwnerLive && liveOwnerTypes.length > 1 && hasPhysicalTopics) {
-      throw Object.assign(
-        new Error(
-          `Cannot delete ${type}/${safeId} while Agent and Group histories share the owner ID`,
-        ),
-        { code: "SYNC_OWNER_CONFLICT" },
-      );
-    }
 
     // Owner 目录先形成删除事实；遗留 UserData 即使清理中断也不会被猜测成 Agent。
     await fs.rm(entityDir, { recursive: true, force: true });
@@ -1915,7 +1918,7 @@ async function deleteEntity({
          WHEN deleted_at IS NULL THEN ? ELSE MIN(deleted_at, ?) END
        WHERE type = 'topic' AND owner_type = ? AND owner_id = ?`,
     ).run(deletedAt, deletedAt, type, safeId);
-    const removePhysicalHistory = targetOwnerLive && liveOwnerTypes.length === 1;
+    const removePhysicalHistory = await isDirectory(userDataDir);
     if (removePhysicalHistory) {
       await fs.rm(userDataDir, { recursive: true, force: true });
     }
@@ -1998,7 +2001,6 @@ async function deleteMessage({
     if (!topic || topic.deleted_at != null) {
       throw new Error(`Message topic ${ownerType}/${ownerId}/${safeTopicId} is missing`);
     }
-    await assertUniquePhysicalHistoryOwner(appDataPath, ownerType, ownerId);
     const { assertHistoryTopicHealthy } = require("./message");
     assertHistoryTopicHealthy({
       topicId: safeTopicId,
@@ -2060,7 +2062,6 @@ module.exports = {
   repairTopicProjectionsFromDisk,
   reconcileMissingPhysicalIndexes,
   sanitizeId,
-  assertUniquePhysicalHistoryOwner,
   addWriteIntent,
   releaseWriteIntent,
   deleteEntity,

@@ -11,11 +11,17 @@ try {
 }
 
 const { getLogger } = require("./logger");
+const {
+  computeAggregatedHash,
+  computeTopicLeafHash,
+} = require("./hash");
 
 let db = null;
+let avatarDb = null;
 const HISTORY_INDEX_VERSION = 1;
 const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
 const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
+const AVATAR_TOMBSTONE_HASH = "0".repeat(64);
 
 function isTopicEntityType(type) {
   return ["topic", "agent_topic", "group_topic"].includes(type);
@@ -91,12 +97,28 @@ function createMessageIndexTable(tableName) {
   `);
 }
 
+function createAvatarIndexTable(database) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS avatar_index (
+      owner_id TEXT NOT NULL,
+      owner_type TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deleted_at INTEGER DEFAULT NULL,
+      PRIMARY KEY (owner_id, owner_type)
+    )
+  `);
+}
+
 /**
  * 初始化数据库
  * @param {string} dbPath - 数据库文件路径
+ * @param {object} [options]
+ * @param {string|null} [options.avatarDbPath] - 可选的持久 Avatar 兼容索引
  * @returns {object|null} 数据库实例
  */
-function initDb(dbPath) {
+function initDb(dbPath, { avatarDbPath = null } = {}) {
   if (!Database) return null;
 
   db = new Database(dbPath);
@@ -116,18 +138,10 @@ function initDb(dbPath) {
     )
   `);
 
-  // 4. 头像索引表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS avatar_index (
-      owner_id TEXT NOT NULL,
-      owner_type TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER DEFAULT NULL,
-      PRIMARY KEY (owner_id, owner_type)
-    )
-  `);
+  // 4. 头像索引表。CDS 模式的其余兼容索引保持进程内派生视图，
+  // Avatar 则复用已有 sync_state_v2.db 跨重启保存墓碑。
+  avatarDb = avatarDbPath ? new Database(avatarDbPath) : db;
+  createAvatarIndexTable(avatarDb);
 
   // 5. history.json 源文件版本。消息 updated_at 不能用于判断物理文件
   // 是否变化；保存 mtime + size 后，后续启动只需 stat，避免重复读取、
@@ -157,6 +171,10 @@ function initDb(dbPath) {
  */
 function getDb() {
   return db;
+}
+
+function getAvatarDb() {
+  return avatarDb || db;
 }
 
 /**
@@ -309,19 +327,29 @@ function upsertAvatarIndex(
   hash,
   updatedAt = Date.now(),
 ) {
-  if (!db) return;
+  const database = getAvatarDb();
+  if (!database) return;
 
-  db.prepare(
+  return database.prepare(
     `
     INSERT INTO avatar_index (owner_id, owner_type, file_path, hash, updated_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(owner_id, owner_type) DO UPDATE SET 
       file_path = excluded.file_path,
       hash = excluded.hash,
-      updated_at = CASE WHEN avatar_index.hash <> excluded.hash THEN excluded.updated_at ELSE avatar_index.updated_at END,
-      deleted_at = NULL
+      updated_at = CASE WHEN avatar_index.hash <> excluded.hash THEN excluded.updated_at ELSE avatar_index.updated_at END
+    WHERE avatar_index.deleted_at IS NULL
   `,
   ).run(ownerId, ownerType, filePath, hash, updatedAt);
+}
+
+function getAvatarIndex(ownerId, ownerType) {
+  const database = getAvatarDb();
+  if (!database) return null;
+  return database.prepare(
+    `SELECT owner_id, owner_type, file_path, hash, updated_at, deleted_at
+     FROM avatar_index WHERE owner_id = ? AND owner_type = ?`,
+  ).get(ownerId, ownerType) || null;
 }
 
 /**
@@ -555,17 +583,40 @@ function upsertMessageTombstone({
  * @param {string} ownerType - 所有者类型
  * @param {number} deletedAt - 删除时间戳
  */
-function softDeleteAvatarIndex(ownerId, ownerType, deletedAt = Date.now()) {
-  if (!db) return;
+function softDeleteAvatarIndex(
+  ownerId,
+  ownerType,
+  deletedAt = Date.now(),
+  filePath = "",
+) {
+  const database = getAvatarDb();
+  if (!database) return;
 
-  return db
-    .prepare(
-      `UPDATE avatar_index
-       SET deleted_at = CASE
-         WHEN deleted_at IS NULL THEN ? ELSE MIN(deleted_at, ?) END
-       WHERE owner_id = ? AND owner_type = ?`,
-    )
-    .run(deletedAt, deletedAt, ownerId, ownerType);
+  return database.prepare(
+    `INSERT INTO avatar_index
+       (owner_id, owner_type, file_path, hash, updated_at, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(owner_id, owner_type) DO UPDATE SET
+       file_path = CASE
+         WHEN avatar_index.file_path = '' THEN excluded.file_path
+         ELSE avatar_index.file_path
+       END,
+       updated_at = CASE
+         WHEN avatar_index.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(avatar_index.updated_at, excluded.deleted_at)
+       END,
+       deleted_at = CASE
+         WHEN avatar_index.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(avatar_index.deleted_at, excluded.deleted_at)
+       END`,
+  ).run(
+    ownerId,
+    ownerType,
+    filePath,
+    AVATAR_TOMBSTONE_HASH,
+    deletedAt,
+    deletedAt,
+  );
 }
 
 function updateTopicAggregatedHash({ ownerType, ownerId, topicId }, aggregatedHash) {
@@ -584,13 +635,46 @@ function updateTopicAggregatedHash({ ownerType, ownerId, topicId }, aggregatedHa
   ).run(aggregatedHash, identity.ownerType, identity.ownerId, identity.id);
 }
 
+function recomputeOwnerAggregatedHash(ownerType, ownerId) {
+  if (!db) throw new Error("Database not initialized");
+  if (!["agent", "group"].includes(ownerType) || !ownerId) {
+    throw new Error("Owner aggregate requires a complete owner identity");
+  }
+  const emptyContentHash = computeAggregatedHash([]);
+  const topics = db.prepare(
+    `SELECT id, hash, aggregated_hash FROM entity_index
+     WHERE type = 'topic' AND owner_type = ? AND owner_id = ?
+       AND deleted_at IS NULL`,
+  ).all(ownerType, ownerId);
+  const aggregatedHash = computeAggregatedHash(
+    topics.map((topic) =>
+      computeTopicLeafHash(
+        topic.id,
+        topic.hash,
+        topic.aggregated_hash || emptyContentHash,
+      )
+    ),
+  );
+  const updated = db.prepare(
+    `UPDATE entity_index SET aggregated_hash = ?
+     WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?
+       AND deleted_at IS NULL`,
+  ).run(aggregatedHash, ownerType, ownerType, ownerId, ownerId);
+  if (updated.changes !== 1) {
+    throw new Error(`Owner index is missing or deleted for ${ownerType}/${ownerId}`);
+  }
+  return aggregatedHash;
+}
+
 module.exports = {
   initDb,
   getDb,
+  getAvatarDb,
   upsertEntityIndex,
   upsertMessageIndex,
   upsertAttachmentIndex,
   upsertAvatarIndex,
+  getAvatarIndex,
   getEntityIndex,
   getHistorySourceState,
   upsertHistorySourceState,
@@ -600,4 +684,5 @@ module.exports = {
   upsertMessageTombstone,
   softDeleteAvatarIndex,
   updateTopicAggregatedHash,
+  recomputeOwnerAggregatedHash,
 };

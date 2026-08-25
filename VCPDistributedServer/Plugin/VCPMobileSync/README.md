@@ -43,7 +43,7 @@ VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Dou
 | 💬 **话题 (Topic)** | 挂载于智能体或群组之下的独立子话题元数据 | `Agents|groups` 下的 topics 数组 |
 | ✉️ **消息历史 (Message)** | 包含思维链 (Thinking) 节点、Markdown 文本及元数据的完整聊天链路 | `UserData/{parentId}/topics/{topicId}/history.json` |
 | 📎 **附件 (Attachment)** | 双向只同步消息内附件元数据与内容 Hash；二进制文件保留在各端本机 CAS | `UserData/attachments/{hash}.{ext}` |
-| 🖼️ **自定义头像 (Avatar)** | 智能体、群组及用户本身的个性化头像二进制数据 | `Agents|groups/{id}/avatar.png` 及 `user_avatar.png` |
+| 🖼️ **自定义头像 (Avatar)** | 智能体、群组及用户本身的个性化头像二进制数据 | `Agents|AgentGroups/{id}/avatar.{png,jpg,jpeg,gif,webp}` 及 `UserData/user_avatar.png` |
 
 > [!NOTE]
 > **物理合并策略**：VCPMobileSync 采用**双向增量合并 (Bi-directional Incremental Merge)** 策略。两端新增的内容都会予以保留。对于同一实体的并发修改冲突，严格以**修改时间戳 (Timestamp)** 最新的一端为准。

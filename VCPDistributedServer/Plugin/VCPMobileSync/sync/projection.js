@@ -4,6 +4,7 @@ const fs = require("fs").promises;
 const path = require("path");
 
 const { createDesktopAttachment } = require("../config/defaults");
+const { getAvatarIndex } = require("../core/db");
 const { getExtensionFromType } = require("../utils/mime");
 const {
   BoundedWarnings,
@@ -108,7 +109,11 @@ async function projectMobileMessage({
       desktop.topicId = canonical.topicId || topicId;
     }
     if (agentId) {
-      desktop.avatarUrl = `file://${path.join(appDataPath, "Agents", agentId, "avatar.png")}`;
+      const avatar = getAvatarIndex(agentId, "agent");
+      const avatarPath = avatar?.deleted_at == null && avatar?.file_path
+        ? avatar.file_path
+        : path.join(appDataPath, "Agents", agentId, "avatar.png");
+      desktop.avatarUrl = `file://${avatarPath}`;
     }
     desktop.avatarColor = canonical.avatarColor || "rgb(128, 128, 128)";
   }

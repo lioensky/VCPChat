@@ -2,7 +2,7 @@
  * 清单生成与比对逻辑
  */
 
-const { getDb } = require("../core/db");
+const { getDb, getAvatarDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { assertHistoryTopicHealthy } = require("./message");
 
@@ -99,8 +99,8 @@ function requireAvatarOwner(id) {
  * @param {object[]} targetedOwners - 仅针对特定所有者的复合身份列表
  * @returns {object[]} 本地实体列表
  */
-function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
-  const db = database;
+function getLocalManifest(dataType, targetedOwners = null, database = null) {
+  const db = database || (dataType === "avatar" ? getAvatarDb() : getDb());
   if (!db) {
     throw syncContractError("Database not initialized", "SYNC_DB_UNAVAILABLE");
   }
@@ -254,7 +254,7 @@ function actionIdentity(item, dataType) {
     : {};
 }
 
-function handleSyncManifest(payload, database = getDb()) {
+function handleSyncManifest(payload, database = null) {
   const { dataType, data: remoteItems, targetedOwners } = payload;
   const logger = getLogger();
   const phase = (dataType === "topic") ? "topic_metadata" : "owner_metadata";

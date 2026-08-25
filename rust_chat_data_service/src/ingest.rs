@@ -36,7 +36,6 @@ pub struct ReconcileStats {
     pub files_invalid: usize,
     pub messages_ingested: usize,
     pub messages_deleted: usize,
-    pub duplicate_owner_ids: usize,
     pub duration_ms: i64,
 }
 
@@ -61,39 +60,14 @@ impl Reconciler {
 
     pub async fn reconcile(&self) -> Result<ReconcileStats> {
         let started = now_ms();
-        let (owners, duplicate_owner_ids) = self.scan_owner_registry()?;
-        let agent_owner_ids = owners
-            .keys()
-            .filter(|key| key.owner_type == OwnerType::Agent)
-            .map(|key| key.owner_id.clone())
-            .collect::<HashSet<_>>();
-        let duplicate_ids = owners
-            .keys()
-            .filter(|key| {
-                key.owner_type == OwnerType::Group && agent_owner_ids.contains(&key.owner_id)
-            })
-            .map(|key| key.owner_id.clone())
-            .collect::<HashSet<_>>();
-        let mut ambiguous_history_owner_ids = HashSet::new();
-        for owner_id in duplicate_ids {
-            if !self.physical_topic_ids(&owner_id)?.is_empty() {
-                ambiguous_history_owner_ids.insert(owner_id);
-            }
-        }
+        let owners = self.scan_owner_registry()?;
         let mut stats = ReconcileStats {
             owners_seen: owners.len(),
-            duplicate_owner_ids,
             ..Default::default()
         };
 
         for configured_owner in owners.values() {
-            let history_ambiguous =
-                ambiguous_history_owner_ids.contains(&configured_owner.key.owner_id);
-            let owner = if history_ambiguous {
-                configured_owner.clone()
-            } else {
-                self.effective_owner(configured_owner)?
-            };
+            let owner = self.effective_owner(configured_owner)?;
             if !self.database.upsert_owner(&owner)? {
                 continue;
             }
@@ -104,22 +78,6 @@ impl Reconciler {
                 }
                 stats.topics_seen += 1;
                 stats.files_checked += 1;
-
-                if history_ambiguous {
-                    let error = format!(
-                        "history owner {} is ambiguous between Agent and Group",
-                        source.key.owner_id
-                    );
-                    self.database.mark_source_invalid(&source, &error)?;
-                    stats.files_invalid += 1;
-                    tracing::warn!(
-                        owner_type = %source.key.owner_type,
-                        owner_id = %source.key.owner_id,
-                        topic_id = %source.key.topic_id,
-                        "ambiguous history source was not ingested"
-                    );
-                    continue;
-                }
 
                 match self.ingest_source_if_changed(&source, "reconcile").await {
                     Ok(Some(commit)) => {
@@ -181,17 +139,11 @@ impl Reconciler {
             return Ok(None);
         }
 
-        let registry = self.scan_owner_registry()?.0;
-        let matching: Vec<&OwnerRecord> = registry
+        let registry = self.scan_owner_registry()?;
+        let configured_owner = registry
             .values()
-            .filter(|owner| owner.key.owner_id == owner_id)
-            .collect();
-
-        let configured_owner = match matching.as_slice() {
-            [owner] => *owner,
-            [] => anyhow::bail!("history owner {owner_id} has no Agent or Group config"),
-            _ => anyhow::bail!("history owner {owner_id} is ambiguous between Agent and Group"),
-        };
+            .find(|owner| owner.key.owner_id == owner_id)
+            .with_context(|| format!("history owner {owner_id} has no Agent or Group config"))?;
         let owner = self.effective_owner(configured_owner)?;
 
         let topic = owner
@@ -331,24 +283,11 @@ impl Reconciler {
         Ok(topic_ids)
     }
 
-    pub fn scan_owner_registry(&self) -> Result<(HashMap<OwnerKey, OwnerRecord>, usize)> {
+    pub fn scan_owner_registry(&self) -> Result<HashMap<OwnerKey, OwnerRecord>> {
         let mut owners = HashMap::new();
         self.scan_owner_directory(OwnerType::Agent, &self.config.agents_dir, &mut owners)?;
         self.scan_owner_directory(OwnerType::Group, &self.config.groups_dir, &mut owners)?;
-
-        let agent_ids: HashSet<&str> = owners
-            .keys()
-            .filter(|key| key.owner_type == OwnerType::Agent)
-            .map(|key| key.owner_id.as_str())
-            .collect();
-        let duplicate_owner_ids = owners
-            .keys()
-            .filter(|key| {
-                key.owner_type == OwnerType::Group && agent_ids.contains(key.owner_id.as_str())
-            })
-            .count();
-
-        Ok((owners, duplicate_owner_ids))
+        Ok(owners)
     }
 
     fn scan_owner_directory(
@@ -1702,83 +1641,5 @@ mod tests {
             .owner_by_id(OwnerType::Agent, "agent_deleted")
             .expect("query deleted owner")
             .is_none());
-    }
-
-    #[tokio::test]
-    async fn deleting_same_id_group_does_not_delete_agent_namespace() {
-        let (_temp, config, database, reconciler) = fixture();
-        write_owner(
-            &config,
-            OwnerType::Agent,
-            "shared_id",
-            "Agent",
-            &["agent_topic"],
-        );
-        write_owner(
-            &config,
-            OwnerType::Group,
-            "shared_id",
-            "Group",
-            &["group_topic"],
-        );
-        write_history(
-            &config,
-            "shared_id",
-            "agent_topic",
-            serde_json::json!([
-                {"id":"agent_message","role":"user","content":"agent namespace"}
-            ]),
-        );
-        reconciler.reconcile().await.expect("initial reconcile");
-
-        fs::remove_dir_all(config.groups_dir.join("shared_id"))
-            .expect("delete group config directory");
-        let result = reconciler
-            .reconcile()
-            .await
-            .expect("group deletion reconcile");
-
-        assert_eq!(result.owners_deleted, 1);
-        assert!(database
-            .owner_by_id(OwnerType::Agent, "shared_id")
-            .expect("query agent")
-            .is_some());
-        assert!(database
-            .owner_by_id(OwnerType::Group, "shared_id")
-            .expect("query group")
-            .is_none());
-        let stats = database.stats().expect("namespace stats");
-        assert_eq!(stats.owners, 1);
-        assert_eq!(stats.topics, 1);
-    }
-
-    #[test]
-    fn owner_registry_keeps_agent_and_group_namespaces_separate() {
-        let (_temp, config, _database, reconciler) = fixture();
-        write_owner(
-            &config,
-            OwnerType::Agent,
-            "same_owner_id",
-            "Agent",
-            &["topic_agent"],
-        );
-        write_owner(
-            &config,
-            OwnerType::Group,
-            "same_owner_id",
-            "Group",
-            &["topic_group"],
-        );
-
-        let (owners, duplicate_count) = reconciler.scan_owner_registry().expect("scan registry");
-        assert_eq!(duplicate_count, 1);
-        assert!(owners.contains_key(&OwnerKey {
-            owner_type: OwnerType::Agent,
-            owner_id: "same_owner_id".to_string(),
-        }));
-        assert!(owners.contains_key(&OwnerKey {
-            owner_type: OwnerType::Group,
-            owner_id: "same_owner_id".to_string(),
-        }));
     }
 }
