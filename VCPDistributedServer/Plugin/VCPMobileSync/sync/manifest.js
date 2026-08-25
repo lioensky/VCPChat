@@ -73,7 +73,9 @@ function topicIdentity(item) {
 }
 
 function manifestIdentity(item, dataType) {
-  return dataType === "topic" ? topicIdentity(item) : item.id;
+  if (dataType === "topic") return topicIdentity(item);
+  if (dataType === "owner") return `${item.ownerType}\0${item.id}`;
+  return item.id;
 }
 
 function requireAvatarOwner(id) {
@@ -95,7 +97,7 @@ function requireAvatarOwner(id) {
 
 /**
  * 获取本地清单
- * @param {string} dataType - 数据类型 (agent/group/topic/avatar)
+ * @param {string} dataType - 数据类型 (owner/topic/avatar)
  * @param {object[]} targetedOwners - 仅针对特定所有者的复合身份列表
  * @returns {object[]} 本地实体列表
  */
@@ -104,7 +106,7 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
   if (!db) {
     throw syncContractError("Database not initialized", "SYNC_DB_UNAVAILABLE");
   }
-  if (!["agent", "group", "topic", "avatar"].includes(dataType)) {
+  if (!["owner", "topic", "avatar"].includes(dataType)) {
     throw syncContractError(`Unsupported manifest dataType ${dataType}`);
   }
   const ownerFilter = requireTargetedOwners(dataType, targetedOwners);
@@ -133,7 +135,9 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
     });
   }
 
-  const syncRows = db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
+  const syncRows = dataType === "owner"
+    ? db.prepare("SELECT * FROM entity_index WHERE type IN ('agent', 'group')").all()
+    : db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
   const filteredRows = dataType === "topic" && ownerFilter
     ? syncRows.filter((row) => {
         return ownerFilter.has(`${row.owner_type}\0${row.owner_id}`);
@@ -146,7 +150,7 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
     );
   }
 
-  if (dataType === "topic" || dataType === "agent" || dataType === "group") {
+  if (dataType === "topic" || dataType === "owner") {
     const seen = new Set();
     return filteredRows.map((row) => {
       const id = requireNonEmptyString(row.id, `${dataType} manifest id`);
@@ -155,16 +159,24 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
             ownerType: requireNonEmptyString(row.owner_type, `Topic ${id} ownerType`),
             ownerId: requireNonEmptyString(row.owner_id, `Topic ${id} ownerId`),
           }
-        : null;
+        : {
+            ownerType: requireNonEmptyString(row.owner_type, `Owner ${id} ownerType`),
+          };
       if (owner && !matchesTopicOwnerType(owner.ownerType)) {
         throw syncContractError(
-          `Topic ${id} has invalid ownerType ${owner.ownerType}`,
+          `${dataType} ${id} has invalid ownerType ${owner.ownerType}`,
+          "SYNC_INDEX_INVALID",
+        );
+      }
+      if (dataType === "owner" && row.type !== owner.ownerType) {
+        throw syncContractError(
+          `Owner ${id} index type conflicts with ownerType`,
           "SYNC_INDEX_INVALID",
         );
       }
       const identity = dataType === "topic"
         ? `${owner.ownerType}\0${owner.ownerId}\0${id}`
-        : id;
+        : `${owner.ownerType}\0${id}`;
       if (!seen.add(identity)) {
         throw syncContractError(
           `${dataType} manifest contains a duplicate entity identity for ${id}`,
@@ -188,6 +200,8 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
       if (dataType === "topic") {
         result.ownerType = owner.ownerType;
         result.ownerId = owner.ownerId;
+      } else {
+        result.ownerType = owner.ownerType;
       }
       return result;
     });
@@ -230,7 +244,15 @@ function normalizeRemoteManifestItem(item, dataType, index) {
     `Manifest item ${id} contentHash`,
     { allowEmpty: true },
   );
-  if (dataType === "topic") {
+  if (dataType === "owner") {
+    if (!matchesTopicOwnerType(item.ownerType)) {
+      throw syncContractError(`Owner manifest ${id} requires agent/group ownerType`);
+    }
+    if (item.ownerId !== undefined && item.ownerId !== null) {
+      throw syncContractError(`Owner manifest ${id} must not carry ownerId`);
+    }
+    normalized.ownerType = item.ownerType;
+  } else if (dataType === "topic") {
     if (!matchesTopicOwnerType(item.ownerType)) {
       throw syncContractError(`Topic manifest ${id} requires agent/group ownerType`);
     }
@@ -248,9 +270,10 @@ function matchesTopicOwnerType(value) {
 }
 
 function actionIdentity(item, dataType) {
-  return dataType === "topic"
-    ? { ownerType: item.ownerType, ownerId: item.ownerId }
-    : {};
+  if (dataType === "topic") {
+    return { ownerType: item.ownerType, ownerId: item.ownerId };
+  }
+  return dataType === "owner" ? { ownerType: item.ownerType } : {};
 }
 
 function handleSyncManifest(payload, database = null) {
@@ -259,8 +282,7 @@ function handleSyncManifest(payload, database = null) {
   const phase = (dataType === "topic") ? "topic_metadata" : "owner_metadata";
 
   if (
-    dataType !== "agent" &&
-    dataType !== "group" &&
+    dataType !== "owner" &&
     dataType !== "avatar" &&
     dataType !== "topic"
   ) {
@@ -368,8 +390,8 @@ function handleSyncManifest(payload, database = null) {
         }
       }
 
-      // 2. 比较内容 (仅 Agent/Group)
-      if ((dataType === "agent" || dataType === "group") && localContent !== remoteContent) {
+      // 2. 比较 Owner 内容根
+      if (dataType === "owner" && localContent !== remoteContent) {
         // 如果内容不匹配，标记 mismatchedContent 引导手机端发起 targeted topic sync
         const existingResult = results.find(
           (result) => manifestIdentity(result, dataType) === identity,
@@ -377,7 +399,12 @@ function handleSyncManifest(payload, database = null) {
         if (existingResult) {
           existingResult.mismatchedContent = true;
         } else {
-          results.push({ id: remote.id, action: "SKIP", mismatchedContent: true });
+          results.push({
+            id: remote.id,
+            action: "SKIP",
+            mismatchedContent: true,
+            ...actionIdentity(remote, dataType),
+          });
         }
       }
       

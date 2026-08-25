@@ -361,7 +361,7 @@ fn is_lower_sha256(value: &str) -> bool {
 
 fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
     anyhow::ensure!(
-        matches!(request.data_type.as_str(), "agent" | "group" | "topic"),
+        matches!(request.data_type.as_str(), "owner" | "topic"),
         "unsupported manifest dataType {}",
         request.data_type
     );
@@ -416,7 +416,16 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
                 item.id
             );
         }
-        let identity = if request.data_type == "topic" {
+        let identity = if request.data_type == "owner" {
+            let owner_type = item
+                .owner_type
+                .context("owner manifest item requires ownerType")?;
+            anyhow::ensure!(
+                item.owner_id.is_none(),
+                "owner manifest item must not carry ownerId"
+            );
+            manifest_key(&item.id, Some(owner_type), None)
+        } else {
             let owner_type = item
                 .owner_type
                 .context("topic manifest item requires ownerType")?;
@@ -439,8 +448,6 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
                 owner_id
             );
             manifest_key(&item.id, Some(owner_type), Some(owner_id))
-        } else {
-            item.id.clone()
         };
         anyhow::ensure!(
             seen_identities.insert(identity),
@@ -467,30 +474,13 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         "local manifest exceeds {MAX_SYNC_ITEMS} items"
     );
     let mut local_by_key = HashMap::new();
-    let mut local_ids = HashSet::new();
     for item in local {
         let key = manifest_key(&item.id, item.owner_type, item.owner_id.as_deref());
-        if request.data_type == "topic" {
-            // topics 表 PK 为 (owner_type, owner_id, topic_id)：topic id 仅在
-            // 单个 owner 内唯一，跨 owner 重名（如每个 Agent 的 default 话题）
-            // 是合法数据形态。当前协议下 topic 条目强制携带 ownerType/ownerId，
-            // diff 只走 manifest_key 精确匹配、不走 id-only 回退（歧义防护由
-            // unique_manifest_item_by_id 多匹配返回 None 承担），因此唯一性
-            // 按完整 key 校验；裸 id 全局查重会把多 owner 全量同步误报成 500。
-            anyhow::ensure!(
-                !local_by_key.contains_key(&key),
-                "local manifest contains duplicate topic key {}",
-                key
-            );
-        } else {
-            // agent/group manifest 按 owner_type 过滤查询，PK 已保证唯一；
-            // 此守卫仅作为 id-only 回退路径的防御性断言保留。
-            anyhow::ensure!(
-                local_ids.insert(item.id.clone()),
-                "local manifest contains ambiguous id {}",
-                item.id
-            );
-        }
+        anyhow::ensure!(
+            !local_by_key.contains_key(&key),
+            "local manifest contains duplicate entity key {}",
+            key
+        );
         local_by_key.insert(key, item);
     }
 
@@ -498,12 +488,7 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
     let mut processed = HashSet::new();
     for remote in &request.data {
         let key = manifest_key(&remote.id, remote.owner_type, remote.owner_id.as_deref());
-        let exact = local_by_key.get(&key);
-        let local = if request.data_type == "topic" {
-            exact
-        } else {
-            exact.or_else(|| unique_manifest_item_by_id(&local_by_key, &remote.id))
-        };
+        let local = local_by_key.get(&key);
         processed.insert(local.map_or(key, |item| {
             manifest_key(&item.id, item.owner_type, item.owner_id.as_deref())
         }));
@@ -547,8 +532,7 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
                 owner_id: local.owner_id.clone(),
                 mismatched_content: content_changed,
             });
-        } else if content_changed && (request.data_type == "agent" || request.data_type == "group")
-        {
+        } else if content_changed && request.data_type == "owner" {
             actions.push(ManifestAction {
                 id: local.id.clone(),
                 action: "SKIP".to_string(),
@@ -1284,36 +1268,34 @@ fn local_manifest(
     targeted_owners: Option<&[OwnerKey]>,
 ) -> Result<Vec<ManifestItem>> {
     match data_type {
-        "agent" => owner_manifest(database, OwnerType::Agent),
-        "group" => owner_manifest(database, OwnerType::Group),
+        "owner" => owner_manifest(database),
         "topic" => topic_manifests(database, targeted_owners),
         _ => Ok(Vec::new()),
     }
 }
 
-fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<ManifestItem>> {
+fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT owner_id, config_hash, updated_at, deleted_at
+        "SELECT owner_type, owner_id, config_hash, updated_at, deleted_at
          FROM owners
-         WHERE owner_type=?1
          UNION ALL
-         SELECT t.owner_id, '', t.deleted_at, t.deleted_at
+         SELECT t.owner_type, t.owner_id, '', t.deleted_at, t.deleted_at
          FROM tombstones t
          LEFT JOIN owners o
            ON o.owner_type=t.owner_type AND o.owner_id=t.owner_id
-         WHERE t.entity_type='owner' AND t.owner_type=?1
-           AND t.topic_id='' AND t.entity_id=t.owner_id
+         WHERE t.entity_type='owner' AND t.topic_id='' AND t.entity_id=t.owner_id
            AND o.owner_id IS NULL
-         ORDER BY owner_id",
+         ORDER BY owner_type, owner_id",
     )?;
     let rows = statement
-        .query_map([owner_type.as_str()], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(4)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1321,7 +1303,8 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
     drop(connection);
 
     rows.into_iter()
-        .map(|(owner_id, config_hash, ts, deleted_at)| {
+        .map(|(raw_owner_type, owner_id, config_hash, ts, deleted_at)| {
+            let owner_type = raw_owner_type.parse::<OwnerType>()?;
             // 墓碑条目短路：已删 owner 的目录已物理删除，
             // 磁盘读必然失败；删除信号不需要配置或内容指纹。
             if deleted_at.is_some() {
@@ -1332,7 +1315,7 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
                     ts,
                     deleted_at,
                     owner_type: Some(owner_type),
-                    owner_id: Some(owner_id),
+                    owner_id: None,
                 });
             }
             let content_hash = match owner_content_hash(database, owner_type, &owner_id) {
@@ -1354,7 +1337,7 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
                 ts,
                 deleted_at,
                 owner_type: Some(owner_type),
-                owner_id: Some(owner_id),
+                owner_id: None,
             })
         })
         .collect()
@@ -2067,22 +2050,6 @@ fn topic_leaf_hash(topic_id: &str, config_hash: &str, content_hash: &str) -> Str
     )
 }
 
-fn unique_manifest_item_by_id<'a>(
-    local_by_key: &'a HashMap<String, ManifestItem>,
-    id: &str,
-) -> Option<&'a ManifestItem> {
-    let mut matches = local_by_key.values().filter(|item| item.id == id);
-    let first = matches.next();
-
-    // 仅在 Topic ID 跨 Owner 唯一时允许旧协议省略 Owner 上下文。
-    // 不使用 bool::then_some(matches[0])：then_some 会立即求值参数，
-    // 即使集合为空也会访问下标 0 并导致 Tokio worker panic。
-    match (first, matches.next()) {
-        (Some(item), None) => Some(item),
-        _ => None,
-    }
-}
-
 fn manifest_key(id: &str, owner_type: Option<OwnerType>, owner_id: Option<&str>) -> String {
     format!(
         "{}:{}:{}",
@@ -2129,11 +2096,10 @@ mod tests {
         mobile_message_hash_from_json, mobile_owner_config_hash_from_value, owner_content_hash,
         owner_manifest, pull_entities, pull_topic_messages, push_topic_messages,
         topic_content_hash, topic_hash_diff, topic_identity, topic_leaf_hash, topic_manifest,
-        topic_manifests, unique_manifest_item_by_id, validate_manifest_request,
-        EntitiesPullRequest, EntityPullRequest, ManifestItem, ManifestRequest, MessageDiffRequest,
-        MessageDiffState, MessageVersionState, MessagesPullTopic, MessagesPushTopic,
-        RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector,
-        TOMBSTONE_CONTENT_HASH,
+        topic_manifests, validate_manifest_request, EntitiesPullRequest, EntityPullRequest,
+        ManifestRequest, MessageDiffRequest, MessageDiffState, MessageVersionState,
+        MessagesPullTopic, MessagesPushTopic, RemoteManifestItem, TopicHashDiffRequest,
+        TopicHashState, TopicKey, TopicSelector, TOMBSTONE_CONTENT_HASH,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2287,56 +2253,11 @@ mod tests {
         );
     }
 
-    fn manifest_item(id: &str, owner_type: OwnerType, owner_id: &str) -> ManifestItem {
-        ManifestItem {
-            id: id.to_string(),
-            config_hash: String::new(),
-            content_hash: String::new(),
-            ts: 0,
-            deleted_at: None,
-            owner_type: Some(owner_type),
-            owner_id: Some(owner_id.to_string()),
-        }
-    }
-
     fn version(hash: impl Into<String>, updated_at: i64) -> MessageVersionState {
         MessageVersionState {
             hash: hash.into(),
             updated_at,
         }
-    }
-
-    #[test]
-    fn legacy_manifest_lookup_handles_zero_matches_without_panicking() {
-        let items = HashMap::new();
-        assert!(unique_manifest_item_by_id(&items, "missing-topic").is_none());
-    }
-
-    #[test]
-    fn legacy_manifest_lookup_accepts_one_ownerless_match() {
-        let mut items = HashMap::new();
-        items.insert(
-            "agent:agent-1:topic-1".to_string(),
-            manifest_item("topic-1", OwnerType::Agent, "agent-1"),
-        );
-
-        let found = unique_manifest_item_by_id(&items, "topic-1").expect("unique topic");
-        assert_eq!(found.owner_id.as_deref(), Some("agent-1"));
-    }
-
-    #[test]
-    fn legacy_manifest_lookup_rejects_ambiguous_cross_owner_topic_id() {
-        let mut items = HashMap::new();
-        items.insert(
-            "agent:agent-1:shared-topic".to_string(),
-            manifest_item("shared-topic", OwnerType::Agent, "agent-1"),
-        );
-        items.insert(
-            "group:group-1:shared-topic".to_string(),
-            manifest_item("shared-topic", OwnerType::Group, "group-1"),
-        );
-
-        assert!(unique_manifest_item_by_id(&items, "shared-topic").is_none());
     }
 
     #[test]
@@ -2385,8 +2306,36 @@ mod tests {
     }
 
     #[test]
-    fn manifest_requires_exact_topic_owner_and_safe_wire_fields() {
+    fn manifest_requires_exact_owner_identity_and_safe_wire_fields() {
         let hash = "a".repeat(64);
+        let owner = ManifestRequest {
+            data_type: "owner".to_string(),
+            data: vec![RemoteManifestItem {
+                id: "agent-a".to_string(),
+                config_hash: hash.clone(),
+                content_hash: String::new(),
+                ts: 1,
+                deleted_at: None,
+                owner_type: Some(OwnerType::Agent),
+                owner_id: None,
+            }],
+            targeted_owners: None,
+        };
+        validate_manifest_request(&owner).expect("valid owner manifest");
+        let mut missing_owner_type = owner;
+        missing_owner_type.data[0].owner_type = None;
+        assert!(validate_manifest_request(&missing_owner_type)
+            .expect_err("owner manifest requires ownerType")
+            .to_string()
+            .contains("ownerType"));
+        let mut redundant_owner_id = missing_owner_type;
+        redundant_owner_id.data[0].owner_type = Some(OwnerType::Agent);
+        redundant_owner_id.data[0].owner_id = Some("agent-a".to_string());
+        assert!(validate_manifest_request(&redundant_owner_id)
+            .expect_err("owner manifest must not duplicate ownerId")
+            .to_string()
+            .contains("must not carry ownerId"));
+
         let valid = ManifestRequest {
             data_type: "topic".to_string(),
             data: vec![RemoteManifestItem {
@@ -2451,39 +2400,44 @@ mod tests {
 
         {
             let connection = database.connection.lock();
-            for (owner_id, deleted_at) in [
-                ("desktop-deleted-mobile-live", 21_i64),
-                ("desktop-deleted-mobile-missing", 22_i64),
+            for (owner_type, owner_id, deleted_at) in [
+                ("group", "desktop-deleted-mobile-live", 21_i64),
+                ("group", "desktop-deleted-mobile-missing", 22_i64),
             ] {
                 connection
                     .execute(
                         "INSERT INTO owners (owner_type, owner_id, display_name, config_path,
                              config_hash, updated_at, deleted_at)
-                         VALUES ('agent', ?1, ?1, '/nonexistent/config.json', '', 1, ?2)",
-                        rusqlite::params![owner_id, deleted_at],
+                         VALUES (?1, ?2, ?2, '/nonexistent/config.json', '', 1, ?3)",
+                        rusqlite::params![owner_type, owner_id, deleted_at],
                     )
                     .expect("insert desktop tombstone");
             }
         }
 
         let hash = "a".repeat(64);
-        let remote_item = |id: &str, deleted_at: Option<i64>| RemoteManifestItem {
-            id: id.to_string(),
-            config_hash: hash.clone(),
-            content_hash: String::new(),
-            ts: 1,
-            deleted_at,
-            owner_type: None,
-            owner_id: None,
-        };
+        let remote_item =
+            |owner_type: OwnerType, id: &str, deleted_at: Option<i64>| RemoteManifestItem {
+                id: id.to_string(),
+                config_hash: hash.clone(),
+                content_hash: String::new(),
+                ts: 1,
+                deleted_at,
+                owner_type: Some(owner_type),
+                owner_id: None,
+            };
         let response = manifest(
             &database,
             ManifestRequest {
-                data_type: "agent".to_string(),
+                data_type: "owner".to_string(),
                 data: vec![
-                    remote_item("agent-a", Some(11)),
-                    remote_item("mobile-deleted-desktop-missing", Some(12)),
-                    remote_item("desktop-deleted-mobile-live", None),
+                    remote_item(OwnerType::Agent, "agent-a", Some(11)),
+                    remote_item(
+                        OwnerType::Group,
+                        "mobile-deleted-desktop-missing",
+                        Some(12),
+                    ),
+                    remote_item(OwnerType::Group, "desktop-deleted-mobile-live", None),
                 ],
                 targeted_owners: None,
             },
@@ -2496,21 +2450,33 @@ mod tests {
             .collect::<HashMap<_, _>>();
         assert_eq!(actions.len(), 4);
 
-        for (id, deleted_at) in [
-            ("agent-a", 11_i64),
-            ("mobile-deleted-desktop-missing", 12_i64),
+        for (owner_type, id, deleted_at) in [
+            (OwnerType::Agent, "agent-a", 11_i64),
+            (
+                OwnerType::Group,
+                "mobile-deleted-desktop-missing",
+                12_i64,
+            ),
         ] {
             let action = &actions[id];
             assert_eq!(action.action, "PUSH_DELETE");
             assert_eq!(action.deleted_at, Some(deleted_at));
+            assert_eq!(action.owner_type, Some(owner_type));
+            assert_eq!(action.owner_id, None);
         }
-        for (id, deleted_at) in [
-            ("desktop-deleted-mobile-live", 21_i64),
-            ("desktop-deleted-mobile-missing", 22_i64),
+        for (owner_type, id, deleted_at) in [
+            (OwnerType::Group, "desktop-deleted-mobile-live", 21_i64),
+            (
+                OwnerType::Group,
+                "desktop-deleted-mobile-missing",
+                22_i64,
+            ),
         ] {
             let action = &actions[id];
             assert_eq!(action.action, "DELETE");
             assert_eq!(action.deleted_at, Some(deleted_at));
+            assert_eq!(action.owner_type, Some(owner_type));
+            assert_eq!(action.owner_id, None);
         }
     }
 
@@ -3349,7 +3315,7 @@ mod tests {
                 .expect("insert tombstoned owner");
         }
 
-        let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
+        let items = owner_manifest(&database).expect("owner manifest");
         let tombstone = items
             .iter()
             .find(|item| item.id == "group-deleted")
@@ -3358,7 +3324,7 @@ mod tests {
         assert!(tombstone.config_hash.is_empty() && tombstone.content_hash.is_empty());
 
         // 存活 owner 路径不受影响。
-        let agents = owner_manifest(&database, OwnerType::Agent).expect("agent manifest");
+        let agents = owner_manifest(&database).expect("owner manifest");
         let alive = agents
             .iter()
             .find(|item| item.id == "agent-a")
@@ -3378,7 +3344,7 @@ mod tests {
             .apply_sync_topic_tombstone(&key, 321, "mobile_sync")
             .expect("persist missing topic tombstone");
 
-        let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
+        let items = owner_manifest(&database).expect("owner manifest");
         assert!(items.iter().all(|item| item.id != "group-missing"));
         let topics = topic_manifests(&database, None).expect("topic manifest");
         let tombstone = topics
@@ -3412,7 +3378,7 @@ mod tests {
         database
             .apply_sync_owner_tombstone(OwnerType::Group, "group-missing", 400, "mobile_sync")
             .expect("persist missing owner tombstone");
-        let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
+        let items = owner_manifest(&database).expect("owner manifest");
         let tombstone = items
             .iter()
             .find(|item| item.id == "group-missing")
@@ -3830,7 +3796,7 @@ mod tests {
         .expect("write topic-c history");
         reconciler.reconcile().await.expect("reconcile");
 
-        let baseline_agents = owner_manifest(&database, OwnerType::Agent).expect("baseline");
+        let baseline_agents = owner_manifest(&database).expect("baseline");
         let baseline_b = baseline_agents
             .iter()
             .find(|item| item.id == "agent-b")
@@ -3850,7 +3816,7 @@ mod tests {
 
         // owner manifest 不再失败；毒 topic 的 keyed 叶子保留配置 Hash 并使用
         // content 哨兵，健康 topic 仍以 topicId + config/content 参与聚合。
-        let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
+        let agents = owner_manifest(&database).expect("manifest must not 500");
         let poisoned_a = agents
             .iter()
             .find(|item| item.id == "agent-a")
@@ -3892,20 +3858,20 @@ mod tests {
         let response = manifest(
             &database,
             ManifestRequest {
-                data_type: "agent".to_string(),
+                data_type: "owner".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "agent-a".to_string(),
                     config_hash: poisoned_a.config_hash.clone(),
                     content_hash: "0".repeat(64),
                     ts: 1,
                     deleted_at: None,
-                    owner_type: None,
+                    owner_type: Some(OwnerType::Agent),
                     owner_id: None,
                 }],
                 targeted_owners: None,
             },
         )
-        .expect("agent manifest diff");
+        .expect("owner manifest diff");
         let action = response
             .data
             .iter()
@@ -3928,7 +3894,7 @@ mod tests {
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
 
-        let before = owner_manifest(&database, OwnerType::Agent)
+        let before = owner_manifest(&database)
             .expect("baseline manifest")
             .into_iter()
             .find(|item| item.id == "agent-a")
@@ -3937,7 +3903,7 @@ mod tests {
         // reconcile 间隙删掉 config（目录还在、行还是活的）。
         fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
 
-        let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
+        let agents = owner_manifest(&database).expect("manifest must not 500");
         let after = agents
             .iter()
             .find(|item| item.id == "agent-a")
@@ -3964,14 +3930,14 @@ mod tests {
         let response = manifest(
             &database,
             ManifestRequest {
-                data_type: "agent".to_string(),
+                data_type: "owner".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "agent-a".to_string(),
                     config_hash: "a".repeat(64),
                     content_hash: String::new(),
                     ts: 1,
                     deleted_at: Some(9),
-                    owner_type: None,
+                    owner_type: Some(OwnerType::Agent),
                     owner_id: None,
                 }],
                 targeted_owners: None,

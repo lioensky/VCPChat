@@ -147,7 +147,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             await reconcileAvatarFiles(appDataPath);
           }
 
-          // VCP-CDS 只持有 Agent、Group、Topic 与 Message 的中央索引。
+          // VCP-CDS 只持有 Owner、Topic 与 Message 的中央索引。
           // Avatar 仍由本插件的兼容资产目录（持久 avatar_index + 物理文件）
           // 负责。不能把 avatar Manifest 转给 CDS，否则 CDS 会把本地清单
           // 视为空集，生成错误的全量 PUSH，并破坏 Owner Metadata 阶段。

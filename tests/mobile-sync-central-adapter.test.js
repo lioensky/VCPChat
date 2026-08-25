@@ -151,10 +151,27 @@ test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () 
   );
   await assert.rejects(
     adapter.handleSyncManifest({
-      dataType: "agent",
+      dataType: "owner",
       data: [],
       phase: 2,
     }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+});
+
+test("中央适配器拒绝缺失 ownerType 的 CDS Owner action", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncManifest: async () => ({
+        type: "SYNC_DIFF_RESULTS",
+        dataType: "owner",
+        data: [{ id: "agent-a", action: "PULL" }],
+      }),
+    }),
+  });
+
+  await assert.rejects(
+    adapter.handleSyncManifest({ dataType: "owner", data: [], phase: 1 }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
 });

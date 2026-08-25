@@ -245,7 +245,14 @@ class CentralSyncAdapter {
         !isRecord(response) ||
         response.type !== "SYNC_DIFF_RESULTS" ||
         response.dataType !== payload.dataType ||
-        !Array.isArray(response.data)
+        !Array.isArray(response.data) ||
+        (payload.dataType === "owner" && response.data.some((item) =>
+          !isRecord(item) ||
+          typeof item.id !== "string" ||
+          item.id.length === 0 ||
+          !["agent", "group"].includes(item.ownerType) ||
+          (item.ownerId !== undefined && item.ownerId !== null)
+        ))
       ) {
         throw cdsProtocolError("CDS returned an invalid manifest response", stage);
       }

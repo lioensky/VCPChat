@@ -94,6 +94,11 @@ function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {
       if (sql.includes("FROM avatar_index")) {
         return { all: () => avatars };
       }
+      if (sql.includes("FROM entity_index") && sql.includes("type IN")) {
+        return {
+          all: () => indexedEntities.filter((row) => ["agent", "group"].includes(row.type)),
+        };
+      }
       if (sql.includes("FROM entity_index") && sql.includes("type = ?")) {
         return { all: (type) => indexedEntities.filter((row) => row.type === type) };
       }
@@ -690,41 +695,44 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
   );
 });
 
-test("实体 manifest 墓碑四象限保持动作方向", () => {
+test("Owner manifest 墓碑四象限保持动作方向", () => {
   const hash = "b".repeat(64);
-  const localItem = (id, deletedAt) => ({
+  const localItem = (ownerType, id, deletedAt) => ({
     id,
-    type: "agent",
-    file_path: `/app/Agents/${id}/config.json`,
+    type: ownerType,
+    owner_type: ownerType,
+    owner_id: id,
+    file_path: `/app/${ownerType === "group" ? "AgentGroups" : "Agents"}/${id}/config.json`,
     hash,
     aggregated_hash: "",
     updated_at: 1,
     deleted_at: deletedAt,
   });
-  const remoteItem = (id, deletedAt = null) => ({
+  const remoteItem = (ownerType, id, deletedAt = null) => ({
     id,
     hash,
     configHash: hash,
     contentHash: "",
     ts: 1,
+    ownerType,
     ...(deletedAt === null ? {} : { deletedAt }),
   });
   const database = fakeManifestDatabase({
     entities: [
-      localItem("mobile-deleted-desktop-live", null),
-      localItem("desktop-deleted-mobile-live", 21),
-      localItem("desktop-deleted-mobile-missing", 22),
+      localItem("agent", "mobile-deleted-desktop-live", null),
+      localItem("group", "desktop-deleted-mobile-live", 21),
+      localItem("group", "desktop-deleted-mobile-missing", 22),
     ],
   });
 
   const result = handleSyncManifest(
     {
-      dataType: "agent",
+      dataType: "owner",
       phase: 1,
       data: [
-        remoteItem("mobile-deleted-desktop-live", 11),
-        remoteItem("mobile-deleted-desktop-missing", 12),
-        remoteItem("desktop-deleted-mobile-live"),
+        remoteItem("agent", "mobile-deleted-desktop-live", 11),
+        remoteItem("group", "mobile-deleted-desktop-missing", 12),
+        remoteItem("group", "desktop-deleted-mobile-live"),
       ],
     },
     database,
@@ -735,21 +743,25 @@ test("实体 manifest 墓碑四象限保持动作方向", () => {
       id: "mobile-deleted-desktop-live",
       action: "PUSH_DELETE",
       deletedAt: 11,
+      ownerType: "agent",
     },
     {
       id: "mobile-deleted-desktop-missing",
       action: "PUSH_DELETE",
       deletedAt: 12,
+      ownerType: "group",
     },
     {
       id: "desktop-deleted-mobile-live",
       action: "DELETE",
       deletedAt: 21,
+      ownerType: "group",
     },
     {
       id: "desktop-deleted-mobile-missing",
       action: "DELETE",
       deletedAt: 22,
+      ownerType: "group",
     },
   ]);
 });
@@ -758,7 +770,7 @@ test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () 
   const hash = "b".repeat(64);
   const database = fakeManifestDatabase();
   assert.throws(
-    () => handleSyncManifest({ dataType: "agent", phase: 1, data: {} }, database),
+    () => handleSyncManifest({ dataType: "owner", phase: 1, data: {} }, database),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
   const item = {
@@ -767,25 +779,43 @@ test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () 
     configHash: hash,
     contentHash: "",
     ts: 1,
+    ownerType: "agent",
   };
   assert.throws(
     () => handleSyncManifest(
-      { dataType: "agent", phase: 1, data: [item, item] },
+      { dataType: "owner", phase: 1, data: [item, item] },
       database,
     ),
     /duplicate entity identity/,
   );
   const result = handleSyncManifest(
     {
-      dataType: "agent",
+      dataType: "owner",
       phase: 1,
       data: [{ ...item, deletedAt: 0 }],
     },
     database,
   );
   assert.deepEqual(result.data, [
-    { id: "agent-a", action: "PUSH_DELETE", deletedAt: 0 },
+    { id: "agent-a", action: "PUSH_DELETE", deletedAt: 0, ownerType: "agent" },
   ]);
+
+  assert.throws(
+    () => handleSyncManifest({
+      dataType: "owner",
+      phase: 1,
+      data: [{ ...item, ownerType: undefined }],
+    }, database),
+    /requires agent\/group ownerType/,
+  );
+  assert.throws(
+    () => handleSyncManifest({
+      dataType: "owner",
+      phase: 1,
+      data: [{ ...item, ownerId: "agent-a" }],
+    }, database),
+    /must not carry ownerId/,
+  );
 });
 
 test("损坏 history 的已提交索引不能走 topic hash 或消息 manifest 快速成功", () => {
