@@ -202,7 +202,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 "pre_manifest_reconcile",
                 "legacy",
                 "success",
-                `agents=${stats.agentCount} groups=${stats.groupCount} topics=${stats.topicCount} changedHistories=${stats.historyChangedCount} skippedHistories=${stats.historySkippedCount} staleOwners=${stats.deleted.ownersDeleted} staleTopics=${stats.deleted.topicsDeleted} staleMessages=${stats.deleted.messagesDeleted} aggregated=${stats.aggregatedCount}`,
+                `agents=${stats.agentCount} groups=${stats.groupCount} topics=${stats.topicCount} changedHistories=${stats.historyChangedCount} skippedHistories=${stats.historySkippedCount} staleOwners=${stats.deleted.ownersDeleted} staleTopics=${stats.deleted.topicsDeleted} staleMessages=${stats.deleted.messagesDeleted}`,
               );
             } catch (error) {
               throw withSyncErrorContext(error, {
@@ -1038,7 +1038,7 @@ function startFileWatcher(appDataPath) {
 
     try {
       if (isConfig) {
-        // 只有 Agents 或 AgentGroups 目录下的 config.json 才作为实体索引
+        // 只有 Agents 或 AgentGroups 目录下的 config.json 才作为 Owner 提交状态
         if (isAgentPath || isGroupPath) {
           const type = isAgentPath ? "agent" : "group";
           if (isWriteLocked({

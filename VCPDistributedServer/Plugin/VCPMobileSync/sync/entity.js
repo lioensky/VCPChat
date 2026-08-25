@@ -226,7 +226,7 @@ async function isDirectory(directory) {
 async function downloadEntities(requests) {
   if (!Array.isArray(requests)) return [];
 
-  // 按 file_path 分组，每个 config.json 只读取一次
+  // 按 config_path 分组，每个 config.json 只读取一次
   const fileGroups = new Map();
   const results = [];
   const seen = new Set();
