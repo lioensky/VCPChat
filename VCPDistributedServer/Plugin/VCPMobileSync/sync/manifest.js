@@ -173,7 +173,6 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
       }
       const result = {
         id,
-        hash: requireHash(row.hash, `${dataType} ${id} hash`),
         configHash: requireHash(row.hash, `${dataType} ${id} configHash`),
         contentHash: requireHash(
           row.aggregated_hash ?? "",
@@ -209,7 +208,6 @@ function normalizeRemoteManifestItem(item, dataType, index) {
   const id = requireNonEmptyString(item.id, `Manifest item ${index} id`);
   const normalized = {
     id,
-    hash: requireHash(item.hash, `Manifest item ${id} hash`),
     ts: requireTimestamp(item.ts, `Manifest item ${id} timestamp`),
     deletedAt: requireOptionalTombstone(
       item.deletedAt,
@@ -219,6 +217,7 @@ function normalizeRemoteManifestItem(item, dataType, index) {
 
   if (dataType === "avatar") {
     requireAvatarOwner(id);
+    normalized.hash = requireHash(item.hash, `Manifest item ${id} hash`);
     return normalized;
   }
 
@@ -347,13 +346,13 @@ function handleSyncManifest(payload, database = null) {
       processedKeys.add(identity);
     } else {
       // V2: 双哈希比对
-      const remoteConfig = remote.configHash || remote.hash;
-      const remoteContent = remote.contentHash || "";
-      const localConfig = local.configHash || local.hash;
-      const localContent = local.contentHash || "";
+      const remoteStateHash = dataType === "avatar" ? remote.hash : remote.configHash;
+      const remoteContent = remote.contentHash;
+      const localStateHash = dataType === "avatar" ? local.hash : local.configHash;
+      const localContent = local.contentHash;
 
-      // 1. 比较配置
-      if (localConfig !== remoteConfig) {
+      // 1. 比较实体自身指纹（Avatar 为二进制 Hash，其余为 configHash）
+      if (localStateHash !== remoteStateHash) {
         if (remote.ts > local.ts) {
           results.push({
             id: remote.id,
@@ -414,7 +413,10 @@ function handleSyncManifest(payload, database = null) {
   const deleteCount = results.filter((r) => r.action === "DELETE").length;
   const skipCount = normalizedRemoteItems.filter((remote) => {
     const local = localByKey.get(manifestIdentity(remote, dataType));
-    return local && local.deletedAt === null && remote.deletedAt === null && local.hash === remote.hash;
+    if (!local || local.deletedAt !== null || remote.deletedAt !== null) return false;
+    return dataType === "avatar"
+      ? local.hash === remote.hash
+      : local.configHash === remote.configHash;
   }).length;
 
   logger.logOperation(phase, "diff", dataType, "success", `push=${pushCount} pull=${pullCount} delete=${deleteCount} skip=${skipCount}`);

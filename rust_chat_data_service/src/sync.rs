@@ -31,11 +31,8 @@ pub struct ManifestRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteManifestItem {
     pub id: String,
-    pub hash: String,
-    #[serde(default)]
-    pub config_hash: Option<String>,
-    #[serde(default)]
-    pub content_hash: Option<String>,
+    pub config_hash: String,
+    pub content_hash: String,
     pub ts: i64,
     #[serde(default)]
     pub deleted_at: Option<i64>,
@@ -49,7 +46,6 @@ pub struct RemoteManifestItem {
 #[serde(rename_all = "camelCase")]
 pub struct ManifestItem {
     pub id: String,
-    pub hash: String,
     pub config_hash: String,
     pub content_hash: String,
     pub ts: i64,
@@ -399,25 +395,12 @@ fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
     for item in &request.data {
         anyhow::ensure!(!item.id.is_empty(), "manifest item id must not be empty");
         anyhow::ensure!(
-            is_lower_sha256(&item.hash),
-            "manifest item {} hash must be lowercase SHA-256",
-            item.id
-        );
-        let config_hash = item
-            .config_hash
-            .as_deref()
-            .context("manifest configHash is required")?;
-        anyhow::ensure!(
-            is_lower_sha256(config_hash),
+            is_lower_sha256(&item.config_hash),
             "manifest item {} configHash must be lowercase SHA-256",
             item.id
         );
-        let content_hash = item
-            .content_hash
-            .as_deref()
-            .context("manifest contentHash is required")?;
         anyhow::ensure!(
-            content_hash.is_empty() || is_lower_sha256(content_hash),
+            item.content_hash.is_empty() || is_lower_sha256(&item.content_hash),
             "manifest item {} contentHash must be empty or lowercase SHA-256",
             item.id
         );
@@ -553,10 +536,8 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
             continue;
         }
 
-        let remote_config = remote.config_hash.as_deref().unwrap_or(&remote.hash);
-        let remote_content = remote.content_hash.as_deref().unwrap_or_default();
-        let config_changed = local.config_hash != remote_config;
-        let content_changed = local.content_hash != remote_content;
+        let config_changed = local.config_hash != remote.config_hash;
+        let content_changed = local.content_hash != remote.content_hash;
         if config_changed {
             actions.push(ManifestAction {
                 id: local.id.clone(),
@@ -1342,11 +1323,10 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
     rows.into_iter()
         .map(|(owner_id, config_hash, ts, deleted_at)| {
             // 墓碑条目短路：已删 owner 的目录已物理删除，
-            // 磁盘读必然失败；删除信号不需要 hash 字段。
+            // 磁盘读必然失败；删除信号不需要配置或内容指纹。
             if deleted_at.is_some() {
                 return Ok(ManifestItem {
                     id: owner_id.clone(),
-                    hash: String::new(),
                     config_hash: String::new(),
                     content_hash: String::new(),
                     ts,
@@ -1369,7 +1349,6 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
             };
             Ok(ManifestItem {
                 id: owner_id.clone(),
-                hash: config_hash.clone(),
                 config_hash,
                 content_hash,
                 ts,
@@ -1457,12 +1436,11 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     )?;
     drop(connection);
     // 墓碑条目短路：删除信号只需要 id/ts/deleted_at/owner 身份，
-    // manifest diff 与移动端均不消费墓碑的 hash 字段；跳过 metadata 解析、
-    // config hash、健康检查与 content hash，避免已删 topic 炸掉整批 manifest。
+    // manifest diff 与移动端均不消费墓碑的配置或内容指纹；跳过 metadata
+    // 解析、健康检查与 content hash，避免已删 topic 炸掉整批 manifest。
     if deleted_at.is_some() {
         return Ok(ManifestItem {
             id: key.topic_id.clone(),
-            hash: String::new(),
             config_hash: String::new(),
             content_hash: String::new(),
             ts: updated_at,
@@ -1486,7 +1464,6 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     };
     Ok(ManifestItem {
         id: key.topic_id.clone(),
-        hash: config_hash.clone(),
         config_hash,
         content_hash,
         ts: updated_at,
@@ -2313,7 +2290,6 @@ mod tests {
     fn manifest_item(id: &str, owner_type: OwnerType, owner_id: &str) -> ManifestItem {
         ManifestItem {
             id: id.to_string(),
-            hash: String::new(),
             config_hash: String::new(),
             content_hash: String::new(),
             ts: 0,
@@ -2415,9 +2391,8 @@ mod tests {
             data_type: "topic".to_string(),
             data: vec![RemoteManifestItem {
                 id: "topic-a".to_string(),
-                hash: hash.clone(),
-                config_hash: Some(hash),
-                content_hash: Some(String::new()),
+                config_hash: hash,
+                content_hash: String::new(),
                 ts: 1,
                 deleted_at: Some(0),
                 owner_type: Some(OwnerType::Agent),
@@ -2494,9 +2469,8 @@ mod tests {
         let hash = "a".repeat(64);
         let remote_item = |id: &str, deleted_at: Option<i64>| RemoteManifestItem {
             id: id.to_string(),
-            hash: hash.clone(),
-            config_hash: Some(hash.clone()),
-            content_hash: Some(String::new()),
+            config_hash: hash.clone(),
+            content_hash: String::new(),
             ts: 1,
             deleted_at,
             owner_type: None,
@@ -3102,7 +3076,6 @@ mod tests {
             .find(|item| item.id == "topic-deleted")
             .expect("tombstone entry");
         assert_eq!(tombstone.deleted_at, Some(123));
-        assert!(tombstone.hash.is_empty());
         assert!(tombstone.config_hash.is_empty());
         assert!(tombstone.content_hash.is_empty());
         let alive = items
@@ -3204,9 +3177,8 @@ mod tests {
                 data_type: "topic".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "default".to_string(),
-                    hash: hash.clone(),
-                    config_hash: Some(hash.clone()),
-                    content_hash: Some(hash),
+                    config_hash: hash.clone(),
+                    content_hash: hash,
                     ts: 1,
                     deleted_at: None,
                     owner_type: Some(OwnerType::Agent),
@@ -3663,7 +3635,7 @@ mod tests {
         .expect("write config");
         reconciler.reconcile().await.expect("reconcile");
 
-        // 基线：毒化前健康 topic 的三字段输出。
+        // 基线：毒化前健康 topic 的配置与内容指纹。
         let baseline = topic_manifests(&database, None).expect("baseline manifest");
         let baseline_a_config = baseline
             .iter()
@@ -3673,13 +3645,7 @@ mod tests {
         let baseline_b = baseline
             .iter()
             .find(|item| item.id == "topic-b")
-            .map(|item| {
-                (
-                    item.hash.clone(),
-                    item.config_hash.clone(),
-                    item.content_hash.clone(),
-                )
-            })
+            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("baseline topic-b");
 
         // 毒化 topic-a 的 source（对齐 S5 的 invalid 毒态）。
@@ -3708,13 +3674,7 @@ mod tests {
         let after_b = items
             .iter()
             .find(|item| item.id == "topic-b")
-            .map(|item| {
-                (
-                    item.hash.clone(),
-                    item.config_hash.clone(),
-                    item.content_hash.clone(),
-                )
-            })
+            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("topic-b after degradation");
         assert_eq!(after_b, baseline_b);
 
@@ -3725,9 +3685,8 @@ mod tests {
                 data_type: "topic".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "topic-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some("b".repeat(64)),
+                    config_hash: "a".repeat(64),
+                    content_hash: "b".repeat(64),
                     ts: 1,
                     deleted_at: None,
                     owner_type: Some(OwnerType::Agent),
@@ -3778,9 +3737,8 @@ mod tests {
                 data_type: "topic".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "topic-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some(String::new()),
+                    config_hash: "a".repeat(64),
+                    content_hash: String::new(),
                     ts: 1,
                     deleted_at: Some(7),
                     owner_type: Some(OwnerType::Agent),
@@ -3937,9 +3895,8 @@ mod tests {
                 data_type: "agent".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "agent-a".to_string(),
-                    hash: poisoned_a.config_hash.clone(),
-                    config_hash: Some(poisoned_a.config_hash.clone()),
-                    content_hash: Some("0".repeat(64)),
+                    config_hash: poisoned_a.config_hash.clone(),
+                    content_hash: "0".repeat(64),
                     ts: 1,
                     deleted_at: None,
                     owner_type: None,
@@ -4010,9 +3967,8 @@ mod tests {
                 data_type: "agent".to_string(),
                 data: vec![RemoteManifestItem {
                     id: "agent-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some(String::new()),
+                    config_hash: "a".repeat(64),
+                    content_hash: String::new(),
                     ts: 1,
                     deleted_at: Some(9),
                     owner_type: None,

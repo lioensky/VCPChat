@@ -252,7 +252,7 @@ cargo clippy --locked --all-targets -- -D warnings
 - 多个包含候选的歧义拒绝。
 - 移动消息指纹绑定消息身份、规范正文、时间、发言 Agent 与排序后的附件内容 Hash。
 - 中央同步聚合哈希顺序无关。
-- VCPMobileSync 中央适配器 Manifest 字段兼容。
+- VCPMobileSync 中央适配器 Manifest 字段合同。
 - wire 1.3 canonical output、Hash 与 JavaScript safe-integer 边界（既有 golden fixture 文件名保持不变）。
 - ingest → streaming pull → canonicalizer → native push 全链路。
 - 损坏 history source fail closed、Owner/Topic 歧义拒绝及稳定消息 Tombstone 重放。
