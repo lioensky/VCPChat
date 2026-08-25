@@ -501,13 +501,11 @@ async fn sync_entity_delete(
         EntityDeleteTarget::Owner(owner_type, owner_id) => state
             .reconciler
             .database()
-            .apply_sync_owner_tombstone(owner_type, &owner_id, deleted_at, "mobile_sync"),
-        EntityDeleteTarget::Topic(key) => {
-            state
-                .reconciler
-                .database()
-                .apply_sync_topic_tombstone(&key, deleted_at, "mobile_sync")
-        }
+            .apply_sync_owner_tombstone(owner_type, &owner_id, deleted_at),
+        EntityDeleteTarget::Topic(key) => state
+            .reconciler
+            .database()
+            .apply_sync_topic_tombstone(&key, deleted_at),
     }
     .map_err(ServiceError::internal)?;
 

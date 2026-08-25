@@ -582,7 +582,7 @@ pub fn message_manifest(
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
          ORDER BY ordinal ASC",
     )?;
-    let mut rows = statement
+    let rows = statement
         .query_map(
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
             |row| {
@@ -596,31 +596,7 @@ pub fn message_manifest(
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    let mut tombstone_statement = connection.prepare(
-        "SELECT t.entity_id, t.deleted_at
-         FROM tombstones t
-         WHERE t.entity_type='message' AND t.owner_type=?1 AND t.owner_id=?2
-           AND t.topic_id=?3
-           AND NOT EXISTS (
-               SELECT 1 FROM messages m
-               WHERE m.owner_type=t.owner_type AND m.owner_id=t.owner_id
-                 AND m.topic_id=t.topic_id AND m.msg_id=t.entity_id
-           )
-         ORDER BY t.entity_id ASC",
-    )?;
-    let tombstones = tombstone_statement
-        .query_map(
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(tombstone_statement);
     drop(connection);
-    rows.extend(
-        tombstones
-            .into_iter()
-            .map(|(msg_id, deleted_at)| (msg_id, String::new(), deleted_at, Some(deleted_at))),
-    );
     ensure_topic_sync_source_healthy(database, &key)?;
     let messages = rows
         .into_iter()
@@ -1251,11 +1227,10 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         .ingest_path(&history_path, "mobile_sync")
         .await?
         .context("projected history path was not accepted by CDS")?;
-    if let Some(revision) = reconciler.database().apply_explicit_message_tombstones(
-        &key,
-        &explicit_tombstones,
-        "mobile_sync",
-    )? {
+    if let Some(revision) = reconciler
+        .database()
+        .apply_explicit_message_tombstones(&key, &explicit_tombstones)?
+    {
         commit.changed = true;
         commit.revision = revision;
     }
@@ -1279,13 +1254,6 @@ fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
     let mut statement = connection.prepare(
         "SELECT owner_type, owner_id, config_hash, updated_at, deleted_at
          FROM owners
-         UNION ALL
-         SELECT t.owner_type, t.owner_id, '', t.deleted_at, t.deleted_at
-         FROM tombstones t
-         LEFT JOIN owners o
-           ON o.owner_type=t.owner_type AND o.owner_id=t.owner_id
-         WHERE t.entity_type='owner' AND t.topic_id='' AND t.entity_id=t.owner_id
-           AND o.owner_id IS NULL
          ORDER BY owner_type, owner_id",
     )?;
     let rows = statement
@@ -1351,16 +1319,6 @@ fn topic_manifests(
     let mut statement = connection.prepare(
         "SELECT owner_type, owner_id, topic_id
          FROM topics
-         UNION ALL
-         SELECT t.owner_type, t.owner_id, t.topic_id
-         FROM tombstones t
-         LEFT JOIN topics topic
-           ON topic.owner_type=t.owner_type
-          AND topic.owner_id=t.owner_id
-          AND topic.topic_id=t.topic_id
-         WHERE t.entity_type='topic'
-           AND t.entity_id=t.topic_id
-           AND topic.topic_id IS NULL
          ORDER BY owner_type, owner_id, topic_id",
     )?;
     let keys = statement
@@ -1399,21 +1357,8 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     let connection = database.connection.lock();
     let (config_hash, updated_at, deleted_at): (String, i64, Option<i64>) = connection.query_row(
         "SELECT config_hash, updated_at, deleted_at
-             FROM topics
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
-             UNION ALL
-             SELECT '', t.deleted_at, t.deleted_at
-             FROM tombstones t
-             WHERE t.entity_type='topic'
-               AND t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
-               AND t.entity_id=?3
-               AND NOT EXISTS (
-                   SELECT 1 FROM topics topic
-                   WHERE topic.owner_type=t.owner_type
-                     AND topic.owner_id=t.owner_id
-                     AND topic.topic_id=t.topic_id
-               )
-             LIMIT 1",
+         FROM topics
+         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
         params![key.owner_type.as_str(), key.owner_id, key.topic_id],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
@@ -2432,11 +2377,7 @@ mod tests {
                 data_type: "owner".to_string(),
                 data: vec![
                     remote_item(OwnerType::Agent, "agent-a", Some(11)),
-                    remote_item(
-                        OwnerType::Group,
-                        "mobile-deleted-desktop-missing",
-                        Some(12),
-                    ),
+                    remote_item(OwnerType::Group, "mobile-deleted-desktop-missing", Some(12)),
                     remote_item(OwnerType::Group, "desktop-deleted-mobile-live", None),
                 ],
                 targeted_owners: None,
@@ -2452,11 +2393,7 @@ mod tests {
 
         for (owner_type, id, deleted_at) in [
             (OwnerType::Agent, "agent-a", 11_i64),
-            (
-                OwnerType::Group,
-                "mobile-deleted-desktop-missing",
-                12_i64,
-            ),
+            (OwnerType::Group, "mobile-deleted-desktop-missing", 12_i64),
         ] {
             let action = &actions[id];
             assert_eq!(action.action, "PUSH_DELETE");
@@ -2466,11 +2403,7 @@ mod tests {
         }
         for (owner_type, id, deleted_at) in [
             (OwnerType::Group, "desktop-deleted-mobile-live", 21_i64),
-            (
-                OwnerType::Group,
-                "desktop-deleted-mobile-missing",
-                22_i64,
-            ),
+            (OwnerType::Group, "desktop-deleted-mobile-missing", 22_i64),
         ] {
             let action = &actions[id];
             assert_eq!(action.action, "DELETE");
@@ -2677,10 +2610,10 @@ mod tests {
             let connection = database.connection.lock();
             let mut statement = connection
                 .prepare(
-                    "SELECT entity_id, deleted_at FROM tombstones
-                     WHERE entity_type='message' AND owner_type='agent'
-                       AND owner_id='agent-a' AND topic_id='topic-a'
-                     ORDER BY entity_id",
+                    "SELECT msg_id, deleted_at FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND deleted_at IS NOT NULL
+                     ORDER BY msg_id",
                 )
                 .expect("prepare tombstone query");
             statement
@@ -2719,10 +2652,10 @@ mod tests {
             let connection = database.connection.lock();
             let mut statement = connection
                 .prepare(
-                    "SELECT entity_id, deleted_at FROM tombstones
-                     WHERE entity_type='message' AND owner_type='agent'
-                       AND owner_id='agent-a' AND topic_id='topic-a'
-                     ORDER BY entity_id",
+                    "SELECT msg_id, deleted_at FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND deleted_at IS NOT NULL
+                     ORDER BY msg_id",
                 )
                 .expect("prepare replay query");
             statement
@@ -3330,60 +3263,6 @@ mod tests {
             .find(|item| item.id == "agent-a")
             .expect("alive agent");
         assert_eq!(alive.config_hash.len(), 64);
-    }
-
-    #[tokio::test]
-    async fn tombstone_only_topic_does_not_create_or_delete_an_owner() {
-        let (_temp, _config, database, reconciler) = sync_fixture();
-        let key = TopicKey {
-            owner_type: OwnerType::Group,
-            owner_id: "group-missing".to_string(),
-            topic_id: "topic-deleted".to_string(),
-        };
-        database
-            .apply_sync_topic_tombstone(&key, 321, "mobile_sync")
-            .expect("persist missing topic tombstone");
-
-        let items = owner_manifest(&database).expect("owner manifest");
-        assert!(items.iter().all(|item| item.id != "group-missing"));
-        let topics = topic_manifests(&database, None).expect("topic manifest");
-        let tombstone = topics
-            .iter()
-            .find(|item| item.id == "topic-deleted")
-            .expect("tombstone-only topic must be visible");
-        assert_eq!(tombstone.deleted_at, Some(321));
-        assert_eq!(tombstone.owner_type, Some(OwnerType::Group));
-        assert_eq!(tombstone.owner_id.as_deref(), Some("group-missing"));
-
-        reconciler
-            .reconcile()
-            .await
-            .expect("reconcile missing owner");
-        let connection = database.connection.lock();
-        let state: (i64, i64) = connection
-            .query_row(
-                "SELECT
-                    (SELECT COUNT(*) FROM owners
-                     WHERE owner_type='group' AND owner_id='group-missing'),
-                    (SELECT COUNT(*) FROM tombstones
-                     WHERE entity_type='owner' AND owner_type='group'
-                       AND owner_id='group-missing')",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .expect("query missing owner state");
-        assert_eq!(state, (0, 0));
-        drop(connection);
-
-        database
-            .apply_sync_owner_tombstone(OwnerType::Group, "group-missing", 400, "mobile_sync")
-            .expect("persist missing owner tombstone");
-        let items = owner_manifest(&database).expect("owner manifest");
-        let tombstone = items
-            .iter()
-            .find(|item| item.id == "group-missing")
-            .expect("owner tombstone must be visible");
-        assert_eq!(tombstone.deleted_at, Some(400));
     }
 
     /// topic_hash_diff 对单个不健康 topic 降级为保守重拉，而非整批 500。

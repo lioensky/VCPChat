@@ -79,7 +79,7 @@ impl Reconciler {
                 stats.topics_seen += 1;
                 stats.files_checked += 1;
 
-                match self.ingest_source_if_changed(&source, "reconcile").await {
+                match self.ingest_source_if_changed(&source).await {
                     Ok(Some(commit)) => {
                         stats.files_ingested += usize::from(commit.changed);
                         stats.files_skipped += usize::from(!commit.changed);
@@ -89,10 +89,7 @@ impl Reconciler {
                         // A physical topic with no prior valid source is a legitimate
                         // empty topic. Only a previously
                         // ingested source can become missing.
-                        if self
-                            .database
-                            .mark_history_source_missing(&source, "reconcile")?
-                        {
+                        if self.database.mark_history_source_missing(&source)? {
                             stats.files_invalid += 1;
                             tracing::warn!(
                                 owner_type = %source.key.owner_type,
@@ -121,16 +118,14 @@ impl Reconciler {
         }
 
         let active_owner_keys = owners.keys().cloned().collect::<HashSet<_>>();
-        stats.owners_deleted = self
-            .database
-            .reconcile_missing_owners(&active_owner_keys, "reconcile")?;
+        stats.owners_deleted = self.database.reconcile_missing_owners(&active_owner_keys)?;
 
         self.database.set_last_reconcile_at(now_ms())?;
         stats.duration_ms = now_ms() - started;
         Ok(stats)
     }
 
-    pub async fn ingest_path(&self, path: &Path, origin: &str) -> Result<Option<IngestCommit>> {
+    pub async fn ingest_path(&self, path: &Path, _origin: &str) -> Result<Option<IngestCommit>> {
         let Some((owner_id, topic_id)) = parse_history_path(&self.config.user_data_dir, path)
         else {
             return Ok(None);
@@ -161,7 +156,7 @@ impl Reconciler {
         if !self.database.upsert_topic_source(&source)? {
             return Ok(None);
         }
-        self.ingest_source_if_changed(&source, origin).await
+        self.ingest_source_if_changed(&source).await
     }
 
     fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
@@ -393,11 +388,7 @@ impl Reconciler {
         }
     }
 
-    async fn ingest_source_if_changed(
-        &self,
-        source: &TopicSource,
-        origin: &str,
-    ) -> Result<Option<IngestCommit>> {
+    async fn ingest_source_if_changed(&self, source: &TopicSource) -> Result<Option<IngestCommit>> {
         if !source.source_path.exists() {
             return Ok(None);
         }
@@ -433,14 +424,7 @@ impl Reconciler {
         let messages = normalize_history(&bytes, source.key.owner_type)?;
 
         self.database
-            .ingest_topic(
-                source,
-                &messages,
-                mtime_ns,
-                file_size,
-                &content_hash,
-                origin,
-            )
+            .ingest_topic(source, &messages, mtime_ns, file_size, &content_hash)
             .map(Some)
     }
 }
@@ -1134,7 +1118,7 @@ mod tests {
             topic_id: "topic_deleted".to_string(),
         };
         database
-            .apply_sync_topic_tombstone(&key, 321, "mobile_sync")
+            .apply_sync_topic_tombstone(&key, 321)
             .expect("apply explicit topic tombstone");
         let topic_directory = config
             .user_data_dir
@@ -1183,16 +1167,6 @@ mod tests {
                 |row| row.get::<_, Option<i64>>(0),
             )
             .expect("load message tombstone");
-        let persisted_tombstone = connection
-            .query_row(
-                "SELECT deleted_at FROM tombstones
-                 WHERE entity_type='topic' AND owner_type='agent'
-                   AND owner_id='agent_stale_topic' AND topic_id='topic_deleted'
-                   AND entity_id='topic_deleted'",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("load persisted topic tombstone");
         let config_only_topics: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM topics
@@ -1204,7 +1178,6 @@ mod tests {
             .expect("count config-only topic");
         assert_eq!(topic_deleted_at, Some(321));
         assert_eq!(message_deleted_at, Some(321));
-        assert_eq!(persisted_tombstone, 321);
         assert_eq!(config_only_topics, 0);
     }
 

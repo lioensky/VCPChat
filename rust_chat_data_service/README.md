@@ -211,7 +211,7 @@ POST /v1/shutdown
 
 `/v2/sync/messages/pull` 返回逐 Topic NDJSON。每帧先通过与 Node/Mobile golden fixture 一致的 canonicalizer：消息 ID、role 和 timestamp 必须合法；桌面附件只从顶层或 `_fileManagerData.hash` 接受一致的 SHA-256，非法附件产生有界 warning 而不丢消息。`history_sources.status` 非 ready 时禁止从旧 SQLite 镜像下发。
 
-`/v2/sync/messages/push-topic` 每次只提交一个 Topic，接受 VCPChat 原生投影消息及 `deletedMessageTombstones: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并为本地缺失消息也建立稳定墓碑；重放保留最早删除时间。调用方必须检查 HTTP 状态、Topic 身份和逐项成功值。附件缺失 hash 由 VCPMobileSync 投影层计算并返回手机端。
+`/v2/sync/messages/push-topic` 每次只提交一个 Topic，接受 VCPChat 原生投影消息及 `deletedMessageTombstones: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并在 `messages` 中为本地缺失消息保留 tombstone-only 行；重放保留最早删除时间。调用方必须检查 HTTP 状态、Topic 身份和逐项成功值。附件缺失 hash 由 VCPMobileSync 投影层计算并返回手机端。
 
 同步流预算为单帧 32 MiB、单 attempt 256 MiB、最多 10,000 Topic 和 100,000 Message。SQLite 阻塞读取在受控 blocking task 中执行，NDJSON Body 由 HTTP 消费节奏驱动，不在服务端预先累计完整响应。
 
