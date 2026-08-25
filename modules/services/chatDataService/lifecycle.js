@@ -9,7 +9,7 @@ const EventEmitter = require('events');
 const { ChatDataServiceClient, ChatDataServiceError } = require('./client');
 
 const PROTOCOL_VERSION = 2;
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 class ChatDataServiceLifecycle extends EventEmitter {
     constructor(options = {}) {

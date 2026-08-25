@@ -83,7 +83,7 @@ vcp_chat_data_service --app-data ../AppData --port 0
 {
   "type": "ready",
   "protocolVersion": 2,
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "port": 49152,
   "instanceId": "uuid",
   "authToken": "ephemeral-token"
