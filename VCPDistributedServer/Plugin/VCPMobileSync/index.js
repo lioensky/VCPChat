@@ -8,8 +8,10 @@ const {
   initDb,
   getDb,
   getAvatarDb,
-  getEntityIndex,
-  upsertEntityIndex,
+  getOwnerState,
+  getTopicState,
+  upsertOwnerState,
+  upsertTopicState,
   upsertAttachmentIndex,
   upsertAvatarIndex,
   softDeleteAvatarIndex,
@@ -19,8 +21,6 @@ const {
 const {
   computeBinaryHash,
   computeDtoHash,
-  computeAggregatedHash,
-  computeTopicLeafHash,
 } = require("./core/hash");
 const {
   startWsServer,
@@ -453,7 +453,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
 
 /**
  * 中央模式兼容目录：只定位配置 DTO、头像和本机附件文件。
- * history.json、message_index、消息墓碑和聚合历史哈希全部由 CDS 负责。
+ * history.json、消息提交状态、消息墓碑和 Topic 内容 Hash 全部由 CDS 负责。
  */
 async function reconcileCompatibilityAssets(appDataPath) {
   const db = getDb();
@@ -596,7 +596,6 @@ async function refreshLegacyCommitView(appDataPath) {
   );
   const historyResult = await scanHistory(userDataDir, db, logger);
   const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
-  const aggregatedCount = computeAggregatedHashes(db, logger);
 
   return {
     agentCount: agentResult.count,
@@ -608,7 +607,6 @@ async function refreshLegacyCommitView(appDataPath) {
     legacyAttachmentWarningCount: historyResult.warningCount,
     legacyAttachmentWarningTopicCount: historyResult.warningTopicCount,
     deleted,
-    aggregatedCount,
   };
 }
 
@@ -672,7 +670,7 @@ async function reconcileLocalFiles(appDataPath) {
     "summary",
     "reconcile",
     "success",
-    `agents=${stats.agentCount} groups=${stats.groupCount} topics=${stats.topicCount} changedHistories=${stats.historyChangedCount} skippedHistories=${stats.historySkippedCount} indexedMessages=${stats.messageCount} attachments=${attachmentCount} staleOwners=${stats.deleted.ownersDeleted} staleTopics=${stats.deleted.topicsDeleted} staleMessages=${stats.deleted.messagesDeleted} aggregated=${stats.aggregatedCount}`,
+    `agents=${stats.agentCount} groups=${stats.groupCount} topics=${stats.topicCount} changedHistories=${stats.historyChangedCount} skippedHistories=${stats.historySkippedCount} indexedMessages=${stats.messageCount} attachments=${attachmentCount} staleOwners=${stats.deleted.ownersDeleted} staleTopics=${stats.deleted.topicsDeleted} staleMessages=${stats.deleted.messagesDeleted}`,
   );
   logger.completePhase("reconcile");
   logger.logInfo("reconcile", "索引扫描完成。");
@@ -733,12 +731,7 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
     if (SYSTEM_FOLDERS.includes(entry.name)) continue;
 
     const id = entry.name;
-    const previousOwner = getEntityIndex({
-      id,
-      type,
-      ownerType: type,
-      ownerId: id,
-    });
+    const previousOwner = getOwnerState({ ownerType: type, ownerId: id });
     if (previousOwner?.deleted_at != null) continue;
 
     const entityDir = path.join(baseDir, entry.name);
@@ -756,13 +749,11 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
         dto,
         type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
       );
-      upsertEntityIndex({
-        id,
-        type,
+      upsertOwnerState({
         ownerType: type,
         ownerId: id,
-        filePath: configPath,
-        hash,
+        configPath,
+        configHash: hash,
         updatedAt: now,
       });
       count++;
@@ -787,11 +778,10 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
           ) {
             continue;
           }
-          const previous = getEntityIndex({
-            id: topic.id,
-            type: "topic",
+          const previous = getTopicState({
             ownerType: type,
             ownerId: id,
+            topicId: topic.id,
           });
           if (previous?.deleted_at != null) continue;
           const topicDto = extractTopicDTO(topic, id, type);
@@ -801,13 +791,11 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
               ? GROUP_TOPIC_SYNC_FIELDS
               : AGENT_TOPIC_SYNC_FIELDS,
           );
-          upsertEntityIndex({
-            id: topic.id,
-            type: "topic",
+          upsertTopicState({
             ownerType: type,
             ownerId: id,
-            filePath: configPath,
-            hash: topicHash,
+            topicId: topic.id,
+            configHash: topicHash,
             updatedAt: now,
           });
           topicCount += 1;
@@ -840,8 +828,7 @@ async function scanHistory(userDataDir, db, logger) {
   const ownerTypes = new Map();
   for (const owner of db
     .prepare(
-      `SELECT owner_type, owner_id FROM entity_index
-       WHERE (type = 'agent' OR type = 'group') AND deleted_at IS NULL`,
+      `SELECT owner_type, owner_id FROM owners WHERE deleted_at IS NULL`,
     )
     .all()) {
     ownerTypes.set(owner.owner_id, owner.owner_type);
@@ -952,76 +939,6 @@ async function scanHistory(userDataDir, db, logger) {
 }
 
 /**
- * 计算层级聚合指纹
- */
-function computeAggregatedHashes(db, logger) {
-  let updatedCount = 0;
-  const emptyContentHash = computeAggregatedHash([]);
-  const entities = db
-    .prepare(
-      `SELECT id, type, owner_type, owner_id, hash, aggregated_hash, file_path
-       FROM entity_index WHERE deleted_at IS NULL`,
-    )
-    .all();
-
-  // 1. 预加载所有 Topic 并按 Parent ID 分组，消除 N+1 查询
-  const topicMap = new Map(); // Map<ownerKey, Array<{hash, aggregated_hash}>>
-  entities
-    .filter(
-      (e) => e.type === "topic",
-    )
-    .forEach((t) => {
-      const ownerKey = `${t.owner_type}\0${t.owner_id}`;
-      if (!topicMap.has(ownerKey)) topicMap.set(ownerKey, []);
-      topicMap.get(ownerKey).push(t);
-    });
-
-  // 2. 为 Agent 和 Group 计算聚合指纹 (V2: 聚合子话题的 config_hash 和 content_hash)
-  for (const e of entities) {
-    if (e.type === "agent" || e.type === "group") {
-      const topicsOfEntity = topicMap.get(`${e.owner_type}\0${e.owner_id}`) || [];
-
-      const childHashes = topicsOfEntity.map((topic) =>
-        computeTopicLeafHash(
-          topic.id,
-          topic.hash,
-          topic.aggregated_hash || emptyContentHash,
-        ),
-      );
-      const rootHash = computeAggregatedHash(childHashes);
-
-      if (rootHash !== e.aggregated_hash) {
-        db.prepare(
-          `UPDATE entity_index SET aggregated_hash = ?
-           WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?`,
-        ).run(rootHash, e.type, e.owner_type, e.owner_id, e.id);
-        updatedCount++;
-      }
-    }
-  }
-
-  // 3. 兜底：为所有缺失 aggregated_hash 的 topic 写入标准空聚合值 (V2: 对齐手机端 computeAggregatedHash([]))
-  const nullTopics = entities.filter(
-    (e) =>
-      e.type === "topic" &&
-      (e.aggregated_hash === null || e.aggregated_hash === ""),
-  );
-  if (nullTopics.length > 0) {
-    for (const t of nullTopics) {
-      if (t.aggregated_hash !== emptyContentHash) {
-        db.prepare(
-          `UPDATE entity_index SET aggregated_hash = ?
-           WHERE type = 'topic' AND owner_type = ? AND owner_id = ? AND id = ?`,
-        ).run(emptyContentHash, t.owner_type, t.owner_id, t.id);
-        updatedCount++;
-      }
-    }
-  }
-
-  return updatedCount;
-}
-
-/**
  * 启动文件监听
  */
 function startFileWatcher(appDataPath) {
@@ -1064,9 +981,8 @@ function startFileWatcher(appDataPath) {
             const topicId = parts[3];
             const owner = getDb()
               .prepare(
-                `SELECT owner_type FROM entity_index
-                 WHERE owner_id = ? AND (type = 'agent' OR type = 'group')
-                   AND deleted_at IS NULL`,
+                `SELECT owner_type FROM owners
+                 WHERE owner_id = ? AND deleted_at IS NULL`,
               )
               .get(ownerId);
             if (
@@ -1082,7 +998,6 @@ function startFileWatcher(appDataPath) {
             }
           }
           const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
-          computeAggregatedHashes(getDb(), logger);
           logger.logOperation(
             "watcher",
             "unlinkDir",
@@ -1158,9 +1073,8 @@ function startFileWatcher(appDataPath) {
         const owner = ownerId
           ? getDb()
               .prepare(
-                `SELECT owner_type FROM entity_index
-                 WHERE owner_id = ? AND (type = 'agent' OR type = 'group')
-                   AND deleted_at IS NULL`,
+                `SELECT owner_type FROM owners
+                 WHERE owner_id = ? AND deleted_at IS NULL`,
               )
               .get(ownerId)
           : null;
@@ -1176,11 +1090,10 @@ function startFileWatcher(appDataPath) {
         })) {
           return;
         }
-        let topic = getEntityIndex({
-          id,
-          type: "topic",
+        let topic = getTopicState({
           ownerType,
           ownerId,
+          topicId: id,
         });
         if (!topic || topic.deleted_at !== null) {
           const ownerRoot = ownerType === "group" ? "AgentGroups" : "Agents";
@@ -1189,11 +1102,10 @@ function startFileWatcher(appDataPath) {
             ownerType,
             appDataPath,
           );
-          topic = getEntityIndex({
-            id,
-            type: "topic",
+          topic = getTopicState({
             ownerType,
             ownerId,
+            topicId: id,
           });
         }
         if (!topic || topic.deleted_at !== null) {
@@ -1251,12 +1163,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     const now = Date.now();
     const id = path.basename(path.dirname(configPath));
     const ownerId = path.basename(path.dirname(configPath));
-    const previousOwner = getEntityIndex({
-      id,
-      type,
-      ownerType: type,
-      ownerId,
-    });
+    const previousOwner = getOwnerState({ ownerType: type, ownerId });
     if (previousOwner?.deleted_at != null) return [];
     const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
     let topicEntries = [];
@@ -1277,13 +1184,11 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
       dto,
       type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
     );
-    upsertEntityIndex({
-      id,
-      type,
+    upsertOwnerState({
       ownerType: type,
       ownerId: id,
-      filePath: configPath,
-      hash,
+      configPath,
+      configHash: hash,
       updatedAt: now,
     });
 
@@ -1297,11 +1202,10 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
         ) {
           continue;
         }
-        const previous = getEntityIndex({
-          id: topic.id,
-          type: "topic",
+        const previous = getTopicState({
           ownerType: type,
           ownerId: id,
+          topicId: topic.id,
         });
         if (previous?.deleted_at != null) continue;
         const topicDto = extractTopicDTO(topic, id, type);
@@ -1309,13 +1213,11 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
-        upsertEntityIndex({
-          id: topic.id,
-          type: "topic",
+        upsertTopicState({
           ownerType: type,
           ownerId: id,
-          filePath: configPath,
-          hash: topicHash,
+          topicId: topic.id,
+          configHash: topicHash,
           updatedAt: now,
         });
         topicLen += 1;
@@ -1343,9 +1245,6 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
     // Topic 存活由物理目录决定；配置只更新仍有物理实体的元数据。
     await reconcileMissingPhysicalIndexes(appDataPath, null, db, now);
 
-    // V2: 触发层级冒泡
-    computeAggregatedHashes(db, logger);
-
     logger.logOperation("watcher", type, id, "success", `hash updated, topics=${topicLen}`);
     return newTopics;
   } catch (e) {
@@ -1356,6 +1255,5 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
 
 module.exports = {
   registerRoutes,
-  computeAggregatedHashes,
   ingestConfigToDb,
 };

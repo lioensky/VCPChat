@@ -8,16 +8,15 @@ const crypto = require("crypto");
 const { TextDecoder } = require("node:util");
 const {
   getDb,
-  getEntityIndex,
-  upsertMessageIndex,
+  getTopicState,
+  upsertMessageState,
   upsertMessageTombstone,
   upsertHistorySourceState,
-  updateTopicAggregatedHash,
+  updateTopicContentHash,
 } = require("../core/db");
 const {
   computeMessageFingerprint,
   computeMessageLeafHash,
-  computeTopicLeafHash,
   computeAggregatedHash,
 } = require("../core/hash");
 const {
@@ -57,34 +56,7 @@ function publishUnhealthyHistoryHash({ topicId, ownerType, ownerId }) {
     .createHash("sha256")
     .update(`vcp-unhealthy-topic:${ownerType}:${ownerId}:${topicId}`)
     .digest("hex");
-  db.transaction(() => {
-    const updated = updateTopicAggregatedHash(
-      { topicId, ownerType, ownerId },
-      contentHash,
-    );
-    if (updated.changes !== 1) return;
-    const topics = db
-      .prepare(
-        `SELECT id, hash, aggregated_hash FROM entity_index
-         WHERE type = 'topic' AND owner_type = ? AND owner_id = ?
-           AND deleted_at IS NULL`,
-      )
-      .all(ownerType, ownerId);
-    const ownerHash = computeAggregatedHash(
-      topics.map((topic) =>
-        computeTopicLeafHash(
-          topic.id,
-          topic.hash,
-          topic.aggregated_hash || "",
-        )
-      ),
-    );
-    db.prepare(
-      `UPDATE entity_index SET aggregated_hash = ?
-       WHERE type = ? AND owner_type = ? AND owner_id = ? AND id = ?
-         AND deleted_at IS NULL`,
-    ).run(ownerHash, ownerType, ownerType, ownerId, ownerId);
-  })();
+  updateTopicContentHash({ topicId, ownerType, ownerId }, contentHash);
 }
 
 function markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error) {
@@ -298,11 +270,10 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
           { stage: "messages", failedTopicIds: [safeTopicId] },
         );
       }
-      const row = getEntityIndex({
-        id: safeTopicId,
-        type: "topic",
+      const row = getTopicState({
         ownerType,
         ownerId,
+        topicId: safeTopicId,
       });
       if (!row) {
         await writer.write({
@@ -367,7 +338,7 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
       const indexedStates = new Map(
         db
           .prepare(
-            `SELECT msg_id, hash, updated_at FROM message_index
+            `SELECT msg_id, message_hash AS hash, updated_at FROM messages
              WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
                AND deleted_at IS NULL`,
           )
@@ -454,7 +425,7 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
  * @param {string} safeTopicId - 已 sanitized 的 topic ID
  * @param {object[]} messages - 消息列表
  * @param {string} appDataPath - AppData 路径
- * @param {object} row - entity_index 行
+ * @param {object} row - Topic 提交状态
  * @returns {Promise<{success: boolean, historyPath: string}>}
  */
 async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
@@ -602,11 +573,10 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         }
         seenTopics.add(topicKey);
 
-        const row = getEntityIndex({
-          id: safeTopicId,
-          type: "topic",
+        const row = getTopicState({
           ownerType,
           ownerId,
+          topicId: safeTopicId,
         });
         if (!row) {
           await writer.write({
@@ -759,7 +729,7 @@ async function ingestHistoryToDb(
     const applyIndex = db.transaction(() => {
       const existing = db
         .prepare(
-          `SELECT msg_id, hash, updated_at, deleted_at FROM message_index
+          `SELECT msg_id, message_hash AS hash, updated_at, deleted_at FROM messages
            WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
         )
         .all(ownerType, ownerId, topicId);
@@ -771,7 +741,7 @@ async function ingestHistoryToDb(
           continue;
         }
         const updatedAt = resolveMessageUpdatedAt(m, hash, previous, now);
-        upsertMessageIndex({
+        upsertMessageState({
           ownerType,
           ownerId,
           topicId,
@@ -787,7 +757,7 @@ async function ingestHistoryToDb(
         if (row.deleted_at === null && !liveIds.has(row.msg_id)) {
           const removed = db
             .prepare(
-              `UPDATE message_index SET deleted_at = ?
+              `UPDATE messages SET deleted_at = ?
                WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?
                  AND deleted_at IS NULL`,
             )
@@ -799,26 +769,21 @@ async function ingestHistoryToDb(
       }
 
       const topicRootHash = computeAggregatedHash(fingerprints);
-      const updated = updateTopicAggregatedHash(
+      const updated = updateTopicContentHash(
         { topicId, ownerType, ownerId },
         topicRootHash,
       );
       if (updated.changes !== 1) {
         const matches = db
           .prepare(
-            `SELECT COUNT(*) AS n FROM entity_index
-             WHERE type = 'topic' AND owner_type = ? AND owner_id = ? AND id = ?
+            `SELECT COUNT(*) AS n FROM topics
+             WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
                AND deleted_at IS NULL`,
           )
           .get(ownerType, ownerId, topicId).n;
         throw new Error(
           `Topic ${ownerType}/${ownerId}/${topicId} is missing in the local index (matches=${matches})`,
         );
-      }
-
-      if (source !== "reconcile") {
-        const { computeAggregatedHashes } = require("../index");
-        computeAggregatedHashes(db, logger);
       }
     });
     applyIndex();
@@ -884,11 +849,10 @@ async function pruneMessageFromPhysicalHistory(
   appDataPath,
 ) {
   const safeTopicId = sanitizeId(topicId);
-  const row = getEntityIndex({
-    id: safeTopicId,
-    type: "topic",
+  const row = getTopicState({
     ownerType,
     ownerId,
+    topicId: safeTopicId,
   });
   if (!row) return;
 

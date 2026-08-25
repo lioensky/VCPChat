@@ -12,30 +12,39 @@ const {
 const entityDatabase = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/db");
 const issue20EntityIndex = new Map();
 entityDatabase.getDb = () => ({});
-entityDatabase.getEntityIndex = ({ id, type, ownerType, ownerId }) => {
-  const indexType = ["topic", "agent_topic", "group_topic"].includes(type)
-    ? "topic"
-    : type;
-  return issue20EntityIndex.get(`${indexType}:${ownerType}:${ownerId}:${id}`) || null;
+entityDatabase.getOwnerState = ({ ownerType, ownerId }) => {
+  return issue20EntityIndex.get(`owner:${ownerType}:${ownerId}`) || null;
 };
-entityDatabase.upsertEntityIndex = ({
-  id,
-  type,
+entityDatabase.getTopicState = ({ topicId, ownerType, ownerId }) => {
+  return issue20EntityIndex.get(`topic:${ownerType}:${ownerId}:${topicId}`) || null;
+};
+entityDatabase.upsertOwnerState = ({
   ownerType,
   ownerId,
-  filePath,
-  hash,
+  configPath,
+  configHash,
 }) => {
-  const indexType = ["topic", "agent_topic", "group_topic"].includes(type)
-    ? "topic"
-    : type;
-  issue20EntityIndex.set(`${indexType}:${ownerType}:${ownerId}:${id}`, {
-    id,
-    type: indexType,
+  issue20EntityIndex.set(`owner:${ownerType}:${ownerId}`, {
     owner_type: ownerType,
     owner_id: ownerId,
-    file_path: filePath,
-    hash,
+    config_path: configPath,
+    config_hash: configHash,
+    deleted_at: null,
+  });
+  return { changes: 1 };
+};
+entityDatabase.upsertTopicState = ({
+  topicId,
+  ownerType,
+  ownerId,
+  configHash,
+}) => {
+  issue20EntityIndex.set(`topic:${ownerType}:${ownerId}:${topicId}`, {
+    topic_id: topicId,
+    owner_type: ownerType,
+    owner_id: ownerId,
+    config_hash: configHash,
+    content_hash: "",
     deleted_at: null,
   });
   return { changes: 1 };
@@ -68,10 +77,10 @@ function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
   return {
     prepare(sql) {
       if (fail) throw new Error("injected database failure");
-      if (sql.includes("FROM entity_index")) {
+      if (sql.includes("FROM topics")) {
         return { get: (...args) => topics[args.at(-1)] };
       }
-      if (sql.includes("FROM message_index")) {
+      if (sql.includes("FROM messages")) {
         return { all: (...args) => messages[args.at(-1)] || [] };
       }
       throw new Error(`unexpected SQL in fake database: ${sql}`);
@@ -79,35 +88,19 @@ function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
   };
 }
 
-function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {}) {
-  const indexedEntities = entities.map((row) => {
-    if (row.type !== "topic" || (row.owner_type && row.owner_id)) return row;
-    const parts = String(row.file_path || "").replace(/\\/g, "/").split("/");
-    return {
-      ...row,
-      owner_type: parts.includes("AgentGroups") ? "group" : "agent",
-      owner_id: parts.at(-2),
-    };
-  });
+function fakeManifestDatabase({ owners = [], topics = [], avatars = [], messages = [] } = {}) {
   return {
     prepare(sql) {
       if (sql.includes("FROM avatar_index")) {
         return { all: () => avatars };
       }
-      if (sql.includes("FROM entity_index") && sql.includes("type IN")) {
-        return {
-          all: () => indexedEntities.filter((row) => ["agent", "group"].includes(row.type)),
-        };
+      if (sql.includes("FROM owners")) {
+        return { all: () => owners };
       }
-      if (sql.includes("FROM entity_index") && sql.includes("type = ?")) {
-        return { all: (type) => indexedEntities.filter((row) => row.type === type) };
+      if (sql.includes("FROM topics")) {
+        return { all: () => topics };
       }
-      if (sql.includes("FROM entity_index")) {
-        return {
-          all: () => indexedEntities.filter((row) => row.type === "topic"),
-        };
-      }
-      if (sql.includes("FROM message_index")) {
+      if (sql.includes("FROM messages")) {
         return {
           all: (...args) =>
             messages.filter((row) => row.topic_id === args.at(-1)),
@@ -178,8 +171,7 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
     fakeDiffDatabase({
       topics: {
         "topic-live": {
-          aggregated_hash: "desktop",
-          file_path: "/app/Agents/agent-a/config.json",
+          content_hash: "desktop",
         },
       },
       messages: {
@@ -246,8 +238,7 @@ test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
     fakeDiffDatabase({
       topics: {
         [topicId]: {
-          aggregated_hash: "desktop-root",
-          file_path: "/app/Agents/agent-a/config.json",
+          content_hash: "desktop-root",
         },
       },
       messages: {
@@ -327,8 +318,7 @@ test("Phase 3 live 冲突按时间优胜并以 Hash 打破同时间平局", () =
     fakeDiffDatabase({
       topics: {
         [topicId]: {
-          aggregated_hash: "desktop-root",
-          file_path: "/app/Agents/agent-a/config.json",
+          content_hash: "desktop-root",
         },
       },
       messages: {
@@ -388,8 +378,7 @@ test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
     fakeDiffDatabase({
       topics: {
         "topic-equal-root": {
-          aggregated_hash: topicHash,
-          file_path: "/app/Agents/agent-a/config.json",
+          content_hash: topicHash,
         },
       },
     }),
@@ -527,22 +516,22 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
 test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () => {
   const hash = "a".repeat(64);
   const database = fakeManifestDatabase({
-    entities: [
+    topics: [
       {
-        id: "topic-a",
-        type: "topic",
-        file_path: "/app/Agents/agent-a/config.json",
-        hash,
-        aggregated_hash: "",
+        topic_id: "topic-a",
+        owner_type: "agent",
+        owner_id: "agent-a",
+        config_hash: hash,
+        content_hash: "",
         updated_at: 1,
         deleted_at: null,
       },
       {
-        id: "topic-b",
-        type: "topic",
-        file_path: "/app/Agents/agent-aa/config.json",
-        hash,
-        aggregated_hash: "",
+        topic_id: "topic-b",
+        owner_type: "agent",
+        owner_id: "agent-aa",
+        config_hash: hash,
+        content_hash: "",
         updated_at: 1,
         deleted_at: null,
       },
@@ -598,22 +587,22 @@ test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () =
 test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", () => {
   const hash = "a".repeat(64);
   const database = fakeManifestDatabase({
-    entities: [
+    topics: [
       {
-        id: "default",
-        type: "topic",
-        file_path: "/app/Agents/agent-a/config.json",
-        hash,
-        aggregated_hash: hash,
+        topic_id: "default",
+        owner_type: "agent",
+        owner_id: "agent-a",
+        config_hash: hash,
+        content_hash: hash,
         updated_at: 1,
         deleted_at: null,
       },
       {
-        id: "topic-live",
-        type: "topic",
-        file_path: "/app/Agents/agent-a/config.json",
-        hash,
-        aggregated_hash: hash,
+        topic_id: "topic-live",
+        owner_type: "agent",
+        owner_id: "agent-a",
+        config_hash: hash,
+        content_hash: hash,
         updated_at: 1,
         deleted_at: null,
       },
@@ -634,7 +623,7 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
           messages: {},
         },
       }),
-    }, fakeDiffDatabase({ topics: { default: { aggregated_hash: hash } } })),
+    }, fakeDiffDatabase({ topics: { default: { content_hash: hash } } })),
     {
       type: "SYNC_DIFF_RESULTS_BATCH",
       results: [{
@@ -698,13 +687,9 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
 test("Owner manifest 墓碑四象限保持动作方向", () => {
   const hash = "b".repeat(64);
   const localItem = (ownerType, id, deletedAt) => ({
-    id,
-    type: ownerType,
     owner_type: ownerType,
     owner_id: id,
-    file_path: `/app/${ownerType === "group" ? "AgentGroups" : "Agents"}/${id}/config.json`,
-    hash,
-    aggregated_hash: "",
+    config_hash: hash,
     updated_at: 1,
     deleted_at: deletedAt,
   });
@@ -718,7 +703,7 @@ test("Owner manifest 墓碑四象限保持动作方向", () => {
     ...(deletedAt === null ? {} : { deletedAt }),
   });
   const database = fakeManifestDatabase({
-    entities: [
+    owners: [
       localItem("agent", "mobile-deleted-desktop-live", null),
       localItem("group", "desktop-deleted-mobile-live", 21),
       localItem("group", "desktop-deleted-mobile-missing", 22),
@@ -838,7 +823,7 @@ test("损坏 history 的已提交索引不能走 topic hash 或消息 manifest �
             contentHash: "",
           }],
         },
-        fakeDiffDatabase({ topics: { [topicId]: { aggregated_hash: "" } } }),
+        fakeDiffDatabase({ topics: { [topicId]: { content_hash: "" } } }),
       ),
       (error) => error.code === "HISTORY_SOURCE_INVALID",
     );

@@ -189,8 +189,9 @@ graph TD
 
 | 表 | 主键/职责 |
 | :--- | :--- |
-| `entity_index` | `(type, owner_type, owner_id, id)`；Owner/Topic DTO Hash、聚合 Hash、时间与墓碑 |
-| `message_index` | `(owner_type, owner_id, topic_id, msg_id)`；消息版本与墓碑 |
+| `owners` | `(owner_type, owner_id)`；Owner DTO Hash、配置路径、时间与墓碑；内容根由 live Topic 动态聚合 |
+| `topics` | `(owner_type, owner_id, topic_id)`；Topic DTO Hash、消息内容根、时间与墓碑 |
+| `messages` | `(owner_type, owner_id, topic_id, msg_id)`；消息指纹、LWW 时间与墓碑 |
 | `attachment_index` | `hash`；只保存本机已有 Attachment 的物理路径 |
 | `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、时间与墓碑 |
 | `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、路径与索引版本快路径 |

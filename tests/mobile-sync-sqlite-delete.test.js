@@ -32,6 +32,14 @@ const INDEX_PATH = path.join(
   "VCPMobileSync",
   "index.js",
 );
+const MANIFEST_PATH = path.join(
+  ROOT,
+  "VCPDistributedServer",
+  "Plugin",
+  "VCPMobileSync",
+  "sync",
+  "manifest.js",
+);
 
 const silentLogger = {
   completePhase() {},
@@ -51,6 +59,7 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
     DB_PATH,
     ENTITY_PATH,
     INDEX_PATH,
+    MANIFEST_PATH,
     path.join(path.dirname(ENTITY_PATH), "central.js"),
   ];
   const savedModules = new Map(
@@ -86,7 +95,8 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
     const database = require(DB_PATH);
     const entity = require(ENTITY_PATH);
     const index = captureOnMessage ? require(INDEX_PATH) : null;
-    return { database, entity, index };
+    const manifest = require(MANIFEST_PATH);
+    return { database, entity, index, manifest };
   } finally {
     Module._load = originalLoad;
     for (const modulePath of modulePaths) {
@@ -115,38 +125,47 @@ function insertEntity(db, {
       : id);
   const resolvedFilePath = filePath ||
     `/virtual/${resolvedOwnerType === "group" ? "AgentGroups" : "Agents"}/${resolvedOwnerId}/config.json`;
-  const indexType = ["topic", "agent_topic", "group_topic"].includes(type)
-    ? "topic"
-    : type;
+  const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
   db.prepare(
-    `INSERT INTO entity_index
-       (id, type, owner_type, owner_id, file_path, hash, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO owners
+       (owner_type, owner_id, config_path, config_hash, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
   ).run(
-    id,
-    indexType,
     resolvedOwnerType,
     resolvedOwnerId,
     resolvedFilePath,
     "a".repeat(64),
     1,
   );
+  if (isTopic) {
+    db.prepare(
+      `INSERT INTO topics
+         (owner_type, owner_id, topic_id, config_hash, content_hash, updated_at)
+       VALUES (?, ?, ?, ?, '', ?)`,
+    ).run(
+      resolvedOwnerType,
+      resolvedOwnerId,
+      id,
+      "a".repeat(64),
+      1,
+    );
+  }
 }
 
 function entityRow(db, id, type, ownerType = null, ownerId = null) {
-  const indexType = ["topic", "agent_topic", "group_topic"].includes(type)
-    ? "topic"
-    : type;
-  const rows = db
-    .prepare("SELECT * FROM entity_index WHERE id = ? AND type = ?")
-    .all(id, indexType);
-  if (ownerType === null && ownerId === null) return rows[0];
-  return db
-    .prepare(
-      `SELECT * FROM entity_index
-       WHERE id = ? AND type = ? AND owner_type = ? AND owner_id = ?`,
-    )
-    .get(id, indexType, ownerType, ownerId);
+  const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
+  if (!isTopic) {
+    return db.prepare(
+      `SELECT * FROM owners WHERE owner_type = ? AND owner_id = ?`,
+    ).get(type, id);
+  }
+  if (ownerType !== null && ownerId !== null) {
+    return db.prepare(
+      `SELECT * FROM topics
+       WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+    ).get(ownerType, ownerId, id);
+  }
+  return db.prepare("SELECT * FROM topics WHERE topic_id = ?").get(id);
 }
 
 test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
@@ -170,14 +189,39 @@ test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
         filePath: "/virtual/Agents/agent-a/config.json",
       },
     ]) {
-      database.upsertEntityTombstone({ ...identity, deletedAt: 200 });
-      assert.throws(
-        () => database.upsertEntityIndex({
-          ...identity,
-          hash: "f".repeat(64),
-        }),
-        /tombstoned/,
-      );
+      if (identity.type === "topic") {
+        database.upsertTopicTombstone({
+          ownerType: identity.ownerType,
+          ownerId: identity.ownerId,
+          topicId: identity.id,
+          deletedAt: 200,
+        });
+        assert.throws(
+          () => database.upsertTopicState({
+            ownerType: identity.ownerType,
+            ownerId: identity.ownerId,
+            topicId: identity.id,
+            configHash: "f".repeat(64),
+          }),
+          /tombstoned/,
+        );
+      } else {
+        database.upsertOwnerTombstone({
+          ownerType: identity.ownerType,
+          ownerId: identity.ownerId,
+          configPath: identity.filePath,
+          deletedAt: 200,
+        });
+        assert.throws(
+          () => database.upsertOwnerState({
+            ownerType: identity.ownerType,
+            ownerId: identity.ownerId,
+            configPath: identity.filePath,
+            configHash: "f".repeat(64),
+          }),
+          /tombstoned/,
+        );
+      }
       assert.equal(
         entityRow(
           db,
@@ -231,8 +275,8 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
       filePath: path.join(directory, "Agents", "other", "config.json"),
     });
     db.prepare(
-      `INSERT INTO message_index
-         (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+      `INSERT INTO messages
+         (owner_type, owner_id, topic_id, msg_id, message_hash, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
     ).run("agent", "agent-cascade", "topic-cascade", "message-cascade", "b".repeat(64), 1);
     database.upsertHistorySourceState({
@@ -265,7 +309,7 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
     }), null);
     assert.equal(
       db.prepare(
-        "SELECT deleted_at FROM message_index WHERE topic_id = ? AND msg_id = ?",
+        "SELECT deleted_at FROM messages WHERE topic_id = ? AND msg_id = ?",
       ).get("topic-cascade", "message-cascade").deleted_at,
       700,
     );
@@ -314,8 +358,8 @@ test("删除 Topic 先移除物理 history，再更新 config 投影和索引", 
       filePath: configPath,
     });
     db.prepare(
-      `INSERT INTO message_index
-         (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+      `INSERT INTO messages
+         (owner_type, owner_id, topic_id, msg_id, message_hash, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
     ).run("agent", "agent-topic-delete", "topic-delete", "message-delete", "c".repeat(64), 1);
 
@@ -343,7 +387,7 @@ test("删除 Topic 先移除物理 history，再更新 config 投影和索引", 
     assert.equal(entityRow(db, "topic-delete", "topic").deleted_at, 800);
     assert.equal(
       db.prepare(
-        "SELECT deleted_at FROM message_index WHERE topic_id = ? AND msg_id = ?",
+        "SELECT deleted_at FROM messages WHERE topic_id = ? AND msg_id = ?",
       ).get("topic-delete", "message-delete").deleted_at,
       800,
     );
@@ -436,8 +480,9 @@ test("从未见过的 Topic 删除会用显式 Owner 身份保存墓碑", async 
     );
     const tombstone = entityRow(db, "topic-never-seen", "topic");
     assert.equal(tombstone.deleted_at, 801);
-    assert.equal(tombstone.hash, "0".repeat(64));
-    assert.match(tombstone.file_path.replace(/\\/g, "/"), /AgentGroups\/group-owner\/config\.json$/u);
+    assert.equal(tombstone.config_hash, "0".repeat(64));
+    assert.equal(tombstone.owner_type, "group");
+    assert.equal(tombstone.owner_id, "group-owner");
 
     const missingIdentity = await entity.deleteEntity({
       id: "topic-no-owner",
@@ -552,12 +597,10 @@ test("启动 repair 从有效 backup 恢复配置并服从 Topic 墓碑", async 
       type: "topic",
       filePath: configPath,
     });
-    database.upsertEntityTombstone({
-      id: tombstonedTopicId,
-      type: "topic",
+    database.upsertTopicTombstone({
       ownerType: "agent",
       ownerId,
-      filePath: configPath,
+      topicId: tombstonedTopicId,
       deletedAt: 99,
     });
 
@@ -705,8 +748,8 @@ test("legacy reconcile 把物理已消失的 Owner/Topic 及消息收敛为墓�
       const ownerType = topicId === "topic-owner-stale" ? "group" : "agent";
       const ownerId = topicId === "topic-owner-stale" ? "group-stale" : "agent-live";
       db.prepare(
-        `INSERT INTO message_index
-           (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+        `INSERT INTO messages
+           (owner_type, owner_id, topic_id, msg_id, message_hash, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
       ).run(ownerType, ownerId, topicId, `message-${topicId}`, "c".repeat(64), 1);
       database.upsertHistorySourceState({
@@ -736,7 +779,7 @@ test("legacy reconcile 把物理已消失的 Owner/Topic 及消息收敛为墓�
     );
     assert.deepEqual(
       db.prepare(
-        "SELECT topic_id, deleted_at FROM message_index ORDER BY topic_id",
+        "SELECT topic_id, deleted_at FROM messages ORDER BY topic_id",
       ).all().map((row) => [row.topic_id, row.deleted_at]),
       [
         ["topic-live", null],
@@ -787,18 +830,16 @@ test("运行时 config 摄取按有效 Topic 配置收敛旧索引", async (t) =
       type: "topic",
       filePath: configPath,
     });
-    database.upsertEntityTombstone({
-      id: "topic-stale-deleted",
-      type: "topic",
+    database.upsertTopicTombstone({
       ownerType: "agent",
       ownerId,
-      filePath: configPath,
+      topicId: "topic-stale-deleted",
       deletedAt: 123,
     });
     for (const topicId of ["topic-stale-live", "topic-stale-deleted"]) {
       db.prepare(
-        `INSERT INTO message_index
-           (owner_type, owner_id, topic_id, msg_id, hash, updated_at)
+        `INSERT INTO messages
+           (owner_type, owner_id, topic_id, msg_id, message_hash, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
       ).run("agent", ownerId, topicId, `message-${topicId}`, "c".repeat(64), 1);
     }
@@ -810,7 +851,7 @@ test("运行时 config 摄取按有效 Topic 配置收敛旧索引", async (t) =
     assert.equal(entityRow(db, "topic-stale-deleted", "topic").deleted_at, 123);
     assert.equal(
       db.prepare(
-        "SELECT deleted_at FROM message_index WHERE topic_id = ?",
+        "SELECT deleted_at FROM messages WHERE topic_id = ?",
       ).get("topic-stale-deleted").deleted_at,
       123,
     );
@@ -825,15 +866,15 @@ test("legacy Topic root 内容变化不推进配置 updated_at", () => {
   try {
     insertEntity(db, { id: "topic-root", type: "topic" });
     db.prepare(
-      "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND type = ?",
-    ).run("a".repeat(64), 100, "topic-root", "topic");
+      "UPDATE topics SET content_hash = ?, updated_at = ? WHERE topic_id = ?",
+    ).run("a".repeat(64), 100, "topic-root");
 
-    database.updateTopicAggregatedHash(
+    database.updateTopicContentHash(
       { topicId: "topic-root", ownerType: "agent", ownerId: "owner-a" },
       "a".repeat(64),
     );
     assert.equal(entityRow(db, "topic-root", "topic").updated_at, 100);
-    database.updateTopicAggregatedHash(
+    database.updateTopicContentHash(
       { topicId: "topic-root", ownerType: "agent", ownerId: "owner-a" },
       "b".repeat(64),
     );
@@ -843,8 +884,8 @@ test("legacy Topic root 内容变化不推进配置 updated_at", () => {
   }
 });
 
-test("legacy Owner root 和 Topic 空根回填都包含 default", () => {
-  const { database, index } = loadSqliteModules({ captureOnMessage() {} });
+test("legacy Owner root 动态聚合全部 live Topic 并包含 default", () => {
+  const { database, manifest } = loadSqliteModules();
   const { computeAggregatedHash, computeTopicLeafHash } = require(
     path.join(ROOT, "VCPDistributedServer", "Plugin", "VCPMobileSync", "core", "hash.js"),
   );
@@ -855,30 +896,31 @@ test("legacy Owner root 和 Topic 空根回填都包含 default", () => {
     insertEntity(db, { id: "default", type: "topic", filePath: configPath });
     insertEntity(db, { id: "topic-live", type: "topic", filePath: configPath });
     db.prepare(
-      "UPDATE entity_index SET hash = ?, aggregated_hash = ?, updated_at = 10 WHERE id = ? AND type = 'topic'",
-    ).run("d".repeat(64), null, "default");
+      "UPDATE topics SET config_hash = ?, content_hash = '', updated_at = 10 WHERE topic_id = ?",
+    ).run("d".repeat(64), "default");
     db.prepare(
-      "UPDATE entity_index SET hash = ?, aggregated_hash = ?, updated_at = 20 WHERE id = ? AND type = 'topic'",
+      "UPDATE topics SET config_hash = ?, content_hash = ?, updated_at = 20 WHERE topic_id = ?",
     ).run("a".repeat(64), "b".repeat(64), "topic-live");
     db.prepare(
-      "UPDATE entity_index SET updated_at = 30 WHERE id = 'agent-root' AND type = 'agent'",
+      "UPDATE owners SET updated_at = 30 WHERE owner_id = 'agent-root'",
     ).run();
 
-    index.computeAggregatedHashes(db, silentLogger);
     const expected = computeAggregatedHash([
       computeTopicLeafHash("default", "d".repeat(64), ""),
       computeTopicLeafHash("topic-live", "a".repeat(64), "b".repeat(64)),
     ]);
-    assert.equal(entityRow(db, "agent-root", "agent").aggregated_hash, expected);
+    assert.equal(
+      manifest.getLocalManifest("owner", null, db)[0].contentHash,
+      expected,
+    );
     assert.equal(entityRow(db, "agent-root", "agent").updated_at, 30);
-    assert.equal(entityRow(db, "default", "topic").aggregated_hash, "");
+    assert.equal(entityRow(db, "default", "topic").content_hash, "");
 
     db.prepare(
-      "UPDATE entity_index SET hash = ?, aggregated_hash = ? WHERE id = 'default' AND type = 'topic'",
+      "UPDATE topics SET config_hash = ?, content_hash = ? WHERE topic_id = 'default'",
     ).run("e".repeat(64), "f".repeat(64));
-    index.computeAggregatedHashes(db, silentLogger);
     assert.equal(
-      entityRow(db, "agent-root", "agent").aggregated_hash,
+      manifest.getLocalManifest("owner", null, db)[0].contentHash,
       computeAggregatedHash([
         computeTopicLeafHash("default", "e".repeat(64), "f".repeat(64)),
         computeTopicLeafHash("topic-live", "a".repeat(64), "b".repeat(64)),
@@ -920,11 +962,11 @@ test("legacy watcher 与全量扫描共用 DTO 默认值", async (t) => {
   await index.ingestConfigToDb(configPath, "agent", directory);
 
   assert.equal(
-    entityRow(db, ownerId, "agent").hash,
+    entityRow(db, ownerId, "agent").config_hash,
     computeDtoHash(extractAgentDTO(config), AGENT_SYNC_FIELDS),
   );
   assert.equal(
-    entityRow(db, topicId, "topic").hash,
+    entityRow(db, topicId, "topic").config_hash,
     computeDtoHash(
       extractTopicDTO(config.topics[0], ownerId, "agent"),
       AGENT_TOPIC_SYNC_FIELDS,

@@ -3,6 +3,10 @@
  */
 
 const { getDb, getAvatarDb } = require("../core/db");
+const {
+  computeAggregatedHash,
+  computeTopicLeafHash,
+} = require("../core/hash");
 const { getLogger } = require("../core/logger");
 const { assertHistoryTopicHealthy } = require("./message");
 
@@ -94,6 +98,33 @@ function requireAvatarOwner(id) {
   return { ownerType, ownerId };
 }
 
+function buildOwnerContentHashes(db) {
+  const topicLeaves = new Map();
+  const topics = db.prepare(
+    `SELECT owner_type, owner_id, topic_id, config_hash, content_hash
+     FROM topics
+     WHERE deleted_at IS NULL`,
+  ).all();
+  for (const topic of topics) {
+    const key = `${topic.owner_type}\0${topic.owner_id}`;
+    if (!topicLeaves.has(key)) topicLeaves.set(key, []);
+    topicLeaves.get(key).push(
+      computeTopicLeafHash(
+        requireNonEmptyString(topic.topic_id, "Topic root topicId"),
+        requireHash(topic.config_hash, `Topic ${topic.topic_id} configHash`),
+        requireHash(
+          topic.content_hash,
+          `Topic ${topic.topic_id} contentHash`,
+          { allowEmpty: true },
+        ),
+      ),
+    );
+  }
+  return new Map(
+    [...topicLeaves].map(([key, leaves]) => [key, computeAggregatedHash(leaves)]),
+  );
+}
+
 
 /**
  * 获取本地清单
@@ -135,79 +166,94 @@ function getLocalManifest(dataType, targetedOwners = null, database = null) {
     });
   }
 
-  const syncRows = dataType === "owner"
-    ? db.prepare("SELECT * FROM entity_index WHERE type IN ('agent', 'group')").all()
-    : db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
-  const filteredRows = dataType === "topic" && ownerFilter
-    ? syncRows.filter((row) => {
-        return ownerFilter.has(`${row.owner_type}\0${row.owner_id}`);
-      })
-    : syncRows;
-  if (filteredRows.length > MAX_MANIFEST_ITEMS) {
-    throw syncContractError(
-      `${dataType} manifest exceeds 10000 items`,
-      "SYNC_BUDGET_EXCEEDED",
-    );
-  }
-
-  if (dataType === "topic" || dataType === "owner") {
-    const seen = new Set();
-    return filteredRows.map((row) => {
-      const id = requireNonEmptyString(row.id, `${dataType} manifest id`);
-      const owner = dataType === "topic"
-        ? {
-            ownerType: requireNonEmptyString(row.owner_type, `Topic ${id} ownerType`),
-            ownerId: requireNonEmptyString(row.owner_id, `Topic ${id} ownerId`),
-          }
-        : {
-            ownerType: requireNonEmptyString(row.owner_type, `Owner ${id} ownerType`),
-          };
-      if (owner && !matchesTopicOwnerType(owner.ownerType)) {
+  if (dataType === "owner") {
+    const rows = db.prepare(
+      `SELECT owner_type, owner_id, config_hash, updated_at, deleted_at
+       FROM owners`,
+    ).all();
+    if (rows.length > MAX_MANIFEST_ITEMS) {
+      throw syncContractError(
+        "owner manifest exceeds 10000 items",
+        "SYNC_BUDGET_EXCEEDED",
+      );
+    }
+    const contentHashes = buildOwnerContentHashes(db);
+    return rows.map((row) => {
+      const id = requireNonEmptyString(row.owner_id, "Owner manifest id");
+      const ownerType = requireNonEmptyString(
+        row.owner_type,
+        `Owner ${id} ownerType`,
+      );
+      if (!matchesTopicOwnerType(ownerType)) {
         throw syncContractError(
-          `${dataType} ${id} has invalid ownerType ${owner.ownerType}`,
+          `Owner ${id} has invalid ownerType ${ownerType}`,
           "SYNC_INDEX_INVALID",
         );
       }
-      if (dataType === "owner" && row.type !== owner.ownerType) {
-        throw syncContractError(
-          `Owner ${id} index type conflicts with ownerType`,
-          "SYNC_INDEX_INVALID",
-        );
-      }
-      const identity = dataType === "topic"
-        ? `${owner.ownerType}\0${owner.ownerId}\0${id}`
-        : `${owner.ownerType}\0${id}`;
-      if (!seen.add(identity)) {
-        throw syncContractError(
-          `${dataType} manifest contains a duplicate entity identity for ${id}`,
-          "SYNC_INDEX_INVALID",
-        );
-      }
-      const result = {
+      const deletedAt = requireOptionalTombstone(
+        row.deleted_at,
+        `Owner ${id} deletedAt`,
+      );
+      return {
         id,
-        configHash: requireHash(row.hash, `${dataType} ${id} configHash`),
-        contentHash: requireHash(
-          row.aggregated_hash ?? "",
-          `${dataType} ${id} contentHash`,
-          { allowEmpty: true },
-        ),
-        ts: requireTimestamp(row.updated_at, `${dataType} ${id} timestamp`),
-        deletedAt: requireOptionalTombstone(
-          row.deleted_at,
-          `${dataType} ${id} deletedAt`,
-        ),
+        ownerType,
+        configHash: requireHash(row.config_hash, `Owner ${id} configHash`),
+        contentHash: deletedAt === null
+          ? contentHashes.get(`${ownerType}\0${id}`) || ""
+          : "",
+        ts: requireTimestamp(row.updated_at, `Owner ${id} timestamp`),
+        deletedAt,
       };
-      if (dataType === "topic") {
-        result.ownerType = owner.ownerType;
-        result.ownerId = owner.ownerId;
-      } else {
-        result.ownerType = owner.ownerType;
-      }
-      return result;
     });
   }
 
-  return [];
+  const rows = db.prepare(
+    `SELECT owner_type, owner_id, topic_id, config_hash, content_hash,
+            updated_at, deleted_at
+     FROM topics`,
+  ).all();
+  const filteredRows = ownerFilter
+    ? rows.filter((row) => ownerFilter.has(`${row.owner_type}\0${row.owner_id}`))
+    : rows;
+  if (filteredRows.length > MAX_MANIFEST_ITEMS) {
+    throw syncContractError(
+      "topic manifest exceeds 10000 items",
+      "SYNC_BUDGET_EXCEEDED",
+    );
+  }
+  return filteredRows.map((row) => {
+    const id = requireNonEmptyString(row.topic_id, "Topic manifest id");
+    const ownerType = requireNonEmptyString(
+      row.owner_type,
+      `Topic ${id} ownerType`,
+    );
+    const ownerId = requireNonEmptyString(
+      row.owner_id,
+      `Topic ${id} ownerId`,
+    );
+    if (!matchesTopicOwnerType(ownerType)) {
+      throw syncContractError(
+        `Topic ${id} has invalid ownerType ${ownerType}`,
+        "SYNC_INDEX_INVALID",
+      );
+    }
+    return {
+      id,
+      ownerType,
+      ownerId,
+      configHash: requireHash(row.config_hash, `Topic ${id} configHash`),
+      contentHash: requireHash(
+        row.content_hash,
+        `Topic ${id} contentHash`,
+        { allowEmpty: true },
+      ),
+      ts: requireTimestamp(row.updated_at, `Topic ${id} timestamp`),
+      deletedAt: requireOptionalTombstone(
+        row.deleted_at,
+        `Topic ${id} deletedAt`,
+      ),
+    };
+  });
 }
 
 /**
@@ -487,8 +533,8 @@ function handleMessageManifest(payload, database = getDb()) {
 
   const rows = db
     .prepare(
-      `SELECT msg_id, hash as content_hash, updated_at, deleted_at
-       FROM message_index
+      `SELECT msg_id, message_hash AS content_hash, updated_at, deleted_at
+       FROM messages
        WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
     )
     .all(ownerType, ownerId, topicId);

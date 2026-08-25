@@ -89,8 +89,8 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
       });
       const topicRow = db
         .prepare(
-          `SELECT hash, aggregated_hash FROM entity_index
-           WHERE type = 'topic' AND owner_type = ? AND owner_id = ? AND id = ?
+          `SELECT config_hash, content_hash FROM topics
+           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
              AND deleted_at IS NULL`,
         )
         .get(state.ownerType, state.ownerId, topicId);
@@ -104,9 +104,9 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
         continue;
       }
 
-      const localConfig = topicRow.hash || "";
+      const localConfig = topicRow.config_hash || "";
       const remoteConfig = state.configHash || "";
-      const localContent = topicRow.aggregated_hash || "";
+      const localContent = topicRow.content_hash || "";
       const remoteContent = state.contentHash || "";
 
       if (localConfig === remoteConfig && localContent === remoteContent) {
@@ -233,11 +233,11 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
         ownerType: localState.ownerType,
         ownerId: localState.ownerId,
       });
-      // 1. 快速路径：比较 topic 级 aggregated_hash
+      // 1. 快速路径：比较 Topic 内容 Hash
       const topicRow = db
         .prepare(
-          `SELECT aggregated_hash FROM entity_index
-           WHERE type = 'topic' AND owner_type = ? AND owner_id = ? AND id = ?
+          `SELECT content_hash FROM topics
+           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
              AND deleted_at IS NULL`,
         )
         .get(localState.ownerType, localState.ownerId, topicId);
@@ -262,8 +262,8 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
         (state) => state.hash === "DELETED",
       );
       if (
-        topicRow.aggregated_hash !== null &&
-        topicRow.aggregated_hash === localState.topicHash &&
+        topicRow.content_hash !== null &&
+        topicRow.content_hash === localState.topicHash &&
         !mobileHasTombstones
       ) {
         results.push({
@@ -281,7 +281,7 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       // 2. 详细比较：墓碑必须参与四象限裁决，不能被 live-only 查询吞掉。
       const remoteRows = db
         .prepare(
-          `SELECT msg_id, hash, updated_at, deleted_at FROM message_index
+          `SELECT msg_id, message_hash AS hash, updated_at, deleted_at FROM messages
            WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
         )
         .all(localState.ownerType, localState.ownerId, topicId);
