@@ -150,12 +150,11 @@ function createDesktopAttachment(dto, desktopPath, ext, fallbackCreatedAt = 0) {
   const internalFileName = hash ? `${hash}${ext}` : "";
   const desktopSrc = desktopPath ? `file://${desktopPath}` : "";
 
-  return {
+  const attachment = {
     type,
     src: desktopSrc,
     name,
     size,
-    status: dto.status || "ready",
     _fileManagerData: {
       id: `attachment_${hash}`,
       name,
@@ -169,6 +168,8 @@ function createDesktopAttachment(dto, desktopPath, ext, fallbackCreatedAt = 0) {
       imageFrames: dto.imageFrames || null,
     }
   };
+  if (desktopPath) attachment.status = "ready";
+  return attachment;
 }
 
 module.exports = {

@@ -17,6 +17,7 @@ use crate::{
         MessageView, NormalizedMessage, OwnerKey, OwnerRecord, OwnerType, TopicDefinition,
         TopicKey, TopicSource,
     },
+    sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
 
 const MIGRATION_V1: &str = r#"
@@ -883,7 +884,7 @@ impl Database {
                 message,
                 existing
                     .get(&message.msg_id)
-                    .map(|(_, hash, updated_at)| (hash.as_str(), *updated_at)),
+                    .map(|(_, version_hash, updated_at)| (version_hash.as_str(), *updated_at)),
                 now,
             );
             transaction.execute(
@@ -1500,14 +1501,43 @@ fn load_active_message_states(
     key: &TopicKey,
 ) -> Result<HashMap<String, (i64, String, i64)>> {
     let mut statement = transaction.prepare(
-        "SELECT msg_id, row_id, message_hash, updated_at FROM messages
+        "SELECT msg_id, row_id, message_hash, metadata_json, updated_at FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
     )?;
     let rows = statement.query_map(
         params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-        |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?, row.get(3)?))),
+        |row| {
+            let legacy_hash = row.get::<_, String>(2)?;
+            let metadata_json = row.get::<_, String>(3)?;
+            Ok((
+                row.get(0)?,
+                (
+                    row.get(1)?,
+                    message_version_hash(&metadata_json, &legacy_hash),
+                    row.get(4)?,
+                ),
+            ))
+        },
     )?;
     rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+}
+
+fn message_version_hash(metadata_json: &str, legacy_hash: &str) -> String {
+    let canonical = serde_json::from_str::<Value>(metadata_json)
+        .ok()
+        .and_then(|value| {
+            // topicId is excluded from the fingerprint. Reuse the embedded value only as
+            // canonicalization context so ordinary group messages do not emit rewrite logs.
+            let topic_id = value
+                .get("topicId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let mut warnings = WireWarnings::default();
+            canonicalize_message(value, &topic_id, &mut warnings).ok()
+        })
+        .and_then(|message| message_fingerprint(&message).ok());
+    canonical.unwrap_or_else(|| legacy_hash.to_string())
 }
 
 fn load_message_tombstone_ids(
@@ -1541,7 +1571,10 @@ fn resolve_message_updated_at(
             .timestamp
             .filter(|value| *value >= 0)
             .unwrap_or(detected_at),
-        Some((previous_hash, previous_updated_at)) if previous_hash == message.message_hash => {
+        Some((previous_hash, previous_updated_at))
+            if previous_hash
+                == message_version_hash(&message.metadata_json, &message.message_hash) =>
+        {
             previous_updated_at
         }
         Some(_) => detected_at,

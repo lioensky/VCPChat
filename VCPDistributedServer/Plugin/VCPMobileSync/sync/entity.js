@@ -14,7 +14,6 @@ const {
   upsertAttachmentIndex,
   upsertAvatarIndex,
   upsertEntityTombstone,
-  upsertMessageTombstone,
   softDeleteAvatarIndex,
   recomputeOwnerAggregatedHash,
 } = require("../core/db");
@@ -1587,6 +1586,39 @@ async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType
   } finally {
     await file.close();
   }
+
+  // Group 的 config.avatar 是业务投影：新二进制尚未发布时先提交投影，
+  // 避免新文件已可见但 config 仍指向旧格式。
+  if (isGroup) {
+    const configPath = path.join(entityDir, "config.json");
+    const writeIntentKey = addWriteIntent(entityIndexIdentity(safeId, "group"));
+    const release = await acquireLock(configPath);
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(content);
+      config.avatar = avatarFileName;
+
+      const tmpPath = `${configPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
+      await fs.rename(tmpPath, configPath);
+
+      // 更新实体索引 (V2: 使用 DTO 提取)
+      const groupHash = computeDtoHash(extractGroupDTO(config), GROUP_SYNC_FIELDS);
+      upsertEntityIndex({
+        ...entityIndexIdentity(safeId, "group"),
+        filePath: configPath,
+        hash: groupHash,
+      });
+    } catch (e) {
+      logger.logOperation("owner_metadata", "upload_avatar", safeId, "error", `update group config failed: ${e.message}`);
+      await fs.unlink(temporary).catch(() => {});
+      throw e;
+    } finally {
+      release();
+      releaseWriteIntent(writeIntentKey);
+    }
+  }
+
   try {
     await fs.rename(temporary, avatarPath);
     if (process.platform !== "win32") {
@@ -1602,13 +1634,18 @@ async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType
     throw error;
   }
 
+  // 旧格式清理仍属于本次文件提交；索引只在物理视图完整后发布新 Hash。
   if (!isUser) {
     for (const oldExtension of AVATAR_EXTENSIONS) {
       const oldPath = path.join(entityDir, `avatar${oldExtension}`);
       if (oldPath !== avatarPath) {
-        await fs.unlink(oldPath).catch((error) => {
-          if (error.code !== "ENOENT") throw error;
-        });
+        try {
+          await fs.unlink(oldPath);
+        } catch (error) {
+          if (error.code === "ENOENT") continue;
+          await fs.unlink(avatarPath).catch(() => {});
+          throw error;
+        }
       }
     }
   }
@@ -1618,36 +1655,6 @@ async function uploadAvatar({ id, type, data, appDataPath, mimeType: rawMimeType
   if (indexed?.changes !== 1) {
     await fs.unlink(avatarPath).catch(() => {});
     throw new Error(`Avatar ${type}/${safeId} is deleted`);
-  }
-
-  // Group 头像需要额外更新 config.json 的 avatar 字段
-  if (isGroup) {
-    const configPath = path.join(entityDir, "config.json");
-    const writeIntentKey = addWriteIntent(entityIndexIdentity(safeId, "group"));
-    const release = await acquireLock(configPath);
-    try {
-      const content = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
-      config.avatar = avatarFileName;
-      
-      const tmpPath = `${configPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
-      await fs.rename(tmpPath, configPath);
-
-      // 更新实体索引 (V2: 使用 DTO 提取)
-      const groupHash = computeDtoHash(extractGroupDTO(config), GROUP_SYNC_FIELDS);
-      upsertEntityIndex({
-        ...entityIndexIdentity(safeId, "group"),
-        filePath: configPath,
-        hash: groupHash,
-      });
-    } catch (e) {
-      logger.logOperation("owner_metadata", "upload_avatar", safeId, "error", `update group config failed: ${e.message}`);
-      throw e;
-    } finally {
-      release();
-      releaseWriteIntent(writeIntentKey);
-    }
   }
 
   logger.logOperation("owner_metadata", "upload_avatar", safeId, "success", `type=${type}`);
@@ -2007,13 +2014,6 @@ async function deleteMessage({
       ownerType,
       ownerId,
     });
-    upsertMessageTombstone({
-      ownerType,
-      ownerId,
-      topicId: safeTopicId,
-      msgId: safeMsgId,
-      deletedAt,
-    });
     if (safeTopicId && appDataPath) {
       const { pruneMessageFromPhysicalHistory } = require("./message");
       await pruneMessageFromPhysicalHistory(
@@ -2021,6 +2021,7 @@ async function deleteMessage({
         safeMsgId,
         ownerType,
         ownerId,
+        deletedAt,
         appDataPath,
       );
     }

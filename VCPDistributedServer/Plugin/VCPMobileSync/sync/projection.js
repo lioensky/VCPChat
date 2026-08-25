@@ -62,16 +62,27 @@ async function projectMobileMessage({
     );
   }
 
-  const isGroup = ownerType === "group";
-  const isUser = canonical.role === "user";
   const desktop = {
     id: canonical.id,
     role: canonical.role,
-    name: canonical.name || (isUser ? "User" : "Assistant"),
     content: canonical.content,
     timestamp: canonical.timestamp,
     updatedAt: canonical.updatedAt,
   };
+  if (canonical.name !== undefined) desktop.name = canonical.name;
+  for (const key of [
+    "isThinking",
+    "agentId",
+    "groupId",
+    "topicId",
+    "isGroupMessage",
+    "finishReason",
+    "avatarColor",
+  ]) {
+    if (canonical[key] !== undefined && canonical[key] !== null) {
+      desktop[key] = canonical[key];
+    }
+  }
   const attachmentsDir = path.join(appDataPath, "UserData", "attachments");
 
   if (Array.isArray(canonical.attachments) && canonical.attachments.length > 0) {
@@ -85,12 +96,10 @@ async function projectMobileMessage({
       const extension = existingPath
         ? path.extname(existingPath)
         : getExtensionFromType(attachment.type);
-      const expectedPath =
-        existingPath || path.join(attachmentsDir, `${attachment.hash}${extension}`);
       desktop.attachments.push(
         createDesktopAttachment(
           attachment,
-          expectedPath,
+          existingPath || "",
           extension,
           canonical.timestamp,
         ),
@@ -98,24 +107,14 @@ async function projectMobileMessage({
     }
   }
 
-  if (!isUser) {
-    desktop.isThinking = canonical.isThinking ?? false;
-    desktop.finishReason = canonical.finishReason || "completed";
-    const agentId = canonical.agentId || (isGroup ? null : parentId);
-    if (agentId) desktop.agentId = agentId;
-    if (isGroup) {
-      desktop.isGroupMessage = true;
-      desktop.groupId = canonical.groupId || parentId;
-      desktop.topicId = canonical.topicId || topicId;
+  if (canonical.role !== "user") {
+    const avatarAgentId = canonical.agentId || (ownerType === "agent" ? parentId : null);
+    if (avatarAgentId) {
+      const avatar = getAvatarIndex(avatarAgentId, "agent");
+      if (avatar?.deleted_at == null && avatar?.file_path) {
+        desktop.avatarUrl = `file://${avatar.file_path}`;
+      }
     }
-    if (agentId) {
-      const avatar = getAvatarIndex(agentId, "agent");
-      const avatarPath = avatar?.deleted_at == null && avatar?.file_path
-        ? avatar.file_path
-        : path.join(appDataPath, "Agents", agentId, "avatar.png");
-      desktop.avatarUrl = `file://${avatarPath}`;
-    }
-    desktop.avatarColor = canonical.avatarColor || "rgb(128, 128, 128)";
   }
 
   return desktop;

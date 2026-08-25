@@ -10,6 +10,7 @@ const {
   getDb,
   getEntityIndex,
   upsertMessageIndex,
+  upsertMessageTombstone,
   upsertHistorySourceState,
   updateTopicAggregatedHash,
 } = require("../core/db");
@@ -867,7 +868,8 @@ async function ingestHistoryToDb(
 }
 
 /**
- * 物理修剪 history.json 中的被删除消息
+ * 在一个提交路径中删除消息：先替换物理 history，
+ * 再持久化显式墓碑，最后重新摄取聚合视图。
  * @param {string} topicId 
  * @param {string} msgId 
  * @param {string} ownerType
@@ -878,6 +880,7 @@ async function pruneMessageFromPhysicalHistory(
   msgId,
   ownerType,
   ownerId,
+  deletedAt,
   appDataPath,
 ) {
   const safeTopicId = sanitizeId(topicId);
@@ -901,28 +904,33 @@ async function pruneMessageFromPhysicalHistory(
   );
 
   const release = await acquireLock(historyPath);
-  let writeIntentKey = null;
+  const writeIntentKey = addWriteIntent({
+    id: safeTopicId,
+    type: "topic",
+    ownerType,
+    ownerId,
+  });
   try {
     const { history, sourceHash } = await readHistoryStrict(historyPath);
-
     const filtered = history.filter((m) => m.id !== msgId);
     if (filtered.length !== history.length) {
-      writeIntentKey = addWriteIntent({
-        id: safeTopicId,
-        type: "topic",
-        ownerType,
-        ownerId,
-      });
       await writeHistoryAtomic(historyPath, filtered, sourceHash);
-      await ingestHistoryToDb(
-        historyPath,
-        { topicId: safeTopicId, ownerType, ownerId },
-        "batch_push",
-      );
     }
+    upsertMessageTombstone({
+      ownerType,
+      ownerId,
+      topicId: safeTopicId,
+      msgId,
+      deletedAt,
+    });
+    await ingestHistoryToDb(
+      historyPath,
+      { topicId: safeTopicId, ownerType, ownerId },
+      "batch_push",
+    );
   } finally {
     release();
-    if (writeIntentKey) releaseWriteIntent(writeIntentKey);
+    releaseWriteIntent(writeIntentKey);
   }
 }
 

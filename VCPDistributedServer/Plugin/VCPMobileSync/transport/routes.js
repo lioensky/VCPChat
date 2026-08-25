@@ -218,7 +218,9 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           },
         );
         const statusCode = result?.success === true ? 200 : 409;
-        recordOperation(opId, result, statusCode);
+        if (result?.success === true) {
+          recordOperation(opId, result, statusCode);
+        }
         res.status(statusCode).json(result);
       } catch (e) {
         sendHttpError(res, 500, e, {

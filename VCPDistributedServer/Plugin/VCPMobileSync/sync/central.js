@@ -775,14 +775,31 @@ class CentralSyncAdapter {
             { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
           );
         }
-        const projected = await projectMobileTopic({
-          topicId,
-          ownerType: identity.ownerType,
-          ownerId: identity.ownerId,
-          messages: frame.messages,
-          db,
-          appDataPath: this.appDataPath,
-        });
+        let projected;
+        try {
+          projected = await projectMobileTopic({
+            topicId,
+            ownerType: identity.ownerType,
+            ownerId: identity.ownerId,
+            messages: frame.messages,
+            db,
+            appDataPath: this.appDataPath,
+          });
+        } catch (projectionError) {
+          await writer.write({
+            topicId,
+            ownerType,
+            ownerId,
+            success: false,
+            error: normalizeSyncError(projectionError, {
+              code: "SYNC_MESSAGE_WRITE_FAILED",
+              origin: "desktop_cds",
+              stage: "messages",
+              failedTopicIds: [topicId],
+            }),
+          });
+          continue;
+        }
         const result = await client.syncMessagesPushTopic({
           topicId,
           ownerType: identity.ownerType,
