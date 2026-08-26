@@ -10,7 +10,6 @@ ammonia = "4"
 anyhow = "1"
 axum = "0.8"
 base64 = "0.22"
-blake3 = "1"
 clap = { version = "4", features = ["derive", "env"] }
 fs2 = "0.4"
 futures = "0.3"

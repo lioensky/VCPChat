@@ -89,7 +89,7 @@ struct SearchFields {
     role: Field,
     speaker_name: Field,
     content: Field,
-    message_hash: Field,
+    topic_marker: Field,
 }
 
 impl SearchFields {
@@ -110,7 +110,7 @@ impl SearchFields {
             role: field("role")?,
             speaker_name: field("speaker_name")?,
             content: field("content")?,
-            message_hash: field("message_hash")?,
+            topic_marker: field("topic_marker")?,
         })
     }
 }
@@ -454,12 +454,8 @@ impl SearchIndex {
         if let Some(speaker_name) = &message.speaker_name {
             document.add_text(self.fields.speaker_name, speaker_name);
         }
-        let hash = blake3::hash(message.content_raw.as_bytes())
-            .to_hex()
-            .to_string();
-        document.add_text(self.fields.message_hash, hash);
         document.add_text(
-            self.fields.message_hash,
+            self.fields.topic_marker,
             composite_topic_value(message.owner_type, &message.owner_id, &message.topic_id),
         );
         document
@@ -535,7 +531,7 @@ fn build_schema() -> Schema {
     builder.add_text_field("role", string.clone());
     builder.add_text_field("speaker_name", text.clone());
     builder.add_text_field("content", text);
-    builder.add_text_field("message_hash", STRING);
+    builder.add_text_field("topic_marker", STRING);
     builder.build()
 }
 
@@ -548,7 +544,7 @@ fn exact_term_query(field: Field, value: &str) -> Box<dyn Query> {
 
 fn composite_topic_term(fields: &SearchFields, key: &TopicKey) -> Term {
     Term::from_field_text(
-        fields.message_hash,
+        fields.topic_marker,
         &composite_topic_value(key.owner_type, &key.owner_id, &key.topic_id),
     )
 }
