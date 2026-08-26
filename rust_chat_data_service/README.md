@@ -83,7 +83,7 @@ vcp_chat_data_service --app-data ../AppData --port 0
 {
   "type": "ready",
   "protocolVersion": 3,
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "port": 49152,
   "instanceId": "uuid",
   "authToken": "ephemeral-token"
@@ -224,6 +224,12 @@ VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中�
 5. 消息下载与上传通过中央客户端转发。
 
 `MobileSyncUseCentralIndex` 的优先级固定为：插件显式布尔值 > 主程序 Facade 布尔值 > 默认 `true`。显式 `false` 只影响重启后的新 session，不在 attempt 中途回退。CDS 启动在后台进行，失败只禁用中央同步，不阻塞普通 Chat 窗口创建。
+
+SQLite 中的同步 Hash 使用与公开 Wire 相同的分层语义：`messages.message_hash`
+保存消息指纹，`topics.content_hash` 保存消息叶聚合根，`owners.content_hash` 保存
+Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
+`history_sources.source_hash`；搜索增量继续由独立的
+`content_revision/indexed_revision` 驱动。
 
 ## 协议与失败语义
 

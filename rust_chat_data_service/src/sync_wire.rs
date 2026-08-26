@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
 
-use crate::ingest::sha256_hex;
+use crate::{domain::TopicKey, ingest::sha256_hex};
 
 pub const MAX_WARNING_SAMPLES: usize = 8;
 const MAX_SAFE_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
@@ -337,6 +337,60 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
     input.insert("role".to_string(), Value::String(role.to_string()));
     input.insert("timestamp".to_string(), Value::Number(timestamp.into()));
     Ok(sha256_hex(Value::Object(input).to_string().as_bytes()))
+}
+
+pub(crate) fn stored_message_fingerprint(raw: &str, topic_id: &str) -> Result<String> {
+    let value = serde_json::from_str::<Value>(raw).context("stored message JSON is invalid")?;
+    let mut warnings = WireWarnings::default();
+    let canonical = canonicalize_message(value, topic_id, &mut warnings)?;
+    message_fingerprint(&canonical)
+}
+
+pub(crate) fn invalid_message_sentinel(raw: &str) -> String {
+    sha256_hex(format!("vcp-invalid-message:{raw}").as_bytes())
+}
+
+pub(crate) fn aggregate_hash(mut hashes: Vec<String>) -> String {
+    if hashes.is_empty() {
+        return String::new();
+    }
+    hashes.sort();
+    sha256_hex(hashes.concat().as_bytes())
+}
+
+pub(crate) fn message_leaf_hash(message_id: &str, message_hash: &str) -> String {
+    sha256_hex(
+        serde_json::json!({
+            "id": message_id,
+            "hash": message_hash,
+        })
+        .to_string()
+        .as_bytes(),
+    )
+}
+
+pub(crate) fn topic_leaf_hash(topic_id: &str, config_hash: &str, content_hash: &str) -> String {
+    sha256_hex(
+        serde_json::json!({
+            "topicId": topic_id,
+            "configHash": config_hash,
+            "contentHash": content_hash,
+        })
+        .to_string()
+        .as_bytes(),
+    )
+}
+
+pub(crate) fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
+    sha256_hex(
+        format!(
+            "vcp-unhealthy-topic:{}:{}:{}",
+            key.owner_type.as_str(),
+            key.owner_id,
+            key.topic_id
+        )
+        .as_bytes(),
+    )
 }
 
 pub fn canonicalize_for_wire(

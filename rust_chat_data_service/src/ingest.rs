@@ -15,6 +15,7 @@ use crate::{
     },
     storage::{now_ms, Database, IngestCommit},
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
+    sync_wire::{invalid_message_sentinel, stored_message_fingerprint},
 };
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -530,11 +531,11 @@ impl Reconciler {
         }
 
         let bytes = read_stable_file(&source.source_path).await?;
-        let content_hash = sha256_hex(&bytes);
-        let messages = normalize_history(&bytes, source.key.owner_type)?;
+        let source_hash = sha256_hex(&bytes);
+        let messages = normalize_history(&bytes, source.key.owner_type, &source.key.topic_id)?;
 
         self.database
-            .ingest_topic(source, &messages, mtime_ns, file_size, &content_hash)
+            .ingest_topic(source, &messages, mtime_ns, file_size, &source_hash)
             .map(Some)
     }
 }
@@ -599,7 +600,11 @@ pub fn parse_owner_config(
     })
 }
 
-pub fn normalize_history(bytes: &[u8], owner_type: OwnerType) -> Result<Vec<NormalizedMessage>> {
+pub fn normalize_history(
+    bytes: &[u8],
+    owner_type: OwnerType,
+    topic_id: &str,
+) -> Result<Vec<NormalizedMessage>> {
     let root: Value = serde_json::from_slice(bytes).context("history is not valid JSON")?;
     let history = root.as_array().context("history root must be an array")?;
     let mut seen_ids = HashMap::<String, usize>::new();
@@ -611,7 +616,7 @@ pub fn normalize_history(bytes: &[u8], owner_type: OwnerType) -> Result<Vec<Norm
             let object = value
                 .as_object()
                 .with_context(|| format!("message at ordinal {ordinal} must be an object"))?;
-            normalize_message(object, ordinal, owner_type, &mut seen_ids)
+            normalize_message(object, ordinal, owner_type, topic_id, &mut seen_ids)
         })
         .collect()
 }
@@ -620,6 +625,7 @@ fn normalize_message(
     object: &Map<String, Value>,
     ordinal: usize,
     owner_type: OwnerType,
+    topic_id: &str,
     seen_ids: &mut HashMap<String, usize>,
 ) -> Result<NormalizedMessage> {
     let content_value = object.get("content").cloned().unwrap_or(Value::Null);
@@ -676,17 +682,16 @@ fn normalize_message(
         .unwrap_or_default();
 
     let metadata_json = serde_json::to_string(&Value::Object(object.clone()))?;
-    let message_hash = sha256_hex(
-        canonical_message_hash_input(
-            &role,
-            speaker_name.as_deref(),
-            speaker_agent_id.as_deref(),
-            &content_value,
-            integer_value(object.get("timestamp")),
-            object.get("attachments"),
-        )
-        .as_bytes(),
-    );
+    let message_hash =
+        stored_message_fingerprint(&metadata_json, topic_id).unwrap_or_else(|error| {
+            tracing::warn!(
+                topic_id,
+                message_id = %msg_id,
+                error = %format!("{error:#}"),
+                "message cannot cross sync wire; storing sentinel hash"
+            );
+            invalid_message_sentinel(&metadata_json)
+        });
 
     Ok(NormalizedMessage {
         msg_id,
@@ -851,25 +856,6 @@ fn clean_search_text(value: &str) -> String {
         .to_string()
 }
 
-fn canonical_message_hash_input(
-    role: &str,
-    speaker_name: Option<&str>,
-    speaker_agent_id: Option<&str>,
-    content: &Value,
-    timestamp: Option<i64>,
-    attachments: Option<&Value>,
-) -> String {
-    serde_json::json!({
-        "role": role,
-        "speakerName": speaker_name,
-        "speakerAgentId": speaker_agent_id,
-        "content": content,
-        "timestamp": timestamp,
-        "attachments": attachments,
-    })
-    .to_string()
-}
-
 fn string_value(value: Option<&Value>) -> Option<String> {
     match value? {
         Value::String(value) => Some(value.clone()),
@@ -1003,6 +989,7 @@ mod tests {
         let messages = normalize_history(
             &serde_json::to_vec(&history).expect("serialize"),
             OwnerType::Group,
+            "topic_group",
         )
         .expect("normalize");
         assert_eq!(messages[0].speaker_name.as_deref(), Some("Nova"));

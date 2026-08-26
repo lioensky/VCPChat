@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 pub const PROTOCOL_VERSION: u32 = 3;
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "vcp-chat-data-service", version, about)]

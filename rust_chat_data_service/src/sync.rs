@@ -9,13 +9,14 @@ use anyhow::{Context, Result};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 
 use crate::{
     domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey},
     ingest::{sha256_hex, Reconciler},
     storage::{Database, IngestCommit},
-    sync_wire::{canonicalize_for_wire, canonicalize_message, message_fingerprint, WireWarnings},
+    sync_wire::{
+        canonicalize_for_wire, canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings,
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -859,7 +860,7 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
 fn load_message_states(database: &Database, key: &TopicKey) -> Result<Vec<IndexedMessageState>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT msg_id, metadata_json, updated_at, deleted_at
+        "SELECT msg_id, message_hash, updated_at, deleted_at
          FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
          ORDER BY ordinal ASC",
@@ -882,13 +883,15 @@ fn load_message_states(database: &Database, key: &TopicKey) -> Result<Vec<Indexe
     ensure_topic_sync_source_healthy(database, &key)?;
     let messages = rows
         .into_iter()
-        .map(|(msg_id, metadata, updated_at, deleted_at)| {
+        .map(|(msg_id, stored_hash, updated_at, deleted_at)| {
             let message_hash = if deleted_at.is_some() {
                 None
             } else {
-                // 存活行单条失败降级为哨兵哈希（永不匹配 → 保守重拉），
-                // 不再单条毒化整个 topic 的 manifest。
-                Some(message_hash_or_sentinel(&metadata, &key.topic_id, &msg_id))
+                anyhow::ensure!(
+                    canonical_wire_hash(&stored_hash).is_some(),
+                    "live indexed message {msg_id} has an invalid persisted messageHash"
+                );
+                Some(stored_hash)
             };
             Ok(IndexedMessageState {
                 msg_id,
@@ -1573,7 +1576,7 @@ fn avatar_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
 fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT owner_type, owner_id, config_hash, updated_at, deleted_at
+        "SELECT owner_type, owner_id, config_hash, content_hash, updated_at, deleted_at
          FROM owners
          ORDER BY owner_type, owner_id",
     )?;
@@ -1583,8 +1586,9 @@ fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, Option<i64>>(5)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1593,7 +1597,7 @@ fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
 
     rows.into_iter()
         .map(
-            |(raw_owner_type, owner_id, config_hash, updated_at, deleted_at)| {
+            |(raw_owner_type, owner_id, config_hash, content_hash, updated_at, deleted_at)| {
                 let owner_type = raw_owner_type.parse::<OwnerType>()?;
                 // 墓碑条目短路：已删 owner 的目录已物理删除，
                 // 磁盘读必然失败；删除信号不需要配置或内容指纹。
@@ -1609,18 +1613,6 @@ fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
                         deleted_at,
                     });
                 }
-                let content_hash = match owner_content_hash(database, owner_type, &owner_id) {
-                    Ok(content_hash) => content_hash,
-                    Err(error) => {
-                        tracing::warn!(
-                            owner_type = %owner_type.as_str(),
-                            owner_id = %owner_id,
-                            error = %format!("{error:#}"),
-                            "owner manifest content hash degraded"
-                        );
-                        String::new()
-                    }
-                };
                 Ok(ManifestItem {
                     identity: ManifestIdentity::Owner(OwnerKey {
                         owner_type,
@@ -1680,12 +1672,17 @@ fn topic_manifests(
 
 fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     let connection = database.connection.lock();
-    let (config_hash, updated_at, deleted_at): (String, i64, Option<i64>) = connection.query_row(
-        "SELECT config_hash, updated_at, deleted_at
+    let (config_hash, stored_content_hash, updated_at, deleted_at): (
+        String,
+        Option<String>,
+        i64,
+        Option<i64>,
+    ) = connection.query_row(
+        "SELECT config_hash, content_hash, updated_at, deleted_at
          FROM topics
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
         params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
     )?;
     drop(connection);
     // 墓碑条目短路：删除信号只需要完整身份和 deleted_at，
@@ -1694,14 +1691,14 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     if deleted_at.is_some() {
         return Ok(ManifestItem {
             identity: ManifestIdentity::Topic(key.clone()),
-            config_hash: "a".repeat(64),
+            config_hash: String::new(),
             content_hash: String::new(),
             updated_at,
             deleted_at,
         });
     }
-    let content_hash = match topic_content_hash(database, key) {
-        Ok(content_hash) => content_hash,
+    let content_hash = match ensure_topic_sync_source_healthy(database, key) {
+        Ok(()) => stored_content_hash.unwrap_or_default(),
         Err(error) => {
             tracing::warn!(
                 owner_type = %key.owner_type.as_str(),
@@ -1722,85 +1719,35 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     })
 }
 
+#[cfg(test)]
 fn owner_content_hash(
     database: &Database,
     owner_type: OwnerType,
     owner_id: &str,
 ) -> Result<String> {
     let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT topic_id FROM topics
-         WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL
-         ORDER BY topic_id ASC",
-    )?;
-    let topic_ids = statement
-        .query_map(params![owner_type.as_str(), owner_id], |row| {
-            row.get::<_, String>(0)
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-    let mut hashes = Vec::new();
-    for topic_id in topic_ids {
-        let key = TopicKey {
-            owner_type,
-            owner_id: owner_id.to_string(),
-            topic_id,
-        };
-        // topic_manifest 会保留已提交 config hash，并把不健康消息源降级为
-        // content 哨兵；只有连 Topic 提交视图都无法读取时才使用双哨兵。
-        // 两种情况都继续参与 Owner 聚合，不让单个 Topic 炸掉整表 Manifest。
-        match topic_manifest(database, &key) {
-            Ok(topic) => {
-                hashes.push(topic_leaf_hash(
-                    &key.topic_id,
-                    &topic.config_hash,
-                    &topic.content_hash,
-                ));
-            }
-            Err(error) => {
-                tracing::warn!(
-                    owner_type = %owner_type.as_str(),
-                    owner_id = %owner_id,
-                    topic_id = %key.topic_id,
-                    error = %format!("{error:#}"),
-                    "topic manifest failed during owner aggregation; using sentinel hashes"
-                );
-                let sentinel = unhealthy_topic_sentinel_hash(&key);
-                hashes.push(topic_leaf_hash(&key.topic_id, &sentinel, &sentinel));
-            }
-        }
-    }
-    Ok(aggregate_hash(hashes))
+    connection
+        .query_row(
+            "SELECT content_hash FROM owners
+             WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL",
+            params![owner_type.as_str(), owner_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
 }
 
 fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
     ensure_topic_sync_source_healthy(database, key)?;
     let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT msg_id, metadata_json FROM messages
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
-    )?;
-    let rows = statement
-        .query_map(
+    connection
+        .query_row(
+            "SELECT content_hash FROM topics
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-    // 单条毒消息降级为哨兵哈希参与聚合，不再炸掉 topic/owner 整表 manifest。
-    // 哨兵永不可能等于移动端的诚实哈希 → topic 判定 changed → 经 diff/pull 暴露，
-    // 实际传输层（pull）仍 fail-closed，毒数据不会到达手机。
-    let hashes = rows
-        .into_iter()
-        .enumerate()
-        .map(|(index, (message_id, raw))| {
-            let message_hash = message_hash_or_sentinel(&raw, &key.topic_id, &index.to_string());
-            message_leaf_hash(&message_id, &message_hash)
-        })
-        .collect::<Vec<_>>();
-    Ok(aggregate_hash(hashes))
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .map(|value| value.unwrap_or_default())
+        .map_err(Into::into)
 }
 
 fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Result<()> {
@@ -1947,51 +1894,6 @@ fn sync_parent_directory(parent: &Path) -> Result<()> {
 #[cfg(not(unix))]
 fn sync_parent_directory(_parent: &Path) -> Result<()> {
     Ok(())
-}
-
-fn mobile_message_hash_from_json(raw: &str, topic_id: &str) -> Result<String> {
-    let value = serde_json::from_str::<Value>(raw).context("stored message JSON is invalid")?;
-    let mut warnings = WireWarnings::default();
-    let canonical = canonicalize_message(value, topic_id, &mut warnings)?;
-    message_fingerprint(&canonical)
-}
-
-/// 存活行降级：一条无法 wire 化的消息在清单/聚合哈希中的哨兵值。
-/// 哨兵 = sha256("vcp-invalid-message:" + raw)，保证：
-/// - 64 位小写 hex，可通过 wire 哈希格式校验；
-/// - 内容由 raw 派生 → 同一毒行每次同步得到同一哨兵，不会哈希抖动；
-/// - 前驱带污染标记，实践中不可能等于诚实内容哈希 → 移动端永远判定
-///   changed → 走 diff/pull 暴露问题（传输层 fail-closed 不变），而非静默一致。
-fn message_hash_or_sentinel(raw: &str, topic_id: &str, msg_hint: &str) -> String {
-    match mobile_message_hash_from_json(raw, topic_id) {
-        Ok(hash) => hash,
-        Err(error) => {
-            tracing::warn!(
-                topic_id = %topic_id,
-                msg = %msg_hint,
-                error = %format!("{error:#}"),
-                "message cannot cross sync wire; emitting sentinel hash"
-            );
-            sha256_hex(format!("vcp-invalid-message:{raw}").as_bytes())
-        }
-    }
-}
-
-/// Topic 级哨兵哈希：活 topic 的 source 不健康时用于
-/// manifest 条目（topic_manifests 降级）与 owner 聚合（owner_content_hash
-/// 降级）。与消息级哨兵同理：确定性（同 topic 每轮同值）、64-hex 合规、
-/// 永不可能等于移动端的诚实哈希 → 比对必判 changed → 进入 per-topic
-/// 隔离管线暴露问题，而非静默一致或整表 500。
-fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
-    sha256_hex(
-        format!(
-            "vcp-unhealthy-topic:{}:{}:{}",
-            key.owner_type.as_str(),
-            key.owner_id,
-            key.topic_id
-        )
-        .as_bytes(),
-    )
 }
 
 fn canonical_wire_hash(value: &str) -> Option<String> {
@@ -2236,45 +2138,6 @@ fn stable_stringify(value: &Value, key: &str) -> String {
     }
 }
 
-fn aggregate_hash(mut hashes: Vec<String>) -> String {
-    if hashes.is_empty() {
-        return String::new();
-    }
-    hashes.sort();
-    let mut digest = Sha256::new();
-    for hash in hashes {
-        digest.update(hash.as_bytes());
-    }
-    hex::encode(digest.finalize())
-}
-
-fn message_leaf_hash(message_id: &str, message_hash: &str) -> String {
-    sha256_hex(
-        stable_stringify(
-            &serde_json::json!({
-                "id": message_id,
-                "hash": message_hash,
-            }),
-            "",
-        )
-        .as_bytes(),
-    )
-}
-
-fn topic_leaf_hash(topic_id: &str, config_hash: &str, content_hash: &str) -> String {
-    sha256_hex(
-        stable_stringify(
-            &serde_json::json!({
-                "topicId": topic_id,
-                "configHash": config_hash,
-                "contentHash": content_hash,
-            }),
-            "",
-        )
-        .as_bytes(),
-    )
-}
-
 fn manifest_key(identity: &ManifestIdentity) -> String {
     match identity {
         ManifestIdentity::Owner(key) => {
@@ -2306,10 +2169,9 @@ mod tests {
     };
 
     use super::{
-        aggregate_hash, avatar_manifest, load_message_states, manifest, message_diff,
-        message_leaf_hash, mobile_message_hash_from_json, mobile_owner_config_hash_from_value,
-        owner_content_hash, owner_manifest, pull_entities, pull_topic_messages,
-        push_topic_messages, topic_content_hash, topic_diff, topic_leaf_hash, topic_manifest,
+        avatar_manifest, load_message_states, manifest, message_diff,
+        mobile_owner_config_hash_from_value, owner_content_hash, owner_manifest, pull_entities,
+        pull_topic_messages, push_topic_messages, topic_content_hash, topic_diff, topic_manifest,
         topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
         ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
         MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
@@ -2318,10 +2180,13 @@ mod tests {
     };
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey},
+        domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
         ingest::{sha256_hex, Reconciler},
         storage::Database,
-        sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
+        sync_wire::{
+            aggregate_hash, canonicalize_message, invalid_message_sentinel, message_fingerprint,
+            message_leaf_hash, stored_message_fingerprint, topic_leaf_hash, WireWarnings,
+        },
     };
     use serde_json::json;
     use tempfile::TempDir;
@@ -2395,6 +2260,26 @@ mod tests {
         let database = Database::open(&config.database_path).expect("open database");
         let reconciler = Reconciler::new(config.clone(), database.clone());
         (temp, config, database, reconciler)
+    }
+
+    fn mark_test_source_invalid(database: &Database, config: &ServiceConfig, key: TopicKey) {
+        let source = TopicSource {
+            display_name: None,
+            created_at: None,
+            topic_ordinal: 0,
+            source_path: config
+                .user_data_dir
+                .join(&key.owner_id)
+                .join("topics")
+                .join(&key.topic_id)
+                .join("history.json"),
+            config_hash: String::new(),
+            topic_metadata: json!({}),
+            key,
+        };
+        database
+            .mark_source_invalid(&source, "boom")
+            .expect("poison history source");
     }
 
     #[test]
@@ -2738,7 +2623,7 @@ mod tests {
             topic_id: "topic-a".to_string(),
             owner_type: OwnerType::Agent,
             owner_id: "agent-a".to_string(),
-            config_hash: String::new(),
+            config_hash: "a".repeat(64),
             content_hash: String::new(),
         };
         let duplicate = topic_diff(
@@ -3015,7 +2900,7 @@ mod tests {
                         (
                             "desktop-deleted".to_string(),
                             version(
-                                mobile_message_hash_from_json(deleted_raw, "topic-a")
+                                stored_message_fingerprint(deleted_raw, "topic-a")
                                     .expect("mobile hash"),
                                 1,
                             ),
@@ -3586,16 +3471,15 @@ mod tests {
         reconciler.reconcile().await.expect("reconcile");
 
         // 把 source 标记为 invalid → topic_manifest 必然失败。
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
         let error = topic_diff(
             &database,
@@ -3675,29 +3559,17 @@ mod tests {
     #[tokio::test]
     async fn live_poison_message_degrades_to_deterministic_sentinel() {
         let (_temp, config, database, reconciler) = sync_fixture();
+        let poison_raw = r#"{"role":"user","content":"no id","timestamp":5}"#;
         fs::write(
             config
                 .user_data_dir
                 .join("agent-a/topics/topic-a/history.json"),
-            br#"[{"id":"m1","role":"user","content":"healthy","timestamp":1}]"#,
+            format!(
+                r#"[{{"id":"m1","role":"user","content":"healthy","timestamp":1}},{poison_raw}]"#
+            ),
         )
-        .expect("write history");
+        .expect("write history with poison row");
         reconciler.reconcile().await.expect("reconcile");
-
-        // 缺 id 的存活毒行（1.0 时代合法入库的形态）。
-        let poison_raw = r#"{"role":"user","content":"no id","timestamp":5}"#;
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "INSERT INTO messages (owner_type, owner_id, topic_id, msg_id, ordinal,
-                         role, content_raw, content_text, message_hash, metadata_json, updated_at)
-                     VALUES ('agent','agent-a','topic-a','synthetic_1',2,'user','','','x',
-                             ?1, 5)",
-                    [poison_raw],
-                )
-                .expect("insert poison row");
-        }
 
         let states = load_message_states(
             &database,
@@ -3712,15 +3584,24 @@ mod tests {
             .iter()
             .map(|message| (message.msg_id.as_str(), message))
             .collect();
-        let expected_sentinel = sha256_hex(format!("vcp-invalid-message:{poison_raw}").as_bytes());
+        let stored_poison = serde_json::to_string(
+            &serde_json::from_str::<serde_json::Value>(poison_raw).expect("parse poison message"),
+        )
+        .expect("serialize poison message");
+        let expected_sentinel = invalid_message_sentinel(&stored_poison);
+        let synthetic_id = by_id
+            .keys()
+            .find(|message_id| message_id.starts_with("synthetic_"))
+            .copied()
+            .expect("synthetic poison id");
         assert_eq!(
-            by_id["synthetic_1"].message_hash.as_deref(),
+            by_id[synthetic_id].message_hash.as_deref(),
             Some(expected_sentinel.as_str())
         );
         // 健康消息的哈希与无哨兵时逐字节一致。
         assert_eq!(
             by_id["m1"].message_hash.as_deref().unwrap(),
-            &mobile_message_hash_from_json(
+            &stored_message_fingerprint(
                 r#"{"id":"m1","role":"user","content":"healthy","timestamp":1}"#,
                 "topic-a",
             )
@@ -3740,7 +3621,7 @@ mod tests {
             first,
             aggregate_hash(vec![
                 message_leaf_hash("m1", by_id["m1"].message_hash.as_deref().unwrap()),
-                message_leaf_hash("synthetic_1", &expected_sentinel),
+                message_leaf_hash(synthetic_id, &expected_sentinel),
             ])
         );
     }
@@ -3796,16 +3677,15 @@ mod tests {
             .expect("baseline topic-b");
 
         // 毒化 topic-a 的 source（对齐 S5 的 invalid 毒态）。
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
         // 整批不再失败；topic-a 保留配置提交 Hash，仅内容降级为确定性哨兵。
         let items = topic_manifests(&database, None).expect("manifest must not 500");
@@ -3864,16 +3744,15 @@ mod tests {
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
         // Mobile 已删 → PUSH_DELETE 优先于降级，随后由 Mobile NotifyDelete Desktop。
         let response = manifest(
@@ -3971,22 +3850,26 @@ mod tests {
         reconciler.reconcile().await.expect("reconcile");
 
         let baseline_agents = owner_manifest(&database).expect("baseline");
+        let baseline_a = baseline_agents
+            .iter()
+            .find(|item| manifest_item_id(item) == "agent-a")
+            .map(|item| item.content_hash.clone())
+            .expect("baseline agent-a");
         let baseline_b = baseline_agents
             .iter()
             .find(|item| manifest_item_id(item) == "agent-b")
             .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("baseline agent-b");
 
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
         // owner manifest 不再失败；毒 topic 的 keyed 叶子保留配置 Hash 并使用
         // content 哨兵，健康 topic 仍以 topicId + config/content 参与聚合。
@@ -4049,6 +3932,14 @@ mod tests {
             .expect("agent-a action");
         assert_eq!(action["action"], "SKIP");
         assert_eq!(action["contentHashMismatch"], true);
+
+        reconciler.reconcile().await.expect("heal source state");
+        let healed_a = owner_manifest(&database)
+            .expect("healed owner manifest")
+            .into_iter()
+            .find(|item| manifest_item_id(item) == "agent-a")
+            .expect("healed agent-a");
+        assert_eq!(healed_a.content_hash, baseline_a);
     }
 
     /// Manifest 只使用 CDS 已提交的 DTO hash，不在读取阶段重算物理 config。

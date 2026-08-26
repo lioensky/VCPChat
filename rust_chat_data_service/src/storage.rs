@@ -17,16 +17,20 @@ use crate::{
         AvatarKey, AvatarOwnerType, AvatarRecord, MessageView, NormalizedMessage, OwnerKey,
         OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
-    sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
+    sync_wire::{
+        aggregate_hash, invalid_message_sentinel, message_leaf_hash, stored_message_fingerprint,
+        topic_leaf_hash, unhealthy_topic_sentinel_hash,
+    },
 };
 
-const SCHEMA_V2: &str = r#"
+const SCHEMA_V3: &str = r#"
 CREATE TABLE IF NOT EXISTS owners (
     owner_type TEXT NOT NULL CHECK(owner_type IN ('agent', 'group')),
     owner_id TEXT NOT NULL,
     display_name TEXT NOT NULL,
     config_path TEXT NOT NULL,
     config_hash TEXT NOT NULL,
+    content_hash TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL,
     deleted_at INTEGER,
     PRIMARY KEY (owner_type, owner_id)
@@ -51,7 +55,7 @@ CREATE TABLE IF NOT EXISTS topics (
     topic_ordinal INTEGER NOT NULL DEFAULT 0,
     config_hash TEXT NOT NULL,
     metadata_json TEXT,
-    content_hash TEXT,
+    content_hash TEXT NOT NULL DEFAULT '',
     source_path TEXT NOT NULL,
     content_revision INTEGER NOT NULL DEFAULT 0,
     indexed_revision INTEGER NOT NULL DEFAULT 0,
@@ -92,9 +96,6 @@ ON messages(owner_type, owner_id, topic_id, ordinal);
 CREATE INDEX IF NOT EXISTS idx_messages_topic_timestamp
 ON messages(owner_type, owner_id, topic_id, timestamp);
 
-CREATE INDEX IF NOT EXISTS idx_messages_hash
-ON messages(message_hash);
-
 CREATE INDEX IF NOT EXISTS idx_messages_speaker_agent
 ON messages(speaker_agent_id);
 
@@ -105,7 +106,7 @@ CREATE TABLE IF NOT EXISTS history_sources (
     topic_id TEXT NOT NULL,
     mtime_ns INTEGER NOT NULL,
     file_size INTEGER NOT NULL,
-    content_hash TEXT,
+    source_hash TEXT,
     last_revision INTEGER NOT NULL,
     indexed_at INTEGER NOT NULL,
     status TEXT NOT NULL,
@@ -158,7 +159,7 @@ INSERT INTO topics(
     source_path, content_revision, indexed_revision, updated_at, deleted_at
 )
 SELECT tombstone.owner_type, tombstone.owner_id, tombstone.topic_id,
-       NULL, NULL, 0, '', '{}', NULL, '', 0, 0,
+       NULL, NULL, 0, '', '{}', '', '', 0, 0,
        tombstone.deleted_at, tombstone.deleted_at
 FROM tombstones AS tombstone
 WHERE tombstone.entity_type='topic'
@@ -296,7 +297,7 @@ impl Database {
         }
 
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(SCHEMA_V2)?;
+        transaction.execute_batch(SCHEMA_V3)?;
         let has_v1_tombstones = transaction.query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM sqlite_master
@@ -308,6 +309,7 @@ impl Database {
         if has_v1_tombstones {
             transaction.execute_batch(COLLAPSE_V1_TOMBSTONES)?;
         }
+        migrate_sync_hash_contract(&transaction)?;
         transaction.execute(
             "INSERT INTO service_meta(key, value) VALUES('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -440,6 +442,7 @@ impl Database {
             }
         }
 
+        recompute_owner_content_hash(&transaction, &owner.key)?;
         transaction.commit()?;
         Ok(true)
     }
@@ -598,6 +601,7 @@ impl Database {
                 now_ms(),
             ],
         )?;
+        recompute_owner_content_hash(&transaction, &owner_key)?;
         transaction.commit()?;
         Ok(true)
     }
@@ -648,7 +652,7 @@ impl Database {
             }
 
             transaction.execute(
-                "UPDATE owners SET deleted_at=?3, updated_at=?3
+                "UPDATE owners SET content_hash='', deleted_at=?3, updated_at=?3
                  WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL",
                 params![owner.owner_type.as_str(), owner.owner_id, now],
             )?;
@@ -716,6 +720,13 @@ impl Database {
                 last_error='previously indexed history source is missing'
              WHERE source_path=?1",
             params![source.source_path.to_string_lossy(), now],
+        )?;
+        recompute_owner_content_hash(
+            &transaction,
+            &OwnerKey {
+                owner_type: source.key.owner_type,
+                owner_id: source.key.owner_id.clone(),
+            },
         )?;
         transaction.commit()?;
         Ok(true)
@@ -801,6 +812,7 @@ impl Database {
                     timestamp, message_hash, metadata_json, updated_at, deleted_at
                  ) VALUES(?1, ?2, ?3, ?4, 0, '', NULL, NULL, '', '', NULL, '', '{}', ?5, ?5)
                  ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
+                    message_hash='',
                     deleted_at=MIN(messages.deleted_at, excluded.deleted_at),
                     updated_at=MAX(messages.updated_at, excluded.updated_at)
                  WHERE messages.deleted_at IS NOT NULL",
@@ -881,10 +893,11 @@ impl Database {
         if owner_changed {
             transaction.execute(
                 "INSERT INTO owners(
-                    owner_type, owner_id, display_name, config_path, config_hash,
+                    owner_type, owner_id, display_name, config_path, config_hash, content_hash,
                     updated_at, deleted_at
-                 ) VALUES(?1, ?2, '', '', '', ?3, ?3)
+                 ) VALUES(?1, ?2, '', '', '', '', ?3, ?3)
                  ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+                    content_hash='',
                     deleted_at=excluded.deleted_at,
                     updated_at=MAX(owners.updated_at, excluded.updated_at)",
                 params![owner_type.as_str(), owner_id, effective_at],
@@ -910,16 +923,24 @@ impl Database {
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         mark_topic_deleted(&transaction, key, deleted_at)?;
+        recompute_owner_content_hash(
+            &transaction,
+            &OwnerKey {
+                owner_type: key.owner_type,
+                owner_id: key.owner_id.clone(),
+            },
+        )?;
         transaction.commit()?;
         Ok(())
     }
 
     pub fn mark_source_invalid(&self, source: &TopicSource, error: &str) -> Result<()> {
-        let connection = self.connection.lock();
-        connection.execute(
+        let mut connection = self.connection.lock();
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
             "INSERT INTO history_sources(
                 source_path, owner_type, owner_id, topic_id, mtime_ns, file_size,
-                content_hash, last_revision, indexed_at, status, last_error
+                source_hash, last_revision, indexed_at, status, last_error
              ) VALUES(?1, ?2, ?3, ?4, 0, 0, NULL, 0, ?5, 'invalid', ?6)
              ON CONFLICT(source_path) DO UPDATE SET
                 indexed_at=excluded.indexed_at,
@@ -934,6 +955,14 @@ impl Database {
                 truncate_error(error),
             ],
         )?;
+        recompute_owner_content_hash(
+            &transaction,
+            &OwnerKey {
+                owner_type: source.key.owner_type,
+                owner_id: source.key.owner_id.clone(),
+            },
+        )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -943,7 +972,7 @@ impl Database {
         messages: &[NormalizedMessage],
         mtime_ns: i64,
         file_size: i64,
-        content_hash: &str,
+        source_hash: &str,
     ) -> Result<IngestCommit> {
         let now = now_ms();
         let mut connection = self.connection.lock();
@@ -960,19 +989,14 @@ impl Database {
 
         let previous_hash: Option<String> = transaction
             .query_row(
-                "SELECT content_hash FROM topics
-                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-                params![
-                    source.key.owner_type.as_str(),
-                    source.key.owner_id,
-                    source.key.topic_id
-                ],
+                "SELECT source_hash FROM history_sources WHERE source_path=?1",
+                [source.source_path.to_string_lossy().as_ref()],
                 |row| row.get(0),
             )
             .optional()?
             .flatten();
 
-        if previous_hash.as_deref() == Some(content_hash) {
+        if previous_hash.as_deref() == Some(source_hash) {
             transaction.execute(
                 "UPDATE history_sources SET
                     mtime_ns=?2, file_size=?3, indexed_at=?4, status='ready', last_error=NULL
@@ -997,6 +1021,13 @@ impl Database {
                 )
                 .optional()?
                 .unwrap_or(0);
+            recompute_owner_content_hash(
+                &transaction,
+                &OwnerKey {
+                    owner_type: source.key.owner_type,
+                    owner_id: source.key.owner_id.clone(),
+                },
+            )?;
             transaction.commit()?;
             return Ok(IngestCommit {
                 topic: source.key.clone(),
@@ -1018,7 +1049,7 @@ impl Database {
         for (msg_id, (row_id, _, _)) in &existing {
             if !incoming_ids.contains(msg_id.as_str()) {
                 transaction.execute(
-                    "UPDATE messages SET deleted_at=?2, updated_at=?2 WHERE row_id=?1",
+                    "UPDATE messages SET message_hash='', deleted_at=?2, updated_at=?2 WHERE row_id=?1",
                     params![row_id, now],
                 )?;
             }
@@ -1106,6 +1137,7 @@ impl Database {
             }
         }
 
+        let topic_content_hash = compute_topic_content_hash(&transaction, &source.key)?;
         let changed = transaction.execute(
             "UPDATE topics SET
                 content_hash=?4,
@@ -1116,7 +1148,7 @@ impl Database {
                 source.key.owner_type.as_str(),
                 source.key.owner_id,
                 source.key.topic_id,
-                content_hash,
+                topic_content_hash,
                 revision,
             ],
         )?;
@@ -1125,7 +1157,7 @@ impl Database {
         transaction.execute(
             "INSERT INTO history_sources(
                 source_path, owner_type, owner_id, topic_id, mtime_ns, file_size,
-                content_hash, last_revision, indexed_at, status, last_error
+                source_hash, last_revision, indexed_at, status, last_error
              ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'ready', NULL)
              ON CONFLICT(source_path) DO UPDATE SET
                 owner_type=excluded.owner_type,
@@ -1133,7 +1165,7 @@ impl Database {
                 topic_id=excluded.topic_id,
                 mtime_ns=excluded.mtime_ns,
                 file_size=excluded.file_size,
-                content_hash=excluded.content_hash,
+                source_hash=excluded.source_hash,
                 last_revision=excluded.last_revision,
                 indexed_at=excluded.indexed_at,
                 status='ready',
@@ -1145,10 +1177,18 @@ impl Database {
                 source.key.topic_id,
                 mtime_ns,
                 file_size,
-                content_hash,
+                source_hash,
                 revision,
                 now,
             ],
+        )?;
+
+        recompute_owner_content_hash(
+            &transaction,
+            &OwnerKey {
+                owner_type: source.key.owner_type,
+                owner_id: source.key.owner_id.clone(),
+            },
         )?;
 
         transaction.commit()?;
@@ -1435,6 +1475,216 @@ impl Database {
     }
 }
 
+fn compute_topic_content_hash(transaction: &Transaction<'_>, key: &TopicKey) -> Result<String> {
+    let mut statement = transaction.prepare(
+        "SELECT msg_id, message_hash FROM messages
+         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
+    )?;
+    let leaves = statement
+        .query_map(
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?
+        .map(|row| {
+            let (message_id, message_hash) = row?;
+            Ok(message_leaf_hash(&message_id, &message_hash))
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(aggregate_hash(leaves))
+}
+
+fn compute_owner_content_hash(transaction: &Transaction<'_>, key: &OwnerKey) -> Result<String> {
+    let mut statement = transaction.prepare(
+        "SELECT t.topic_id, t.config_hash, t.content_hash, t.source_path, hs.status
+         FROM topics t
+         LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+         WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.deleted_at IS NULL",
+    )?;
+    let topics = statement
+        .query_map(params![key.owner_type.as_str(), key.owner_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let leaves = topics
+        .into_iter()
+        .map(
+            |(topic_id, config_hash, content_hash, source_path, source_status)| {
+                let topic_key = TopicKey {
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                    topic_id,
+                };
+                let effective_content_hash = match source_status.as_deref() {
+                    Some("ready") => content_hash,
+                    Some(_) => unhealthy_topic_sentinel_hash(&topic_key),
+                    None if Path::new(&source_path).exists() => {
+                        unhealthy_topic_sentinel_hash(&topic_key)
+                    }
+                    None => content_hash,
+                };
+                topic_leaf_hash(&topic_key.topic_id, &config_hash, &effective_content_hash)
+            },
+        )
+        .collect();
+    Ok(aggregate_hash(leaves))
+}
+
+fn recompute_owner_content_hash(transaction: &Transaction<'_>, key: &OwnerKey) -> Result<()> {
+    let content_hash = compute_owner_content_hash(transaction, key)?;
+    let changed = transaction.execute(
+        "UPDATE owners SET content_hash=?3
+         WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL",
+        params![key.owner_type.as_str(), key.owner_id, content_hash],
+    )?;
+    anyhow::ensure!(
+        changed == 1,
+        "owner content hash target is missing or deleted"
+    );
+    Ok(())
+}
+
+fn migrate_sync_hash_contract(transaction: &Transaction<'_>) -> Result<()> {
+    let stored_version = transaction
+        .query_row(
+            "SELECT value FROM service_meta WHERE key='schema_version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    anyhow::ensure!(
+        stored_version <= SCHEMA_VERSION,
+        "database schema {stored_version} is newer than runtime schema {SCHEMA_VERSION}"
+    );
+    if stored_version >= 3 {
+        return Ok(());
+    }
+
+    if !table_has_column(transaction, "owners", "content_hash")? {
+        transaction.execute_batch(
+            "ALTER TABLE owners ADD COLUMN content_hash TEXT NOT NULL DEFAULT '';",
+        )?;
+    }
+    if !table_has_column(transaction, "history_sources", "source_hash")? {
+        anyhow::ensure!(
+            table_has_column(transaction, "history_sources", "content_hash")?,
+            "history_sources is missing its physical source hash"
+        );
+        transaction.execute_batch(
+            "ALTER TABLE history_sources RENAME COLUMN content_hash TO source_hash;",
+        )?;
+    }
+    transaction.execute_batch("DROP INDEX IF EXISTS idx_messages_hash;")?;
+
+    let messages = {
+        let mut statement = transaction
+            .prepare("SELECT row_id, topic_id, metadata_json, deleted_at FROM messages")?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+    for (row_id, topic_id, metadata_json, deleted_at) in messages {
+        let message_hash = if deleted_at.is_some() {
+            String::new()
+        } else {
+            stored_message_fingerprint(&metadata_json, &topic_id)
+                .unwrap_or_else(|_| invalid_message_sentinel(&metadata_json))
+        };
+        transaction.execute(
+            "UPDATE messages SET message_hash=?2 WHERE row_id=?1",
+            params![row_id, message_hash],
+        )?;
+    }
+
+    let topics = {
+        let mut statement =
+            transaction.prepare("SELECT owner_type, owner_id, topic_id, deleted_at FROM topics")?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    TopicKey {
+                        owner_type: parse_owner_type(row.get::<_, String>(0)?),
+                        owner_id: row.get(1)?,
+                        topic_id: row.get(2)?,
+                    },
+                    row.get::<_, Option<i64>>(3)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+    for (key, deleted_at) in topics {
+        let content_hash = if deleted_at.is_some() {
+            String::new()
+        } else {
+            compute_topic_content_hash(transaction, &key)?
+        };
+        transaction.execute(
+            "UPDATE topics SET content_hash=?4
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+            params![
+                key.owner_type.as_str(),
+                key.owner_id,
+                key.topic_id,
+                content_hash
+            ],
+        )?;
+    }
+
+    let owners = {
+        let mut statement =
+            transaction.prepare("SELECT owner_type, owner_id, deleted_at FROM owners")?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    OwnerKey {
+                        owner_type: parse_owner_type(row.get::<_, String>(0)?),
+                        owner_id: row.get(1)?,
+                    },
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+    for (key, deleted_at) in owners {
+        if deleted_at.is_some() {
+            transaction.execute(
+                "UPDATE owners SET content_hash=''
+                 WHERE owner_type=?1 AND owner_id=?2",
+                params![key.owner_type.as_str(), key.owner_id],
+            )?;
+        } else {
+            recompute_owner_content_hash(transaction, &key)?;
+        }
+    }
+    Ok(())
+}
+
+fn table_has_column(transaction: &Transaction<'_>, table: &str, column: &str) -> Result<bool> {
+    let mut statement = transaction.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(columns.iter().any(|name| name == column))
+}
+
 fn owner_is_tombstoned(transaction: &Transaction<'_>, key: &OwnerKey) -> Result<bool> {
     transaction
         .query_row(
@@ -1525,7 +1775,7 @@ fn mark_topic_deleted(
     };
     for (_, row_id) in active_messages {
         transaction.execute(
-            "UPDATE messages SET deleted_at=?2, updated_at=MAX(updated_at, ?2)
+            "UPDATE messages SET message_hash='', deleted_at=?2, updated_at=MAX(updated_at, ?2)
              WHERE row_id=?1",
             params![row_id, topic_effective_at],
         )?;
@@ -1546,7 +1796,7 @@ fn mark_topic_deleted(
                 owner_type, owner_id, topic_id, display_name, created_at,
                 topic_ordinal, config_hash, metadata_json, content_hash,
                 source_path, content_revision, indexed_revision, updated_at, deleted_at
-             ) VALUES(?1, ?2, ?3, NULL, NULL, 0, '', '{}', NULL, '', ?4, ?4, ?5, ?5)",
+             ) VALUES(?1, ?2, ?3, NULL, NULL, 0, '', '{}', '', '', ?4, ?4, ?5, ?5)",
             params![
                 key.owner_type.as_str(),
                 key.owner_id,
@@ -1558,6 +1808,7 @@ fn mark_topic_deleted(
     } else if stored_rows_changed {
         transaction.execute(
             "UPDATE topics SET
+                content_hash='',
                 deleted_at=?4,
                 updated_at=MAX(updated_at, ?4),
                 content_revision=?5
@@ -1601,43 +1852,14 @@ fn load_active_message_states(
     key: &TopicKey,
 ) -> Result<HashMap<String, (i64, String, i64)>> {
     let mut statement = transaction.prepare(
-        "SELECT msg_id, row_id, message_hash, metadata_json, updated_at FROM messages
+        "SELECT msg_id, row_id, message_hash, updated_at FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
     )?;
     let rows = statement.query_map(
         params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-        |row| {
-            let legacy_hash = row.get::<_, String>(2)?;
-            let metadata_json = row.get::<_, String>(3)?;
-            Ok((
-                row.get(0)?,
-                (
-                    row.get(1)?,
-                    message_version_hash(&metadata_json, &legacy_hash),
-                    row.get(4)?,
-                ),
-            ))
-        },
+        |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?, row.get(3)?))),
     )?;
     rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
-}
-
-fn message_version_hash(metadata_json: &str, legacy_hash: &str) -> String {
-    let canonical = serde_json::from_str::<Value>(metadata_json)
-        .ok()
-        .and_then(|value| {
-            // topicId is excluded from the fingerprint. Reuse the embedded value only as
-            // canonicalization context so ordinary group messages do not emit rewrite logs.
-            let topic_id = value
-                .get("topicId")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let mut warnings = WireWarnings::default();
-            canonicalize_message(value, &topic_id, &mut warnings).ok()
-        })
-        .and_then(|message| message_fingerprint(&message).ok());
-    canonical.unwrap_or_else(|| legacy_hash.to_string())
 }
 
 fn load_message_tombstone_ids(
@@ -1668,10 +1890,7 @@ fn resolve_message_updated_at(
             .timestamp
             .filter(|value| *value >= 0)
             .unwrap_or(detected_at),
-        Some((previous_hash, previous_updated_at))
-            if previous_hash
-                == message_version_hash(&message.metadata_json, &message.message_hash) =>
-        {
+        Some((previous_hash, previous_updated_at)) if previous_hash == message.message_hash => {
             previous_updated_at
         }
         Some(_) => detected_at,
@@ -1883,7 +2102,98 @@ mod tests {
                 },
             )
             .expect("query collapsed state");
-        assert_eq!(state, (90, 80, 70, "2".to_string(), 0));
+        assert_eq!(state, (90, 80, 70, "3".to_string(), 0));
+    }
+
+    #[test]
+    fn v2_hash_columns_migrate_to_wire_roots_without_touching_search_revisions() {
+        let directory = tempfile::tempdir().expect("create temp database directory");
+        let path = directory.path().join("chat.sqlite3");
+        let metadata = r#"{"id":"message-a","role":"user","content":"hello","timestamp":1}"#;
+        drop(Database::open(&path).expect("create current schema"));
+        {
+            let connection = Connection::open(&path).expect("open v2 database");
+            connection
+                .execute_batch(
+                    "ALTER TABLE owners DROP COLUMN content_hash;
+                     ALTER TABLE history_sources RENAME COLUMN source_hash TO content_hash;
+                     CREATE INDEX idx_messages_hash ON messages(message_hash);
+                     UPDATE service_meta SET value='2' WHERE key='schema_version';
+                     UPDATE service_meta SET value='7' WHERE key='global_content_revision';
+                     UPDATE service_meta SET value='7' WHERE key='tantivy_index_revision';
+                     INSERT INTO owners VALUES(
+                        'agent', 'agent-a', 'Agent', 'config.json', 'owner-config', 1, NULL
+                     );
+                     INSERT INTO topics(
+                        owner_type, owner_id, topic_id, display_name, created_at, topic_ordinal,
+                        config_hash, metadata_json, content_hash, source_path, content_revision,
+                        indexed_revision, updated_at, deleted_at
+                     ) VALUES('agent', 'agent-a', 'topic-a', 'Topic', 1, 0, 'topic-config', '{}',
+                        'physical-history-hash', 'history.json', 7, 7, 1, NULL);
+                     INSERT INTO history_sources VALUES('history.json', 'agent', 'agent-a',
+                        'topic-a', 1, 1, 'physical-history-hash', 7, 1, 'ready', NULL);",
+                )
+                .expect("seed v2 schema");
+            connection
+                .execute(
+                    "INSERT INTO messages(
+                        owner_type, owner_id, topic_id, msg_id, ordinal, role,
+                        content_raw, content_text, timestamp, message_hash, metadata_json,
+                        updated_at, deleted_at
+                     ) VALUES('agent', 'agent-a', 'topic-a', 'message-a', 0, 'user',
+                        'hello', 'hello', 1, 'legacy-ingest-hash', ?1, 1, NULL)",
+                    [metadata],
+                )
+                .expect("seed v2 message");
+        }
+
+        let database = Database::open(&path).expect("upgrade v2 database");
+        let expected_message =
+            stored_message_fingerprint(metadata, "topic-a").expect("wire message hash");
+        let expected_topic =
+            aggregate_hash(vec![message_leaf_hash("message-a", &expected_message)]);
+        let expected_owner = aggregate_hash(vec![topic_leaf_hash(
+            "topic-a",
+            "topic-config",
+            &expected_topic,
+        )]);
+        let connection = database.connection.lock();
+        let state: (String, String, String, String, i64, i64, bool) = connection
+            .query_row(
+                "SELECT
+                    (SELECT message_hash FROM messages WHERE msg_id='message-a'),
+                    (SELECT content_hash FROM topics WHERE topic_id='topic-a'),
+                    (SELECT content_hash FROM owners WHERE owner_id='agent-a'),
+                    (SELECT source_hash FROM history_sources WHERE source_path='history.json'),
+                    (SELECT content_revision FROM topics WHERE topic_id='topic-a'),
+                    (SELECT indexed_revision FROM topics WHERE topic_id='topic-a'),
+                    EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_messages_hash')",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("read migrated hash state");
+        assert_eq!(
+            state,
+            (
+                expected_message,
+                expected_topic,
+                expected_owner,
+                "physical-history-hash".to_string(),
+                7,
+                7,
+                false,
+            )
+        );
     }
 
     #[test]
