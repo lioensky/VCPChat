@@ -1515,12 +1515,16 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
     );
 
     // 恢复所有被保护的块。
-    // 🟢 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式。
+    // 保护域允许嵌套：例如 fenced HTML 中的注释会先被保护，随后包含该
+    // 注释占位符的整个代码围栏又被保护。必须按 LIFO 逆序恢复，先展开
+    // 外层围栏，再恢复其中的注释；正序恢复会让内部占位符永久泄漏。
+    // 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被
+    // String.replace() 误解释为特殊替换模式。
     let restoredContent = contentWithoutStyles;
-    protectedBlocks.forEach((block, i) => {
+    for (let i = protectedBlocks.length - 1; i >= 0; i--) {
         const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-        restoredContent = restoredContent.split(placeholder).join(block);
-    });
+        restoredContent = restoredContent.split(placeholder).join(protectedBlocks[i]);
+    }
 
     return restoredContent;
 }

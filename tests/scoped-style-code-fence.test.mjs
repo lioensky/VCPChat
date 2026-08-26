@@ -31,11 +31,12 @@ function protectThenExtractStyles(source) {
     });
 
     let restoredSource = sourceWithoutRuntimeStyles;
-    protectedBlocks.forEach((block, index) => {
+    // 嵌套保护域必须遵循 LIFO：先展开外层代码围栏，再恢复围栏内部注释。
+    for (let index = protectedBlocks.length - 1; index >= 0; index--) {
         restoredSource = restoredSource
             .split(`__VCP_STYLE_PROTECT_${index}__`)
-            .join(block);
-    });
+            .join(protectedBlocks[index]);
+    }
 
     return {
         protectedSource,
@@ -183,6 +184,70 @@ test('inline code style literal is protected while a following real style remain
     assert.match(result.selectedRuntimeStyles[0].css, /\.real/);
     assert.doesNotMatch(result.selectedRuntimeStyles[0].css, /\.literal/);
     assert.equal(result.restoredSource.includes('`<style>.literal'), true);
+});
+
+// 与用户实测相同的关键拓扑：HTML 注释先被保护，随后整个 fenced code
+// 又被保护，形成嵌套占位符。恢复必须遵循 LIFO，否则内部注释不可恢复。
+test('fenced cursor demo restores nested HTML comments without leaking protection placeholders', () => {
+    const source = [
+        '```html',
+        '<div class="vcp-cursor-preview-container">',
+        '  <!-- 1. Normal -->',
+        '  <div class="normal"><svg></svg></div>',
+        '',
+        '  <!-- 2. Working -->',
+        '  <div class="working"><div class="spinner"></div></div>',
+        '',
+        '  <style>',
+        '    @keyframes vcp-spin {',
+        '      0% { transform: rotate(0deg); }',
+        '      100% { transform: rotate(360deg); }',
+        '    }',
+        '  </style>',
+        '</div>',
+        '```'
+    ].join('\n');
+
+    const protectedBlocks = [];
+    let protectedSource = source.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(comment);
+        return placeholder;
+    });
+    protectedSource = replaceMarkdownCodeDomains(protectedSource, (domain) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(domain);
+        return placeholder;
+    });
+
+    const selectedRuntimeStyles = [];
+    protectedSource = protectedSource.replace(RUNTIME_STYLE_REGEX, (match, css) => {
+        selectedRuntimeStyles.push(css);
+        return '<!-- VCP-SCOPED-STYLE-EXTRACTED -->';
+    });
+
+    let restoredSource = protectedSource;
+    for (let index = protectedBlocks.length - 1; index >= 0; index--) {
+        restoredSource = restoredSource
+            .split(`__VCP_STYLE_PROTECT_${index}__`)
+            .join(protectedBlocks[index]);
+    }
+
+    assert.equal(
+        selectedRuntimeStyles.length,
+        0,
+        'fenced cursor demo style must never reach runtime CSS extraction'
+    );
+    assert.equal(
+        restoredSource,
+        source,
+        'nested comment and fence placeholders must restore byte-for-byte'
+    );
+    assert.doesNotMatch(
+        restoredSource,
+        /__VCP_STYLE_PROTECT_\d+__/,
+        'no internal protection placeholder may leak into rendered code'
+    );
 });
 
 // 防止测试本身误用 HTML entity 版本的标签正则。
