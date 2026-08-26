@@ -2415,7 +2415,7 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
                     }, 0);
 
                     // Step 3: Process animations, scripts, and 3D scenes
-                    if (refs.processAnimationsInContent) {
+                    if (refs.processAnimationsInContent && refs.globalSettingsRef?.get?.().enableAgentBubbleTheme === true) {
                         refs.processAnimationsInContent(contentDiv);
                     }
                 }

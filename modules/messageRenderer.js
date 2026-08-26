@@ -3299,7 +3299,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     if (!isStillValid()) return;
     // stable block 会在终态被规范整树替换；提前执行脚本会把 rAF、timer 和事件
     // 绑定到即将销毁的局部 DOM。CSS 动画不依赖此处理器，可继续即时播放。
-    if (processScripts) {
+    if (processScripts && settings.enableAgentBubbleTheme === true) {
         processAnimationsInContent(contentDiv, visibilityOptimizer);
         if (!isStillValid()) {
             cleanupAnimationsInContent(contentDiv);

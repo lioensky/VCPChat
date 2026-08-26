@@ -91,6 +91,7 @@ async function saveGlobalSettings(deps, settingsForm) {
         networkNotesPaths: networkNotesPaths,
         sidebarWidth: refs.globalSettings.get().sidebarWidth,
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
+        enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme')?.checked === true,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
         showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
         showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
