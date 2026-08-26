@@ -674,7 +674,7 @@ fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> Servic
     Ok(())
 }
 
-// 消息拉取只保留 v2 流式端点，以 kind=topic、ok=false 隔离单 Topic 失败。
+// 消息拉取只保留流式端点，以 kind=topic、ok=false 隔离单 Topic 失败。
 const MAX_SYNC_TOPICS: usize = 10_000;
 const MAX_SYNC_MESSAGES: usize = 100_000;
 const MAX_SYNC_FRAME_BYTES: usize = 32 * 1024 * 1024;

@@ -163,38 +163,20 @@ function validateMessageState(state) {
   );
 }
 
-/**
- * 处理 SYNC_MESSAGE_DIFF_REQUEST
- * @param {object} payload - { topics: [{topicId,ownerType,ownerId,contentHash,messages}] }
- * @returns {object} strict per-topic results carrying the full topic identity
- */
-function handleSyncMessageDiff(payload, database = getDb()) {
-  const db = database;
-  const logger = getLogger();
-  if (!db) {
-    logger.logOperation("messages", "diff_batch", "global", "error", "database not initialized");
-    throw Object.assign(new Error("Database not initialized"), {
-      code: "SYNC_DB_UNAVAILABLE",
-    });
-  }
-
-  const results = [];
-  const topics = payload?.topics;
-  if (!Array.isArray(topics)) {
+function requireMessageDiffStates(payload) {
+  if (!Array.isArray(payload?.topics)) {
     throw Object.assign(new Error("SYNC_MESSAGE_DIFF_REQUEST.topics must be an array"), {
       code: "SYNC_PROTOCOL_INVALID",
     });
   }
+  const topics = payload.topics;
   if (topics.length > 10_000) {
     throw Object.assign(new Error("Message diff exceeds 10000 topics"), {
       code: "SYNC_BUDGET_EXCEEDED",
     });
   }
   const seenTopics = new Set();
-  let fastPathCount = 0;
-  let detailedCount = 0;
   let messageCount = 0;
-
   for (const localState of topics) {
     const topicId = localState?.topicId;
     if (
@@ -224,11 +206,6 @@ function handleSyncMessageDiff(payload, database = getDb()) {
       });
     }
     seenTopics.add(identity);
-    const resultIdentity = {
-      topicId,
-      ownerType: localState.ownerType,
-      ownerId: localState.ownerId,
-    };
     const localEntries = Object.entries(localState.messages);
     messageCount += localEntries.length;
     if (localEntries.length > 10_000 || messageCount > 100_000) {
@@ -237,16 +214,44 @@ function handleSyncMessageDiff(payload, database = getDb()) {
       });
     }
     for (const [msgId, state] of localEntries) {
-      if (
-        !msgId ||
-        !validateMessageState(state)
-      ) {
+      if (!msgId || !validateMessageState(state)) {
         throw Object.assign(
           new Error(`Invalid message diff entry ${topicId}/${msgId}`),
           { code: "SYNC_PROTOCOL_INVALID" },
         );
       }
     }
+  }
+  return topics;
+}
+
+/**
+ * 处理 SYNC_MESSAGE_DIFF_REQUEST
+ * @param {object} payload - { topics: [{topicId,ownerType,ownerId,contentHash,messages}] }
+ * @returns {object} strict per-topic results carrying the full topic identity
+ */
+function handleSyncMessageDiff(payload, database = getDb()) {
+  const topics = requireMessageDiffStates(payload);
+  const db = database;
+  const logger = getLogger();
+  if (!db) {
+    logger.logOperation("messages", "diff_batch", "global", "error", "database not initialized");
+    throw Object.assign(new Error("Database not initialized"), {
+      code: "SYNC_DB_UNAVAILABLE",
+    });
+  }
+
+  const results = [];
+  let fastPathCount = 0;
+  let detailedCount = 0;
+
+  for (const localState of topics) {
+    const topicId = localState.topicId;
+    const resultIdentity = {
+      topicId,
+      ownerType: localState.ownerType,
+      ownerId: localState.ownerId,
+    };
     try {
       assertHistoryTopicHealthy({
         topicId,
@@ -406,4 +411,6 @@ function handleSyncMessageDiff(payload, database = getDb()) {
 module.exports = {
   handleSyncTopicDiff,
   handleSyncMessageDiff,
+  requireCompoundTopicStates,
+  requireMessageDiffStates,
 };

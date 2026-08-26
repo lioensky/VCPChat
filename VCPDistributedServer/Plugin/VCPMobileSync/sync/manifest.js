@@ -376,19 +376,11 @@ function actionIdentity(item, manifestType) {
     : { ownerType: item.ownerType, ownerId: item.ownerId };
 }
 
-function handleSyncManifest(payload, database = null) {
-  const { manifestType, items: remoteItems, targetedOwners } = payload;
-  const logger = getLogger();
-  const phase = (manifestType === "topic") ? "topic_metadata" : "owner_metadata";
-
-  if (
-    manifestType !== "owner" &&
-    manifestType !== "avatar" &&
-    manifestType !== "topic"
-  ) {
+function validateSyncManifestRequest(payload) {
+  const { manifestType, items: remoteItems, targetedOwners } = payload || {};
+  if (!["owner", "avatar", "topic"].includes(manifestType)) {
     throw syncContractError(`Unsupported manifestType ${manifestType}`);
   }
-
   if (!Array.isArray(remoteItems)) {
     throw syncContractError("SYNC_MANIFEST_REQUEST.items must be an array");
   }
@@ -403,8 +395,9 @@ function handleSyncManifest(payload, database = null) {
   if (manifestType === "topic" && ownerFilter === null) {
     throw syncContractError("Topic manifest requires targetedOwners");
   }
-  const normalizedRemoteItems = remoteItems
-    .map((item, index) => normalizeRemoteManifestItem(item, manifestType, index));
+  const normalizedRemoteItems = remoteItems.map((item, index) =>
+    normalizeRemoteManifestItem(item, manifestType, index),
+  );
   if (manifestType === "topic") {
     for (const item of normalizedRemoteItems) {
       if (!ownerFilter.has(`${item.ownerType}\0${item.ownerId}`)) {
@@ -418,10 +411,29 @@ function handleSyncManifest(payload, database = null) {
   for (const item of normalizedRemoteItems) {
     const identity = manifestIdentity(item, manifestType);
     if (remoteByKey.has(identity)) {
-      throw syncContractError(`${manifestType} manifest contains a duplicate entity identity`);
+      throw syncContractError(
+        `${manifestType} manifest contains a duplicate entity identity`,
+      );
     }
     remoteByKey.set(identity, item);
   }
+  return {
+    manifestType,
+    targetedOwners,
+    normalizedRemoteItems,
+    remoteByKey,
+  };
+}
+
+function handleSyncManifest(payload, database = null) {
+  const {
+    manifestType,
+    targetedOwners,
+    normalizedRemoteItems,
+    remoteByKey,
+  } = validateSyncManifestRequest(payload);
+  const logger = getLogger();
+  const phase = (manifestType === "topic") ? "topic_metadata" : "owner_metadata";
 
   const localItems = getLocalManifest(manifestType, targetedOwners, database);
   const localByKey = new Map(
@@ -543,4 +555,5 @@ function handleSyncManifest(payload, database = null) {
 module.exports = {
   getLocalManifest,
   handleSyncManifest,
+  validateSyncManifestRequest,
 };

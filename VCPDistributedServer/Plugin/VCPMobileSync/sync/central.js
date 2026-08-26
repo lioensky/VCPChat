@@ -4,6 +4,11 @@ const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
 const { SyncProtocolError, canonicalizeTopicFrame } = require("./canonical");
+const {
+  requireCompoundTopicStates,
+  requireMessageDiffStates,
+} = require("./diff");
+const { validateSyncManifestRequest } = require("./manifest");
 const { projectMobileTopic } = require("./projection");
 const {
   createSyncError,
@@ -268,26 +273,20 @@ class CentralSyncAdapter {
   }
 
   async handleSyncManifest(payload) {
-    const stage = payload.manifestType === "topic"
+    const validated = validateSyncManifestRequest(payload);
+    const stage = validated.manifestType === "topic"
       ? "topic_metadata"
       : "owner_metadata";
-    if (!["owner", "topic", "avatar"].includes(payload.manifestType)) {
-      throw createSyncError(
-        "SYNC_PROTOCOL_INVALID",
-        `Unsupported manifestType ${payload.manifestType}`,
-        { origin: "desktop_plugin", stage },
-      );
-    }
     try {
       const response = await this.requireClient().request(
         "POST",
         "/v3/sync/manifest",
         {
-          manifestType: payload.manifestType,
-          items: payload.items,
-          ...(payload.targetedOwners === undefined
+          manifestType: validated.manifestType,
+          items: validated.normalizedRemoteItems,
+          ...(validated.targetedOwners === undefined
             ? {}
-            : { targetedOwners: payload.targetedOwners }),
+            : { targetedOwners: validated.targetedOwners }),
         },
       );
       if (
@@ -446,28 +445,13 @@ class CentralSyncAdapter {
   }
 
   async handleTopicDiff(payload) {
+    const topics = requireCompoundTopicStates(payload);
+    const expected = new Set(topics.map(topicIdentityKey));
     try {
-      if (!Array.isArray(payload.topics)) {
-        throw cdsProtocolError(
-          "Topic hash request must carry compound topic states",
-          "topic_validation",
-        );
-      }
-      const expected = new Set();
-      for (const topic of payload.topics) {
-        const key = topicIdentityKey(topic);
-        if (!key || expected.has(key)) {
-          throw cdsProtocolError(
-            "Topic hash request contains an invalid or duplicate topic identity",
-            "topic_validation",
-          );
-        }
-        expected.add(key);
-      }
       const response = await this.requireClient().request(
         "POST",
         "/v3/sync/topic-diff",
-        { topics: payload.topics },
+        { topics },
         { timeoutMs: 270_000 },
       );
       const changedKeys = Array.isArray(response?.changedTopics)
@@ -496,28 +480,13 @@ class CentralSyncAdapter {
   }
 
   async handleMessageDiff(payload) {
+    const topics = requireMessageDiffStates(payload);
+    const expected = new Set(topics.map(topicIdentityKey));
     try {
-      if (!Array.isArray(payload.topics)) {
-        throw cdsProtocolError(
-          "Message diff request must carry compound topic states",
-          "messages",
-        );
-      }
-      const expected = new Set();
-      for (const topic of payload.topics) {
-        const key = topicIdentityKey(topic);
-        if (!key || expected.has(key)) {
-          throw cdsProtocolError(
-            "Message diff request contains an invalid or duplicate topic identity",
-            "messages",
-          );
-        }
-        expected.add(key);
-      }
       const response = await this.requireClient().request(
         "POST",
         "/v3/sync/message-diff",
-        { topics: payload.topics },
+        { topics },
         { timeoutMs: 270_000 },
       );
       if (
@@ -540,7 +509,7 @@ class CentralSyncAdapter {
         throw cdsProtocolError(
           "CDS message diff response does not cover the requested topics",
           "messages",
-          payload.topics.map((topic) => topic.topicId).slice(0, 8),
+          topics.map((topic) => topic.topicId).slice(0, 8),
         );
       }
       const results = [];
@@ -634,9 +603,7 @@ class CentralSyncAdapter {
         origin: "desktop_cds",
         stage: "messages",
         failedTopicIds:
-          Array.isArray(payload.topics)
-            ? payload.topics.map((topic) => topic?.topicId).filter(Boolean).slice(0, 8)
-            : [],
+          topics.map((topic) => topic.topicId).slice(0, 8),
       });
     }
   }
