@@ -88,7 +88,7 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
         { method, route, body, options },
         {
           method: "POST",
-          route: "/v2/sync/messages/pull",
+          route: "/v3/sync/messages/pull",
           body: {
             topics: [
               { topicId: "topic-a", ownerType: "agent", ownerId: "agent-a", messageIds: [] },
@@ -207,7 +207,7 @@ test("中央 pull 将 CDS item error 补全为 WireSyncError", async () => {
         ownerId: "agent-a",
         ok: false,
         error: {
-          code: "SYNC_MESSAGE_READ_FAILED",
+          code: "MESSAGE_READ_FAILED",
           message: "CDS message query failed",
           retryable: false,
         },
@@ -252,7 +252,7 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   const client = {
     async request(method, route, topic, options) {
       assert.equal(method, "POST");
-      assert.equal(route, "/v2/sync/messages/push");
+      assert.equal(route, "/v3/sync/messages/push");
       assert.deepEqual(options, { timeoutMs: 270_000 });
       pushedTopic = topic;
       return {
@@ -334,7 +334,7 @@ test("中央 push 将 CDS item error 补全为统一 NDJSON 错误对象", async
         ownerId,
         ok: false,
         error: {
-          code: "SYNC_MESSAGE_WRITE_FAILED",
+          code: "MESSAGE_WRITE_FAILED",
           message: "CDS write transaction failed",
           retryable: false,
         },
@@ -383,7 +383,7 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
   const client = {
     async request(method, route, topic, options) {
       assert.equal(method, "POST");
-      assert.equal(route, "/v2/sync/messages/push");
+      assert.equal(route, "/v3/sync/messages/push");
       assert.deepEqual(options, { timeoutMs: 270_000 });
       pushedTopic = topic;
       return {
@@ -530,7 +530,7 @@ test("CDS Node client 以字节边界消费拆分 Unicode NDJSON", async (t) => 
   const frames = [];
   for await (const frame of client.requestNdjson(
     "POST",
-    "/v2/sync/messages/pull",
+    "/v3/sync/messages/pull",
     { topics: [] },
   )) {
     frames.push(frame);

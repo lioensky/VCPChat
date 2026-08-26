@@ -251,23 +251,23 @@ pub fn router(state: AppState) -> Router {
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024));
 
-    let sync_v2 = Router::new()
-        .route("/v2/sync/manifest", post(sync_manifest))
-        .route("/v2/sync/topic-diff", post(sync_topic_diff))
-        .route("/v2/sync/message-diff", post(sync_message_diff))
-        .route("/v2/sync/entities/pull", post(sync_entities_pull))
-        .route("/v2/sync/entities/delete", post(sync_entity_delete))
-        .route("/v2/sync/avatars/state", post(sync_avatar_state))
-        .route("/v2/sync/avatars/commit", post(sync_avatar_commit))
-        .route("/v2/sync/messages/pull", post(sync_messages_pull_stream))
-        .route("/v2/sync/messages/push", post(sync_messages_push))
+    let sync_v3 = Router::new()
+        .route("/v3/sync/manifest", post(sync_manifest))
+        .route("/v3/sync/topic-diff", post(sync_topic_diff))
+        .route("/v3/sync/message-diff", post(sync_message_diff))
+        .route("/v3/sync/entities/pull", post(sync_entities_pull))
+        .route("/v3/sync/entities/delete", post(sync_entity_delete))
+        .route("/v3/sync/avatars/state", post(sync_avatar_state))
+        .route("/v3/sync/avatars/commit", post(sync_avatar_commit))
+        .route("/v3/sync/messages/pull", post(sync_messages_pull_stream))
+        .route("/v3/sync/messages/push", post(sync_messages_push))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .layer(RequestBodyLimitLayer::new(34 * 1024 * 1024));
 
     Router::new()
         .route("/v1/health", get(health))
         .merge(protected)
-        .merge(sync_v2)
+        .merge(sync_v3)
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(270),

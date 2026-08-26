@@ -82,7 +82,7 @@ vcp_chat_data_service --app-data ../AppData --port 0
 ```json
 {
   "type": "ready",
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "schemaVersion": 2,
   "port": 49152,
   "instanceId": "uuid",
@@ -196,22 +196,22 @@ POST /v1/rebuild-search-index
 POST /v1/ingest/history-path
 POST /v1/search/messages
 POST /v1/search/memories
-POST /v2/sync/manifest
-POST /v2/sync/topic-diff
-POST /v2/sync/message-diff
-POST /v2/sync/entities/pull
-POST /v2/sync/entities/delete
-POST /v2/sync/avatars/state
-POST /v2/sync/avatars/commit
-POST /v2/sync/messages/pull
-POST /v2/sync/messages/push
+POST /v3/sync/manifest
+POST /v3/sync/topic-diff
+POST /v3/sync/message-diff
+POST /v3/sync/entities/pull
+POST /v3/sync/entities/delete
+POST /v3/sync/avatars/state
+POST /v3/sync/avatars/commit
+POST /v3/sync/messages/pull
+POST /v3/sync/messages/push
 POST /v1/flush
 POST /v1/shutdown
 ```
 
-`/v2/sync/messages/pull` 返回逐 Topic NDJSON。每帧先通过与 Node/Mobile golden fixture 一致的 canonicalizer：消息 ID、role 和 timestamp 必须合法；桌面附件只从顶层或 `_fileManagerData.hash` 接受一致的 SHA-256，非法附件产生有界 warning 而不丢消息。`history_sources.status` 非 ready 时禁止从旧 SQLite 镜像下发。
+`/v3/sync/messages/pull` 返回逐 Topic NDJSON。每帧先通过与 Node/Mobile golden fixture 一致的 canonicalizer：消息 ID、role 和 timestamp 必须合法；桌面附件只从顶层或 `_fileManagerData.hash` 接受一致的 SHA-256，非法附件产生有界 warning 而不丢消息。`history_sources.status` 非 ready 时禁止从旧 SQLite 镜像下发。
 
-`/v2/sync/messages/push` 每次提交一个完整 TopicKey，接受 VCPChat 原生投影消息及 `deletedMessages: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并在 `messages` 中为本地缺失消息保留 tombstone-only 行；重放保留最早删除时间。结果回显完整 TopicKey 和 `ok/error`。
+`/v3/sync/messages/push` 每次提交一个完整 TopicKey，接受 VCPChat 原生投影消息及 `deletedMessages: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并在 `messages` 中为本地缺失消息保留 tombstone-only 行；重放保留最早删除时间。结果回显完整 TopicKey 和 `ok/error`。
 
 同步流预算为单帧 32 MiB、单 attempt 256 MiB、最多 10,000 Topic 和 100,000 Message。SQLite 阻塞读取在受控 blocking task 中执行，NDJSON Body 由 HTTP 消费节奏驱动，不在服务端预先累计完整响应。
 
@@ -227,7 +227,7 @@ VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中�
 
 ## 协议与失败语义
 
-- VCPMobileSync public wire 固定为 1.4；CDS Node/Rust 内部握手固定为 protocol 2。
+- VCPMobileSync public wire 固定为 1.4；CDS Node/Rust 内部握手固定为 protocol 3。
 - Public wire 不支持跨版本混跑，桌面插件、CDS runtime 与 APK 必须配对发布和回滚。
 - Phase 3 decision 是严格判别联合：`{ok:true,pullMessageIds,pushTopic,deleteMessages}` 或 `{ok:false,error}`。
 - 缺 Topic、重复 Topic、错误字段类型、无效历史、DB/HTTP/附件错误均终止当前 attempt；不得以空集合降级成成功。

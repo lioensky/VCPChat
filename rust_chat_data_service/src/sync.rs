@@ -196,16 +196,6 @@ pub enum ManifestResponse {
     },
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TopicSelector {
-    pub topic_id: String,
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 struct IndexedMessageState {
     msg_id: String,
@@ -1182,12 +1172,7 @@ pub fn message_diff(
                 }
             }
         }
-        let selector = TopicSelector {
-            topic_id: requested_key.topic_id.clone(),
-            owner_type: Some(requested_key.owner_type),
-            owner_id: Some(requested_key.owner_id.clone()),
-        };
-        let key = match resolve_topic(database, &selector) {
+        let key = match resolve_topic(database, &requested_key) {
             Ok(key) => key,
             Err(error) => {
                 results.push(MessageDiffResult::failure(
@@ -1321,12 +1306,12 @@ pub fn pull_topic_messages(
     database: &Database,
     topic: MessagesPullTopic,
 ) -> Result<MessagesPullFrame> {
-    let selector = TopicSelector {
+    let requested_key = TopicKey {
         topic_id: topic.topic_id.clone(),
-        owner_type: Some(topic.owner_type),
-        owner_id: Some(topic.owner_id),
+        owner_type: topic.owner_type,
+        owner_id: topic.owner_id,
     };
-    let key = resolve_topic(database, &selector)?;
+    let key = resolve_topic(database, &requested_key)?;
     ensure_topic_sync_source_healthy(database, &key)?;
     anyhow::ensure!(
         topic.message_ids.len() <= 10_000,
@@ -1476,10 +1461,10 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
     }
     let key = resolve_topic(
         reconciler.database(),
-        &TopicSelector {
+        &TopicKey {
             topic_id: topic.topic_id.clone(),
-            owner_type: Some(topic.owner_type),
-            owner_id: Some(topic.owner_id.clone()),
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id.clone(),
         },
     )?;
     ensure_topic_sync_source_healthy(reconciler.database(), &key)?;
@@ -1843,54 +1828,20 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
     Ok(())
 }
 
-fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicKey> {
+fn resolve_topic(database: &Database, key: &TopicKey) -> Result<TopicKey> {
     let connection = database.connection.lock();
-    if let (Some(owner_type), Some(owner_id)) = (selector.owner_type, selector.owner_id.as_deref())
-    {
-        let exists = connection
-            .query_row(
-                "SELECT 1 FROM topics
-                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
-                   AND deleted_at IS NULL",
-                params![owner_type.as_str(), owner_id, selector.topic_id],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        anyhow::ensure!(exists, "topic was not found");
-        return Ok(TopicKey {
-            owner_type,
-            owner_id: owner_id.to_string(),
-            topic_id: selector.topic_id.clone(),
-        });
-    }
-
-    let mut statement = connection.prepare(
-        "SELECT owner_type, owner_id FROM topics
-         WHERE topic_id=?1 AND deleted_at IS NULL",
-    )?;
-    let matches = statement
-        .query_map([&selector.topic_id], |row| {
-            let raw: String = row.get(0)?;
-            Ok((
-                if raw == "group" {
-                    OwnerType::Group
-                } else {
-                    OwnerType::Agent
-                },
-                row.get::<_, String>(1)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    match matches.as_slice() {
-        [(owner_type, owner_id)] => Ok(TopicKey {
-            owner_type: *owner_type,
-            owner_id: owner_id.clone(),
-            topic_id: selector.topic_id.clone(),
-        }),
-        [] => anyhow::bail!("topic was not found"),
-        _ => anyhow::bail!("topic id is ambiguous; ownerType and ownerId are required"),
-    }
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM topics
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+               AND deleted_at IS NULL",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    anyhow::ensure!(exists, "topic was not found");
+    Ok(key.clone())
 }
 
 fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
@@ -2363,7 +2314,7 @@ mod tests {
         ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
         MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
         MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
-        TopicDiffRequest, TopicDiffState, TopicManifestState, TopicSelector,
+        TopicDiffRequest, TopicDiffState, TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -3258,7 +3209,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn topic_resolution_rejects_cross_owner_ambiguity() {
+    async fn topic_resolution_uses_the_complete_owner_identity() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::create_dir_all(config.groups_dir.join("group-a")).expect("create group");
         fs::create_dir_all(config.user_data_dir.join("group-a/topics/topic-a"))
@@ -3289,21 +3240,12 @@ mod tests {
         .expect("write group history");
         reconciler.reconcile().await.expect("reconcile owners");
 
-        assert!(super::resolve_topic(
-            &database,
-            &TopicSelector {
-                topic_id: "topic-a".to_string(),
-                owner_type: None,
-                owner_id: None,
-            }
-        )
-        .is_err());
         let identity = super::resolve_topic(
             &database,
-            &TopicSelector {
+            &TopicKey {
                 topic_id: "topic-a".to_string(),
-                owner_type: Some(OwnerType::Group),
-                owner_id: Some("group-a".to_string()),
+                owner_type: OwnerType::Group,
+                owner_id: "group-a".to_string(),
             },
         )
         .expect("resolve compound identity");

@@ -69,6 +69,20 @@ function isCdsItemError(value) {
   );
 }
 
+function mapCdsItemError(error, code, context = {}) {
+  if (!isCdsItemError(error)) {
+    throw cdsProtocolError(
+      "CDS returned an invalid item error",
+      context.stage || "startup",
+      context.failedTopicIds || [],
+    );
+  }
+  return normalizeSyncError(
+    { code, message: error.message },
+    { ...context, code },
+  );
+}
+
 function topicIdentityKey(value) {
   if (
     !isRecord(value) ||
@@ -267,7 +281,7 @@ class CentralSyncAdapter {
     try {
       const response = await this.requireClient().request(
         "POST",
-        "/v2/sync/manifest",
+        "/v3/sync/manifest",
         {
           manifestType: payload.manifestType,
           items: payload.items,
@@ -307,7 +321,7 @@ class CentralSyncAdapter {
     try {
       const response = await this.requireClient().request(
         "POST",
-        "/v2/sync/entities/pull",
+        "/v3/sync/entities/pull",
         { items },
       );
       if (!isRecord(response) || !Array.isArray(response.results)) {
@@ -338,15 +352,18 @@ class CentralSyncAdapter {
             ownerId: result.ownerId,
             ...(result.entityType === "topic" ? { topicId: result.topicId } : {}),
             ok: false,
-            error: normalizeSyncError(result.error, {
-              code: result.error.code === "ENTITY_NOT_FOUND"
+            error: mapCdsItemError(
+              result.error,
+              result.error.code === "ENTITY_NOT_FOUND"
                 ? "SYNC_ENTITY_NOT_FOUND"
                 : "SYNC_ENTITY_READ_FAILED",
-              origin: "desktop_cds",
-              stage,
-              failedTopicIds:
-                result.entityType === "topic" ? [result.topicId] : [],
-            }),
+              {
+                origin: "desktop_cds",
+                stage,
+                failedTopicIds:
+                  result.entityType === "topic" ? [result.topicId] : [],
+              },
+            ),
           };
         }
         throw cdsProtocolError("CDS entity pull returned an invalid result", stage);
@@ -375,7 +392,7 @@ class CentralSyncAdapter {
     try {
       const value = await this.requireClient().request(
         "POST",
-        "/v2/sync/avatars/state",
+        "/v3/sync/avatars/state",
         { ownerType, ownerId },
       );
       return validateAvatarState(value, ownerType, ownerId);
@@ -405,7 +422,7 @@ class CentralSyncAdapter {
       const value = validateAvatarState(
         await this.requireClient().request(
           "POST",
-          "/v2/sync/avatars/commit",
+          "/v3/sync/avatars/commit",
           { ownerType, ownerId },
         ),
         ownerType,
@@ -449,7 +466,7 @@ class CentralSyncAdapter {
       }
       const response = await this.requireClient().request(
         "POST",
-        "/v2/sync/topic-diff",
+        "/v3/sync/topic-diff",
         { topics: payload.topics },
         { timeoutMs: 270_000 },
       );
@@ -499,7 +516,7 @@ class CentralSyncAdapter {
       }
       const response = await this.requireClient().request(
         "POST",
-        "/v2/sync/message-diff",
+        "/v3/sync/message-diff",
         { topics: payload.topics },
         { timeoutMs: 270_000 },
       );
@@ -697,7 +714,7 @@ class CentralSyncAdapter {
     const seen = new Set();
     for await (const rawFrame of this.requireClient().requestNdjson(
       "POST",
-      "/v2/sync/messages/pull",
+      "/v3/sync/messages/pull",
       { topics: normalizedTopics },
       { timeoutMs: 270_000 },
     )) {
@@ -705,7 +722,14 @@ class CentralSyncAdapter {
         if (!isCdsItemError(rawFrame.error) || Object.keys(rawFrame).length !== 2) {
           throw cdsProtocolError("CDS returned an invalid stream error frame", "messages");
         }
-        throw withCdsErrorContext(rawFrame.error, {
+        throw withCdsErrorContext(mapCdsItemError(
+          rawFrame.error,
+          "SYNC_STREAM_FAILED",
+          {
+            origin: "desktop_cds",
+            stage: "messages",
+          },
+        ), {
           code: "SYNC_STREAM_FAILED",
           origin: "desktop_cds",
           stage: "messages",
@@ -757,7 +781,7 @@ class CentralSyncAdapter {
           ownerType: rawFrame.ownerType,
           ownerId: rawFrame.ownerId,
           ok: false,
-          error: normalizeSyncError(rawFrame.error, {
+          error: mapCdsItemError(rawFrame.error, "SYNC_MESSAGE_READ_FAILED", {
             code: "SYNC_MESSAGE_READ_FAILED",
             origin: "desktop_cds",
             stage: "messages",
@@ -946,7 +970,7 @@ class CentralSyncAdapter {
         }
         const result = await client.request(
           "POST",
-          "/v2/sync/messages/push",
+          "/v3/sync/messages/push",
           {
             topicId,
             ownerType: frame.ownerType,
@@ -972,7 +996,15 @@ class CentralSyncAdapter {
         }
         if (!result.ok) {
           throw withCdsErrorContext(
-            result.error || `CDS rejected topic ${topicId}`,
+            mapCdsItemError(
+              result.error,
+              "SYNC_MESSAGE_WRITE_FAILED",
+              {
+                origin: "desktop_cds",
+                stage: "messages",
+                failedTopicIds: [topicId],
+              },
+            ),
             {
               code: "SYNC_MESSAGE_WRITE_FAILED",
               origin: "desktop_cds",
@@ -1064,7 +1096,7 @@ class CentralSyncAdapter {
     try {
       const result = await this.requireClient().request(
         "POST",
-        "/v2/sync/entities/delete",
+        "/v3/sync/entities/delete",
         target,
       );
       if (
@@ -1108,7 +1140,7 @@ class CentralSyncAdapter {
     const client = this.requireClient();
     const result = await client.request(
       "POST",
-      "/v2/sync/messages/push",
+      "/v3/sync/messages/push",
       {
         topicId,
         ownerType,
@@ -1127,7 +1159,13 @@ class CentralSyncAdapter {
       Object.keys(result).length !== 4
     ) {
       throw withCdsErrorContext(
-        result?.error || `CDS rejected message deletion for ${topicId}`,
+        result?.error
+          ? mapCdsItemError(result.error, "SYNC_DELETE_FAILED", {
+              origin: "desktop_cds",
+              stage: "messages",
+              failedTopicIds: [topicId],
+            })
+          : `CDS rejected message deletion for ${topicId}`,
         {
           code: "SYNC_DELETE_FAILED",
           origin: "desktop_cds",

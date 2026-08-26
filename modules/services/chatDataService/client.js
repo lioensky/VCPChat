@@ -102,7 +102,7 @@ async function* decodeNdjsonBody(body, { maxLineBytes, maxTotalBytes }) {
 }
 
 class ChatDataServiceClient {
-    constructor({ port, authToken, protocolVersion = 2, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+    constructor({ port, authToken, protocolVersion = 3, timeoutMs = DEFAULT_TIMEOUT_MS }) {
         if (!Number.isInteger(port) || port <= 0 || port > 65535) {
             throw new ChatDataServiceError('Invalid VCP-CDS port.', { code: 'INVALID_CONFIGURATION' });
         }

@@ -134,7 +134,7 @@ VERSION_ACK   { pluginVersion: "1.4.0", protocolVersion: "1.4" }
 
 固定外壳分别是 `SYNC_ERROR.error`、HTTP `{error}`、逐项 `ok:false,error`，以及 NDJSON `{kind:"streamError",error}`。对象必须包含全部七个字段，未知字段与字符串错误均拒绝。`message` 是脱敏诊断信息，最终用户中文原因与唯一下一步由 Mobile 按 code 固定映射。
 
-VCP-CDS internal protocol 2 的逐项错误固定为 `{code,message,retryable}`；Central Adapter 只在公共边界补齐 `origin/stage/kind/retry/failedTopicIds`，不按错误文案猜类型。
+VCP-CDS internal protocol 3 的逐项错误固定为 `{code,message,retryable}`；Central Adapter 只在公共边界补齐 `origin/stage/kind/retry/failedTopicIds`，不按错误文案猜类型。
 
 中央适配器校验 CDS Manifest、Topic Diff、Message Diff 与数据流的响应形状及请求集合覆盖。畸形“成功”响应在桌面边界直接转换为 `SYNC_PROTOCOL_INVALID / desktop_cds`。
 
@@ -258,7 +258,7 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面插件 1.4.0 / wire protocol 1.4 / VCP-CDS internal protocol 2 / 配对 VCPMobile
+* **适配标准**：VCPChat 桌面插件 1.4.0 / wire protocol 1.4 / VCP-CDS internal protocol 3 / 配对 VCPMobile
 * **当前版本**：`1.4.0`
 * **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
 * **升级要求**：协议版本采用精确匹配，不支持跨版本混跑；桌面和 Mobile 必须成对升级、成对回滚

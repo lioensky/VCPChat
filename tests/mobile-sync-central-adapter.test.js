@@ -10,21 +10,21 @@ function createClient(overrides = {}) {
   return {
     reconcile: async () => ({ stats: {} }),
     request: async (_method, path, body) => {
-      if (path === "/v2/sync/manifest") {
+      if (path === "/v3/sync/manifest") {
         return {
           type: "SYNC_MANIFEST_RESULT",
           manifestType: body.manifestType,
           results: [],
         };
       }
-      if (path === "/v2/sync/topic-diff") {
+      if (path === "/v3/sync/topic-diff") {
         return { type: "SYNC_TOPIC_DIFF_RESULT", changedTopics: [] };
       }
-      if (path === "/v2/sync/message-diff") {
+      if (path === "/v3/sync/message-diff") {
         return { type: "SYNC_MESSAGE_DIFF_RESULT", results: [] };
       }
-      if (path === "/v2/sync/entities/pull") return { results: [] };
-      if (path === "/v2/sync/entities/delete") return { ok: true };
+      if (path === "/v3/sync/entities/pull") return { results: [] };
+      if (path === "/v3/sync/entities/delete") return { ok: true };
       throw new Error(`unexpected request path ${path}`);
     },
     ...overrides,
@@ -76,7 +76,7 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
 
   assert.deepEqual(captured, [
     "POST",
-    "/v2/sync/manifest",
+    "/v3/sync/manifest",
     {
       manifestType: "topic",
       items: [],
@@ -90,16 +90,30 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
   });
 });
 
-test("中央实体 Pull 将复合身份原样转发给 CDS", async () => {
+test("中央实体 Pull 转发复合身份并映射 CDS 私有错误码", async () => {
   let captured;
-  const response = { results: [{
-    entityType: "topic",
-    ownerType: "agent",
-    ownerId: "agent_1",
-    topicId: "topic_1",
-    ok: true,
-    data: { id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false, ownerId: "agent_1" },
-  }] };
+  const response = { results: [
+    {
+      entityType: "topic",
+      ownerType: "agent",
+      ownerId: "agent_1",
+      topicId: "topic_1",
+      ok: true,
+      data: { id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false, ownerId: "agent_1" },
+    },
+    {
+      entityType: "topic",
+      ownerType: "agent",
+      ownerId: "agent_1",
+      topicId: "topic_missing",
+      ok: false,
+      error: {
+        code: "ENTITY_NOT_FOUND",
+        message: "entity not found",
+        retryable: false,
+      },
+    },
+  ] };
   const adapter = createCentralSyncAdapter({
     client: createClient({
       request: async (...args) => {
@@ -108,15 +122,40 @@ test("中央实体 Pull 将复合身份原样转发给 CDS", async () => {
       },
     }),
   });
-  const items = [{
+  const items = [
+    {
+      entityType: "topic",
+      ownerType: "agent",
+      ownerId: "agent_1",
+      topicId: "topic_1",
+    },
+    {
+      entityType: "topic",
+      ownerType: "agent",
+      ownerId: "agent_1",
+      topicId: "topic_missing",
+    },
+  ];
+
+  const results = await adapter.pullEntities(items);
+  assert.deepEqual(results[0], response.results[0]);
+  assert.deepEqual(results[1], {
     entityType: "topic",
     ownerType: "agent",
     ownerId: "agent_1",
-    topicId: "topic_1",
-  }];
-
-  assert.deepEqual(await adapter.pullEntities(items), response.results);
-  assert.deepEqual(captured, ["POST", "/v2/sync/entities/pull", { items }]);
+    topicId: "topic_missing",
+    ok: false,
+    error: {
+      code: "SYNC_ENTITY_NOT_FOUND",
+      origin: "desktop_cds",
+      stage: "topic_metadata",
+      kind: "data",
+      retry: "manual",
+      message: "entity not found",
+      failedTopicIds: ["topic_missing"],
+    },
+  });
+  assert.deepEqual(captured, ["POST", "/v3/sync/entities/pull", { items }]);
 });
 
 test("中央适配器拒绝缺失 ownerType 的 CDS Owner action", async () => {
@@ -167,7 +206,7 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
 
   assert.deepEqual(captured, [
     "POST",
-    "/v2/sync/topic-diff",
+    "/v3/sync/topic-diff",
     { topics: [state] },
     { timeoutMs: 270_000 },
   ]);
@@ -291,7 +330,7 @@ test("CDS internal protocol mismatch 不会冒充 Mobile wire mismatch", async (
   const adapter = createCentralSyncAdapter({
     client: createClient({
       request: async () => {
-        throw Object.assign(new Error("CDS protocol 2 mismatch"), {
+        throw Object.assign(new Error("CDS protocol 3 mismatch"), {
           code: "PROTOCOL_MISMATCH",
         });
       },
@@ -463,7 +502,7 @@ test("中央适配器按复合 owner 身份转发 topic 实体墓碑", async () 
 
   assert.deepEqual(captured, [
     "POST",
-    "/v2/sync/entities/delete",
+    "/v3/sync/entities/delete",
     target,
   ]);
   assert.deepEqual(result, { ok: true });
@@ -490,7 +529,7 @@ test("中央适配器原样转发完整 owner 墓碑", async () => {
 
   assert.deepEqual(captured, [
     "POST",
-    "/v2/sync/entities/delete",
+    "/v3/sync/entities/delete",
     target,
   ]);
   assert.deepEqual(result, { ok: true });
