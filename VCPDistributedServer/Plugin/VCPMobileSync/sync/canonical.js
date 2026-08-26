@@ -1,7 +1,6 @@
 "use strict";
 
 const { computeMessageFingerprint } = require("../core/hash");
-const { parseSyncError } = require("../error-contract");
 
 const MAX_WARNING_SAMPLES = 8;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
@@ -308,22 +307,6 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
         value.ownerId,
         `NDJSON frame ${topicId} ownerId`,
       ),
-    };
-  }
-  if (value._error !== undefined && value._error !== null) {
-    if (
-      value.messages !== undefined &&
-      (!Array.isArray(value.messages) || value.messages.length !== 0)
-    ) {
-      throw new SyncProtocolError(
-        `NDJSON error frame for ${topicId} must not contain live messages`,
-      );
-    }
-    const error = parseSyncError(value._error);
-    return {
-      frame: { topicId, ...ownerIdentity, messages: [], _error: error },
-      warningCount: 0,
-      warningSamples: [],
     };
   }
   if (!Array.isArray(value.messages)) {

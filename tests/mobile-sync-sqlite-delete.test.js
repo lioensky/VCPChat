@@ -1086,30 +1086,31 @@ test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", asy
     await assert.rejects(
       () => onMessage({
         type: "SYNC_ENTITY_DELETE",
-        id: "topic-stage",
-        dataType: "topic",
-        deletedAt: 800,
-      }),
-      (error) => error.code === "SYNC_DELETE_INVALID",
-    );
-    await assert.rejects(
-      () => onMessage({
-        type: "SYNC_ENTITY_DELETE",
-        id: "topic-stage",
-        dataType: "agent_topic",
-        ownerType: "group",
-        ownerId: "agent-stage",
-        deletedAt: 800,
-      }),
-      (error) => error.code === "SYNC_DELETE_INVALID",
-    );
-    await assert.rejects(
-      () => onMessage({
-        type: "SYNC_ENTITY_DELETE",
-        id: "topic-stage",
-        dataType: "topic",
+        targetType: "topic",
         ownerType: "agent",
         ownerId: "agent-stage",
+        deletedAt: 800,
+      }),
+      (error) => error.code === "SYNC_DELETE_INVALID",
+    );
+    await assert.rejects(
+      () => onMessage({
+        type: "SYNC_ENTITY_DELETE",
+        targetType: "agent_topic",
+        ownerType: "group",
+        ownerId: "agent-stage",
+        topicId: "topic-stage",
+        deletedAt: 800,
+      }),
+      (error) => error.code === "SYNC_DELETE_INVALID",
+    );
+    await assert.rejects(
+      () => onMessage({
+        type: "SYNC_ENTITY_DELETE",
+        targetType: "topic",
+        ownerType: "agent",
+        ownerId: "agent-stage",
+        topicId: "topic-stage",
         deletedAt: 800,
       }),
       (error) => {

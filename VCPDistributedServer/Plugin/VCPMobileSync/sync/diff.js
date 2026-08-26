@@ -11,6 +11,7 @@ const {
   withSyncErrorContext,
 } = require("../error-contract");
 
+const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const CONTENT_HASH_PATTERN = /^(?:|[a-f0-9]{64})$/;
 
 function topicIdentity(value) {
@@ -20,7 +21,7 @@ function topicIdentity(value) {
 function requireCompoundTopicStates(payload) {
   if (!Array.isArray(payload?.topics)) {
     throw Object.assign(
-      new Error("SYNC_TOPIC_HASH_BATCH_V2.topics must be an array"),
+      new Error("SYNC_TOPIC_DIFF_REQUEST.topics must be an array"),
       { code: "SYNC_PROTOCOL_INVALID" },
     );
   }
@@ -43,8 +44,10 @@ function requireCompoundTopicStates(payload) {
       state.ownerId.length === 0 ||
       typeof state.configHash !== "string" ||
       typeof state.contentHash !== "string" ||
-      !CONTENT_HASH_PATTERN.test(state.configHash) ||
-      !CONTENT_HASH_PATTERN.test(state.contentHash)
+      !HASH_PATTERN.test(state.configHash) ||
+      !CONTENT_HASH_PATTERN.test(state.contentHash) ||
+      Object.keys(state).sort().join("\0") !==
+        "configHash\0contentHash\0ownerId\0ownerType\0topicId"
     ) {
       throw Object.assign(new Error("Invalid compound topic hash state"), {
         code: "SYNC_PROTOCOL_INVALID",
@@ -62,15 +65,15 @@ function requireCompoundTopicStates(payload) {
 }
 
 /**
- * 处理 SYNC_TOPIC_HASH_BATCH_V2 (V2: 支持双哈希对比)
+ * 处理 SYNC_TOPIC_DIFF_REQUEST
  * @param {object} payload - { topics: [{topicId,ownerType,ownerId,configHash,contentHash}] }
  */
-function handleSyncTopicHashBatchV2(payload, database = getDb()) {
+function handleSyncTopicDiff(payload, database = getDb()) {
   const topicStates = requireCompoundTopicStates(payload);
   const db = database;
   const logger = getLogger();
   if (!db) {
-    logger.logOperation("topic_metadata", "diff_batch_v2", "global", "error", "database not initialized");
+    logger.logOperation("topic_metadata", "topic_diff", "global", "error", "database not initialized");
     throw Object.assign(new Error("Database not initialized"), {
       code: "SYNC_DB_UNAVAILABLE",
     });
@@ -131,20 +134,41 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
     topicIdentity(left).localeCompare(topicIdentity(right))
   );
   const total = topicStates.length;
-  logger.logOperation("topic_metadata", "diff_batch_v2", "summary", "success", `total=${total} match=${matchCount} changed=${changedTopics.length}`);
+  logger.logOperation("topic_metadata", "topic_diff", "summary", "success", `total=${total} match=${matchCount} changed=${changedTopics.length}`);
 
   return {
-    type: "SYNC_TOPIC_HASH_RESULTS",
+    type: "SYNC_TOPIC_DIFF_RESULT",
     changedTopics,
   };
 }
 
+function isMessageTombstone(state) {
+  return Object.prototype.hasOwnProperty.call(state, "deletedAt");
+}
+
+function validateMessageState(state) {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return false;
+  const keys = Object.keys(state);
+  if (isMessageTombstone(state)) {
+    return keys.length === 1 && Number.isSafeInteger(state.deletedAt) && state.deletedAt >= 0;
+  }
+  return (
+    keys.length === 2 &&
+    keys.includes("messageHash") &&
+    keys.includes("updatedAt") &&
+    typeof state.messageHash === "string" &&
+    /^[a-f0-9]{64}$/.test(state.messageHash) &&
+    Number.isSafeInteger(state.updatedAt) &&
+    state.updatedAt >= 0
+  );
+}
+
 /**
- * 处理 SYNC_MESSAGE_DIFF_BATCH
- * @param {object} payload - { topics: [{topicId,ownerType,ownerId,topicHash,messages}] }
+ * 处理 SYNC_MESSAGE_DIFF_REQUEST
+ * @param {object} payload - { topics: [{topicId,ownerType,ownerId,contentHash,messages}] }
  * @returns {object} strict per-topic results carrying the full topic identity
  */
-function handleSyncMessageDiffBatch(payload, database = getDb()) {
+function handleSyncMessageDiff(payload, database = getDb()) {
   const db = database;
   const logger = getLogger();
   if (!db) {
@@ -157,7 +181,7 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
   const results = [];
   const topics = payload?.topics;
   if (!Array.isArray(topics)) {
-    throw Object.assign(new Error("SYNC_MESSAGE_DIFF_BATCH.topics must be an array"), {
+    throw Object.assign(new Error("SYNC_MESSAGE_DIFF_REQUEST.topics must be an array"), {
       code: "SYNC_PROTOCOL_INVALID",
     });
   }
@@ -178,14 +202,16 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       !localState ||
       typeof localState !== "object" ||
       Array.isArray(localState) ||
-      typeof localState.topicHash !== "string" ||
-      !CONTENT_HASH_PATTERN.test(localState.topicHash) ||
+      typeof localState.contentHash !== "string" ||
+      !CONTENT_HASH_PATTERN.test(localState.contentHash) ||
       !["agent", "group"].includes(localState.ownerType) ||
       typeof localState.ownerId !== "string" ||
       localState.ownerId.length === 0 ||
       !localState.messages ||
       typeof localState.messages !== "object" ||
-      Array.isArray(localState.messages)
+      Array.isArray(localState.messages) ||
+      Object.keys(localState).sort().join("\0") !==
+        "contentHash\0messages\0ownerId\0ownerType\0topicId"
     ) {
       throw Object.assign(new Error(`Invalid message diff state for topic ${topicId}`), {
         code: "SYNC_PROTOCOL_INVALID",
@@ -213,13 +239,7 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
     for (const [msgId, state] of localEntries) {
       if (
         !msgId ||
-        !state ||
-        typeof state !== "object" ||
-        Array.isArray(state) ||
-        typeof state.hash !== "string" ||
-        (state.hash !== "DELETED" && !/^[a-f0-9]{64}$/.test(state.hash)) ||
-        !Number.isSafeInteger(state.updatedAt) ||
-        state.updatedAt < 0
+        !validateMessageState(state)
       ) {
         throw Object.assign(
           new Error(`Invalid message diff entry ${topicId}/${msgId}`),
@@ -259,19 +279,19 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       }
 
       const mobileHasTombstones = Object.values(localState.messages).some(
-        (state) => state.hash === "DELETED",
+        isMessageTombstone,
       );
       if (
         topicRow.content_hash !== null &&
-        topicRow.content_hash === localState.topicHash &&
+        topicRow.content_hash === localState.contentHash &&
         !mobileHasTombstones
       ) {
         results.push({
           ...resultIdentity,
           ok: true,
-          toPull: [],
-          toPush: false,
-          toDelete: [],
+          pullMessageIds: [],
+          pushTopic: false,
+          deleteMessages: [],
         });
         fastPathCount++;
         // fast-path 的 topic 不输出单条日志，避免日志噪音
@@ -289,13 +309,14 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       const remoteMap = new Map(remoteRows.map((row) => [row.msg_id, row]));
       const localMap = localState.messages;
 
-      const toPull = [];
-      const toDelete = [];
-      let toPush = false;
+      const pullMessageIds = [];
+      const deleteMessages = [];
+      let pushTopic = false;
 
       for (const [msgId, remote] of remoteMap) {
         const local = localMap[msgId];
-        const localHash = local?.hash;
+        const localDeleted = local ? isMessageTombstone(local) : false;
+        const localHash = local?.messageHash;
         const remoteDeleted = remote.deleted_at !== null && remote.deleted_at !== undefined;
         if (
           remoteDeleted &&
@@ -305,21 +326,21 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
         }
 
         if (remoteDeleted) {
-          if (local && localHash !== "DELETED") {
-            toDelete.push({ msgId, deletedAt: remote.deleted_at });
+          if (local && !localDeleted) {
+            deleteMessages.push({ msgId, deletedAt: remote.deleted_at });
           }
           continue;
         }
 
-        if (localHash === "DELETED") {
+        if (localDeleted) {
           // Mobile owns the tombstone timestamp, so let the existing push path
           // send its durable delete instead of reviving the desktop live row.
-          toPush = true;
+          pushTopic = true;
           continue;
         }
 
         if (!local) {
-          toPull.push(msgId);
+          pullMessageIds.push(msgId);
         } else if (localHash !== remote.hash) {
           if (!Number.isSafeInteger(remote.updated_at) || remote.updated_at < 0) {
             throw new Error(`Invalid desktop update time for ${topicId}/${msgId}`);
@@ -328,9 +349,9 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
             remote.updated_at > local.updatedAt ||
             (remote.updated_at === local.updatedAt && remote.hash > localHash)
           ) {
-            toPull.push(msgId);
+            pullMessageIds.push(msgId);
           } else {
-            toPush = true;
+            pushTopic = true;
           }
         }
       }
@@ -339,20 +360,26 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       // the desktop persists the deletion fact for later peers.
       for (const msgId of Object.keys(localMap)) {
         if (!remoteMap.has(msgId)) {
-          toPush = true;
+          pushTopic = true;
         }
       }
 
-      toPull.sort((left, right) => left.localeCompare(right));
-      toDelete.sort((left, right) => left.msgId.localeCompare(right.msgId));
-      results.push({ ...resultIdentity, ok: true, toPull, toPush, toDelete });
+      pullMessageIds.sort((left, right) => left.localeCompare(right));
+      deleteMessages.sort((left, right) => left.msgId.localeCompare(right.msgId));
+      results.push({
+        ...resultIdentity,
+        ok: true,
+        pullMessageIds,
+        pushTopic,
+        deleteMessages,
+      });
       detailedCount++;
       logger.logOperation(
         "messages",
         "diff",
         topicId,
         "success",
-        `toPull=${toPull.length} toPush=${toPush} toDelete=${toDelete.length}`,
+        `pull=${pullMessageIds.length} pushTopic=${pushTopic} delete=${deleteMessages.length}`,
       );
     } catch (e) {
       logger.logOperation("messages", "diff", topicId, "error", e.message);
@@ -371,12 +398,12 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
   logger.logOperation("messages", "diff_batch", "summary", "success", `topics=${topics.length} fast_path=${fastPathCount} detailed=${detailedCount}`);
 
   return {
-    type: "SYNC_DIFF_RESULTS_BATCH",
+    type: "SYNC_MESSAGE_DIFF_RESULT",
     results,
   };
 }
 
 module.exports = {
-  handleSyncTopicHashBatchV2,
-  handleSyncMessageDiffBatch,
+  handleSyncTopicDiff,
+  handleSyncMessageDiff,
 };

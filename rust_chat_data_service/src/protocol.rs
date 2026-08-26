@@ -39,8 +39,7 @@ use crate::{
     storage::now_ms,
     sync::{
         self, ManifestRequest, ManifestResponse, MessageDiffRequest, MessageDiffResponse,
-        MessageManifestResponse, MessagesPullRequest, TopicHashDiffRequest, TopicHashDiffResponse,
-        TopicSelector,
+        MessagesPullRequest, TopicDiffRequest, TopicDiffResponse,
     },
     watcher::WatcherMetrics,
 };
@@ -196,20 +195,34 @@ struct OperationResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct EntityDeleteRequest {
-    data_type: String,
-    id: String,
-    deleted_at: i64,
-    #[serde(default)]
-    owner_type: Option<String>,
-    #[serde(default)]
-    owner_id: Option<String>,
+#[serde(
+    tag = "targetType",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+enum EntityDeleteRequest {
+    Owner {
+        owner_type: OwnerType,
+        owner_id: String,
+        deleted_at: i64,
+    },
+    Topic {
+        owner_type: OwnerType,
+        owner_id: String,
+        topic_id: String,
+        deleted_at: i64,
+    },
+    Avatar {
+        owner_type: AvatarOwnerType,
+        owner_id: String,
+        deleted_at: i64,
+    },
 }
 
 #[derive(Debug, Serialize)]
 struct EntityDeleteResponse {
-    success: bool,
+    ok: bool,
 }
 
 enum EntityDeleteTarget {
@@ -233,26 +246,21 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/ingest/history-path", post(ingest_history_path))
         .route("/v1/search/messages", post(search_messages))
         .route("/v1/search/memories", post(search_memories))
-        .route("/v1/sync/manifest", post(sync_manifest))
-        .route("/v1/sync/message-manifest", post(sync_message_manifest))
-        .route("/v1/sync/topic-diff", post(sync_topic_diff))
-        .route("/v1/sync/message-diff", post(sync_message_diff))
-        .route("/v1/sync/entity-delete", post(sync_entity_delete))
-        .route("/v1/sync/avatar-state", post(sync_avatar_state))
-        .route("/v1/sync/avatar-commit", post(sync_avatar_commit))
         .route("/v1/flush", post(flush))
         .route("/v1/shutdown", post(shutdown))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024));
 
     let sync_v2 = Router::new()
+        .route("/v2/sync/manifest", post(sync_manifest))
+        .route("/v2/sync/topic-diff", post(sync_topic_diff))
+        .route("/v2/sync/message-diff", post(sync_message_diff))
         .route("/v2/sync/entities/pull", post(sync_entities_pull))
+        .route("/v2/sync/entities/delete", post(sync_entity_delete))
+        .route("/v2/sync/avatars/state", post(sync_avatar_state))
+        .route("/v2/sync/avatars/commit", post(sync_avatar_commit))
         .route("/v2/sync/messages/pull", post(sync_messages_pull_stream))
-        .route(
-            "/v2/sync/messages/push-topic",
-            post(sync_messages_push_topic),
-        )
-        .route("/v2/sync/topic-identity", post(sync_topic_identity))
+        .route("/v2/sync/messages/push", post(sync_messages_push))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .layer(RequestBodyLimitLayer::new(34 * 1024 * 1024));
 
@@ -476,20 +484,11 @@ async fn sync_manifest(
         .map_err(ServiceError::internal)
 }
 
-async fn sync_message_manifest(
-    State(state): State<AppState>,
-    Json(request): Json<TopicSelector>,
-) -> ServiceResult<Json<MessageManifestResponse>> {
-    sync::message_manifest(state.reconciler.database(), &request)
-        .map(Json)
-        .map_err(ServiceError::internal)
-}
-
 async fn sync_topic_diff(
     State(state): State<AppState>,
-    Json(request): Json<TopicHashDiffRequest>,
-) -> ServiceResult<Json<TopicHashDiffResponse>> {
-    sync::topic_hash_diff(state.reconciler.database(), request)
+    Json(request): Json<TopicDiffRequest>,
+) -> ServiceResult<Json<TopicDiffResponse>> {
+    sync::topic_diff(state.reconciler.database(), request)
         .map(Json)
         .map_err(ServiceError::internal)
 }
@@ -525,95 +524,61 @@ async fn sync_entity_delete(
     }
     .map_err(ServiceError::internal)?;
 
-    Ok(Json(EntityDeleteResponse { success: true }))
+    Ok(Json(EntityDeleteResponse { ok: true }))
 }
 
 fn validate_entity_delete_request(
     request: EntityDeleteRequest,
 ) -> ServiceResult<(EntityDeleteTarget, i64)> {
-    if request.id.is_empty()
-        || !request
-            .id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-    {
-        return Err(ServiceError::InvalidRequest(
-            "sync entity delete id must use only ASCII letters, digits, '_' or '-'".to_string(),
-        ));
-    }
-    if !(0..=9_007_199_254_740_991).contains(&request.deleted_at) {
+    let safe_id = |id: &str| {
+        !id.is_empty()
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    let (target, deleted_at) = match request {
+        EntityDeleteRequest::Owner {
+            owner_type,
+            owner_id,
+            deleted_at,
+        } if safe_id(&owner_id) => (EntityDeleteTarget::Owner(owner_type, owner_id), deleted_at),
+        EntityDeleteRequest::Topic {
+            owner_type,
+            owner_id,
+            topic_id,
+            deleted_at,
+        } if safe_id(&owner_id) && safe_id(&topic_id) => (
+            EntityDeleteTarget::Topic(TopicKey {
+                owner_type,
+                owner_id,
+                topic_id,
+            }),
+            deleted_at,
+        ),
+        EntityDeleteRequest::Avatar {
+            owner_type,
+            owner_id,
+            deleted_at,
+        } if safe_id(&owner_id) => (
+            validate_avatar_key(AvatarKey {
+                owner_type,
+                owner_id,
+            })
+            .map(EntityDeleteTarget::Avatar)?,
+            deleted_at,
+        ),
+        _ => {
+            return Err(ServiceError::InvalidRequest(
+                "sync entity delete requires a valid complete identity".to_string(),
+            ));
+        }
+    };
+    if !(0..=9_007_199_254_740_991).contains(&deleted_at) {
         return Err(ServiceError::InvalidRequest(
             "sync entity delete deletedAt must be a non-negative safe integer".to_string(),
         ));
     }
-
-    let target = match request.data_type.as_str() {
-        "agent" | "group" => {
-            if request.owner_type.is_some() || request.owner_id.is_some() {
-                return Err(ServiceError::InvalidRequest(
-                    "sync owner delete must not include topic owner fields".to_string(),
-                ));
-            }
-            let owner_type = if request.data_type == "agent" {
-                OwnerType::Agent
-            } else {
-                OwnerType::Group
-            };
-            EntityDeleteTarget::Owner(owner_type, request.id)
-        }
-        "topic" => {
-            let owner_type = request
-                .owner_type
-                .ok_or_else(|| {
-                    ServiceError::InvalidRequest(
-                        "sync topic delete requires ownerType and ownerId".to_string(),
-                    )
-                })?
-                .parse::<OwnerType>()?;
-            let owner_id = request.owner_id.filter(|owner_id| {
-                !owner_id.is_empty()
-                    && owner_id
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-            });
-            let owner_id = owner_id.ok_or_else(|| {
-                ServiceError::InvalidRequest(
-                    "sync topic delete requires a safe non-empty ownerId".to_string(),
-                )
-            })?;
-            EntityDeleteTarget::Topic(TopicKey {
-                owner_type,
-                owner_id,
-                topic_id: request.id,
-            })
-        }
-        "avatar" => {
-            if request.owner_id.is_some() {
-                return Err(ServiceError::InvalidRequest(
-                    "sync avatar delete must not include topic ownerId".to_string(),
-                ));
-            }
-            let owner_type = request
-                .owner_type
-                .ok_or_else(|| {
-                    ServiceError::InvalidRequest(
-                        "sync avatar delete requires ownerType".to_string(),
-                    )
-                })?
-                .parse::<AvatarOwnerType>()?;
-            validate_avatar_key(AvatarKey {
-                owner_type,
-                owner_id: request.id,
-            })
-            .map(EntityDeleteTarget::Avatar)?
-        }
-        _ => {
-            return Err(ServiceError::InvalidRequest(
-                "sync entity delete dataType must be agent, group, topic, or avatar".to_string(),
-            ));
-        }
-    };
-    Ok((target, request.deleted_at))
+    Ok((target, deleted_at))
 }
 
 async fn sync_avatar_state(
@@ -654,24 +619,10 @@ fn validate_avatar_key(key: AvatarKey) -> ServiceResult<AvatarKey> {
     AvatarKey::from_wire_id(&wire_id)
 }
 
-async fn sync_topic_identity(
-    State(state): State<AppState>,
-    Json(selector): Json<TopicSelector>,
-) -> ServiceResult<Json<sync::TopicIdentityResponse>> {
-    if selector.topic_id.is_empty() {
-        return Err(ServiceError::InvalidRequest(
-            "sync topic identity requires a non-empty topicId".to_string(),
-        ));
-    }
-    sync::topic_identity(state.reconciler.database(), &selector)
-        .map(Json)
-        .map_err(ServiceError::internal)
-}
-
 async fn sync_entities_pull(
     State(state): State<AppState>,
     Json(request): Json<sync::EntitiesPullRequest>,
-) -> ServiceResult<Json<Vec<sync::EntityPullResult>>> {
+) -> ServiceResult<Json<sync::EntitiesPullResponse>> {
     validate_entities_pull_request(&request)?;
     Ok(Json(sync::pull_entities(
         state.reconciler.database(),
@@ -680,61 +631,50 @@ async fn sync_entities_pull(
 }
 
 fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> ServiceResult<()> {
-    if request.requests.len() > 1_000 {
+    if request.items.len() > 1_000 {
         return Err(ServiceError::InvalidRequest(
-            "sync entity pull accepts at most 1000 requests".to_string(),
+            "sync entity pull accepts at most 1000 items".to_string(),
         ));
     }
-    for item in &request.requests {
-        let safe_id = !item.id.is_empty()
-            && item
-                .id
+    let is_safe_id = |id: &str| {
+        !id.is_empty()
+            && id
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
-        if !safe_id {
-            return Err(ServiceError::InvalidRequest(
-                "sync entity pull id must use only ASCII letters, digits, '_' or '-'".to_string(),
-            ));
-        }
-        match item.entity_type.as_str() {
-            "agent" | "group" => {
-                if item.owner_type.is_some() || item.owner_id.is_some() {
-                    return Err(ServiceError::InvalidRequest(
-                        "sync owner pull must not include topic owner fields".to_string(),
-                    ));
-                }
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    let mut identities = HashSet::new();
+    for item in &request.items {
+        let identity = match item {
+            sync::EntityPullItem::Owner {
+                owner_type,
+                owner_id,
+            } if is_safe_id(owner_id) => {
+                format!("owner\0{}\0{owner_id}", owner_type.as_str())
             }
-            "agent_topic" | "group_topic" => {
-                let expected_owner_type = if item.entity_type == "agent_topic" {
-                    OwnerType::Agent
-                } else {
-                    OwnerType::Group
-                };
-                let valid_owner_id = item.owner_id.as_deref().is_some_and(|owner_id| {
-                    !owner_id.is_empty()
-                        && owner_id
-                            .bytes()
-                            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-                });
-                if item.owner_type != Some(expected_owner_type) || !valid_owner_id {
-                    return Err(ServiceError::InvalidRequest(
-                        "sync topic pull requires matching ownerType and a safe ownerId"
-                            .to_string(),
-                    ));
-                }
+            sync::EntityPullItem::Topic {
+                owner_type,
+                owner_id,
+                topic_id,
+            } if is_safe_id(owner_id) && is_safe_id(topic_id) => {
+                format!("topic\0{}\0{owner_id}\0{topic_id}", owner_type.as_str())
             }
             _ => {
                 return Err(ServiceError::InvalidRequest(
-                    "sync entity pull type must be agent, group, agent_topic, or group_topic"
+                    "sync entity pull identities must use only ASCII letters, digits, '_' or '-'"
                         .to_string(),
                 ));
             }
+        };
+        if !identities.insert(identity) {
+            return Err(ServiceError::InvalidRequest(
+                "sync entity pull contains a duplicate identity".to_string(),
+            ));
         }
     }
     Ok(())
 }
 
-// 消息拉取只保留 v2 流式端点，以 per-topic `_error` 帧隔离单 Topic 失败。
+// 消息拉取只保留 v2 流式端点，以 kind=topic、ok=false 隔离单 Topic 失败。
 const MAX_SYNC_TOPICS: usize = 10_000;
 const MAX_SYNC_MESSAGES: usize = 100_000;
 const MAX_SYNC_FRAME_BYTES: usize = 32 * 1024 * 1024;
@@ -746,11 +686,11 @@ async fn sync_messages_pull_stream(
 ) -> ServiceResult<Response> {
     validate_pull_request(&request)?;
     let database = state.reconciler.database().clone();
-    let requests = request.requests.into_iter();
+    let topics = request.topics.into_iter();
     let stream = futures::stream::unfold(
-        (requests, database, 0_usize),
-        |(mut requests, database, total_bytes)| async move {
-            let topic = requests.next()?;
+        (topics, database, 0_usize),
+        |(mut topics, database, total_bytes)| async move {
+            let topic = topics.next()?;
             let topic_id = topic.topic_id.clone();
             let owner_type = topic.owner_type;
             let owner_id = topic.owner_id.clone();
@@ -764,16 +704,20 @@ async fn sync_messages_pull_stream(
                 Err(error) => encode_pull_error_frame(
                     &topic_id,
                     owner_type,
-                    owner_id.as_deref(),
+                    &owner_id,
+                    "MESSAGE_READ_FAILED",
                     &format!("CDS pull worker failed: {error}"),
+                    false,
                 ),
             };
             if bytes.len() > MAX_SYNC_FRAME_BYTES {
                 bytes = encode_pull_error_frame(
                     &topic_id,
                     owner_type,
-                    owner_id.as_deref(),
+                    &owner_id,
+                    "BUDGET_EXCEEDED",
                     "CDS pull frame exceeds 32 MiB budget",
+                    false,
                 );
             }
             let next_total = total_bytes.checked_add(bytes.len());
@@ -781,10 +725,12 @@ async fn sync_messages_pull_stream(
                 bytes = encode_pull_error_frame(
                     &topic_id,
                     owner_type,
-                    owner_id.as_deref(),
+                    &owner_id,
+                    "BUDGET_EXCEEDED",
                     "CDS pull response exceeds 256 MiB total budget",
+                    false,
                 );
-                requests = Vec::new().into_iter();
+                topics = Vec::new().into_iter();
                 if total_bytes.saturating_add(bytes.len()) > MAX_SYNC_TOTAL_BYTES {
                     return None;
                 }
@@ -792,7 +738,7 @@ async fn sync_messages_pull_stream(
             let next_total = total_bytes.saturating_add(bytes.len());
             Some((
                 Ok::<Bytes, Infallible>(Bytes::from(bytes)),
-                (requests, database, next_total),
+                (topics, database, next_total),
             ))
         },
     );
@@ -814,11 +760,16 @@ fn encode_pull_topic_frame(
     let frame = match sync::pull_topic_messages(database, topic) {
         Ok(frame) => serde_json::to_value(frame),
         Err(error) => Ok(serde_json::json!({
+            "kind": "topic",
             "topicId": topic_id,
             "ownerType": owner_type,
             "ownerId": owner_id,
-            "messages": [],
-            "_error": format!("{error:#}"),
+            "ok": false,
+            "error": {
+                "code": "MESSAGE_READ_FAILED",
+                "message": format!("{error:#}"),
+                "retryable": false,
+            },
         })),
     };
     match frame.and_then(|frame| serde_json::to_vec(&frame)) {
@@ -829,57 +780,64 @@ fn encode_pull_topic_frame(
         Err(error) => encode_pull_error_frame(
             &topic_id,
             owner_type,
-            owner_id.as_deref(),
+            &owner_id,
+            "STREAM_FAILED",
             &format!("failed to encode CDS pull frame: {error}"),
+            false,
         ),
     }
 }
 
 fn encode_pull_error_frame(
     topic_id: &str,
-    owner_type: Option<crate::domain::OwnerType>,
-    owner_id: Option<&str>,
-    error: &str,
+    owner_type: crate::domain::OwnerType,
+    owner_id: &str,
+    code: &str,
+    message: &str,
+    retryable: bool,
 ) -> Vec<u8> {
     let mut bytes = serde_json::to_vec(&serde_json::json!({
+        "kind": "topic",
         "topicId": topic_id,
         "ownerType": owner_type,
         "ownerId": owner_id,
-        "messages": [],
-        "_error": error,
+        "ok": false,
+        "error": {
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+        },
     }))
-    .unwrap_or_else(|_| b"{\"_stream_error\":\"failed to encode CDS error frame\"}".to_vec());
+    .unwrap_or_else(|_| {
+        br#"{"kind":"streamError","error":{"code":"STREAM_FAILED","message":"failed to encode CDS error frame","retryable":false}}"#
+            .to_vec()
+    });
     bytes.push(b'\n');
     bytes
 }
 
 fn validate_pull_request(request: &MessagesPullRequest) -> ServiceResult<()> {
-    if request.requests.is_empty() || request.requests.len() > MAX_SYNC_TOPICS {
+    if request.topics.is_empty() || request.topics.len() > MAX_SYNC_TOPICS {
         return Err(ServiceError::InvalidRequest(format!(
             "sync pull requires between 1 and {MAX_SYNC_TOPICS} topics"
         )));
     }
     let mut identities = HashSet::new();
     let mut message_count = 0_usize;
-    for topic in &request.requests {
+    for topic in &request.topics {
         if topic.topic_id.is_empty() {
             return Err(ServiceError::InvalidRequest(
                 "sync pull topicId must be non-empty".to_string(),
             ));
         }
-        if topic.owner_type.is_some() != topic.owner_id.is_some() {
-            return Err(ServiceError::InvalidRequest(
-                "sync pull ownerType and ownerId must be supplied together".to_string(),
-            ));
-        }
-        if topic.owner_id.as_deref().is_some_and(str::is_empty) {
+        if topic.owner_id.is_empty() {
             return Err(ServiceError::InvalidRequest(
                 "sync pull ownerId must be non-empty".to_string(),
             ));
         }
         let identity = (
-            topic.owner_type.map(|owner| owner.as_str()),
-            topic.owner_id.as_deref(),
+            topic.owner_type.as_str(),
+            topic.owner_id.as_str(),
             topic.topic_id.as_str(),
         );
         if !identities.insert(identity) {
@@ -887,19 +845,20 @@ fn validate_pull_request(request: &MessagesPullRequest) -> ServiceResult<()> {
                 "sync pull contains a duplicate topic identity".to_string(),
             ));
         }
-        if topic.msg_ids.len() > 10_000 {
+        if topic.message_ids.len() > 10_000 {
             return Err(ServiceError::InvalidRequest(
                 "sync pull topic exceeds 10000 message ids".to_string(),
             ));
         }
-        let unique_ids = topic.msg_ids.iter().collect::<HashSet<_>>();
-        if unique_ids.len() != topic.msg_ids.len() || unique_ids.iter().any(|id| id.is_empty()) {
+        let unique_ids = topic.message_ids.iter().collect::<HashSet<_>>();
+        if unique_ids.len() != topic.message_ids.len() || unique_ids.iter().any(|id| id.is_empty())
+        {
             return Err(ServiceError::InvalidRequest(
                 "sync pull message ids must be non-empty and unique".to_string(),
             ));
         }
         message_count = message_count
-            .checked_add(topic.msg_ids.len())
+            .checked_add(topic.message_ids.len())
             .ok_or_else(|| ServiceError::InvalidRequest("sync pull count overflow".to_string()))?;
         if message_count > MAX_SYNC_MESSAGES {
             return Err(ServiceError::InvalidRequest(
@@ -910,17 +869,17 @@ fn validate_pull_request(request: &MessagesPullRequest) -> ServiceResult<()> {
     Ok(())
 }
 
-async fn sync_messages_push_topic(
+async fn sync_messages_push(
     State(state): State<AppState>,
     Json(topic): Json<sync::MessagesPushTopic>,
 ) -> ServiceResult<Json<sync::MessagesPushResult>> {
     if topic.topic_id.is_empty()
         || topic.messages.len() > 10_000
-        || topic.deleted_message_tombstones.len() > 10_000
+        || topic.deleted_messages.len() > 10_000
         || topic
             .messages
             .len()
-            .saturating_add(topic.deleted_message_tombstones.len())
+            .saturating_add(topic.deleted_messages.len())
             > 10_000
     {
         return Err(ServiceError::InvalidRequest(
@@ -928,7 +887,7 @@ async fn sync_messages_push_topic(
         ));
     }
     let result = sync::push_topic_messages(&state.reconciler, topic).await;
-    if result.success && result.changed {
+    if result.ok && result.changed {
         if let Some(search) = &state.search {
             search
                 .reconcile_revisions()
@@ -1009,29 +968,34 @@ fn format_memory_windows(windows: &[MemoryWindow]) -> String {
 mod tests {
     use super::*;
 
-    fn request(data_type: &str, id: &str, deleted_at: i64) -> EntityDeleteRequest {
-        EntityDeleteRequest {
-            data_type: data_type.to_string(),
-            id: id.to_string(),
+    fn owner_request(
+        owner_type: OwnerType,
+        owner_id: &str,
+        deleted_at: i64,
+    ) -> EntityDeleteRequest {
+        EntityDeleteRequest::Owner {
+            owner_type,
+            owner_id: owner_id.to_string(),
             deleted_at,
-            owner_type: None,
-            owner_id: None,
         }
     }
 
     #[test]
     fn entity_delete_validation_requires_exact_topic_owner() {
-        let missing_owner = request("topic", "default", 1);
-        assert!(matches!(
-            validate_entity_delete_request(missing_owner),
-            Err(ServiceError::InvalidRequest(_))
-        ));
+        assert!(
+            serde_json::from_value::<EntityDeleteRequest>(serde_json::json!({
+                "targetType":"topic", "topicId":"default", "deletedAt":1
+            }))
+            .is_err()
+        );
 
-        let mut valid = request("topic", "default", 1);
-        valid.owner_type = Some("agent".to_string());
-        valid.owner_id = Some("agent-a".to_string());
-        let (target, deleted_at) =
-            validate_entity_delete_request(valid).expect("validate exact topic owner");
+        let (target, deleted_at) = validate_entity_delete_request(EntityDeleteRequest::Topic {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: "default".to_string(),
+            deleted_at: 1,
+        })
+        .expect("validate exact topic owner");
         assert_eq!(deleted_at, 1);
         assert!(matches!(
             target,
@@ -1046,10 +1010,10 @@ mod tests {
     #[test]
     fn entity_delete_validation_rejects_unsafe_ids_and_timestamp_bounds() {
         for invalid in [
-            request("agent", "../agent", 1),
-            request("group", "group/a", 1),
-            request("agent", "agent-a", -1),
-            request("agent", "agent-a", 9_007_199_254_740_992),
+            owner_request(OwnerType::Agent, "../agent", 1),
+            owner_request(OwnerType::Group, "group/a", 1),
+            owner_request(OwnerType::Agent, "agent-a", -1),
+            owner_request(OwnerType::Agent, "agent-a", 9_007_199_254_740_992),
         ] {
             assert!(matches!(
                 validate_entity_delete_request(invalid),
@@ -1059,11 +1023,10 @@ mod tests {
     }
 
     #[test]
-    fn entity_delete_validation_accepts_only_agent_group_and_topic() {
-        for (data_type, expected_type) in [("agent", OwnerType::Agent), ("group", OwnerType::Group)]
-        {
-            let (target, deleted_at) = validate_entity_delete_request(request(
-                data_type,
+    fn entity_delete_validation_accepts_both_owner_namespaces() {
+        for expected_type in [OwnerType::Agent, OwnerType::Group] {
+            let (target, deleted_at) = validate_entity_delete_request(owner_request(
+                expected_type,
                 "owner-a",
                 9_007_199_254_740_991,
             ))
@@ -1075,18 +1038,14 @@ mod tests {
                     if owner_type == expected_type && owner_id == "owner-a"
             ));
         }
-        assert!(matches!(
-            validate_entity_delete_request(request("message", "message-a", 1)),
-            Err(ServiceError::InvalidRequest(_))
-        ));
     }
 
     #[test]
-    fn entity_delete_response_exposes_only_success() {
+    fn entity_delete_response_exposes_only_ok() {
         assert_eq!(
-            serde_json::to_value(EntityDeleteResponse { success: true })
+            serde_json::to_value(EntityDeleteResponse { ok: true })
                 .expect("serialize entity delete response"),
-            serde_json::json!({ "success": true })
+            serde_json::json!({ "ok": true })
         );
     }
 }

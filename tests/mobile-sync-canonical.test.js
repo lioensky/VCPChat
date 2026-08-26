@@ -105,50 +105,6 @@ test("canonicalizer 保留完整复合 Owner 身份", () => {
   );
 });
 
-test("canonicalizer 只接受 Wire 1.3 结构化 topic 错误", () => {
-  const error = {
-    code: "TOPIC_NOT_FOUND",
-    origin: "desktop_plugin",
-    stage: "messages",
-    kind: "data",
-    retry: "manual",
-    message: "topic not found",
-    failedTopicIds: ["topic-missing"],
-  };
-  assert.deepEqual(
-    canonicalizeTopicFrame({
-      topicId: "topic-missing",
-      ownerType: "agent",
-      ownerId: "agent-a",
-      messages: [],
-      _error: error,
-    }).frame,
-    {
-      topicId: "topic-missing",
-      ownerType: "agent",
-      ownerId: "agent-a",
-      messages: [],
-      _error: error,
-    },
-  );
-  assert.throws(
-    () => canonicalizeTopicFrame({
-      topicId: "topic-missing",
-      messages: [],
-      _error: "legacy string error",
-    }),
-    /error must be an object/,
-  );
-  assert.throws(
-    () => canonicalizeTopicFrame({
-      topicId: "topic-a",
-      messages: [{ id: "message-a" }],
-      _error: error,
-    }),
-    /must not contain live messages/,
-  );
-});
-
 test("分支话题消息的旧 topicId 归一化为 frame topic 而非拒绝", () => {
   // 话题分支（chatManager slice 复制）会让消息 JSON 携带旧话题的 topicId。
   // frame topic 才是存储权威、指纹不含 topicId，因此冲突必须重写而非炸批。

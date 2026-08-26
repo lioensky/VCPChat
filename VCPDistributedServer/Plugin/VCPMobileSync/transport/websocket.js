@@ -3,7 +3,10 @@
  */
 
 const { getLogger, setWss } = require("../core/logger");
-const { parseJsonWithoutDuplicateKeys } = require("../protocol");
+const {
+  parseJsonWithoutDuplicateKeys,
+  validateSyncRequestFrame,
+} = require("../protocol");
 const {
   ERROR_ORIGINS,
   ERROR_STAGES,
@@ -26,19 +29,18 @@ let wss = null;
 function errorStageForPayload(payload, versionAccepted, currentStage) {
   if (!versionAccepted || payload?.type === "VERSION_CHECK") return "handshake";
   if (payload?.type === "SYNC_ERROR") return "shutdown";
-  if (payload?.type === "SYNC_MESSAGE_DIFF_BATCH") return "messages";
-  if (payload?.type === "GET_MESSAGE_MANIFEST") return "messages";
-  if (payload?.type === "SYNC_TOPIC_HASH_BATCH_V2") {
+  if (payload?.type === "SYNC_MESSAGE_DIFF_REQUEST") return "messages";
+  if (payload?.type === "SYNC_TOPIC_DIFF_REQUEST") {
     return "topic_validation";
   }
-  if (payload?.type === "SYNC_MANIFEST") {
-    return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
+  if (payload?.type === "SYNC_MANIFEST_REQUEST") {
+    return payload.manifestType === "topic"
       ? "topic_metadata"
       : "owner_metadata";
   }
   if (payload?.type === "SYNC_ENTITY_DELETE") {
-    if (payload.dataType === "message") return "messages";
-    return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
+    if (payload.targetType === "message") return "messages";
+    return payload.targetType === "topic"
       ? "topic_metadata"
       : "owner_metadata";
   }
@@ -198,6 +200,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
             "VERSION_CHECK may only appear once per connection",
           );
         }
+        validateSyncRequestFrame(payload);
         if (payload.type === "SYNC_ERROR") {
           throw withSyncErrorContext(parseSyncError(payload.error), {
             code: "MOBILE_SYNC_ERROR",
@@ -221,10 +224,10 @@ async function startWsServer({ port, syncToken, onMessage }) {
           const responseText = JSON.stringify(response);
           const logger = getLogger();
           // 记录发送给手机端的响应摘要
-          if (response.type === "SYNC_DIFF_RESULTS" && Array.isArray(response.data)) {
-            const pullItems = response.data.filter(r => r.action === "PULL");
-            const pushItems = response.data.filter(r => r.action === "PUSH");
-            logger.logInfo("websocket", `→ 发送 ${response.type} (dataType=${response.dataType}): total=${response.data.length}, PULL=${pullItems.length}, PUSH=${pushItems.length}, bytes=${responseText.length}`);
+          if (response.type === "SYNC_MANIFEST_RESULT" && Array.isArray(response.results)) {
+            const pullItems = response.results.filter(r => r.action === "PULL");
+            const pushItems = response.results.filter(r => r.action === "PUSH");
+            logger.logInfo("websocket", `→ 发送 ${response.type} (manifestType=${response.manifestType}): total=${response.results.length}, PULL=${pullItems.length}, PUSH=${pushItems.length}, bytes=${responseText.length}`);
           } else {
             logger.logInfo("websocket", `→ 发送 ${response.type || "unknown"}: bytes=${responseText.length}`);
           }

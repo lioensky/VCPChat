@@ -25,17 +25,11 @@ const {
   getLogger,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/logger");
 
-test("批量上传区分父 config 缺失与损坏", async () => {
+test("批量上传在父 Owner 未进入提交视图时返回实体缺失", async () => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-gap-d-"));
   try {
-    // 父 Agent 存在但 config.json 是坏 JSON → 非 ENOENT，保持 BATCH_FAILED。
-    const brokenAgentDir = path.join(appDataPath, "Agents", "agentBroken1");
-    fs.mkdirSync(brokenAgentDir, { recursive: true });
-    fs.writeFileSync(path.join(brokenAgentDir, "config.json"), "{ not json", "utf-8");
-
     const results = await uploadEntitiesBatch(
       [
-        // 父目录不存在时按实体缺失处理。
         {
           id: "topicOrphan1",
           type: "agent_topic",
@@ -43,29 +37,17 @@ test("批量上传区分父 config 缺失与损坏", async () => {
           ownerId: "agentMissing1",
           data: { ownerId: "agentMissing1", name: "孤立话题" },
         },
-        {
-          id: "topicBroken1",
-          type: "agent_topic",
-          ownerType: "agent",
-          ownerId: "agentBroken1",
-          data: { ownerId: "agentBroken1", name: "坏父话题" },
-        },
       ],
       appDataPath,
     );
 
-    assert.equal(results.length, 2);
+    assert.equal(results.length, 1);
     const byId = new Map(results.map((r) => [r.id, r]));
 
     const orphan = byId.get("topicOrphan1");
     assert.equal(orphan.success, false);
     assert.equal(orphan.error.code, "SYNC_ENTITY_NOT_FOUND");
     assert.deepEqual(orphan.error.failedTopicIds, ["topicOrphan1"]);
-
-    const broken = byId.get("topicBroken1");
-    assert.equal(broken.success, false);
-    assert.equal(broken.error.code, "SYNC_ENTITY_BATCH_FAILED");
-    assert.deepEqual(broken.error.failedTopicIds, ["topicBroken1"]);
   } finally {
     fs.rmSync(appDataPath, { recursive: true, force: true });
   }

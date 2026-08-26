@@ -379,7 +379,10 @@ function createHttpErrorBody(error, fallback = {}) {
 }
 
 function createStreamErrorFrame(error, fallback = {}) {
-  return { _stream_error: normalizeSyncError(error, fallback) };
+  return {
+    kind: "streamError",
+    error: normalizeSyncError(error, fallback),
+  };
 }
 
 function normalizeFailureResult(result, fallback = {}) {

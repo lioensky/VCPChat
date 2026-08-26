@@ -83,11 +83,27 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
   let advancedBeforeDrain = null;
   const hash = "a".repeat(64);
   const client = {
-    async *syncMessagesPullStream() {
+    async *requestNdjson(method, route, body, options) {
+      assert.deepEqual(
+        { method, route, body, options },
+        {
+          method: "POST",
+          route: "/v2/sync/messages/pull",
+          body: {
+            topics: [
+              { topicId: "topic-a", ownerType: "agent", ownerId: "agent-a", messageIds: [] },
+              { topicId: "topic-b", ownerType: "group", ownerId: "group-b", messageIds: [] },
+            ],
+          },
+          options: { timeoutMs: 270_000 },
+        },
+      );
       yield {
+        kind: "topic",
         topicId: "topic-a",
         ownerType: "agent",
         ownerId: "agent-a",
+        ok: true,
         messages: [
           {
             id: "m-a",
@@ -110,28 +126,30 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
       };
       advancedBeforeDrain = response.blocked;
       yield {
+        kind: "topic",
         topicId: "topic-b",
         ownerType: "group",
         ownerId: "group-b",
+        ok: true,
         messages: [],
       };
     },
   };
   const adapter = createClientAdapter(client);
 
-  await adapter.downloadMessagesStreamRaw(
+  await adapter.pullMessagesStreamRaw(
     [
       {
         topicId: "topic-a",
         ownerType: "agent",
         ownerId: "agent-a",
-        msgIds: [],
+        messageIds: [],
       },
       {
         topicId: "topic-b",
         ownerType: "group",
         ownerId: "group-b",
-        msgIds: [],
+        messageIds: [],
       },
     ],
     response,
@@ -141,6 +159,8 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
   assert.equal(response.ended, true);
   const frames = response.frames();
   assert.equal(frames.length, 2);
+  assert.equal(frames[0].kind, "topic");
+  assert.equal(frames[0].ok, true);
   assert.equal(frames[0].messages[0].attachments[0].hash, hash);
   assert.equal(frames[0].messages[0].attachments[0]._fileManagerData, undefined);
   assert.match(frames[0].messages[0].contentHash, /^[a-f0-9]{64}$/);
@@ -152,22 +172,24 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
 
 test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
   const adapter = createClientAdapter({
-    async *syncMessagesPullStream() {
+    async *requestNdjson() {
       yield {
+        kind: "topic",
         topicId: "topic-a",
         ownerType: "group",
         ownerId: "group-a",
+        ok: true,
         messages: [],
       };
     },
   });
   await assert.rejects(
-    () => adapter.downloadMessagesStreamRaw(
+    () => adapter.pullMessagesStreamRaw(
       [{
         topicId: "topic-a",
         ownerType: "agent",
         ownerId: "agent-a",
-        msgIds: [],
+        messageIds: [],
       }],
       new FakeResponse(),
     ),
@@ -175,36 +197,42 @@ test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
   );
 });
 
-test("中央 pull 将 CDS 字符串错误补全为结构化对象", async () => {
+test("中央 pull 将 CDS item error 补全为 WireSyncError", async () => {
   const adapter = createClientAdapter({
-    async *syncMessagesPullStream() {
+    async *requestNdjson() {
       yield {
+        kind: "topic",
         topicId: "topic-a",
         ownerType: "agent",
         ownerId: "agent-a",
-        messages: [],
-        _error: "CDS message query failed",
+        ok: false,
+        error: {
+          code: "SYNC_MESSAGE_READ_FAILED",
+          message: "CDS message query failed",
+          retryable: false,
+        },
       };
     },
   });
   const response = new FakeResponse();
 
-  await adapter.downloadMessagesStreamRaw(
+  await adapter.pullMessagesStreamRaw(
     [{
       topicId: "topic-a",
       ownerType: "agent",
       ownerId: "agent-a",
-      msgIds: [],
+      messageIds: [],
     }],
     response,
   );
 
   assert.deepEqual(response.frames(), [{
+    kind: "topic",
     topicId: "topic-a",
     ownerType: "agent",
     ownerId: "agent-a",
-    messages: [],
-    _error: {
+    ok: false,
+    error: {
       code: "SYNC_MESSAGE_READ_FAILED",
       origin: "desktop_cds",
       stage: "messages",
@@ -222,20 +250,16 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   const hash = "b".repeat(64);
   let pushedTopic = null;
   const client = {
-    async syncTopicIdentity(selector) {
-      assert.deepEqual(selector, {
-        topicId: "topic-a",
-        ownerType: "agent",
-        ownerId: "agent-a",
-      });
-      const { topicId } = selector;
-      return { topicId, ownerType: "agent", ownerId: "agent-a" };
-    },
-    async syncMessagesPushTopic(topic) {
+    async request(method, route, topic, options) {
+      assert.equal(method, "POST");
+      assert.equal(route, "/v2/sync/messages/push");
+      assert.deepEqual(options, { timeoutMs: 270_000 });
       pushedTopic = topic;
       return {
         topicId: topic.topicId,
-        success: true,
+        ownerType: topic.ownerType,
+        ownerId: topic.ownerId,
+        ok: true,
       };
     },
   };
@@ -251,6 +275,7 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   });
   const request = Readable.from([
     `${JSON.stringify({
+      kind: "topic",
       topicId: "topic-a",
       ownerType: "agent",
       ownerId: "agent-a",
@@ -271,19 +296,21 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
           ],
         },
       ],
+      deletedMessages: [],
     })}\n`,
   ]);
   const response = new FakeResponse();
 
-  await adapter.uploadMessagesBatchRaw(request, response);
+  await adapter.pushMessagesStreamRaw(request, response);
 
   assert.equal(response.ended, true);
   assert.deepEqual(response.frames(), [
     {
+      kind: "topic",
       topicId: "topic-a",
       ownerType: "agent",
       ownerId: "agent-a",
-      success: true,
+      ok: true,
     },
   ]);
   assert.equal(pushedTopic.ownerType, "agent");
@@ -296,18 +323,21 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   assert.equal(desktopAttachment.status, undefined);
 });
 
-test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", async (t) => {
+test("中央 push 将 CDS item error 补全为统一 NDJSON 错误对象", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-error-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const client = {
-    async syncTopicIdentity({ topicId }) {
-      return { topicId, ownerType: "agent", ownerId: "agent-a" };
-    },
-    async syncMessagesPushTopic({ topicId }) {
+    async request(_method, _route, { topicId, ownerType, ownerId }) {
       return {
         topicId,
-        success: false,
-        error: "CDS write transaction failed",
+        ownerType,
+        ownerId,
+        ok: false,
+        error: {
+          code: "SYNC_MESSAGE_WRITE_FAILED",
+          message: "CDS write transaction failed",
+          retryable: false,
+        },
       };
     },
   };
@@ -318,21 +348,24 @@ test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", a
   });
   const request = Readable.from([
     `${JSON.stringify({
+      kind: "topic",
       topicId: "topic-a",
       ownerType: "agent",
       ownerId: "agent-a",
       messages: [],
+      deletedMessages: [],
     })}\n`,
   ]);
   const response = new FakeResponse();
 
-  await adapter.uploadMessagesBatchRaw(request, response);
+  await adapter.pushMessagesStreamRaw(request, response);
 
   assert.deepEqual(response.frames(), [{
+    kind: "topic",
     topicId: "topic-a",
     ownerType: "agent",
     ownerId: "agent-a",
-    success: false,
+    ok: false,
     error: {
       code: "SYNC_MESSAGE_WRITE_FAILED",
       origin: "desktop_cds",
@@ -348,23 +381,22 @@ test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", a
 test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", async () => {
   let pushedTopic = null;
   const client = {
-    async syncTopicIdentity({ topicId, ownerType, ownerId }) {
-      assert.equal(ownerType, "group");
-      assert.equal(ownerId, "group-a");
-      return { topicId, ownerType: "group", ownerId: "group-a" };
-    },
-    async syncMessagesPushTopic(topic) {
+    async request(method, route, topic, options) {
+      assert.equal(method, "POST");
+      assert.equal(route, "/v2/sync/messages/push");
+      assert.deepEqual(options, { timeoutMs: 270_000 });
       pushedTopic = topic;
       return {
         topicId: topic.topicId,
-        success: true,
-        changed: true,
+        ownerType: topic.ownerType,
+        ownerId: topic.ownerId,
+        ok: true,
       };
     },
   };
   const adapter = createClientAdapter(client);
 
-  assert.deepEqual(
+  assert.equal(
     await adapter.deleteMessage({
       topicId: "topic-a",
       ownerType: "group",
@@ -372,52 +404,15 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
       msgId: "message-a",
       deletedAt: 42,
     }),
-    {
-      success: true,
-      topicId: "topic-a",
-      ownerType: "group",
-      ownerId: "group-a",
-      msgId: "message-a",
-    },
+    undefined,
   );
   assert.deepEqual(pushedTopic, {
     topicId: "topic-a",
     ownerType: "group",
     ownerId: "group-a",
     messages: [],
-    deletedMessageTombstones: [{ msgId: "message-a", deletedAt: 42 }],
+    deletedMessages: [{ msgId: "message-a", deletedAt: 42 }],
   });
-});
-
-test("CDS Topic/Message diff 批次使用 270 秒 HTTP 硬上限", () => {
-  const client = new ChatDataServiceClient({
-    port: 1,
-    authToken: "timeout-contract-token",
-  });
-  const calls = [];
-  client.request = (method, pathname, body, options) => {
-    calls.push({ method, pathname, body, options });
-    return null;
-  };
-
-  client.syncTopicDiff({ hashes: {} });
-  client.syncMessageDiff({ topics: {} });
-
-  assert.deepEqual(
-    calls.map(({ method, pathname, options }) => ({ method, pathname, options })),
-    [
-      {
-        method: "POST",
-        pathname: "/v1/sync/topic-diff",
-        options: { timeoutMs: 270_000 },
-      },
-      {
-        method: "POST",
-        pathname: "/v1/sync/message-diff",
-        options: { timeoutMs: 270_000 },
-      },
-    ],
-  );
 });
 
 test("NDJSON reader 在 JSON parse 前拒绝 32 MiB 以上单帧", async () => {
@@ -533,7 +528,11 @@ test("CDS Node client 以字节边界消费拆分 Unicode NDJSON", async (t) => 
   });
   const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
   const frames = [];
-  for await (const frame of client.syncMessagesPullStream({ requests: [] })) {
+  for await (const frame of client.requestNdjson(
+    "POST",
+    "/v2/sync/messages/pull",
+    { topics: [] },
+  )) {
     frames.push(frame);
   }
   assert.deepEqual(frames, [{ topicId: "主题", messages: [] }]);

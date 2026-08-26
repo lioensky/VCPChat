@@ -29,9 +29,8 @@ const {
 } = require("./transport/routes");
 const {
   handleSyncManifest,
-  handleMessageManifest,
 } = require("./sync/manifest");
-const { handleSyncMessageDiffBatch } = require("./sync/diff");
+const { handleSyncMessageDiff, handleSyncTopicDiff } = require("./sync/diff");
 const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const {
@@ -134,10 +133,10 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
       const logger = getLogger();
 
       switch (payload.type) {
-        case "SYNC_MANIFEST": {
-          logger.logOperation("websocket", "message", payload.type, "info", `dataType=${payload.dataType}`);
+        case "SYNC_MANIFEST_REQUEST": {
+          logger.logOperation("websocket", "message", payload.type, "info", `manifestType=${payload.manifestType}`);
 
-          if (payload.dataType === "avatar" && !centralSync) {
+          if (payload.manifestType === "avatar" && !centralSync) {
             await reconcileAvatarFiles(appDataPath);
           }
 
@@ -146,30 +145,24 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           }
           return handleSyncManifest(payload);
         }
-        case "GET_MESSAGE_MANIFEST": {
-          logger.logOperation("websocket", "message", payload.type, "info", `topicId=${payload.topicId}`);
-          return centralSync
-            ? centralSync.handleMessageManifest(payload)
-            : handleMessageManifest(payload);
-        }
-        case "SYNC_TOPIC_HASH_BATCH_V2": {
+        case "SYNC_TOPIC_DIFF_REQUEST": {
           const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
           if (centralSync) {
-            return centralSync.handleTopicHashBatch(payload);
+            return centralSync.handleTopicDiff(payload);
           }
-          const { handleSyncTopicHashBatchV2 } = require("./sync/diff");
-          return handleSyncTopicHashBatchV2(payload);
+          return handleSyncTopicDiff(payload);
         }
-        case "SYNC_MESSAGE_DIFF_BATCH": {
+        case "SYNC_MESSAGE_DIFF_REQUEST": {
           const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
           return centralSync
-            ? centralSync.handleMessageDiffBatch(payload)
-            : handleSyncMessageDiffBatch(payload);
+            ? centralSync.handleMessageDiff(payload)
+            : handleSyncMessageDiff(payload);
         }
         case "PHASE_START": {
-          const phase = payload.phase || "owner_metadata";
+          const ack = createPhaseAck(payload);
+          const phase = ack.phase;
           logger.startPhase(phase, 0);
 
           // Mobile 会在首批 Owner Manifest 前发送 owner_metadata PHASE_START。
@@ -202,10 +195,11 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             }
           }
 
-          return createPhaseAck(payload);
+          return ack;
         }
         case "PHASE_COMPLETED": {
-          const phase = payload.phase || "owner_metadata";
+          const ack = createPhaseAck(payload, { echoFinalIdentity: true });
+          const phase = ack.phase;
           if (
             centralSync &&
             (phase === "owner_metadata" || phase === "topic_metadata")
@@ -216,7 +210,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             await centralSync.reconcile();
           }
           logger.completePhase(phase);
-          return createPhaseAck(payload, { echoFinalIdentity: true });
+          return ack;
         }
         case "VERSION_CHECK": {
           const manifest = require("./plugin-manifest.json");
@@ -225,110 +219,78 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         }
         case "SYNC_ENTITY_DELETE": {
           const {
-            id: rawId,
-            dataType,
+            targetType,
             topicId,
-            ownerType: rawOwnerType,
-            ownerId: rawOwnerId,
+            msgId,
+            ownerType,
+            ownerId,
+            deletedAt,
           } = payload;
-          const deletedAt = payload.deletedAt;
-          let safeId = "";
-          let avatarOwnerType = null;
-          if (dataType === "avatar" && typeof rawId === "string") {
-            const separator = rawId.indexOf(":");
-            if (separator > 0 && separator === rawId.lastIndexOf(":")) {
-              avatarOwnerType = rawId.slice(0, separator);
-              const ownerId = rawId.slice(separator + 1);
-              if (
-                ["agent", "group", "user"].includes(avatarOwnerType) &&
-                sanitizeId(ownerId) === ownerId &&
-                (avatarOwnerType !== "user" || ownerId === "user_avatar")
-              ) {
-                safeId = ownerId;
-              }
-            }
-          } else if (typeof rawId === "string" && sanitizeId(rawId) === rawId) {
-            safeId = rawId;
-          }
-
+          const validOwnerType = targetType === "avatar"
+            ? ["agent", "group", "user"].includes(ownerType)
+            : ["agent", "group"].includes(ownerType);
           if (
-            !safeId ||
-            ![
-              "agent",
-              "group",
-              "topic",
-              "agent_topic",
-              "group_topic",
-              "avatar",
-              "message",
-            ].includes(dataType) ||
+            !["owner", "topic", "avatar", "message"].includes(targetType) ||
+            !validOwnerType ||
+            typeof ownerId !== "string" ||
+            !ownerId ||
+            sanitizeId(ownerId) !== ownerId ||
+            (ownerType === "user" && ownerId !== "user_avatar") ||
             !Number.isSafeInteger(deletedAt) ||
             deletedAt < 0
           ) {
             const error = new Error(
-              "SYNC_ENTITY_DELETE requires id, dataType and non-negative integer deletedAt",
+              "SYNC_ENTITY_DELETE requires targetType, full owner identity and deletedAt",
             );
             error.code = "SYNC_DELETE_INVALID";
             throw error;
           }
-
-          const isTopicDelete = [
-            "topic",
-            "agent_topic",
-            "group_topic",
-          ].includes(dataType);
+          const isTopicDelete = targetType === "topic";
+          const isMessageDelete = targetType === "message";
           if (
-            isTopicDelete &&
-            (
-              !["agent", "group"].includes(rawOwnerType) ||
-              typeof rawOwnerId !== "string" ||
-              rawOwnerId.length === 0 ||
-              sanitizeId(rawOwnerId) !== rawOwnerId ||
-              (dataType === "agent_topic" && rawOwnerType !== "agent") ||
-              (dataType === "group_topic" && rawOwnerType !== "group")
-            )
+            (isTopicDelete || isMessageDelete) &&
+            (typeof topicId !== "string" || !topicId || sanitizeId(topicId) !== topicId)
           ) {
             const error = new Error(
-              "Topic delete ownerType/ownerId must be a complete valid identity",
+              "Topic and message deletion require a complete topic identity",
             );
+            error.code = "SYNC_DELETE_INVALID";
+            throw error;
+          }
+          if (
+            isMessageDelete &&
+            (typeof msgId !== "string" || !msgId || sanitizeId(msgId) !== msgId)
+          ) {
+            const error = new Error("Message deletion requires a valid msgId");
             error.code = "SYNC_DELETE_INVALID";
             throw error;
           }
           const entityDeleteContext = {
             code: "SYNC_DELETE_FAILED",
-            stage: isTopicDelete ? "topic_metadata" : "owner_metadata",
-            failedTopicIds: isTopicDelete ? [safeId] : [],
+            stage: isMessageDelete
+              ? "messages"
+              : isTopicDelete
+                ? "topic_metadata"
+                : "owner_metadata",
+            failedTopicIds: isTopicDelete || isMessageDelete ? [topicId] : [],
           };
 
           if (centralSync) {
-            if (dataType === "message") {
-              if (
-                typeof topicId !== "string" ||
-                !sanitizeId(topicId) ||
-                sanitizeId(topicId) !== topicId ||
-                !["agent", "group"].includes(rawOwnerType) ||
-                typeof rawOwnerId !== "string" ||
-                sanitizeId(rawOwnerId) !== rawOwnerId
-              ) {
-                const error = new Error(
-                  "Message delete requires a non-empty topicId",
-                );
-                error.code = "SYNC_DELETE_INVALID";
-                throw error;
-              }
+            if (isMessageDelete) {
               await centralSync.deleteMessage({
-                topicId: sanitizeId(topicId),
-                ownerType: rawOwnerType,
-                ownerId: rawOwnerId,
-                msgId: safeId,
+                topicId,
+                ownerType,
+                ownerId,
+                msgId,
                 deletedAt,
               });
             } else {
+              const physicalType = targetType === "owner" ? ownerType : targetType;
               const result = await deleteEntity({
-                id: safeId,
-                type: dataType,
-                ownerType: isTopicDelete ? rawOwnerType : avatarOwnerType,
-                ownerId: isTopicDelete ? rawOwnerId : null,
+                id: isTopicDelete ? topicId : ownerId,
+                type: physicalType,
+                ownerType: isTopicDelete || targetType === "avatar" ? ownerType : null,
+                ownerId: isTopicDelete ? ownerId : null,
                 deletedAt,
                 appDataPath,
                 persistAvatarIndex: false,
@@ -340,60 +302,41 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 );
               }
               await centralSync.deleteEntityTombstone({
-                dataType: isTopicDelete ? "topic" : dataType,
-                id: safeId,
+                targetType,
+                ownerType: isTopicDelete ? result.ownerType : ownerType,
+                ownerId: isTopicDelete ? result.ownerId : ownerId,
+                ...(isTopicDelete ? { topicId } : {}),
                 deletedAt,
-                ...(isTopicDelete
-                  ? {
-                      ownerType: result.ownerType,
-                      ownerId: result.ownerId,
-                    }
-                  : {}),
-                ...(dataType === "avatar"
-                  ? { ownerType: avatarOwnerType }
-                  : {}),
               });
             }
             return null;
           }
 
-          if (dataType === "message") {
-            const safeTopicId = sanitizeId(topicId);
-            if (
-              !safeTopicId ||
-              safeTopicId !== topicId ||
-              !["agent", "group"].includes(rawOwnerType) ||
-              typeof rawOwnerId !== "string" ||
-              sanitizeId(rawOwnerId) !== rawOwnerId
-            ) {
-              const error = new Error("Message delete requires a non-empty topicId");
-              error.code = "SYNC_DELETE_INVALID";
-              throw error;
-            }
+          if (isMessageDelete) {
             const result = await deleteMessage({
-              msgId: safeId,
+              msgId,
               deletedAt,
-              topicId: safeTopicId,
-              ownerType: rawOwnerType,
-              ownerId: rawOwnerId,
+              topicId,
+              ownerType,
+              ownerId,
               appDataPath,
             });
             if (!result?.success) {
               throw withSyncErrorContext(
-                result?.error || "message delete failed",
-                {
-                  code: "SYNC_DELETE_FAILED",
-                  stage: "messages",
-                  failedTopicIds: [safeTopicId],
-                },
-              );
+                  result?.error || "message delete failed",
+                  {
+                    code: "SYNC_DELETE_FAILED",
+                    stage: "messages",
+                    failedTopicIds: [topicId],
+                  },
+                );
             }
-            logger.logOperation("websocket", "delete_notify", safeId, "success", "type=message");
-          } else if (dataType === "avatar") {
+            logger.logOperation("websocket", "delete_notify", msgId, "success", "type=message");
+          } else if (targetType === "avatar") {
             const result = await deleteEntity({
-              id: safeId,
+              id: ownerId,
               type: "avatar",
-              ownerType: avatarOwnerType,
+              ownerType,
               deletedAt,
               appDataPath,
             });
@@ -403,13 +346,14 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 entityDeleteContext,
               );
             }
-            logger.logOperation("websocket", "delete_notify", rawId, "success", "type=avatar");
+            logger.logOperation("websocket", "delete_notify", ownerId, "success", "type=avatar");
           } else {
+            const physicalType = targetType === "owner" ? ownerType : "topic";
             const result = await deleteEntity({
-              id: safeId,
-              type: dataType,
-              ownerType: isTopicDelete ? rawOwnerType : null,
-              ownerId: isTopicDelete ? rawOwnerId : null,
+              id: isTopicDelete ? topicId : ownerId,
+              type: physicalType,
+              ownerType: isTopicDelete ? ownerType : null,
+              ownerId: isTopicDelete ? ownerId : null,
               deletedAt,
               appDataPath,
             });
@@ -419,7 +363,13 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 entityDeleteContext,
               );
             }
-            logger.logOperation("websocket", "delete_notify", safeId, "success", `type=${dataType}`);
+            logger.logOperation(
+              "websocket",
+              "delete_notify",
+              isTopicDelete ? topicId : ownerId,
+              "success",
+              `type=${targetType}`,
+            );
           }
 
           return null;
@@ -776,7 +726,7 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
           });
           if (previous?.deleted_at != null) continue;
           const topicDto = extractTopicDTO(topic, id, type);
-          const topicHash = computeDtoHash(
+          const configHash = computeDtoHash(
             topicDto,
             type === "group"
               ? GROUP_TOPIC_SYNC_FIELDS
@@ -786,7 +736,7 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
             ownerType: type,
             ownerId: id,
             topicId: topic.id,
-            configHash: topicHash,
+            configHash,
             updatedAt: now,
           });
           topicCount += 1;
@@ -1200,7 +1150,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
         });
         if (previous?.deleted_at != null) continue;
         const topicDto = extractTopicDTO(topic, id, type);
-        const topicHash = computeDtoHash(
+        const configHash = computeDtoHash(
           topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
@@ -1208,7 +1158,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
           ownerType: type,
           ownerId: id,
           topicId: topic.id,
-          configHash: topicHash,
+          configHash,
           updatedAt: now,
         });
         topicLen += 1;

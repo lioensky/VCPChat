@@ -6,38 +6,27 @@ const { test } = require("node:test");
 const {
   createCentralSyncAdapter: createAdapter,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/central");
-const {
-  ChatDataServiceClient,
-} = require("../modules/services/chatDataService/client");
-
 function createClient(overrides = {}) {
   return {
     reconcile: async () => ({ stats: {} }),
-    syncManifest: async (request) => ({ type: "SYNC_DIFF_RESULTS", data: [], ...request }),
-    syncMessageManifest: async () => ({
-      type: "MESSAGE_MANIFEST_RESULTS",
-      topicId: "topic_1",
-      ownerType: "agent",
-      ownerId: "agent_1",
-      messages: [
-        {
-          msgId: "msg_1",
-          contentHash: "a".repeat(64),
-          updatedAt: 100,
-          deletedAt: null,
-        },
-      ],
-    }),
-    syncTopicDiff: async () => ({
-      type: "SYNC_TOPIC_HASH_RESULTS",
-      changedTopics: [],
-    }),
-    syncMessageDiff: async () => ({
-      type: "SYNC_DIFF_RESULTS_BATCH",
-      results: [],
-    }),
-    syncEntitiesPull: async () => [],
-    syncEntityDelete: async () => ({ success: true }),
+    request: async (_method, path, body) => {
+      if (path === "/v2/sync/manifest") {
+        return {
+          type: "SYNC_MANIFEST_RESULT",
+          manifestType: body.manifestType,
+          results: [],
+        };
+      }
+      if (path === "/v2/sync/topic-diff") {
+        return { type: "SYNC_TOPIC_DIFF_RESULT", changedTopics: [] };
+      }
+      if (path === "/v2/sync/message-diff") {
+        return { type: "SYNC_MESSAGE_DIFF_RESULT", results: [] };
+      }
+      if (path === "/v2/sync/entities/pull") return { results: [] };
+      if (path === "/v2/sync/entities/delete") return { ok: true };
+      throw new Error(`unexpected request path ${path}`);
+    },
     ...overrides,
   };
 }
@@ -46,132 +35,103 @@ function createCentralSyncAdapter(chatDataService) {
   return createAdapter({ chatDataService });
 }
 
-function topicState(overrides = {}) {
+function topicIdentity() {
   return {
     topicId: "topic-a",
     ownerType: "agent",
     ownerId: "agent-a",
-    topicHash: "",
+  };
+}
+
+function topicState(overrides = {}) {
+  return {
+    ...topicIdentity(),
+    contentHash: "",
     messages: {},
     ...overrides,
   };
 }
 
-test("中央适配器保持 Mobile 消息 Manifest 字段格式", async () => {
-  const adapter = createCentralSyncAdapter({
-    client: createClient(),
-  });
-
-  const result = await adapter.handleMessageManifest({
-    topicId: "topic_1",
-    ownerType: "agent",
-    ownerId: "agent_1",
-  });
-
-  assert.equal(result.type, "MESSAGE_MANIFEST_RESULTS");
-  assert.deepEqual(result.messages, [
-    {
-      msg_id: "msg_1",
-      content_hash: "a".repeat(64),
-      updated_at: 100,
-      deleted_at: null,
-    },
-  ]);
-});
-
 test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
   let captured;
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncManifest: async (request) => {
-        captured = request;
-        return { type: "SYNC_DIFF_RESULTS", data: [], dataType: request.dataType };
+      request: async (...args) => {
+        captured = args;
+        return {
+          type: "SYNC_MANIFEST_RESULT",
+          manifestType: "topic",
+          results: [],
+        };
       },
     }),
   });
 
   const result = await adapter.handleSyncManifest({
-    dataType: "topic",
-    data: [{ id: "topic_1", hash: "remote" }],
+    type: "SYNC_MANIFEST_REQUEST",
+    manifestType: "topic",
+    items: [],
     targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
-    phase: 2,
   });
 
-  assert.deepEqual(captured, {
-    dataType: "topic",
-    data: [{ id: "topic_1", hash: "remote" }],
-    targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
+  assert.deepEqual(captured, [
+    "POST",
+    "/v2/sync/manifest",
+    {
+      manifestType: "topic",
+      items: [],
+      targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
+    },
+  ]);
+  assert.deepEqual(result, {
+    type: "SYNC_MANIFEST_RESULT",
+    manifestType: "topic",
+    results: [],
   });
-  // 移动端 diff_handler 对 SYNC_DIFF_RESULTS.phase 是硬门禁，中央路径必须回填
-  assert.equal(result.phase, 2);
 });
 
 test("中央实体 Pull 将复合身份原样转发给 CDS", async () => {
   let captured;
-  const response = [{
-    id: "topic_1",
-    type: "agent_topic",
+  const response = { results: [{
+    entityType: "topic",
     ownerType: "agent",
     ownerId: "agent_1",
-    success: true,
+    topicId: "topic_1",
+    ok: true,
     data: { id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false, ownerId: "agent_1" },
-  }];
+  }] };
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncEntitiesPull: async (request) => {
-        captured = request;
+      request: async (...args) => {
+        captured = args;
         return response;
       },
     }),
   });
-  const requests = [{
-    id: "topic_1",
-    type: "agent_topic",
+  const items = [{
+    entityType: "topic",
     ownerType: "agent",
     ownerId: "agent_1",
+    topicId: "topic_1",
   }];
 
-  assert.deepEqual(await adapter.downloadEntities(requests), response);
-  assert.deepEqual(captured, { requests });
-});
-
-test("中央适配器拒绝 phase 与 dataType 不匹配的 Manifest", async () => {
-  const adapter = createCentralSyncAdapter({
-    client: createClient(),
-  });
-
-  await assert.rejects(
-    adapter.handleSyncManifest({
-      dataType: "topic",
-      data: [],
-      targetedOwners: [{ ownerType: "agent", ownerId: "agent_1" }],
-      phase: 1,
-    }),
-    (error) => error.code === "SYNC_PROTOCOL_INVALID",
-  );
-  await assert.rejects(
-    adapter.handleSyncManifest({
-      dataType: "owner",
-      data: [],
-      phase: 2,
-    }),
-    (error) => error.code === "SYNC_PROTOCOL_INVALID",
-  );
+  assert.deepEqual(await adapter.pullEntities(items), response.results);
+  assert.deepEqual(captured, ["POST", "/v2/sync/entities/pull", { items }]);
 });
 
 test("中央适配器拒绝缺失 ownerType 的 CDS Owner action", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncManifest: async () => ({
-        type: "SYNC_DIFF_RESULTS",
-        dataType: "owner",
-        data: [{ id: "agent-a", action: "PULL" }],
+      request: async () => ({
+        type: "SYNC_MANIFEST_RESULT",
+        manifestType: "owner",
+        results: [{ ownerId: "agent-a", action: "PULL" }],
       }),
     }),
   });
 
   await assert.rejects(
-    adapter.handleSyncManifest({ dataType: "owner", data: [], phase: 1 }),
+    adapter.handleSyncManifest({ manifestType: "owner", items: [] }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
 });
@@ -187,10 +147,10 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
   };
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncTopicDiff: async (request) => {
-        captured = request;
+      request: async (...args) => {
+        captured = args;
         return {
-          type: "SYNC_TOPIC_HASH_RESULTS",
+          type: "SYNC_TOPIC_DIFF_RESULT",
           changedTopics: [{
             topicId: state.topicId,
             ownerType: state.ownerType,
@@ -201,17 +161,16 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
     }),
   });
 
-  const result = await adapter.handleTopicHashBatch({
-    hashes: {
-      topic_1: {
-        configHash: state.configHash,
-        contentHash: state.contentHash,
-      },
-    },
+  const result = await adapter.handleTopicDiff({
     topics: [state],
   });
 
-  assert.deepEqual(captured, { topics: [state] });
+  assert.deepEqual(captured, [
+    "POST",
+    "/v2/sync/topic-diff",
+    { topics: [state] },
+    { timeoutMs: 270_000 },
+  ]);
   assert.deepEqual(result.changedTopics, [{
     topicId: "topic_1",
     ownerType: "agent",
@@ -276,7 +235,7 @@ test("CDS 不可用时中央适配器显式失败而非静默写旧库", async (
   const adapter = createCentralSyncAdapter(null);
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: [] }),
+    () => adapter.handleMessageDiff({ topics: [] }),
     (error) => error.code === "CDS_UNAVAILABLE",
   );
 });
@@ -287,14 +246,14 @@ test("中央适配器保留未知 CDS 根因并补齐来源、阶段与 Topic", 
   });
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncMessageDiff: async () => {
+      request: async () => {
         throw root;
       },
     }),
   });
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: [topicState()] }),
+    () => adapter.handleMessageDiff({ topics: [topicState()] }),
     (error) => {
       assert.equal(error.code, "UPSTREAM_EXTENSION_FAILED");
       assert.equal(error.origin, "desktop_cds");
@@ -310,14 +269,14 @@ test("中央适配器保留未知 CDS 根因并补齐来源、阶段与 Topic", 
 test("中央客户端通用 TIMEOUT 不会被误归为内部错误", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncTopicDiff: async () => {
+      request: async () => {
         throw Object.assign(new Error("CDS timed out"), { code: "TIMEOUT" });
       },
     }),
   });
 
   await assert.rejects(
-    () => adapter.handleTopicHashBatch({ hashes: {}, topics: [] }),
+    () => adapter.handleTopicDiff({ topics: [] }),
     (error) => {
       assert.equal(error.code, "TIMEOUT");
       assert.equal(error.origin, "desktop_cds");
@@ -331,7 +290,7 @@ test("中央客户端通用 TIMEOUT 不会被误归为内部错误", async () =>
 test("CDS internal protocol mismatch 不会冒充 Mobile wire mismatch", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncTopicDiff: async () => {
+      request: async () => {
         throw Object.assign(new Error("CDS protocol 2 mismatch"), {
           code: "PROTOCOL_MISMATCH",
         });
@@ -340,7 +299,7 @@ test("CDS internal protocol mismatch 不会冒充 Mobile wire mismatch", async (
   });
 
   await assert.rejects(
-    () => adapter.handleTopicHashBatch({ hashes: {}, topics: [] }),
+    () => adapter.handleTopicDiff({ topics: [] }),
     (error) => {
       assert.equal(error.code, "CDS_PROTOCOL_MISMATCH");
       assert.equal(error.origin, "desktop_cds");
@@ -351,18 +310,19 @@ test("CDS internal protocol mismatch 不会冒充 Mobile wire mismatch", async (
   );
 });
 
-test("中央 Phase 3 的二字段错误会在插件边界补全而不改写根因", async () => {
+test("中央 Phase 3 的 CDS item error 会在插件边界补全而不改写根因", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncMessageDiff: async () => ({
-        type: "SYNC_DIFF_RESULTS_BATCH",
+      request: async () => ({
+        type: "SYNC_MESSAGE_DIFF_RESULT",
         results: [
           {
-            ...topicState(),
+            ...topicIdentity(),
             ok: false,
             error: {
               code: "TOPIC_HASH_FAILED",
               message: "failed to read topic hash",
+              retryable: false,
             },
           },
         ],
@@ -370,7 +330,7 @@ test("中央 Phase 3 的二字段错误会在插件边界补全而不改写根�
     }),
   });
 
-  const response = await adapter.handleMessageDiffBatch({
+  const response = await adapter.handleMessageDiff({
     topics: [topicState()],
   });
   assert.deepEqual(response.results[0], {
@@ -393,15 +353,20 @@ test("中央 Phase 3 的二字段错误会在插件边界补全而不改写根�
 test("中央适配器将畸形 CDS Phase 3 成功帧归为上游协议错误", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncMessageDiff: async () => ({
-        type: "SYNC_DIFF_RESULTS_BATCH",
+      request: async () => ({
+        type: "SYNC_MESSAGE_DIFF_RESULT",
         results: [
           {
-            ...topicState(),
+            ...topicIdentity(),
             ok: true,
-            toPull: [],
-            toPush: false,
-            error: { code: "INTERNAL_ERROR", message: "contradictory" },
+            pullMessageIds: [],
+            pushTopic: false,
+            deleteMessages: [],
+            error: {
+              code: "INTERNAL_ERROR",
+              message: "contradictory",
+              retryable: false,
+            },
           },
         ],
       }),
@@ -409,7 +374,7 @@ test("中央适配器将畸形 CDS Phase 3 成功帧归为上游协议错误", a
   });
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: [topicState()] }),
+    () => adapter.handleMessageDiff({ topics: [topicState()] }),
     (error) => {
       assert.equal(error.code, "SYNC_PROTOCOL_INVALID");
       assert.equal(error.origin, "desktop_cds");
@@ -424,22 +389,22 @@ test("中央适配器将畸形 CDS Phase 3 成功帧归为上游协议错误", a
 test("中央适配器严格保留 Phase 3 message tombstone 决策", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncMessageDiff: async () => ({
-        type: "SYNC_DIFF_RESULTS_BATCH",
+      request: async () => ({
+        type: "SYNC_MESSAGE_DIFF_RESULT",
         results: [
           {
-            ...topicState(),
+            ...topicIdentity(),
             ok: true,
-            toPull: ["message-pull"],
-            toPush: false,
-            toDelete: [{ msgId: "message-delete", deletedAt: 321 }],
+            pullMessageIds: ["message-pull"],
+            pushTopic: false,
+            deleteMessages: [{ msgId: "message-delete", deletedAt: 321 }],
           },
         ],
       }),
     }),
   });
 
-  const response = await adapter.handleMessageDiffBatch({
+  const response = await adapter.handleMessageDiff({
     topics: [topicState()],
   });
   assert.deepEqual(response.results[0], {
@@ -447,23 +412,23 @@ test("中央适配器严格保留 Phase 3 message tombstone 决策", async () =>
     ownerType: "agent",
     ownerId: "agent-a",
     ok: true,
-    toPull: ["message-pull"],
-    toPush: false,
-    toDelete: [{ msgId: "message-delete", deletedAt: 321 }],
+    pullMessageIds: ["message-pull"],
+    pushTopic: false,
+    deleteMessages: [{ msgId: "message-delete", deletedAt: 321 }],
   });
 });
 
-test("中央适配器拒绝缺失 toDelete 的漂移 CDS 成功帧", async () => {
+test("中央适配器拒绝缺失 deleteMessages 的漂移 CDS 成功帧", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncMessageDiff: async () => ({
-        type: "SYNC_DIFF_RESULTS_BATCH",
+      request: async () => ({
+        type: "SYNC_MESSAGE_DIFF_RESULT",
         results: [
           {
-            ...topicState(),
+            ...topicIdentity(),
             ok: true,
-            toPull: [],
-            toPush: false,
+            pullMessageIds: [],
+            pushTopic: false,
           },
         ],
       }),
@@ -471,7 +436,7 @@ test("中央适配器拒绝缺失 toDelete 的漂移 CDS 成功帧", async () =>
   });
 
   await assert.rejects(
-    () => adapter.handleMessageDiffBatch({ topics: [topicState()] }),
+    () => adapter.handleMessageDiff({ topics: [topicState()] }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
 });
@@ -480,61 +445,62 @@ test("中央适配器按复合 owner 身份转发 topic 实体墓碑", async () 
   let captured;
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncEntityDelete: async (request) => {
-        captured = request;
-        return { success: true };
+      request: async (...args) => {
+        captured = args;
+        return { ok: true };
       },
     }),
   });
 
-  const result = await adapter.deleteEntityTombstone({
-    dataType: "topic",
-    id: "topic-a",
+  const target = {
+    targetType: "topic",
     ownerType: "group",
     ownerId: "group-a",
+    topicId: "topic-a",
     deletedAt: 123,
-  });
+  };
+  const result = await adapter.deleteEntityTombstone(target);
 
-  assert.deepEqual(captured, {
-    dataType: "topic",
-    id: "topic-a",
-    ownerType: "group",
-    ownerId: "group-a",
-    deletedAt: 123,
-  });
-  assert.deepEqual(result, { success: true });
+  assert.deepEqual(captured, [
+    "POST",
+    "/v2/sync/entities/delete",
+    target,
+  ]);
+  assert.deepEqual(result, { ok: true });
 });
 
-test("中央适配器转发 owner 墓碑时不携带 topic owner 字段", async () => {
+test("中央适配器原样转发完整 owner 墓碑", async () => {
   let captured;
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncEntityDelete: async (request) => {
-        captured = request;
-        return { success: true };
+      request: async (...args) => {
+        captured = args;
+        return { ok: true };
       },
     }),
   });
 
-  const result = await adapter.deleteEntityTombstone({
-    dataType: "agent",
-    id: "agent-a",
+  const target = {
+    targetType: "owner",
+    ownerType: "agent",
+    ownerId: "agent-a",
     deletedAt: 456,
-  });
+  };
+  const result = await adapter.deleteEntityTombstone(target);
 
-  assert.deepEqual(captured, {
-    dataType: "agent",
-    id: "agent-a",
-    deletedAt: 456,
-  });
-  assert.deepEqual(result, { success: true });
+  assert.deepEqual(captured, [
+    "POST",
+    "/v2/sync/entities/delete",
+    target,
+  ]);
+  assert.deepEqual(result, { ok: true });
 });
 
 test("中央适配器在调用 CDS 前拒绝缺失 owner 身份的 topic 墓碑", async () => {
   let called = false;
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncEntityDelete: async () => {
+      request: async () => {
         called = true;
       },
     }),
@@ -542,9 +508,9 @@ test("中央适配器在调用 CDS 前拒绝缺失 owner 身份的 topic 墓碑"
 
   await assert.rejects(
     () => adapter.deleteEntityTombstone({
-      dataType: "topic",
-      id: "topic-a",
+      targetType: "topic",
       ownerType: "agent",
+      topicId: "topic-a",
       deletedAt: 123,
     }),
     (error) => error?.code === "SYNC_DELETE_INVALID",
@@ -555,67 +521,17 @@ test("中央适配器在调用 CDS 前拒绝缺失 owner 身份的 topic 墓碑"
 test("中央适配器把畸形 CDS 墓碑响应归为协议错误", async () => {
   const adapter = createCentralSyncAdapter({
     client: createClient({
-      syncEntityDelete: async () => ({ success: false }),
+      request: async () => ({ ok: false }),
     }),
   });
 
   await assert.rejects(
     () => adapter.deleteEntityTombstone({
-      dataType: "group",
-      id: "group-a",
+      targetType: "owner",
+      ownerType: "group",
+      ownerId: "group-a",
       deletedAt: 123,
     }),
     (error) => error?.code === "SYNC_PROTOCOL_INVALID",
   );
-});
-
-test("CDS Node client 使用受保护的实体墓碑端点", async () => {
-  const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
-  let captured;
-  client.request = async (...args) => {
-    captured = args;
-    return { success: true };
-  };
-  const request = {
-    dataType: "topic",
-    id: "topic-a",
-    ownerType: "agent",
-    ownerId: "agent-a",
-    deletedAt: 123,
-  };
-
-  await client.syncEntityDelete(request, { signal: "signal" });
-
-  assert.deepEqual(captured, [
-    "POST",
-    "/v1/sync/entity-delete",
-    request,
-    { signal: "signal" },
-  ]);
-});
-
-test("CDS Node client 使用实体批量 Pull 端点", async () => {
-  const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
-  let captured;
-  client.request = async (...args) => {
-    captured = args;
-    return [];
-  };
-  const request = {
-    requests: [{
-      id: "topic-a",
-      type: "agent_topic",
-      ownerType: "agent",
-      ownerId: "agent-a",
-    }],
-  };
-
-  await client.syncEntitiesPull(request, { signal: "signal" });
-
-  assert.deepEqual(captured, [
-    "POST",
-    "/v2/sync/entities/pull",
-    request,
-    { signal: "signal" },
-  ]);
 });

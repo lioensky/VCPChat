@@ -347,55 +347,6 @@ class ChatDataServiceClient {
         return this.request('POST', '/v1/search/memories', request, options);
     }
 
-    syncManifest(request, options) {
-        return this.request('POST', '/v1/sync/manifest', request, options);
-    }
-
-    syncMessageManifest(request, options) {
-        return this.request('POST', '/v1/sync/message-manifest', request, options);
-    }
-
-    syncTopicIdentity(request, options) {
-        return this.request('POST', '/v2/sync/topic-identity', request, options);
-    }
-
-    syncEntitiesPull(request, options) {
-        return this.request('POST', '/v2/sync/entities/pull', request, options);
-    }
-
-    syncTopicDiff(request, options) {
-        return this.request('POST', '/v1/sync/topic-diff', request, {
-            timeoutMs: 270_000,
-            ...options
-        });
-    }
-
-    syncMessageDiff(request, options) {
-        return this.request('POST', '/v1/sync/message-diff', request, {
-            timeoutMs: 270_000,
-            ...options
-        });
-    }
-
-    syncEntityDelete(request, options) {
-        return this.request('POST', '/v1/sync/entity-delete', request, options);
-    }
-
-    // 消息拉取只走 v2 流式端点，以 per-topic `_error` 帧隔离单 Topic 失败。
-    syncMessagesPullStream(request, options) {
-        return this.requestNdjson('POST', '/v2/sync/messages/pull', request, {
-            timeoutMs: 270_000,
-            ...options
-        });
-    }
-
-    syncMessagesPushTopic(topic, options) {
-        return this.request('POST', '/v2/sync/messages/push-topic', topic, {
-            timeoutMs: 270_000,
-            ...options
-        });
-    }
-
     flush(options) {
         return this.request('POST', '/v1/flush', {}, options);
     }

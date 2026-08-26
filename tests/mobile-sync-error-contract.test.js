@@ -198,7 +198,8 @@ test("WebSocket, HTTP and NDJSON reuse the same error object", () => {
   });
   assert.deepEqual(createHttpErrorBody(error), { error: expected });
   assert.deepEqual(createStreamErrorFrame(error), {
-    _stream_error: expected,
+    kind: "streamError",
+    error: expected,
   });
   assert.deepEqual(
     normalizeFailureResult(
@@ -373,8 +374,8 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       if (payload.type === "VERSION_CHECK") {
         return {
           type: "VERSION_ACK",
-          pluginVersion: "1.3.0",
-          protocolVersion: "1.3",
+          pluginVersion: "1.4.0",
+          protocolVersion: "1.4",
         };
       }
       throw Object.assign(new Error("owner identity conflict"), {
@@ -395,13 +396,13 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
   socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
     mobileVersion: "1.1.4",
-    protocolVersion: "1.3",
+    protocolVersion: "1.4",
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
 
   socket.emit(
     "message",
-    JSON.stringify({ type: "SYNC_TOPIC_HASH_BATCH_V2", topics: [] }),
+    JSON.stringify({ type: "SYNC_TOPIC_DIFF_REQUEST", topics: [] }),
   );
   assert.deepEqual(await nextFrame("SYNC_ERROR"), {
     type: "SYNC_ERROR",
@@ -430,11 +431,11 @@ test("HTTP route handlers return the same structured error contract", async () =
   });
   assert.equal(app.mountPath, "/api/mobile-sync");
   const route = app.router.layers.find(
-    (layer) => layer.method === "POST" && layer.path === "/download-entities",
+    (layer) => layer.method === "POST" && layer.path === "/entities/pull",
   );
   const response = new FakeHttpResponse();
   await route.handlers.at(-1)(
-    { body: { requests: "not-an-array" }, query: {}, path: route.path },
+    { body: { items: "not-an-array" }, query: {}, path: route.path },
     response,
   );
   assert.equal(response.statusCode, 400);
@@ -445,7 +446,7 @@ test("HTTP route handlers return the same structured error contract", async () =
       stage: "owner_metadata",
       kind: "protocol",
       retry: "after_user_action",
-      message: "requests must be an array of at most 1000 items",
+      message: "items must be an array of at most 1000 entities",
       failedTopicIds: [],
     },
   });

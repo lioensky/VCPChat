@@ -177,11 +177,11 @@ async function writeHistoryAtomic(filePath, history, expectedSourceHash) {
  * 每个 topic 独立读取 history.json 后立即 flush，手机端逐行消费，
  * 不缓冲整个响应。单 topic 失败只影响自身，不中断流。
  *
- * @param {object[]} requests - [{ topicId, msgIds: string[] }]
+ * @param {object[]} topics - [{ ownerType, ownerId, topicId, messageIds }]
  * @param {string} appDataPath - AppData 路径
  * @param {object} res - Express response (用于流式写入)
  */
-async function downloadMessagesStreamRaw(requests, appDataPath, res) {
+async function pullMessagesStreamRaw(topics, appDataPath, res) {
   const logger = getLogger();
   const db = getDb();
   if (!db) {
@@ -192,13 +192,13 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
     return;
   }
   if (
-    !Array.isArray(requests) ||
-    requests.length === 0 ||
-    requests.some((request) => !request || typeof request !== "object")
+    !Array.isArray(topics) ||
+    topics.length === 0 ||
+    topics.some((topic) => !topic || typeof topic !== "object")
   ) {
     throw createSyncError(
       "SYNC_REQUEST_INVALID",
-      "Message pull requires non-empty object requests",
+      "Message pull requires non-empty topic selectors",
       { stage: "messages" },
     );
   }
@@ -213,14 +213,14 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
   const writer = new NdjsonWriter(res);
   const seenTopics = new Set();
   let requestedMessages = 0;
-  if (requests.length > MAX_NDJSON_TOPICS) {
+  if (topics.length > MAX_NDJSON_TOPICS) {
     throw createSyncError(
       "SYNC_BUDGET_EXCEEDED",
       "Message pull exceeds 10000 topics",
       { stage: "messages" },
     );
   }
-  for (const { topicId, ownerType, ownerId, msgIds = [] } of requests) {
+  for (const { topicId, ownerType, ownerId, messageIds } of topics) {
     const safeTopicId = sanitizeId(topicId);
     try {
       if (!safeTopicId || safeTopicId !== topicId) {
@@ -231,9 +231,9 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
         );
       }
       if (
-        !Array.isArray(msgIds) ||
-        new Set(msgIds).size !== msgIds.length ||
-        msgIds.some((id) => typeof id !== "string" || id.length === 0)
+        !Array.isArray(messageIds) ||
+        new Set(messageIds).size !== messageIds.length ||
+        messageIds.some((id) => typeof id !== "string" || id.length === 0)
       ) {
         throw createSyncError(
           "SYNC_REQUEST_INVALID",
@@ -262,8 +262,8 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
       }
       seenTopics.add(topicKey);
       assertHistoryTopicHealthy({ topicId: safeTopicId, ownerType, ownerId });
-      requestedMessages += msgIds.length;
-      if (msgIds.length > 10_000 || requestedMessages > MAX_NDJSON_MESSAGES) {
+      requestedMessages += messageIds.length;
+      if (messageIds.length > 10_000 || requestedMessages > MAX_NDJSON_MESSAGES) {
         throw createSyncError(
           "SYNC_BUDGET_EXCEEDED",
           "Message pull exceeds message count budget",
@@ -277,11 +277,12 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
       });
       if (!row) {
         await writer.write({
+          kind: "topic",
           topicId,
           ownerType,
           ownerId,
-          messages: [],
-          _error: normalizeSyncError("topic not found", {
+          ok: false,
+          error: normalizeSyncError("topic not found", {
             code: "TOPIC_NOT_FOUND",
             stage: "messages",
             failedTopicIds: [safeTopicId],
@@ -321,7 +322,7 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
           "warn",
         );
       }
-      const wanted = new Set(msgIds);
+      const wanted = new Set(messageIds);
       const messages = wanted.size === 0
         ? canonical.frame.messages
         : canonical.frame.messages.filter((message) => wanted.has(message.id));
@@ -375,9 +376,11 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
         message.updatedAt = indexed.updated_at;
       }
       await writer.write({
+        kind: "topic",
         topicId: safeTopicId,
         ownerType: actualOwnerType,
         ownerId: parentId,
+        ok: true,
         messages,
         ...(canonical.warningCount > 0
           ? {
@@ -399,11 +402,12 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
     } catch (e) {
       // 单 topic 失败写错误帧，不中断流
       await writer.write({
+        kind: "topic",
         topicId,
         ownerType,
         ownerId,
-        messages: [],
-        _error: normalizeSyncError(e, {
+        ok: false,
+        error: normalizeSyncError(e, {
           code: "SYNC_MESSAGE_READ_FAILED",
           stage: "messages",
           failedTopicIds: [safeTopicId],
@@ -415,20 +419,27 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
 
   res.end();
   logger.logOperation("messages", "download_messages_stream", "batch", "success",
-    `topics=${requests.length} success=${successCount} error=${errorCount}`);
+    `topics=${topics.length} success=${successCount} error=${errorCount}`);
 }
 
 /**
- * 单 topic 上传纯逻辑 — 从 uploadMessages 提取（不含幂等性、writeIntentLock、ingestHistoryToDb）
+ * 单 Topic 消息提交：在同一 history 锁内合并 live 消息、删除墓碑并刷新索引。
  * 批量场景下由外层统一管理并发控制
  *
  * @param {string} safeTopicId - 已 sanitized 的 topic ID
- * @param {object[]} messages - 消息列表
+ * @param {object[]} messages - live 消息列表
+ * @param {object[]} deletedMessages - [{msgId, deletedAt}]
  * @param {string} appDataPath - AppData 路径
  * @param {object} row - Topic 提交状态
- * @returns {Promise<{success: boolean, historyPath: string}>}
+ * @returns {Promise<void>}
  */
-async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
+async function doPushSingleTopic(
+  safeTopicId,
+  messages,
+  deletedMessages,
+  appDataPath,
+  row,
+) {
   const db = getDb();
   const parentId = row.owner_id;
   const isGroup = row.owner_type === "group";
@@ -461,17 +472,34 @@ async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
     for (const desktopMessage of projected.messages) {
       msgMap.set(desktopMessage.id, desktopMessage);
     }
+    for (const tombstone of deletedMessages) {
+      msgMap.delete(tombstone.msgId);
+    }
 
     const finalHistory = Array.from(msgMap.values()).sort(
       (a, b) => (a.timestamp || 0) - (b.timestamp || 0),
     );
 
     await writeHistoryAtomic(historyPath, finalHistory, sourceHash);
-
-    return {
-      success: true,
+    for (const tombstone of deletedMessages) {
+      upsertMessageTombstone({
+        ownerType: row.owner_type,
+        ownerId: parentId,
+        topicId: safeTopicId,
+        msgId: tombstone.msgId,
+        deletedAt: tombstone.deletedAt,
+      });
+    }
+    await ingestHistoryToDb(
       historyPath,
-    };
+      {
+        topicId: safeTopicId,
+        ownerType: row.owner_type,
+        ownerId: parentId,
+      },
+      "batch_push",
+    );
+
   } finally {
     release();
   }
@@ -485,7 +513,7 @@ async function doUploadSingleTopic(safeTopicId, messages, appDataPath, row) {
  * @param {string} appDataPath - AppData 路径
  * @param {object} res - Express response (用于流式写入结果)
  */
-async function uploadMessagesBatchRaw(req, appDataPath, res) {
+async function pushMessagesStreamRaw(req, appDataPath, res) {
   const logger = getLogger();
   const db = getDb();
   if (!db) {
@@ -516,10 +544,27 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
       let streamFatal = false;
       try {
         const frame = parseJsonWithoutDuplicateKeys(decodeNdjsonLine(line));
+        if (
+          !frame ||
+          typeof frame !== "object" ||
+          Array.isArray(frame) ||
+          Object.keys(frame).sort().join("\0") !==
+            ["deletedMessages", "kind", "messages", "ownerId", "ownerType", "topicId"]
+              .sort()
+              .join("\0") ||
+          frame.kind !== "topic"
+        ) {
+          streamFatal = true;
+          throw createSyncError(
+            "SYNC_REQUEST_INVALID",
+            "Message push line requires the exact Topic frame contract",
+            { stage: "messages" },
+          );
+        }
         topicId = frame.topicId;
         ownerType = frame.ownerType;
         ownerId = frame.ownerId;
-        const { messages } = frame;
+        const { messages, deletedMessages } = frame;
         const safeTopicId = sanitizeId(topicId);
         if (!safeTopicId || safeTopicId !== topicId) {
           streamFatal = true;
@@ -536,6 +581,13 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
         }
+        if (!Array.isArray(deletedMessages)) {
+          throw createSyncError(
+            "SYNC_REQUEST_INVALID",
+            "deletedMessages must be an array",
+            { stage: "messages", failedTopicIds: [safeTopicId] },
+          );
+        }
         if (
           !["agent", "group"].includes(ownerType) ||
           typeof ownerId !== "string" ||
@@ -549,10 +601,53 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           );
         }
         topicCount += 1;
-        messageCount += messages.length;
+        const liveIds = new Set();
+        for (const message of messages) {
+          if (
+            !message ||
+            typeof message !== "object" ||
+            Array.isArray(message) ||
+            typeof message.id !== "string" ||
+            !message.id ||
+            sanitizeId(message.id) !== message.id ||
+            liveIds.has(message.id)
+          ) {
+            throw createSyncError(
+              "SYNC_REQUEST_INVALID",
+              "messages must carry unique valid IDs",
+              { stage: "messages", failedTopicIds: [safeTopicId] },
+            );
+          }
+          liveIds.add(message.id);
+        }
+        const deletedIds = new Set();
+        for (const tombstone of deletedMessages) {
+          if (
+            !tombstone ||
+            typeof tombstone !== "object" ||
+            Array.isArray(tombstone) ||
+            Object.keys(tombstone).sort().join("\0") !== "deletedAt\0msgId" ||
+            typeof tombstone.msgId !== "string" ||
+            !tombstone.msgId ||
+            sanitizeId(tombstone.msgId) !== tombstone.msgId ||
+            !Number.isSafeInteger(tombstone.deletedAt) ||
+            tombstone.deletedAt < 0 ||
+            deletedIds.has(tombstone.msgId) ||
+            liveIds.has(tombstone.msgId)
+          ) {
+            throw createSyncError(
+              "SYNC_REQUEST_INVALID",
+              "deletedMessages must be unique valid tombstones disjoint from live messages",
+              { stage: "messages", failedTopicIds: [safeTopicId] },
+            );
+          }
+          deletedIds.add(tombstone.msgId);
+        }
+        const topicMessageCount = messages.length + deletedMessages.length;
+        messageCount += topicMessageCount;
         if (
           topicCount > MAX_NDJSON_TOPICS ||
-          messages.length > 10_000 ||
+          topicMessageCount > 10_000 ||
           messageCount > MAX_NDJSON_MESSAGES
         ) {
           streamFatal = true;
@@ -580,10 +675,11 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         });
         if (!row) {
           await writer.write({
+            kind: "topic",
             topicId,
             ownerType,
             ownerId,
-            success: false,
+            ok: false,
             error: normalizeSyncError("topic not found", {
               code: "TOPIC_NOT_FOUND",
               stage: "messages",
@@ -617,17 +713,19 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           ownerType,
           ownerId,
         }));
-        const result = await doUploadSingleTopic(safeTopicId, messages, appDataPath, row);
-        await ingestHistoryToDb(
-          result.historyPath,
-          { topicId: safeTopicId, ownerType, ownerId },
-          "batch_push",
+        await doPushSingleTopic(
+          safeTopicId,
+          messages,
+          deletedMessages,
+          appDataPath,
+          row,
         );
         await writer.write({
+          kind: "topic",
           topicId: safeTopicId,
           ownerType,
           ownerId,
-          success: true,
+          ok: true,
         });
         successCount++;
       } catch (e) {
@@ -635,10 +733,11 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         if (streamFatal) throw e;
         if (typeof topicId === "string" && topicId.length > 0) {
           await writer.write({
+            kind: "topic",
             topicId,
             ownerType,
             ownerId,
-            success: false,
+            ok: false,
             error: normalizeSyncError(e, {
               code: "SYNC_MESSAGE_WRITE_FAILED",
               stage: "messages",
@@ -899,8 +998,8 @@ async function pruneMessageFromPhysicalHistory(
 }
 
 module.exports = {
-  downloadMessagesStreamRaw,
-  uploadMessagesBatchRaw,
+  pullMessagesStreamRaw,
+  pushMessagesStreamRaw,
   resolveMessageUpdatedAt,
   ingestHistoryToDb,
   pruneMessageFromPhysicalHistory,
