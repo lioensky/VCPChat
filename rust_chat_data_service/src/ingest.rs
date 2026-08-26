@@ -282,6 +282,15 @@ impl Reconciler {
     }
 
     pub async fn ingest_path(&self, path: &Path, _origin: &str) -> Result<Option<IngestCommit>> {
+        self.ingest_path_with_owner_hash_mode(path, OwnerHashMode::Immediate)
+            .await
+    }
+
+    pub async fn ingest_path_with_owner_hash_mode(
+        &self,
+        path: &Path,
+        owner_hash_mode: OwnerHashMode,
+    ) -> Result<Option<IngestCommit>> {
         let Some((owner_id, topic_id)) = parse_history_path(&self.config.user_data_dir, path)
         else {
             return Ok(None);
@@ -292,7 +301,7 @@ impl Reconciler {
 
         if let Some(source) = self.database.live_topic_source_by_path(path)? {
             return match self
-                .ingest_source_if_changed(&source, OwnerHashMode::Immediate)
+                .ingest_source_if_changed(&source, owner_hash_mode)
                 .await
             {
                 Ok(commit) => Ok(commit),
@@ -326,7 +335,7 @@ impl Reconciler {
             return Ok(None);
         }
         match self
-            .ingest_source_if_changed(&source, OwnerHashMode::Immediate)
+            .ingest_source_if_changed(&source, owner_hash_mode)
             .await
         {
             Ok(commit) => Ok(commit),
@@ -641,6 +650,7 @@ impl Reconciler {
                     topic: source.key.clone(),
                     revision: self.database.topic_revision(&source.key)?.unwrap_or(0),
                     changed: false,
+                    owner_hash_dirty: false,
                     search_update: SearchUpdate::None,
                     message_count: 0,
                 }));
@@ -739,31 +749,41 @@ pub fn normalize_history(
     owner_type: OwnerType,
     topic_id: &str,
 ) -> Result<Vec<NormalizedMessage>> {
-    let root: Value = serde_json::from_slice(bytes).context("history is not valid JSON")?;
-    let history = root.as_array().context("history root must be an array")?;
+    let history: Vec<Value> =
+        serde_json::from_slice(bytes).context("history root must be an array")?;
+    normalize_history_values(history, owner_type, topic_id)
+}
+
+pub fn normalize_history_values(
+    history: Vec<Value>,
+    owner_type: OwnerType,
+    topic_id: &str,
+) -> Result<Vec<NormalizedMessage>> {
     let mut seen_ids = HashSet::new();
 
     history
-        .iter()
+        .into_iter()
         .enumerate()
         .map(|(ordinal, value)| {
-            let object = value
-                .as_object()
-                .with_context(|| format!("message at ordinal {ordinal} must be an object"))?;
+            let Value::Object(object) = value else {
+                anyhow::bail!("message at ordinal {ordinal} must be an object");
+            };
             normalize_message(object, ordinal, owner_type, topic_id, &mut seen_ids)
         })
         .collect()
 }
 
 fn normalize_message(
-    object: &Map<String, Value>,
+    object: Map<String, Value>,
     ordinal: usize,
     owner_type: OwnerType,
     topic_id: &str,
     seen_ids: &mut HashSet<String>,
 ) -> Result<NormalizedMessage> {
-    let raw_message = Value::Object(object.clone());
-    let metadata_json = serde_json::to_string(&raw_message)?;
+    let metadata_json = serde_json::to_string(&object)?;
+    let speaker_name_fallback = string_value(object.get("speakerName"));
+    let speaker_agent_id_fallback = string_value(object.get("agentID"));
+    let raw_message = Value::Object(object);
     let mut warnings = WireWarnings::default();
     let canonical = canonicalize_message(raw_message, topic_id, &mut warnings)
         .with_context(|| format!("message at ordinal {ordinal} is not syncable"))?;
@@ -800,13 +820,13 @@ fn normalize_message(
         .get("name")
         .and_then(Value::as_str)
         .map(str::to_string)
-        .or_else(|| string_value(object.get("speakerName")));
+        .or(speaker_name_fallback);
     let speaker_agent_id = if owner_type == OwnerType::Group {
         canonical
             .get("agentId")
             .and_then(Value::as_str)
             .map(str::to_string)
-            .or_else(|| string_value(object.get("agentID")))
+            .or(speaker_agent_id_fallback)
     } else {
         None
     };

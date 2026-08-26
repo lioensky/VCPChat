@@ -163,7 +163,7 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
   assert.equal(frames[0].ok, true);
   assert.equal(frames[0].messages[0].attachments[0].hash, hash);
   assert.equal(frames[0].messages[0].attachments[0]._fileManagerData, undefined);
-  assert.match(frames[0].messages[0].contentHash, /^[a-f0-9]{64}$/);
+  assert.equal(frames[0].messages[0].contentHash, undefined);
   assert.deepEqual(
     [frames[0].ownerType, frames[0].ownerId, frames[1].ownerType, frames[1].ownerId],
     ["agent", "agent-a", "group", "group-b"],

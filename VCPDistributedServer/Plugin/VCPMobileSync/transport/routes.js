@@ -356,8 +356,25 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         );
         if (centralSync && results.some((item) => item.ok)) {
           // Owner/Topic 物理配置由插件写入，CDS 必须在本次 HTTP 提交返回前
-          // 形成对应 SQLite 视图。把刷新绑定到真实写入，避免每个空阶段都扫描。
-          await centralSync.reconcile();
+          // 形成对应 SQLite 视图；成功项已经给出精确 Owner，无需扫描全库。
+          const owners = new Map();
+          for (const item of results) {
+            if (!item.ok) continue;
+            const key = `${item.ownerType}\0${item.ownerId}`;
+            owners.set(key, {
+              ownerType: item.ownerType,
+              ownerId: item.ownerId,
+            });
+          }
+          const reconcileStage = results.some(
+            (item) => item.ok && item.entityType === "topic",
+          )
+            ? "topic_metadata"
+            : "owner_metadata";
+          await centralSync.reconcileOwners(
+            [...owners.values()],
+            reconcileStage,
+          );
         }
         const response = { results };
         if (results.length === items.length && results.every((item) => item.ok)) {

@@ -38,6 +38,7 @@ const {
   readHistoryStrict,
   markHistoryTopicUnhealthy,
   isHistoryTopicUnhealthy,
+  clearHistoryTopicUnhealthy,
 } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const {
@@ -1165,20 +1166,25 @@ function getHistoryOwnerIdFromPath(filePath) {
  * 摄取配置文件到索引
  */
 async function ingestConfigToDb(configPath, type, appDataPath) {
+  const release = await acquireLock(configPath);
+  try {
+    return await ingestConfigToDbUnlocked(configPath, type, appDataPath);
+  } finally {
+    release();
+  }
+}
+
+async function ingestConfigToDbUnlocked(configPath, type, appDataPath) {
   const db = getDb();
   if (!db) return [];
 
   const logger = getLogger();
-  const newTopics = [];
-
   try {
     const content = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(content);
     const now = Date.now();
     const id = path.basename(path.dirname(configPath));
     const ownerId = path.basename(path.dirname(configPath));
-    const previousOwner = getOwnerState({ ownerType: type, ownerId });
-    if (previousOwner?.deleted_at != null) return [];
     const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
     let topicEntries = [];
     try {
@@ -1192,22 +1198,12 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
         .map((entry) => entry.name),
     );
 
-    // 索引主实体
     const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
-    const hash = computeDtoHash(
+    const ownerConfigHash = computeDtoHash(
       dto,
       type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
     );
-    upsertOwnerState({
-      ownerType: type,
-      ownerId: id,
-      configPath,
-      configHash: hash,
-      updatedAt: now,
-    });
-
-    // 索引子话题
-    let topicLen = 0;
+    const topicUpdates = [];
     if (Array.isArray(config.topics)) {
       for (const topic of config.topics) {
         if (
@@ -1216,51 +1212,113 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
         ) {
           continue;
         }
-        const previous = getTopicState({
-          ownerType: type,
-          ownerId: id,
-          topicId: topic.id,
-        });
-        if (previous?.deleted_at != null) continue;
         const topicDto = extractTopicDTO(topic, id, type);
         const configHash = computeDtoHash(
           topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
-        upsertTopicState({
-          ownerType: type,
-          ownerId: id,
-          topicId: topic.id,
-          configHash,
-          updatedAt: now,
-        });
-        topicLen += 1;
-        if (
-          (!previous || previous.deleted_at !== null) &&
-          physicalTopics.has(topic.id)
-        ) {
-          const historyPath = path.join(topicsDir, topic.id, "history.json");
-          try {
-            if ((await fs.stat(historyPath)).isFile()) {
-              newTopics.push({
-                topicId: topic.id,
-                ownerType: type,
-                ownerId: id,
-                historyPath,
-              });
-            }
-          } catch (error) {
-            if (error.code !== "ENOENT") throw error;
-          }
-        }
+        topicUpdates.push({ topicId: topic.id, configHash });
       }
     }
 
-    // Topic 存活由物理目录决定；配置只更新仍有物理实体的元数据。
-    await reconcileMissingPhysicalIndexes(appDataPath, null, db, now);
-    refreshOwnerContentHash({ ownerType: type, ownerId }, db);
+    const applyConfigIndex = db.transaction(() => {
+      const previousOwner = getOwnerState({ ownerType: type, ownerId });
+      if (previousOwner?.deleted_at != null) {
+        return { newTopicIds: [], deletedTopicIds: [] };
+      }
+      if (
+        !previousOwner ||
+        previousOwner.config_path !== configPath ||
+        previousOwner.config_hash !== ownerConfigHash
+      ) {
+        upsertOwnerState({
+          ownerType: type,
+          ownerId: id,
+          configPath,
+          configHash: ownerConfigHash,
+          updatedAt: now,
+        });
+      }
 
-    logger.logOperation("watcher", type, id, "success", `hash updated, topics=${topicLen}`);
+      const existingRows = db
+        .prepare(
+          `SELECT topic_id, config_hash, deleted_at FROM topics
+           WHERE owner_type = ? AND owner_id = ?`,
+        )
+        .all(type, ownerId);
+      const existingById = new Map(
+        existingRows.map((row) => [row.topic_id, row]),
+      );
+      const newTopicIds = [];
+      let ownerContentDirty = !previousOwner;
+      for (const topic of topicUpdates) {
+        const previous = existingById.get(topic.topicId);
+        if (previous?.deleted_at != null) continue;
+        if (!previous || previous.config_hash !== topic.configHash) {
+          upsertTopicState({
+            ownerType: type,
+            ownerId: id,
+            topicId: topic.topicId,
+            configHash: topic.configHash,
+            updatedAt: now,
+          });
+          ownerContentDirty = true;
+        }
+        if (!previous) newTopicIds.push(topic.topicId);
+      }
+
+      const deleteTopic = db.prepare(
+        `UPDATE topics SET deleted_at = ?
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+           AND deleted_at IS NULL`,
+      );
+      const deleteMessages = db.prepare(
+        `UPDATE messages SET deleted_at = ?
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+           AND deleted_at IS NULL`,
+      );
+      const deleteSource = db.prepare(
+        `DELETE FROM history_source_state
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+      );
+      const deletedTopicIds = [];
+      for (const row of existingRows) {
+        if (row.deleted_at !== null || physicalTopics.has(row.topic_id)) continue;
+        deleteTopic.run(now, type, ownerId, row.topic_id);
+        deleteMessages.run(now, type, ownerId, row.topic_id);
+        deleteSource.run(type, ownerId, row.topic_id);
+        deletedTopicIds.push(row.topic_id);
+        ownerContentDirty = true;
+      }
+      if (ownerContentDirty) {
+        refreshOwnerContentHash({ ownerType: type, ownerId }, db);
+      }
+      return { newTopicIds, deletedTopicIds };
+    });
+    const { newTopicIds, deletedTopicIds } = applyConfigIndex();
+    for (const topicId of deletedTopicIds) {
+      clearHistoryTopicUnhealthy({ topicId, ownerType: type, ownerId });
+    }
+
+    const newTopics = [];
+    for (const topicId of newTopicIds) {
+      const historyPath = path.join(topicsDir, topicId, "history.json");
+      try {
+        if ((await fs.stat(historyPath)).isFile()) {
+          newTopics.push({ topicId, ownerType: type, ownerId: id, historyPath });
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+
+    logger.logOperation(
+      "watcher",
+      type,
+      id,
+      "success",
+      `hash updated, topics=${topicUpdates.length}`,
+    );
     return newTopics;
   } catch (e) {
     logger.logOperation("watcher", type, configPath, "error", e.message);

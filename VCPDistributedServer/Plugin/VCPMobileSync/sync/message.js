@@ -150,10 +150,14 @@ async function writeHistoryAtomic(filePath, history, expectedSourceHash) {
     directory,
     `${path.basename(filePath)}.mobile-sync-${crypto.randomUUID()}.tmp`,
   );
+  const bytes = Buffer.from(JSON.stringify(history, null, 2), "utf8");
+  const sourceHash = crypto.createHash("sha256").update(bytes).digest("hex");
   const file = await fs.open(temporary, "wx");
+  let sourceStats;
   try {
-    await file.writeFile(JSON.stringify(history, null, 2), "utf8");
+    await file.writeFile(bytes);
     await file.sync();
+    sourceStats = await file.stat();
   } finally {
     await file.close();
   }
@@ -169,6 +173,10 @@ async function writeHistoryAtomic(filePath, history, expectedSourceHash) {
     if (currentHash !== expectedSourceHash) {
       throw new Error("History changed concurrently; retry this topic");
     }
+    if (sourceHash === expectedSourceHash) {
+      await fs.unlink(temporary);
+      return { unchanged: true };
+    }
     await fs.rename(temporary, filePath);
     if (process.platform !== "win32") {
       const parent = await fs.open(directory, "r");
@@ -178,6 +186,15 @@ async function writeHistoryAtomic(filePath, history, expectedSourceHash) {
         await parent.close();
       }
     }
+    return {
+      unchanged: false,
+      history,
+      sourceHash,
+      sourceStats: {
+        size: sourceStats.size,
+        mtimeMs: sourceStats.mtimeMs,
+      },
+    };
   } catch (error) {
     await fs.unlink(temporary).catch(() => {});
     throw error;
@@ -388,6 +405,7 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           );
         }
         message.updatedAt = indexed.updated_at;
+        delete message.contentHash;
       }
       await writer.write({
         kind: "topic",
@@ -494,7 +512,11 @@ async function doPushSingleTopic(
       (a, b) => (a.timestamp || 0) - (b.timestamp || 0),
     );
 
-    await writeHistoryAtomic(historyPath, finalHistory, sourceHash);
+    const committed = await writeHistoryAtomic(
+      historyPath,
+      finalHistory,
+      sourceHash,
+    );
     if (deletedMessages.length > 0) {
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -513,14 +535,22 @@ async function doPushSingleTopic(
         throw error;
       }
     }
+    const identity = {
+      topicId: safeTopicId,
+      ownerType: row.owner_type,
+      ownerId: parentId,
+    };
     await ingestHistoryToDb(
       historyPath,
-      {
-        topicId: safeTopicId,
-        ownerType: row.owner_type,
-        ownerId: parentId,
-      },
+      identity,
       "batch_push",
+      committed.unchanged
+        ? undefined
+        : {
+            history: committed.history,
+            sourceStats: committed.sourceStats,
+            sourceHash: committed.sourceHash,
+          },
     );
 
   } finally {
@@ -891,6 +921,18 @@ async function ingestHistoryToDb(
         )
         .all(ownerType, ownerId, topicId);
       const existingById = new Map(existing.map((row) => [row.msg_id, row]));
+      const topic = db
+        .prepare(
+          `SELECT content_hash FROM topics
+           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+             AND deleted_at IS NULL`,
+        )
+        .get(ownerType, ownerId, topicId);
+      if (!topic) {
+        throw new Error(
+          `Topic ${ownerType}/${ownerId}/${topicId} is missing in the local index`,
+        );
+      }
       const deleteMessage = db.prepare(
         `UPDATE messages SET deleted_at = ?
          WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?
@@ -903,14 +945,16 @@ async function ingestHistoryToDb(
           continue;
         }
         const updatedAt = resolveMessageUpdatedAt(m, hash, previous, now);
-        upsertMessageState({
-          ownerType,
-          ownerId,
-          topicId,
-          msgId: m.id,
-          hash,
-          updatedAt,
-        });
+        if (!previous || previous.hash !== hash || previous.updated_at !== updatedAt) {
+          upsertMessageState({
+            ownerType,
+            ownerId,
+            topicId,
+            msgId: m.id,
+            hash,
+            updatedAt,
+          });
+        }
         fingerprints.push(computeMessageLeafHash(m.id, hash));
 
         attachmentCount += Array.isArray(m.attachments) ? m.attachments.length : 0;
@@ -931,24 +975,19 @@ async function ingestHistoryToDb(
       }
 
       const topicRootHash = computeAggregatedHash(fingerprints);
-      const updated = updateTopicContentHash(
-        { topicId, ownerType, ownerId },
-        topicRootHash,
-      );
-      if (updated.changes !== 1) {
-        const matches = db
-          .prepare(
-            `SELECT COUNT(*) AS n FROM topics
-             WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
-               AND deleted_at IS NULL`,
-          )
-          .get(ownerType, ownerId, topicId).n;
-        throw new Error(
-          `Topic ${ownerType}/${ownerId}/${topicId} is missing in the local index (matches=${matches})`,
+      if (topic.content_hash !== topicRootHash) {
+        const updated = updateTopicContentHash(
+          { topicId, ownerType, ownerId },
+          topicRootHash,
         );
-      }
-      if (source !== "reconcile") {
-        refreshOwnerContentHash({ ownerType, ownerId });
+        if (updated.changes !== 1) {
+          throw new Error(
+            `Topic ${ownerType}/${ownerId}/${topicId} disappeared during ingestion`,
+          );
+        }
+        if (source !== "reconcile") {
+          refreshOwnerContentHash({ ownerType, ownerId });
+        }
       }
       upsertHistorySourceState({
         ownerType,
@@ -1044,8 +1083,9 @@ async function pruneMessageFromPhysicalHistory(
   try {
     const { history, sourceHash } = await readHistoryStrict(historyPath);
     const filtered = history.filter((m) => m.id !== msgId);
+    let committed = null;
     if (filtered.length !== history.length) {
-      await writeHistoryAtomic(historyPath, filtered, sourceHash);
+      committed = await writeHistoryAtomic(historyPath, filtered, sourceHash);
     }
     upsertMessageTombstone({
       ownerType,
@@ -1058,6 +1098,13 @@ async function pruneMessageFromPhysicalHistory(
       historyPath,
       { topicId: safeTopicId, ownerType, ownerId },
       "batch_push",
+      committed && !committed.unchanged
+        ? {
+            history: committed.history,
+            sourceStats: committed.sourceStats,
+            sourceHash: committed.sourceHash,
+          }
+        : undefined,
     );
   } finally {
     release();

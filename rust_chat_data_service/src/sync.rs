@@ -3,20 +3,19 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
+    time::UNIX_EPOCH,
 };
 
 use anyhow::{Context, Result};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, params_from_iter, types::Value as SqlValue, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey},
-    ingest::{sha256_hex, Reconciler},
-    storage::{Database, IngestCommit},
-    sync_wire::{
-        canonicalize_for_wire, canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings,
-    },
+    domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
+    ingest::{normalize_history_values, sha256_hex, Reconciler},
+    storage::{Database, IngestCommit, OwnerHashMode},
+    sync_wire::{canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1347,20 +1346,45 @@ pub fn pull_topic_messages(
         topic.message_ids.len() <= 10_000,
         "topic message request exceeds 10000 ids"
     );
-    let wanted = topic.message_ids.into_iter().collect::<HashSet<_>>();
+    let requested_ids = topic.message_ids;
+    let wanted = requested_ids.iter().cloned().collect::<HashSet<_>>();
     let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT metadata_json, updated_at FROM messages
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
-         ORDER BY ordinal ASC",
-    )?;
-    let rows = statement
-        .query_map(
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
+    let rows = if requested_ids.is_empty() {
+        let mut statement = connection.prepare(
+            "SELECT metadata_json, updated_at FROM messages
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
+             ORDER BY ordinal ASC",
+        )?;
+        let rows = statement
+            .query_map(
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    } else {
+        let placeholders = std::iter::repeat_n("?", requested_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT metadata_json, updated_at FROM messages
+             WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted_at IS NULL
+               AND msg_id IN ({placeholders})
+             ORDER BY ordinal ASC"
+        );
+        let mut bind = Vec::with_capacity(3 + requested_ids.len());
+        bind.push(SqlValue::Text(key.owner_type.as_str().to_string()));
+        bind.push(SqlValue::Text(key.owner_id.clone()));
+        bind.push(SqlValue::Text(key.topic_id.clone()));
+        bind.extend(requested_ids.iter().cloned().map(SqlValue::Text));
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement
+            .query_map(params_from_iter(bind), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
     drop(connection);
 
     let mut warnings = WireWarnings::default();
@@ -1386,7 +1410,7 @@ pub fn pull_topic_messages(
             "stored message update time is invalid for topic {}",
             key.topic_id
         );
-        let mut canonical = canonicalize_for_wire(value, &key.topic_id, &mut warnings)?;
+        let mut canonical = canonicalize_message(value, &key.topic_id, &mut warnings)?;
         canonical
             .as_object_mut()
             .context("canonical message must be an object")?
@@ -1537,15 +1561,32 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         }
     }
 
-    write_json_atomic(
+    let history_bytes = serde_json::to_vec_pretty(&current)?;
+    let normalized = normalize_history_values(current, key.owner_type, &key.topic_id)
+        .context("projected history is not ingestible")?;
+    let committed = write_history_atomic(
         &history_path,
-        &Value::Array(current),
+        &history_bytes,
         expected_source_hash.as_deref(),
     )?;
-    let mut commit = reconciler
-        .ingest_path(&history_path, "mobile_sync")
-        .await?
-        .context("projected history path was not accepted by CDS")?;
+    let mut commit = if let Some(committed) = committed {
+        reconciler.database().ingest_topic(
+            &TopicSource {
+                key: key.clone(),
+                source_path: history_path.clone(),
+            },
+            &normalized,
+            committed.mtime_ns,
+            committed.file_size,
+            &committed.source_hash,
+            OwnerHashMode::Immediate,
+        )?
+    } else {
+        reconciler
+            .ingest_path(&history_path, "mobile_sync")
+            .await?
+            .context("projected history path was not accepted by CDS")?
+    };
     if reconciler
         .database()
         .apply_explicit_message_tombstones(&key, &explicit_tombstones)?
@@ -1877,21 +1918,38 @@ fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
     Ok((history, Some(sha256_hex(&bytes))))
 }
 
-fn write_json_atomic(path: &Path, value: &Value, expected_source_hash: Option<&str>) -> Result<()> {
+struct CommittedHistoryVersion {
+    mtime_ns: i64,
+    file_size: i64,
+    source_hash: String,
+}
+
+fn write_history_atomic(
+    path: &Path,
+    bytes: &[u8],
+    expected_source_hash: Option<&str>,
+) -> Result<Option<CommittedHistoryVersion>> {
     let parent = path.parent().context("history path has no parent")?;
     fs::create_dir_all(parent)?;
     let temporary = temporary_path(path);
-    let bytes = serde_json::to_vec_pretty(value)?;
+    let source_hash = sha256_hex(bytes);
     let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(&temporary)
         .context("failed to create unique history temporary file")?;
-    if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
+    if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
         let _ = fs::remove_file(&temporary);
         return Err(error).context("failed to durably write history temporary file");
     }
     drop(file);
+    let metadata = match fs::metadata(&temporary) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error).context("failed to read committed history temporary metadata");
+        }
+    };
 
     let current_hash = match fs::read(path) {
         Ok(current) => Some(sha256_hex(&current)),
@@ -1905,13 +1963,27 @@ fn write_json_atomic(path: &Path, value: &Value, expected_source_hash: Option<&s
         let _ = fs::remove_file(&temporary);
         anyhow::bail!("history changed concurrently; retry the sync topic");
     }
+    if Some(source_hash.as_str()) == expected_source_hash {
+        fs::remove_file(&temporary)?;
+        return Ok(None);
+    }
 
     if let Err(error) = atomic_replace(&temporary, path) {
         let _ = fs::remove_file(&temporary);
         return Err(error).context("failed to atomically replace history");
     }
     sync_parent_directory(parent)?;
-    Ok(())
+    let mtime_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+        .unwrap_or(0);
+    Ok(Some(CommittedHistoryVersion {
+        mtime_ns,
+        file_size: metadata.len().min(i64::MAX as u64) as i64,
+        source_hash,
+    }))
 }
 
 fn temporary_path(path: &Path) -> PathBuf {

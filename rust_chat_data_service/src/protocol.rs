@@ -30,7 +30,8 @@ use uuid::Uuid;
 use crate::{
     config::{PROTOCOL_VERSION, SCHEMA_VERSION},
     domain::{
-        AvatarKey, AvatarOwnerType, AvatarRecord, MemoryWindow, OwnerType, SearchHit, TopicKey,
+        AvatarKey, AvatarOwnerType, AvatarRecord, MemoryWindow, OwnerKey, OwnerType, SearchHit,
+        TopicKey,
     },
     error::{ServiceError, ServiceResult},
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
@@ -238,6 +239,20 @@ struct AvatarStateRequest {
     owner_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReconcileOwnersRequest {
+    owners: Vec<OwnerKey>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReconcileOwnersResponse {
+    ok: bool,
+    owners_reconciled: usize,
+    indexed_topics: usize,
+}
+
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/v1/status", get(status))
@@ -257,6 +272,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v3/sync/message-diff", post(sync_message_diff))
         .route("/v3/sync/entities/pull", post(sync_entities_pull))
         .route("/v3/sync/entities/delete", post(sync_entity_delete))
+        .route("/v3/sync/owners/reconcile", post(sync_reconcile_owners))
         .route("/v3/sync/avatars/state", post(sync_avatar_state))
         .route("/v3/sync/avatars/commit", post(sync_avatar_commit))
         .route("/v3/sync/messages/pull", post(sync_messages_pull_stream))
@@ -546,6 +562,59 @@ async fn sync_entity_delete(
     }
 
     Ok(Json(EntityDeleteResponse { ok: true }))
+}
+
+async fn sync_reconcile_owners(
+    State(state): State<AppState>,
+    Json(request): Json<ReconcileOwnersRequest>,
+) -> ServiceResult<Json<ReconcileOwnersResponse>> {
+    if request.owners.is_empty() || request.owners.len() > 1_000 {
+        return Err(ServiceError::InvalidRequest(
+            "sync owner reconcile requires 1 to 1000 owners".to_string(),
+        ));
+    }
+    let mut seen = HashSet::with_capacity(request.owners.len());
+    for owner in &request.owners {
+        if owner.owner_id.is_empty()
+            || !owner
+                .owner_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            || !seen.insert((owner.owner_type, owner.owner_id.as_str()))
+        {
+            return Err(ServiceError::InvalidRequest(
+                "sync owner reconcile requires unique valid owner identities".to_string(),
+            ));
+        }
+    }
+
+    let _guard = state.reconcile_lock.lock().await;
+    let result = async {
+        for owner in &request.owners {
+            state.reconciler.reconcile_owner_key(owner).await?;
+        }
+        state
+            .search
+            .as_ref()
+            .map(SearchIndex::reconcile_revisions)
+            .transpose()
+            .map(|count| count.unwrap_or(0))
+    }
+    .await;
+    let indexed_topics = match result {
+        Ok(indexed_topics) => indexed_topics,
+        Err(error) => {
+            if let Some(metrics) = &state.watcher_metrics {
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+            return Err(ServiceError::internal(error));
+        }
+    };
+    Ok(Json(ReconcileOwnersResponse {
+        ok: true,
+        owners_reconciled: request.owners.len(),
+        indexed_topics,
+    }))
 }
 
 fn validate_entity_delete_request(

@@ -204,6 +204,61 @@ class CentralSyncAdapter {
     throw new Error("VCP-CDS reconcile retry loop exhausted");
   }
 
+  async reconcileOwners(owners, stage = "owner_metadata") {
+    if (
+      !Array.isArray(owners) ||
+      owners.length === 0 ||
+      owners.length > 1_000
+    ) {
+      throw createSyncError(
+        "SYNC_REQUEST_INVALID",
+        "Targeted CDS reconcile requires 1 to 1000 owners",
+        { origin: "desktop_plugin", stage },
+      );
+    }
+    const seen = new Set();
+    for (const owner of owners) {
+      const key = entityIdentityKey({ entityType: "owner", ...owner });
+      if (!key || seen.has(key)) {
+        throw createSyncError(
+          "SYNC_REQUEST_INVALID",
+          "Targeted CDS reconcile requires unique complete owner identities",
+          { origin: "desktop_plugin", stage },
+        );
+      }
+      seen.add(key);
+    }
+    try {
+      const response = await this.requireClient().request(
+        "POST",
+        "/v3/sync/owners/reconcile",
+        { owners },
+        { timeoutMs: 270_000 },
+      );
+      if (
+        !isRecord(response) ||
+        response.ok !== true ||
+        response.ownersReconciled !== owners.length ||
+        !Number.isSafeInteger(response.indexedTopics) ||
+        response.indexedTopics < 0 ||
+        Object.keys(response).sort().join("\0") !==
+          "indexedTopics\0ok\0ownersReconciled"
+      ) {
+        throw cdsProtocolError(
+          "CDS returned an invalid targeted owner reconcile response",
+          stage,
+        );
+      }
+      return response;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_ENTITY_WRITE_FAILED",
+        origin: "desktop_cds",
+        stage,
+      });
+    }
+  }
+
   async loadTopicRecoveryStates({
     ownerType,
     ownerId,
@@ -764,7 +819,9 @@ class CentralSyncAdapter {
           [topicId],
         );
       }
-      const canonical = canonicalizeTopicFrame(rawFrame);
+      const canonical = canonicalizeTopicFrame(rawFrame, {
+        includeContentHash: false,
+      });
       if (canonical.topicIdRewrites > 0) {
         getLogger().logInfo(
           "central",
@@ -815,6 +872,18 @@ class CentralSyncAdapter {
     const client = this.requireClient();
     const writer = new NdjsonWriter(res);
     const seen = new Set();
+    const avatarPaths = new Map();
+    const resolveAgentAvatarPath = (agentId) => {
+      if (!avatarPaths.has(agentId)) {
+        avatarPaths.set(
+          agentId,
+          this.loadAvatarState("agent", agentId).then((avatar) =>
+            avatar?.deletedAt == null ? avatar?.filePath || null : null
+          ),
+        );
+      }
+      return avatarPaths.get(agentId);
+    };
     let topicCount = 0;
     let messageCount = 0;
     for await (const line of readNdjsonLines(req)) {
@@ -914,10 +983,7 @@ class CentralSyncAdapter {
             messages: frame.messages,
             db,
             appDataPath: this.appDataPath,
-            resolveAgentAvatarPath: async (agentId) => {
-              const avatar = await this.loadAvatarState("agent", agentId);
-              return avatar?.deletedAt == null ? avatar?.filePath || null : null;
-            },
+            resolveAgentAvatarPath,
           });
         } catch (projectionError) {
           await writer.write({

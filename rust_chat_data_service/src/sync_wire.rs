@@ -389,20 +389,6 @@ pub(crate) fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
     )
 }
 
-pub fn canonicalize_for_wire(
-    value: Value,
-    topic_id: &str,
-    warnings: &mut WireWarnings,
-) -> Result<Value> {
-    let mut message = canonicalize_message(value, topic_id, warnings)?;
-    let hash = message_fingerprint(&message)?;
-    message
-        .as_object_mut()
-        .context("canonical message must be an object")?
-        .insert("contentHash".to_string(), Value::String(hash));
-    Ok(message)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{canonicalize_message, message_fingerprint, normalize_integer, WireWarnings};

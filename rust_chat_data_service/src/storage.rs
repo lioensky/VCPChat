@@ -206,6 +206,7 @@ pub struct IngestCommit {
     pub topic: TopicKey,
     pub revision: i64,
     pub changed: bool,
+    pub owner_hash_dirty: bool,
     pub search_update: SearchUpdate,
     pub message_count: usize,
 }
@@ -1037,6 +1038,7 @@ impl Database {
             topic: source.key.clone(),
             revision,
             changed: false,
+            owner_hash_dirty: previous_status != "ready",
             search_update: SearchUpdate::None,
             message_count: 0,
         }))
@@ -1064,16 +1066,21 @@ impl Database {
             "history source owner or topic is deleted"
         );
 
-        let previous_hash: Option<String> = transaction
+        let previous_source: Option<(Option<String>, String)> = transaction
             .query_row(
-                "SELECT source_hash FROM history_sources WHERE source_path=?1",
+                "SELECT source_hash, status FROM history_sources WHERE source_path=?1",
                 [source.source_path.to_string_lossy().as_ref()],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .optional()?
-            .flatten();
+            .optional()?;
+        let previous_hash = previous_source
+            .as_ref()
+            .and_then(|(source_hash, _)| source_hash.as_deref());
+        let source_was_ready = previous_source
+            .as_ref()
+            .is_some_and(|(_, status)| status == "ready");
 
-        if previous_hash.as_deref() == Some(source_hash) {
+        if previous_hash == Some(source_hash) {
             transaction.execute(
                 "UPDATE history_sources SET
                     mtime_ns=?2, file_size=?3, indexed_at=?4, status='ready', last_error=NULL
@@ -1098,7 +1105,7 @@ impl Database {
                 )
                 .optional()?
                 .unwrap_or(0);
-            if owner_hash_mode == OwnerHashMode::Immediate {
+            if !source_was_ready && owner_hash_mode == OwnerHashMode::Immediate {
                 recompute_owner_content_hash(
                     &transaction,
                     &OwnerKey {
@@ -1112,6 +1119,7 @@ impl Database {
                 topic: source.key.clone(),
                 revision,
                 changed: false,
+                owner_hash_dirty: !source_was_ready,
                 search_update: SearchUpdate::None,
                 message_count: messages.len(),
             });
@@ -1139,58 +1147,41 @@ impl Database {
                             || previous.speaker_name != message.speaker_name
                     })
                 });
-        let (previous_content_revision, previous_indexed_revision) = transaction.query_row(
-            "SELECT content_revision, indexed_revision FROM topics
+        let (previous_content_hash, previous_content_revision, previous_indexed_revision) =
+            transaction.query_row(
+                "SELECT content_hash, content_revision, indexed_revision FROM topics
              WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-            params![
-                source.key.owner_type.as_str(),
-                source.key.owner_id,
-                source.key.topic_id,
-            ],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-        )?;
+                params![
+                    source.key.owner_type.as_str(),
+                    source.key.owner_id,
+                    source.key.topic_id,
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )?;
         let revision = if search_changed {
             next_global_revision(&transaction)?
         } else {
             previous_content_revision
         };
-        for (msg_id, previous) in &existing {
-            if !incoming_ids.contains(msg_id.as_str()) {
-                transaction.execute(
-                    "UPDATE messages SET message_hash='', deleted_at=?2, updated_at=?2 WHERE row_id=?1",
-                    params![previous.row_id, now],
-                )?;
+        {
+            let mut delete_message = transaction.prepare_cached(
+                "UPDATE messages SET message_hash='', deleted_at=?2, updated_at=?2 WHERE row_id=?1",
+            )?;
+            for (msg_id, previous) in &existing {
+                if !incoming_ids.contains(msg_id.as_str()) {
+                    delete_message.execute(params![previous.row_id, now])?;
+                }
             }
         }
 
-        for message in messages {
-            if tombstoned_ids.contains(message.msg_id.as_str()) {
-                continue;
-            }
-            let effective_updated_at = resolve_message_updated_at(
-                message,
-                existing
-                    .get(&message.msg_id)
-                    .map(|previous| (previous.message_hash.as_str(), previous.updated_at)),
-                now,
-            );
-            let previous = existing.get(&message.msg_id);
-            let needs_write = previous.is_none_or(|previous| {
-                previous.ordinal != message.ordinal
-                    || previous.role != message.role
-                    || previous.speaker_name != message.speaker_name
-                    || previous.speaker_agent_id != message.speaker_agent_id
-                    || previous.content_raw != message.content_raw
-                    || previous.content_text != message.content_text
-                    || previous.timestamp != message.timestamp
-                    || previous.message_hash != message.message_hash
-                    || previous.metadata_json != message.metadata_json
-                    || previous.updated_at != effective_updated_at
-            });
-            if !needs_write {
-                continue;
-            }
-            transaction.execute(
+        {
+            let mut upsert_message = transaction.prepare_cached(
                 "INSERT INTO messages(
                     owner_type, owner_id, topic_id, msg_id, ordinal, role,
                     speaker_name, speaker_agent_id, content_raw, content_text,
@@ -1208,7 +1199,31 @@ impl Database {
                     metadata_json=excluded.metadata_json,
                     updated_at=excluded.updated_at,
                     deleted_at=NULL",
-                params![
+            )?;
+            for message in messages {
+                if tombstoned_ids.contains(message.msg_id.as_str()) {
+                    continue;
+                }
+                let effective_updated_at = resolve_message_updated_at(
+                    message,
+                    existing
+                        .get(&message.msg_id)
+                        .map(|previous| (previous.message_hash.as_str(), previous.updated_at)),
+                    now,
+                );
+                let previous = existing.get(&message.msg_id);
+                let needs_write = previous.is_none_or(|previous| {
+                    previous.ordinal != message.ordinal
+                        || previous.speaker_name != message.speaker_name
+                        || previous.content_text != message.content_text
+                        || previous.message_hash != message.message_hash
+                        || previous.metadata_json != message.metadata_json
+                        || previous.updated_at != effective_updated_at
+                });
+                if !needs_write {
+                    continue;
+                }
+                upsert_message.execute(params![
                     source.key.owner_type.as_str(),
                     source.key.owner_id,
                     source.key.topic_id,
@@ -1223,15 +1238,15 @@ impl Database {
                     message.message_hash,
                     message.metadata_json,
                     effective_updated_at,
-                ],
-            )?;
-            if previous.is_none() {
-                appended_row_ids.push(transaction.last_insert_rowid());
-            } else if previous.is_some_and(|previous| {
-                previous.content_text != message.content_text
-                    || previous.speaker_name != message.speaker_name
-            }) {
-                search_requires_rewrite = true;
+                ])?;
+                if previous.is_none() {
+                    appended_row_ids.push(transaction.last_insert_rowid());
+                } else if previous.is_some_and(|previous| {
+                    previous.content_text != message.content_text
+                        || previous.speaker_name != message.speaker_name
+                }) {
+                    search_requires_rewrite = true;
+                }
             }
         }
 
@@ -1242,21 +1257,24 @@ impl Database {
                 .map(|message| message_leaf_hash(&message.msg_id, &message.message_hash))
                 .collect(),
         );
-        let changed = transaction.execute(
-            "UPDATE topics SET
-                content_hash=?4,
-                content_revision=?5
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
-               AND deleted_at IS NULL",
-            params![
-                source.key.owner_type.as_str(),
-                source.key.owner_id,
-                source.key.topic_id,
-                topic_content_hash,
-                revision,
-            ],
-        )?;
-        anyhow::ensure!(changed == 1, "history source topic is missing or deleted");
+        let topic_hash_changed = previous_content_hash != topic_content_hash;
+        if topic_hash_changed || previous_content_revision != revision {
+            let changed = transaction.execute(
+                "UPDATE topics SET
+                    content_hash=?4,
+                    content_revision=?5
+                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                   AND deleted_at IS NULL",
+                params![
+                    source.key.owner_type.as_str(),
+                    source.key.owner_id,
+                    source.key.topic_id,
+                    topic_content_hash,
+                    revision,
+                ],
+            )?;
+            anyhow::ensure!(changed == 1, "history source topic is missing or deleted");
+        }
 
         transaction.execute(
             "INSERT INTO history_sources(
@@ -1287,7 +1305,8 @@ impl Database {
             ],
         )?;
 
-        if owner_hash_mode == OwnerHashMode::Immediate {
+        let owner_hash_dirty = topic_hash_changed || !source_was_ready;
+        if owner_hash_dirty && owner_hash_mode == OwnerHashMode::Immediate {
             recompute_owner_content_hash(
                 &transaction,
                 &OwnerKey {
@@ -1312,6 +1331,7 @@ impl Database {
             topic: source.key.clone(),
             revision,
             changed: true,
+            owner_hash_dirty,
             search_update,
             message_count: incoming_ids.len(),
         })
@@ -2069,14 +2089,10 @@ fn next_global_revision(transaction: &Transaction<'_>) -> Result<i64> {
 struct ActiveMessageState {
     row_id: i64,
     ordinal: i64,
-    role: String,
     message_hash: String,
     updated_at: i64,
-    speaker_agent_id: Option<String>,
-    content_raw: String,
     content_text: String,
     speaker_name: Option<String>,
-    timestamp: Option<i64>,
     metadata_json: String,
 }
 
@@ -2085,9 +2101,8 @@ fn load_active_message_states(
     key: &TopicKey,
 ) -> Result<HashMap<String, ActiveMessageState>> {
     let mut statement = transaction.prepare(
-        "SELECT msg_id, row_id, ordinal, role, message_hash, updated_at,
-                speaker_agent_id, content_raw, content_text, speaker_name,
-                timestamp, metadata_json
+        "SELECT msg_id, row_id, ordinal, message_hash, updated_at,
+                content_text, speaker_name, metadata_json
          FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
     )?;
@@ -2099,15 +2114,11 @@ fn load_active_message_states(
                 ActiveMessageState {
                     row_id: row.get(1)?,
                     ordinal: row.get(2)?,
-                    role: row.get(3)?,
-                    message_hash: row.get(4)?,
-                    updated_at: row.get(5)?,
-                    speaker_agent_id: row.get(6)?,
-                    content_raw: row.get(7)?,
-                    content_text: row.get(8)?,
-                    speaker_name: row.get(9)?,
-                    timestamp: row.get(10)?,
-                    metadata_json: row.get(11)?,
+                    message_hash: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    content_text: row.get(5)?,
+                    speaker_name: row.get(6)?,
+                    metadata_json: row.get(7)?,
                 },
             ))
         },

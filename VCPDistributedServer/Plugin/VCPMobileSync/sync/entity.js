@@ -518,15 +518,25 @@ async function uploadEntitiesBatch(items, appDataPath) {
         await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
         await fs.rename(tmpPath, configPath);
 
-        // 批量更新索引
-        for (const item of group.items.filter((item) => successfulIds.has(item.id))) {
-          updateTopicStateFromConfig(
-            item.id,
-            config,
-            item.ownerType,
-            item.ownerId,
-          );
-        }
+        // 同一父 config 的 Topic 状态先全部提交，再只刷新一次 Owner root。
+        const successfulItems = group.items.filter((item) => successfulIds.has(item.id));
+        const commitIndex = db.transaction(() => {
+          for (const item of successfulItems) {
+            updateTopicStateFromConfig(
+              item.id,
+              config,
+              item.ownerType,
+              item.ownerId,
+              { refreshOwner: false },
+            );
+          }
+          const owner = successfulItems[0];
+          refreshOwnerContentHash({
+            ownerType: owner.ownerType,
+            ownerId: owner.ownerId,
+          });
+        });
+        commitIndex();
       } catch (e) {
         // 文件级错误会让该组所有 item 失败。父 config 不存在时返回
         // SYNC_ENTITY_NOT_FOUND，手机端可据此区分缺失父 Owner 与普通写入失败。
@@ -898,6 +908,7 @@ function updateTopicStateFromConfig(
   config,
   ownerType,
   ownerId,
+  { refreshOwner = true } = {},
 ) {
   const isGroupTopic = ownerType === "group";
   const topicObj = (config.topics || []).find((t) => t.id === id);
@@ -916,7 +927,9 @@ function updateTopicStateFromConfig(
       topicId: id,
       configHash: hash,
     });
-    refreshOwnerContentHash({ ownerType, ownerId });
+    if (refreshOwner) {
+      refreshOwnerContentHash({ ownerType, ownerId });
+    }
   }
 }
 
