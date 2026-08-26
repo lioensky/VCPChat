@@ -67,7 +67,8 @@ jobs:
       - name: Publish Chat evidence summary
         env:
           CHAT_EVIDENCE_MANIFEST: ${{ runner.temp }}/chat-evidence-manifest.json
-        run: node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync(process.env.CHAT_EVIDENCE_MANIFEST,'utf8')); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, ['## Chat evidence','', '- status: `'+m.status+'`','- contracts/events: `'+m.checks.contracts+'/'+m.checks.generatedEvents+'`','- dynamic sites: registered `'+m.checks.dynamicSites.registered+'`, undiscovered `'+m.checks.dynamicSites.undiscovered+'`','- artifact plane: `'+m.checks.artifactPlane+'`','- packaged artifact: `'+m.checks.packagedArtifact+'`','- Windows matrix: `'+m.checks.windowsMatrix+'`','- manual soak: `'+m.checks.manualSoak+'`','- real Electron: `'+m.checks.realElectronSequence+'` (manual/platform evidence remains separate)',''].join('\\n'));"
+        run: |
+          node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync(process.env.CHAT_EVIDENCE_MANIFEST,'utf8')); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, ['## Chat evidence','', '- status: `'+m.status+'`','- contracts/events: `'+m.checks.contracts+'/'+m.checks.generatedEvents+'`','- dynamic sites: registered `'+m.checks.dynamicSites.registered+'`, undiscovered `'+m.checks.dynamicSites.undiscovered+'`','- artifact plane: `'+m.checks.artifactPlane+'`','- packaged artifact: `'+m.checks.packagedArtifact+'`','- Windows matrix: `'+m.checks.windowsMatrix+'`','- manual soak: `'+m.checks.manualSoak+'`','- real Electron: `'+m.checks.realElectronSequence+'` (manual/platform evidence remains separate)',''].join('\\n'));"
 
       - name: Upload Chat evidence manifest
         uses: actions/upload-artifact@v4
