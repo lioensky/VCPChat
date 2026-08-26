@@ -646,12 +646,16 @@ impl Reconciler {
                 && previous.file_size == file_size
                 && previous.status == "ready"
             {
+                let (revision, indexed_revision) = self
+                    .database
+                    .topic_revision_state(&source.key)?
+                    .unwrap_or((0, 0));
                 return Ok(Some(IngestCommit {
                     topic: source.key.clone(),
-                    revision: self.database.topic_revision(&source.key)?.unwrap_or(0),
+                    revision,
                     changed: false,
                     owner_hash_dirty: false,
-                    search_update: SearchUpdate::None,
+                    search_update: SearchUpdate::for_revision_gap(revision, indexed_revision),
                     message_count: 0,
                 }));
             }

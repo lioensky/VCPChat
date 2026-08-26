@@ -218,6 +218,16 @@ pub enum SearchUpdate {
     Rewrite,
 }
 
+impl SearchUpdate {
+    pub(crate) fn for_revision_gap(content_revision: i64, indexed_revision: i64) -> Self {
+        if content_revision > indexed_revision {
+            Self::Rewrite
+        } else {
+            Self::None
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnerHashMode {
     Immediate,
@@ -995,7 +1005,7 @@ impl Database {
             transaction.commit()?;
             return Ok(None);
         };
-        if previous_hash != source_hash {
+        if previous_hash != source_hash || previous_status == "invalid" {
             transaction.commit()?;
             return Ok(None);
         }
@@ -1011,19 +1021,19 @@ impl Database {
                 now
             ],
         )?;
-        let revision = transaction
+        let (revision, indexed_revision) = transaction
             .query_row(
-                "SELECT content_revision FROM topics
+                "SELECT content_revision, indexed_revision FROM topics
                  WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
                 params![
                     source.key.owner_type.as_str(),
                     source.key.owner_id,
                     source.key.topic_id,
                 ],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?
-            .unwrap_or(0);
+            .unwrap_or((0, 0));
         if previous_status != "ready" && owner_hash_mode == OwnerHashMode::Immediate {
             recompute_owner_content_hash(
                 &transaction,
@@ -1039,7 +1049,7 @@ impl Database {
             revision,
             changed: false,
             owner_hash_dirty: previous_status != "ready",
-            search_update: SearchUpdate::None,
+            search_update: SearchUpdate::for_revision_gap(revision, indexed_revision),
             message_count: 0,
         }))
     }
@@ -1080,7 +1090,7 @@ impl Database {
             .as_ref()
             .is_some_and(|(_, status)| status == "ready");
 
-        if previous_hash == Some(source_hash) {
+        if previous_hash == Some(source_hash) && source_was_ready {
             transaction.execute(
                 "UPDATE history_sources SET
                     mtime_ns=?2, file_size=?3, indexed_at=?4, status='ready', last_error=NULL
@@ -1092,19 +1102,19 @@ impl Database {
                     now
                 ],
             )?;
-            let revision = transaction
+            let (revision, indexed_revision) = transaction
                 .query_row(
-                    "SELECT content_revision FROM topics
+                    "SELECT content_revision, indexed_revision FROM topics
                      WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
                     params![
                         source.key.owner_type.as_str(),
                         source.key.owner_id,
                         source.key.topic_id,
                     ],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?
-                .unwrap_or(0);
+                .unwrap_or((0, 0));
             if !source_was_ready && owner_hash_mode == OwnerHashMode::Immediate {
                 recompute_owner_content_hash(
                     &transaction,
@@ -1120,7 +1130,7 @@ impl Database {
                 revision,
                 changed: false,
                 owner_hash_dirty: !source_was_ready,
-                search_update: SearchUpdate::None,
+                search_update: SearchUpdate::for_revision_gap(revision, indexed_revision),
                 message_count: messages.len(),
             });
         }
@@ -1317,7 +1327,9 @@ impl Database {
         }
 
         transaction.commit()?;
-        let search_update = if !search_changed {
+        let search_update = if previous_content_revision > previous_indexed_revision {
+            SearchUpdate::Rewrite
+        } else if !search_changed {
             SearchUpdate::None
         } else if !search_requires_rewrite
             && !appended_row_ids.is_empty()
@@ -1379,14 +1391,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn topic_revision(&self, key: &TopicKey) -> Result<Option<i64>> {
+    pub fn topic_revision_state(&self, key: &TopicKey) -> Result<Option<(i64, i64)>> {
         let connection = self.connection.lock();
         connection
             .query_row(
-                "SELECT content_revision FROM topics
+                "SELECT content_revision, indexed_revision FROM topics
                  WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
                 params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(Into::into)
