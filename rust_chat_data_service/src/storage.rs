@@ -18,8 +18,8 @@ use crate::{
         OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
     sync_wire::{
-        aggregate_hash, invalid_message_sentinel, message_leaf_hash, stored_message_fingerprint,
-        topic_leaf_hash, unhealthy_topic_sentinel_hash,
+        aggregate_hash, message_leaf_hash, stored_message_fingerprint, topic_leaf_hash,
+        unhealthy_topic_sentinel_hash,
     },
 };
 
@@ -113,21 +113,6 @@ CREATE TABLE IF NOT EXISTS history_sources (
     last_error TEXT,
     FOREIGN KEY (owner_type, owner_id, topic_id)
         REFERENCES topics(owner_type, owner_id, topic_id)
-        ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS message_attachments (
-    message_row_id INTEGER NOT NULL,
-    attachment_order INTEGER NOT NULL,
-    content_hash TEXT,
-    display_name TEXT,
-    mime_type TEXT,
-    file_path TEXT,
-    metadata_json TEXT NOT NULL,
-    created_at INTEGER,
-    PRIMARY KEY (message_row_id, attachment_order),
-    FOREIGN KEY (message_row_id)
-        REFERENCES messages(row_id)
         ON DELETE CASCADE
 );
 
@@ -1101,43 +1086,15 @@ impl Database {
                     effective_updated_at,
                 ],
             )?;
-
-            let row_id: i64 = transaction.query_row(
-                "SELECT row_id FROM messages
-                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND msg_id=?4",
-                params![
-                    source.key.owner_type.as_str(),
-                    source.key.owner_id,
-                    source.key.topic_id,
-                    message.msg_id,
-                ],
-                |row| row.get(0),
-            )?;
-            transaction.execute(
-                "DELETE FROM message_attachments WHERE message_row_id=?1",
-                [row_id],
-            )?;
-            for attachment in &message.attachments {
-                transaction.execute(
-                    "INSERT INTO message_attachments(
-                        message_row_id, attachment_order, content_hash, display_name,
-                        mime_type, file_path, metadata_json, created_at
-                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![
-                        row_id,
-                        attachment.attachment_order,
-                        attachment.content_hash,
-                        attachment.display_name,
-                        attachment.mime_type,
-                        attachment.file_path,
-                        attachment.metadata_json,
-                        attachment.created_at,
-                    ],
-                )?;
-            }
         }
 
-        let topic_content_hash = compute_topic_content_hash(&transaction, &source.key)?;
+        let topic_content_hash = aggregate_hash(
+            messages
+                .iter()
+                .filter(|message| incoming_ids.contains(message.msg_id.as_str()))
+                .map(|message| message_leaf_hash(&message.msg_id, &message.message_hash))
+                .collect(),
+        );
         let changed = transaction.execute(
             "UPDATE topics SET
                 content_hash=?4,
@@ -1585,30 +1542,57 @@ fn migrate_sync_hash_contract(transaction: &Transaction<'_>) -> Result<()> {
     transaction.execute_batch("DROP INDEX IF EXISTS idx_messages_hash;")?;
 
     let messages = {
-        let mut statement = transaction
-            .prepare("SELECT row_id, topic_id, metadata_json, deleted_at FROM messages")?;
+        let mut statement = transaction.prepare(
+            "SELECT row_id, owner_type, owner_id, topic_id, metadata_json, deleted_at
+             FROM messages",
+        )?;
         let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
+                    TopicKey {
+                        owner_type: parse_owner_type(row.get::<_, String>(1)?),
+                        owner_id: row.get(2)?,
+                        topic_id: row.get(3)?,
+                    },
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows
     };
-    for (row_id, topic_id, metadata_json, deleted_at) in messages {
+    let mut invalid_topics = HashMap::new();
+    for (row_id, key, metadata_json, deleted_at) in messages {
         let message_hash = if deleted_at.is_some() {
             String::new()
         } else {
-            stored_message_fingerprint(&metadata_json, &topic_id)
-                .unwrap_or_else(|_| invalid_message_sentinel(&metadata_json))
+            match stored_message_fingerprint(&metadata_json, &key.topic_id) {
+                Ok(hash) => hash,
+                Err(error) => {
+                    invalid_topics.entry(key.clone()).or_insert_with(|| {
+                        truncate_error(&format!("stored message is not syncable: {error:#}"))
+                    });
+                    String::new()
+                }
+            }
         };
         transaction.execute(
             "UPDATE messages SET message_hash=?2 WHERE row_id=?1",
             params![row_id, message_hash],
+        )?;
+    }
+    for (key, error) in invalid_topics {
+        transaction.execute(
+            "UPDATE history_sources SET indexed_at=?4, status='invalid', last_error=?5
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+            params![
+                key.owner_type.as_str(),
+                key.owner_id,
+                key.topic_id,
+                now_ms(),
+                error,
+            ],
         )?;
     }
 
@@ -2024,7 +2008,6 @@ mod tests {
             updated_at,
             message_hash: hash.to_string(),
             metadata_json: "{}".to_string(),
-            attachments: Vec::new(),
         }
     }
 

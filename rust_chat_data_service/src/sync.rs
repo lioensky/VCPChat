@@ -2171,12 +2171,12 @@ mod tests {
     use super::{
         avatar_manifest, load_message_states, manifest, message_diff,
         mobile_owner_config_hash_from_value, owner_content_hash, owner_manifest, pull_entities,
-        pull_topic_messages, push_topic_messages, topic_content_hash, topic_diff, topic_manifest,
-        topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
-        ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
-        MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
-        MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
-        TopicDiffRequest, TopicDiffState, TopicManifestState,
+        pull_topic_messages, push_topic_messages, topic_diff, topic_manifest, topic_manifests,
+        AvatarManifestState, EntitiesPullRequest, EntityPullItem, ManifestIdentity, ManifestItem,
+        ManifestRequest, ManifestResponse, MessageDeletedState, MessageDiffRequest,
+        MessageDiffResult, MessageDiffState, MessageLiveState, MessageVersionState,
+        MessagesPullTopic, MessagesPushTopic, OwnerManifestState, TopicDiffRequest, TopicDiffState,
+        TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2184,8 +2184,8 @@ mod tests {
         ingest::{sha256_hex, Reconciler},
         storage::Database,
         sync_wire::{
-            aggregate_hash, canonicalize_message, invalid_message_sentinel, message_fingerprint,
-            message_leaf_hash, stored_message_fingerprint, topic_leaf_hash, WireWarnings,
+            aggregate_hash, canonicalize_message, message_fingerprint, stored_message_fingerprint,
+            topic_leaf_hash, WireWarnings,
         },
     };
     use serde_json::json;
@@ -3554,76 +3554,42 @@ mod tests {
         assert_eq!(by_id["m2"].deleted_at, None);
     }
 
-    /// 无法 wire 化的存活消息降级为确定性哨兵哈希，
-    /// message manifest 与 topic content hash 都不再整批失败。
+    /// 无法 wire 化的物理消息不能伪装成合法 messageHash；整份 history 保持未提交，
+    /// 已有 source 健康状态负责阻止旧 SQLite 镜像参与同步。
     #[tokio::test]
-    async fn live_poison_message_degrades_to_deterministic_sentinel() {
+    async fn live_poison_message_marks_source_invalid_without_fake_hash() {
         let (_temp, config, database, reconciler) = sync_fixture();
-        let poison_raw = r#"{"role":"user","content":"no id","timestamp":5}"#;
         fs::write(
             config
                 .user_data_dir
                 .join("agent-a/topics/topic-a/history.json"),
-            format!(
-                r#"[{{"id":"m1","role":"user","content":"healthy","timestamp":1}},{poison_raw}]"#
-            ),
+            br#"[{"id":"m1","role":"user","content":"healthy","timestamp":1},{"role":"user","content":"no id","timestamp":5}]"#,
         )
         .expect("write history with poison row");
-        reconciler.reconcile().await.expect("reconcile");
+        let stats = reconciler.reconcile().await.expect("reconcile");
+        assert_eq!(stats.files_invalid, 1);
 
-        let states = load_message_states(
-            &database,
-            &TopicKey {
-                owner_type: OwnerType::Agent,
-                owner_id: "agent-a".to_string(),
-                topic_id: "topic-a".to_string(),
-            },
-        )
-        .expect("message states with poison");
-        let by_id: HashMap<_, _> = states
-            .iter()
-            .map(|message| (message.msg_id.as_str(), message))
-            .collect();
-        let stored_poison = serde_json::to_string(
-            &serde_json::from_str::<serde_json::Value>(poison_raw).expect("parse poison message"),
-        )
-        .expect("serialize poison message");
-        let expected_sentinel = invalid_message_sentinel(&stored_poison);
-        let synthetic_id = by_id
-            .keys()
-            .find(|message_id| message_id.starts_with("synthetic_"))
-            .copied()
-            .expect("synthetic poison id");
-        assert_eq!(
-            by_id[synthetic_id].message_hash.as_deref(),
-            Some(expected_sentinel.as_str())
-        );
-        // 健康消息的哈希与无哨兵时逐字节一致。
-        assert_eq!(
-            by_id["m1"].message_hash.as_deref().unwrap(),
-            &stored_message_fingerprint(
-                r#"{"id":"m1","role":"user","content":"healthy","timestamp":1}"#,
-                "topic-a",
-            )
-            .expect("healthy hash")
-        );
-
-        // topic content hash 同样不再失败，且确定性（两次调用相等、包含哨兵）。
         let key = TopicKey {
             owner_type: OwnerType::Agent,
             owner_id: "agent-a".to_string(),
             topic_id: "topic-a".to_string(),
         };
-        let first = topic_content_hash(&database, &key).expect("content hash with sentinel");
-        let second = topic_content_hash(&database, &key).expect("deterministic");
-        assert_eq!(first, second);
-        assert_eq!(
-            first,
-            aggregate_hash(vec![
-                message_leaf_hash("m1", by_id["m1"].message_hash.as_deref().unwrap()),
-                message_leaf_hash(synthetic_id, &expected_sentinel),
-            ])
-        );
+        let connection = database.connection.lock();
+        let (message_count, status): (i64, String) = connection
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a'),
+                    (SELECT status FROM history_sources
+                     WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read rejected source state");
+        drop(connection);
+        assert_eq!(message_count, 0);
+        assert_eq!(status, "invalid");
+        assert!(load_message_states(&database, &key).is_err());
     }
 
     /// 活 topic 的 source 不健康时，topic_manifests 不再整批 500，

@@ -10,12 +10,12 @@ use std::{
 use crate::{
     config::ServiceConfig,
     domain::{
-        AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedAttachment, NormalizedMessage,
-        OwnerKey, OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource,
+        AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedMessage, OwnerKey, OwnerRecord,
+        OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
     storage::{now_ms, Database, IngestCommit},
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
-    sync_wire::{invalid_message_sentinel, stored_message_fingerprint},
+    sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -267,7 +267,14 @@ impl Reconciler {
         if !self.database.upsert_topic_source(&source)? {
             return Ok(None);
         }
-        self.ingest_source_if_changed(&source).await
+        match self.ingest_source_if_changed(&source).await {
+            Ok(commit) => Ok(commit),
+            Err(error) => {
+                self.database
+                    .mark_source_invalid(&source, &format!("{error:#}"))?;
+                Err(error)
+            }
+        }
     }
 
     fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
@@ -607,7 +614,7 @@ pub fn normalize_history(
 ) -> Result<Vec<NormalizedMessage>> {
     let root: Value = serde_json::from_slice(bytes).context("history is not valid JSON")?;
     let history = root.as_array().context("history root must be an array")?;
-    let mut seen_ids = HashMap::<String, usize>::new();
+    let mut seen_ids = HashSet::new();
 
     history
         .iter()
@@ -626,72 +633,56 @@ fn normalize_message(
     ordinal: usize,
     owner_type: OwnerType,
     topic_id: &str,
-    seen_ids: &mut HashMap<String, usize>,
+    seen_ids: &mut HashSet<String>,
 ) -> Result<NormalizedMessage> {
-    let content_value = object.get("content").cloned().unwrap_or(Value::Null);
-    let content_raw = match &content_value {
-        Value::String(value) => value.clone(),
-        value => serde_json::to_string(value)?,
-    };
-    let content_text = clean_search_text(&extract_content_text(&content_value));
+    let raw_message = Value::Object(object.clone());
+    let metadata_json = serde_json::to_string(&raw_message)?;
+    let mut warnings = WireWarnings::default();
+    let canonical = canonicalize_message(raw_message, topic_id, &mut warnings)
+        .with_context(|| format!("message at ordinal {ordinal} is not syncable"))?;
+    let message_hash = message_fingerprint(&canonical)?;
+    let canonical = canonical
+        .as_object()
+        .context("canonical message must be an object")?;
 
-    let natural_id = string_value(object.get("id"));
-    let base_id = natural_id.clone().unwrap_or_else(|| {
-        let digest = sha256_hex(
-            format!(
-                "{}\0{}\0{}\0{}",
-                ordinal,
-                string_value(object.get("role")).unwrap_or_default(),
-                integer_value(object.get("timestamp")).unwrap_or_default(),
-                content_raw
-            )
-            .as_bytes(),
-        );
-        format!("synthetic_{}", &digest[..24])
-    });
-    let occurrence = seen_ids.entry(base_id.clone()).or_default();
-    let msg_id = if *occurrence == 0 {
-        base_id.clone()
-    } else {
-        // Malformed legacy files may contain duplicate IDs inside one topic. Preserve
-        // the original in metadata while assigning a deterministic mirror-only key.
-        format!("{base_id}#duplicate_{}", *occurrence)
-    };
-    *occurrence += 1;
-
-    let role = string_value(object.get("role")).unwrap_or_else(|| "unknown".to_string());
-    let speaker_name =
-        string_value(object.get("name")).or_else(|| string_value(object.get("speakerName")));
+    let msg_id = canonical
+        .get("id")
+        .and_then(Value::as_str)
+        .context("canonical message id is missing")?
+        .to_string();
+    anyhow::ensure!(
+        seen_ids.insert(msg_id.clone()),
+        "history contains duplicate message id {msg_id}"
+    );
+    let role = canonical
+        .get("role")
+        .and_then(Value::as_str)
+        .context("canonical message role is missing")?
+        .to_string();
+    let content_raw = canonical
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let content_text = clean_search_text(&content_raw);
+    let timestamp = canonical
+        .get("timestamp")
+        .and_then(Value::as_u64)
+        .and_then(|value| i64::try_from(value).ok());
+    let speaker_name = canonical
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| string_value(object.get("speakerName")));
     let speaker_agent_id = if owner_type == OwnerType::Group {
-        string_value(object.get("agentId")).or_else(|| string_value(object.get("agentID")))
+        canonical
+            .get("agentId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| string_value(object.get("agentID")))
     } else {
         None
     };
-
-    let attachments = object
-        .get("attachments")
-        .and_then(Value::as_array)
-        .map(|attachments| {
-            attachments
-                .iter()
-                .enumerate()
-                .filter_map(|(order, value)| normalize_attachment(value, order).transpose())
-                .collect::<Result<Vec<_>>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
-
-    let metadata_json = serde_json::to_string(&Value::Object(object.clone()))?;
-    let message_hash =
-        stored_message_fingerprint(&metadata_json, topic_id).unwrap_or_else(|error| {
-            tracing::warn!(
-                topic_id,
-                message_id = %msg_id,
-                error = %format!("{error:#}"),
-                "message cannot cross sync wire; storing sentinel hash"
-            );
-            invalid_message_sentinel(&metadata_json)
-        });
 
     Ok(NormalizedMessage {
         msg_id,
@@ -701,40 +692,14 @@ fn normalize_message(
         speaker_agent_id,
         content_raw,
         content_text,
-        timestamp: integer_value(object.get("timestamp")),
-        updated_at: object
+        timestamp,
+        updated_at: canonical
             .get("updatedAt")
             .and_then(Value::as_i64)
             .filter(|value| (0..=9_007_199_254_740_991).contains(value)),
         message_hash,
         metadata_json,
-        attachments,
     })
-}
-
-fn normalize_attachment(value: &Value, order: usize) -> Result<Option<NormalizedAttachment>> {
-    let Some(object) = value.as_object() else {
-        return Ok(None);
-    };
-    let nested = object.get("_fileManagerData").and_then(Value::as_object);
-    let select = |key: &str| {
-        nested
-            .and_then(|map| map.get(key))
-            .or_else(|| object.get(key))
-    };
-
-    Ok(Some(NormalizedAttachment {
-        attachment_order: order as i64,
-        content_hash: string_value(select("hash")),
-        display_name: string_value(object.get("name"))
-            .or_else(|| string_value(select("displayName"))),
-        mime_type: string_value(object.get("type")).or_else(|| string_value(select("type"))),
-        file_path: string_value(select("internalPath"))
-            .or_else(|| string_value(object.get("localPath")))
-            .or_else(|| string_value(object.get("src"))),
-        metadata_json: serde_json::to_string(value)?,
-        created_at: integer_value(select("createdAt")),
-    }))
 }
 
 pub fn parse_history_path(user_data_dir: &Path, path: &Path) -> Option<(String, String)> {
@@ -816,28 +781,6 @@ async fn read_stable_file(path: &Path) -> Result<Vec<u8>> {
         Err(error).with_context(|| format!("failed to read stable file {}", path.display()))
     } else {
         anyhow::bail!("file did not become stable: {}", path.display())
-    }
-}
-
-fn extract_content_text(value: &Value) -> String {
-    match value {
-        Value::String(value) => value.clone(),
-        Value::Array(parts) => parts
-            .iter()
-            .filter_map(|part| {
-                let object = part.as_object()?;
-                let part_type = object.get("type").and_then(Value::as_str);
-                if part_type.is_none() || part_type == Some("text") {
-                    string_value(object.get("text"))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Value::Object(object) => string_value(object.get("text")).unwrap_or_default(),
-        Value::Null => String::new(),
-        value => value.to_string(),
     }
 }
 
@@ -1531,7 +1474,8 @@ mod tests {
                 {
                     "id": "msg_1",
                     "role": "user",
-                    "content": "last valid content"
+                    "content": "last valid content",
+                    "timestamp": 1
                 }
             ]),
         );
@@ -1585,7 +1529,8 @@ mod tests {
                 {
                     "id": "msg_1",
                     "role": "user",
-                    "content": "独特删除检索词"
+                    "content": "独特删除检索词",
+                    "timestamp": 1
                 }
             ]),
         );
@@ -1655,12 +1600,14 @@ mod tests {
                 {
                     "id": "msg_1",
                     "role": "user",
-                    "content": "will be removed"
+                    "content": "will be removed",
+                    "timestamp": 1
                 },
                 {
                     "id": "msg_2",
                     "role": "assistant",
-                    "content": "will also be removed"
+                    "content": "will also be removed",
+                    "timestamp": 2
                 }
             ]),
         );

@@ -182,7 +182,7 @@ graph TD
 
 ## 📐 硬核数据模型与表结构
 
-默认中央模式的 Owner、Topic、Message、Avatar、附件关系、Tombstone 与 history source 状态由 VCP-CDS `chat_data.sqlite3` 管理。插件仍负责配置文件和 Avatar bytes 的物理读写，以及本机 Attachment 路径解析；中央模式不会持久化 `sync_state_v2.db`。
+默认中央模式的 Owner、Topic、Message、Avatar、Tombstone 与 history source 状态由 VCP-CDS `chat_data.sqlite3` 管理。插件仍负责配置文件和 Avatar bytes 的物理读写，以及本机 Attachment 路径解析；中央模式不会持久化 `sync_state_v2.db`。
 
 显式关闭中央索引时，`sync_state_v2.db` 使用完整复合身份：
 
@@ -195,7 +195,7 @@ graph TD
 | `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、时间与墓碑 |
 | `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、路径与索引版本快路径 |
 
-CDS 的 `message_attachments` 保存消息关系与元数据；Legacy 不再维护重复的附件关系表，附件二进制也不跨端同步。
+CDS 与 Legacy 都直接从规范消息保存附件元数据，不再维护同步专用附件关系表；附件二进制不跨端同步。
 
 ---
 

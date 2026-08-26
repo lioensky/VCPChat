@@ -199,18 +199,6 @@ pub struct NormalizedMessage {
     pub updated_at: Option<i64>,
     pub message_hash: String,
     pub metadata_json: String,
-    pub attachments: Vec<NormalizedAttachment>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NormalizedAttachment {
-    pub attachment_order: i64,
-    pub content_hash: Option<String>,
-    pub display_name: Option<String>,
-    pub mime_type: Option<String>,
-    pub file_path: Option<String>,
-    pub metadata_json: String,
-    pub created_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

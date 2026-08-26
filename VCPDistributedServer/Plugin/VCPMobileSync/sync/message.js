@@ -15,7 +15,6 @@ const {
   updateTopicContentHash,
 } = require("../core/db");
 const {
-  computeMessageFingerprint,
   computeMessageLeafHash,
   computeAggregatedHash,
 } = require("../core/hash");
@@ -365,7 +364,7 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           !indexed ||
           !Number.isSafeInteger(indexed.updated_at) ||
           indexed.updated_at < 0 ||
-          computeMessageFingerprint(message) !== indexed.hash
+          message.contentHash !== indexed.hash
         ) {
           throw createSyncError(
             "SYNC_INDEX_INVALID",
@@ -834,7 +833,7 @@ async function ingestHistoryToDb(
         .all(ownerType, ownerId, topicId);
       const existingById = new Map(existing.map((row) => [row.msg_id, row]));
       for (const m of validMessages) {
-        const hash = computeMessageFingerprint(m);
+        const hash = m.contentHash;
         const previous = existingById.get(m.id);
         if (previous?.deleted_at !== null && previous?.deleted_at !== undefined) {
           continue;

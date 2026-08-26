@@ -346,10 +346,6 @@ pub(crate) fn stored_message_fingerprint(raw: &str, topic_id: &str) -> Result<St
     message_fingerprint(&canonical)
 }
 
-pub(crate) fn invalid_message_sentinel(raw: &str) -> String {
-    sha256_hex(format!("vcp-invalid-message:{raw}").as_bytes())
-}
-
 pub(crate) fn aggregate_hash(mut hashes: Vec<String>) -> String {
     if hashes.is_empty() {
         return String::new();
