@@ -16,6 +16,8 @@ const {
   softDeleteAvatarIndex,
   getHistorySourceState,
   isHistorySourceCurrent,
+  refreshOwnerContentHash,
+  refreshAllOwnerContentHashes,
 } = require("./core/db");
 const {
   computeBinaryHash,
@@ -31,10 +33,16 @@ const {
   handleSyncManifest,
 } = require("./sync/manifest");
 const { handleSyncMessageDiff, handleSyncTopicDiff } = require("./sync/diff");
-const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
+const {
+  ingestHistoryToDb,
+  readHistoryStrict,
+  markHistoryTopicUnhealthy,
+  isHistoryTopicUnhealthy,
+} = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const {
   isWriteLocked,
+  scanPhysicalTopicTree,
   repairTopicProjectionsFromDisk,
   reconcileMissingPhysicalIndexes,
   sanitizeId,
@@ -44,6 +52,7 @@ const {
 const { getLogger, resetLogger } = require("./core/logger");
 const { createPhaseAck, createVersionAck } = require("./protocol");
 const { withSyncErrorContext } = require("./error-contract");
+const { acquireLock } = require("./utils/lock");
 const {
   AGENT_SYNC_FIELDS,
   GROUP_SYNC_FIELDS,
@@ -105,24 +114,25 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
   // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
   if (centralSync) {
+    centralSync.requireClient();
+    const physicalOwners = await scanPhysicalTopicTree(appDataPath);
     await repairTopicProjectionsFromDisk(
       appDataPath,
-      null,
+      physicalOwners,
       (request) => centralSync.loadTopicRecoveryStates(request),
     );
     initDb(":memory:");
-    // CDS 会在 READY 后自行启动一次 reconcile；若它已持有锁，启动门禁就
-    // 继续等待同一既有动作完成。只有非 SERVICE_BUSY 的真实失败才终止注册，
-    // 因而 CDS 缺席或索引失败时不会提前开放 MobileSync 端口。
-    await centralSync.reconcile({ maxAttempts: Number.POSITIVE_INFINITY });
+    // CDS 在 READY 后自行完成启动 reconcile。MobileSync 的真实一致性门禁
+    // 位于 owner_metadata PHASE_START；这里不再紧跟着重复扫描同一份 AppData。
     centralSync.logEnabled();
-    await reconcileCompatibilityAssets(appDataPath);
+    await reconcileCompatibilityAssets(appDataPath, physicalOwners);
   } else {
     // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
     const dbPath = path.join(__dirname, "sync_state_v2.db");
     initDb(dbPath);
-    await repairTopicProjectionsFromDisk(appDataPath);
-    await reconcileLocalFiles(appDataPath);
+    const physicalOwners = await scanPhysicalTopicTree(appDataPath);
+    await repairTopicProjectionsFromDisk(appDataPath, physicalOwners);
+    await reconcileLocalFiles(appDataPath, physicalOwners);
   }
 
   // 启动 WebSocket（仅在索引完成后开放，防止手机端提前连接）
@@ -200,15 +210,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         case "PHASE_COMPLETED": {
           const ack = createPhaseAck(payload, { echoFinalIdentity: true });
           const phase = ack.phase;
-          if (
-            centralSync &&
-            (phase === "owner_metadata" || phase === "topic_metadata")
-          ) {
-            // Entity/topic files are written by the plugin while CDS owns the
-            // central SQLite view. Do not acknowledge the phase until that view
-            // has durably observed the parent records needed by later messages.
-            await centralSync.reconcile();
-          }
           logger.completePhase(phase);
           return ack;
         }
@@ -397,7 +398,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
  * 中央模式兼容目录：只定位配置 DTO 和本机附件文件。
  * history.json、消息提交状态、消息墓碑和 Topic 内容 Hash 全部由 CDS 负责。
  */
-async function reconcileCompatibilityAssets(appDataPath) {
+async function reconcileCompatibilityAssets(appDataPath, physicalOwners = null) {
   const db = getDb();
   if (!db) return;
 
@@ -421,10 +422,14 @@ async function reconcileCompatibilityAssets(appDataPath) {
     if (error.code !== "ENOENT") throw error;
   }
 
-  await refreshCompatibilityOwners(appDataPath, now);
+  await refreshCompatibilityOwners(appDataPath, now, physicalOwners);
 }
 
-async function refreshCompatibilityOwners(appDataPath, updatedAt = Date.now()) {
+async function refreshCompatibilityOwners(
+  appDataPath,
+  updatedAt = Date.now(),
+  physicalOwners = null,
+) {
   const db = getDb();
   if (!db) throw new Error("Database not initialized");
   const logger = getLogger();
@@ -435,6 +440,7 @@ async function refreshCompatibilityOwners(appDataPath, updatedAt = Date.now()) {
     updatedAt,
     appDataPath,
     logger,
+    physicalOwners,
   );
   await scanEntities(
     path.join(appDataPath, "AgentGroups"),
@@ -443,6 +449,7 @@ async function refreshCompatibilityOwners(appDataPath, updatedAt = Date.now()) {
     updatedAt,
     appDataPath,
     logger,
+    physicalOwners,
   );
 }
 
@@ -509,7 +516,7 @@ async function reconcileAvatarFiles(appDataPath, updatedAt = Date.now()) {
   return { indexedCount, tombstonedCount };
 }
 
-async function refreshLegacyCommitView(appDataPath) {
+async function refreshLegacyCommitView(appDataPath, physicalOwners = null) {
   const db = getDb();
   if (!db) throw new Error("Database not initialized");
 
@@ -518,6 +525,7 @@ async function refreshLegacyCommitView(appDataPath) {
   const agentsDir = path.join(appDataPath, "Agents");
   const groupsDir = path.join(appDataPath, "AgentGroups");
   const userDataDir = path.join(appDataPath, "UserData");
+  const physical = physicalOwners || await scanPhysicalTopicTree(appDataPath);
 
   const agentResult = await scanEntities(
     agentsDir,
@@ -526,6 +534,7 @@ async function refreshLegacyCommitView(appDataPath) {
     now,
     appDataPath,
     logger,
+    physical,
   );
   const groupResult = await scanEntities(
     groupsDir,
@@ -534,9 +543,11 @@ async function refreshLegacyCommitView(appDataPath) {
     now,
     appDataPath,
     logger,
+    physical,
   );
-  const historyResult = await scanHistory(userDataDir, db, logger);
-  const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
+  const historyResult = await scanHistory(userDataDir, db, logger, physical);
+  const deleted = await reconcileMissingPhysicalIndexes(appDataPath, physical);
+  refreshAllOwnerContentHashes(db);
 
   return {
     agentCount: agentResult.count,
@@ -554,7 +565,7 @@ async function refreshLegacyCommitView(appDataPath) {
 /**
  * 扫描本地文件并建立索引
  */
-async function reconcileLocalFiles(appDataPath) {
+async function reconcileLocalFiles(appDataPath, physicalOwners = null) {
   const db = getDb();
   if (!db) return;
 
@@ -592,7 +603,7 @@ async function reconcileLocalFiles(appDataPath) {
   }
 
   // 2. 刷新 Owner/Topic/Message 提交视图；未变化 history 只做 stat。
-  const stats = await refreshLegacyCommitView(appDataPath);
+  const stats = await refreshLegacyCommitView(appDataPath, physicalOwners);
 
   // 3. Avatar 使用独立持久兼容视图，不混入 Owner/Topic 扫描。
   await reconcileAvatarFiles(appDataPath, now);
@@ -657,7 +668,15 @@ const SYSTEM_FOLDERS = [
 /**
  * 扫描实体目录
  */
-async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
+async function scanEntities(
+  baseDir,
+  type,
+  db,
+  now,
+  appDataPath,
+  logger,
+  physicalOwners = null,
+) {
   let count = 0;
   let topicCount = 0;
   let entries;
@@ -690,57 +709,71 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
         dto,
         type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
       );
-      upsertOwnerState({
-        ownerType: type,
-        ownerId: id,
-        configPath,
-        configHash: hash,
-        updatedAt: now,
-      });
-      count++;
-
       const topicsDir = path.join(appDataPath, "UserData", id, "topics");
-      let topicEntries = [];
-      try {
-        topicEntries = await fs.readdir(topicsDir, { withFileTypes: true });
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
+      let physicalTopics = physicalOwners
+        ?.get(`${type}\0${id}`)
+        ?.physicalTopics;
+      if (!physicalTopics) {
+        let topicEntries = [];
+        try {
+          topicEntries = await fs.readdir(topicsDir, { withFileTypes: true });
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+        physicalTopics = new Set(
+          topicEntries
+            .filter((topicEntry) => topicEntry.isDirectory())
+            .map((topicEntry) => topicEntry.name),
+        );
       }
-      const physicalTopics = new Set(
-        topicEntries
-          .filter((topicEntry) => topicEntry.isDirectory())
-          .map((topicEntry) => topicEntry.name),
-      );
-      if (Array.isArray(config.topics)) {
-        for (const topic of config.topics) {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        let indexedTopics = 0;
+        upsertOwnerState({
+          ownerType: type,
+          ownerId: id,
+          configPath,
+          configHash: hash,
+          updatedAt: now,
+        });
+
+        if (Array.isArray(config.topics)) {
+          for (const topic of config.topics) {
           if (
             sanitizeId(topic?.id) !== topic?.id ||
             !physicalTopics.has(topic.id)
           ) {
             continue;
           }
-          const previous = getTopicState({
-            ownerType: type,
-            ownerId: id,
-            topicId: topic.id,
-          });
-          if (previous?.deleted_at != null) continue;
-          const topicDto = extractTopicDTO(topic, id, type);
-          const configHash = computeDtoHash(
-            topicDto,
-            type === "group"
-              ? GROUP_TOPIC_SYNC_FIELDS
-              : AGENT_TOPIC_SYNC_FIELDS,
-          );
-          upsertTopicState({
-            ownerType: type,
-            ownerId: id,
-            topicId: topic.id,
-            configHash,
-            updatedAt: now,
-          });
-          topicCount += 1;
+            const previous = getTopicState({
+              ownerType: type,
+              ownerId: id,
+              topicId: topic.id,
+            });
+            if (previous?.deleted_at != null) continue;
+            const topicDto = extractTopicDTO(topic, id, type);
+            const configHash = computeDtoHash(
+              topicDto,
+              type === "group"
+                ? GROUP_TOPIC_SYNC_FIELDS
+                : AGENT_TOPIC_SYNC_FIELDS,
+            );
+            upsertTopicState({
+              ownerType: type,
+              ownerId: id,
+              topicId: topic.id,
+              configHash,
+              updatedAt: now,
+            });
+            indexedTopics += 1;
+          }
         }
+        db.exec("COMMIT");
+        count += 1;
+        topicCount += indexedTopics;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
       }
     } catch (error) {
       // 条目级降级：单个实体 config 损坏不应中止整个 reconcile；
@@ -755,10 +788,10 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
 /**
  * 增量扫描历史记录。
  *
- * history_source_state 保存最近一次成功摄取的 mtime + size。二者未变化时
- * 不再读取 history.json；变化文件只读取一次，并把快照传给摄取函数复用。
+ * history_source_state 先用 mtime + size 跳过未变文件；元数据变化后再用原始
+ * SHA-256 排除 touch/等价替换，只有真实 bytes 变化才进入 canonical 摄取。
  */
-async function scanHistory(userDataDir, db, logger) {
+async function scanHistory(userDataDir, db, logger, physicalOwners = null) {
   const result = {
     messageCount: 0,
     changedCount: 0,
@@ -766,40 +799,71 @@ async function scanHistory(userDataDir, db, logger) {
     warningCount: 0,
     warningTopicCount: 0,
   };
-  const ownerTypes = new Map();
-  for (const owner of db
+  const liveOwnerRows = db
     .prepare(
       `SELECT owner_type, owner_id FROM owners WHERE deleted_at IS NULL`,
     )
-    .all()) {
-    ownerTypes.set(owner.owner_id, owner.owner_type);
-  }
-  let visitedCount = 0;
-  let entries;
-  try {
-    entries = await fs.readdir(userDataDir, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === "ENOENT") return result;
-    throw error;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (SYSTEM_FOLDERS.includes(entry.name)) continue;
-    const ownerId = entry.name;
-    const ownerType = ownerTypes.get(ownerId) || null;
-
-    const topicsDir = path.join(userDataDir, ownerId, "topics");
-    let topicFolders;
+    .all();
+  const liveOwnerKeys = new Set(
+    liveOwnerRows.map((owner) => `${owner.owner_type}\0${owner.owner_id}`),
+  );
+  const sources = [];
+  if (physicalOwners) {
+    for (const owner of physicalOwners.values()) {
+      for (const topicId of owner.physicalTopics) {
+        sources.push({
+          ownerType: liveOwnerKeys.has(`${owner.ownerType}\0${owner.ownerId}`)
+            ? owner.ownerType
+            : null,
+          ownerId: owner.ownerId,
+          topicId,
+          historyPath: path.join(
+            userDataDir,
+            owner.ownerId,
+            "topics",
+            topicId,
+            "history.json",
+          ),
+        });
+      }
+    }
+  } else {
+    const ownerTypes = new Map();
+    for (const owner of liveOwnerRows) {
+      ownerTypes.set(owner.owner_id, owner.owner_type);
+    }
+    let entries;
     try {
-      topicFolders = await fs.readdir(topicsDir, { withFileTypes: true });
+      entries = await fs.readdir(userDataDir, { withFileTypes: true });
     } catch (error) {
-      if (error.code === "ENOENT") continue;
+      if (error.code === "ENOENT") return result;
       throw error;
     }
-    for (const topicEntry of topicFolders) {
-      if (!topicEntry.isDirectory()) continue;
-      const topicId = topicEntry.name;
-      const historyPath = path.join(topicsDir, topicId, "history.json");
+    for (const entry of entries) {
+      if (!entry.isDirectory() || SYSTEM_FOLDERS.includes(entry.name)) continue;
+      const ownerId = entry.name;
+      const ownerType = ownerTypes.get(ownerId) || null;
+      const topicsDir = path.join(userDataDir, ownerId, "topics");
+      let topicFolders;
+      try {
+        topicFolders = await fs.readdir(topicsDir, { withFileTypes: true });
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+      for (const topicEntry of topicFolders) {
+        if (!topicEntry.isDirectory()) continue;
+        sources.push({
+          ownerType,
+          ownerId,
+          topicId: topicEntry.name,
+          historyPath: path.join(topicsDir, topicEntry.name, "history.json"),
+        });
+      }
+    }
+  }
+  let visitedCount = 0;
+  for (const { ownerType, ownerId, topicId, historyPath } of sources) {
       try {
         if (!ownerType) {
           throw new Error(`History owner ${ownerId} has no live Agent or Group index`);
@@ -807,6 +871,7 @@ async function scanHistory(userDataDir, db, logger) {
         const sourceStats = await fs.stat(historyPath);
         if (!sourceStats.isFile()) continue;
         if (
+          !isHistoryTopicUnhealthy({ ownerType, ownerId, topicId }) &&
           isHistorySourceCurrent({
             ownerType,
             ownerId,
@@ -820,14 +885,15 @@ async function scanHistory(userDataDir, db, logger) {
           continue;
         }
 
-        const { history } = await readHistoryStrict(historyPath);
+        const { history, sourceHash } = await readHistoryStrict(historyPath);
         const ingestResult = await ingestHistoryToDb(
           historyPath,
           { topicId, ownerType, ownerId },
           "reconcile",
-          { history, sourceStats },
+          { history, sourceStats, sourceHash },
         );
-        result.changedCount += 1;
+        result.changedCount += Number(ingestResult.changed);
+        result.skippedCount += Number(!ingestResult.changed);
         result.messageCount += ingestResult.messageCount;
         result.warningCount += ingestResult.warningCount;
         if (ingestResult.warningCount > 0) {
@@ -874,7 +940,6 @@ async function scanHistory(userDataDir, db, logger) {
           await new Promise((resolve) => setImmediate(resolve));
         }
       }
-    }
   }
   return result;
 }
@@ -994,6 +1059,7 @@ function startFileWatcher(appDataPath) {
           const newTopics = await ingestConfigToDb(filePath, type, appDataPath);
           if (newTopics.length > 0) {
             for (const topic of newTopics) {
+              const release = await acquireLock(topic.historyPath);
               try {
                 await ingestHistoryToDb(
                   topic.historyPath,
@@ -1005,6 +1071,8 @@ function startFileWatcher(appDataPath) {
                 );
               } catch {
                 // ingestHistoryToDb 已记录并标记精确 Topic 的错误；继续处理同批其他 Topic。
+              } finally {
+                release();
               }
             }
           }
@@ -1055,11 +1123,16 @@ function startFileWatcher(appDataPath) {
           );
         }
         logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
-        await ingestHistoryToDb(filePath, {
-          topicId: id,
-          ownerType,
-          ownerId,
-        });
+        const release = await acquireLock(filePath);
+        try {
+          await ingestHistoryToDb(filePath, {
+            topicId: id,
+            ownerType,
+            ownerId,
+          });
+        } finally {
+          release();
+        }
       }
     } catch (e) {
       logger.logOperation("watcher", "file", id, "error", `${event} failed: ${e.message}`);
@@ -1185,6 +1258,7 @@ async function ingestConfigToDb(configPath, type, appDataPath) {
 
     // Topic 存活由物理目录决定；配置只更新仍有物理实体的元数据。
     await reconcileMissingPhysicalIndexes(appDataPath, null, db, now);
+    refreshOwnerContentHash({ ownerType: type, ownerId }, db);
 
     logger.logOperation("watcher", type, id, "success", `hash updated, topics=${topicLen}`);
     return newTopics;

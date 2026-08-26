@@ -11,9 +11,15 @@ try {
 }
 
 const { getLogger } = require("./logger");
+const {
+  computeAggregatedHash,
+  computeTopicLeafHash,
+} = require("./hash");
 
 let db = null;
-const HISTORY_INDEX_VERSION = 2;
+let messageUpsertStatement = null;
+let messageTombstoneStatement = null;
+const HISTORY_INDEX_VERSION = 3;
 const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
 const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
 const AVATAR_TOMBSTONE_HASH = "0".repeat(64);
@@ -55,6 +61,7 @@ function createSyncStateTables() {
       owner_id TEXT NOT NULL,
       config_path TEXT NOT NULL,
       config_hash TEXT NOT NULL,
+      content_hash TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL,
       deleted_at INTEGER DEFAULT NULL,
       PRIMARY KEY (owner_type, owner_id),
@@ -96,6 +103,7 @@ function createSyncStateTables() {
       file_path TEXT NOT NULL,
       file_size INTEGER NOT NULL,
       mtime_ms REAL NOT NULL,
+      source_hash TEXT NOT NULL,
       index_version INTEGER NOT NULL,
       PRIMARY KEY (owner_type, owner_id, topic_id),
       FOREIGN KEY (owner_type, owner_id, topic_id)
@@ -130,8 +138,30 @@ function initDb(dbPath) {
   db = new Database(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
 
-  // 1. Legacy 同步提交视图。Owner 根由 topics 动态聚合，不另存派生缓存。
+  // 1. Legacy 同步提交视图。Owner/Topic 根均随提交视图持久化。
   createSyncStateTables();
+  messageUpsertStatement = db.prepare(`
+    INSERT INTO messages (
+      owner_type, owner_id, topic_id, msg_id, message_hash, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
+      message_hash = excluded.message_hash,
+      updated_at = excluded.updated_at,
+      deleted_at = NULL
+    WHERE messages.deleted_at IS NULL
+      AND (messages.message_hash <> excluded.message_hash
+        OR messages.updated_at <> excluded.updated_at)
+  `);
+  messageTombstoneStatement = db.prepare(
+    `INSERT INTO messages (
+       owner_type, owner_id, topic_id, msg_id, message_hash, updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
+       deleted_at = CASE
+         WHEN messages.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(messages.deleted_at, excluded.deleted_at)
+       END`,
+  );
 
   // 2. 附件本地路径索引
   db.exec(`
@@ -251,17 +281,7 @@ function upsertMessageState({
     msgId,
   });
 
-  db.prepare(
-    `
-    INSERT INTO messages (
-      owner_type, owner_id, topic_id, msg_id, message_hash, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
-      message_hash = excluded.message_hash,
-      updated_at = excluded.updated_at,
-      deleted_at = NULL
-  `,
-  ).run(
+  messageUpsertStatement.run(
     identity.ownerType,
     identity.ownerId,
     identity.topicId,
@@ -373,7 +393,7 @@ function getHistorySourceState({ ownerType, ownerId, topicId }) {
   return db
     .prepare(
       `SELECT owner_type, owner_id, topic_id, file_path, file_size,
-              mtime_ms, index_version
+              mtime_ms, source_hash, index_version
        FROM history_source_state
        WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
     )
@@ -391,19 +411,24 @@ function upsertHistorySourceState({
   filePath,
   fileSize,
   mtimeMs,
+  sourceHash,
 }) {
   if (!db) return;
   const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
+  if (typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash)) {
+    throw new Error("History source state requires a lowercase SHA-256 hash");
+  }
   db.prepare(`
     INSERT INTO history_source_state (
       owner_type, owner_id, topic_id, file_path, file_size,
-      mtime_ms, index_version
+      mtime_ms, source_hash, index_version
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(owner_type, owner_id, topic_id) DO UPDATE SET
       file_path = excluded.file_path,
       file_size = excluded.file_size,
       mtime_ms = excluded.mtime_ms,
+      source_hash = excluded.source_hash,
       index_version = excluded.index_version
   `).run(
     identity.ownerType,
@@ -412,6 +437,7 @@ function upsertHistorySourceState({
     filePath,
     fileSize,
     mtimeMs,
+    sourceHash,
     HISTORY_INDEX_VERSION,
   );
 }
@@ -447,9 +473,11 @@ function upsertOwnerTombstone({
   const identity = normalizeOwnerIdentity({ ownerType, ownerId });
   return db.prepare(
     `INSERT INTO owners (
-       owner_type, owner_id, config_path, config_hash, updated_at, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?)
+       owner_type, owner_id, config_path, config_hash, content_hash,
+       updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, '', ?, ?)
      ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+       content_hash = '',
        deleted_at = CASE
          WHEN owners.deleted_at IS NULL THEN excluded.deleted_at
          ELSE MIN(owners.deleted_at, excluded.deleted_at)
@@ -494,6 +522,11 @@ function upsertTopicTombstone({
     `DELETE FROM history_source_state
      WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
   ).run(identity.ownerType, identity.ownerId, identity.topicId);
+  const ownerIsLive = db.prepare(
+    `SELECT 1 FROM owners
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  ).get(identity.ownerType, identity.ownerId);
+  if (ownerIsLive) refreshOwnerContentHash(identity);
   return result;
 }
 
@@ -515,18 +548,7 @@ function upsertMessageTombstone({
     topicId,
     msgId,
   });
-  return db
-    .prepare(
-      `INSERT INTO messages (
-         owner_type, owner_id, topic_id, msg_id, message_hash, updated_at, deleted_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
-         deleted_at = CASE
-           WHEN messages.deleted_at IS NULL THEN excluded.deleted_at
-           ELSE MIN(messages.deleted_at, excluded.deleted_at)
-         END`,
-    )
-    .run(
+  return messageTombstoneStatement.run(
       identity.ownerType,
       identity.ownerId,
       identity.topicId,
@@ -590,6 +612,107 @@ function updateTopicContentHash({ ownerType, ownerId, topicId }, contentHash) {
   ).run(contentHash, identity.ownerType, identity.ownerId, identity.topicId);
 }
 
+const STORED_HASH_PATTERN = /^[a-f0-9]{64}$/;
+
+function ownerContentHashFromTopics(topics) {
+  const leaves = topics.map((topic) => {
+    if (typeof topic.topic_id !== "string" || topic.topic_id.length === 0) {
+      throw new Error("Owner content hash encountered an empty Topic id");
+    }
+    if (!STORED_HASH_PATTERN.test(topic.config_hash)) {
+      throw new Error(`Topic ${topic.topic_id} has an invalid config hash`);
+    }
+    if (
+      topic.content_hash !== "" &&
+      !STORED_HASH_PATTERN.test(topic.content_hash)
+    ) {
+      throw new Error(`Topic ${topic.topic_id} has an invalid content hash`);
+    }
+    return computeTopicLeafHash(
+      topic.topic_id,
+      topic.config_hash,
+      topic.content_hash,
+    );
+  });
+  return computeAggregatedHash(leaves);
+}
+
+function refreshOwnerContentHash(
+  { ownerType, ownerId },
+  database = db,
+) {
+  if (!database) throw new Error("Database not initialized");
+  const identity = normalizeOwnerIdentity({ ownerType, ownerId });
+  const topics = database.prepare(
+    `SELECT topic_id, config_hash, content_hash
+     FROM topics
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  ).all(identity.ownerType, identity.ownerId);
+  const contentHash = ownerContentHashFromTopics(topics);
+  const result = database.prepare(
+    `UPDATE owners SET content_hash = ?
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  ).run(contentHash, identity.ownerType, identity.ownerId);
+  if (result.changes !== 1) {
+    throw new Error(
+      `Owner content hash target is missing or tombstoned for ${ownerType}/${ownerId}`,
+    );
+  }
+  return contentHash;
+}
+
+function refreshAllOwnerContentHashes(database = db) {
+  if (!database) throw new Error("Database not initialized");
+  const owners = database.prepare(
+    `SELECT owner_type, owner_id FROM owners
+     WHERE deleted_at IS NULL`,
+  ).all();
+  const topics = database.prepare(
+    `SELECT owner_type, owner_id, topic_id, config_hash, content_hash
+     FROM topics
+     WHERE deleted_at IS NULL`,
+  ).all();
+  const topicsByOwner = new Map(
+    owners.map((owner) => [`${owner.owner_type}\0${owner.owner_id}`, []]),
+  );
+  for (const topic of topics) {
+    const key = `${topic.owner_type}\0${topic.owner_id}`;
+    const ownerTopics = topicsByOwner.get(key);
+    if (!ownerTopics) {
+      throw new Error(
+        `Topic ${topic.owner_type}/${topic.owner_id}/${topic.topic_id} has no live Owner`,
+      );
+    }
+    ownerTopics.push(topic);
+  }
+
+  const update = database.prepare(
+    `UPDATE owners SET content_hash = ?
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  );
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    for (const owner of owners) {
+      const key = `${owner.owner_type}\0${owner.owner_id}`;
+      const result = update.run(
+        ownerContentHashFromTopics(topicsByOwner.get(key)),
+        owner.owner_type,
+        owner.owner_id,
+      );
+      if (result.changes !== 1) {
+        throw new Error(
+          `Owner content hash target disappeared for ${owner.owner_type}/${owner.owner_id}`,
+        );
+      }
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  return owners.length;
+}
+
 module.exports = {
   initDb,
   getDb,
@@ -609,4 +732,6 @@ module.exports = {
   upsertMessageTombstone,
   softDeleteAvatarIndex,
   updateTopicContentHash,
+  refreshOwnerContentHash,
+  refreshAllOwnerContentHashes,
 };

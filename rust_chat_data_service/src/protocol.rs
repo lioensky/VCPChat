@@ -355,18 +355,29 @@ async fn reconcile(State(state): State<AppState>) -> ServiceResult<Json<Reconcil
         .reconcile_lock
         .try_lock()
         .map_err(|_| ServiceError::Busy)?;
-    let stats = state
-        .reconciler
-        .reconcile()
-        .await
-        .map_err(ServiceError::internal)?;
-    let indexed_topics = state
-        .search
-        .as_ref()
-        .map(SearchIndex::reconcile_revisions)
-        .transpose()
-        .map_err(ServiceError::internal)?
-        .unwrap_or(0);
+    if let Some(metrics) = &state.watcher_metrics {
+        metrics.reconcile_required.swap(false, Ordering::AcqRel);
+    }
+    let result = async {
+        let stats = state.reconciler.reconcile().await?;
+        let indexed_topics = state
+            .search
+            .as_ref()
+            .map(SearchIndex::reconcile_revisions)
+            .transpose()?
+            .unwrap_or(0);
+        Ok::<_, anyhow::Error>((stats, indexed_topics))
+    }
+    .await;
+    let (stats, indexed_topics) = match result {
+        Ok(result) => result,
+        Err(error) => {
+            if let Some(metrics) = &state.watcher_metrics {
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+            return Err(ServiceError::internal(error));
+        }
+    };
     Ok(Json(ReconcileResponse {
         stats,
         indexed_topics,
@@ -383,6 +394,7 @@ async fn ingest_history_path(
         .config()
         .validate_source_path(&raw_path)
         .map_err(|error| ServiceError::InvalidRequest(error.to_string()))?;
+    let _guard = state.reconcile_lock.lock().await;
     let commit = state
         .reconciler
         .ingest_path(&path, &request.origin)
@@ -390,11 +402,9 @@ async fn ingest_history_path(
         .map_err(ServiceError::internal)?;
 
     if let (Some(search), Some(commit)) = (&state.search, &commit) {
-        if commit.changed {
-            search
-                .update_topic(&commit.topic, commit.revision)
-                .map_err(ServiceError::internal)?;
-        }
+        search
+            .apply_ingest_commit(commit)
+            .map_err(ServiceError::internal)?;
     }
 
     Ok(Json(match commit {
@@ -507,6 +517,10 @@ async fn sync_entity_delete(
     Json(request): Json<EntityDeleteRequest>,
 ) -> ServiceResult<Json<EntityDeleteResponse>> {
     let (target, deleted_at) = validate_entity_delete_request(request)?;
+    let affects_search = matches!(
+        &target,
+        EntityDeleteTarget::Owner(_, _) | EntityDeleteTarget::Topic(_)
+    );
     let _guard = state.reconcile_lock.lock().await;
     match target {
         EntityDeleteTarget::Owner(owner_type, owner_id) => state
@@ -523,6 +537,13 @@ async fn sync_entity_delete(
             .apply_sync_avatar_tombstone(&key, deleted_at),
     }
     .map_err(ServiceError::internal)?;
+    if affects_search {
+        if let Some(search) = &state.search {
+            search
+                .reconcile_revisions()
+                .map_err(ServiceError::internal)?;
+        }
+    }
 
     Ok(Json(EntityDeleteResponse { ok: true }))
 }
@@ -886,13 +907,12 @@ async fn sync_messages_push(
             "sync push topicId is required and messages are limited to 10000".to_string(),
         ));
     }
+    let _guard = state.reconcile_lock.lock().await;
     let result = sync::push_topic_messages(&state.reconciler, topic).await;
-    if result.ok && result.changed {
-        if let Some(search) = &state.search {
-            search
-                .reconcile_revisions()
-                .map_err(ServiceError::internal)?;
-        }
+    if let (Some(search), Some(commit)) = (&state.search, &result.ingest_commit) {
+        search
+            .apply_ingest_commit(commit)
+            .map_err(ServiceError::internal)?;
     }
     Ok(Json(result))
 }

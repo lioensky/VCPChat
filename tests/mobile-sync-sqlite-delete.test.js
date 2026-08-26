@@ -286,6 +286,7 @@ test("删除 Owner 会用同一最早墓碑时间级联其 Topic", async (t) => 
       filePath: path.join(historyDir, "history.json"),
       fileSize: 2,
       mtimeMs: 1,
+      sourceHash: "a".repeat(64),
     });
 
     assert.deepEqual(
@@ -759,6 +760,7 @@ test("legacy reconcile 把物理已消失的 Owner/Topic 及消息收敛为墓�
         filePath: `/virtual/${topicId}/history.json`,
         fileSize: 2,
         mtimeMs: 1,
+        sourceHash: "a".repeat(64),
       });
     }
 
@@ -884,7 +886,7 @@ test("legacy Topic root 内容变化不推进配置 updated_at", () => {
   }
 });
 
-test("legacy Owner root 动态聚合全部 live Topic 并包含 default", () => {
+test("legacy Owner root 持久化全部 live Topic 并包含 default", () => {
   const { database, manifest } = loadSqliteModules();
   const { computeAggregatedHash, computeTopicLeafHash } = require(
     path.join(ROOT, "VCPDistributedServer", "Plugin", "VCPMobileSync", "core", "hash.js"),
@@ -904,6 +906,7 @@ test("legacy Owner root 动态聚合全部 live Topic 并包含 default", () => 
     db.prepare(
       "UPDATE owners SET updated_at = 30 WHERE owner_id = 'agent-root'",
     ).run();
+    assert.equal(database.refreshAllOwnerContentHashes(db), 1);
 
     const expected = computeAggregatedHash([
       computeTopicLeafHash("default", "d".repeat(64), ""),
@@ -919,6 +922,14 @@ test("legacy Owner root 动态聚合全部 live Topic 并包含 default", () => 
     db.prepare(
       "UPDATE topics SET config_hash = ?, content_hash = ? WHERE topic_id = 'default'",
     ).run("e".repeat(64), "f".repeat(64));
+    assert.equal(
+      manifest.getLocalManifest("owner", null, db)[0].contentHash,
+      expected,
+    );
+    database.refreshOwnerContentHash({
+      ownerType: "agent",
+      ownerId: "agent-root",
+    });
     assert.equal(
       manifest.getLocalManifest("owner", null, db)[0].contentHash,
       computeAggregatedHash([
@@ -1005,7 +1016,7 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
         client: {
           async reconcile() {
             reconcileCalls += 1;
-            if (reconcileCalls === 2) await phaseReconcileGate;
+            if (reconcileCalls === 1) await phaseReconcileGate;
             return { stats: {} };
           },
         },
@@ -1015,7 +1026,7 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
   );
 
   assert.equal(typeof onMessage, "function");
-  assert.equal(reconcileCalls, 1, "中央模式注册时应先完成启动 reconcile");
+  assert.equal(reconcileCalls, 0, "CDS 自有启动扫描不应被插件重复执行");
   const db = database.getDb();
   t.after(() => db.close());
 
@@ -1024,7 +1035,7 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
     phase: "owner_metadata",
   });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(reconcileCalls, 2);
+  assert.equal(reconcileCalls, 1);
   assert.equal(
     await Promise.race([
       phaseAckPromise.then(() => "settled"),
@@ -1043,7 +1054,15 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
     await onMessage({ type: "PHASE_START", phase: "topic_metadata" }),
     { type: "PHASE_ACK", phase: "topic_metadata" },
   );
-  assert.equal(reconcileCalls, 2, "后续 Phase 不应重复 reconcile");
+  assert.deepEqual(
+    await onMessage({ type: "PHASE_COMPLETED", phase: "owner_metadata" }),
+    { type: "PHASE_ACK", phase: "owner_metadata" },
+  );
+  assert.deepEqual(
+    await onMessage({ type: "PHASE_COMPLETED", phase: "topic_metadata" }),
+    { type: "PHASE_ACK", phase: "topic_metadata" },
+  );
+  assert.equal(reconcileCalls, 1, "后续 Phase 不应重复 reconcile");
 });
 
 test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", async (t) => {

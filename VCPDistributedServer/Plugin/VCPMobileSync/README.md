@@ -160,7 +160,7 @@ graph TD
 ```
 
 ### Phase 1: 轻量级索引扫描 (Reconcile)
-同步端口只在初始提交视图就绪后开放。中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3` 中的 Owner、Topic、Message 与 Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在 ACK 前刷新所选模式的提交视图。Phase 1 先发送 `manifestType=owner`，再发送独立的 `manifestType=avatar`；两者都携带完整身份，但 Hash、墓碑和传输语义互不混合。
+中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3` 中的 Owner、Topic、Message 与 Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在 ACK 前刷新所选模式的提交视图；中央模式下 Owner/Topic 的物理写入也会在对应 HTTP 请求返回前提交到 CDS，因此空的 `PHASE_COMPLETED` 不再重复全量扫描。Phase 1 先发送 `manifestType=owner`，再发送独立的 `manifestType=avatar`；两者都携带完整身份，但 Hash、墓碑和传输语义互不混合。
 
 ### Phase 2: 双哈希差分比对 (Double-Hash Merkle Diff)
 在比对阶段，插件放弃了传统的全量拉取策略，采用 **双哈希（`configHash` 与 `contentHash`）比对机制**：
@@ -188,12 +188,12 @@ graph TD
 
 | 表 | 主键/职责 |
 | :--- | :--- |
-| `owners` | `(owner_type, owner_id)`；Owner DTO Hash、配置路径、时间与墓碑；内容根由 live Topic 动态聚合 |
+| `owners` | `(owner_type, owner_id)`；Owner DTO Hash、持久化 Topic 聚合根、配置路径、时间与墓碑 |
 | `topics` | `(owner_type, owner_id, topic_id)`；Topic DTO Hash、消息内容根、时间与墓碑 |
 | `messages` | `(owner_type, owner_id, topic_id, msg_id)`；消息指纹、LWW 时间与墓碑 |
 | `attachment_index` | `hash`；只保存本机已有 Attachment 的物理路径 |
 | `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、时间与墓碑 |
-| `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、路径与索引版本快路径 |
+| `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、原始文件 SHA-256、路径与索引版本快路径 |
 
 CDS 与 Legacy 都直接从规范消息保存附件元数据，不再维护同步专用附件关系表；附件二进制不跨端同步。
 

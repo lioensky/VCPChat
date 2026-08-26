@@ -3,7 +3,7 @@ use std::{
     fs,
     io::ErrorKind,
     path::Path,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::{Duration, UNIX_EPOCH},
 };
 
@@ -13,7 +13,7 @@ use crate::{
         AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedMessage, OwnerKey, OwnerRecord,
         OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
-    storage::{now_ms, Database, IngestCommit},
+    storage::{now_ms, Database, IngestCommit, OwnerHashMode, SearchUpdate},
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
     sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
@@ -71,54 +71,11 @@ impl Reconciler {
         };
 
         for configured_owner in owners.values() {
-            let owner = self.effective_owner(configured_owner)?;
-            if !self.database.upsert_owner(&owner)? {
-                continue;
-            }
-            live_owner_keys.insert(owner.key.clone());
-            for topic in &owner.topics {
-                let source = self.topic_source(&owner, topic);
-                if !self.database.upsert_topic_source(&source)? {
-                    continue;
-                }
-                stats.topics_seen += 1;
-                stats.files_checked += 1;
-
-                match self.ingest_source_if_changed(&source).await {
-                    Ok(Some(commit)) => {
-                        stats.files_ingested += usize::from(commit.changed);
-                        stats.files_skipped += usize::from(!commit.changed);
-                        stats.messages_ingested += commit.message_count;
-                    }
-                    Ok(None) => {
-                        // A physical topic with no prior valid source is a legitimate
-                        // empty topic. Only a previously
-                        // ingested source can become missing.
-                        if self.database.mark_history_source_missing(&source)? {
-                            stats.files_invalid += 1;
-                            tracing::warn!(
-                                owner_type = %source.key.owner_type,
-                                owner_id = %source.key.owner_id,
-                                topic_id = %source.key.topic_id,
-                                "previously indexed history source is missing"
-                            );
-                        } else {
-                            stats.files_skipped += 1;
-                        }
-                    }
-                    Err(error) => {
-                        stats.files_invalid += 1;
-                        self.database
-                            .mark_source_invalid(&source, &format!("{error:#}"))?;
-                        tracing::warn!(
-                            owner_type = %source.key.owner_type,
-                            owner_id = %source.key.owner_id,
-                            topic_id = %source.key.topic_id,
-                            error = ?error,
-                            "history source was not ingested"
-                        );
-                    }
-                }
+            if let Some(key) = self
+                .reconcile_owner_record(configured_owner, &mut stats)
+                .await?
+            {
+                live_owner_keys.insert(key);
             }
         }
 
@@ -131,6 +88,94 @@ impl Reconciler {
         self.database.set_last_reconcile_at(now_ms())?;
         stats.duration_ms = now_ms() - started;
         Ok(stats)
+    }
+
+    async fn reconcile_owner_record(
+        &self,
+        configured_owner: &OwnerRecord,
+        stats: &mut ReconcileStats,
+    ) -> Result<Option<OwnerKey>> {
+        let owner = self.effective_owner(configured_owner)?;
+        if !self
+            .database
+            .upsert_owner(&owner, OwnerHashMode::Deferred)?
+        {
+            return Ok(None);
+        }
+        for topic in &owner.topics {
+            let source = self.topic_source(&owner, topic);
+            stats.topics_seen += 1;
+            stats.files_checked += 1;
+
+            match self
+                .ingest_source_if_changed(&source, OwnerHashMode::Deferred)
+                .await
+            {
+                Ok(Some(commit)) => {
+                    stats.files_ingested += usize::from(commit.changed);
+                    stats.files_skipped += usize::from(!commit.changed);
+                    stats.messages_ingested += commit.message_count;
+                }
+                Ok(None) => {
+                    if self
+                        .database
+                        .mark_history_source_missing(&source, OwnerHashMode::Deferred)?
+                    {
+                        stats.files_invalid += 1;
+                        tracing::warn!(
+                            owner_type = %source.key.owner_type,
+                            owner_id = %source.key.owner_id,
+                            topic_id = %source.key.topic_id,
+                            "previously indexed history source is missing"
+                        );
+                    } else {
+                        stats.files_skipped += 1;
+                    }
+                }
+                Err(error) => {
+                    stats.files_invalid += 1;
+                    self.database.mark_source_invalid(
+                        &source,
+                        &format!("{error:#}"),
+                        OwnerHashMode::Deferred,
+                    )?;
+                    tracing::warn!(
+                        owner_type = %source.key.owner_type,
+                        owner_id = %source.key.owner_id,
+                        topic_id = %source.key.topic_id,
+                        error = ?error,
+                        "history source was not ingested"
+                    );
+                }
+            }
+        }
+        self.database.refresh_owner_content_hash(&owner.key)?;
+        Ok(Some(owner.key))
+    }
+
+    pub async fn reconcile_owner_key(&self, key: &OwnerKey) -> Result<ReconcileStats> {
+        let started = now_ms();
+        let mut stats = ReconcileStats::default();
+        match self.configured_owner_for_key(key)? {
+            Some(owner) => {
+                stats.owners_seen = 1;
+                self.reconcile_owner_record(&owner, &mut stats).await?;
+            }
+            None => {
+                stats.owners_deleted = usize::from(self.database.reconcile_missing_owner(key)?);
+            }
+        }
+        stats.duration_ms = now_ms() - started;
+        Ok(stats)
+    }
+
+    pub fn reconcile_avatar_key(&self, key: &AvatarKey) -> Result<bool> {
+        if self.physical_avatar_path(key).is_some() {
+            self.commit_avatar(key)?;
+            return Ok(true);
+        }
+        self.database.mark_physical_avatar_missing(key, now_ms())?;
+        Ok(false)
     }
 
     pub fn commit_avatar(&self, key: &AvatarKey) -> Result<AvatarRecord> {
@@ -245,12 +290,25 @@ impl Reconciler {
             return Ok(None);
         }
 
-        let registry = self.scan_owner_registry()?;
-        let configured_owner = registry
-            .values()
-            .find(|owner| owner.key.owner_id == owner_id)
-            .with_context(|| format!("history owner {owner_id} has no Agent or Group config"))?;
-        let owner = self.effective_owner(configured_owner)?;
+        if let Some(source) = self.database.live_topic_source_by_path(path)? {
+            return match self
+                .ingest_source_if_changed(&source, OwnerHashMode::Immediate)
+                .await
+            {
+                Ok(commit) => Ok(commit),
+                Err(error) => {
+                    self.database.mark_source_invalid(
+                        &source,
+                        &format!("{error:#}"),
+                        OwnerHashMode::Immediate,
+                    )?;
+                    Err(error)
+                }
+            };
+        }
+
+        let configured_owner = self.configured_owner_by_id(&owner_id)?;
+        let owner = self.effective_owner(&configured_owner)?;
 
         let topic = owner
             .topics
@@ -261,17 +319,23 @@ impl Reconciler {
                 format!("physical history topic {topic_id} disappeared while preparing ingestion")
             })?;
         let source = self.topic_source(&owner, &topic);
-        if !self.database.upsert_owner(&owner)? {
+        if !self
+            .database
+            .upsert_owner(&owner, OwnerHashMode::Deferred)?
+        {
             return Ok(None);
         }
-        if !self.database.upsert_topic_source(&source)? {
-            return Ok(None);
-        }
-        match self.ingest_source_if_changed(&source).await {
+        match self
+            .ingest_source_if_changed(&source, OwnerHashMode::Immediate)
+            .await
+        {
             Ok(commit) => Ok(commit),
             Err(error) => {
-                self.database
-                    .mark_source_invalid(&source, &format!("{error:#}"))?;
+                self.database.mark_source_invalid(
+                    &source,
+                    &format!("{error:#}"),
+                    OwnerHashMode::Immediate,
+                )?;
                 Err(error)
             }
         }
@@ -403,6 +467,52 @@ impl Reconciler {
         Ok(owners)
     }
 
+    fn configured_owner_by_id(&self, owner_id: &str) -> Result<OwnerRecord> {
+        for owner_type in [OwnerType::Agent, OwnerType::Group] {
+            let key = OwnerKey {
+                owner_type,
+                owner_id: owner_id.to_string(),
+            };
+            if let Some(owner) = self.configured_owner_for_key(&key)? {
+                return Ok(owner);
+            }
+        }
+        anyhow::bail!("history owner {owner_id} has no Agent or Group config")
+    }
+
+    fn configured_owner_for_key(&self, key: &OwnerKey) -> Result<Option<OwnerRecord>> {
+        let directory = match key.owner_type {
+            OwnerType::Agent => &self.config.agents_dir,
+            OwnerType::Group => &self.config.groups_dir,
+        };
+        let owner_directory = directory.join(&key.owner_id);
+        if !owner_directory.is_dir() {
+            return Ok(None);
+        }
+        let config_path = owner_directory.join("config.json");
+        if config_path.is_file() {
+            match parse_owner_config(key.owner_type, key.owner_id.clone(), &config_path) {
+                Ok(owner) => return Ok(Some(owner)),
+                Err(error) => {
+                    tracing::warn!(
+                        owner_type = %key.owner_type,
+                        owner_id = %key.owner_id,
+                        config_path = %config_path.display(),
+                        error = ?error,
+                        "owner config is invalid; checking physical topics for recovery"
+                    );
+                    if let Some(owner) =
+                        self.recovery_owner(key.owner_type, key.owner_id.clone(), config_path)?
+                    {
+                        return Ok(Some(owner));
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        self.recovery_owner(key.owner_type, key.owner_id.clone(), config_path)
+    }
+
     fn scan_owner_directory(
         &self,
         owner_type: OwnerType,
@@ -491,9 +601,6 @@ impl Reconciler {
                 owner_id: owner.key.owner_id.clone(),
                 topic_id: topic.topic_id.clone(),
             },
-            display_name: topic.display_name.clone(),
-            created_at: topic.created_at,
-            topic_ordinal: topic.ordinal,
             source_path: self
                 .config
                 .user_data_dir
@@ -501,12 +608,14 @@ impl Reconciler {
                 .join("topics")
                 .join(&topic.topic_id)
                 .join("history.json"),
-            config_hash: topic.config_hash.clone(),
-            topic_metadata: topic.metadata.clone(),
         }
     }
 
-    async fn ingest_source_if_changed(&self, source: &TopicSource) -> Result<Option<IngestCommit>> {
+    async fn ingest_source_if_changed(
+        &self,
+        source: &TopicSource,
+        owner_hash_mode: OwnerHashMode,
+    ) -> Result<Option<IngestCommit>> {
         if !source.source_path.exists() {
             return Ok(None);
         }
@@ -532,17 +641,35 @@ impl Reconciler {
                     topic: source.key.clone(),
                     revision: self.database.topic_revision(&source.key)?.unwrap_or(0),
                     changed: false,
+                    search_update: SearchUpdate::None,
                     message_count: 0,
                 }));
             }
         }
 
-        let bytes = read_stable_file(&source.source_path).await?;
+        let (bytes, mtime_ns, file_size) =
+            read_stable_file(&source.source_path, (mtime_ns, file_size)).await?;
         let source_hash = sha256_hex(&bytes);
+        if let Some(commit) = self.database.refresh_unchanged_history_source(
+            source,
+            mtime_ns,
+            file_size,
+            &source_hash,
+            owner_hash_mode,
+        )? {
+            return Ok(Some(commit));
+        }
         let messages = normalize_history(&bytes, source.key.owner_type, &source.key.topic_id)?;
 
         self.database
-            .ingest_topic(source, &messages, mtime_ns, file_size, &source_hash)
+            .ingest_topic(
+                source,
+                &messages,
+                mtime_ns,
+                file_size,
+                &source_hash,
+                owner_hash_mode,
+            )
             .map(Some)
     }
 }
@@ -748,29 +875,30 @@ pub fn is_avatar_path(
     })
 }
 
-async fn read_stable_file(path: &Path) -> Result<Vec<u8>> {
+async fn read_stable_file(path: &Path, initial: (i64, i64)) -> Result<(Vec<u8>, i64, i64)> {
     let mut delay = Duration::from_millis(75);
-    let mut previous: Option<(u64, i64)> = None;
+    let mut before = Some(initial);
     let mut last_error = None;
 
     for _ in 0..6 {
-        match fs::metadata(path).map(|metadata| {
-            let modified = metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
-                .unwrap_or(0);
-            (metadata.len(), modified)
-        }) {
-            Ok(current) if previous == Some(current) && current.0 > 0 => {
-                let bytes = fs::read(path)?;
-                let after = fs::metadata(path)?;
-                if after.len() == current.0 {
-                    return Ok(bytes);
-                }
-            }
-            Ok(current) => previous = Some(current),
+        let current = match before.take() {
+            Some(current) => Ok(current),
+            None => source_file_version(path),
+        };
+        match current {
+            Ok((mtime_ns, file_size)) if file_size > 0 => match fs::read(path) {
+                Ok(bytes) => match source_file_version(path) {
+                    Ok(after)
+                        if after == (mtime_ns, file_size) && bytes.len() == file_size as usize =>
+                    {
+                        return Ok((bytes, mtime_ns, file_size));
+                    }
+                    Ok(_) => {}
+                    Err(error) => last_error = Some(error),
+                },
+                Err(error) => last_error = Some(error),
+            },
+            Ok(_) => anyhow::bail!("history source is empty or not a regular file"),
             Err(error) => last_error = Some(error),
         }
         sleep(delay).await;
@@ -784,19 +912,35 @@ async fn read_stable_file(path: &Path) -> Result<Vec<u8>> {
     }
 }
 
+fn source_file_version(path: &Path) -> std::io::Result<(i64, i64)> {
+    let metadata = fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Ok((0, 0));
+    }
+    let mtime_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+        .unwrap_or(0);
+    let file_size = metadata.len().min(i64::MAX as u64) as i64;
+    Ok((mtime_ns, file_size))
+}
+
 fn clean_search_text(value: &str) -> String {
-    let without_style = Regex::new(r"(?is)<style[^>]*>.*?</style>")
-        .expect("valid style regex")
-        .replace_all(value, "");
-    let without_script = Regex::new(r"(?is)<script[^>]*>.*?</script>")
-        .expect("valid script regex")
-        .replace_all(&without_style, "");
+    static STYLE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("valid style regex"));
+    static SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("valid script regex")
+    });
+    static WHITESPACE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\s+").expect("valid whitespace regex"));
+
+    let without_style = STYLE.replace_all(value, "");
+    let without_script = SCRIPT.replace_all(&without_style, "");
     let escaped_text = ammonia::clean_text(&without_script);
     let clean = html_escape::decode_html_entities(&escaped_text);
-    Regex::new(r"\s+")
-        .expect("valid whitespace regex")
-        .replace_all(clean.trim(), " ")
-        .to_string()
+    WHITESPACE.replace_all(clean.trim(), " ").to_string()
 }
 
 fn string_value(value: Option<&Value>) -> Option<String> {
@@ -1159,6 +1303,41 @@ mod tests {
         };
         assert_eq!(content_time, 789);
         assert!(revision_after > revision_before);
+
+        write_history(
+            &config,
+            "agent_stable",
+            "topic_stable",
+            serde_json::json!([
+                {
+                    "id":"message_stable",
+                    "role":"user",
+                    "content":"changed",
+                    "timestamp":1,
+                    "updatedAt":999
+                }
+            ]),
+        );
+        reconciler
+            .reconcile()
+            .await
+            .expect("sync-only message reconcile");
+        let (revision_after_sync_only, message_updated_at): (i64, i64) = database
+            .connection
+            .lock()
+            .query_row(
+                "SELECT t.content_revision, m.updated_at
+                 FROM topics t JOIN messages m
+                   ON m.owner_type=t.owner_type AND m.owner_id=t.owner_id
+                  AND m.topic_id=t.topic_id
+                 WHERE t.owner_type='agent' AND t.owner_id='agent_stable'
+                   AND t.topic_id='topic_stable' AND m.msg_id='message_stable'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read sync-only message state");
+        assert_eq!(revision_after_sync_only, revision_after);
+        assert_eq!(message_updated_at, 999);
     }
 
     #[tokio::test]

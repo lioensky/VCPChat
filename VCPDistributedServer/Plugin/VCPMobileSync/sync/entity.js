@@ -17,6 +17,7 @@ const {
   upsertOwnerTombstone,
   upsertTopicTombstone,
   softDeleteAvatarIndex,
+  refreshOwnerContentHash,
 } = require("../core/db");
 const {
   computeBinaryHash,
@@ -915,6 +916,7 @@ function updateTopicStateFromConfig(
       topicId: id,
       configHash: hash,
     });
+    refreshOwnerContentHash({ ownerType, ownerId });
   }
 }
 
@@ -1296,13 +1298,23 @@ async function reconcileMissingPhysicalIndexes(
       !liveTopics.has(`${ownerKey}\0${row.topic_id}`)
     );
   });
+  const affectedLiveOwners = new Map();
+  for (const topic of staleTopicRows) {
+    const ownerKey = `${topic.owner_type}\0${topic.owner_id}`;
+    if (topic.deleted_at === null && !staleOwnerDeletedAt.has(ownerKey)) {
+      affectedLiveOwners.set(ownerKey, {
+        ownerType: topic.owner_type,
+        ownerId: topic.owner_id,
+      });
+    }
+  }
 
   const stats = { ownersDeleted: 0, topicsDeleted: 0, messagesDeleted: 0 };
   database.exec("BEGIN IMMEDIATE");
   try {
     const deleteOwner = database.prepare(
       `UPDATE owners
-       SET deleted_at = ?
+       SET content_hash = '', deleted_at = ?
        WHERE owner_type = ? AND owner_id = ?
          AND deleted_at IS NULL`,
     );
@@ -1352,6 +1364,9 @@ async function reconcileMissingPhysicalIndexes(
         topic.topic_id,
       ).changes;
       deleteHistorySource.run(topic.owner_type, topic.owner_id, topic.topic_id);
+    }
+    for (const owner of affectedLiveOwners.values()) {
+      refreshOwnerContentHash(owner, database);
     }
     database.exec("COMMIT");
   } catch (error) {

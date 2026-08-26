@@ -354,6 +354,11 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
             failedTopicIds: failedTopicIds(result?.type, result?.id),
           }),
         );
+        if (centralSync && results.some((item) => item.ok)) {
+          // Owner/Topic 物理配置由插件写入，CDS 必须在本次 HTTP 提交返回前
+          // 形成对应 SQLite 视图。把刷新绑定到真实写入，避免每个空阶段都扫描。
+          await centralSync.reconcile();
+        }
         const response = { results };
         if (results.length === items.length && results.every((item) => item.ok)) {
           recordOperation(opId, response, 200);

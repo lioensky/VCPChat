@@ -3,10 +3,6 @@
  */
 
 const { getDb } = require("../core/db");
-const {
-  computeAggregatedHash,
-  computeTopicLeafHash,
-} = require("../core/hash");
 const { getLogger } = require("../core/logger");
 
 const MAX_MANIFEST_ITEMS = 10_000;
@@ -99,34 +95,6 @@ function requireExactKeys(value, allowed, label) {
   }
 }
 
-function buildOwnerContentHashes(db) {
-  const topicLeaves = new Map();
-  const topics = db.prepare(
-    `SELECT owner_type, owner_id, topic_id, config_hash, content_hash
-     FROM topics
-     WHERE deleted_at IS NULL`,
-  ).all();
-  for (const topic of topics) {
-    const key = `${topic.owner_type}\0${topic.owner_id}`;
-    if (!topicLeaves.has(key)) topicLeaves.set(key, []);
-    topicLeaves.get(key).push(
-      computeTopicLeafHash(
-        requireNonEmptyString(topic.topic_id, "Topic root topicId"),
-        requireHash(topic.config_hash, `Topic ${topic.topic_id} configHash`),
-        requireHash(
-          topic.content_hash,
-          `Topic ${topic.topic_id} contentHash`,
-          { allowEmpty: true },
-        ),
-      ),
-    );
-  }
-  return new Map(
-    [...topicLeaves].map(([key, leaves]) => [key, computeAggregatedHash(leaves)]),
-  );
-}
-
-
 /**
  * 获取本地清单
  * @param {string} manifestType - 清单类型 (owner/topic/avatar)
@@ -179,7 +147,8 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
 
   if (manifestType === "owner") {
     const rows = db.prepare(
-      `SELECT owner_type, owner_id, config_hash, updated_at, deleted_at
+      `SELECT owner_type, owner_id, config_hash, content_hash,
+              updated_at, deleted_at
        FROM owners`,
     ).all();
     if (rows.length > MAX_MANIFEST_ITEMS) {
@@ -188,7 +157,6 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
         "SYNC_BUDGET_EXCEEDED",
       );
     }
-    const contentHashes = buildOwnerContentHashes(db);
     return rows.map((row) => {
       const ownerId = requireNonEmptyString(row.owner_id, "Owner manifest ownerId");
       const ownerType = requireNonEmptyString(
@@ -213,7 +181,11 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
               row.config_hash,
               `Owner ${ownerId} configHash`,
             ),
-            contentHash: contentHashes.get(`${ownerType}\0${ownerId}`) || "",
+            contentHash: requireHash(
+              row.content_hash,
+              `Owner ${ownerId} contentHash`,
+              { allowEmpty: true },
+            ),
             updatedAt: requireTimestamp(
               row.updated_at,
               `Owner ${ownerId} updatedAt`,

@@ -9,10 +9,13 @@ const { TextDecoder } = require("node:util");
 const {
   getDb,
   getTopicState,
+  getHistorySourceState,
+  isHistorySourceCurrent,
   upsertMessageState,
   upsertMessageTombstone,
   upsertHistorySourceState,
   updateTopicContentHash,
+  refreshOwnerContentHash,
 } = require("../core/db");
 const {
   computeMessageLeafHash,
@@ -48,14 +51,19 @@ function topicIdentityKey(ownerType, ownerId, topicId) {
   return `${ownerType}\0${ownerId}\0${topicId}`;
 }
 
-function publishUnhealthyHistoryHash({ topicId, ownerType, ownerId }) {
-  const db = getDb();
-  if (!db) return;
-  const contentHash = crypto
+function unhealthyHistoryHash({ topicId, ownerType, ownerId }) {
+  return crypto
     .createHash("sha256")
     .update(`vcp-unhealthy-topic:${ownerType}:${ownerId}:${topicId}`)
     .digest("hex");
+}
+
+function publishUnhealthyHistoryHash({ topicId, ownerType, ownerId }) {
+  const db = getDb();
+  if (!db) return;
+  const contentHash = unhealthyHistoryHash({ topicId, ownerType, ownerId });
   updateTopicContentHash({ topicId, ownerType, ownerId }, contentHash);
+  refreshOwnerContentHash({ ownerType, ownerId });
 }
 
 function markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, error) {
@@ -89,6 +97,13 @@ function clearHistoryOwnerUnhealthy(ownerType, ownerId) {
   for (const key of unhealthyHistoryTopics.keys()) {
     if (key.startsWith(prefix)) unhealthyHistoryTopics.delete(key);
   }
+}
+
+function isHistoryTopicUnhealthy({ topicId, ownerType, ownerId }) {
+  const key = topicIdentityKey(ownerType, ownerId, topicId);
+  if (unhealthyHistoryTopics.has(key)) return true;
+  return getTopicState({ ownerType, ownerId, topicId })?.content_hash ===
+    unhealthyHistoryHash({ topicId, ownerType, ownerId });
 }
 
 function assertHistoryTopicHealthy({ topicId, ownerType, ownerId }) {
@@ -480,14 +495,23 @@ async function doPushSingleTopic(
     );
 
     await writeHistoryAtomic(historyPath, finalHistory, sourceHash);
-    for (const tombstone of deletedMessages) {
-      upsertMessageTombstone({
-        ownerType: row.owner_type,
-        ownerId: parentId,
-        topicId: safeTopicId,
-        msgId: tombstone.msgId,
-        deletedAt: tombstone.deletedAt,
-      });
+    if (deletedMessages.length > 0) {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        for (const tombstone of deletedMessages) {
+          upsertMessageTombstone({
+            ownerType: row.owner_type,
+            ownerId: parentId,
+            topicId: safeTopicId,
+            msgId: tombstone.msgId,
+            deletedAt: tombstone.deletedAt,
+          });
+        }
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     }
     await ingestHistoryToDb(
       historyPath,
@@ -788,21 +812,60 @@ async function ingestHistoryToDb(
   filePath,
   { topicId, ownerType, ownerId },
   source = "watcher",
-  { history: suppliedHistory, sourceStats: suppliedStats } = {},
+  {
+    history: suppliedHistory,
+    sourceStats: suppliedStats,
+    sourceHash: suppliedSourceHash,
+  } = {},
 ) {
   const db = getDb();
   const logger = getLogger();
   if (!db) throw new Error("Database not initialized");
 
   try {
-    if ((suppliedHistory === undefined) !== (suppliedStats === undefined)) {
-      throw new Error("History and source stats must be supplied together");
+    const suppliedCount = [suppliedHistory, suppliedStats, suppliedSourceHash]
+      .filter((value) => value !== undefined)
+      .length;
+    if (suppliedCount !== 0 && suppliedCount !== 3) {
+      throw new Error("History, source stats, and source hash must be supplied together");
     }
     let history = suppliedHistory;
     let sourceStats = suppliedStats;
+    let sourceHash = suppliedSourceHash;
     if (history === undefined) {
       sourceStats = await fs.stat(filePath);
-      history = (await readHistoryStrict(filePath)).history;
+      if (!isHistoryTopicUnhealthy({ topicId, ownerType, ownerId }) &&
+        isHistorySourceCurrent({
+        ownerType,
+        ownerId,
+        topicId,
+        filePath,
+        fileSize: sourceStats.size,
+        mtimeMs: sourceStats.mtimeMs,
+        })) {
+        return { messageCount: 0, warningCount: 0, changed: false };
+      }
+      const snapshot = await readHistoryStrict(filePath);
+      history = snapshot.history;
+      sourceHash = snapshot.sourceHash;
+    }
+    if (typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash)) {
+      throw new Error("History source hash must be a lowercase SHA-256 hash");
+    }
+    const previousSource = getHistorySourceState({ ownerType, ownerId, topicId });
+    const sourceWasUnhealthy = isHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
+    if (previousSource?.source_hash === sourceHash && !sourceWasUnhealthy) {
+      upsertHistorySourceState({
+        ownerType,
+        ownerId,
+        topicId,
+        filePath,
+        fileSize: sourceStats.size,
+        mtimeMs: sourceStats.mtimeMs,
+        sourceHash,
+      });
+      clearHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
+      return { messageCount: 0, warningCount: 0, changed: false };
     }
     const canonical = canonicalizeHistory(history, topicId);
     if (canonical.topicIdRewrites > 0) {
@@ -817,11 +880,7 @@ async function ingestHistoryToDb(
     let attachmentCount = 0;
 
     // Canonical messages are the only values allowed to influence wire hashes.
-    const validMessages = canonical.frame.messages
-      .sort((a, b) => {
-        const tsDiff = (a.timestamp || 0) - (b.timestamp || 0);
-        return tsDiff !== 0 ? tsDiff : (a.id || "").localeCompare(b.id || "");
-      });
+    const validMessages = canonical.frame.messages;
 
     const liveIds = new Set(validMessages.map((message) => message.id));
     const applyIndex = db.transaction(() => {
@@ -832,6 +891,11 @@ async function ingestHistoryToDb(
         )
         .all(ownerType, ownerId, topicId);
       const existingById = new Map(existing.map((row) => [row.msg_id, row]));
+      const deleteMessage = db.prepare(
+        `UPDATE messages SET deleted_at = ?
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?
+           AND deleted_at IS NULL`,
+      );
       for (const m of validMessages) {
         const hash = m.contentHash;
         const previous = existingById.get(m.id);
@@ -853,13 +917,13 @@ async function ingestHistoryToDb(
       }
       for (const row of existing) {
         if (row.deleted_at === null && !liveIds.has(row.msg_id)) {
-          const removed = db
-            .prepare(
-              `UPDATE messages SET deleted_at = ?
-               WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?
-                 AND deleted_at IS NULL`,
-            )
-            .run(now, ownerType, ownerId, topicId, row.msg_id);
+          const removed = deleteMessage.run(
+            now,
+            ownerType,
+            ownerId,
+            topicId,
+            row.msg_id,
+          );
           if (removed.changes !== 1) {
             throw new Error(`Message tombstone missed ${topicId}/${row.msg_id}`);
           }
@@ -883,16 +947,20 @@ async function ingestHistoryToDb(
           `Topic ${ownerType}/${ownerId}/${topicId} is missing in the local index (matches=${matches})`,
         );
       }
+      if (source !== "reconcile") {
+        refreshOwnerContentHash({ ownerType, ownerId });
+      }
+      upsertHistorySourceState({
+        ownerType,
+        ownerId,
+        topicId,
+        filePath,
+        fileSize: sourceStats.size,
+        mtimeMs: sourceStats.mtimeMs,
+        sourceHash,
+      });
     });
     applyIndex();
-    upsertHistorySourceState({
-      ownerType,
-      ownerId,
-      topicId,
-      filePath,
-      fileSize: sourceStats.size,
-      mtimeMs: sourceStats.mtimeMs,
-    });
     clearHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
 
     if (source !== "reconcile") {
@@ -918,6 +986,7 @@ async function ingestHistoryToDb(
     return {
       messageCount: validMessages.length,
       warningCount: canonical.warningCount,
+      changed: true,
     };
   } catch (e) {
     markHistoryTopicUnhealthy({ topicId, ownerType, ownerId }, e);
@@ -1008,4 +1077,5 @@ module.exports = {
   markHistoryTopicUnhealthy,
   clearHistoryTopicUnhealthy,
   clearHistoryOwnerUnhealthy,
+  isHistoryTopicUnhealthy,
 };

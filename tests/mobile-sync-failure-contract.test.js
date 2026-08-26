@@ -49,6 +49,7 @@ entityDatabase.upsertTopicState = ({
   });
   return { changes: 1 };
 };
+entityDatabase.refreshOwnerContentHash = () => "";
 const {
   handleSyncTopicDiff,
   handleSyncMessageDiff,
@@ -673,6 +674,7 @@ test("Owner manifest 墓碑四象限保持动作方向", () => {
     owner_type: ownerType,
     owner_id: id,
     config_hash: hash,
+    content_hash: "",
     updated_at: 1,
     deleted_at: deletedAt,
   });

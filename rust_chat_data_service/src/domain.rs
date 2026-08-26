@@ -177,12 +177,7 @@ pub struct TopicDefinition {
 #[derive(Debug, Clone)]
 pub struct TopicSource {
     pub key: TopicKey,
-    pub display_name: Option<String>,
-    pub created_at: Option<i64>,
-    pub topic_ordinal: i64,
     pub source_path: PathBuf,
-    pub config_hash: String,
-    pub topic_metadata: Value,
 }
 
 #[derive(Debug, Clone)]

@@ -9,8 +9,7 @@ use tantivy::{
     doc,
     query::{BooleanQuery, Occur, Query, QueryParser, TermQuery},
     schema::{
-        Field, IndexRecordOption, NumericOptions, Schema, TextFieldIndexing, TextOptions, Value,
-        FAST, INDEXED, STORED, STRING,
+        Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
     },
     tokenizer::{LowerCaser, RemoveLongFilter, TextAnalyzer, Token, TokenStream, Tokenizer},
     Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term,
@@ -18,7 +17,7 @@ use tantivy::{
 
 use crate::{
     domain::{MemoryWindow, MessageView, OwnerType, SearchHit, TopicKey},
-    storage::Database,
+    storage::{Database, IngestCommit, SearchUpdate},
 };
 
 const JIEBA_TOKENIZER: &str = "vcp_jieba";
@@ -83,10 +82,6 @@ struct SearchFields {
     owner_type: Field,
     owner_id: Field,
     topic_id: Field,
-    msg_id: Field,
-    ordinal: Field,
-    timestamp: Field,
-    role: Field,
     speaker_name: Field,
     content: Field,
     topic_marker: Field,
@@ -104,10 +99,6 @@ impl SearchFields {
             owner_type: field("owner_type")?,
             owner_id: field("owner_id")?,
             topic_id: field("topic_id")?,
-            msg_id: field("msg_id")?,
-            ordinal: field("ordinal")?,
-            timestamp: field("timestamp")?,
-            role: field("role")?,
             speaker_name: field("speaker_name")?,
             content: field("content")?,
             topic_marker: field("topic_marker")?,
@@ -234,18 +225,87 @@ impl SearchIndex {
     }
 
     pub fn update_topic(&self, key: &TopicKey, revision: i64) -> Result<()> {
-        let messages = self.database.active_messages_for_topic(key)?;
-        let mut writer = self.writer.lock();
-        let topic_term = composite_topic_term(&self.fields, key);
-        writer.delete_term(topic_term);
+        self.rewrite_topics(&[(key.clone(), revision)], false)
+    }
 
-        for message in messages {
-            writer.add_document(self.message_document(&message))?;
+    pub fn apply_ingest_commit(&self, commit: &IngestCommit) -> Result<()> {
+        match &commit.search_update {
+            SearchUpdate::None => Ok(()),
+            SearchUpdate::Append(row_ids)
+                if !self
+                    .needs_full_rebuild
+                    .load(std::sync::atomic::Ordering::Acquire) =>
+            {
+                self.append_messages(&commit.topic, commit.revision, row_ids)
+            }
+            SearchUpdate::Append(_) | SearchUpdate::Rewrite => {
+                self.update_topic(&commit.topic, commit.revision)
+            }
         }
-        writer.commit()?;
+    }
+
+    fn append_messages(&self, key: &TopicKey, revision: i64, row_ids: &[i64]) -> Result<()> {
+        let messages = self.database.messages_by_row_ids(row_ids)?;
+        anyhow::ensure!(
+            messages.len() == row_ids.len(),
+            "search append rows changed before indexing"
+        );
+        let mut writer = self.writer.lock();
+        for row_id in row_ids {
+            let document = self.message_document(
+                messages
+                    .get(row_id)
+                    .context("search append message is missing")?,
+            );
+            if let Err(error) = writer.add_document(document) {
+                writer.rollback()?;
+                return Err(error.into());
+            }
+        }
+        if let Err(error) = writer.commit() {
+            writer.rollback()?;
+            return Err(error.into());
+        }
         drop(writer);
         self.reader.reload()?;
-        self.database.mark_topic_indexed(key, revision)?;
+        self.database
+            .mark_topics_indexed(&[(key.clone(), revision)])?;
+        Ok(())
+    }
+
+    fn rewrite_topics(&self, topics: &[(TopicKey, i64)], clear_all: bool) -> Result<()> {
+        if topics.is_empty() && !clear_all {
+            return Ok(());
+        }
+        let mut writer = self.writer.lock();
+        if clear_all {
+            writer.delete_all_documents()?;
+        }
+        for (key, _) in topics {
+            if !clear_all {
+                writer.delete_term(composite_topic_term(&self.fields, key));
+            }
+            let messages = match self.database.active_messages_for_topic(key) {
+                Ok(messages) => messages,
+                Err(error) => {
+                    writer.rollback()?;
+                    return Err(error);
+                }
+            };
+            for message in messages {
+                if let Err(error) = writer.add_document(self.message_document(&message)) {
+                    writer.rollback()?;
+                    return Err(error.into());
+                }
+            }
+        }
+        if let Err(error) = writer.commit() {
+            writer.rollback()?;
+            return Err(error.into());
+        }
+        drop(writer);
+        self.reader.reload()?;
+        self.database.mark_topics_indexed(topics)?;
         Ok(())
     }
 
@@ -259,14 +319,12 @@ impl SearchIndex {
             self.database.topics_needing_index()?
         };
         let count = pending.len();
-        for (key, revision) in pending {
-            if let Err(error) = self.update_topic(&key, revision) {
-                if full_rebuild {
-                    self.needs_full_rebuild
-                        .store(true, std::sync::atomic::Ordering::Release);
-                }
-                return Err(error);
+        if let Err(error) = self.rewrite_topics(&pending, full_rebuild) {
+            if full_rebuild {
+                self.needs_full_rebuild
+                    .store(true, std::sync::atomic::Ordering::Release);
             }
+            return Err(error);
         }
         Ok(count)
     }
@@ -280,17 +338,9 @@ impl SearchIndex {
         }
 
         let result = (|| {
-            let mut writer = self.writer.lock();
-            writer.delete_all_documents()?;
-            writer.commit()?;
-            drop(writer);
-
             let topics = self.database.all_active_topic_revisions()?;
-            let mut rebuilt = 0;
-            for (key, revision) in topics {
-                self.update_topic(&key, revision)?;
-                rebuilt += 1;
-            }
+            let rebuilt = topics.len();
+            self.rewrite_topics(&topics, true)?;
             self.needs_full_rebuild
                 .store(false, std::sync::atomic::Ordering::Release);
             Ok(rebuilt)
@@ -443,14 +493,8 @@ impl SearchIndex {
             self.fields.owner_type => message.owner_type.as_str(),
             self.fields.owner_id => message.owner_id.clone(),
             self.fields.topic_id => message.topic_id.clone(),
-            self.fields.msg_id => message.msg_id.clone(),
-            self.fields.ordinal => message.ordinal as u64,
-            self.fields.role => message.role.clone(),
             self.fields.content => message.content_text.clone(),
         );
-        if let Some(timestamp) = message.timestamp {
-            document.add_i64(self.fields.timestamp, timestamp);
-        }
         if let Some(speaker_name) = &message.speaker_name {
             document.add_text(self.fields.speaker_name, speaker_name);
         }
@@ -509,26 +553,15 @@ impl SearchIndex {
 
 fn build_schema() -> Schema {
     let mut builder = Schema::builder();
-    let string = STRING | STORED;
-    let numeric = NumericOptions::default()
-        .set_indexed()
-        .set_stored()
-        .set_fast();
     let text_indexing = TextFieldIndexing::default()
         .set_tokenizer(JIEBA_TOKENIZER)
         .set_index_option(IndexRecordOption::WithFreqsAndPositions);
-    let text = TextOptions::default()
-        .set_indexing_options(text_indexing)
-        .set_stored();
+    let text = TextOptions::default().set_indexing_options(text_indexing);
 
-    builder.add_u64_field("row_id", numeric.clone());
-    builder.add_text_field("owner_type", string.clone());
-    builder.add_text_field("owner_id", string.clone());
-    builder.add_text_field("topic_id", string.clone());
-    builder.add_text_field("msg_id", string.clone());
-    builder.add_u64_field("ordinal", STORED | INDEXED);
-    builder.add_i64_field("timestamp", FAST | INDEXED);
-    builder.add_text_field("role", string.clone());
+    builder.add_u64_field("row_id", STORED);
+    builder.add_text_field("owner_type", STRING);
+    builder.add_text_field("owner_id", STRING);
+    builder.add_text_field("topic_id", STRING);
     builder.add_text_field("speaker_name", text.clone());
     builder.add_text_field("content", text);
     builder.add_text_field("topic_marker", STRING);

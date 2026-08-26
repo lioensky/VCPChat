@@ -19,6 +19,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType},
     ingest::{is_avatar_path, parse_history_path, Reconciler},
     search::SearchIndex,
 };
@@ -230,22 +231,85 @@ async fn run_ingest_worker(
             _ = cancellation.cancelled() => break,
             path = path_rx.recv() => {
                 let Some(path) = path else { break };
-                if is_owner_config(&path, &reconciler.config().agents_dir)
-                    || is_owner_config(&path, &reconciler.config().groups_dir)
-                    || is_avatar_path(
-                        &path,
-                        &reconciler.config().agents_dir,
-                        &reconciler.config().groups_dir,
-                        &reconciler.config().user_data_dir,
-                    )
-                {
-                    metrics.reconcile_required.store(true, Ordering::Release);
+                if let Some(owner) = owner_config_key(
+                    &path,
+                    &reconciler.config().agents_dir,
+                    &reconciler.config().groups_dir,
+                ) {
+                    let _guard = reconcile_lock.lock().await;
+                    match reconciler.reconcile_owner_key(&owner).await {
+                        Ok(_) => {
+                            if let Some(index) = &search {
+                                if let Err(error) = index.reconcile_revisions() {
+                                    tracing::error!(error = ?error, path = %path.display(), "owner index update failed");
+                                    metrics.reconcile_required.store(true, Ordering::Release);
+                                }
+                            }
+                            metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(error) => {
+                            metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                            tracing::warn!(error = ?error, path = %path.display(), "owner reconcile failed");
+                            metrics.reconcile_required.store(true, Ordering::Release);
+                        }
+                    }
+                    continue;
+                }
+
+                if let Some(avatar) = avatar_key(
+                    &path,
+                    &reconciler.config().agents_dir,
+                    &reconciler.config().groups_dir,
+                    &reconciler.config().user_data_dir,
+                ) {
+                    let _guard = reconcile_lock.lock().await;
+                    match reconciler.reconcile_avatar_key(&avatar) {
+                        Ok(_) => {
+                            metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(error) => {
+                            metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                            tracing::warn!(error = ?error, path = %path.display(), "avatar reconcile failed");
+                            metrics.reconcile_required.store(true, Ordering::Release);
+                        }
+                    }
                     continue;
                 }
 
                 if !path.exists() {
-                    // Deletions need config-aware topic/message tombstones.
-                    metrics.reconcile_required.store(true, Ordering::Release);
+                    let _guard = reconcile_lock.lock().await;
+                    match reconciler.database().live_topic_source_by_path(&path) {
+                        Ok(Some(source)) => {
+                            let owner = OwnerKey {
+                                owner_type: source.key.owner_type,
+                                owner_id: source.key.owner_id,
+                            };
+                            match reconciler.reconcile_owner_key(&owner).await {
+                                Ok(_) => {
+                                    if let Some(index) = &search {
+                                        if let Err(error) = index.reconcile_revisions() {
+                                            tracing::error!(error = ?error, path = %path.display(), "deleted history index update failed");
+                                            metrics.reconcile_required.store(true, Ordering::Release);
+                                        }
+                                    }
+                                    metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
+                                }
+                                Err(error) => {
+                                    metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                                    tracing::warn!(error = ?error, path = %path.display(), "deleted history reconcile failed");
+                                    metrics.reconcile_required.store(true, Ordering::Release);
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            metrics.reconcile_required.store(true, Ordering::Release);
+                        }
+                        Err(error) => {
+                            metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                            tracing::warn!(error = ?error, path = %path.display(), "deleted history lookup failed");
+                            metrics.reconcile_required.store(true, Ordering::Release);
+                        }
+                    }
                     continue;
                 }
 
@@ -254,12 +318,10 @@ async fn run_ingest_worker(
                 let _guard = reconcile_lock.lock().await;
                 match reconciler.ingest_path(&path, "notify").await {
                     Ok(Some(commit)) => {
-                        if commit.changed {
-                            if let Some(index) = &search {
-                                if let Err(error) = index.update_topic(&commit.topic, commit.revision) {
-                                    tracing::error!(error = ?error, path = %path.display(), "index update failed");
-                                    metrics.reconcile_required.store(true, Ordering::Release);
-                                }
+                        if let Some(index) = &search {
+                            if let Err(error) = index.apply_ingest_commit(&commit) {
+                                tracing::error!(error = ?error, path = %path.display(), "index update failed");
+                                metrics.reconcile_required.store(true, Ordering::Release);
                             }
                         }
                         metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
@@ -358,4 +420,77 @@ fn is_owner_config(path: &Path, base: &Path) -> bool {
             .as_os_str()
             .to_string_lossy()
             .eq_ignore_ascii_case("config.json")
+}
+
+fn owner_config_key(path: &Path, agents_dir: &Path, groups_dir: &Path) -> Option<OwnerKey> {
+    for (owner_type, base) in [
+        (OwnerType::Agent, agents_dir),
+        (OwnerType::Group, groups_dir),
+    ] {
+        if !is_owner_config(path, base) {
+            continue;
+        }
+        let owner_id = path
+            .strip_prefix(base)
+            .ok()?
+            .components()
+            .next()?
+            .as_os_str()
+            .to_string_lossy()
+            .to_string();
+        if !owner_id.is_empty() {
+            return Some(OwnerKey {
+                owner_type,
+                owner_id,
+            });
+        }
+    }
+    None
+}
+
+fn avatar_key(
+    path: &Path,
+    agents_dir: &Path,
+    groups_dir: &Path,
+    user_data_dir: &Path,
+) -> Option<AvatarKey> {
+    if path == user_data_dir.join("user_avatar.png") {
+        return Some(AvatarKey {
+            owner_type: AvatarOwnerType::User,
+            owner_id: "user_avatar".to_string(),
+        });
+    }
+    for (owner_type, base) in [
+        (AvatarOwnerType::Agent, agents_dir),
+        (AvatarOwnerType::Group, groups_dir),
+    ] {
+        let Ok(relative) = path.strip_prefix(base) else {
+            continue;
+        };
+        let components = relative.components().collect::<Vec<_>>();
+        if components.len() != 2 {
+            continue;
+        }
+        let file_name = components[1].as_os_str().to_string_lossy();
+        if ![
+            "avatar.png",
+            "avatar.jpg",
+            "avatar.jpeg",
+            "avatar.webp",
+            "avatar.gif",
+        ]
+        .iter()
+        .any(|candidate| file_name.eq_ignore_ascii_case(candidate))
+        {
+            continue;
+        }
+        let owner_id = components[0].as_os_str().to_string_lossy().to_string();
+        if !owner_id.is_empty() {
+            return Some(AvatarKey {
+                owner_type,
+                owner_id,
+            });
+        }
+    }
+    None
 }

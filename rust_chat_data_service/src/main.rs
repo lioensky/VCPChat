@@ -230,6 +230,11 @@ async fn run() -> Result<()> {
         tokio::task::yield_now().await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let _guard = startup_reconcile_lock.lock().await;
+        if let Some(metrics) = &startup_watcher_metrics {
+            metrics
+                .reconcile_required
+                .swap(false, std::sync::atomic::Ordering::AcqRel);
+        }
         match startup_reconciler.reconcile().await {
             Ok(stats) => {
                 tracing::info!(?stats, "background startup reconcile completed");

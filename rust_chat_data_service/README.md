@@ -217,7 +217,7 @@ POST /v1/shutdown
 
 VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中央模式下：
 
-1. 启动时等待 CDS READY 并执行一次 reconcile。
+1. CDS 在 READY 后自行执行一次后台 reconcile；MobileSync 注册不重复扫描，真实同步在 Owner Phase 开始前等待一次新鲜 reconcile。
 2. 不初始化 Legacy Owner/Topic/Message 持久索引；仅建立插件兼容资产视图。
 3. 不扫描历史文件。
 4. 不启动旧 chokidar watcher。
@@ -228,8 +228,9 @@ VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中�
 SQLite 中的同步 Hash 使用与公开 Wire 相同的分层语义：`messages.message_hash`
 保存消息指纹，`topics.content_hash` 保存消息叶聚合根，`owners.content_hash` 保存
 Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
-`history_sources.source_hash`；搜索增量继续由独立的
-`content_revision/indexed_revision` 驱动。
+`history_sources.source_hash`；只有全文检索可见的消息集合、正文或发言者变化才推进
+`content_revision`，Tantivy 通过 `content_revision/indexed_revision` 追赶 SQLite。普通追加
+只补入新消息文档；存在编辑或删除时回退为整 Topic 重写。
 
 ## 协议与失败语义
 

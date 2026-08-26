@@ -134,6 +134,18 @@ struct ManifestItem {
     deleted_at: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
+struct TopicManifestRow {
+    key: TopicKey,
+    config_hash: String,
+    content_hash: String,
+    updated_at: i64,
+    deleted_at: Option<i64>,
+    source_path: String,
+    source_status: Option<String>,
+    source_error: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum ManifestActionKind {
@@ -467,7 +479,7 @@ pub struct MessagesPushResult {
     pub owner_id: String,
     pub ok: bool,
     #[serde(skip)]
-    pub changed: bool,
+    pub ingest_commit: Option<IngestCommit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<SyncItemError>,
 }
@@ -857,7 +869,16 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
     build_manifest_response(request.manifest_type, actions)
 }
 
+#[cfg(test)]
 fn load_message_states(database: &Database, key: &TopicKey) -> Result<Vec<IndexedMessageState>> {
+    ensure_topic_sync_source_healthy(database, key)?;
+    load_message_states_committed(database, key)
+}
+
+fn load_message_states_committed(
+    database: &Database,
+    key: &TopicKey,
+) -> Result<Vec<IndexedMessageState>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
         "SELECT msg_id, message_hash, updated_at, deleted_at
@@ -880,7 +901,6 @@ fn load_message_states(database: &Database, key: &TopicKey) -> Result<Vec<Indexe
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
     drop(connection);
-    ensure_topic_sync_source_healthy(database, &key)?;
     let messages = rows
         .into_iter()
         .map(|(msg_id, stored_hash, updated_at, deleted_at)| {
@@ -1033,67 +1053,37 @@ fn pull_entity(database: &Database, item: &EntityPullItem) -> Result<Option<Valu
 }
 
 pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<TopicDiffResponse> {
-    anyhow::ensure!(
-        request.topics.len() <= 10_000,
-        "topic hash diff exceeds 10000 topics"
-    );
+    validate_topic_diff_states(&request.topics)?;
+    if request.topics.is_empty() {
+        return Ok(TopicDiffResponse {
+            response_type: "SYNC_TOPIC_DIFF_RESULT",
+            changed_topics: Vec::new(),
+        });
+    }
+    let local_topics = load_topic_manifest_rows(database)?;
     let mut changed_topics = Vec::new();
-    let mut seen_topics = HashSet::new();
     for state in request.topics {
-        anyhow::ensure!(
-            !state.topic_id.is_empty(),
-            "topic hash diff topicId is empty"
-        );
-        anyhow::ensure!(
-            !state.owner_id.is_empty(),
-            "topic hash diff ownerId must be non-empty"
-        );
-        anyhow::ensure!(
-            canonical_wire_hash(&state.config_hash).is_some()
-                && (state.content_hash.is_empty()
-                    || canonical_wire_hash(&state.content_hash).is_some()),
-            "topic hash diff contains an invalid hash for {}",
-            state.topic_id
-        );
         let requested_key = TopicKey {
             owner_type: state.owner_type,
             owner_id: state.owner_id,
             topic_id: state.topic_id,
         };
-        anyhow::ensure!(
-            seen_topics.insert(requested_key.clone()),
-            "topic hash diff contains a duplicate topic identity"
-        );
-        let local_config_hash = {
-            let connection = database.connection.lock();
-            connection
-                .query_row(
-                    "SELECT config_hash FROM topics
-                     WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
-                       AND deleted_at IS NULL",
-                    params![
-                        requested_key.owner_type.as_str(),
-                        &requested_key.owner_id,
-                        &requested_key.topic_id
-                    ],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()?
-        };
-        let Some(local_config_hash) = local_config_hash else {
+        let Some(local) = local_topics
+            .get(&requested_key)
+            .filter(|local| local.deleted_at.is_none())
+        else {
             changed_topics.push(requested_key);
             continue;
         };
-        let local_content_hash =
-            topic_content_hash(database, &requested_key).with_context(|| {
-                format!(
-                    "topic hash diff could not read {}/{}/{}",
-                    requested_key.owner_type.as_str(),
-                    requested_key.owner_id,
-                    requested_key.topic_id
-                )
-            })?;
-        if local_config_hash != state.config_hash || local_content_hash != state.content_hash {
+        ensure_topic_manifest_row_healthy(local).with_context(|| {
+            format!(
+                "topic hash diff could not read {}/{}/{}",
+                requested_key.owner_type.as_str(),
+                requested_key.owner_id,
+                requested_key.topic_id
+            )
+        })?;
+        if local.config_hash != state.config_hash || local.content_hash != state.content_hash {
             changed_topics.push(requested_key);
         }
     }
@@ -1111,94 +1101,92 @@ pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<Topi
     })
 }
 
+fn validate_topic_diff_states(topics: &[TopicDiffState]) -> Result<()> {
+    anyhow::ensure!(
+        topics.len() <= 10_000,
+        "topic hash diff exceeds 10000 topics"
+    );
+    let mut seen_topics = HashSet::with_capacity(topics.len());
+    for state in topics {
+        anyhow::ensure!(
+            !state.topic_id.is_empty(),
+            "topic hash diff topicId is empty"
+        );
+        anyhow::ensure!(
+            !state.owner_id.is_empty(),
+            "topic hash diff ownerId must be non-empty"
+        );
+        anyhow::ensure!(
+            canonical_wire_hash(&state.config_hash).is_some()
+                && (state.content_hash.is_empty()
+                    || canonical_wire_hash(&state.content_hash).is_some()),
+            "topic hash diff contains an invalid hash for {}",
+            state.topic_id
+        );
+        anyhow::ensure!(
+            seen_topics.insert((state.owner_type, &state.owner_id, &state.topic_id)),
+            "topic hash diff contains a duplicate topic identity"
+        );
+    }
+    Ok(())
+}
+
 pub fn message_diff(
     database: &Database,
     request: MessageDiffRequest,
 ) -> Result<MessageDiffResponse> {
-    anyhow::ensure!(
-        request.topics.len() <= 10_000,
-        "message diff exceeds 10000 topics"
-    );
+    validate_message_diff_states(&request.topics)?;
+    if request.topics.is_empty() {
+        return Ok(MessageDiffResponse {
+            response_type: "SYNC_MESSAGE_DIFF_RESULT",
+            results: Vec::new(),
+        });
+    }
+    let local_topics = load_topic_manifest_rows(database)?;
     let mut results = Vec::with_capacity(request.topics.len());
-    let mut seen_topics = HashSet::new();
-    let mut total_messages = 0_usize;
     for state in request.topics {
         let requested_key = TopicKey {
             owner_type: state.owner_type,
             owner_id: state.owner_id.clone(),
             topic_id: state.topic_id.clone(),
         };
-        anyhow::ensure!(
-            !requested_key.topic_id.is_empty(),
-            "message diff topicId must be non-empty"
-        );
-        anyhow::ensure!(
-            !requested_key.owner_id.is_empty(),
-            "message diff ownerId must be non-empty"
-        );
-        anyhow::ensure!(
-            seen_topics.insert(requested_key.clone()),
-            "message diff contains a duplicate topic identity"
-        );
-        anyhow::ensure!(
-            state.messages.len() <= 10_000,
-            "message diff topic exceeds 10000 messages"
-        );
-        total_messages = total_messages
-            .checked_add(state.messages.len())
-            .context("message diff count overflow")?;
-        anyhow::ensure!(
-            total_messages <= 100_000,
-            "message diff exceeds 100000 messages"
-        );
-        anyhow::ensure!(
-            state.content_hash.is_empty() || canonical_wire_hash(&state.content_hash).is_some(),
-            "message diff contentHash is invalid for {}",
-            requested_key.topic_id
-        );
-        for (message_id, version) in &state.messages {
-            anyhow::ensure!(
-                !message_id.is_empty(),
-                "message diff message id must be non-empty"
-            );
-            match version {
-                MessageVersionState::Live(version) => {
-                    anyhow::ensure!(
-                        canonical_wire_hash(&version.message_hash).is_some(),
-                        "message diff contains an invalid messageHash for {}/{message_id}",
-                        requested_key.topic_id
-                    );
-                    validate_manifest_time(version.updated_at, "message updatedAt")?;
-                }
-                MessageVersionState::Deleted(version) => {
-                    validate_manifest_time(version.deleted_at, "message deletedAt")?;
-                }
-            }
+        let Some(local_topic) = local_topics
+            .get(&requested_key)
+            .filter(|local| local.deleted_at.is_none())
+        else {
+            results.push(MessageDiffResult::failure(
+                &requested_key,
+                "TOPIC_NOT_FOUND",
+                "topic identity was not found".to_string(),
+            ));
+            continue;
+        };
+        if let Err(error) = ensure_topic_manifest_row_healthy(local_topic) {
+            results.push(MessageDiffResult::failure(
+                &requested_key,
+                "MESSAGE_MANIFEST_FAILED",
+                format!("{error:#}"),
+            ));
+            continue;
         }
-        let key = match resolve_topic(database, &requested_key) {
-            Ok(key) => key,
-            Err(error) => {
-                results.push(MessageDiffResult::failure(
-                    &requested_key,
-                    "TOPIC_NOT_FOUND",
-                    format!("{error:#}"),
-                ));
-                continue;
-            }
-        };
-
-        let local_topic = match topic_manifest(database, &key) {
-            Ok(local_topic) => local_topic,
-            Err(error) => {
-                results.push(MessageDiffResult::failure(
-                    &requested_key,
-                    "TOPIC_HASH_FAILED",
-                    format!("{error:#}"),
-                ));
-                continue;
-            }
-        };
-        let indexed_messages = match load_message_states(database, &key) {
+        let key = requested_key.clone();
+        let remote_has_tombstones = state
+            .messages
+            .values()
+            .any(|version| matches!(version, MessageVersionState::Deleted(_)));
+        if !state.content_hash.is_empty()
+            && state.content_hash == local_topic.content_hash
+            && !remote_has_tombstones
+        {
+            results.push(MessageDiffResult::success(
+                &key,
+                Vec::new(),
+                false,
+                Vec::new(),
+            ));
+            continue;
+        }
+        let indexed_messages = match load_message_states_committed(database, &key) {
             Ok(messages) => messages,
             Err(error) => {
                 results.push(MessageDiffResult::failure(
@@ -1227,23 +1215,6 @@ pub fn message_diff(
                 );
             }
         }
-        let remote_has_tombstones = state
-            .messages
-            .values()
-            .any(|version| matches!(version, MessageVersionState::Deleted(_)));
-        if !state.content_hash.is_empty()
-            && state.content_hash == local_topic.content_hash
-            && !remote_has_tombstones
-        {
-            results.push(MessageDiffResult::success(
-                &key,
-                Vec::new(),
-                false,
-                Vec::new(),
-            ));
-            continue;
-        }
-
         let mut to_pull = active
             .iter()
             .filter_map(|(id, desktop)| {
@@ -1303,6 +1274,62 @@ pub fn message_diff(
         response_type: "SYNC_MESSAGE_DIFF_RESULT",
         results,
     })
+}
+
+fn validate_message_diff_states(topics: &[MessageDiffState]) -> Result<()> {
+    anyhow::ensure!(topics.len() <= 10_000, "message diff exceeds 10000 topics");
+    let mut seen_topics = HashSet::with_capacity(topics.len());
+    let mut total_messages = 0_usize;
+    for state in topics {
+        anyhow::ensure!(
+            !state.topic_id.is_empty(),
+            "message diff topicId must be non-empty"
+        );
+        anyhow::ensure!(
+            !state.owner_id.is_empty(),
+            "message diff ownerId must be non-empty"
+        );
+        anyhow::ensure!(
+            seen_topics.insert((state.owner_type, &state.owner_id, &state.topic_id)),
+            "message diff contains a duplicate topic identity"
+        );
+        anyhow::ensure!(
+            state.messages.len() <= 10_000,
+            "message diff topic exceeds 10000 messages"
+        );
+        total_messages = total_messages
+            .checked_add(state.messages.len())
+            .context("message diff count overflow")?;
+        anyhow::ensure!(
+            total_messages <= 100_000,
+            "message diff exceeds 100000 messages"
+        );
+        anyhow::ensure!(
+            state.content_hash.is_empty() || canonical_wire_hash(&state.content_hash).is_some(),
+            "message diff contentHash is invalid for {}",
+            state.topic_id
+        );
+        for (message_id, version) in &state.messages {
+            anyhow::ensure!(
+                !message_id.is_empty(),
+                "message diff message id must be non-empty"
+            );
+            match version {
+                MessageVersionState::Live(version) => {
+                    anyhow::ensure!(
+                        canonical_wire_hash(&version.message_hash).is_some(),
+                        "message diff contains an invalid messageHash for {}/{message_id}",
+                        state.topic_id
+                    );
+                    validate_manifest_time(version.updated_at, "message updatedAt")?;
+                }
+                MessageVersionState::Deleted(version) => {
+                    validate_manifest_time(version.deleted_at, "message deletedAt")?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn pull_topic_messages(
@@ -1395,7 +1422,7 @@ pub async fn push_topic_messages(
             owner_type: topic.owner_type,
             owner_id: topic.owner_id,
             ok: true,
-            changed: commit.changed,
+            ingest_commit: Some(commit),
             error: None,
         },
         Err(error) => MessagesPushResult {
@@ -1403,7 +1430,7 @@ pub async fn push_topic_messages(
             owner_type: topic.owner_type,
             owner_id: topic.owner_id,
             ok: false,
-            changed: false,
+            ingest_commit: None,
             error: Some(SyncItemError {
                 code: "MESSAGE_WRITE_FAILED".to_string(),
                 message: format!("{error:#}"),
@@ -1519,12 +1546,11 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         .ingest_path(&history_path, "mobile_sync")
         .await?
         .context("projected history path was not accepted by CDS")?;
-    if let Some(revision) = reconciler
+    if reconciler
         .database()
         .apply_explicit_message_tombstones(&key, &explicit_tombstones)?
     {
         commit.changed = true;
-        commit.revision = revision;
     }
     Ok(commit)
 }
@@ -1632,73 +1658,58 @@ fn topic_manifests(
     database: &Database,
     targeted_owners: Option<&[OwnerKey]>,
 ) -> Result<Vec<ManifestItem>> {
-    let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT owner_type, owner_id, topic_id
-         FROM topics
-         ORDER BY owner_type, owner_id, topic_id",
-    )?;
-    let keys = statement
-        .query_map([], |row| {
-            let raw: String = row.get(0)?;
-            Ok(TopicKey {
-                owner_type: if raw == "group" {
-                    OwnerType::Group
-                } else {
-                    OwnerType::Agent
-                },
-                owner_id: row.get(1)?,
-                topic_id: row.get(2)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-
+    if targeted_owners.is_some_and(|owners| owners.is_empty()) {
+        return Ok(Vec::new());
+    }
     let targeted_owners =
         targeted_owners.map(|owners| owners.iter().cloned().collect::<HashSet<_>>());
-    keys.into_iter()
-        .filter(|key| {
+    let mut rows = load_topic_manifest_rows(database)?
+        .into_values()
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        (
+            left.key.owner_type.as_str(),
+            &left.key.owner_id,
+            &left.key.topic_id,
+        )
+            .cmp(&(
+                right.key.owner_type.as_str(),
+                &right.key.owner_id,
+                &right.key.topic_id,
+            ))
+    });
+    rows.into_iter()
+        .filter(|row| {
             targeted_owners.as_ref().is_none_or(|owners| {
                 owners.contains(&OwnerKey {
-                    owner_type: key.owner_type,
-                    owner_id: key.owner_id.clone(),
+                    owner_type: row.key.owner_type,
+                    owner_id: row.key.owner_id.clone(),
                 })
             })
         })
-        .map(|key| topic_manifest(database, &key))
+        .map(|row| topic_manifest_from_row(&row))
         .collect()
 }
 
+#[cfg(test)]
 fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
-    let connection = database.connection.lock();
-    let (config_hash, stored_content_hash, updated_at, deleted_at): (
-        String,
-        Option<String>,
-        i64,
-        Option<i64>,
-    ) = connection.query_row(
-        "SELECT config_hash, content_hash, updated_at, deleted_at
-         FROM topics
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-        params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-    )?;
-    drop(connection);
-    // 墓碑条目短路：删除信号只需要完整身份和 deleted_at，
-    // manifest diff 与移动端均不消费墓碑的配置或内容指纹；跳过 metadata
-    // 解析、健康检查与 content hash，避免已删 topic 炸掉整批 manifest。
-    if deleted_at.is_some() {
+    let row = load_topic_manifest_row(database, key)?;
+    topic_manifest_from_row(&row)
+}
+
+fn topic_manifest_from_row(row: &TopicManifestRow) -> Result<ManifestItem> {
+    let key = &row.key;
+    if row.deleted_at.is_some() {
         return Ok(ManifestItem {
             identity: ManifestIdentity::Topic(key.clone()),
             config_hash: String::new(),
             content_hash: String::new(),
-            updated_at,
-            deleted_at,
+            updated_at: row.updated_at,
+            deleted_at: row.deleted_at,
         });
     }
-    let content_hash = match ensure_topic_sync_source_healthy(database, key) {
-        Ok(()) => stored_content_hash.unwrap_or_default(),
+    let content_hash = match ensure_topic_manifest_row_healthy(row) {
+        Ok(()) => row.content_hash.clone(),
         Err(error) => {
             tracing::warn!(
                 owner_type = %key.owner_type.as_str(),
@@ -1712,11 +1723,87 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     };
     Ok(ManifestItem {
         identity: ManifestIdentity::Topic(key.clone()),
-        config_hash,
+        config_hash: row.config_hash.clone(),
         content_hash,
-        updated_at,
-        deleted_at,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
     })
+}
+
+#[cfg(test)]
+fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicManifestRow> {
+    let connection = database.connection.lock();
+    connection
+        .query_row(
+            "SELECT t.config_hash, t.content_hash, t.updated_at, t.deleted_at,
+                t.source_path, hs.status, hs.last_error
+         FROM topics t
+         LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+         WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| {
+                Ok(TopicManifestRow {
+                    key: key.clone(),
+                    config_hash: row.get(0)?,
+                    content_hash: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    updated_at: row.get(2)?,
+                    deleted_at: row.get(3)?,
+                    source_path: row.get(4)?,
+                    source_status: row.get(5)?,
+                    source_error: row.get(6)?,
+                })
+            },
+        )
+        .map_err(Into::into)
+}
+
+fn load_topic_manifest_rows(database: &Database) -> Result<HashMap<TopicKey, TopicManifestRow>> {
+    let connection = database.connection.lock();
+    let mut statement = connection.prepare(
+        "SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
+         FROM topics t
+         LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+         ORDER BY t.owner_type, t.owner_id, t.topic_id",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            let raw_owner_type: String = row.get(0)?;
+            let key = TopicKey {
+                owner_type: if raw_owner_type == "group" {
+                    OwnerType::Group
+                } else {
+                    OwnerType::Agent
+                },
+                owner_id: row.get(1)?,
+                topic_id: row.get(2)?,
+            };
+            Ok(TopicManifestRow {
+                key,
+                config_hash: row.get(3)?,
+                content_hash: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                updated_at: row.get(5)?,
+                deleted_at: row.get(6)?,
+                source_path: row.get(7)?,
+                source_status: row.get(8)?,
+                source_error: row.get(9)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows.into_iter().map(|row| (row.key.clone(), row)).collect())
+}
+
+fn ensure_topic_manifest_row_healthy(row: &TopicManifestRow) -> Result<()> {
+    if let Some(status) = &row.source_status {
+        anyhow::ensure!(
+            status == "ready",
+            "history source is not ready for sync: {}",
+            row.source_error.clone().unwrap_or_else(|| status.clone())
+        );
+    } else if Path::new(&row.source_path).exists() {
+        anyhow::bail!("history source exists but has not been ingested");
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1733,20 +1820,6 @@ fn owner_content_hash(
             params![owner_type.as_str(), owner_id],
             |row| row.get(0),
         )
-        .map_err(Into::into)
-}
-
-fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
-    ensure_topic_sync_source_healthy(database, key)?;
-    let connection = database.connection.lock();
-    connection
-        .query_row(
-            "SELECT content_hash FROM topics
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .map(|value| value.unwrap_or_default())
         .map_err(Into::into)
 }
 
@@ -2264,21 +2337,16 @@ mod tests {
 
     fn mark_test_source_invalid(database: &Database, config: &ServiceConfig, key: TopicKey) {
         let source = TopicSource {
-            display_name: None,
-            created_at: None,
-            topic_ordinal: 0,
             source_path: config
                 .user_data_dir
                 .join(&key.owner_id)
                 .join("topics")
                 .join(&key.topic_id)
                 .join("history.json"),
-            config_hash: String::new(),
-            topic_metadata: json!({}),
             key,
         };
         database
-            .mark_source_invalid(&source, "boom")
+            .mark_source_invalid(&source, "boom", crate::storage::OwnerHashMode::Immediate)
             .expect("poison history source");
     }
 
@@ -2805,7 +2873,10 @@ mod tests {
 
         let first = push_topic_messages(&reconciler, delete(42, 43)).await;
         assert!(first.ok);
-        assert!(first.changed);
+        assert!(first
+            .ingest_commit
+            .as_ref()
+            .is_some_and(|commit| commit.changed));
         let persisted: Vec<serde_json::Value> =
             serde_json::from_slice(&fs::read(&history_path).expect("read history"))
                 .expect("parse history");
@@ -2851,7 +2922,10 @@ mod tests {
 
         let replay = push_topic_messages(&reconciler, delete(99, 100)).await;
         assert!(replay.ok);
-        assert!(!replay.changed);
+        assert!(replay
+            .ingest_commit
+            .as_ref()
+            .is_some_and(|commit| !commit.changed));
         let replay_times = {
             let connection = database.connection.lock();
             let mut statement = connection
