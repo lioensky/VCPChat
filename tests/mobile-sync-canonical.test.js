@@ -22,9 +22,9 @@ const FIXTURE_PATH = path.join(
   "Plugin",
   "VCPMobileSync",
   "fixtures",
-  "protocol_1_2_golden.json",
+  "message_canonical_contract.json",
 );
-test("canonicalizer 符合消息 golden 输出和消息指纹", () => {
+test("canonicalizer 符合共享消息投影与指纹合同", () => {
   const bundle = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
 
   for (const fixture of bundle.validFrames) {

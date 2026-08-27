@@ -6,6 +6,21 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
+const messageDiffMatrix = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "VCPDistributedServer",
+      "Plugin",
+      "VCPMobileSync",
+      "fixtures",
+      "message_diff_matrix.json",
+    ),
+    "utf8",
+  ),
+).cases;
+
 const {
   resolveCentralIndexPreference,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/config/defaults");
@@ -210,141 +225,44 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
   });
 });
 
-test("Phase 3 墓碑四象限显式区分 delete、push 与 pull", () => {
-  const hashes = {
-    desktopOnly: "a".repeat(64),
-    desktopLive: "b".repeat(64),
-    mobileLive: "c".repeat(64),
-    mismatchDesktop: "d".repeat(64),
-    mismatchMobile: "e".repeat(64),
-    matched: "f".repeat(64),
-  };
-  const topicId = "topic-tombstones";
-  const result = handleSyncMessageDiff(
-    {
-      topics: compoundTopics({
-        [topicId]: {
-          contentHash: "9".repeat(64),
-          ownerType: "agent",
-          ownerId: "agent-a",
-          messages: {
-            "desktop-live-mobile-deleted": deleted(),
-            "desktop-deleted-mobile-live": live(hashes.mobileLive),
-            "both-deleted": deleted(),
-            "hash-mismatch": live(hashes.mismatchMobile, 1),
-            matched: live(hashes.matched),
-            "mobile-only-live": live(hashes.mobileLive),
-            "mobile-only-deleted": deleted(),
-          },
+test("Legacy Phase 3 与 CDS 共用完整仲裁矩阵", () => {
+  for (const scenario of messageDiffMatrix) {
+    const desktopMessages = scenario.desktopMessages.map((message) => ({
+      msg_id: message.msgId,
+      hash: message.messageHash ?? "0".repeat(64),
+      updated_at: message.updatedAt ?? message.deletedAt,
+      deleted_at: message.deletedAt ?? null,
+    }));
+    const response = handleSyncMessageDiff(
+      {
+        topics: [{
+          topicId: scenario.topicId,
+          ownerType: scenario.ownerType,
+          ownerId: scenario.ownerId,
+          contentHash: scenario.mobileContentHash,
+          messages: scenario.mobileMessages,
+        }],
+      },
+      fakeDiffDatabase({
+        topics: {
+          [scenario.topicId]: { content_hash: scenario.desktopContentHash },
         },
+        messages: { [scenario.topicId]: desktopMessages },
       }),
-    },
-    fakeDiffDatabase({
-      topics: {
-        [topicId]: {
-          content_hash: "desktop-root",
-        },
-      },
-      messages: {
-        [topicId]: [
-          {
-            msg_id: "desktop-live-mobile-deleted",
-            hash: hashes.desktopLive,
-            updated_at: 1,
-            deleted_at: null,
-          },
-          {
-            msg_id: "desktop-deleted-mobile-live",
-            hash: "0".repeat(64),
-            updated_at: 123,
-            deleted_at: 123,
-          },
-          {
-            msg_id: "both-deleted",
-            hash: "0".repeat(64),
-            updated_at: 456,
-            deleted_at: 456,
-          },
-          {
-            msg_id: "desktop-only-live",
-            hash: hashes.desktopOnly,
-            updated_at: 1,
-            deleted_at: null,
-          },
-          {
-            msg_id: "hash-mismatch",
-            hash: hashes.mismatchDesktop,
-            updated_at: 2,
-            deleted_at: null,
-          },
-          {
-            msg_id: "matched",
-            hash: hashes.matched,
-            updated_at: 1,
-            deleted_at: null,
-          },
-        ],
-      },
-    }),
-  );
+    );
 
-  assert.deepEqual(topicResult(result, topicId), {
-    topicId,
-    ownerType: "agent",
-    ownerId: "agent-a",
-    ok: true,
-    pullMessageIds: ["desktop-only-live", "hash-mismatch"],
-    pushTopic: true,
-    deleteMessages: [{ msgId: "desktop-deleted-mobile-live", deletedAt: 123 }],
-  });
-});
-
-test("Phase 3 live 冲突按时间优胜并以 Hash 打破同时间平局", () => {
-  const topicId = "topic-lww";
-  const low = "1".repeat(64);
-  const high = "e".repeat(64);
-  const result = handleSyncMessageDiff(
-    {
-      topics: compoundTopics({
-        [topicId]: {
-          contentHash: "9".repeat(64),
-          ownerType: "agent",
-          ownerId: "agent-a",
-          messages: {
-            "mobile-newer": live(low, 20),
-            "desktop-newer": live(high, 10),
-            "mobile-tie-wins": live(high, 30),
-            "desktop-tie-wins": live(low, 40),
-          },
-        },
-      }),
-    },
-    fakeDiffDatabase({
-      topics: {
-        [topicId]: {
-          content_hash: "desktop-root",
-        },
+    assert.deepEqual(
+      topicResult(response, scenario.topicId),
+      {
+        topicId: scenario.topicId,
+        ownerType: scenario.ownerType,
+        ownerId: scenario.ownerId,
+        ok: true,
+        ...scenario.expected,
       },
-      messages: {
-        [topicId]: [
-          { msg_id: "mobile-newer", hash: high, updated_at: 10, deleted_at: null },
-          { msg_id: "desktop-newer", hash: low, updated_at: 20, deleted_at: null },
-          { msg_id: "mobile-tie-wins", hash: low, updated_at: 30, deleted_at: null },
-          { msg_id: "desktop-tie-wins", hash: high, updated_at: 40, deleted_at: null },
-        ],
-      },
-    }),
-  );
-
-  assert.deepEqual(topicResult(result, topicId), {
-    topicId,
-    ownerType: "agent",
-    ownerId: "agent-a",
-    ok: true,
-    pullMessageIds: ["desktop-newer", "desktop-tie-wins"],
-    pushTopic: true,
-    deleteMessages: [],
-  });
+      scenario.name,
+    );
+  }
 });
 
 test("Legacy 检测更新时间覆盖物理、创建、稳定与变更四分支", () => {
@@ -364,39 +282,6 @@ test("Legacy 检测更新时间覆盖物理、创建、稳定与变更四分支"
     ),
     99,
   );
-});
-
-test("Phase 3 相同 live root 仍会上传 Mobile-only 墓碑", () => {
-  const topicHash = "a".repeat(64);
-  const result = handleSyncMessageDiff(
-    {
-      topics: compoundTopics({
-        "topic-equal-root": {
-          contentHash: topicHash,
-          ownerType: "agent",
-          ownerId: "agent-a",
-          messages: { "mobile-only-deleted": deleted() },
-        },
-      }),
-    },
-    fakeDiffDatabase({
-      topics: {
-        "topic-equal-root": {
-          content_hash: topicHash,
-        },
-      },
-    }),
-  );
-
-  assert.deepEqual(topicResult(result, "topic-equal-root"), {
-    topicId: "topic-equal-root",
-    ownerType: "agent",
-    ownerId: "agent-a",
-    ok: true,
-    pullMessageIds: [],
-    pushTopic: true,
-    deleteMessages: [],
-  });
 });
 
 test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成", () => {

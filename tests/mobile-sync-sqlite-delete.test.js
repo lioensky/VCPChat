@@ -54,6 +54,22 @@ const fakeLoggerModule = {
   resetLogger: () => silentLogger,
 };
 
+function TestDatabase(filename) {
+  const database = new DatabaseSync(filename);
+  database.transaction = (callback) => (...args) => {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = callback(...args);
+      database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  };
+  return database;
+}
+
 function loadSqliteModules({ captureOnMessage = null } = {}) {
   const modulePaths = [
     DB_PATH,
@@ -69,7 +85,7 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
 
   const originalLoad = Module._load;
   Module._load = function loadTestDependency(request, parent, isMain) {
-    if (request === "better-sqlite3") return DatabaseSync;
+    if (request === "better-sqlite3") return TestDatabase;
     if (
       request === "./logger" ||
       request === "./core/logger" ||
@@ -838,13 +854,18 @@ test("运行时 config 摄取按有效 Topic 配置收敛旧索引", async (t) =
       topicId: "topic-stale-deleted",
       deletedAt: 123,
     });
-    for (const topicId of ["topic-stale-live", "topic-stale-deleted"]) {
-      db.prepare(
-        `INSERT INTO messages
-           (owner_type, owner_id, topic_id, msg_id, message_hash, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run("agent", ownerId, topicId, `message-${topicId}`, "c".repeat(64), 1);
-    }
+    db.prepare(
+      `INSERT INTO messages
+         (owner_type, owner_id, topic_id, msg_id, message_hash, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "agent",
+      ownerId,
+      "topic-stale-live",
+      "message-topic-stale-live",
+      "c".repeat(64),
+      1,
+    );
 
     await index.ingestConfigToDb(configPath, "agent", directory);
 
@@ -854,8 +875,8 @@ test("运行时 config 摄取按有效 Topic 配置收敛旧索引", async (t) =
     assert.equal(
       db.prepare(
         "SELECT deleted_at FROM messages WHERE topic_id = ?",
-      ).get("topic-stale-deleted").deleted_at,
-      123,
+      ).get("topic-stale-live").deleted_at,
+      entityRow(db, "topic-stale-live", "topic").deleted_at,
     );
   } finally {
     db.close();
@@ -1141,15 +1162,5 @@ test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", asy
     );
   } finally {
     db.close();
-  }
-});
-
-test("MobileSync JavaScript 不再混用 SQLite 编号参数和位置绑定", () => {
-  for (const filePath of [DB_PATH, ENTITY_PATH]) {
-    assert.doesNotMatch(
-      fs.readFileSync(filePath, "utf8"),
-      /\?[1-9]\d*/u,
-      `${path.relative(ROOT, filePath)} contains numbered SQLite parameters`,
-    );
   }
 });

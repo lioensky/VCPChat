@@ -393,12 +393,13 @@ pub(crate) fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
 mod tests {
     use super::{canonicalize_message, message_fingerprint, normalize_integer, WireWarnings};
 
-    const GOLDEN: &[u8] = include_bytes!(
-        "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
+    const CONTRACT: &[u8] = include_bytes!(
+        "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/message_canonical_contract.json"
     );
     #[test]
-    fn golden_bundle_matches_the_canonical_message_contract() {
-        let bundle: serde_json::Value = serde_json::from_slice(GOLDEN).expect("golden JSON");
+    fn canonical_message_contract_matches_cds_projection_and_hashes() {
+        let bundle: serde_json::Value =
+            serde_json::from_slice(CONTRACT).expect("canonical contract JSON");
 
         for fixture in bundle["validFrames"].as_array().expect("valid frames") {
             let input = &fixture["input"];

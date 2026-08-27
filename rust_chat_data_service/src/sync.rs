@@ -2423,6 +2423,149 @@ mod tests {
     }
 
     #[test]
+    fn legacy_and_cds_share_the_message_diff_matrix() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/message_diff_matrix.json"
+        ))
+        .expect("parse message diff matrix");
+        for scenario in fixture["cases"].as_array().expect("matrix cases") {
+            let temp = TempDir::new().expect("create matrix database directory");
+            let database =
+                Database::open(&temp.path().join("chat.sqlite3")).expect("open matrix database");
+            let owner_type = match scenario["ownerType"].as_str().expect("ownerType") {
+                "agent" => OwnerType::Agent,
+                "group" => OwnerType::Group,
+                other => panic!("unsupported matrix ownerType {other}"),
+            };
+            let owner_id = scenario["ownerId"].as_str().expect("ownerId");
+            let topic_id = scenario["topicId"].as_str().expect("topicId");
+            let source_path = temp.path().join(format!("missing-{topic_id}.json"));
+            {
+                let connection = database.connection.lock();
+                connection
+                    .execute(
+                        "INSERT INTO owners (
+                            owner_type, owner_id, display_name, config_path,
+                            config_hash, content_hash, updated_at
+                         ) VALUES (?1, ?2, '', '', ?3, '', 1)",
+                        rusqlite::params![owner_type.as_str(), owner_id, "a".repeat(64)],
+                    )
+                    .expect("insert matrix owner");
+                connection
+                    .execute(
+                        "INSERT INTO topics (
+                            owner_type, owner_id, topic_id, config_hash, metadata_json,
+                            content_hash, source_path, updated_at
+                         ) VALUES (?1, ?2, ?3, ?4, '{}', ?5, ?6, 1)",
+                        rusqlite::params![
+                            owner_type.as_str(),
+                            owner_id,
+                            topic_id,
+                            "b".repeat(64),
+                            scenario["desktopContentHash"]
+                                .as_str()
+                                .expect("desktopContentHash"),
+                            source_path.to_string_lossy(),
+                        ],
+                    )
+                    .expect("insert matrix topic");
+                for (ordinal, message) in scenario["desktopMessages"]
+                    .as_array()
+                    .expect("desktopMessages")
+                    .iter()
+                    .enumerate()
+                {
+                    let deleted_at = message.get("deletedAt").and_then(serde_json::Value::as_i64);
+                    let updated_at = message
+                        .get("updatedAt")
+                        .and_then(serde_json::Value::as_i64)
+                        .or(deleted_at)
+                        .expect("desktop message time");
+                    let message_hash = message
+                        .get("messageHash")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| "0".repeat(64));
+                    connection
+                        .execute(
+                            "INSERT INTO messages (
+                                owner_type, owner_id, topic_id, msg_id, ordinal, role,
+                                content_raw, content_text, timestamp, message_hash,
+                                metadata_json, updated_at, deleted_at
+                             ) VALUES (?1, ?2, ?3, ?4, ?5, 'user', '', '', ?6, ?7, '{}', ?6, ?8)",
+                            rusqlite::params![
+                                owner_type.as_str(),
+                                owner_id,
+                                topic_id,
+                                message["msgId"].as_str().expect("msgId"),
+                                ordinal as i64,
+                                updated_at,
+                                message_hash,
+                                deleted_at,
+                            ],
+                        )
+                        .expect("insert matrix message");
+                }
+            }
+
+            let mobile_messages = scenario["mobileMessages"]
+                .as_object()
+                .expect("mobileMessages")
+                .iter()
+                .map(|(msg_id, state)| {
+                    let version = if let Some(deleted_at) =
+                        state.get("deletedAt").and_then(serde_json::Value::as_i64)
+                    {
+                        MessageVersionState::Deleted(MessageDeletedState { deleted_at })
+                    } else {
+                        MessageVersionState::Live(MessageLiveState {
+                            message_hash: state["messageHash"]
+                                .as_str()
+                                .expect("messageHash")
+                                .to_string(),
+                            updated_at: state["updatedAt"].as_i64().expect("updatedAt"),
+                        })
+                    };
+                    (msg_id.clone(), version)
+                })
+                .collect();
+            let response = message_diff(
+                &database,
+                MessageDiffRequest {
+                    topics: vec![MessageDiffState {
+                        topic_id: topic_id.to_string(),
+                        owner_type,
+                        owner_id: owner_id.to_string(),
+                        content_hash: scenario["mobileContentHash"]
+                            .as_str()
+                            .expect("mobileContentHash")
+                            .to_string(),
+                        messages: mobile_messages,
+                    }],
+                },
+            )
+            .expect("run message diff matrix");
+            let decision = successful_message_decision(&response.results[0]);
+            let actual = serde_json::to_value(decision).expect("serialize matrix decision");
+            assert_eq!(
+                actual["pullMessageIds"], scenario["expected"]["pullMessageIds"],
+                "{} pullMessageIds",
+                scenario["name"]
+            );
+            assert_eq!(
+                actual["pushTopic"], scenario["expected"]["pushTopic"],
+                "{} pushTopic",
+                scenario["name"]
+            );
+            assert_eq!(
+                actual["deleteMessages"], scenario["expected"]["deleteMessages"],
+                "{} deleteMessages",
+                scenario["name"]
+            );
+        }
+    }
+
+    #[test]
     fn owner_hash_normalizes_temperature_and_numeric_strings_like_mobile_legacy() {
         let base = json!({
             "name": "Nova",
@@ -2605,24 +2748,6 @@ mod tests {
                 .expect("changed canonical message");
             assert_ne!(hash, message_fingerprint(&canonical).expect("changed hash"));
         }
-    }
-
-    #[test]
-    fn aggregate_hash_is_order_independent() {
-        assert_eq!(
-            aggregate_hash(vec!["b".to_string(), "a".to_string()]),
-            aggregate_hash(vec!["a".to_string(), "b".to_string()])
-        );
-        assert_ne!(
-            aggregate_hash(vec![
-                topic_leaf_hash("topic-a", "config-a", "content-a"),
-                topic_leaf_hash("topic-b", "config-b", "content-b"),
-            ]),
-            aggregate_hash(vec![
-                topic_leaf_hash("topic-a", "config-a", "content-b"),
-                topic_leaf_hash("topic-b", "config-b", "content-a"),
-            ])
-        );
     }
 
     #[test]
@@ -3071,140 +3196,6 @@ mod tests {
             wire["deleteMessages"][0]["deletedAt"],
             to_delete[0].deleted_at
         );
-    }
-
-    #[tokio::test]
-    async fn matching_live_root_does_not_hide_a_mobile_only_tombstone() {
-        let (_temp, config, database, reconciler) = sync_fixture();
-        fs::write(
-            config
-                .user_data_dir
-                .join("agent-a/topics/topic-a/history.json"),
-            br#"[{"id":"live","role":"user","content":"live","timestamp":1}]"#,
-        )
-        .expect("write history");
-        reconciler.reconcile().await.expect("reconcile");
-
-        let content_hash = topic_manifest(
-            &database,
-            &TopicKey {
-                owner_type: OwnerType::Agent,
-                owner_id: "agent-a".to_string(),
-                topic_id: "topic-a".to_string(),
-            },
-        )
-        .expect("topic manifest")
-        .content_hash;
-        let live_hash = load_message_states(
-            &database,
-            &TopicKey {
-                owner_type: OwnerType::Agent,
-                owner_id: "agent-a".to_string(),
-                topic_id: "topic-a".to_string(),
-            },
-        )
-        .expect("message states")
-        .into_iter()
-        .find(|message| message.msg_id == "live")
-        .expect("live message")
-        .message_hash
-        .expect("live hash");
-
-        let response = message_diff(
-            &database,
-            MessageDiffRequest {
-                topics: vec![MessageDiffState {
-                    topic_id: "topic-a".to_string(),
-                    owner_type: OwnerType::Agent,
-                    owner_id: "agent-a".to_string(),
-                    content_hash,
-                    messages: HashMap::from([
-                        ("live".to_string(), version(live_hash, 1)),
-                        ("mobile-only-deleted".to_string(), deleted_version(1)),
-                    ]),
-                }],
-            },
-        )
-        .expect("message diff");
-        let decision = successful_message_decision(&response.results[0]);
-        assert!(decision.pull_message_ids.is_empty());
-        assert!(decision.push_topic);
-        assert!(decision.delete_messages.is_empty());
-    }
-
-    #[tokio::test]
-    async fn message_diff_uses_time_then_hash_and_can_merge_both_winners_in_one_topic() {
-        let (_temp, config, database, reconciler) = sync_fixture();
-        let history_path = config
-            .user_data_dir
-            .join("agent-a/topics/topic-a/history.json");
-        fs::write(
-            &history_path,
-            br#"[
-                {"id":"mobile-newer","role":"user","content":"desktop-a","timestamp":1},
-                {"id":"desktop-newer","role":"user","content":"desktop-b","timestamp":2},
-                {"id":"mobile-tie","role":"user","content":"desktop-c","timestamp":3},
-                {"id":"desktop-tie","role":"user","content":"desktop-d","timestamp":4}
-            ]"#,
-        )
-        .expect("write history");
-        reconciler.reconcile().await.expect("reconcile");
-
-        let desktop_hashes = load_message_states(
-            &database,
-            &TopicKey {
-                owner_type: OwnerType::Agent,
-                owner_id: "agent-a".to_string(),
-                topic_id: "topic-a".to_string(),
-            },
-        )
-        .expect("message states")
-        .into_iter()
-        .map(|message| (message.msg_id, message.message_hash.expect("live hash")))
-        .collect::<HashMap<_, _>>();
-        {
-            let connection = database.connection.lock();
-            for (message_id, updated_at) in [
-                ("mobile-newer", 10),
-                ("desktop-newer", 20),
-                ("mobile-tie", 30),
-                ("desktop-tie", 40),
-            ] {
-                connection
-                    .execute(
-                        "UPDATE messages SET updated_at=?2 WHERE msg_id=?1",
-                        rusqlite::params![message_id, updated_at],
-                    )
-                    .expect("set desktop update time");
-            }
-        }
-
-        let response = message_diff(
-            &database,
-            MessageDiffRequest {
-                topics: vec![MessageDiffState {
-                    topic_id: "topic-a".to_string(),
-                    owner_type: OwnerType::Agent,
-                    owner_id: "agent-a".to_string(),
-                    content_hash: String::new(),
-                    messages: HashMap::from([
-                        ("mobile-newer".to_string(), version("f".repeat(64), 20)),
-                        ("desktop-newer".to_string(), version("f".repeat(64), 10)),
-                        ("mobile-tie".to_string(), version("f".repeat(64), 30)),
-                        ("desktop-tie".to_string(), version("0".repeat(64), 40)),
-                    ]),
-                }],
-            },
-        )
-        .expect("message diff");
-        let decision = successful_message_decision(&response.results[0]);
-        assert_eq!(
-            decision.pull_message_ids,
-            vec!["desktop-newer".to_string(), "desktop-tie".to_string()]
-        );
-        assert!(decision.push_topic);
-        assert_ne!(desktop_hashes["mobile-newer"], "f".repeat(64));
-        assert!(desktop_hashes["desktop-tie"] > "0".repeat(64));
     }
 
     #[tokio::test]

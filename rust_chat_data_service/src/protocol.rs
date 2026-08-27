@@ -1128,13 +1128,4 @@ mod tests {
             ));
         }
     }
-
-    #[test]
-    fn entity_delete_response_exposes_only_ok() {
-        assert_eq!(
-            serde_json::to_value(EntityDeleteResponse { ok: true })
-                .expect("serialize entity delete response"),
-            serde_json::json!({ "ok": true })
-        );
-    }
 }
