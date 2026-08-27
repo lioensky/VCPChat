@@ -702,7 +702,40 @@ export const chatManager = (() => {
                 if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题列表失败: ${topics.error}`, timestamp: Date.now() });
                 await loadOwnedHistory(null);
             } else {
-                await loadOwnedHistory(null);
+                if (itemType === 'agent') {
+                    const agentConfig = await electronAPI.getAgentConfig(itemId);
+                    if (!isSelectionCurrent()) return;
+                    // ⚠️ 检查是否返回错误对象
+                    if (agentConfig && agentConfig.error) {
+                        console.error(`[ChatManager] Failed to get agent config for ${itemId}:`, agentConfig.error);
+                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载助手配置失败: ${agentConfig.error}`, timestamp: Date.now() });
+                        await loadOwnedHistory(null);
+                    } else if (agentConfig && (!agentConfig.topics || agentConfig.topics.length === 0)) {
+                        const defaultTopicResult = await electronAPI.createNewTopicForAgent(itemId, "主要对话");
+                        if (!isSelectionCurrent()) return;
+                        if (defaultTopicResult.success) {
+                            currentTopicIdRef.set(defaultTopicResult.topicId);
+                            if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
+                            await loadOwnedHistory(defaultTopicResult.topicId);
+                        } else {
+                            if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
+                            await loadOwnedHistory(null);
+                        }
+                    } else {
+                         await loadOwnedHistory(null);
+                    }
+                } else if (itemType === 'group') {
+                    const defaultTopicResult = await electronAPI.createNewTopicForGroup(itemId, "主要群聊");
+                    if (!isSelectionCurrent()) return;
+                    if (defaultTopicResult.success) {
+                        currentTopicIdRef.set(defaultTopicResult.topicId);
+                        if (messageRenderer) messageRenderer.setCurrentTopicId(defaultTopicResult.topicId);
+                        await loadOwnedHistory(defaultTopicResult.topicId);
+                    } else {
+                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `创建默认群聊话题失败: ${defaultTopicResult.error}`, timestamp: Date.now() });
+                        await loadOwnedHistory(null);
+                    }
+                }
             }
         } catch (e) {
             if (!isSelectionCurrent()) return;

@@ -304,12 +304,9 @@ async function createAgentGroup(groupName, initialConfig = {}) {
         const configToSave = { ...defaultConfig, ...initialConfig, id: groupId, name: groupName };
         await fs.writeJson(path.join(groupDir, 'config.json'), configToSave, { spaces: 2 });
 
-        const firstTopic = Array.isArray(configToSave.topics) ? configToSave.topics[0] : null;
-        if (firstTopic?.id) {
-            const firstTopicHistoryDir = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', firstTopic.id);
-            await fs.ensureDir(firstTopicHistoryDir);
-            await fs.writeJson(path.join(firstTopicHistoryDir, 'history.json'), [], { spaces: 2 });
-        }
+        const defaultTopicHistoryDir = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', configToSave.topics[0].id);
+        await fs.ensureDir(defaultTopicHistoryDir);
+        await fs.writeJson(path.join(defaultTopicHistoryDir, 'history.json'), [], { spaces: 2 });
 
         console.log(`[GroupChat] AgentGroup created: ${groupName} (ID: ${groupId})`);
         return { success: true, agentGroup: configToSave };
@@ -1705,6 +1702,14 @@ async function getGroupTopics(groupId, searchTerm = '') {
                  ? groupConfig.topics
                  : [];
 
+    if (topics.length === 0 && !searchTerm) { // Only add default if no search term and no topics
+        const defaultTopic = { id: `group_topic_${Date.now()}`, name: "主要群聊", createdAt: Date.now() };
+        topics.push(defaultTopic);
+        // Optionally save this default topic back to config if it was truly missing
+        const updatedConfig = { ...groupConfig, topics: topics };
+        await saveAgentGroupConfig(groupId, updatedConfig);
+    }
+
     if (searchTerm) {
         topics = topics.filter(topic =>
             topic.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -1748,6 +1753,14 @@ async function deleteGroupTopic(groupId, topicIdToDelete) {
         return { success: false, error: `Topic ID ${topicIdToDelete} not found in group ${groupId}.` };
     }
 
+    if (groupConfig.topics.length === 0) { 
+        const defaultTopic = { id: `group_topic_${Date.now()}`, name: "主要群聊", createdAt: Date.now() };
+        groupConfig.topics.push(defaultTopic);
+        const defaultTopicHistoryDir = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', defaultTopic.id);
+        await fs.ensureDir(defaultTopicHistoryDir);
+        await fs.writeJson(path.join(defaultTopicHistoryDir, 'history.json'), [], { spaces: 2 });
+    }
+    
     const result = await saveAgentGroupConfig(groupId, { topics: groupConfig.topics });
     if (!result.success) return { success: false, error: result.error };
  

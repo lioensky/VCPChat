@@ -143,7 +143,7 @@ class AgentConfigManager extends EventEmitter {
                     temperature: 0.7,
                     contextTokenLimit: 1000000,
                     maxOutputTokens: 60000,
-                    topics: []
+                    topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }]
                 };
                 console.warn(`Agent ${id} config not found, returning default config (allowDefault=true)`);
                 return { ...defaultConfig };

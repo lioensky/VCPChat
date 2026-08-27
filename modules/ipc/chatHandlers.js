@@ -611,12 +611,32 @@ function initialize(mainWindow, context) {
                     return { error: `未找到要删除的话题 ID: ${topicIdToDelete}` };
                 }
 
+                const replacementTimestamp = Date.now();
+                const replacementTopicId = `topic_${replacementTimestamp}`;
+                let replacementCreated = false;
                 let remainingTopics;
                 await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
-                    const filtered = (existingConfig.topics || []).filter(topic => topic.id !== topicIdToDelete);
+                    let filtered = (existingConfig.topics || []).filter(topic => topic.id !== topicIdToDelete);
+                    if (filtered.length === 0) {
+                        filtered = [{
+                            id: replacementTopicId,
+                            name: "主要对话",
+                            createdAt: replacementTimestamp
+                        }];
+                        replacementCreated = true;
+                    }
                     remainingTopics = filtered;
                     return { ...existingConfig, topics: filtered };
                 });
+
+                if (replacementCreated) {
+                    const replacementTopicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', replacementTopicId);
+                    await fs.ensureDir(replacementTopicHistoryDir);
+                    const historyPath = path.join(replacementTopicHistoryDir, 'history.json');
+                    if (!await fs.pathExists(historyPath)) {
+                        await fs.writeJson(historyPath, [], { spaces: 2 });
+                    }
+                }
 
                 const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
                 if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);
