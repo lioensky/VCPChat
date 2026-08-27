@@ -201,6 +201,18 @@ async function writeHistoryAtomic(filePath, history, expectedSourceHash) {
   }
 }
 
+function loadMessageTombstoneIds(db, { ownerType, ownerId, topicId }) {
+  return new Set(
+    db.prepare(
+      `SELECT msg_id FROM messages
+       WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+         AND deleted_at IS NOT NULL`,
+    )
+      .all(ownerType, ownerId, topicId)
+      .map((row) => row.msg_id),
+  );
+}
+
 /**
  * 流式批量下载消息 (NDJSON) — 对标 Phase 3 万级话题 Pull
  *
@@ -491,7 +503,25 @@ async function doPushSingleTopic(
 
     const { history: localHistory, sourceHash } = await readHistoryStrict(historyPath);
 
-    const msgMap = new Map(localHistory.map((m) => [m.id, m]));
+    const persistedTombstones = loadMessageTombstoneIds(db, {
+      ownerType: row.owner_type,
+      ownerId: parentId,
+      topicId: safeTopicId,
+    });
+    const staleLive = messages.find((message) =>
+      persistedTombstones.has(message.id)
+    );
+    if (staleLive) {
+      throw new Error(
+        `Mobile push contains tombstoned message ${safeTopicId}/${staleLive.id}; rerun message diff`,
+      );
+    }
+
+    const msgMap = new Map(
+      localHistory
+        .filter((message) => !persistedTombstones.has(message?.id))
+        .map((message) => [message.id, message]),
+    );
     const projected = await projectMobileTopic({
       topicId: safeTopicId,
       ownerType: isGroup ? "group" : "agent",
@@ -881,6 +911,37 @@ async function ingestHistoryToDb(
     }
     if (typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash)) {
       throw new Error("History source hash must be a lowercase SHA-256 hash");
+    }
+    const persistedTombstones = loadMessageTombstoneIds(db, {
+      ownerType,
+      ownerId,
+      topicId,
+    });
+    if (persistedTombstones.size > 0) {
+      const repairedHistory = history.filter(
+        (message) => !persistedTombstones.has(message?.id),
+      );
+      const removedCount = history.length - repairedHistory.length;
+      if (removedCount > 0) {
+        const committed = await writeHistoryAtomic(
+          filePath,
+          repairedHistory,
+          sourceHash,
+        );
+        if (!committed || committed.unchanged) {
+          throw new Error(`Tombstone repair did not commit for ${topicId}`);
+        }
+        history = repairedHistory;
+        sourceStats = committed.sourceStats;
+        sourceHash = committed.sourceHash;
+        logger.logOperation(
+          "messages",
+          "repair_tombstoned_history",
+          topicId,
+          "success",
+          `removed=${removedCount}`,
+        );
+      }
     }
     const previousSource = getHistorySourceState({ ownerType, ownerId, topicId });
     const sourceWasUnhealthy = isHistoryTopicUnhealthy({ topicId, ownerType, ownerId });

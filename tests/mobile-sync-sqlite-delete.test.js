@@ -40,6 +40,14 @@ const MANIFEST_PATH = path.join(
   "sync",
   "manifest.js",
 );
+const MESSAGE_PATH = path.join(
+  ROOT,
+  "VCPDistributedServer",
+  "Plugin",
+  "VCPMobileSync",
+  "sync",
+  "message.js",
+);
 
 const silentLogger = {
   completePhase() {},
@@ -76,6 +84,7 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
     ENTITY_PATH,
     INDEX_PATH,
     MANIFEST_PATH,
+    MESSAGE_PATH,
     path.join(path.dirname(ENTITY_PATH), "central.js"),
   ];
   const savedModules = new Map(
@@ -112,7 +121,8 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
     const entity = require(ENTITY_PATH);
     const index = captureOnMessage ? require(INDEX_PATH) : null;
     const manifest = require(MANIFEST_PATH);
-    return { database, entity, index, manifest };
+    const message = require(MESSAGE_PATH);
+    return { database, entity, index, manifest, message };
   } finally {
     Module._load = originalLoad;
     for (const modulePath of modulePaths) {
@@ -249,6 +259,78 @@ test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
         200,
       );
     }
+  } finally {
+    db.close();
+  }
+});
+
+test("Legacy 摄取会从物理 history 清除已持久化的消息墓碑", async (t) => {
+  const { database, message } = loadSqliteModules();
+  const db = database.initDb(":memory:");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-history-repair-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const ownerId = "agent-history-repair";
+  const topicId = "topic-history-repair";
+  const historyPath = path.join(
+    directory,
+    "UserData",
+    ownerId,
+    "topics",
+    topicId,
+    "history.json",
+  );
+  fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+
+  try {
+    insertEntity(db, {
+      id: topicId,
+      type: "topic",
+      ownerType: "agent",
+      ownerId,
+    });
+    database.upsertMessageTombstone({
+      ownerType: "agent",
+      ownerId,
+      topicId,
+      msgId: "message-deleted",
+      deletedAt: 42,
+    });
+    fs.writeFileSync(
+      historyPath,
+      JSON.stringify([
+        {
+          id: "message-deleted",
+          role: "user",
+          content: "stale",
+          timestamp: 1,
+        },
+        {
+          id: "message-live",
+          role: "assistant",
+          content: "keep",
+          timestamp: 2,
+        },
+      ]),
+    );
+
+    await message.ingestHistoryToDb(historyPath, {
+      ownerType: "agent",
+      ownerId,
+      topicId,
+    });
+
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(historyPath, "utf8")).map((item) => item.id),
+      ["message-live"],
+    );
+    assert.equal(
+      db.prepare(
+        `SELECT deleted_at FROM messages
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?`,
+      ).get("agent", ownerId, topicId, "message-deleted").deleted_at,
+      42,
+    );
   } finally {
     db.close();
   }

@@ -1,9 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::{self, File, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
-    time::UNIX_EPOCH,
+    fs,
+    path::Path,
 };
 
 use anyhow::{Context, Result};
@@ -13,7 +11,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
-    ingest::{normalize_history_values, sha256_hex, Reconciler},
+    ingest::{normalize_history_values, sha256_hex, write_history_atomic, Reconciler},
     storage::{Database, IngestCommit, OwnerHashMode},
     sync_wire::{canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings},
 };
@@ -1522,6 +1520,13 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         },
     )?;
     ensure_topic_sync_source_healthy(reconciler.database(), &key)?;
+    let persisted_tombstones = reconciler.database().message_tombstone_ids(&key)?;
+    if let Some(stale_live) = live_ids
+        .iter()
+        .find(|message_id| persisted_tombstones.contains(*message_id))
+    {
+        anyhow::bail!("pushed live message {stale_live} is already tombstoned; rerun message diff");
+    }
     let history_path = reconciler
         .config()
         .user_data_dir
@@ -1535,7 +1540,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         value
             .get("id")
             .and_then(Value::as_str)
-            .is_none_or(|id| !deleted.contains(id))
+            .is_none_or(|id| !deleted.contains(id) && !persisted_tombstones.contains(id))
     });
     let mut positions: HashMap<String, usize> = current
         .iter()
@@ -1916,129 +1921,6 @@ fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
     let history = serde_json::from_slice::<Vec<Value>>(&bytes)
         .context("existing history is invalid or has a non-array root")?;
     Ok((history, Some(sha256_hex(&bytes))))
-}
-
-struct CommittedHistoryVersion {
-    mtime_ns: i64,
-    file_size: i64,
-    source_hash: String,
-}
-
-fn write_history_atomic(
-    path: &Path,
-    bytes: &[u8],
-    expected_source_hash: Option<&str>,
-) -> Result<Option<CommittedHistoryVersion>> {
-    let parent = path.parent().context("history path has no parent")?;
-    fs::create_dir_all(parent)?;
-    let temporary = temporary_path(path);
-    let source_hash = sha256_hex(bytes);
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&temporary)
-        .context("failed to create unique history temporary file")?;
-    if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
-        let _ = fs::remove_file(&temporary);
-        return Err(error).context("failed to durably write history temporary file");
-    }
-    drop(file);
-    let metadata = match fs::metadata(&temporary) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            let _ = fs::remove_file(&temporary);
-            return Err(error).context("failed to read committed history temporary metadata");
-        }
-    };
-
-    let current_hash = match fs::read(path) {
-        Ok(current) => Some(sha256_hex(&current)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
-            let _ = fs::remove_file(&temporary);
-            return Err(error).context("failed to revalidate history before commit");
-        }
-    };
-    if current_hash.as_deref() != expected_source_hash {
-        let _ = fs::remove_file(&temporary);
-        anyhow::bail!("history changed concurrently; retry the sync topic");
-    }
-    if Some(source_hash.as_str()) == expected_source_hash {
-        fs::remove_file(&temporary)?;
-        return Ok(None);
-    }
-
-    if let Err(error) = atomic_replace(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
-        return Err(error).context("failed to atomically replace history");
-    }
-    sync_parent_directory(parent)?;
-    let mtime_ns = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
-        .unwrap_or(0);
-    Ok(Some(CommittedHistoryVersion {
-        mtime_ns,
-        file_size: metadata.len().min(i64::MAX as u64) as i64,
-        source_hash,
-    }))
-}
-
-fn temporary_path(path: &Path) -> PathBuf {
-    let name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("history.json");
-    path.with_file_name(format!("{name}.cds-{}.tmp", uuid::Uuid::new_v4()))
-}
-
-#[cfg(not(windows))]
-fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
-    fs::rename(from, to)
-}
-
-#[cfg(windows)]
-fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-
-    let from = from
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    let to = to
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    let result = unsafe {
-        MoveFileExW(
-            from.as_ptr(),
-            to.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if result == 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(unix)]
-fn sync_parent_directory(parent: &Path) -> Result<()> {
-    File::open(parent)?.sync_all()?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn sync_parent_directory(_parent: &Path) -> Result<()> {
-    Ok(())
 }
 
 fn canonical_wire_hash(value: &str) -> Option<String> {

@@ -1,8 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
-    io::ErrorKind,
-    path::Path,
+    fs::{self, File, OpenOptions},
+    io::{ErrorKind, Write},
+    path::{Path, PathBuf},
     sync::{Arc, LazyLock},
     time::{Duration, UNIX_EPOCH},
 };
@@ -661,9 +661,39 @@ impl Reconciler {
             }
         }
 
-        let (bytes, mtime_ns, file_size) =
+        let (mut bytes, mut mtime_ns, mut file_size) =
             read_stable_file(&source.source_path, (mtime_ns, file_size)).await?;
-        let source_hash = sha256_hex(&bytes);
+        let mut source_hash = sha256_hex(&bytes);
+        let tombstoned_ids = self.database.message_tombstone_ids(&source.key)?;
+        if !tombstoned_ids.is_empty() {
+            let mut history: Vec<Value> =
+                serde_json::from_slice(&bytes).context("history root must be an array")?;
+            let previous_len = history.len();
+            history.retain(|message| {
+                message
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_none_or(|id| !tombstoned_ids.contains(id))
+            });
+            let removed = previous_len - history.len();
+            if removed > 0 {
+                let repaired = serde_json::to_vec_pretty(&history)?;
+                let committed =
+                    write_history_atomic(&source.source_path, &repaired, Some(&source_hash))?
+                        .context("tombstone repair did not commit")?;
+                bytes = repaired;
+                mtime_ns = committed.mtime_ns;
+                file_size = committed.file_size;
+                source_hash = committed.source_hash;
+                tracing::warn!(
+                    owner_type = %source.key.owner_type,
+                    owner_id = %source.key.owner_id,
+                    topic_id = %source.key.topic_id,
+                    removed,
+                    "removed tombstoned messages from physical history"
+                );
+            }
+        }
         if let Some(commit) = self.database.refresh_unchanged_history_source(
             source,
             mtime_ns,
@@ -987,6 +1017,129 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+pub(crate) struct CommittedHistoryVersion {
+    pub(crate) mtime_ns: i64,
+    pub(crate) file_size: i64,
+    pub(crate) source_hash: String,
+}
+
+pub(crate) fn write_history_atomic(
+    path: &Path,
+    bytes: &[u8],
+    expected_source_hash: Option<&str>,
+) -> Result<Option<CommittedHistoryVersion>> {
+    let parent = path.parent().context("history path has no parent")?;
+    fs::create_dir_all(parent)?;
+    let temporary = temporary_path(path);
+    let source_hash = sha256_hex(bytes);
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .context("failed to create unique history temporary file")?;
+    if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error).context("failed to durably write history temporary file");
+    }
+    drop(file);
+    let metadata = match fs::metadata(&temporary) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error).context("failed to read committed history temporary metadata");
+        }
+    };
+
+    let current_hash = match fs::read(path) {
+        Ok(current) => Some(sha256_hex(&current)),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error).context("failed to revalidate history before commit");
+        }
+    };
+    if current_hash.as_deref() != expected_source_hash {
+        let _ = fs::remove_file(&temporary);
+        anyhow::bail!("history changed concurrently; retry the sync topic");
+    }
+    if Some(source_hash.as_str()) == expected_source_hash {
+        fs::remove_file(&temporary)?;
+        return Ok(None);
+    }
+
+    if let Err(error) = atomic_replace(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error).context("failed to atomically replace history");
+    }
+    sync_parent_directory(parent)?;
+    let mtime_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+        .unwrap_or(0);
+    Ok(Some(CommittedHistoryVersion {
+        mtime_ns,
+        file_size: metadata.len().min(i64::MAX as u64) as i64,
+        source_hash,
+    }))
+}
+
+fn temporary_path(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("history.json");
+    path.with_file_name(format!("{name}.cds-{}.tmp", uuid::Uuid::new_v4()))
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::rename(from, to)
+}
+
+#[cfg(windows)]
+fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let from = from
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let to = to
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        MoveFileExW(
+            from.as_ptr(),
+            to.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(parent: &Path) -> Result<()> {
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_parent: &Path) -> Result<()> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs, sync::Arc};
@@ -1149,6 +1302,86 @@ mod tests {
         assert_eq!(original[0].msg_id, "shared_message");
         assert_eq!(branch[0].msg_id, "shared_message");
         assert_ne!(original[0].row_id, branch[0].row_id);
+    }
+
+    #[tokio::test]
+    async fn reconcile_removes_tombstoned_messages_reintroduced_into_physical_history() {
+        let (_temp, config, database, reconciler) = fixture();
+        let owner_id = "agent_tombstone_repair";
+        let topic_id = "topic_tombstone_repair";
+        let deleted_message = serde_json::json!({
+            "id": "message_deleted",
+            "role": "user",
+            "content": "stale",
+            "timestamp": 1
+        });
+        let live_message = serde_json::json!({
+            "id": "message_live",
+            "role": "assistant",
+            "content": "keep",
+            "timestamp": 2
+        });
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            owner_id,
+            "Repair Agent",
+            &[topic_id],
+        );
+        write_history(
+            &config,
+            owner_id,
+            topic_id,
+            serde_json::json!([deleted_message.clone(), live_message.clone()]),
+        );
+        reconciler.reconcile().await.expect("index initial history");
+
+        write_history(
+            &config,
+            owner_id,
+            topic_id,
+            serde_json::json!([live_message.clone()]),
+        );
+        reconciler
+            .reconcile()
+            .await
+            .expect("persist message tombstone");
+
+        write_history(
+            &config,
+            owner_id,
+            topic_id,
+            serde_json::json!([deleted_message, live_message]),
+        );
+        reconciler
+            .reconcile()
+            .await
+            .expect("repair stale physical message");
+
+        let history_path = config
+            .user_data_dir
+            .join(owner_id)
+            .join("topics")
+            .join(topic_id)
+            .join("history.json");
+        let history: Vec<Value> =
+            serde_json::from_slice(&fs::read(history_path).expect("read repaired history"))
+                .expect("parse repaired history");
+        assert_eq!(
+            history
+                .iter()
+                .filter_map(|message| message.get("id").and_then(Value::as_str))
+                .collect::<Vec<_>>(),
+            vec!["message_live"],
+        );
+        assert!(database
+            .message_tombstone_ids(&TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: owner_id.to_string(),
+                topic_id: topic_id.to_string(),
+            })
+            .expect("load message tombstones")
+            .contains("message_deleted"));
     }
 
     #[tokio::test]

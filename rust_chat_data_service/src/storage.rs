@@ -1519,6 +1519,20 @@ impl Database {
             .map_err(Into::into)
     }
 
+    pub(crate) fn message_tombstone_ids(&self, key: &TopicKey) -> Result<HashSet<String>> {
+        let connection = self.connection.lock();
+        let mut statement = connection.prepare(
+            "SELECT msg_id FROM messages
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+               AND deleted_at IS NOT NULL",
+        )?;
+        let rows = statement.query_map(
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| row.get(0),
+        )?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
+    }
+
     pub fn topic_recovery_definition(&self, key: &TopicKey) -> Result<Option<TopicDefinition>> {
         let connection = self.connection.lock();
         let row = connection
