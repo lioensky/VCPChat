@@ -410,7 +410,9 @@ class CentralSyncAdapter {
               result.error,
               result.error.code === "ENTITY_NOT_FOUND"
                 ? "SYNC_ENTITY_NOT_FOUND"
-                : "SYNC_ENTITY_READ_FAILED",
+                : result.error.code === "SNAPSHOT_STALE"
+                  ? "SYNC_SNAPSHOT_STALE"
+                  : "SYNC_ENTITY_READ_FAILED",
               {
                 origin: "desktop_cds",
                 stage,
@@ -1031,7 +1033,9 @@ class CentralSyncAdapter {
           throw withCdsErrorContext(
             mapCdsItemError(
               result.error,
-              "SYNC_MESSAGE_WRITE_FAILED",
+              result.error.code === "SNAPSHOT_STALE"
+                ? "SYNC_SNAPSHOT_STALE"
+                : "SYNC_MESSAGE_WRITE_FAILED",
               {
                 origin: "desktop_cds",
                 stage: "messages",
@@ -1193,11 +1197,17 @@ class CentralSyncAdapter {
     ) {
       throw withCdsErrorContext(
         result?.error
-          ? mapCdsItemError(result.error, "SYNC_DELETE_FAILED", {
+          ? mapCdsItemError(
+            result.error,
+            result.error.code === "SNAPSHOT_STALE"
+              ? "SYNC_SNAPSHOT_STALE"
+              : "SYNC_DELETE_FAILED",
+            {
               origin: "desktop_cds",
               stage: "messages",
               failedTopicIds: [topicId],
-            })
+            },
+          )
           : `CDS rejected message deletion for ${topicId}`,
         {
           code: "SYNC_DELETE_FAILED",

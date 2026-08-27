@@ -11,7 +11,9 @@ use serde_json::{Map, Value};
 
 use crate::{
     domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
-    ingest::{normalize_history_values, sha256_hex, write_history_atomic, Reconciler},
+    ingest::{
+        normalize_history_values, sha256_hex, write_history_atomic, Reconciler, SnapshotStale,
+    },
     storage::{Database, IngestCommit, OwnerHashMode},
     sync_wire::{canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings},
 };
@@ -943,7 +945,12 @@ pub fn pull_entities(database: &Database, request: EntitiesPullRequest) -> Entit
                     false,
                     None,
                     Some(SyncItemError {
-                        code: "ENTITY_READ_FAILED".to_string(),
+                        code: if error.downcast_ref::<SnapshotStale>().is_some() {
+                            "SNAPSHOT_STALE"
+                        } else {
+                            "ENTITY_READ_FAILED"
+                        }
+                        .to_string(),
                         message: error.to_string(),
                         retryable: false,
                     }),
@@ -1006,10 +1013,12 @@ fn pull_entity(database: &Database, item: &EntityPullItem) -> Result<Option<Valu
             let root = serde_json::from_slice::<Value>(&fs::read(&config_path)?)
                 .with_context(|| format!("invalid owner config {config_path}"))?;
             let dto = mobile_owner_sync_dto_from_value(*owner_type, &root)?;
-            anyhow::ensure!(
-                hash_stable_object(&dto) == committed_hash,
-                "owner config changed after its manifest was committed"
-            );
+            if hash_stable_object(&dto) != committed_hash {
+                return Err(SnapshotStale(
+                    "owner config changed after its manifest was committed".to_string(),
+                )
+                .into());
+            }
             Ok(Some(Value::Object(dto)))
         }
         EntityPullItem::Topic {
@@ -1454,7 +1463,12 @@ pub async fn push_topic_messages(
             ok: false,
             ingest_commit: None,
             error: Some(SyncItemError {
-                code: "MESSAGE_WRITE_FAILED".to_string(),
+                code: if error.downcast_ref::<SnapshotStale>().is_some() {
+                    "SNAPSHOT_STALE"
+                } else {
+                    "MESSAGE_WRITE_FAILED"
+                }
+                .to_string(),
                 message: format!("{error:#}"),
                 retryable: false,
             }),
@@ -1525,7 +1539,10 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         .iter()
         .find(|message_id| persisted_tombstones.contains(*message_id))
     {
-        anyhow::bail!("pushed live message {stale_live} is already tombstoned; rerun message diff");
+        return Err(SnapshotStale(format!(
+            "pushed live message {stale_live} is already tombstoned; rerun message diff"
+        ))
+        .into());
     }
     let history_path = reconciler
         .config()
@@ -3024,6 +3041,29 @@ mod tests {
                 .expect("collect replay tombstones")
         };
         assert_eq!(replay_times, tombstone_times);
+
+        let stale_live = push_topic_messages(
+            &reconciler,
+            MessagesPushTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                messages: vec![serde_json::json!({
+                    "id": "m1",
+                    "role": "user",
+                    "content": "stale",
+                    "timestamp": 1,
+                    "updatedAt": 101
+                })],
+                deleted_messages: Vec::new(),
+            },
+        )
+        .await;
+        assert!(!stale_live.ok);
+        assert_eq!(
+            stale_live.error.as_ref().map(|error| error.code.as_str()),
+            Some("SNAPSHOT_STALE")
+        );
     }
 
     #[tokio::test]

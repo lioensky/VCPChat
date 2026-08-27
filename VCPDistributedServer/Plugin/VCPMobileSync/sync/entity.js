@@ -180,8 +180,11 @@ function entityDtoHash(dto, type, ownerType = null) {
 function assertEntityDtoMatchesIndex(dto, row, type, id) {
   const actualHash = entityDtoHash(dto, type, row.owner_type);
   if (actualHash !== row.config_hash) {
-    throw new Error(
-      `Entity ${row.owner_type}/${row.owner_id}/${id} changed after its manifest was indexed`,
+    throw Object.assign(
+      new Error(
+        `Entity ${row.owner_type}/${row.owner_id}/${id} changed after its manifest was indexed`,
+      ),
+      { code: "SYNC_SNAPSHOT_STALE" },
     );
   }
 }
@@ -991,7 +994,10 @@ async function writeJsonAtomic(filePath, value, { preserveBackup = false } = {})
       throw error;
     });
     if (observedCurrent !== expectedCurrent) {
-      throw new Error(`Config changed while updating ${filePath}`);
+      throw Object.assign(
+        new Error(`Config changed while updating ${filePath}`),
+        { code: "SYNC_SNAPSHOT_STALE" },
+      );
     }
     await fs.rename(temporary, filePath);
   } catch (error) {
@@ -1446,7 +1452,10 @@ async function downloadAvatar(id, type, centralSync = null) {
   }
   const data = await fs.readFile(filePath);
   if (computeBinaryHash(data) !== row.hash) {
-    throw new Error("Avatar changed after its manifest was indexed");
+    throw Object.assign(
+      new Error("Avatar changed after its manifest was indexed"),
+      { code: "SYNC_SNAPSHOT_STALE" },
+    );
   }
   const mimeType = detectAvatarMime(data);
 

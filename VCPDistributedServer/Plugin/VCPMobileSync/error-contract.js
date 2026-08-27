@@ -137,6 +137,7 @@ const ERROR_DEFINITIONS = Object.freeze({
   TOPIC_HASH_FAILED: definition("messages", "storage", "manual", "desktop_cds"),
   MESSAGE_MANIFEST_FAILED: definition("messages", "storage", "manual", "desktop_cds"),
   SYNC_OWNER_CONFLICT: definition("topic_metadata", "data", "manual"),
+  SYNC_SNAPSHOT_STALE: definition("messages", "data", "manual"),
   SYNC_ENTITY_NOT_FOUND: definition("owner_metadata", "data", "manual"),
   SYNC_DELETE_INVALID: definition("messages", "protocol", "after_user_action"),
   SYNC_DELETE_FAILED: definition("messages", "storage", "manual"),

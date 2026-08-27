@@ -145,7 +145,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
     if (pathname !== "/" && pathname !== "/ws-sync") {
       const logger = getLogger();
       logger.logOperation("websocket", "connection", req.socket?.remoteAddress || "unknown", "warn", `unknown path: ${pathname}`);
-      ws.close(1008, "Unsupported path");
+      ws.close(4002, "Unsupported path");
       return;
     }
 

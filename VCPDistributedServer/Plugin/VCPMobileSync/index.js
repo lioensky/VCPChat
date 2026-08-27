@@ -69,6 +69,9 @@ const {
 
 let chokidar = null;
 const AVATAR_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+// Legacy config 损坏只影响当前进程中的该 Owner：保留最后一次提交索引，
+// 但本轮 Manifest 不对其做 Pull/Push/Delete，避免旧状态冒充有效物理配置。
+const unhealthyLegacyOwners = new Set();
 
 try {
   chokidar = require("chokidar");
@@ -154,7 +157,22 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           if (centralSync) {
             return centralSync.handleSyncManifest(payload);
           }
-          return handleSyncManifest(payload);
+          const response = handleSyncManifest(payload);
+          if (payload.manifestType === "owner" && unhealthyLegacyOwners.size > 0) {
+            const before = response.results.length;
+            response.results = response.results.filter(
+              (item) => !unhealthyLegacyOwners.has(`${item.ownerType}\0${item.ownerId}`),
+            );
+            const skipped = before - response.results.length;
+            if (skipped > 0) {
+              logger.logInfo(
+                "owner_metadata",
+                `本轮已跳过 ${skipped} 个损坏 Owner 的同步动作`,
+                "warn",
+              );
+            }
+          }
+          return response;
         }
         case "SYNC_TOPIC_DIFF_REQUEST": {
           const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
@@ -527,6 +545,9 @@ async function refreshLegacyCommitView(appDataPath, physicalOwners = null) {
   const groupsDir = path.join(appDataPath, "AgentGroups");
   const userDataDir = path.join(appDataPath, "UserData");
   const physical = physicalOwners || await scanPhysicalTopicTree(appDataPath);
+  for (const key of unhealthyLegacyOwners) {
+    if (!physical.has(key)) unhealthyLegacyOwners.delete(key);
+  }
 
   const agentResult = await scanEntities(
     agentsDir,
@@ -692,8 +713,12 @@ async function scanEntities(
     if (SYSTEM_FOLDERS.includes(entry.name)) continue;
 
     const id = entry.name;
+    const ownerKey = `${type}\0${id}`;
     const previousOwner = getOwnerState({ ownerType: type, ownerId: id });
-    if (previousOwner?.deleted_at != null) continue;
+    if (previousOwner?.deleted_at != null) {
+      unhealthyLegacyOwners.delete(ownerKey);
+      continue;
+    }
 
     const entityDir = path.join(baseDir, entry.name);
     const configPath = path.join(entityDir, "config.json");
@@ -770,6 +795,7 @@ async function scanEntities(
           }
         }
         db.exec("COMMIT");
+        unhealthyLegacyOwners.delete(ownerKey);
         count += 1;
         topicCount += indexedTopics;
       } catch (error) {
@@ -777,9 +803,15 @@ async function scanEntities(
         throw error;
       }
     } catch (error) {
-      // 条目级降级：单个实体 config 损坏不应中止整个 reconcile；
-      // 该实体缺席索引后，其磁盘历史目录会在 scanHistory 按孤儿话题跳过
+      // 条目级降级：单个实体 config 损坏不阻断其他 Owner，但该 Owner
+      // 不能继续使用最后一次索引参与本轮 Manifest。
+      unhealthyLegacyOwners.add(ownerKey);
       logger.logOperation("reconcile", type, entry.name, "error", error.message);
+      logger.logInfo(
+        "owner_metadata",
+        `已跳过损坏的 ${type} Owner：${entry.name}`,
+        "warn",
+      );
       continue;
     }
   }
@@ -1179,12 +1211,13 @@ async function ingestConfigToDbUnlocked(configPath, type, appDataPath) {
   if (!db) return [];
 
   const logger = getLogger();
+  const ownerId = path.basename(path.dirname(configPath));
+  const ownerKey = `${type}\0${ownerId}`;
   try {
     const content = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(content);
     const now = Date.now();
     const id = path.basename(path.dirname(configPath));
-    const ownerId = path.basename(path.dirname(configPath));
     const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
     let topicEntries = [];
     try {
@@ -1319,9 +1352,16 @@ async function ingestConfigToDbUnlocked(configPath, type, appDataPath) {
       "success",
       `hash updated, topics=${topicUpdates.length}`,
     );
+    unhealthyLegacyOwners.delete(ownerKey);
     return newTopics;
   } catch (e) {
+    unhealthyLegacyOwners.add(ownerKey);
     logger.logOperation("watcher", type, configPath, "error", e.message);
+    logger.logInfo(
+      "owner_metadata",
+      `已跳过损坏的 ${type} Owner：${ownerId}`,
+      "warn",
+    );
     return [];
   }
 }

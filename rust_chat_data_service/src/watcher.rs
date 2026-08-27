@@ -394,6 +394,8 @@ async fn run_overflow_recovery(
 ) {
     let mut ticker = interval(Duration::from_secs(2));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut retry_delay = Duration::from_secs(2);
+    let mut retry_not_before = Instant::now();
 
     loop {
         tokio::select! {
@@ -402,26 +404,42 @@ async fn run_overflow_recovery(
                 if !metrics.reconcile_required.swap(false, Ordering::AcqRel) {
                     continue;
                 }
+                if Instant::now() < retry_not_before {
+                    metrics.reconcile_required.store(true, Ordering::Release);
+                    continue;
+                }
 
                 // Serialize recovery with startup and API-triggered reconciles.
                 // Filesystem events may arrive while the background startup pass
                 // is running; they remain represented by reconcile_required and
                 // are processed after that pass releases this lock.
                 let _guard = reconcile_lock.lock().await;
-                match reconciler.reconcile().await {
+                let recovered = match reconciler.reconcile().await {
                     Ok(stats) => {
                         tracing::info!(?stats, "watcher recovery reconcile completed");
                         if let Some(index) = &search {
                             if let Err(error) = index.reconcile_revisions() {
                                 tracing::error!(error = ?error, "revision recovery failed");
-                                metrics.reconcile_required.store(true, Ordering::Release);
+                                false
+                            } else {
+                                true
                             }
+                        } else {
+                            true
                         }
                     }
                     Err(error) => {
                         tracing::error!(error = ?error, "watcher recovery reconcile failed");
-                        metrics.reconcile_required.store(true, Ordering::Release);
+                        false
                     }
+                };
+                if recovered {
+                    retry_delay = Duration::from_secs(2);
+                    retry_not_before = Instant::now();
+                } else {
+                    metrics.reconcile_required.store(true, Ordering::Release);
+                    retry_not_before = Instant::now() + retry_delay;
+                    retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                 }
             }
         }

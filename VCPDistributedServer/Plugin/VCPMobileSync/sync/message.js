@@ -171,7 +171,10 @@ async function writeHistoryAtomic(filePath, history, expectedSourceHash) {
       if (error.code !== "ENOENT") throw error;
     }
     if (currentHash !== expectedSourceHash) {
-      throw new Error("History changed concurrently; retry this topic");
+      throw Object.assign(
+        new Error("History changed concurrently; retry this topic"),
+        { code: "SYNC_SNAPSHOT_STALE" },
+      );
     }
     if (sourceHash === expectedSourceHash) {
       await fs.unlink(temporary);
@@ -396,7 +399,7 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           [...indexedStates.keys()].some((id) => !physicalIds.has(id))
         ) {
           throw createSyncError(
-            "SYNC_INDEX_INVALID",
+            "SYNC_SNAPSHOT_STALE",
             `physical history changed after ${safeTopicId} was indexed`,
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
@@ -411,7 +414,7 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           message.contentHash !== indexed.hash
         ) {
           throw createSyncError(
-            "SYNC_INDEX_INVALID",
+            "SYNC_SNAPSHOT_STALE",
             `message ${safeTopicId}/${message.id} changed after it was indexed`,
             { stage: "messages", failedTopicIds: [safeTopicId] },
           );
@@ -512,8 +515,10 @@ async function doPushSingleTopic(
       persistedTombstones.has(message.id)
     );
     if (staleLive) {
-      throw new Error(
+      throw createSyncError(
+        "SYNC_SNAPSHOT_STALE",
         `Mobile push contains tombstoned message ${safeTopicId}/${staleLive.id}; rerun message diff`,
+        { stage: "messages", failedTopicIds: [safeTopicId] },
       );
     }
 
@@ -1042,8 +1047,11 @@ async function ingestHistoryToDb(
           topicRootHash,
         );
         if (updated.changes !== 1) {
-          throw new Error(
-            `Topic ${ownerType}/${ownerId}/${topicId} disappeared during ingestion`,
+          throw Object.assign(
+            new Error(
+              `Topic ${ownerType}/${ownerId}/${topicId} disappeared during ingestion`,
+            ),
+            { code: "SYNC_SNAPSHOT_STALE" },
           );
         }
         if (source !== "reconcile") {

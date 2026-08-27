@@ -24,6 +24,10 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct SnapshotStale(pub String);
+
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReconcileStats {
@@ -1060,7 +1064,10 @@ pub(crate) fn write_history_atomic(
     };
     if current_hash.as_deref() != expected_source_hash {
         let _ = fs::remove_file(&temporary);
-        anyhow::bail!("history changed concurrently; retry the sync topic");
+        return Err(SnapshotStale(
+            "history changed concurrently; retry the sync topic".to_string(),
+        )
+        .into());
     }
     if Some(source_hash.as_str()) == expected_source_hash {
         fs::remove_file(&temporary)?;

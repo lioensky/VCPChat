@@ -323,7 +323,7 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   assert.equal(desktopAttachment.status, undefined);
 });
 
-test("中央 push 将 CDS item error 补全为统一 NDJSON 错误对象", async (t) => {
+test("中央 push 将 CDS 快照过期映射为可重新比对的统一错误", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-error-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const client = {
@@ -334,8 +334,8 @@ test("中央 push 将 CDS item error 补全为统一 NDJSON 错误对象", async
         ownerId,
         ok: false,
         error: {
-          code: "MESSAGE_WRITE_FAILED",
-          message: "CDS write transaction failed",
+          code: "SNAPSHOT_STALE",
+          message: "history changed concurrently",
           retryable: false,
         },
       };
@@ -367,12 +367,12 @@ test("中央 push 将 CDS item error 补全为统一 NDJSON 错误对象", async
     ownerId: "agent-a",
     ok: false,
     error: {
-      code: "SYNC_MESSAGE_WRITE_FAILED",
+      code: "SYNC_SNAPSHOT_STALE",
       origin: "desktop_cds",
       stage: "messages",
-      kind: "storage",
+      kind: "data",
       retry: "manual",
-      message: "CDS write transaction failed",
+      message: "history changed concurrently",
       failedTopicIds: ["topic-a"],
     },
   }]);

@@ -21,6 +21,7 @@ const {
   createStreamErrorFrame,
   normalizeFailureResult,
 } = require("../error-contract");
+const { NdjsonWriter } = require("./ndjson");
 
 function entityStage(type) {
   return ["topic", "agent_topic", "group_topic"].includes(type)
@@ -168,6 +169,28 @@ function streamErrorFallback(centralSync, code = "SYNC_STREAM_FAILED") {
     origin: centralSync ? "desktop_cds" : "desktop_plugin",
     stage: "messages",
   };
+}
+
+async function finishStreamWithError(res, error, fallback) {
+  if (
+    res.destroyed === true ||
+    res.closed === true ||
+    res.writableEnded === true ||
+    res.writableFinished === true
+  ) {
+    return;
+  }
+  await new NdjsonWriter(res)
+    .write(createStreamErrorFrame(error, fallback))
+    .catch(() => {});
+  if (
+    !res.destroyed &&
+    !res.closed &&
+    !res.writableEnded &&
+    !res.writableFinished
+  ) {
+    res.end();
+  }
 }
 
 function requestStage(req) {
@@ -424,14 +447,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       if (!res.headersSent) {
         sendHttpError(res, 500, e, streamErrorFallback(centralSync));
       } else {
-        // 流已经开始，写入错误帧并结束
-        res.write(
-          `${JSON.stringify(createStreamErrorFrame(
-            e,
-            streamErrorFallback(centralSync),
-          ))}\n`,
-        );
-        res.end();
+        await finishStreamWithError(res, e, streamErrorFallback(centralSync));
       }
     }
   });
@@ -450,13 +466,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         if (!res.headersSent) {
           sendHttpError(res, 500, e, streamErrorFallback(centralSync));
         } else {
-          res.write(
-            `${JSON.stringify(createStreamErrorFrame(
-              e,
-              streamErrorFallback(centralSync),
-            ))}\n`,
-          );
-          res.end();
+          await finishStreamWithError(res, e, streamErrorFallback(centralSync));
         }
       }
     },
