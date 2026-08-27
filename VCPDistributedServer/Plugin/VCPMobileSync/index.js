@@ -158,7 +158,10 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             return centralSync.handleSyncManifest(payload);
           }
           const response = handleSyncManifest(payload);
-          if (payload.manifestType === "owner" && unhealthyLegacyOwners.size > 0) {
+          if (
+            ["owner", "avatar"].includes(payload.manifestType) &&
+            unhealthyLegacyOwners.size > 0
+          ) {
             const before = response.results.length;
             response.results = response.results.filter(
               (item) => !unhealthyLegacyOwners.has(`${item.ownerType}\0${item.ownerId}`),
@@ -723,20 +726,23 @@ async function scanEntities(
     const entityDir = path.join(baseDir, entry.name);
     const configPath = path.join(entityDir, "config.json");
 
+    let config;
+    let hash;
+    let physicalTopics;
     try {
       const content = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
+      config = JSON.parse(content);
       if (!config || typeof config !== "object" || Array.isArray(config)) {
         throw new Error("Entity config root must be an object");
       }
       // 索引主实体 (V2: 使用 DTO 提取以对齐默认值处理)
       const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
-      const hash = computeDtoHash(
+      hash = computeDtoHash(
         dto,
         type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
       );
       const topicsDir = path.join(appDataPath, "UserData", id, "topics");
-      let physicalTopics = physicalOwners
+      physicalTopics = physicalOwners
         ?.get(`${type}\0${id}`)
         ?.physicalTopics;
       if (!physicalTopics) {
@@ -752,59 +758,8 @@ async function scanEntities(
             .map((topicEntry) => topicEntry.name),
         );
       }
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        let indexedTopics = 0;
-        upsertOwnerState({
-          ownerType: type,
-          ownerId: id,
-          configPath,
-          configHash: hash,
-          updatedAt: now,
-        });
-
-        if (Array.isArray(config.topics)) {
-          for (const topic of config.topics) {
-          if (
-            sanitizeId(topic?.id) !== topic?.id ||
-            !physicalTopics.has(topic.id)
-          ) {
-            continue;
-          }
-            const previous = getTopicState({
-              ownerType: type,
-              ownerId: id,
-              topicId: topic.id,
-            });
-            if (previous?.deleted_at != null) continue;
-            const topicDto = extractTopicDTO(topic, id, type);
-            const configHash = computeDtoHash(
-              topicDto,
-              type === "group"
-                ? GROUP_TOPIC_SYNC_FIELDS
-                : AGENT_TOPIC_SYNC_FIELDS,
-            );
-            upsertTopicState({
-              ownerType: type,
-              ownerId: id,
-              topicId: topic.id,
-              configHash,
-              updatedAt: now,
-            });
-            indexedTopics += 1;
-          }
-        }
-        db.exec("COMMIT");
-        unhealthyLegacyOwners.delete(ownerKey);
-        count += 1;
-        topicCount += indexedTopics;
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
     } catch (error) {
-      // 条目级降级：单个实体 config 损坏不阻断其他 Owner，但该 Owner
-      // 不能继续使用最后一次索引参与本轮 Manifest。
+      // 只有当前 Owner 的物理来源不可读时才降级；数据库事务错误必须中止刷新。
       unhealthyLegacyOwners.add(ownerKey);
       logger.logOperation("reconcile", type, entry.name, "error", error.message);
       logger.logInfo(
@@ -813,6 +768,57 @@ async function scanEntities(
         "warn",
       );
       continue;
+    }
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      let indexedTopics = 0;
+      upsertOwnerState({
+        ownerType: type,
+        ownerId: id,
+        configPath,
+        configHash: hash,
+        updatedAt: now,
+      });
+
+      if (Array.isArray(config.topics)) {
+        for (const topic of config.topics) {
+          if (
+            sanitizeId(topic?.id) !== topic?.id ||
+            !physicalTopics.has(topic.id)
+          ) {
+            continue;
+          }
+          const previous = getTopicState({
+            ownerType: type,
+            ownerId: id,
+            topicId: topic.id,
+          });
+          if (previous?.deleted_at != null) continue;
+          const topicDto = extractTopicDTO(topic, id, type);
+          const configHash = computeDtoHash(
+            topicDto,
+            type === "group"
+              ? GROUP_TOPIC_SYNC_FIELDS
+              : AGENT_TOPIC_SYNC_FIELDS,
+          );
+          upsertTopicState({
+            ownerType: type,
+            ownerId: id,
+            topicId: topic.id,
+            configHash,
+            updatedAt: now,
+          });
+          indexedTopics += 1;
+        }
+      }
+      db.exec("COMMIT");
+      unhealthyLegacyOwners.delete(ownerKey);
+      count += 1;
+      topicCount += indexedTopics;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
     }
   }
   return { count, topicCount };
