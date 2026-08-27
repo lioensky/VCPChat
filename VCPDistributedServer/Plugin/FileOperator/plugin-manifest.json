@@ -2,7 +2,7 @@
   "name": "FileOperator",
   "displayName": "文件操作器",
   "pluginType": "synchronous",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "一个强大的文件系统操作插件，允许AI对受限目录进行读、写、列出、移动、复制、删除等多种文件和目录操作。特别增强了文件读取能力，可自动提取PDF、Word(.docx)和表格(.xlsx, .csv)文件的纯文本内容。",
   "author": "VCPToolBox",
   "license": "MIT",
@@ -109,11 +109,11 @@
       },
       {
         "command": "ApplyDiff",
-        "description": "功能: 对指定文件应用一个差异(diff)修改。调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\nfilePath:「始」H:\\MCP\\VCPChat\\AppData\\canvas\\nova_cool_doc.md「末」,\nsearchString:「始」nova的温度好酷哦！还有html样式哦！看到我的评论了吗？「末」,\nreplaceString:「始」nova的文档好酷哦！还有html样式哦！看到我的评论了吗？「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 对指定文件应用一个精确的差异(diff)修改，仅替换 target 首次出现的位置，并保留文件原有换行风格。\n参数:\n- filePath (字符串, 必需): 要修改文件的绝对路径。\n- target (字符串, 必需): 要在文件中查找的精确原文，参数名大小写不敏感。\n- replace (字符串, 必需): 用于替换 target 的新内容，参数名大小写不敏感。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」ApplyDiff「末」,\nfilePath:「始」H:\\MCP\\VCPChat\\AppData\\canvas\\nova_cool_doc.md「末」,\ntarget:「始」nova的温度好酷哦！还有html样式哦！看到我的评论了吗？「末」,\nreplace:「始」nova的文档好酷哦！还有html样式哦！看到我的评论了吗？「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
      {
        "command": "UpdateHistory",
-       "description": "功能: 安全地更新一个JSON格式的聊天历史文件。此命令专门用于修改AI自己（role: 'assistant'）的发言内容。它会读取文件，解析JSON，查找并替换指定的文本字符串（仅限第一次出现），然后将更新后的内容写回文件，确保JSON结构的完整性。\n参数:\n- filePath (字符串, 必需): 聊天历史JSON文件的绝对路径。\n- searchString (字符串, 必需): 要在AI发言内容中查找的精确文本。\n- replaceString (字符串, 必需): 用于替换找到的文本的新内容。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」UpdateHistory「末」,\nfilePath:「始」H:\\path\\to\\your\\history.json「末」,\nsearchString:「始」这是我想修改的旧内容。「末」,\nreplaceString:「始」这是替换后的新内容。「末」\n<<<[END_TOOL_REQUEST]>>>"
+       "description": "功能: 安全地更新一个JSON格式的聊天历史文件。此命令专门用于修改AI自己（role: 'assistant'）的发言内容。它会读取文件，解析JSON，查找并替换指定的文本字符串（仅限第一次出现），然后将更新后的内容写回文件，确保JSON结构的完整性。\n参数:\n- filePath (字符串, 必需): 聊天历史JSON文件的绝对路径。\n- target (字符串, 必需): 要在AI发言内容中查找的精确文本，参数名大小写不敏感。\n- replace (字符串, 必需): 用于替换 target 的新内容，参数名大小写不敏感。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」UpdateHistory「末」,\nfilePath:「始」H:\\path\\to\\your\\history.json「末」,\ntarget:「始」这是我想修改的旧内容。「末」,\nreplace:「始」这是替换后的新内容。「末」\n<<<[END_TOOL_REQUEST]>>>"
      },
      {
        "command": "CreateCanvas",

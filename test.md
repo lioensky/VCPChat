@@ -416,6 +416,44 @@ flowchart LR
             transform: rotateX(-90deg) translateZ(56px);
         }
 
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-sphere-stage {
+            position: absolute;
+            bottom: 18px;
+            left: 7%;
+            width: 174px;
+            height: 174px;
+            filter: drop-shadow(0 18px 18px rgba(20, 55, 64, 0.34));
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-sphere-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .sphere-text-source {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .sphere-runtime-status {
+            position: absolute;
+            right: 5px;
+            bottom: 1px;
+            padding: 0.22rem 0.48rem;
+            border-radius: 999px;
+            color: #285b52;
+            background: rgba(255, 255, 255, 0.78);
+            font: 700 9px system-ui;
+            letter-spacing: 0.06em;
+            pointer-events: none;
+        }
+
         @keyframes three-d-cube-spin {
             from { transform: rotateX(-18deg) rotateY(0deg) rotateZ(0deg); }
             to { transform: rotateX(342deg) rotateY(360deg) rotateZ(18deg); }
@@ -427,6 +465,13 @@ flowchart LR
                 bottom: 18px;
                 transform: scale(0.72);
                 transform-origin: bottom right;
+            }
+
+            [data-vdoc-island="three-dimensional-text-card"] .three-d-sphere-stage {
+                bottom: 16px;
+                left: 5%;
+                transform: scale(0.72);
+                transform-origin: bottom left;
             }
         }
     </style>
@@ -450,14 +495,36 @@ flowchart LR
         </div>
     </div>
 
+    <div
+        class="three-d-sphere-stage"
+        aria-label="持续旋转的 Three.js 真实球面文本贴图">
+        <canvas class="three-d-sphere-canvas"></canvas>
+        <span class="sphere-text-source" data-sphere-text="front">曲面印刷 A</span>
+        <span class="sphere-text-source" data-sphere-text="back">真实贴图 B</span>
+        <span class="sphere-runtime-status">THREE.JS · UV TEXTURE</span>
+    </div>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.min.js"
+        data-vdoc-library="three"></script>
+
     <script>
     (() => {
         const island = document.querySelector(
             '[data-vdoc-island="three-dimensional-text-card"]'
         );
         const card = island?.querySelector('.three-d-card');
+        const sphereStage = island?.querySelector('.three-d-sphere-stage');
+        const sphereCanvas = island?.querySelector('.three-d-sphere-canvas');
 
-        if (!island || !card || island.dataset.vdocInitialized === 'true') {
+        if (
+            !island ||
+            !card ||
+            !sphereStage ||
+            !sphereCanvas ||
+            !globalThis.THREE ||
+            island.dataset.vdocInitialized === 'true'
+        ) {
             return;
         }
 
@@ -476,6 +543,139 @@ flowchart LR
             const face = island.querySelector(`.${faceClass}`);
             if (face) face.textContent = text;
         });
+
+        const textureCanvas = document.createElement('canvas');
+        textureCanvas.width = 1536;
+        textureCanvas.height = 768;
+        const textureContext = textureCanvas.getContext('2d');
+
+        const paintSphereTexture = () => {
+            const width = textureCanvas.width;
+            const height = textureCanvas.height;
+            const frontText = island
+                .querySelector('[data-sphere-text="front"]')
+                ?.textContent?.trim() || '曲面印刷 A';
+            const backText = island
+                .querySelector('[data-sphere-text="back"]')
+                ?.textContent?.trim() || '真实贴图 B';
+
+            const ocean = textureContext.createLinearGradient(0, 0, width, height);
+            ocean.addColorStop(0, '#123f5b');
+            ocean.addColorStop(0.38, '#217f79');
+            ocean.addColorStop(0.7, '#4caf91');
+            ocean.addColorStop(1, '#173d5e');
+            textureContext.fillStyle = ocean;
+            textureContext.fillRect(0, 0, width, height);
+
+            textureContext.strokeStyle = 'rgba(218,255,242,.22)';
+            textureContext.lineWidth = 3;
+            for (let x = 0; x <= width; x += width / 24) {
+                textureContext.beginPath();
+                textureContext.moveTo(x, 0);
+                textureContext.lineTo(x, height);
+                textureContext.stroke();
+            }
+            for (let y = 0; y <= height; y += height / 12) {
+                textureContext.beginPath();
+                textureContext.moveTo(0, y);
+                textureContext.lineTo(width, y);
+                textureContext.stroke();
+            }
+
+            const paintLabel = (text, x, y, color) => {
+                textureContext.save();
+                textureContext.textAlign = 'center';
+                textureContext.textBaseline = 'middle';
+                textureContext.font =
+                    '800 100px "Noto Serif SC", "Microsoft YaHei", sans-serif';
+                textureContext.lineJoin = 'round';
+                textureContext.lineWidth = 18;
+                textureContext.strokeStyle = 'rgba(5,27,39,.72)';
+                textureContext.strokeText(text, x, y);
+                textureContext.fillStyle = color;
+                textureContext.fillText(text, x, y);
+                textureContext.strokeStyle = 'rgba(232,255,244,.7)';
+                textureContext.lineWidth = 5;
+                textureContext.beginPath();
+                textureContext.moveTo(x - 245, y + 72);
+                textureContext.lineTo(x + 245, y + 72);
+                textureContext.stroke();
+                textureContext.restore();
+            };
+
+            paintLabel(frontText, width * 0.25, height * 0.5, '#f4ffe9');
+            paintLabel(backText, width * 0.75, height * 0.5, '#ffe7b0');
+        };
+
+        paintSphereTexture();
+
+        const renderer = new THREE.WebGLRenderer({
+            canvas: sphereCanvas,
+            alpha: true,
+            antialias: true
+        });
+        renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+        renderer.setSize(174, 174, false);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
+        camera.position.set(0, 0, 5.2);
+
+        const texture = new THREE.CanvasTexture(textureCanvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = Math.min(
+            8,
+            renderer.capabilities.getMaxAnisotropy()
+        );
+
+        const geometry = new THREE.SphereGeometry(1.55, 96, 64);
+        const material = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 0.58,
+            metalness: 0.06
+        });
+        const sphere = new THREE.Mesh(geometry, material);
+        sphere.rotation.x = -0.16;
+        scene.add(sphere);
+
+        scene.add(new THREE.HemisphereLight(0xe9fff8, 0x10283c, 2.15));
+        const keyLight = new THREE.DirectionalLight(0xfff4d3, 3.1);
+        keyLight.position.set(-3, 4, 5);
+        scene.add(keyLight);
+        const rimLight = new THREE.DirectionalLight(0x79dfff, 2.2);
+        rimLight.position.set(4, -1, -3);
+        scene.add(rimLight);
+
+        let previousTime = performance.now();
+        let animationFrame = 0;
+
+        const renderSphere = (time) => {
+            const delta = Math.min(50, time - previousTime);
+            previousTime = time;
+            sphere.rotation.y += delta * 0.00042;
+            renderer.render(scene, camera);
+            animationFrame = requestAnimationFrame(renderSphere);
+        };
+
+        animationFrame = requestAnimationFrame(renderSphere);
+        island.vdocSphereRuntime = {
+            renderer,
+            scene,
+            sphere,
+            texture,
+            repaint() {
+                paintSphereTexture();
+                texture.needsUpdate = true;
+            },
+            dispose() {
+                cancelAnimationFrame(animationFrame);
+                geometry.dispose();
+                material.dispose();
+                texture.dispose();
+                renderer.dispose();
+            }
+        };
 
         const move = (event) => {
             const rect = island.getBoundingClientRect();
@@ -496,7 +696,7 @@ flowchart LR
 </div>
 
 3D 岛也已闭合。后续标题和正文不属于 3D 岛。
-其中文本属于不同3d节点，但仍可以被光标选中，光标选中立方体应该停止旋转，编辑文本不会污染其它dom区，编辑结束立方体恢复旋转动作不丢失状态。
+立方体文本仍属于独立 DOM 节点。球体使用 Three.js 的真实 `SphereGeometry` 和 Canvas UV 纹理：两个源文本节点保留在 DOM 中供编辑器映射，渲染文本通过纹理贴合曲面并接受透视、遮挡和光照。文档组件不实现任何点击暂停或恢复逻辑；选择文本、进入编辑及离开视口时，动画的冻结与原状态恢复必须完全由引擎接管。源文本变动后，引擎可调用岛运行时的 `repaint()` 更新贴图且不重建球体状态。
 
 ## 6. 动态高级表格
 

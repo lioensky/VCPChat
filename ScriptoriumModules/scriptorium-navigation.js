@@ -261,9 +261,16 @@
                 elements['delete-slide-btn'].disabled =
                     items.length <= 1;
             }
-            elements['slide-navigator']?.replaceChildren(
-                ...items.map(ports.createItem)
-            );
+            const navigator = elements['slide-navigator'];
+            if (navigator) {
+                // 切页及文字编辑都会刷新缩略图列表。replaceChildren 会把
+                // 滚动容器重置到开头，因此必须围绕 DOM 重建保留视口。
+                const scrollLeft = navigator.scrollLeft;
+                const scrollTop = navigator.scrollTop;
+                navigator.replaceChildren(...items.map(ports.createItem));
+                navigator.scrollLeft = scrollLeft;
+                navigator.scrollTop = scrollTop;
+            }
             if (elements['outline-empty']) {
                 elements['outline-empty'].hidden = true;
             }

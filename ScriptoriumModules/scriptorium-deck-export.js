@@ -184,8 +184,6 @@ ${parsed.html}
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${title}</title>
 <style>
-${adapter.currentCss()}
-${advancedCss}
 *{box-sizing:border-box}
 html,body{
     width:100%;
@@ -200,6 +198,8 @@ body{
     place-items:center;
     font-family:system-ui,sans-serif
 }
+${adapter.currentCss()}
+${advancedCss}
 .vcp-deck{
     position:relative;
     width:min(100vw,calc(100vh * ${numericRatio}));
@@ -216,7 +216,6 @@ body{
     width:100%;
     height:100%;
     overflow:hidden;
-    color:#1d2421;
     background:#fff
 }
 .vcp-slide.active{display:block}

@@ -264,6 +264,8 @@ function processScripts(containerElement, visibilityOptimizer) {
                     window[tempTimerId] = pausableTimerAPI;
 
                     const tempDocId = `_vcp_doc_${Math.random().toString(36).slice(2, 11)}`;
+                    const tempContainerId = `_vcp_container_${Math.random().toString(36).slice(2, 11)}`;
+                    window[tempContainerId] = containerElement;
                     const virtualCurrentScript = {
                         tagName: 'SCRIPT',
                         nodeName: 'SCRIPT',
@@ -398,7 +400,9 @@ function processScripts(containerElement, visibilityOptimizer) {
     const setInterval = __vcpTimerAPI.setInterval;
     const clearInterval = __vcpTimerAPI.clearInterval;
     
-    const container = document.querySelector('.message-item[data-message-id="${messageItem?.dataset.messageId}"] .md-content');
+    // 直接绑定本次处理所属的内容根，不再通过消息 ID 和全局 document 反查。
+    // 因此 script 位于 DIV 岛内部、岛外或辅助 Surface 时语义完全一致。
+    const container = window['${tempContainerId}'];
     try {
         ${scriptContent}
     } catch (e) {
@@ -415,6 +419,7 @@ function processScripts(containerElement, visibilityOptimizer) {
                         delete window[tempRafId];
                         delete window[tempTimerId];
                         delete window[tempDocId];
+                        delete window[tempContainerId];
                     }, 0);
 
                 } catch (e) {

@@ -309,3 +309,117 @@ test('工具请求开始标记后紧接字段声明时仍能识别并补充边�
     assert.equal(calls, 1);
     assert.equal(replaced, '前置\n<TOOL />\n后置');
 });
+
+test('流式中间帧将未闭合工具请求从协议入口严格隔离到流尾', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `允许渲染的普通正文
+
+${TOOL_REQUEST_START_MARKER}
+tool_name:「始」WriteFile「末」,
+content:「始ESCAPE」<style>
+.message-item { display: none !important; }
+</style>
+<script>window.__toolPayloadExecuted = true;</script>`;
+
+    const block = findEarliestUnclosedToolBlock(source);
+
+    assert.equal(block?.type, 'tool-request');
+    assert.equal(block?.prefix, '允许渲染的普通正文\n\n');
+    assert.equal(block?.content.startsWith(TOOL_REQUEST_START_MARKER), true);
+    assert.match(block?.content || '', /<style>/);
+    assert.match(block?.content || '', /<script>/);
+});
+
+test('流式中间帧将未闭合工具返回从协议入口严格隔离到流尾', async () => {
+    const {
+        TOOL_RESULT_START_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `工具前正文
+${TOOL_RESULT_START_MARKER}
+- 工具名称: ArbitraryFileTool
+- 返回内容: <style>body { opacity: 0; }</style>
+<script>window.__resultPayloadExecuted = true;</script>`;
+
+    const block = findEarliestUnclosedToolBlock(source);
+
+    assert.equal(block?.type, 'tool-result');
+    assert.equal(block?.prefix, '工具前正文\n');
+    assert.equal(block?.content.startsWith(TOOL_RESULT_START_MARKER), true);
+    assert.match(block?.content || '', /body \{ opacity: 0; \}/);
+});
+
+test('流式工具隔离选择源码中最早的未闭合协议入口', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_RESULT_START_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `${TOOL_RESULT_START_MARKER}
+返回内容中包含请求协议示例：
+${TOOL_REQUEST_START_MARKER}
+<style>.leak { all: unset; }</style>`;
+
+    const block = findEarliestUnclosedToolBlock(source);
+
+    assert.equal(block?.type, 'tool-result');
+    assert.equal(block?.startIndex, 0);
+    assert.equal(block?.content, source);
+});
+
+test('完整工具请求与完整工具返回不会被流式未闭合扫描器重复封印', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        TOOL_REQUEST_END_MARKER,
+        TOOL_RESULT_START_MARKER,
+        TOOL_RESULT_END_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `${TOOL_REQUEST_START_MARKER}
+tool_name:「始」Demo「末」
+${TOOL_REQUEST_END_MARKER}
+${TOOL_RESULT_START_MARKER}
+- 工具名称: Demo
+- 返回内容: <style>.payload { color: red; }</style>
+${TOOL_RESULT_END_MARKER}
+最终正文`;
+
+    assert.equal(findEarliestUnclosedToolBlock(source), null);
+});
+
+test('反引号包裹的工具请求示例不建立流式严格隔离边界', async () => {
+    const {
+        TOOL_REQUEST_START_MARKER,
+        findEarliestUnclosedToolBlock
+    } = await loadScanner();
+
+    const source = `协议文档示例：\`${TOOL_REQUEST_START_MARKER}\`
+后续普通正文包含 <style>.assistant-island { color: blue; }</style>`;
+
+    assert.equal(findEarliestUnclosedToolBlock(source), null);
+});
+
+test('消息渲染器必须把工具请求结束扫描器显式接入流式投影', () => {
+    const rendererSource = fs.readFileSync(
+        path.join(root, 'modules/messageRenderer.js'),
+        'utf8'
+    );
+
+    assert.match(
+        rendererSource,
+        /import\s*\{[\s\S]*?\bfindToolRequestEnd\b[\s\S]*?\}\s*from\s*['"]\.\/renderer\/toolRequestScanner\.js['"]/,
+        'messageRenderer 必须导入 findToolRequestEnd，避免首个工具块触发未定义引用'
+    );
+    assert.match(
+        rendererSource,
+        /findToolRequestEnd:\s*\(text,\s*startIndex\)\s*=>\s*findToolRequestEnd\(text,\s*startIndex\)/,
+        'StreamProjection 必须获得 ESCAPE 感知的工具请求结束扫描能力'
+    );
+});

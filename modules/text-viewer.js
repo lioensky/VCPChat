@@ -1,4 +1,5 @@
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
+import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 const emoticonFixer = createEmoticonUrlFixer();
@@ -817,16 +818,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const codeBlockMap = new Map();
         let placeholderId = 0;
 
-        // Step 2: Now, find and protect ALL fenced code blocks (including the ones we just added).
-        // This prevents the CSS processor from touching styles inside code blocks.
-        processed = processed.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        // Step 2: 保护全部 Markdown 代码域，而不是仅保护固定三个反引号围栏。
+        // 正文中的 inline `<style>` 若暴露给后续 CSS 正则，会跨越匹配到真实动画岛
+        // 的 </style>；共享扫描器同时覆盖可变长度/波浪号围栏和未闭合流尾。
+        processed = replaceMarkdownCodeDomains(processed, (match) => {
             const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
             codeBlockMap.set(placeholder, match);
             placeholderId++;
             return placeholder;
         });
 
-        // Step 3: CSS 提取前保护 TOOL_REQUEST 与 VCP 参数区域，避免参数内 <style> 被误注入。
+        // Step 3: CSS 提取前保护 HTML 注释、TOOL_REQUEST 与 VCP 参数区域，
+        // 避免这些字面量域内的 <style> 被误注入或跨越吞到后续真实 </style>。
         const styleProtectMap = new Map();
         let styleProtectId = 0;
         const protectForStyle = (match) => {
@@ -835,6 +838,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             styleProtectId++;
             return placeholder;
         };
+
+        // HTML 注释中的标签只是说明文字；未闭合注释同样保护到文档末尾。
+        processed = processed.replace(/<!--[\s\S]*?(?:-->|$)/g, protectForStyle);
 
         // 🔴 关键修复：使用 ESCAPE 感知的扫描器保护工具请求块，避免参数内的
         // 字面量 `<<<[END_TOOL_REQUEST]>>>` 导致工具块提前闭合，从而把后续

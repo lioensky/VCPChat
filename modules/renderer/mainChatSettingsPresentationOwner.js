@@ -1,3 +1,5 @@
+import { applyUserMessageLayoutState } from './domBuilder.js';
+
 /** Owns global-settings DOM projection, chat layout controls and presentation bindings. */
 export function createMainChatSettingsPresentationOwner({
     documentRef,

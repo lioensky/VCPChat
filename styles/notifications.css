@@ -1126,6 +1126,18 @@ body.light-theme .floating-toast-notification {
     transform: translateY(0);
 }
 
+.vcp-btn-audit {
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 62%, transparent);
+    background: color-mix(in srgb, var(--highlight-text) 18%, var(--secondary-bg));
+    color: var(--highlight-text);
+}
+
+.vcp-btn-audit:hover:not(:disabled) {
+    border-color: var(--highlight-text);
+    background: var(--highlight-text);
+    color: var(--text-on-accent);
+}
+
 .vcp-btn-success {
     background-color: var(--success-color);
     color: white;
@@ -1142,6 +1154,441 @@ body.light-theme .floating-toast-notification {
 
 .vcp-btn-danger:hover {
     background-color: var(--danger-hover-bg);
+}
+
+/* Tool Change Audit Modal */
+#toolChangeAuditModal {
+    z-index: 10020;
+}
+
+#toolChangeAuditModal .tool-change-audit-modal-content {
+    width: min(88vw, 1280px);
+    max-width: 1280px;
+    height: min(92vh, 1080px);
+    max-height: min(92vh, 1080px);
+    box-sizing: border-box;
+    padding: 24px 28px 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+#toolChangeAuditModal .tool-change-audit-close {
+    display: inline-grid;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    outline: 0;
+    background: color-mix(in srgb, var(--tertiary-bg) 78%, transparent);
+    box-shadow: none;
+    color: var(--secondary-text);
+    appearance: none;
+    cursor: pointer;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+#toolChangeAuditModal .tool-change-audit-close svg {
+    width: 15px;
+    height: 15px;
+}
+
+#toolChangeAuditModal .tool-change-audit-close:hover,
+#toolChangeAuditModal .tool-change-audit-close:focus-visible {
+    border-color: color-mix(in srgb, var(--danger-color) 58%, var(--border-color));
+    background: color-mix(in srgb, var(--danger-color) 14%, var(--tertiary-bg));
+    box-shadow: none;
+    color: var(--danger-color);
+    outline: none;
+}
+
+.tool-change-audit-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding-right: 0;
+}
+
+#toolChangeAuditModal .tool-change-audit-header h2 {
+    margin: 3px 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.tool-change-audit-eyebrow {
+    color: var(--secondary-text);
+    font-size: 0.7em;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+}
+
+.tool-change-audit-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.tool-change-audit-wrap-toggle {
+    display: inline-flex;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 11px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--tertiary-bg) 78%, transparent);
+    color: var(--secondary-text);
+    font: inherit;
+    font-size: 0.78em;
+    cursor: pointer;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.tool-change-audit-wrap-toggle svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+}
+
+.tool-change-audit-wrap-toggle:hover,
+.tool-change-audit-wrap-toggle:focus-visible {
+    border-color: color-mix(in srgb, var(--highlight-text) 56%, var(--border-color));
+    background: color-mix(in srgb, var(--highlight-text) 12%, var(--tertiary-bg));
+    color: var(--highlight-text);
+    outline: none;
+}
+
+.tool-change-audit-wrap-toggle.active {
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 18%, var(--secondary-bg));
+    color: var(--highlight-text);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+.tool-change-audit-status {
+    display: inline-flex;
+    height: 30px;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    padding: 0 11px;
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 38%, var(--border-color));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--highlight-text) 12%, var(--tertiary-bg));
+    color: var(--highlight-text);
+    font-size: 0.78em;
+    font-weight: 600;
+}
+
+.tool-change-audit-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 20px;
+    margin: 18px 0 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--tertiary-bg) 74%, transparent);
+}
+
+.tool-change-audit-meta > div {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+}
+
+.tool-change-audit-meta dt {
+    color: var(--secondary-text);
+    font-size: 0.78em;
+}
+
+.tool-change-audit-meta dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--primary-text);
+    font-size: 0.82em;
+    overflow-wrap: anywhere;
+}
+
+.tool-change-audit-summary {
+    margin-bottom: 12px;
+    padding: 9px 12px;
+    border-left: 3px solid var(--highlight-text);
+    border-radius: 0 8px 8px 0;
+    background: color-mix(in srgb, var(--highlight-text) 9%, transparent);
+    color: var(--secondary-text);
+    font-size: 0.84em;
+    line-height: 1.5;
+}
+
+.tool-change-audit-comparison {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.tool-change-audit-pane {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--secondary-bg) 88%, transparent);
+}
+
+.tool-change-audit-pane h3,
+.tool-change-audit-diff-section > h3 {
+    margin: 0;
+    padding: 9px 12px;
+    color: var(--primary-text);
+    font-size: 0.86em;
+    font-weight: 650;
+}
+
+.tool-change-audit-pane-before h3 {
+    border-bottom: 1px solid color-mix(in srgb, var(--danger-color) 32%, var(--border-color));
+    background: color-mix(in srgb, var(--danger-color) 10%, transparent);
+}
+
+.tool-change-audit-pane-after h3 {
+    border-bottom: 1px solid color-mix(in srgb, var(--success-color) 32%, var(--border-color));
+    background: color-mix(in srgb, var(--success-color) 10%, transparent);
+}
+
+#toolChangeAuditModal .tool-change-audit-pane pre {
+    min-height: 180px;
+    height: clamp(180px, 28vh, 360px);
+    max-height: 360px;
+    margin: 0;
+    padding: 12px 14px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border-radius: 0;
+    background: transparent;
+    color: var(--primary-text);
+    font: 0.8em/1.55 var(--vcp-chat-code-font-family, ui-monospace, Consolas, monospace);
+    tab-size: 4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+.tool-change-audit-diff-section {
+    margin-top: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.tool-change-audit-diff-section > h3 {
+    border-bottom: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--tertiary-bg) 82%, transparent);
+}
+
+.tool-change-audit-diff {
+    min-height: 180px;
+    height: clamp(220px, 36vh, 480px);
+    max-height: 480px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: color-mix(in srgb, var(--secondary-bg) 92%, #000000);
+    color: var(--primary-text);
+    font: 0.8em/1.5 var(--vcp-chat-code-font-family, ui-monospace, Consolas, monospace);
+    tab-size: 4;
+}
+
+.tool-change-audit-diff-line {
+    display: grid;
+    grid-template-columns: 30px minmax(max-content, 1fr);
+    min-width: max-content;
+}
+
+.tool-change-audit-diff-marker {
+    padding: 1px 8px;
+    border-right: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+    color: var(--secondary-text);
+    text-align: center;
+    user-select: none;
+}
+
+.tool-change-audit-diff-text {
+    min-width: 0;
+    padding: 1px 10px;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+#toolChangeAuditModal.is-wrap-enabled .tool-change-audit-pane pre,
+#toolChangeAuditModal.is-wrap-enabled .tool-change-audit-diff-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#toolChangeAuditModal.is-wrap-enabled .tool-change-audit-diff-line {
+    min-width: 0;
+    grid-template-columns: 30px minmax(0, 1fr);
+}
+
+.tool-change-audit-diff-line.is-delete {
+    background: color-mix(in srgb, var(--danger-color) 18%, transparent);
+    color: color-mix(in srgb, var(--danger-color) 72%, var(--primary-text));
+}
+
+.tool-change-audit-diff-line.is-add {
+    background: color-mix(in srgb, var(--success-color) 18%, transparent);
+    color: color-mix(in srgb, var(--success-color) 72%, var(--primary-text));
+}
+
+.tool-change-audit-diff-line.is-context {
+    opacity: 0.76;
+}
+
+#toolChangeAuditModal .tool-change-audit-reason {
+    display: block;
+    margin-top: 14px;
+    color: var(--primary-text);
+}
+
+.tool-change-audit-reason > span {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.tool-change-audit-reason small {
+    color: var(--secondary-text);
+    font-weight: 400;
+}
+
+#toolChangeAuditModal #toolChangeAuditReason {
+    width: 100%;
+    min-height: 72px;
+    max-height: 180px;
+    box-sizing: border-box;
+    margin: 0;
+    resize: vertical;
+}
+
+.tool-change-audit-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin: 16px -28px 0;
+    padding: 14px 28px 18px;
+    border-top: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--secondary-bg) 94%, transparent);
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.tool-change-audit-actions .vcp-btn,
+.tool-change-audit-actions .button-secondary {
+    min-height: 36px;
+    padding: 7px 16px;
+}
+
+body.light-theme .tool-change-audit-diff-line.is-delete {
+    color: #8f1d2c;
+}
+
+body.light-theme .tool-change-audit-diff-line.is-add {
+    color: #176b35;
+}
+
+@media (max-width: 760px) {
+    #toolChangeAuditModal .tool-change-audit-modal-content {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 20px);
+        max-height: calc(100vh - 20px);
+        padding: 18px 18px 0;
+    }
+
+    .tool-change-audit-meta,
+    .tool-change-audit-comparison {
+        grid-template-columns: 1fr;
+    }
+
+    .tool-change-audit-pane pre {
+        min-height: 100px;
+    }
+
+    .tool-change-audit-actions {
+        flex-wrap: wrap;
+        margin-right: -18px;
+        margin-left: -18px;
+        padding-right: 18px;
+        padding-left: 18px;
+    }
+
+    .tool-change-audit-actions .button-secondary {
+        margin-right: auto;
+    }
+}
+
+@media (max-width: 420px) {
+    .notification-actions {
+        flex-wrap: wrap;
+    }
+
+    .notification-actions .vcp-btn {
+        flex: 1 1 calc(50% - 4px);
+        padding-inline: 10px;
+    }
+
+    .notification-actions .vcp-btn-audit {
+        flex-basis: 100%;
+    }
+
+    .tool-change-audit-header,
+    .tool-change-audit-reason > span {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .tool-change-audit-header-actions {
+        width: 100%;
+        padding-right: 0;
+        flex-wrap: wrap;
+    }
+
+    #toolChangeAuditModal .tool-change-audit-pane pre {
+        height: clamp(140px, 24vh, 240px);
+        min-height: 140px;
+    }
+
+    .tool-change-audit-diff {
+        height: clamp(200px, 34vh, 360px);
+    }
+
+    .tool-change-audit-meta > div {
+        grid-template-columns: 58px minmax(0, 1fr);
+    }
+
+    .tool-change-audit-actions > button {
+        flex: 1 1 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #toolChangeAuditModal *,
+    .vcp-btn-audit {
+        transition: none !important;
+    }
 }
 
 /* Toast Manual Close Button Style */

@@ -25,6 +25,15 @@
         width: min(100%, var(--vcp-ui-modal-wide-width));
     }
 
+    /* 工具变更审计是代码对比工作区，不应沿用普通表单模态框的 520px 窄宽。 */
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#toolChangeAuditModal .tool-change-audit-modal-content {
+        width: min(88vw, 1280px);
+        max-width: 1280px;
+        height: min(92vh, 1080px);
+        max-height: min(92vh, 1080px);
+        padding: 24px 28px 0;
+    }
+
     /* 全局设置模态框使用上游经典宽度（styles/setting/settings-global-modal.css），
        不受通用 .modal .modal-content 的窄宽（--vcp-ui-modal-width: 520px）限制。 */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-modal-content {
@@ -394,6 +403,13 @@
 
         :is(html, html.vcp-global-settings-host) .vcp-ui-scope.modal .modal-content {
             padding: var(--vcp-ui-space-4);
+        }
+
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope#toolChangeAuditModal .tool-change-audit-modal-content {
+            width: calc(100vw - 20px);
+            height: calc(100vh - 20px);
+            max-height: calc(100vh - 20px);
+            padding: 18px 18px 0;
         }
     }
 }

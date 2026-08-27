@@ -128,14 +128,33 @@
                 }
                 const agents = await agentDirectory();
                 const authorId = String(author.id || '').trim();
-                const name = authorName(record).toLocaleLowerCase('zh-CN');
-                const matched = agents.find((agent) =>
-                    (authorId && String(
+                const name = authorName(record)
+                    .trim()
+                    .toLocaleLowerCase('zh-CN');
+                const agentName = (agent) => String(agent.name || '')
+                    .trim()
+                    .toLocaleLowerCase('zh-CN');
+                const matchedById = authorId
+                    ? agents.find((agent) => String(
                         agent.folder || agent.id || ''
                     ) === authorId)
-                    || String(agent.name || '')
-                        .toLocaleLowerCase('zh-CN') === name
-                );
+                    : null;
+                const matchedByExactName = name
+                    ? agents.find((agent) => agentName(agent) === name)
+                    : null;
+                const matchedByIncludedName = name
+                    ? agents.find((agent) => {
+                        const candidate = agentName(agent);
+                        return candidate
+                            && (
+                                candidate.includes(name)
+                                || name.includes(candidate)
+                            );
+                    })
+                    : null;
+                const matched = matchedById
+                    || matchedByExactName
+                    || matchedByIncludedName;
                 const folder = matched?.folder || matched?.id || authorId;
                 return folder
                     ? context.identityPort?.loadAgentAvatar?.(folder) || null

@@ -12,12 +12,11 @@ import { createRenderDependencies } from './renderer/renderDependencies.js';
 import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.js';
 import { createSurfaceTaskOwner } from './renderer/surfaceTaskOwner.js';
 import {
-    TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
-    TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
+    findEarliestUnclosedToolBlock,
     findToolRequestEnd,
-    isBacktickWrappedToolMarker as isBacktickWrappedMarker,
     replaceToolRequestBlocks
 } from './renderer/toolRequestScanner.js';
+import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
 
 import { createContentProcessor } from './renderer/contentProcessor.js';
 import { createMessageContextMenu } from './renderer/messageContextMenu.js';
@@ -1340,18 +1339,28 @@ function extractSpeakableTextFromContentElement(contentElement) {
  * @param {string} scopeId - The unique ID for scoping.
  * @returns {{processedContent: string, styleInjected: boolean}} The content with <style> tags removed, and a flag indicating if styles were injected.
  */
-function processAndInjectScopedCss(content, scopeId) {
+function processAndInjectScopedCss(content, scopeId, options = {}) {
     let cssContent = '';
     let styleInjected = false;
+    const injectStyles = options.injectStyles !== false;
 
     const processedContent = content.replace(STYLE_REGEX, (match, css) => {
         cssContent += css.trim() + '\n';
-        return ''; // Remove style tags from the content
+        // style 位于 DIV 动画岛内部时不能替换为空字符串：空行会终止
+        // CommonMark raw HTML block，导致岛内后续节点被重新分段。保留不可见
+        // 注释作为硬边界，既移除可执行 style，又维持 HTML 岛结构连续。
+        return '<!-- VCP-SCOPED-STYLE-EXTRACTED -->';
     });
 
-    if (cssContent.length > 0) {
+    if (injectStyles && cssContent.length > 0) {
         try {
             const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
+            if (!scopedCss.trim()) {
+                if (options.messageItem) {
+                    options.messageItem.dataset.vcpScopedStyleState = 'rejected';
+                }
+                throw new SyntaxError('Scoped CSS transform returned no safe rules');
+            }
             // Scope IDs are generated per message, but include the surface namespace
             // in the lookup as a hard boundary when two renderers share a document.
             const styleSelector = `style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"][data-vcp-surface-id="${escapeCssAttributeValue(surfaceId)}"]`;
@@ -1372,9 +1381,18 @@ function processAndInjectScopedCss(content, scopeId) {
             // 避免同一消息累积多个样式节点或出现旧规则覆盖新规则。
             styleElement.textContent = scopedCss;
             styleInjected = true;
+            if (options.messageItem) {
+                options.messageItem.dataset.vcpScopedStyleState = 'active';
+            }
 
-            console.debug(`[ScopedCSS] Updated scoped styles for ID: #${scopeId}`);
+            console.debug(`[ScopedCSS] Updated scoped styles for ID: #${scopeId}`, {
+                sourceLength: cssContent.length,
+                scopedLength: scopedCss.length
+            });
         } catch (error) {
+            if (options.messageItem) {
+                options.messageItem.dataset.vcpScopedStyleState = 'rejected';
+            }
             console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
         }
     }
@@ -1383,8 +1401,27 @@ function processAndInjectScopedCss(content, scopeId) {
 }
 
 
-function processAssistantScopedHtmlContent(content, scopeId, messageItem = null) {
+function removeOwnedMessageScopeStyle(scopeId) {
+    if (!scopeId) return;
+    for (const styleElement of ownedStyleElements) {
+        if (
+            styleElement.getAttribute('data-vcp-surface-id') === surfaceId
+            && styleElement.getAttribute('data-vcp-scope-id') === scopeId
+        ) {
+            styleElement.remove();
+            ownedStyleElements.delete(styleElement);
+        }
+    }
+}
+
+function processAssistantScopedHtmlContent(content, scopeId, messageItem = null, options = {}) {
     if (!scopeId || !containsAssistantHtmlNeedingScope(content)) {
+        // 规范终稿可能移除了流式预览阶段出现过的 style；此时必须撤销旧消息级样式。
+        if (options.injectStyles !== false && messageItem?.dataset?.vcpHtmlScopeCandidate === 'true') {
+            removeOwnedMessageScopeStyle(scopeId);
+            delete messageItem.dataset.vcpHtmlScopeCandidate;
+            delete messageItem.dataset.vcpInlineHtmlScoped;
+        }
         return content;
     }
 
@@ -1396,29 +1433,51 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null)
     }
 
     // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
-    // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入。
+    // 这样可以避免 HTML 注释、代码块、推送块、工具请求块、工具结果块和
+    // 「始」「末」标记内的 <style> 被误当作真正的样式注入。
     // 即使只是结构化 HTML / 内联 style，也会进入该路径以跳过 HTML 缓存并统一保护扫描。
     const protectedBlocks = [];
 
-    // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
-    // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
-    // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配。
+    // HTML 注释是字面量域。诸如
+    // <!-- 子组件拥有独立的 <style> 标签 -->
+    // 这样的说明不能让 STYLE_REGEX 从伪开始标签跨越吞到后续真实 </style>。
+    // 未闭合注释在流式中同样拥有当前尾部，直到 --> 到达前不得产生 CSS 副作用。
+    let textWithProtectedBlocks = content.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+
+    // 🔴 最高优先级：保护完整工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）。
+    // 工具协议载荷属于不可信数据域，不是可执行的 assistant HTML 岛；其中任意
+    // style/script/HTML 都只能作为工具数据处理，绝不能进入消息级 CSS 提取器。
     TOOL_RESULT_REGEX.lastIndex = 0;
-    let textWithProtectedBlocks = content.replace(TOOL_RESULT_REGEX, (match) => {
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(TOOL_RESULT_REGEX, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;
     });
     TOOL_RESULT_REGEX.lastIndex = 0;
 
-    // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
-    // 工具请求参数中可能包含完整 HTML 文档（如壁纸 HTML），其中的 <style> 不应被注入。
+    // 🔴 保护完整工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）。
     // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合。
     textWithProtectedBlocks = replaceToolRequestBlocks(textWithProtectedBlocks, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;
     });
+
+    // 🔴 流式严格封印：完整块替换后，若仍有未闭合的请求或结果，则从源码中
+    // 最早的未闭合协议入口一直保护到流尾。不能等待结束标记，因为在等待期间
+    // 已生成的 <style> 就足以产生 document.head 注入副作用。
+    const unclosedToolBlock = findEarliestUnclosedToolBlock(textWithProtectedBlocks);
+
+    if (unclosedToolBlock) {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(textWithProtectedBlocks.slice(unclosedToolBlock.startIndex));
+        textWithProtectedBlocks =
+            textWithProtectedBlocks.slice(0, unclosedToolBlock.startIndex) + placeholder;
+    }
 
     // 「始」「末」与「始ESCAPE」「末ESCAPE」只在工具请求围栏内部作为字段边界语法。
     // 工具请求块已在上一步整体保护；这里不再扫描工具围栏外的裸始末标记，
@@ -1437,23 +1496,35 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null)
         return placeholder;
     });
 
-    // 保护代码块。
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(CODE_FENCE_REGEX, (match) => {
+    // 保护所有 Markdown 代码域。不能只保护固定三个反引号的 fenced code：
+    // 正文中的 inline code（例如 `<style>`、`<div>`）如果暴露给 STYLE_REGEX，
+    // 会从伪开始标签跨越匹配到后续动画岛的真实 </style>，吞掉整段 CSS 与 HTML。
+    // 共享扫描器同时覆盖可变长度反引号、波浪号围栏和未闭合流尾。
+    textWithProtectedBlocks = replaceMarkdownCodeDomains(textWithProtectedBlocks, (match) => {
         const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
         protectedBlocks.push(match);
         return placeholder;
     });
 
     // 现在只会匹配不在保护区域内的 <style> 标签。
-    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
+    // 流式分片可选择只剥离 style；注入副作用由完整可见源码统一执行。
+    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(
+        textWithProtectedBlocks,
+        scopeId,
+        { ...options, messageItem }
+    );
 
     // 恢复所有被保护的块。
-    // 🟢 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式。
+    // 保护域允许嵌套：例如 fenced HTML 中的注释会先被保护，随后包含该
+    // 注释占位符的整个代码围栏又被保护。必须按 LIFO 逆序恢复，先展开
+    // 外层围栏，再恢复其中的注释；正序恢复会让内部占位符永久泄漏。
+    // 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被
+    // String.replace() 误解释为特殊替换模式。
     let restoredContent = contentWithoutStyles;
-    protectedBlocks.forEach((block, i) => {
+    for (let i = protectedBlocks.length - 1; i >= 0; i--) {
         const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-        restoredContent = restoredContent.split(placeholder).join(block);
-    });
+        restoredContent = restoredContent.split(placeholder).join(protectedBlocks[i]);
+    }
 
     return restoredContent;
 }
@@ -1663,6 +1734,10 @@ function shouldBypassRenderHtmlCache(text, options = {}) {
     if (text.length < RENDER_HTML_CACHE_MIN_TEXT_LENGTH) return true;
     if (text.length > RENDER_HTML_CACHE_MAX_TEXT_LENGTH) return true;
 
+    // 大工具结果 HTML 含运行时 data-content-id，其完整文本由消息级 Map 持有，
+    // 不能跨消息/内容 revision 复用缓存 HTML，否则按钮会引用已释放的条目。
+    if (text.includes('[[VCP调用结果信息汇总:')) return true;
+
     // scoped CSS 有 scopeId 与 document.head 注入副作用，第一版保守跳过。
     // 同时用大小写无关的 HTML/CSS 风险识别覆盖 <STYLE>、结构化 HTML 与内联 style 场景。
     if ((options.messageRole || 'assistant') === 'assistant' && containsAssistantHtmlNeedingScope(text)) return true;
@@ -1685,9 +1760,11 @@ function buildRenderHtmlCacheKey(text, options = {}) {
     ].join('|');
 }
 
-function getRenderHtmlCache(key) {
+function getRenderHtmlCache(key, sourceText) {
     const entry = renderHtmlCache.get(key);
     if (!entry) return null;
+    // FNV-1a 与长度只用于快速索引；命中后必须比较原文，避免哈希碰撞返回其他消息 HTML。
+    if (entry.sourceText !== sourceText) return null;
 
     renderHtmlCache.delete(key);
     entry.lastUsed = Date.now();
@@ -1713,8 +1790,8 @@ function trimRenderHtmlCache() {
     }
 }
 
-function setRenderHtmlCache(key, html) {
-    const size = estimateStringBytes(html);
+function setRenderHtmlCache(key, html, sourceText) {
+    const size = estimateStringBytes(html) + estimateStringBytes(sourceText);
     if (size <= 0 || size > RENDER_HTML_CACHE_MAX_SINGLE_BYTES) {
         return;
     }
@@ -1727,6 +1804,7 @@ function setRenderHtmlCache(key, html) {
 
     renderHtmlCache.set(key, {
         html,
+        sourceText,
         size,
         hits: 0,
         lastUsed: Date.now()
@@ -1769,14 +1847,14 @@ function renderMarkdownToHtml(text, options = {}) {
     }
 
     const cacheKey = buildRenderHtmlCacheKey(text, options);
-    const cachedHtml = getRenderHtmlCache(cacheKey);
+    const cachedHtml = getRenderHtmlCache(cacheKey, text);
     if (cachedHtml !== null) {
         return cachedHtml;
     }
 
     renderHtmlCacheStats.misses += 1;
     const html = renderMarkdownToHtmlUncached(text, options);
-    setRenderHtmlCache(cacheKey, html);
+    setRenderHtmlCache(cacheKey, html, text);
     return html;
 }
 
@@ -1916,48 +1994,17 @@ function findUnclosedStreamThoughtChain(text) {
     };
 }
 
-function findUnclosedStreamToolRequest(text) {
-    if (typeof text !== 'string' || !text.includes(TOOL_START_MARKER)) {
-        return null;
-    }
-
-    let cursor = 0;
-    while (cursor < text.length) {
-        const startIndex = text.indexOf(TOOL_START_MARKER, cursor);
-        if (startIndex === -1) return null;
-
-        if (isBacktickWrappedMarker(text, startIndex, TOOL_START_MARKER)) {
-            cursor = startIndex + TOOL_START_MARKER.length;
-            continue;
-        }
-
-        const contentStart = startIndex + TOOL_START_MARKER.length;
-        const endIndex = findToolRequestEnd(text, contentStart);
-        if (endIndex === -1) {
-            return {
-                prefix: text.slice(0, startIndex),
-                request: text.slice(startIndex),
-                startIndex
-            };
-        }
-
-        cursor = endIndex;
-    }
-
-    return null;
-}
-
 function parseStreamTailMarkdown(text) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
     const processedText = preprocessStreamTailContent(text);
 
-    // 未闭合工具请求和思维链都属于流式隔离域。按源码中更早出现的块决定封印边界，
-    // 因此思维链内部出现 TOOL_REQUEST 文本时不会被误当作外层工具调用，反之亦然。
-    const unclosedToolRequest = findUnclosedStreamToolRequest(processedText);
+    // 工具请求、工具结果和思维链都属于流式隔离域。按源码中最早出现的入口决定
+    // 封印边界，禁止后续协议扫描或 Markdown 原始 HTML 解释进入其不可信载荷。
+    const unclosedToolBlock = findEarliestUnclosedToolBlock(processedText);
     const unclosedThoughtChain = findUnclosedStreamThoughtChain(processedText);
-    const sealedBlock = [unclosedToolRequest, unclosedThoughtChain]
+    const sealedBlock = [unclosedToolBlock, unclosedThoughtChain]
         .filter(Boolean)
         .sort((a, b) => a.startIndex - b.startIndex)[0];
 
@@ -1966,10 +2013,12 @@ function parseStreamTailMarkdown(text) {
             ? markedInstance.parse(sealedBlock.prefix)
             : '';
         const isThoughtChain = sealedBlock === unclosedThoughtChain;
-        const sealedText = isThoughtChain ? sealedBlock.thought : sealedBlock.request;
+        const sealedText = isThoughtChain ? sealedBlock.thought : sealedBlock.content;
         const sealClass = isThoughtChain
             ? 'vcp-stream-thought-chain-sealed'
-            : 'vcp-stream-tool-request-sealed';
+            : (sealedBlock.type === 'tool-result'
+                ? 'vcp-stream-tool-result-sealed'
+                : 'vcp-stream-tool-request-sealed');
         return `${prefixHtml}<pre class="${sealClass}"><code>${escapeHtml(sealedText)}</code></pre>`;
     }
 
@@ -2317,9 +2366,17 @@ function cleanupScopedStylesForMessage(messageItem, messageId = null) {
     }
 }
 
+function cleanupToolResultFullContentForRoot(root) {
+    root?.querySelectorAll?.('.vcp-tool-result-truncated-notice[data-content-id]').forEach(notice => {
+        const contentId = Number.parseInt(notice.dataset.contentId, 10);
+        if (Number.isInteger(contentId)) toolResultFullContentMap.delete(contentId);
+    });
+}
+
 function cleanupMessageDomResources(messageItem, messageId = null) {
     if (!messageItem) return;
 
+    cleanupToolResultFullContentForRoot(messageItem);
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
         imageHandler.cleanupContent?.(contentDiv);
@@ -3157,6 +3214,14 @@ async function renderAttachments(message, contentDiv) {
 async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     if (!contentDiv) return;
 
+    // 每次替换原始 HTML 都发布一个新的内容版本。任何较旧的异步 Mermaid、
+    // 高亮或动画任务恢复后都必须失效，不能继续处理同一节点上的新内容。
+    const replacesContent = typeof rawHtml === 'string';
+    const renderRevision = replacesContent
+        ? (Number(contentDiv._vcpRenderRevision) || 0) + 1
+        : (Number(contentDiv._vcpRenderRevision) || 0);
+    if (replacesContent) contentDiv._vcpRenderRevision = renderRevision;
+
     const {
         messageId = null,
         message = null,
@@ -3164,20 +3229,24 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         renderSessionId = getActiveRenderSessionId(),
         runHeavy = true,
         includeAttachments = true,
-        deferHighlights = true
+        deferHighlights = true,
+        processScripts = true
     } = options;
 
     const messageItem = contentDiv.closest?.('.message-item');
 
     const isStillValid = () => {
         if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) return false;
+        if (Number(contentDiv._vcpRenderRevision) !== renderRevision) return false;
         if (!contentDiv.isConnected) return false;
         if (messageItem && !messageItem.isConnected) return false;
         return true;
     };
 
     if (typeof rawHtml === 'string') {
-        // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器与动画/WebGL 资源。
+        // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
+        // 动画/WebGL 资源及大工具结果完整文本。
+        cleanupToolResultFullContentForRoot(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
         cleanupAnimationsInContent(contentDiv);
         imageHandler.setContentAndProcessImages(contentDiv, rawHtml, messageId);
@@ -3189,6 +3258,9 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         const existingAttachments = contentDiv.querySelector('.message-attachments');
         if (existingAttachments) existingAttachments.remove();
         await renderAttachments(message, contentDiv);
+        // 不在旧任务中扫描删除附件：同一节点可能已被新 revision 重新挂载。
+        // 新渲染开始时的统一 DOM 资源清理负责释放旧附件。
+        if (!isStillValid()) return;
     }
 
     if (!isStillValid()) return;
@@ -3206,6 +3278,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     }
 
     contentProcessor.processRenderedContent(contentDiv, settings);
+    if (!isStillValid()) return;
     await renderMermaidDiagrams(contentDiv);
 
     if (!isStillValid()) return;
@@ -3227,7 +3300,16 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         contentProcessor.highlightAllPatternsInMessage(contentDiv);
     }
 
-    processAnimationsInContent(contentDiv, visibilityOptimizer);
+    if (!isStillValid()) return;
+    // stable block 会在终态被规范整树替换；提前执行脚本会把 rAF、timer 和事件
+    // 绑定到即将销毁的局部 DOM。CSS 动画不依赖此处理器，可继续即时播放。
+    if (processScripts) {
+        processAnimationsInContent(contentDiv, visibilityOptimizer);
+        if (!isStillValid()) {
+            cleanupAnimationsInContent(contentDiv);
+            return;
+        }
+    }
     if (messageItem) {
         messageItem.dataset.vcpHeavyActivated = 'true';
         delete messageItem.dataset.vcpHeavyPending;
@@ -3854,13 +3936,15 @@ function updateMessageContent(messageId, newContent) {
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
-    renderPostProcessedHtml(contentDiv, rawHtml, {
+    void renderPostProcessedHtml(contentDiv, rawHtml, {
         messageId,
         message: messageInHistory ? { ...messageInHistory, content: newContent } : null,
         settings: globalSettings,
         renderSessionId: null,
         runHeavy: true,
         includeAttachments: !!messageInHistory
+    }).catch(error => {
+        console.error(`[MessageRenderer] Failed to post-process updated message ${messageId}:`, error);
     });
 }
 

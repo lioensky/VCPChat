@@ -189,7 +189,7 @@ app.whenReady().then(async () => {
         document.getElementById('html-mode-btn').click();
         await waitFrames();
         const source = document.querySelector(
-            '.source-editor-shell .CodeMirror'
+            '#source-host .source-editor-shell .CodeMirror'
         )?.CodeMirror?.getValue() || '';
         document.getElementById('render-mode-btn').click();
         await waitFrames();
@@ -252,7 +252,7 @@ app.whenReady().then(async () => {
         sourceButton.click();
         await waitFrames();
         const codeMirror = document.querySelector(
-            '.source-editor-shell .CodeMirror'
+            '#source-host .source-editor-shell .CodeMirror'
         )?.CodeMirror;
         if (!codeMirror) return { available: false };
 

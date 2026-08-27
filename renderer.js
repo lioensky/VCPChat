@@ -202,7 +202,9 @@ const ownedRendererSubscriptions = new Set();
 const mainChatDomListenerOwner = createDomListenerOwner();
 const topicListDomListenerOwner = createDomListenerOwner();
 const mainChatAttachmentOwner = createMainChatAttachmentOwner({
-    renderPreview: files => uiHelperFunctions.updateAttachmentPreview(files, attachmentPreviewArea),
+    renderPreview: (files, removeAttachmentAt) => {
+        uiHelperFunctions.updateAttachmentPreview(files, attachmentPreviewArea, removeAttachmentAt);
+    },
 });
 const mainChatSendOwner = createMainChatSendOwner({
     button: sendMessageBtn,

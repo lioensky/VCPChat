@@ -914,22 +914,27 @@
                     </button>
                     <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
                         aria-label="通知选项" hidden>
-                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP Forum">
-                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
-                            <span>VCP Forum</span>
+                        <button id="nextUiNotificationLog" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开 VCP 日志">
+                            <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
+                            <span>VCP 日志</span>
                         </button>
-                        <button id="nextUiNotificationMemo" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem" title="打开 VCP Memo">
-                            <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
-                            <span>VCP Memo</span>
+                        <button id="nextUiNotificationObserver" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开 VCP 监听">
+                            <span class="vcp-ui-icon" aria-hidden="true">activity</span>
+                            <span>VCP 监听</span>
                         </button>
                         <button id="nextUiNotificationFilterToggle" class="next-ui-notification-menu-item"
                             type="button" role="menuitemcheckbox" aria-checked="false"
-                            title="左键切换过滤模式，右键打开过滤设置">
+                            title="切换通知过滤模式">
                             <span class="vcp-ui-icon" aria-hidden="true">list_filter</span>
                             <span>过滤模式</span>
                             <span id="nextUiNotificationFilterState" class="next-ui-notification-menu-state">关闭</span>
+                        </button>
+                        <button id="nextUiNotificationSettings" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开通知栏行为设置">
+                            <span class="vcp-ui-icon" aria-hidden="true">settings</span>
+                            <span>通知栏设置</span>
                         </button>
                         <div class="next-ui-notification-menu-divider" role="separator"></div>
                         <button id="nextUiNotificationClear" class="next-ui-notification-menu-item danger"
@@ -2492,6 +2497,92 @@
                         <button type="submit" class="button-primary">保存规则</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </template>
+
+    <template id="toolChangeAuditModalTemplate">
+        <div class="modal vcp-ui-scope tool-change-audit-modal" id="toolChangeAuditModal"
+            role="dialog" aria-modal="true" aria-labelledby="toolChangeAuditTitle" tabindex="-1">
+            <div class="modal-content tool-change-audit-modal-content">
+                <header class="tool-change-audit-header">
+                    <div>
+                        <span class="tool-change-audit-eyebrow">TOOL CHANGE REVIEW</span>
+                        <h2 id="toolChangeAuditTitle">工具变更审计</h2>
+                    </div>
+                    <div class="tool-change-audit-header-actions">
+                        <button type="button" class="tool-change-audit-wrap-toggle" id="toolChangeAuditWrapToggle"
+                            aria-pressed="false" title="切换代码与差异内容的自动换行">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 6h18"></path>
+                                <path d="M3 12h15a3 3 0 0 1 0 6h-4"></path>
+                                <path d="m16 16-2 2 2 2"></path>
+                                <path d="M3 18h7"></path>
+                            </svg>
+                            <span>自动换行</span>
+                        </button>
+                        <span class="tool-change-audit-status" id="toolChangeAuditStatus">等待审核</span>
+                        <button class="tool-change-audit-close" id="closeToolChangeAuditModal"
+                            type="button" aria-label="关闭变更审计" title="关闭变更审计">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M18 6 6 18"></path>
+                                <path d="m6 6 12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </header>
+
+                <dl class="tool-change-audit-meta" aria-label="工具审核请求信息">
+                    <div>
+                        <dt>工具</dt>
+                        <dd id="toolChangeAuditToolName">—</dd>
+                    </div>
+                    <div>
+                        <dt>助手</dt>
+                        <dd id="toolChangeAuditMaid">—</dd>
+                    </div>
+                    <div>
+                        <dt>请求 ID</dt>
+                        <dd id="toolChangeAuditRequestId">—</dd>
+                    </div>
+                    <div>
+                        <dt>请求时间</dt>
+                        <dd id="toolChangeAuditTimestamp">—</dd>
+                    </div>
+                </dl>
+
+                <div class="tool-change-audit-summary" id="toolChangeAuditSummary" aria-live="polite"></div>
+
+                <section class="tool-change-audit-comparison" aria-label="变更前后内容对比">
+                    <article class="tool-change-audit-pane tool-change-audit-pane-before">
+                        <h3><span aria-hidden="true">−</span> 变更前</h3>
+                        <pre id="toolChangeAuditBefore"></pre>
+                    </article>
+                    <article class="tool-change-audit-pane tool-change-audit-pane-after">
+                        <h3><span aria-hidden="true">+</span> 变更后</h3>
+                        <pre id="toolChangeAuditAfter"></pre>
+                    </article>
+                </section>
+
+                <section class="tool-change-audit-diff-section" aria-labelledby="toolChangeAuditDiffTitle">
+                    <h3 id="toolChangeAuditDiffTitle">逐行差异</h3>
+                    <div class="tool-change-audit-diff" id="toolChangeAuditDiff" role="region"
+                        aria-label="逐行增删差异" tabindex="0"></div>
+                </section>
+
+                <label class="tool-change-audit-reason" for="toolChangeAuditReason">
+                    <span>审核理由 <small>可选，拒绝时建议填写修正建议</small></span>
+                    <textarea id="toolChangeAuditReason" maxlength="1000" rows="3"
+                        placeholder="输入接受说明或拒绝原因，最多 1000 字"></textarea>
+                </label>
+
+                <footer class="tool-change-audit-actions">
+                    <button type="button" class="button-secondary" id="cancelToolChangeAudit">稍后处理</button>
+                    <button type="button" class="vcp-btn vcp-btn-danger" id="rejectToolChangeAudit">拒绝变更</button>
+                    <button type="button" class="vcp-btn vcp-btn-success" id="approveToolChangeAudit">接受变更</button>
+                </footer>
             </div>
         </div>
     </template>

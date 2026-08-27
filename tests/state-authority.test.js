@@ -33,6 +33,29 @@ test('appearance and theme expose explicit authoritative subscriptions', async (
     dom.window.close();
 });
 
+test('notification filter queries are safe before settings capability initialization', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'
+    });
+    const { window } = dom;
+    window.eval(source('modules/ui-system/state-channel.js'));
+    window.eval(source('modules/filterManager.js'));
+
+    assert.equal(
+        window.filterManager.checkMessageFilter('early VCP log'),
+        null,
+        'notifications must fail open before settings are ready'
+    );
+    assert.equal(
+        window.filterManager.checkToolAutoApproval({ toolName: 'EarlyTool' }),
+        null,
+        'tool approval must fail closed before settings are ready'
+    );
+    assert.equal(window.filterManager.isFilterEnabled(), false);
+
+    dom.window.close();
+});
+
 test('notification filter publishes committed and rolled-back state exactly once', async () => {
     const dom = new JSDOM('<!doctype html><html><body><button id="doNotDisturbBtn"></button></body></html>', {
         url: 'https://vcpchat.local/main.html', runScripts: 'outside-only'

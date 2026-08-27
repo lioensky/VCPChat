@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { JSDOM } = require('jsdom');
 
 const originalWindow = global.window;
@@ -308,4 +309,290 @@ test('StreamProjection retires prior runtime state before same-message retry', a
     assert.equal(projection.getDiagnostics().prebuffered, 0);
     await projection.dispose();
     dom.window.close();
+});
+
+
+test('stale async initialization cannot revive state after same-message operation replacement', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', { url: 'https://vcpchat.local/' });
+    let releaseFirstPrepare;
+    let prepareCallCount = 0;
+    const transientStreamHistory = {
+        async prepare() {
+            prepareCallCount += 1;
+            if (prepareCallCount === 1) {
+                await new Promise(resolve => { releaseFirstPrepare = resolve; });
+            }
+            return [];
+        },
+        async finalize() { return null; },
+        discard() {},
+        dispose() {},
+        get pendingCount() { return 0; },
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        transientStreamHistory,
+        viewAuthority: { isCurrent: () => false },
+    }));
+
+    const base = {
+        id: 'async-retry',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+    };
+    const firstStart = projection.startStreamingMessage({ ...base, streamOperationId: 'op-a' });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await projection.startStreamingMessage({ ...base, streamOperationId: 'op-b' });
+    releaseFirstPrepare();
+    await firstStart;
+
+    assert.equal(
+        projection.appendStreamChunk(base.id, { content: 'old' }, base, 'op-a'),
+        false,
+        'replaced producer must not append after its delayed initialization resumes'
+    );
+    projection.appendStreamChunk(base.id, { content: 'new' }, base, 'op-b');
+    const snapshots = projection.snapshotConversation({
+        itemType: 'agent',
+        itemId: 'visible-agent',
+        topicId: 'visible-topic',
+    });
+    assert.equal(snapshots.length, 1);
+    assert.equal(snapshots[0].streamOperationId, 'op-b');
+    assert.equal(snapshots[0].accumulatedText, 'new');
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('smooth stream terminal stops queued rendering and releases every runtime owner', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM(
+        '<!doctype html><div id="chat"><article class="message-item" data-message-id="smooth-terminal"><div class="md-content"></div></article></div>',
+        { url: 'https://vcpchat.local/' }
+    );
+    const history = [];
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        globalSettingsRef: { get: () => ({ enableSmoothStreaming: true, minChunkBufferSize: 1 }) },
+        currentChatHistoryRef: {
+            get: () => history,
+            set: value => { history.splice(0, history.length, ...value); },
+        },
+        prepareFinalTextForRender: (_messageId, text, role) => ({ text, role, depth: 0 }),
+        renderPostProcessedHtml: async (content, html) => { content.textContent = html; },
+    }));
+
+    const item = dom.window.document.querySelector('.message-item');
+    await projection.startStreamingMessage({
+        id: 'smooth-terminal',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        streamOperationId: 'smooth-op',
+    }, item);
+    projection.appendStreamChunk(
+        'smooth-terminal',
+        { content: 'a long queued response that should still be pending visually' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'smooth-op'
+    );
+
+    const projected = await projection.projectStreamTerminal(
+        'smooth-terminal',
+        'completed',
+        { agentId: 'visible-agent', topicId: 'visible-topic', streamOperationId: 'smooth-op' },
+        { fullResponse: 'canonical terminal response', streamOperationId: 'smooth-op' }
+    );
+
+    assert.equal(projected?.content, 'canonical terminal response');
+    assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
+    assert.match(item.querySelector('.md-content').textContent, /canonical terminal response/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+
+test('tool-request-first stream falls back to direct DOM projection when morphdom rejects a frame', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM(
+        '<!doctype html><div id="chat"><article class="message-item" data-message-id="tool-first"><div class="md-content"><span class="thinking-indicator">思考中...</span></div></article></div>',
+        { url: 'https://vcpchat.local/', pretendToBeVisual: true }
+    );
+    const projection = createStreamProjection();
+    let morphAttempts = 0;
+    projection.attachStreamProjection(createDependencies(dom, {
+        morphdom() {
+            morphAttempts += 1;
+            throw new Error('controlled first-frame morph failure');
+        },
+        parseTail(text) {
+            const escaped = String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            return `<pre class="vcp-stream-tool-request-sealed"><code>${escaped}</code></pre>`;
+        },
+    }));
+
+    const item = dom.window.document.querySelector('.message-item');
+    await projection.startStreamingMessage({
+        id: 'tool-first',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+    }, item);
+
+    projection.appendStreamChunk(
+        'tool-first',
+        { content: '<<<[TOOL_REQUEST]>>>\ntool_name:「始」Demo「末」' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' }
+    );
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const content = item.querySelector('.md-content');
+    assert.ok(morphAttempts >= 1, 'the regression must exercise the morphdom failure path');
+    assert.match(
+        content.textContent,
+        /TOOL_REQUEST[\s\S]*Demo/,
+        'a failed incremental diff must immediately fall back instead of staying blank until navigation or terminal'
+    );
+    assert.ok(
+        content.querySelector('.vcp-stream-tool-request-sealed'),
+        'the sealed tool-request preview must remain visible after fallback'
+    );
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('active stream recreates a missing message DOM on the next render frame', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        url: 'https://vcpchat.local/',
+        pretendToBeVisual: true,
+    });
+    const root = dom.window.document.getElementById('chat');
+    let renderCount = 0;
+    const renderMessage = async message => {
+        renderCount += 1;
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.innerHTML = '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        renderMessage,
+        parseTail: text => `<p>${text}</p>`,
+    }));
+
+    const initialItem = await renderMessage({
+        id: 'recover-active',
+        isThinking: true,
+    });
+    await projection.startStreamingMessage({
+        id: 'recover-active',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        streamOperationId: 'recover-op',
+    }, initialItem);
+
+    initialItem.remove();
+    projection.appendStreamChunk(
+        'recover-active',
+        { content: 'recovered live text' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'recover-op'
+    );
+    await new Promise(resolve => setTimeout(resolve, 140));
+
+    const recoveredItems = root.querySelectorAll('[data-message-id="recover-active"]');
+    assert.equal(recoveredItems.length, 1, 'recovery must create exactly one message projection');
+    assert.equal(renderCount, 2, 'concurrent frames must share one recovery operation');
+    assert.ok(recoveredItems[0].classList.contains('streaming'));
+    assert.match(recoveredItems[0].querySelector('.md-content')?.textContent || '', /recovered live text/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('terminal projection recreates a missing message DOM from canonical final content', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        url: 'https://vcpchat.local/',
+        pretendToBeVisual: true,
+    });
+    const root = dom.window.document.getElementById('chat');
+    const history = [];
+    const renderMessage = async message => {
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.innerHTML = '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        currentChatHistoryRef: {
+            get: () => history,
+            set: value => { history.splice(0, history.length, ...value); },
+        },
+        renderMessage,
+        prepareFinalTextForRender: (_messageId, text, role) => ({ text, role, depth: 0 }),
+        parseFull: text => `<p>${text}</p>`,
+        renderPostProcessedHtml: async (content, html) => { content.innerHTML = html; },
+    }));
+
+    const initialItem = await renderMessage({
+        id: 'recover-terminal',
+        isThinking: true,
+    });
+    await projection.startStreamingMessage({
+        id: 'recover-terminal',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        streamOperationId: 'terminal-recover-op',
+    }, initialItem);
+    initialItem.remove();
+
+    const projected = await projection.projectStreamTerminal(
+        'recover-terminal',
+        'completed',
+        {
+            agentId: 'visible-agent',
+            topicId: 'visible-topic',
+            streamOperationId: 'terminal-recover-op',
+        },
+        {
+            fullResponse: 'canonical recovered terminal',
+            streamOperationId: 'terminal-recover-op',
+        }
+    );
+
+    const recoveredItems = root.querySelectorAll('[data-message-id="recover-terminal"]');
+    assert.equal(projected?.content, 'canonical recovered terminal');
+    assert.equal(recoveredItems.length, 1);
+    assert.equal(recoveredItems[0].classList.contains('streaming'), false);
+    assert.equal(recoveredItems[0].classList.contains('thinking'), false);
+    assert.match(recoveredItems[0].querySelector('.md-content')?.textContent || '', /canonical recovered terminal/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('thinking and streaming messages opt out of content-visibility clipping', () => {
+    const chatCss = fs.readFileSync('styles/chat.css', 'utf8');
+    assert.match(
+        chatCss,
+        /\.message-item\.streaming,\s*\.message-item\.thinking\s*\{[\s\S]*?content-visibility:\s*visible;[\s\S]*?contain-intrinsic-size:\s*auto;[\s\S]*?\}/
+    );
 });

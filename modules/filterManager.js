@@ -8,8 +8,15 @@ window.filterManager = (() => {
     })) || null;
 
     // --- Helper Functions to access refs ---
-    const getGlobalSettings = () => _globalSettingsRef.get();
-    const setGlobalSettings = (newSettings) => _globalSettingsRef.set(newSettings);
+    // VCPLog 订阅早于 renderer 主初始化挂载。初始化窗口内过滤查询必须
+    // fail-open（不过滤、不自动审批），不能因 settings ref 尚未注入而中断消费者。
+    const getGlobalSettings = () => _globalSettingsRef?.get?.() || {};
+    const setGlobalSettings = (newSettings) => {
+        if (!_globalSettingsRef?.set) {
+            throw new Error('FilterManager settings are not initialized');
+        }
+        return _globalSettingsRef.set(newSettings);
+    };
 
     function publishFilterState(source = 'filter-manager') {
         const settings = _globalSettingsRef ? getGlobalSettings() : {};
@@ -115,7 +122,7 @@ window.filterManager = (() => {
     }
 
     function isFilterEnabled() {
-        return getGlobalSettings()?.filterEnabled === true;
+        return _globalSettingsRef?.get?.()?.filterEnabled === true;
     }
 
     async function toggleFilterMode(forceEnabled) {
@@ -557,6 +564,8 @@ window.filterManager = (() => {
      * @returns {Object|null}
      */
     function checkToolAutoApproval(approvalData) {
+        // 自动审批必须 fail-closed：设置能力未就绪时绝不自行批准工具。
+        if (!_globalSettingsRef?.get) return null;
         const settings = normalizeToolAutoApprovalRules(getGlobalSettings());
         if (!settings.toolAutoApprovalEnabled || !approvalData) {
             return null;
@@ -598,12 +607,15 @@ window.filterManager = (() => {
      * @returns {Object|null} 匹配的规则，如果过滤未启用则返回null，如果匹配白名单则返回show，否则返回hide
      */
     function checkMessageFilter(messageTitle) {
+        // 通知过滤必须 fail-open：初始化期间保留通知，不让日志消费者抛错。
+        if (!_globalSettingsRef?.get) return null;
         const settings = getGlobalSettings();
         if (!settings.filterEnabled) {
             return null;
         }
 
-        for (const rule of settings.filterRules) {
+        const rules = Array.isArray(settings.filterRules) ? settings.filterRules : [];
+        for (const rule of rules) {
             if (!rule.enabled) continue;
 
             let matches = false;
