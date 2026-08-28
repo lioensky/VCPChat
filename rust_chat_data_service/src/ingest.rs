@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{Arc, LazyLock},
@@ -1138,7 +1138,7 @@ fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn sync_parent_directory(parent: &Path) -> Result<()> {
-    File::open(parent)?.sync_all()?;
+    fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 
