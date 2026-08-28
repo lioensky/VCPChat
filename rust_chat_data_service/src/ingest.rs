@@ -357,7 +357,8 @@ impl Reconciler {
     fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
         let physical_topic_ids = self.physical_topic_ids(&configured_owner.key.owner_id)?;
         let physical_topic_set = physical_topic_ids.iter().cloned().collect::<HashSet<_>>();
-        let mut topics = Vec::new();
+        let mut recovered_topics = Vec::new();
+        let mut configured_topics = Vec::new();
         let mut active_topic_ids = HashSet::new();
         for topic in &configured_owner.topics {
             if !physical_topic_set.contains(&topic.topic_id)
@@ -373,15 +374,13 @@ impl Reconciler {
             if self.database.topic_is_tombstoned(&key)? {
                 continue;
             }
-            topics.push(topic.clone());
+            let normalized = self.normalize_recovered_timestamp(&key, topic.clone())?;
+            if is_synthetic_recovered_topic(&normalized) {
+                recovered_topics.push(normalized);
+            } else {
+                configured_topics.push(normalized);
+            }
         }
-        let mut next_ordinal = configured_owner
-            .topics
-            .iter()
-            .map(|topic| topic.ordinal)
-            .max()
-            .unwrap_or(-1)
-            + 1;
 
         for topic_id in physical_topic_ids {
             if active_topic_ids.contains(&topic_id) {
@@ -397,10 +396,9 @@ impl Reconciler {
             }
             if let Some(mut recovered) = self.database.topic_recovery_definition(&key)? {
                 if mobile_topic_config_hash(&key, &recovered.metadata) == recovered.config_hash {
-                    recovered.ordinal = next_ordinal;
-                    topics.push(recovered);
+                    recovered = self.normalize_recovered_timestamp(&key, recovered)?;
+                    recovered_topics.push(recovered);
                     active_topic_ids.insert(topic_id);
-                    next_ordinal += 1;
                     continue;
                 }
                 tracing::warn!(
@@ -411,11 +409,12 @@ impl Reconciler {
                 );
             }
             let recovered_name = format!("Recovered: {topic_id}");
+            let created_at = self.recovery_timestamp(&key)?;
             let metadata = if key.owner_type == OwnerType::Agent {
                 serde_json::json!({
                     "id": topic_id.clone(),
                     "name": recovered_name.clone(),
-                    "createdAt": 0,
+                    "createdAt": created_at,
                     "locked": true,
                     "unread": false,
                     "creatorSource": "recovery"
@@ -424,24 +423,77 @@ impl Reconciler {
                 serde_json::json!({
                     "id": topic_id.clone(),
                     "name": recovered_name.clone(),
-                    "createdAt": 0
+                    "createdAt": created_at
                 })
             };
-            topics.push(TopicDefinition {
+            recovered_topics.push(TopicDefinition {
                 topic_id,
                 display_name: Some(recovered_name),
-                created_at: Some(0),
-                ordinal: next_ordinal,
+                created_at: Some(created_at),
+                ordinal: 0,
                 config_hash: mobile_topic_config_hash(&key, &metadata),
                 metadata,
             });
             active_topic_ids.insert(key.topic_id);
-            next_ordinal += 1;
         }
 
+        // 只把恢复分区前置，不按时间重排用户已有的 Topic 顺序。
+        recovered_topics.extend(configured_topics);
+        for (ordinal, topic) in recovered_topics.iter_mut().enumerate() {
+            topic.ordinal = ordinal as i64;
+        }
         let mut effective = configured_owner.clone();
-        effective.topics = topics;
+        effective.topics = recovered_topics;
         Ok(effective)
+    }
+
+    fn normalize_recovered_timestamp(
+        &self,
+        key: &TopicKey,
+        mut topic: TopicDefinition,
+    ) -> Result<TopicDefinition> {
+        if !is_synthetic_recovered_topic(&topic) {
+            return Ok(topic);
+        }
+        let created_at = self.recovery_timestamp(key)?;
+        topic.created_at = Some(created_at);
+        let metadata = topic
+            .metadata
+            .as_object_mut()
+            .context("recovered topic metadata must be an object")?;
+        metadata.insert("createdAt".to_string(), Value::Number(created_at.into()));
+        topic.config_hash = mobile_topic_config_hash(key, &topic.metadata);
+        Ok(topic)
+    }
+
+    fn recovery_timestamp(&self, key: &TopicKey) -> Result<i64> {
+        if let Some(timestamp) = topic_timestamp_from_id(&key.topic_id) {
+            return Ok(timestamp);
+        }
+        let history_path = self
+            .config
+            .user_data_dir
+            .join(&key.owner_id)
+            .join("topics")
+            .join(&key.topic_id)
+            .join("history.json");
+        let metadata = match fs::metadata(&history_path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(0),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to inspect {}", history_path.display()));
+            }
+        };
+        if !metadata.is_file() {
+            return Ok(0);
+        }
+        Ok(metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+            .unwrap_or(0))
     }
 
     fn physical_topic_ids(&self, owner_id: &str) -> Result<Vec<String>> {
@@ -720,6 +772,25 @@ impl Reconciler {
             )
             .map(Some)
     }
+}
+
+fn topic_timestamp_from_id(topic_id: &str) -> Option<i64> {
+    ["topic_", "group_topic_"]
+        .into_iter()
+        .find_map(|prefix| topic_id.strip_prefix(prefix))
+        .filter(|timestamp| {
+            !timestamp.is_empty() && timestamp.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        .and_then(|timestamp| timestamp.parse::<i64>().ok())
+        .filter(|timestamp| (0..=((1_i64 << 53) - 1)).contains(timestamp))
+}
+
+fn is_synthetic_recovered_topic(topic: &TopicDefinition) -> bool {
+    topic
+        .display_name
+        .as_deref()
+        .and_then(|name| name.strip_prefix("Recovered: "))
+        == Some(topic.topic_id.as_str())
 }
 
 pub fn parse_owner_config(
@@ -1149,11 +1220,13 @@ fn sync_parent_directory(_parent: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, sync::Arc};
+    use std::{collections::HashMap, fs, sync::Arc, time::UNIX_EPOCH};
 
     use tempfile::TempDir;
 
-    use super::{normalize_history, parse_owner_config, sha256_hex, Reconciler};
+    use super::{
+        normalize_history, parse_owner_config, sha256_hex, topic_timestamp_from_id, Reconciler,
+    };
     use crate::{
         config::{Cli, ServiceConfig},
         domain::{OwnerType, TopicKey},
@@ -1265,6 +1338,20 @@ mod tests {
         .expect("normalize");
         assert_eq!(messages[0].speaker_name.as_deref(), Some("Nova"));
         assert_eq!(messages[0].speaker_agent_id.as_deref(), Some("agent_nova"));
+    }
+
+    #[test]
+    fn recovery_timestamp_parses_agent_and_group_topic_ids() {
+        assert_eq!(
+            topic_timestamp_from_id("topic_1700000000123"),
+            Some(1_700_000_000_123)
+        );
+        assert_eq!(
+            topic_timestamp_from_id("group_topic_1700000000456"),
+            Some(1_700_000_000_456)
+        );
+        assert_eq!(topic_timestamp_from_id("legacy-topic"), None);
+        assert_eq!(topic_timestamp_from_id("topic_12_extra"), None);
     }
 
     #[tokio::test]
@@ -1741,6 +1828,95 @@ mod tests {
             )
             .expect("count orphan topic");
         assert_eq!(indexed, 1);
+    }
+
+    #[tokio::test]
+    async fn recovered_topics_use_id_or_history_mtime_and_precede_configured_topics() {
+        let (_temp, config, database, reconciler) = fixture();
+        let owner_id = "agent_recovery_time";
+        let existing_id = "topic_1700000000999";
+        let already_recovered_id = "topic_1700000000789";
+        let timestamp_id = "topic_1700000000123";
+        let legacy_id = "legacy-topic";
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            owner_id,
+            "Recovery Time Agent",
+            &[existing_id, already_recovered_id],
+        );
+        let owner_config = config.agents_dir.join(owner_id).join("config.json");
+        let mut root: Value =
+            serde_json::from_slice(&fs::read(&owner_config).expect("read recovery owner config"))
+                .expect("parse recovery owner config");
+        root["topics"][1]["name"] = Value::String(format!("Recovered: {already_recovered_id}"));
+        root["topics"][1]["createdAt"] = Value::Number(0.into());
+        fs::write(
+            &owner_config,
+            serde_json::to_vec_pretty(&root).expect("serialize recovery owner config"),
+        )
+        .expect("rewrite recovery owner config");
+
+        write_history(&config, owner_id, existing_id, serde_json::json!([]));
+        let write_empty_history = |topic_id: &str| {
+            let directory = config
+                .user_data_dir
+                .join(owner_id)
+                .join("topics")
+                .join(topic_id);
+            fs::create_dir_all(&directory).expect("create recovered topic directory");
+            let history_path = directory.join("history.json");
+            fs::write(&history_path, []).expect("write empty recovered history");
+            history_path
+        };
+        write_empty_history(already_recovered_id);
+        write_empty_history(timestamp_id);
+        let legacy_history = write_empty_history(legacy_id);
+        let legacy_mtime = fs::metadata(&legacy_history)
+            .expect("read legacy history metadata")
+            .modified()
+            .expect("read legacy history mtime")
+            .duration_since(UNIX_EPOCH)
+            .expect("legacy history mtime after epoch")
+            .as_millis()
+            .min(i64::MAX as u128) as i64;
+
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile recovered topics");
+        assert_eq!(stats.topics_seen, 4);
+        assert_eq!(stats.files_invalid, 3);
+
+        let connection = database.connection.lock();
+        let rows = connection
+            .prepare(
+                "SELECT topic_id, created_at, topic_ordinal FROM topics
+                 WHERE owner_type='agent' AND owner_id=?1 AND deleted_at IS NULL
+                 ORDER BY topic_ordinal ASC",
+            )
+            .expect("prepare recovered topic query")
+            .query_map([owner_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .expect("query recovered topics")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect recovered topics");
+        assert_eq!(
+            rows.iter().map(|row| row.0.as_str()).collect::<Vec<_>>(),
+            vec![already_recovered_id, legacy_id, timestamp_id, existing_id]
+        );
+        let by_id = rows
+            .iter()
+            .map(|(topic_id, created_at, ordinal)| (topic_id.as_str(), (*created_at, *ordinal)))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(by_id[already_recovered_id].0, Some(1_700_000_000_789));
+        assert_eq!(by_id[timestamp_id].0, Some(1_700_000_000_123));
+        assert_eq!(by_id[legacy_id].0, Some(legacy_mtime));
     }
 
     #[tokio::test]
