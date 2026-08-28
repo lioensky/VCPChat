@@ -20,6 +20,7 @@ let db = null;
 let messageUpsertStatement = null;
 let messageTombstoneStatement = null;
 const HISTORY_INDEX_VERSION = 3;
+const LOWERCASE_SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
 const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
 const AVATAR_TOMBSTONE_HASH = "0".repeat(64);
@@ -415,7 +416,7 @@ function upsertHistorySourceState({
 }) {
   if (!db) return;
   const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
-  if (typeof sourceHash !== "string" || !/^[a-f0-9]{64}$/.test(sourceHash)) {
+  if (typeof sourceHash !== "string" || !LOWERCASE_SHA256_PATTERN.test(sourceHash)) {
     throw new Error("History source state requires a lowercase SHA-256 hash");
   }
   db.prepare(`
@@ -457,6 +458,12 @@ function isHistorySourceCurrent({
   return Boolean(
     state &&
     state.index_version === HISTORY_INDEX_VERSION &&
+    Number.isFinite(state.file_size) &&
+    state.file_size > 0 &&
+    Number.isFinite(state.mtime_ms) &&
+    state.mtime_ms > 0 &&
+    typeof state.source_hash === "string" &&
+    LOWERCASE_SHA256_PATTERN.test(state.source_hash) &&
     pathIdentity(state.file_path) === pathIdentity(filePath) &&
     state.file_size === fileSize &&
     state.mtime_ms === mtimeMs

@@ -196,9 +196,22 @@ const AVATAR_TOMBSTONE_HASH: &str =
 
 #[derive(Debug, Clone)]
 pub struct SourceMetadata {
+    pub owner_type: String,
+    pub owner_id: String,
+    pub topic_id: String,
     pub mtime_ns: i64,
     pub file_size: i64,
+    pub source_hash: Option<String>,
     pub status: String,
+    pub last_error: Option<String>,
+}
+
+impl SourceMetadata {
+    pub fn matches_topic(&self, key: &TopicKey) -> bool {
+        self.owner_type == key.owner_type.as_str()
+            && self.owner_id == key.owner_id
+            && self.topic_id == key.topic_id
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -481,6 +494,7 @@ impl Database {
                  JOIN topics t
                    ON t.owner_type=hs.owner_type AND t.owner_id=hs.owner_id
                   AND t.topic_id=hs.topic_id
+                  AND t.source_path=hs.source_path
                  JOIN owners o
                    ON o.owner_type=t.owner_type AND o.owner_id=t.owner_id
                  WHERE hs.source_path=?1
@@ -695,14 +709,20 @@ impl Database {
         let connection = self.connection.lock();
         connection
             .query_row(
-                "SELECT mtime_ns, file_size, status
+                "SELECT owner_type, owner_id, topic_id, mtime_ns, file_size,
+                        source_hash, status, last_error
                  FROM history_sources WHERE source_path=?1",
                 [source_path.to_string_lossy().as_ref()],
                 |row| {
                     Ok(SourceMetadata {
-                        mtime_ns: row.get(0)?,
-                        file_size: row.get(1)?,
-                        status: row.get(2)?,
+                        owner_type: row.get(0)?,
+                        owner_id: row.get(1)?,
+                        topic_id: row.get(2)?,
+                        mtime_ns: row.get(3)?,
+                        file_size: row.get(4)?,
+                        source_hash: row.get(5)?,
+                        status: row.get(6)?,
+                        last_error: row.get(7)?,
                     })
                 },
             )
@@ -718,11 +738,18 @@ impl Database {
         let now = now_ms();
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_history_source_identity_available(&transaction, source)?;
 
         let previous_status: Option<String> = transaction
             .query_row(
-                "SELECT status FROM history_sources WHERE source_path=?1",
-                [source.source_path.to_string_lossy().as_ref()],
+                "SELECT status FROM history_sources
+                 WHERE source_path=?1 AND owner_type=?2 AND owner_id=?3 AND topic_id=?4",
+                params![
+                    source.source_path.to_string_lossy(),
+                    source.key.owner_type.as_str(),
+                    source.key.owner_id,
+                    source.key.topic_id,
+                ],
                 |row| row.get(0),
             )
             .optional()?;
@@ -742,8 +769,14 @@ impl Database {
                 indexed_at=?2,
                 status='missing',
                 last_error='previously indexed history source is missing'
-             WHERE source_path=?1",
-            params![source.source_path.to_string_lossy(), now],
+             WHERE source_path=?1 AND owner_type=?3 AND owner_id=?4 AND topic_id=?5",
+            params![
+                source.source_path.to_string_lossy(),
+                now,
+                source.key.owner_type.as_str(),
+                source.key.owner_id,
+                source.key.topic_id,
+            ],
         )?;
         if owner_hash_mode == OwnerHashMode::Immediate {
             recompute_owner_content_hash(
@@ -996,8 +1029,14 @@ impl Database {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let previous: Option<(Option<String>, String)> = transaction
             .query_row(
-                "SELECT source_hash, status FROM history_sources WHERE source_path=?1",
-                [source.source_path.to_string_lossy().as_ref()],
+                "SELECT source_hash, status FROM history_sources
+                 WHERE source_path=?1 AND owner_type=?2 AND owner_id=?3 AND topic_id=?4",
+                params![
+                    source.source_path.to_string_lossy(),
+                    source.key.owner_type.as_str(),
+                    source.key.owner_id,
+                    source.key.topic_id,
+                ],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
@@ -1005,22 +1044,30 @@ impl Database {
             transaction.commit()?;
             return Ok(None);
         };
-        if previous_hash != source_hash || previous_status == "invalid" {
+        if previous_hash != source_hash || !matches!(previous_status.as_str(), "ready" | "missing")
+        {
             transaction.commit()?;
             return Ok(None);
         }
 
-        transaction.execute(
+        let updated = transaction.execute(
             "UPDATE history_sources SET
                 mtime_ns=?2, file_size=?3, indexed_at=?4, status='ready', last_error=NULL
-             WHERE source_path=?1",
+             WHERE source_path=?1 AND owner_type=?5 AND owner_id=?6 AND topic_id=?7",
             params![
                 source.source_path.to_string_lossy(),
                 mtime_ns,
                 file_size,
-                now
+                now,
+                source.key.owner_type.as_str(),
+                source.key.owner_id,
+                source.key.topic_id,
             ],
         )?;
+        anyhow::ensure!(
+            updated == 1,
+            "history source identity changed during refresh"
+        );
         let (revision, indexed_revision) = transaction
             .query_row(
                 "SELECT content_revision, indexed_revision FROM topics
@@ -1075,11 +1122,18 @@ impl Database {
                 && !topic_is_tombstoned_in_transaction(&transaction, &source.key)?,
             "history source owner or topic is deleted"
         );
+        ensure_history_source_identity_available(&transaction, source)?;
 
         let previous_source: Option<(Option<String>, String)> = transaction
             .query_row(
-                "SELECT source_hash, status FROM history_sources WHERE source_path=?1",
-                [source.source_path.to_string_lossy().as_ref()],
+                "SELECT source_hash, status FROM history_sources
+                 WHERE source_path=?1 AND owner_type=?2 AND owner_id=?3 AND topic_id=?4",
+                params![
+                    source.source_path.to_string_lossy(),
+                    source.key.owner_type.as_str(),
+                    source.key.owner_id,
+                    source.key.topic_id,
+                ],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
@@ -1680,7 +1734,11 @@ fn compute_owner_content_hash(transaction: &Transaction<'_>, key: &OwnerKey) -> 
     let mut statement = transaction.prepare(
         "SELECT t.topic_id, t.config_hash, t.content_hash, t.source_path, hs.status
          FROM topics t
-         LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id
          WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.deleted_at IS NULL",
     )?;
     let topics = statement
@@ -1906,6 +1964,33 @@ fn owner_is_tombstoned(transaction: &Transaction<'_>, key: &OwnerKey) -> Result<
             |row| row.get(0),
         )
         .map_err(Into::into)
+}
+
+fn ensure_history_source_identity_available(
+    transaction: &Transaction<'_>,
+    source: &TopicSource,
+) -> Result<()> {
+    let existing: Option<(String, String, String)> = transaction
+        .query_row(
+            "SELECT owner_type, owner_id, topic_id
+             FROM history_sources WHERE source_path=?1",
+            [source.source_path.to_string_lossy().as_ref()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    if let Some((owner_type, owner_id, topic_id)) = existing {
+        anyhow::ensure!(
+            owner_type == source.key.owner_type.as_str()
+                && owner_id == source.key.owner_id
+                && topic_id == source.key.topic_id,
+            "history source identity conflict at {}: stored={owner_type}/{owner_id}/{topic_id}, expected={}/{}/{}",
+            source.source_path.display(),
+            source.key.owner_type.as_str(),
+            source.key.owner_id,
+            source.key.topic_id,
+        );
+    }
+    Ok(())
 }
 
 fn topic_is_tombstoned_in_transaction(

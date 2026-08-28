@@ -698,9 +698,23 @@ impl Reconciler {
         let file_size = metadata.len().min(i64::MAX as u64) as i64;
 
         if let Some(previous) = self.database.source_metadata(&source.source_path)? {
-            if previous.mtime_ns == mtime_ns
+            anyhow::ensure!(
+                previous.matches_topic(&source.key),
+                "history source identity conflict at {}: stored={}/{}/{}, expected={}/{}/{}",
+                source.source_path.display(),
+                previous.owner_type,
+                previous.owner_id,
+                previous.topic_id,
+                source.key.owner_type.as_str(),
+                source.key.owner_id,
+                source.key.topic_id,
+            );
+            if mtime_ns != 0
+                && previous.mtime_ns == mtime_ns
                 && previous.file_size == file_size
                 && previous.status == "ready"
+                && previous.last_error.is_none()
+                && is_internal_sha256(previous.source_hash.as_deref())
             {
                 let (revision, indexed_revision) = self
                     .database
@@ -1090,6 +1104,15 @@ fn integer_value(value: Option<&Value>) -> Option<i64> {
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
+}
+
+fn is_internal_sha256(value: Option<&str>) -> bool {
+    value.is_some_and(|hash| {
+        hash.len() == 64
+            && hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 pub(crate) struct CommittedHistoryVersion {
@@ -1689,6 +1712,89 @@ mod tests {
             .expect("read sync-only message state");
         assert_eq!(revision_after_sync_only, revision_after);
         assert_eq!(message_updated_at, 999);
+    }
+
+    #[tokio::test]
+    async fn ready_source_without_a_valid_hash_is_reingested_and_repaired() {
+        let (_temp, config, database, reconciler) = fixture();
+        let owner_id = "agent_ready_repair";
+        let topic_id = "topic_ready_repair";
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            owner_id,
+            "Ready Repair",
+            &[topic_id],
+        );
+        write_history(
+            &config,
+            owner_id,
+            topic_id,
+            serde_json::json!([
+                {"id":"message_ready","role":"user","content":"stable","timestamp":1}
+            ]),
+        );
+        reconciler.reconcile().await.expect("initial reconcile");
+
+        let history_path = config
+            .user_data_dir
+            .join(owner_id)
+            .join("topics")
+            .join(topic_id)
+            .join("history.json");
+        database
+            .connection
+            .lock()
+            .execute(
+                "UPDATE history_sources SET source_hash=NULL WHERE source_path=?1",
+                [history_path.to_string_lossy().as_ref()],
+            )
+            .expect("clear committed source hash");
+
+        let stats = reconciler.reconcile().await.expect("repair ready source");
+        assert_eq!(stats.files_ingested, 1);
+        assert_eq!(stats.files_skipped, 0);
+        let repaired: (String, String, Option<String>) = database
+            .connection
+            .lock()
+            .query_row(
+                "SELECT source_hash, status, last_error
+                 FROM history_sources WHERE source_path=?1",
+                [history_path.to_string_lossy().as_ref()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read repaired source state");
+        assert_eq!(
+            repaired.0,
+            sha256_hex(&fs::read(history_path).expect("read repaired history"))
+        );
+        assert_eq!(repaired.1, "ready");
+        assert_eq!(repaired.2, None);
+    }
+
+    #[tokio::test]
+    async fn empty_history_is_ready_and_keeps_the_metadata_fast_path() {
+        let (_temp, config, database, reconciler) = fixture();
+        let owner_id = "agent_empty_history";
+        let topic_id = "topic_empty_history";
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            owner_id,
+            "Empty History",
+            &[topic_id],
+        );
+        write_history(&config, owner_id, topic_id, serde_json::json!([]));
+
+        let initial = reconciler.reconcile().await.expect("ingest empty history");
+        assert_eq!(initial.files_ingested, 1);
+        assert_eq!(database.stats().expect("empty history stats").messages, 0);
+        let unchanged = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile unchanged empty history");
+        assert_eq!(unchanged.files_ingested, 0);
+        assert_eq!(unchanged.files_skipped, 1);
     }
 
     #[tokio::test]

@@ -1801,7 +1801,11 @@ fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicM
             "SELECT t.config_hash, t.content_hash, t.updated_at, t.deleted_at,
                 t.source_path, hs.status, hs.last_error
          FROM topics t
-         LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id
          WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3",
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
             |row| {
@@ -1826,7 +1830,11 @@ fn load_topic_manifest_rows(database: &Database) -> Result<HashMap<TopicKey, Top
         "SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
                 t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
          FROM topics t
-         LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id
          ORDER BY t.owner_type, t.owner_id, t.topic_id",
     )?;
     let rows = statement
@@ -1892,7 +1900,11 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
         .query_row(
             "SELECT t.source_path, hs.status, hs.last_error
              FROM topics t
-             LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+             LEFT JOIN history_sources hs
+               ON hs.source_path=t.source_path
+              AND hs.owner_type=t.owner_type
+              AND hs.owner_id=t.owner_id
+              AND hs.topic_id=t.topic_id
              WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
                AND t.deleted_at IS NULL",
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
@@ -2237,14 +2249,15 @@ mod tests {
     };
 
     use super::{
-        avatar_manifest, load_message_states, manifest, message_diff,
-        mobile_owner_config_hash_from_value, owner_content_hash, owner_manifest, pull_entities,
-        pull_topic_messages, push_topic_messages, stable_stringify, topic_diff, topic_manifest,
-        topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
-        ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
-        MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
-        MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
-        TopicDiffRequest, TopicDiffState, TopicManifestState,
+        avatar_manifest, ensure_topic_manifest_row_healthy, load_message_states,
+        load_topic_manifest_row, manifest, message_diff, mobile_owner_config_hash_from_value,
+        owner_content_hash, owner_manifest, pull_entities, pull_topic_messages,
+        push_topic_messages, stable_stringify, topic_diff, topic_manifest, topic_manifests,
+        AvatarManifestState, EntitiesPullRequest, EntityPullItem, ManifestIdentity, ManifestItem,
+        ManifestRequest, ManifestResponse, MessageDeletedState, MessageDiffRequest,
+        MessageDiffResult, MessageDiffState, MessageLiveState, MessageVersionState,
+        MessagesPullTopic, MessagesPushTopic, OwnerManifestState, TopicDiffRequest, TopicDiffState,
+        TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -3226,6 +3239,73 @@ mod tests {
         )
         .expect_err("invalid source must fail closed");
         assert!(error.to_string().contains("history source is not ready"));
+    }
+
+    #[tokio::test]
+    async fn ready_source_identity_mismatch_never_blesses_another_topic() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let shared_topic_id = "topic-a";
+        let primary_history = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &primary_history,
+            br#"[{"id":"m1","role":"user","content":"primary","timestamp":1}]"#,
+        )
+        .expect("write primary history");
+        fs::create_dir_all(config.agents_dir.join("agent-b")).expect("create second agent");
+        fs::create_dir_all(config.user_data_dir.join("agent-b/topics/topic-a"))
+            .expect("create second topic");
+        fs::write(
+            config.agents_dir.join("agent-b/config.json"),
+            serde_json::to_vec(&json!({
+                "name":"Agent B",
+                "topics":[{"id":shared_topic_id,"name":"Shared ID","createdAt":2}]
+            }))
+            .expect("serialize second agent"),
+        )
+        .expect("write second agent config");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-b/topics/topic-a/history.json"),
+            br#"[{"id":"m2","role":"user","content":"secondary","timestamp":2}]"#,
+        )
+        .expect("write second history");
+        reconciler.reconcile().await.expect("initial reconcile");
+
+        database
+            .connection
+            .lock()
+            .execute(
+                "UPDATE history_sources SET owner_id='agent-b' WHERE source_path=?1",
+                [primary_history.to_string_lossy().as_ref()],
+            )
+            .expect("misbind source identity");
+        let primary_key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: shared_topic_id.to_string(),
+        };
+        let row = load_topic_manifest_row(&database, &primary_key)
+            .expect("load mismatched source manifest row");
+        assert_eq!(row.source_status, None);
+        assert!(ensure_topic_manifest_row_healthy(&row)
+            .expect_err("mismatched ready source must be unhealthy")
+            .to_string()
+            .contains("exists but has not been ingested"));
+
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile identity conflict");
+        assert_eq!(stats.files_invalid, 1);
+        let mismatched = database
+            .source_metadata(&primary_history)
+            .expect("load conflicted source")
+            .expect("conflicted source remains visible");
+        assert_eq!(mismatched.owner_id, "agent-b");
+        assert_eq!(mismatched.status, "invalid");
     }
 
     #[tokio::test]
