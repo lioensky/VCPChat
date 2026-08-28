@@ -182,6 +182,22 @@
       }
     }
   ],
+  "canonicalHashCases": [
+    {
+      "name": "escaped_dynamic_keys_and_utf8_order",
+      "value": {
+        "memberTags": {
+          "😀": "astral",
+          "": "private-use",
+          "a\":\"x\",\"b": "y",
+          "line\nkey": "control",
+          "slash\\key": "slash"
+        }
+      },
+      "expectedCanonical": "{\"memberTags\":{\"a\\\":\\\"x\\\",\\\"b\":\"y\",\"line\\nkey\":\"control\",\"slash\\\\key\":\"slash\",\"\":\"private-use\",\"😀\":\"astral\"}}",
+      "expectedHash": "ec2a40f5180600d91ea1621b75e00db55cbbdca6ad1db1c23841c426c81e3670"
+    }
+  ],
   "invalidFrames": [
     {
       "name": "tombstoned_message",

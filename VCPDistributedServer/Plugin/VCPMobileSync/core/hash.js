@@ -4,6 +4,13 @@
 
 const crypto = require("crypto");
 
+function sortUtf8Keys(keys) {
+  const encoded = new Map(keys.map((key) => [key, Buffer.from(key, "utf8")]));
+  return keys.sort((left, right) =>
+    Buffer.compare(encoded.get(left), encoded.get(right))
+  );
+}
+
 /**
  * 稳定序列化 JSON 对象 (按 key 排序)
  * @param {any} obj - 要序列化的对象
@@ -35,11 +42,11 @@ function stableStringify(obj, key = "") {
   }
 
   if (typeof obj === "object") {
-    const keys = Object.keys(obj).sort();
+    const keys = sortUtf8Keys(Object.keys(obj));
     return (
       "{" +
       keys
-        .map((k) => `"${k}":${stableStringify(obj[k], k)}`)
+        .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k], k)}`)
         .join(",") +
       "}"
     );
@@ -144,7 +151,9 @@ function computeAggregatedHash(hashes) {
     return "";
   }
   const sorted = [...hashes].sort();
-  return crypto.createHash("sha256").update(sorted.join("")).digest("hex");
+  const hasher = crypto.createHash("sha256");
+  for (const hash of sorted) hasher.update(hash);
+  return hasher.digest("hex");
 }
 
 module.exports = {

@@ -31,6 +31,38 @@ const GROUP_DEFAULTS = {
   avatarCalculatedColor: null,
 };
 
+function isUnicodeScalarString(value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizeMemberTags(value) {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("memberTags must be an object of string values");
+  }
+
+  const entries = Object.entries(value).map(([agentId, tags]) => {
+    if (!agentId || !isUnicodeScalarString(agentId)) {
+      throw new TypeError("memberTags keys must be non-empty Unicode strings");
+    }
+    if (typeof tags !== "string") {
+      throw new TypeError(`memberTags[${JSON.stringify(agentId)}] must be a string`);
+    }
+    return [agentId, tags];
+  });
+  return Object.fromEntries(entries);
+}
+
 function resolveCentralIndexPreference(pluginConfig = {}, chatDataService = null) {
   const hasPluginSetting =
     Object.prototype.hasOwnProperty.call(
@@ -93,7 +125,7 @@ function createGroupConfig(id, dto) {
     members: dto.members ?? GROUP_DEFAULTS.members,
     mode: dto.mode ?? GROUP_DEFAULTS.mode,
     tagMatchMode: dto.tagMatchMode ?? GROUP_DEFAULTS.tagMatchMode,
-    memberTags: dto.memberTags ?? GROUP_DEFAULTS.memberTags,
+    memberTags: normalizeMemberTags(dto.memberTags ?? GROUP_DEFAULTS.memberTags),
     groupPrompt: dto.groupPrompt ?? GROUP_DEFAULTS.groupPrompt,
     invitePrompt: dto.invitePrompt ?? GROUP_DEFAULTS.invitePrompt,
     useUnifiedModel: dto.useUnifiedModel ?? GROUP_DEFAULTS.useUnifiedModel,
@@ -176,6 +208,7 @@ module.exports = {
   AGENT_DEFAULTS,
   GROUP_DEFAULTS,
   AGENT_TOPIC_DEFAULTS,
+  normalizeMemberTags,
   createAgentConfig,
   createGroupConfig,
   createAgentTopic,

@@ -2021,7 +2021,14 @@ fn mobile_owner_sync_dto_from_value(
             );
             insert_defaulted(&mut dto, object, "members", Value::Array(Vec::new()));
             insert_defaulted(&mut dto, object, "mode", Value::String("sequential".into()));
-            insert_defaulted(&mut dto, object, "memberTags", Value::Object(Map::new()));
+            dto.insert(
+                "memberTags".into(),
+                normalize_member_tags(defaulted_value(
+                    object,
+                    "memberTags",
+                    Value::Object(Map::new()),
+                ))?,
+            );
             insert_defaulted(
                 &mut dto,
                 object,
@@ -2109,6 +2116,23 @@ fn defaulted_value(source: &Map<String, Value>, key: &str, default: Value) -> Va
         .unwrap_or(default)
 }
 
+fn normalize_member_tags(value: Value) -> Result<Value> {
+    let member_tags = value
+        .as_object()
+        .context("memberTags must be an object of string values")?;
+    for (agent_id, tags) in member_tags {
+        anyhow::ensure!(
+            !agent_id.is_empty(),
+            "memberTags keys must be non-empty strings"
+        );
+        anyhow::ensure!(
+            tags.is_string(),
+            "memberTags[{agent_id:?}] must be a string"
+        );
+    }
+    Ok(value)
+}
+
 fn normalize_float(value: &Value) -> Value {
     let number = match value {
         Value::String(value) => value.parse::<f64>().ok(),
@@ -2166,7 +2190,7 @@ fn stable_stringify(value: &Value, key: &str) -> String {
         ),
         Value::Object(object) => {
             let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort();
+            keys.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
             format!(
                 "{{{}}}",
                 keys.into_iter()
@@ -2215,12 +2239,12 @@ mod tests {
     use super::{
         avatar_manifest, load_message_states, manifest, message_diff,
         mobile_owner_config_hash_from_value, owner_content_hash, owner_manifest, pull_entities,
-        pull_topic_messages, push_topic_messages, topic_diff, topic_manifest, topic_manifests,
-        AvatarManifestState, EntitiesPullRequest, EntityPullItem, ManifestIdentity, ManifestItem,
-        ManifestRequest, ManifestResponse, MessageDeletedState, MessageDiffRequest,
-        MessageDiffResult, MessageDiffState, MessageLiveState, MessageVersionState,
-        MessagesPullTopic, MessagesPushTopic, OwnerManifestState, TopicDiffRequest, TopicDiffState,
-        TopicManifestState,
+        pull_topic_messages, push_topic_messages, stable_stringify, topic_diff, topic_manifest,
+        topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
+        ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
+        MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
+        MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
+        TopicDiffRequest, TopicDiffState, TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -2232,7 +2256,7 @@ mod tests {
             topic_leaf_hash, WireWarnings,
         },
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
     use tempfile::TempDir;
 
     fn owner_key(owner_type: OwnerType, owner_id: &str) -> OwnerKey {
@@ -2255,6 +2279,32 @@ mod tests {
             ManifestIdentity::Owner(key) => &key.owner_id,
             ManifestIdentity::Topic(key) => &key.owner_id,
             ManifestIdentity::Avatar(key) => &key.owner_id,
+        }
+    }
+
+    #[test]
+    fn canonical_hash_matches_the_shared_cross_language_vectors() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/message_canonical_contract.json"
+        ))
+        .expect("parse canonical hash fixture");
+        for case in fixture["canonicalHashCases"]
+            .as_array()
+            .expect("canonical hash cases")
+        {
+            let canonical = stable_stringify(&case["value"], "");
+            assert_eq!(
+                canonical,
+                case["expectedCanonical"].as_str().expect("canonical bytes"),
+                "case {}",
+                case["name"].as_str().unwrap_or("unnamed")
+            );
+            assert_eq!(
+                sha256_hex(canonical.as_bytes()),
+                case["expectedHash"].as_str().expect("canonical hash"),
+                "case {}",
+                case["name"].as_str().unwrap_or("unnamed")
+            );
         }
     }
 
@@ -2509,6 +2559,32 @@ mod tests {
             mobile_owner_config_hash_from_value(OwnerType::Agent, &changed)
                 .expect("hash changed agent")
         );
+    }
+
+    #[test]
+    fn group_owner_hash_requires_string_member_tags_with_non_empty_keys() {
+        let valid = json!({
+            "name": "Group",
+            "members": ["agent-a"],
+            "mode": "naturerandom",
+            "memberTags": { "agent-a": "猫娘,科学", "历史成员": "" },
+            "useUnifiedModel": false,
+            "createdAt": 1
+        });
+        mobile_owner_config_hash_from_value(OwnerType::Group, &valid)
+            .expect("hash string memberTags map");
+
+        for member_tags in [json!({ "agent-a": ["猫娘"] }), json!({ "": "猫娘" })] {
+            let invalid = json!({
+                "name": "Group",
+                "members": ["agent-a"],
+                "mode": "naturerandom",
+                "memberTags": member_tags,
+                "useUnifiedModel": false,
+                "createdAt": 1
+            });
+            assert!(mobile_owner_config_hash_from_value(OwnerType::Group, &invalid).is_err());
+        }
     }
 
     #[test]

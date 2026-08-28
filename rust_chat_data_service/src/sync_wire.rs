@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 
 use crate::{domain::TopicKey, ingest::sha256_hex};
 
@@ -350,8 +351,12 @@ pub(crate) fn aggregate_hash(mut hashes: Vec<String>) -> String {
     if hashes.is_empty() {
         return String::new();
     }
-    hashes.sort();
-    sha256_hex(hashes.concat().as_bytes())
+    hashes.sort_unstable();
+    let mut hasher = Sha256::new();
+    for hash in hashes {
+        hasher.update(hash.as_bytes());
+    }
+    hex::encode(hasher.finalize())
 }
 
 pub(crate) fn message_leaf_hash(message_id: &str, message_hash: &str) -> String {
