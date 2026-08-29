@@ -60,8 +60,24 @@ const settingsManager = (() => {
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
-    let agentTtsDirectorPromptInput, addAgentTtsDirectorPromptBtn, agentTtsDirectorPromptsContainer;
+    let agentTtsDirectorPromptInput, addAgentTtsDirectorPromptBtn, fillAgentTtsDirectorTemplateBtn, agentTtsDirectorPromptsContainer;
     let currentAgentTtsDirectorPrompts = [];
+    let agentTtsPrimarySelectController = null;
+    let agentTtsSecondarySelectController = null;
+    const TTS_DIRECTOR_TEMPLATE = `【角色】
+写清人物的身份、年龄、性格底色、外形气质与说话习惯。
+
+【场景】
+交代此刻发生了什么、和谁说话、情绪处在什么位置。
+
+【指导】
+像导演一样下达演绎要领：
+- 语速与顿挫：
+- 气息与虚实：
+- 停顿与重音：
+- 共鸣位置：
+- 音色质感：
+- 情绪起伏：`;
     let stripRegexListContainer;
 
     // --- New Regex Modal Elements ---
@@ -576,9 +592,30 @@ const settingsManager = (() => {
      * @param {string} currentPrimaryVoice - The currently selected primary voice.
      * @param {string} currentSecondaryVoice - The currently selected secondary voice.
      */
+    function ensureThemedTtsSelects() {
+        if (!window.VCPUI || document.documentElement.dataset.uiMode !== 'next') return;
+        try {
+            agentTtsPrimarySelectController = window.VCPUI.enhance(
+                'Select',
+                agentTtsVoicePrimarySelect,
+                { label: '主语言模型', size: 'md' }
+            );
+            agentTtsSecondarySelectController = window.VCPUI.enhance(
+                'Select',
+                agentTtsVoiceSecondarySelect,
+                { label: '副语言模型', size: 'md' }
+            );
+            agentTtsPrimarySelectController?.refresh?.();
+            agentTtsSecondarySelectController?.refresh?.();
+        } catch (error) {
+            console.warn('[SettingsManager] Failed to apply themed TTS Select proxy:', error);
+        }
+    }
+
     async function populateTtsModels(currentPrimaryVoice, currentSecondaryVoice) {
         if (!agentTtsVoicePrimarySelect || !agentTtsVoiceSecondarySelect) return;
 
+        ensureThemedTtsSelects();
         const globalSettings = getGlobalSettings();
         const isNetworkMode = globalSettings.voiceMode === 'network';
         const commitOptions = (select, options, selectedValue = '') => {
@@ -664,6 +701,7 @@ const settingsManager = (() => {
             }
             commitOptions(agentTtsVoicePrimarySelect, primaryOptions, currentPrimaryVoice);
             commitOptions(agentTtsVoiceSecondarySelect, secondaryOptions, currentSecondaryVoice);
+            ensureThemedTtsSelects();
         } catch (error) {
             console.error('Failed to get TTS models:', error);
             const errorLabel = isNetworkMode ? '获取网络音色失败' : '获取模型失败';
@@ -677,8 +715,40 @@ const settingsManager = (() => {
             secondaryErrorOption.textContent = errorLabel;
             commitOptions(agentTtsVoicePrimarySelect, [primaryErrorOption]);
             commitOptions(agentTtsVoiceSecondarySelect, [secondaryErrorOption]);
+            ensureThemedTtsSelects();
             uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
         }
+    }
+
+    function resizeTtsDirectorEditor(editor, expanded = editor === document.activeElement) {
+        if (!editor) return;
+        if (!expanded) {
+            editor.style.height = '';
+            editor.rows = 1;
+            return;
+        }
+        editor.rows = 4;
+        editor.style.height = 'auto';
+        editor.style.height = `${Math.min(Math.max(editor.scrollHeight, 132), 360)}px`;
+    }
+
+    function bindTtsDirectorEditor(editor, onInput) {
+        editor.addEventListener('focus', () => {
+            editor.closest('.tts-director-item, .tts-director-composer')?.classList.add('is-editing');
+            resizeTtsDirectorEditor(editor, true);
+            scheduleStickyButtonsRefresh();
+        });
+        editor.addEventListener('input', () => {
+            onInput?.(editor.value);
+            resizeTtsDirectorEditor(editor, true);
+            updateSectionSummary('tts');
+            scheduleStickyButtonsRefresh();
+        });
+        editor.addEventListener('blur', () => {
+            editor.closest('.tts-director-item, .tts-director-composer')?.classList.remove('is-editing');
+            resizeTtsDirectorEditor(editor, false);
+            scheduleStickyButtonsRefresh();
+        });
     }
 
     function renderTtsDirectorPrompts() {
@@ -687,35 +757,39 @@ const settingsManager = (() => {
 
         currentAgentTtsDirectorPrompts.forEach((prompt, index) => {
             const row = document.createElement('div');
-            row.className = 'model-input-container';
+            row.className = 'tts-director-item';
 
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = prompt;
-            input.setAttribute('aria-label', `导演提示词 ${index + 1}`);
-            input.addEventListener('input', () => {
-                currentAgentTtsDirectorPrompts[index] = input.value;
-                updateSectionSummary('tts');
+            const editor = document.createElement('textarea');
+            editor.className = 'tts-director-editor';
+            editor.rows = 1;
+            editor.value = prompt;
+            editor.setAttribute('aria-label', `导演提示词 ${index + 1}`);
+            bindTtsDirectorEditor(editor, value => {
+                currentAgentTtsDirectorPrompts[index] = value;
             });
-            input.addEventListener('blur', () => {
-                currentAgentTtsDirectorPrompts = currentAgentTtsDirectorPrompts
-                    .map(item => String(item || '').trim())
-                    .filter(Boolean);
-                renderTtsDirectorPrompts();
+            editor.addEventListener('blur', () => {
+                const value = editor.value.trim();
+                if (value) {
+                    currentAgentTtsDirectorPrompts[index] = value;
+                } else {
+                    currentAgentTtsDirectorPrompts.splice(index, 1);
+                    renderTtsDirectorPrompts();
+                }
             });
 
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
-            removeButton.className = 'small-button';
+            removeButton.className = 'small-button tts-director-action-button';
             removeButton.textContent = '−';
             removeButton.title = '删除该导演提示词';
             removeButton.setAttribute('aria-label', `删除导演提示词 ${index + 1}`);
+            removeButton.addEventListener('mousedown', event => event.preventDefault());
             removeButton.addEventListener('click', () => {
                 currentAgentTtsDirectorPrompts.splice(index, 1);
                 renderTtsDirectorPrompts();
             });
 
-            row.append(input, removeButton);
+            row.append(editor, removeButton);
             agentTtsDirectorPromptsContainer.appendChild(row);
         });
         updateSectionSummary('tts');
@@ -854,6 +928,7 @@ const settingsManager = (() => {
             ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
             agentTtsDirectorPromptInput = document.getElementById('agentTtsDirectorPromptInput');
             addAgentTtsDirectorPromptBtn = document.getElementById('addAgentTtsDirectorPromptBtn');
+            fillAgentTtsDirectorTemplateBtn = document.getElementById('fillAgentTtsDirectorTemplateBtn');
             agentTtsDirectorPromptsContainer = document.getElementById('agentTtsDirectorPromptsContainer');
 
             // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
@@ -1023,11 +1098,23 @@ const settingsManager = (() => {
             }
 
             if (addAgentTtsDirectorPromptBtn) {
+                addAgentTtsDirectorPromptBtn.addEventListener('mousedown', event => event.preventDefault());
                 addAgentTtsDirectorPromptBtn.addEventListener('click', addTtsDirectorPrompt);
             }
+            if (fillAgentTtsDirectorTemplateBtn) {
+                fillAgentTtsDirectorTemplateBtn.addEventListener('click', () => {
+                    const existing = agentTtsDirectorPromptInput.value.trim();
+                    agentTtsDirectorPromptInput.value = existing
+                        ? `${existing}\n\n${TTS_DIRECTOR_TEMPLATE}`
+                        : TTS_DIRECTOR_TEMPLATE;
+                    agentTtsDirectorPromptInput.focus();
+                    resizeTtsDirectorEditor(agentTtsDirectorPromptInput, true);
+                });
+            }
             if (agentTtsDirectorPromptInput) {
+                bindTtsDirectorEditor(agentTtsDirectorPromptInput);
                 agentTtsDirectorPromptInput.addEventListener('keydown', event => {
-                    if (event.key !== 'Enter') return;
+                    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
                     event.preventDefault();
                     addTtsDirectorPrompt();
                 });
@@ -1048,6 +1135,12 @@ const settingsManager = (() => {
                     }
                 });
             }
+
+            // 将 TTS 原生 Select 升级为主题化 WebAwesome 代理。
+            // VCPUI API 就绪不等于 wa-select 已完成注册；组件包加载完成后
+            // 必须再尝试一次，才能从 native controller 升级为 WA proxy。
+            ensureThemedTtsSelects();
+            window.addEventListener('vcp-webawesome-loaded', ensureThemedTtsSelects, { once: true });
 
             // 创建正则设置UI
             createStripRegexUI();
