@@ -26,9 +26,42 @@ const GROUP_DEFAULTS = {
   useUnifiedModel: false,
   unifiedModel: "",
   tagMatchMode: "strict",
+  createdAt: 0,
   avatar: null,
   avatarCalculatedColor: null,
 };
+
+function isUnicodeScalarString(value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizeMemberTags(value) {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("memberTags must be an object of string values");
+  }
+
+  const entries = Object.entries(value).map(([agentId, tags]) => {
+    if (!agentId || !isUnicodeScalarString(agentId)) {
+      throw new TypeError("memberTags keys must be non-empty Unicode strings");
+    }
+    if (typeof tags !== "string") {
+      throw new TypeError(`memberTags[${JSON.stringify(agentId)}] must be a string`);
+    }
+    return [agentId, tags];
+  });
+  return Object.fromEntries(entries);
+}
 
 function resolveCentralIndexPreference(pluginConfig = {}, chatDataService = null) {
   const hasPluginSetting =
@@ -61,11 +94,11 @@ const AGENT_TOPIC_DEFAULTS = {
  * @returns {object} 完整配置
  */
 function createAgentConfig(id, dto) {
-  const name = dto.name || AGENT_DEFAULTS.name;
+  const name = dto.name ?? AGENT_DEFAULTS.name;
   return {
     // 注意：Agent 配置不写入 id 字段，id 由目录名推导
     name,
-    systemPrompt: dto.systemPrompt || `你是 ${name}。`,
+    systemPrompt: dto.systemPrompt ?? `你是 ${name}。`,
     model: dto.model ?? AGENT_DEFAULTS.model,
     temperature: dto.temperature ?? AGENT_DEFAULTS.temperature,
     contextTokenLimit: dto.contextTokenLimit ?? AGENT_DEFAULTS.contextTokenLimit,
@@ -86,18 +119,18 @@ function createAgentConfig(id, dto) {
 function createGroupConfig(id, dto) {
   return {
     id,
-    name: dto.name || GROUP_DEFAULTS.name,
+    name: dto.name ?? GROUP_DEFAULTS.name,
     avatar: GROUP_DEFAULTS.avatar,
     avatarCalculatedColor: GROUP_DEFAULTS.avatarCalculatedColor,
     members: dto.members ?? GROUP_DEFAULTS.members,
     mode: dto.mode ?? GROUP_DEFAULTS.mode,
     tagMatchMode: dto.tagMatchMode ?? GROUP_DEFAULTS.tagMatchMode,
-    memberTags: dto.memberTags ?? GROUP_DEFAULTS.memberTags,
+    memberTags: normalizeMemberTags(dto.memberTags ?? GROUP_DEFAULTS.memberTags),
     groupPrompt: dto.groupPrompt ?? GROUP_DEFAULTS.groupPrompt,
     invitePrompt: dto.invitePrompt ?? GROUP_DEFAULTS.invitePrompt,
     useUnifiedModel: dto.useUnifiedModel ?? GROUP_DEFAULTS.useUnifiedModel,
     unifiedModel: dto.unifiedModel ?? GROUP_DEFAULTS.unifiedModel,
-    createdAt: dto.createdAt || Date.now(),
+    createdAt: dto.createdAt ?? GROUP_DEFAULTS.createdAt,
     topics: [],
   };
 }
@@ -149,12 +182,11 @@ function createDesktopAttachment(dto, desktopPath, ext, fallbackCreatedAt = 0) {
   const internalFileName = hash ? `${hash}${ext}` : "";
   const desktopSrc = desktopPath ? `file://${desktopPath}` : "";
 
-  return {
+  const attachment = {
     type,
     src: desktopSrc,
     name,
     size,
-    status: dto.status || "ready",
     _fileManagerData: {
       id: `attachment_${hash}`,
       name,
@@ -168,12 +200,15 @@ function createDesktopAttachment(dto, desktopPath, ext, fallbackCreatedAt = 0) {
       imageFrames: dto.imageFrames || null,
     }
   };
+  if (desktopPath) attachment.status = "ready";
+  return attachment;
 }
 
 module.exports = {
   AGENT_DEFAULTS,
   GROUP_DEFAULTS,
   AGENT_TOPIC_DEFAULTS,
+  normalizeMemberTags,
   createAgentConfig,
   createGroupConfig,
   createAgentTopic,

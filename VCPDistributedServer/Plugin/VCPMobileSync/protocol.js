@@ -1,8 +1,8 @@
 "use strict";
 
 const FINAL_ACK_IDENTITY_FIELDS = ["sessionId", "attemptId", "nonce"];
-const WIRE_PROTOCOL_VERSION = "1.2";
-const EXPECTED_PLUGIN_VERSION = "1.2.0";
+const WIRE_PROTOCOL_VERSION = "1.4";
+const SYNC_PHASES = new Set(["owner_metadata", "topic_metadata", "messages"]);
 
 function parseJsonWithoutDuplicateKeys(text) {
   if (typeof text !== "string") {
@@ -127,6 +127,97 @@ function requireNonEmptyString(value, field) {
   return value;
 }
 
+function requireExactKeys(payload, fields, label) {
+  const expected = new Set(fields);
+  const actual = Object.keys(payload);
+  if (
+    actual.length !== expected.size ||
+    actual.some((field) => !expected.has(field))
+  ) {
+    const error = new Error(`${label} has unexpected or missing fields`);
+    error.code = "PROTOCOL_INVALID";
+    throw error;
+  }
+}
+
+function validateSyncRequestFrame(payload) {
+  switch (payload.type) {
+    case "VERSION_CHECK":
+      requireExactKeys(
+        payload,
+        ["type", "mobileVersion", "protocolVersion"],
+        payload.type,
+      );
+      break;
+    case "PHASE_START":
+      requireExactKeys(payload, ["type", "phase"], payload.type);
+      break;
+    case "PHASE_COMPLETED":
+      requireExactKeys(
+        payload,
+        payload.phase === "messages"
+          ? ["type", "phase", "sessionId", "attemptId", "nonce"]
+          : ["type", "phase"],
+        payload.type,
+      );
+      break;
+    case "SYNC_MANIFEST_REQUEST":
+      if (!["owner", "topic", "avatar"].includes(payload.manifestType)) {
+        throw Object.assign(new Error("Invalid manifestType"), {
+          code: "PROTOCOL_INVALID",
+        });
+      }
+      requireExactKeys(
+        payload,
+        payload.manifestType === "topic"
+          ? ["type", "manifestType", "items", "targetedOwners"]
+          : ["type", "manifestType", "items"],
+        payload.type,
+      );
+      break;
+    case "SYNC_TOPIC_DIFF_REQUEST":
+    case "SYNC_MESSAGE_DIFF_REQUEST":
+      requireExactKeys(payload, ["type", "topics"], payload.type);
+      break;
+    case "SYNC_ENTITY_DELETE": {
+      const fields = {
+        owner: ["type", "targetType", "ownerType", "ownerId", "deletedAt"],
+        topic: [
+          "type",
+          "targetType",
+          "ownerType",
+          "ownerId",
+          "topicId",
+          "deletedAt",
+        ],
+        avatar: ["type", "targetType", "ownerType", "ownerId", "deletedAt"],
+        message: [
+          "type",
+          "targetType",
+          "ownerType",
+          "ownerId",
+          "topicId",
+          "msgId",
+          "deletedAt",
+        ],
+      }[payload.targetType];
+      if (!fields) {
+        throw Object.assign(new Error("Invalid delete targetType"), {
+          code: "PROTOCOL_INVALID",
+        });
+      }
+      requireExactKeys(payload, fields, payload.type);
+      break;
+    }
+    case "SYNC_ERROR":
+      requireExactKeys(payload, ["type", "error"], payload.type);
+      break;
+    default:
+      break;
+  }
+  return payload;
+}
+
 function createVersionAck(payload, pluginVersion) {
   if (!payload || payload.type !== "VERSION_CHECK") {
     const error = new Error("expected VERSION_CHECK");
@@ -145,13 +236,7 @@ function createVersionAck(payload, pluginVersion) {
     error.code = "PROTOCOL_MISMATCH";
     throw error;
   }
-  if (pluginVersion !== EXPECTED_PLUGIN_VERSION) {
-    const error = new Error(
-      `plugin package mismatch: expected ${EXPECTED_PLUGIN_VERSION}, received ${pluginVersion}`,
-    );
-    error.code = "PLUGIN_VERSION_MISMATCH";
-    throw error;
-  }
+  requireNonEmptyString(pluginVersion, "pluginVersion");
   return {
     type: "VERSION_ACK",
     pluginVersion,
@@ -167,12 +252,31 @@ function createVersionAck(payload, pluginVersion) {
  */
 function createPhaseAck(payload, { echoFinalIdentity = false } = {}) {
   const source = payload && typeof payload === "object" ? payload : {};
+  if (!SYNC_PHASES.has(source.phase)) {
+    const error = new Error("phase must be owner_metadata, topic_metadata or messages");
+    error.code = "PROTOCOL_INVALID";
+    throw error;
+  }
   const ack = {
     type: "PHASE_ACK",
-    phase: source.phase || "owner_metadata",
+    phase: source.phase,
   };
 
   if (echoFinalIdentity) {
+    if (source.phase === "messages") {
+      if (
+        !Number.isSafeInteger(source.sessionId) ||
+        !Number.isSafeInteger(source.attemptId) ||
+        typeof source.nonce !== "string" ||
+        source.nonce.length === 0
+      ) {
+        const error = new Error(
+          "messages PHASE_COMPLETED requires sessionId, attemptId and nonce",
+        );
+        error.code = "PROTOCOL_INVALID";
+        throw error;
+      }
+    }
     for (const field of FINAL_ACK_IDENTITY_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(source, field)) {
         ack[field] = source[field];
@@ -184,9 +288,9 @@ function createPhaseAck(payload, { echoFinalIdentity = false } = {}) {
 }
 
 module.exports = {
-  EXPECTED_PLUGIN_VERSION,
   WIRE_PROTOCOL_VERSION,
   createPhaseAck,
   createVersionAck,
   parseJsonWithoutDuplicateKeys,
+  validateSyncRequestFrame,
 };

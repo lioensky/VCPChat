@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 
-use crate::ingest::sha256_hex;
+use crate::{domain::TopicKey, ingest::sha256_hex};
 
 pub const MAX_WARNING_SAMPLES: usize = 8;
 const MAX_SAFE_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
@@ -175,7 +176,7 @@ pub fn canonicalize_message(
 
     // topicId 是来源元数据而非消息身份：frame topic 才是双端存储权威，消息指纹
     // 也不含 topicId。话题分支会合法地让消息携带旧话题的 topicId（1.0 时代从未
-    // 校验过），因此 Wire 1.1 硬切引入的"topicId 必须等于 frame topic"硬校验
+    // 校验过），因此早期引入的"topicId 必须等于 frame topic"硬校验
     // 降级为 frame 权威归一化：不一致（或非字符串）时重写为 frame topic。
     // 这是分支话题的确定性正常处理路径，不是异常——按 debug 级记录，
     // 避免逐条消息刷 WARN 淹没真正的告警。
@@ -227,6 +228,13 @@ pub fn canonicalize_message(
             &format!("Message {message_id} timestamp"),
         )?),
     );
+    if let Some(updated_at) = object
+        .get("updatedAt")
+        .and_then(Value::as_i64)
+        .filter(|value| (0..=9_007_199_254_740_991).contains(value))
+    {
+        canonical.insert("updatedAt".to_string(), Value::from(updated_at));
+    }
 
     for (key, expected) in [
         ("isThinking", "boolean"),
@@ -246,7 +254,7 @@ pub fn canonicalize_message(
         canonical.insert(key.to_string(), value);
     }
 
-    for key in ["finishReason", "avatarColor"] {
+    for key in ["finishReason"] {
         if let Some(value) = object.get(key).filter(|value| !value.is_null()) {
             anyhow::ensure!(
                 value.is_string(),
@@ -281,10 +289,22 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
     let object = message
         .as_object()
         .context("canonical message must be an object")?;
+    let message_id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .context("canonical message id is missing")?;
+    let role = object
+        .get("role")
+        .and_then(Value::as_str)
+        .context("canonical message role is missing")?;
     let content = object
         .get("content")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    let timestamp = object
+        .get("timestamp")
+        .and_then(Value::as_u64)
+        .context("canonical message timestamp is missing")?;
     let mut hashes = object
         .get("attachments")
         .and_then(Value::as_array)
@@ -301,6 +321,9 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
     hashes.sort();
 
     let mut input = Map::new();
+    if let Some(agent_id) = object.get("agentId").filter(|value| !value.is_null()) {
+        input.insert("agentId".to_string(), agent_id.clone());
+    }
     if !hashes.is_empty() {
         input.insert(
             "attachmentHashes".to_string(),
@@ -308,39 +331,80 @@ pub fn message_fingerprint(message: &Value) -> Result<String> {
         );
     }
     input.insert("content".to_string(), Value::String(content.to_string()));
+    input.insert("id".to_string(), Value::String(message_id.to_string()));
+    if let Some(name) = object.get("name").filter(|value| !value.is_null()) {
+        input.insert("name".to_string(), name.clone());
+    }
+    input.insert("role".to_string(), Value::String(role.to_string()));
+    input.insert("timestamp".to_string(), Value::Number(timestamp.into()));
     Ok(sha256_hex(Value::Object(input).to_string().as_bytes()))
 }
 
-pub fn canonicalize_for_wire(
-    value: Value,
-    topic_id: &str,
-    warnings: &mut WireWarnings,
-) -> Result<Value> {
-    let mut message = canonicalize_message(value, topic_id, warnings)?;
-    let hash = message_fingerprint(&message)?;
-    message
-        .as_object_mut()
-        .context("canonical message must be an object")?
-        .insert("contentHash".to_string(), Value::String(hash));
-    Ok(message)
+pub(crate) fn stored_message_fingerprint(raw: &str, topic_id: &str) -> Result<String> {
+    let value = serde_json::from_str::<Value>(raw).context("stored message JSON is invalid")?;
+    let mut warnings = WireWarnings::default();
+    let canonical = canonicalize_message(value, topic_id, &mut warnings)?;
+    message_fingerprint(&canonical)
+}
+
+pub(crate) fn aggregate_hash(mut hashes: Vec<String>) -> String {
+    if hashes.is_empty() {
+        return String::new();
+    }
+    hashes.sort_unstable();
+    let mut hasher = Sha256::new();
+    for hash in hashes {
+        hasher.update(hash.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+pub(crate) fn message_leaf_hash(message_id: &str, message_hash: &str) -> String {
+    sha256_hex(
+        serde_json::json!({
+            "id": message_id,
+            "hash": message_hash,
+        })
+        .to_string()
+        .as_bytes(),
+    )
+}
+
+pub(crate) fn topic_leaf_hash(topic_id: &str, config_hash: &str, content_hash: &str) -> String {
+    sha256_hex(
+        serde_json::json!({
+            "topicId": topic_id,
+            "configHash": config_hash,
+            "contentHash": content_hash,
+        })
+        .to_string()
+        .as_bytes(),
+    )
+}
+
+pub(crate) fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
+    sha256_hex(
+        format!(
+            "vcp-unhealthy-topic:{}:{}:{}",
+            key.owner_type.as_str(),
+            key.owner_id,
+            key.topic_id
+        )
+        .as_bytes(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use sha2::{Digest, Sha256};
-
     use super::{canonicalize_message, message_fingerprint, normalize_integer, WireWarnings};
 
-    const GOLDEN: &[u8] = include_bytes!(
-        "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
+    const CONTRACT: &[u8] = include_bytes!(
+        "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/message_canonical_contract.json"
     );
-    const GOLDEN_SHA256: &str = "62d4eecb639feb1a6e46302dc4046c622a5477d6a53463320c891757be629a9b";
-
     #[test]
-    fn protocol_1_2_golden_bundle_matches_mobile() {
-        assert_eq!(hex::encode(Sha256::digest(GOLDEN)), GOLDEN_SHA256);
-        let bundle: serde_json::Value = serde_json::from_slice(GOLDEN).expect("golden JSON");
-        assert_eq!(bundle["wireProtocol"], "1.2");
+    fn canonical_message_contract_matches_cds_projection_and_hashes() {
+        let bundle: serde_json::Value =
+            serde_json::from_slice(CONTRACT).expect("canonical contract JSON");
 
         for fixture in bundle["validFrames"].as_array().expect("valid frames") {
             let input = &fixture["input"];

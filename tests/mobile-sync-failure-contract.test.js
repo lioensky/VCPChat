@@ -6,27 +6,68 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
+const messageDiffMatrix = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "VCPDistributedServer",
+      "Plugin",
+      "VCPMobileSync",
+      "fixtures",
+      "message_diff_matrix.json",
+    ),
+    "utf8",
+  ),
+).cases;
+
 const {
   resolveCentralIndexPreference,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/config/defaults");
 const entityDatabase = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/db");
 const issue20EntityIndex = new Map();
 entityDatabase.getDb = () => ({});
-entityDatabase.getEntityIndex = (id, type) =>
-  issue20EntityIndex.get(`${type}:${id}`) || null;
-entityDatabase.upsertEntityIndex = (id, type, filePath, hash) => {
-  issue20EntityIndex.set(`${type}:${id}`, {
-    id,
-    type,
-    file_path: filePath,
-    hash,
+entityDatabase.getOwnerState = ({ ownerType, ownerId }) => {
+  return issue20EntityIndex.get(`owner:${ownerType}:${ownerId}`) || null;
+};
+entityDatabase.getTopicState = ({ topicId, ownerType, ownerId }) => {
+  return issue20EntityIndex.get(`topic:${ownerType}:${ownerId}:${topicId}`) || null;
+};
+entityDatabase.upsertOwnerState = ({
+  ownerType,
+  ownerId,
+  configPath,
+  configHash,
+}) => {
+  issue20EntityIndex.set(`owner:${ownerType}:${ownerId}`, {
+    owner_type: ownerType,
+    owner_id: ownerId,
+    config_path: configPath,
+    config_hash: configHash,
     deleted_at: null,
   });
+  return { changes: 1 };
 };
+entityDatabase.upsertTopicState = ({
+  topicId,
+  ownerType,
+  ownerId,
+  configHash,
+}) => {
+  issue20EntityIndex.set(`topic:${ownerType}:${ownerId}:${topicId}`, {
+    topic_id: topicId,
+    owner_type: ownerType,
+    owner_id: ownerId,
+    config_hash: configHash,
+    content_hash: "",
+    deleted_at: null,
+  });
+  return { changes: 1 };
+};
+entityDatabase.refreshOwnerContentHash = () => "";
 const {
-  handleSyncTopicHashBatch,
-  handleSyncTopicHashBatchV2,
-  handleSyncMessageDiffBatch,
+  handleSyncTopicDiff,
+  handleSyncMessageDiff,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/diff");
 const {
   checkIdempotency,
@@ -35,13 +76,13 @@ const {
 const {
   readHistoryStrict,
   writeHistoryAtomic,
+  resolveMessageUpdatedAt,
   markHistoryTopicUnhealthy,
   clearHistoryTopicUnhealthy,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
 const {
   getLocalManifest,
   handleSyncManifest,
-  handleMessageManifest,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest");
 const {
   uploadEntity,
@@ -51,38 +92,58 @@ function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
   return {
     prepare(sql) {
       if (fail) throw new Error("injected database failure");
-      if (sql.includes("FROM entity_index")) {
-        return { get: (topicId) => topics[topicId] };
+      if (sql.includes("FROM topics")) {
+        return { get: (...args) => topics[args.at(-1)] };
       }
-      if (sql.includes("FROM message_index")) {
-        return { all: (topicId) => messages[topicId] || [] };
+      if (sql.includes("FROM messages")) {
+        return { all: (...args) => messages[args.at(-1)] || [] };
       }
       throw new Error(`unexpected SQL in fake database: ${sql}`);
     },
   };
 }
 
-function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {}) {
+function fakeManifestDatabase({ owners = [], topics = [], avatars = [], messages = [] } = {}) {
   return {
     prepare(sql) {
       if (sql.includes("FROM avatar_index")) {
         return { all: () => avatars };
       }
-      if (sql.includes("FROM entity_index") && sql.includes("type = ?")) {
-        return { all: (type) => entities.filter((row) => row.type === type) };
+      if (sql.includes("FROM owners")) {
+        return { all: () => owners };
       }
-      if (sql.includes("FROM entity_index")) {
+      if (sql.includes("FROM topics")) {
+        return { all: () => topics };
+      }
+      if (sql.includes("FROM messages")) {
         return {
-          all: () => entities.filter((row) =>
-            ["topic", "agent_topic", "group_topic"].includes(row.type)),
+          all: (...args) =>
+            messages.filter((row) => row.topic_id === args.at(-1)),
         };
-      }
-      if (sql.includes("FROM message_index")) {
-        return { all: (topicId) => messages.filter((row) => row.topic_id === topicId) };
       }
       throw new Error(`unexpected SQL in fake manifest database: ${sql}`);
     },
   };
+}
+
+function live(messageHash, updatedAt = 1) {
+  return { messageHash, updatedAt };
+}
+
+function deleted(deletedAt = 1) {
+  return { deletedAt };
+}
+
+function compoundTopics(topics) {
+  return Object.entries(topics).map(([topicId, state]) => ({ topicId, ...state }));
+}
+
+function topicResult(response, topicId) {
+  return response.results.find((result) => result.topicId === topicId);
+}
+
+function agentOwners(...ownerIds) {
+  return ownerIds.map((ownerId) => ({ ownerType: "agent", ownerId }));
 }
 
 test("中央索引配置优先级是插件显式值 > Facade > 默认 true", () => {
@@ -109,28 +170,27 @@ test("中央索引配置优先级是插件显式值 > Facade > 默认 true", () 
 
 test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除", () => {
   const remoteHash = "a".repeat(64);
-  const result = handleSyncMessageDiffBatch(
+  const result = handleSyncMessageDiff(
     {
-      topics: {
+      topics: compoundTopics({
         "topic-live": {
-          topicHash: "c".repeat(64),
+          contentHash: "c".repeat(64),
           ownerType: "agent",
           ownerId: "agent-a",
-          messages: { "message-1": "DELETED" },
+          messages: { "message-1": deleted() },
         },
         "topic-missing": {
-          topicHash: "",
+          contentHash: "",
           ownerType: "agent",
           ownerId: "agent-a",
           messages: {},
         },
-      },
+      }),
     },
     fakeDiffDatabase({
       topics: {
         "topic-live": {
-          aggregated_hash: "desktop",
-          file_path: "/app/Agents/agent-a/config.json",
+          content_hash: "desktop",
         },
       },
       messages: {
@@ -139,12 +199,19 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
     }),
   );
 
-  assert.deepEqual(result.results["topic-live"], {
+  assert.deepEqual(topicResult(result, "topic-live"), {
+    topicId: "topic-live",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: true,
-    toPull: [],
-    toPush: false,
+    pullMessageIds: [],
+    pushTopic: true,
+    deleteMessages: [],
   });
-  assert.deepEqual(result.results["topic-missing"], {
+  assert.deepEqual(topicResult(result, "topic-missing"), {
+    topicId: "topic-missing",
+    ownerType: "agent",
+    ownerId: "agent-a",
     ok: false,
     error: {
       code: "TOPIC_NOT_FOUND",
@@ -158,61 +225,116 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
   });
 });
 
+test("Legacy Phase 3 与 CDS 共用完整仲裁矩阵", () => {
+  for (const scenario of messageDiffMatrix) {
+    const desktopMessages = scenario.desktopMessages.map((message) => ({
+      msg_id: message.msgId,
+      hash: message.messageHash ?? "0".repeat(64),
+      updated_at: message.updatedAt ?? message.deletedAt,
+      deleted_at: message.deletedAt ?? null,
+    }));
+    const response = handleSyncMessageDiff(
+      {
+        topics: [{
+          topicId: scenario.topicId,
+          ownerType: scenario.ownerType,
+          ownerId: scenario.ownerId,
+          contentHash: scenario.mobileContentHash,
+          messages: scenario.mobileMessages,
+        }],
+      },
+      fakeDiffDatabase({
+        topics: {
+          [scenario.topicId]: { content_hash: scenario.desktopContentHash },
+        },
+        messages: { [scenario.topicId]: desktopMessages },
+      }),
+    );
+
+    assert.deepEqual(
+      topicResult(response, scenario.topicId),
+      {
+        topicId: scenario.topicId,
+        ownerType: scenario.ownerType,
+        ownerId: scenario.ownerId,
+        ok: true,
+        ...scenario.expected,
+      },
+      scenario.name,
+    );
+  }
+});
+
+test("Legacy 检测更新时间覆盖物理、创建、稳定与变更四分支", () => {
+  const hash = "a".repeat(64);
+  assert.equal(resolveMessageUpdatedAt({ timestamp: 10, updatedAt: 11 }, hash, null, 99), 11);
+  assert.equal(resolveMessageUpdatedAt({ timestamp: 10 }, hash, null, 99), 10);
+  assert.equal(
+    resolveMessageUpdatedAt({ timestamp: 10 }, hash, { hash, updated_at: 12 }, 99),
+    12,
+  );
+  assert.equal(
+    resolveMessageUpdatedAt(
+      { timestamp: 10 },
+      hash,
+      { hash: "b".repeat(64), updated_at: 12 },
+      99,
+    ),
+    99,
+  );
+});
+
 test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成", () => {
   assert.throws(
     () =>
-      handleSyncMessageDiffBatch(
+      handleSyncMessageDiff(
         {
-          topics: {
+          topics: compoundTopics({
             topic: {
-              topicHash: "",
+              contentHash: "",
               ownerType: "agent",
               ownerId: "agent-a",
-              messages: { message: "not-a-hash" },
+              messages: { message: live("not-a-hash") },
             },
-          },
+          }),
         },
         fakeDiffDatabase(),
       ),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
   );
 
-  const result = handleSyncMessageDiffBatch(
+  const result = handleSyncMessageDiff(
     {
-      topics: {
+      topics: compoundTopics({
         topic: {
-          topicHash: "",
+          contentHash: "",
           ownerType: "agent",
           ownerId: "agent-a",
           messages: {},
         },
-      },
+      }),
     },
     fakeDiffDatabase({ fail: true }),
   );
-  assert.equal(result.results.topic.ok, false);
-  assert.equal(result.results.topic.error.code, "MESSAGE_DIFF_FAILED");
-  assert.match(result.results.topic.error.message, /injected database failure/);
+  const failed = topicResult(result, "topic");
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error.code, "MESSAGE_DIFF_FAILED");
+  assert.match(failed.error.message, /injected database failure/);
 });
 
-test("Phase 2.5 topic hash 对错误类型和超预算 fail closed", () => {
-  assert.throws(
-    () => handleSyncTopicHashBatch({ hashes: { topic: null } }),
-    (error) => error.code === "SYNC_PROTOCOL_INVALID",
-  );
+test("Phase 2.5 topic hash 对错误类型 fail closed", () => {
   assert.throws(
     () =>
-      handleSyncTopicHashBatchV2({
-        hashes: { topic: { configHash: "bad", contentHash: "" } },
+      handleSyncTopicDiff({
+        topics: [{
+          topicId: "topic",
+          ownerType: "agent",
+          ownerId: "agent-a",
+          configHash: "bad",
+          contentHash: "",
+        }],
       }),
     (error) => error.code === "SYNC_PROTOCOL_INVALID",
-  );
-  const hashes = Object.fromEntries(
-    Array.from({ length: 10_001 }, (_, index) => [`topic-${index}`, ""]),
-  );
-  assert.throws(
-    () => handleSyncTopicHashBatch({ hashes }),
-    (error) => error.code === "SYNC_BUDGET_EXCEEDED",
   );
 });
 
@@ -220,11 +342,8 @@ test("issue #20: 未初始化数据库不会伪装成无变化 topic", () => {
   const hash = "a".repeat(64);
   assert.throws(
     () =>
-      handleSyncTopicHashBatchV2(
+      handleSyncTopicDiff(
         {
-          hashes: {
-            "topic-issue-20": { configHash: hash, contentHash: hash },
-          },
           topics: [
             {
               topicId: "topic-issue-20",
@@ -261,8 +380,8 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
     appDataPath: directory,
   });
 
-  assert.deepEqual(agentResult, { success: true, id: agentId });
-  assert.deepEqual(groupResult, { success: true, id: groupId });
+  assert.deepEqual(agentResult, { success: true, id: agentId, type: "agent" });
+  assert.deepEqual(groupResult, { success: true, id: groupId, type: "group" });
   assert.equal(
     JSON.parse(
       fs.readFileSync(
@@ -286,22 +405,22 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
 test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () => {
   const hash = "a".repeat(64);
   const database = fakeManifestDatabase({
-    entities: [
+    topics: [
       {
-        id: "topic-a",
-        type: "topic",
-        file_path: "/app/Agents/agent-a/config.json",
-        hash,
-        aggregated_hash: "",
+        topic_id: "topic-a",
+        owner_type: "agent",
+        owner_id: "agent-a",
+        config_hash: hash,
+        content_hash: "",
         updated_at: 1,
         deleted_at: null,
       },
       {
-        id: "topic-b",
-        type: "topic",
-        file_path: "/app/Agents/agent-aa/config.json",
-        hash,
-        aggregated_hash: "",
+        topic_id: "topic-b",
+        owner_type: "agent",
+        owner_id: "agent-aa",
+        config_hash: hash,
+        content_hash: "",
         updated_at: 1,
         deleted_at: null,
       },
@@ -309,104 +428,266 @@ test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () =
   });
 
   assert.deepEqual(
-    getLocalManifest("topic", ["agent-a"], database).map((item) => item.id),
+    getLocalManifest("topic", agentOwners("agent-a"), database).map((item) => item.topicId),
     ["topic-a"],
   );
   const result = handleSyncManifest(
     {
-      dataType: "topic",
-      phase: 2,
-      targetedOwners: ["agent-a"],
-      data: [{
-        id: "topic-a",
-        hash,
+      manifestType: "topic",
+      targetedOwners: agentOwners("agent-a"),
+      items: [{
+        topicId: "topic-a",
         configHash: hash,
         contentHash: "",
-        ts: 1,
+        updatedAt: 1,
         ownerType: "agent",
         ownerId: "agent-a",
       }],
     },
     database,
   );
-  assert.deepEqual(result.data, []);
+  assert.deepEqual(result.results, []);
 
-  assert.throws(
-    () => handleSyncManifest(
-      {
-        dataType: "topic",
-        phase: 2,
-        targetedOwners: ["agent-a", "agent-b"],
-        data: [{
-          id: "topic-a",
-          hash,
-          configHash: hash,
-          contentHash: "",
-          ts: 1,
-          ownerType: "agent",
-          ownerId: "agent-b",
-        }],
-      },
-      database,
-    ),
-    (error) => error.code === "SYNC_OWNER_CONFLICT",
-  );
-});
-
-test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () => {
-  const hash = "b".repeat(64);
-  const database = fakeManifestDatabase();
-  assert.throws(
-    () => handleSyncManifest({ dataType: "agent", phase: 1, data: {} }, database),
-    (error) => error.code === "SYNC_PROTOCOL_INVALID",
-  );
-  const item = {
-    id: "agent-a",
-    hash,
-    configHash: hash,
-    contentHash: "",
-    ts: 1,
-  };
-  assert.throws(
-    () => handleSyncManifest(
-      { dataType: "agent", phase: 1, data: [item, item] },
-      database,
-    ),
-    /duplicate id/,
-  );
-  const result = handleSyncManifest(
+  const splitOwners = handleSyncManifest(
     {
-      dataType: "agent",
-      phase: 1,
-      data: [{ ...item, deletedAt: 0 }],
+      manifestType: "topic",
+      targetedOwners: agentOwners("agent-a", "agent-b"),
+      items: [{
+        topicId: "topic-a",
+        configHash: hash,
+        contentHash: "",
+        updatedAt: 1,
+        ownerType: "agent",
+        ownerId: "agent-b",
+      }],
     },
     database,
   );
-  assert.deepEqual(result.data, [
-    { id: "agent-a", action: "DELETE", deletedAt: 0 },
+  assert.deepEqual(splitOwners.results, [
+    { topicId: "topic-a", action: "PUSH", ownerType: "agent", ownerId: "agent-b" },
+    { topicId: "topic-a", action: "PULL", ownerType: "agent", ownerId: "agent-a" },
   ]);
 });
 
-test("损坏 history 的旧索引不能走 topic hash 或消息 manifest 快速成功", () => {
+test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", () => {
+  const hash = "a".repeat(64);
+  const database = fakeManifestDatabase({
+    topics: [
+      {
+        topic_id: "default",
+        owner_type: "agent",
+        owner_id: "agent-a",
+        config_hash: hash,
+        content_hash: hash,
+        updated_at: 1,
+        deleted_at: null,
+      },
+      {
+        topic_id: "topic-live",
+        owner_type: "agent",
+        owner_id: "agent-a",
+        config_hash: hash,
+        content_hash: hash,
+        updated_at: 1,
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    getLocalManifest("topic", null, database).map((item) => item.topicId),
+    ["default", "topic-live"],
+  );
+  assert.deepEqual(
+    handleSyncMessageDiff({
+      topics: compoundTopics({
+        default: {
+          contentHash: hash,
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {},
+        },
+      }),
+    }, fakeDiffDatabase({ topics: { default: { content_hash: hash } } })),
+    {
+      type: "SYNC_MESSAGE_DIFF_RESULT",
+      results: [{
+        topicId: "default",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        ok: true,
+        pullMessageIds: [],
+        pushTopic: false,
+        deleteMessages: [],
+      }],
+    },
+  );
+  const changedHash = "b".repeat(64);
+  assert.deepEqual(
+    handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: agentOwners("agent-a"),
+      items: [{
+        topicId: "default",
+        configHash: changedHash,
+        contentHash: changedHash,
+        updatedAt: 1,
+        ownerType: "agent",
+        ownerId: "agent-a",
+      }],
+    }, database),
+    { type: "SYNC_MANIFEST_RESULT", results: [
+      {
+        topicId: "default",
+        action: "PULL",
+        ownerType: "agent",
+        ownerId: "agent-a",
+      },
+      {
+        topicId: "topic-live",
+        action: "PULL",
+        ownerType: "agent",
+        ownerId: "agent-a",
+      },
+    ], manifestType: "topic" },
+  );
+});
+
+test("Owner manifest 墓碑四象限保持动作方向", () => {
+  const hash = "b".repeat(64);
+  const localItem = (ownerType, id, deletedAt) => ({
+    owner_type: ownerType,
+    owner_id: id,
+    config_hash: hash,
+    content_hash: "",
+    updated_at: 1,
+    deleted_at: deletedAt,
+  });
+  const remoteItem = (ownerType, ownerId, deletedAt = null) => deletedAt === null
+    ? { ownerType, ownerId, configHash: hash, contentHash: "", updatedAt: 1 }
+    : { ownerType, ownerId, deletedAt };
+  const database = fakeManifestDatabase({
+    owners: [
+      localItem("agent", "mobile-deleted-desktop-live", null),
+      localItem("group", "desktop-deleted-mobile-live", 21),
+      localItem("group", "desktop-deleted-mobile-missing", 22),
+    ],
+  });
+
+  const result = handleSyncManifest(
+    {
+      manifestType: "owner",
+      items: [
+        remoteItem("agent", "mobile-deleted-desktop-live", 11),
+        remoteItem("group", "mobile-deleted-desktop-missing", 12),
+        remoteItem("group", "desktop-deleted-mobile-live"),
+      ],
+    },
+    database,
+  );
+
+  assert.deepEqual(result.results, [
+    {
+      ownerId: "mobile-deleted-desktop-live",
+      action: "PUSH_DELETE",
+      deletedAt: 11,
+      ownerType: "agent",
+    },
+    {
+      ownerId: "mobile-deleted-desktop-missing",
+      action: "PUSH_DELETE",
+      deletedAt: 12,
+      ownerType: "group",
+    },
+    {
+      ownerId: "desktop-deleted-mobile-live",
+      action: "PULL_DELETE",
+      deletedAt: 21,
+      ownerType: "group",
+    },
+    {
+      ownerId: "desktop-deleted-mobile-missing",
+      action: "PULL_DELETE",
+      deletedAt: 22,
+      ownerType: "group",
+    },
+  ]);
+});
+
+test("Manifest 错型、重复身份和 deletedAt=0 均按硬切契约处理", () => {
+  const hash = "b".repeat(64);
+  const database = fakeManifestDatabase();
+  assert.throws(
+    () => handleSyncManifest({ manifestType: "owner", items: {} }, database),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  const item = {
+    ownerId: "agent-a",
+    configHash: hash,
+    contentHash: "",
+    updatedAt: 1,
+    ownerType: "agent",
+  };
+  assert.throws(
+    () => handleSyncManifest(
+      { manifestType: "owner", items: [item, item] },
+      database,
+    ),
+    /duplicate entity identity/,
+  );
+  const result = handleSyncManifest(
+    {
+      manifestType: "owner",
+      items: [{ ownerType: "agent", ownerId: "agent-a", deletedAt: 0 }],
+    },
+    database,
+  );
+  assert.deepEqual(result.results, [
+    { ownerId: "agent-a", action: "PUSH_DELETE", deletedAt: 0, ownerType: "agent" },
+  ]);
+
+  assert.throws(
+    () => handleSyncManifest({
+      manifestType: "owner",
+      items: [{ ...item, ownerType: undefined }],
+    }, database),
+    /requires agent\/group ownerType/,
+  );
+  assert.throws(
+    () => handleSyncManifest({
+      manifestType: "owner",
+      items: [{ ...item, id: "agent-a" }],
+    }, database),
+    /unexpected or missing fields/,
+  );
+});
+
+test("损坏 history 的已提交索引不能走 topic hash 快速成功", () => {
   const topicId = "topic-unhealthy";
-  markHistoryTopicUnhealthy(topicId, new Error("invalid JSON"));
+  const identity = {
+    topicId,
+    ownerType: "agent",
+    ownerId: "agent-a",
+  };
+  markHistoryTopicUnhealthy(identity, new Error("invalid JSON"));
   try {
     assert.throws(
-      () => handleSyncTopicHashBatch(
-        { hashes: { [topicId]: "" } },
-        fakeDiffDatabase({ topics: { [topicId]: { aggregated_hash: "" } } }),
-      ),
-      (error) => error.code === "HISTORY_SOURCE_INVALID",
-    );
-    assert.throws(
-      () => handleMessageManifest(
-        { topicId },
-        fakeManifestDatabase(),
+      () => handleSyncTopicDiff(
+        {
+          topics: [{
+            topicId,
+            ownerType: "agent",
+            ownerId: "agent-a",
+            configHash: "a".repeat(64),
+            contentHash: "",
+          }],
+        },
+        fakeDiffDatabase({ topics: { [topicId]: { content_hash: "" } } }),
       ),
       (error) => error.code === "HISTORY_SOURCE_INVALID",
     );
   } finally {
-    clearHistoryTopicUnhealthy(topicId);
+    clearHistoryTopicUnhealthy(identity);
   }
 });
 

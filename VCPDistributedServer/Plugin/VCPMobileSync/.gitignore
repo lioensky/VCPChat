@@ -1,2 +1,2 @@
-sync_state.db
+sync_state*.db*
 logs/

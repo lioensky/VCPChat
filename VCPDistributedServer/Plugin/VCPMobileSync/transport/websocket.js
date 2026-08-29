@@ -3,7 +3,10 @@
  */
 
 const { getLogger, setWss } = require("../core/logger");
-const { parseJsonWithoutDuplicateKeys } = require("../protocol");
+const {
+  parseJsonWithoutDuplicateKeys,
+  validateSyncRequestFrame,
+} = require("../protocol");
 const {
   ERROR_ORIGINS,
   ERROR_STAGES,
@@ -22,27 +25,22 @@ try {
 }
 
 let wss = null;
-let wsServerPort = null;
 
 function errorStageForPayload(payload, versionAccepted, currentStage) {
   if (!versionAccepted || payload?.type === "VERSION_CHECK") return "handshake";
   if (payload?.type === "SYNC_ERROR") return "shutdown";
-  if (payload?.type === "SYNC_MESSAGE_DIFF_BATCH") return "messages";
-  if (payload?.type === "GET_MESSAGE_MANIFEST") return "messages";
-  if (
-    payload?.type === "SYNC_TOPIC_HASH_BATCH" ||
-    payload?.type === "SYNC_TOPIC_HASH_BATCH_V2"
-  ) {
+  if (payload?.type === "SYNC_MESSAGE_DIFF_REQUEST") return "messages";
+  if (payload?.type === "SYNC_TOPIC_DIFF_REQUEST") {
     return "topic_validation";
   }
-  if (payload?.type === "SYNC_MANIFEST") {
-    return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
+  if (payload?.type === "SYNC_MANIFEST_REQUEST") {
+    return payload.manifestType === "topic"
       ? "topic_metadata"
       : "owner_metadata";
   }
-  if (payload?.type === "SYNC_ENTITY_UPDATE" || payload?.type === "SYNC_ENTITY_DELETE") {
-    if (payload.dataType === "message") return "messages";
-    return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
+  if (payload?.type === "SYNC_ENTITY_DELETE") {
+    if (payload.targetType === "message") return "messages";
+    return payload.targetType === "topic"
       ? "topic_metadata"
       : "owner_metadata";
   }
@@ -75,43 +73,62 @@ function errorStageForPayload(payload, versionAccepted, currentStage) {
  * @param {number} params.port - 端口
  * @param {string} params.syncToken - 同步令牌
  * @param {function} params.onMessage - 消息处理回调
- * @returns {object|null} WebSocket 服务器实例
+ * @returns {Promise<object>} listening 后解析为 WebSocket 服务器实例
  */
-function startWsServer({ port, syncToken, onMessage }) {
+async function startWsServer({ port, syncToken, onMessage }) {
   if (!WebSocket) {
     const logger = getLogger();
     logger.logOperation("websocket", "init", "wsServer", "error", "WebSocket module not available");
-    return null;
+    throw new Error("WebSocket module not available");
   }
 
-  // 关闭旧服务
-  if (wss) {
-    try {
-      wss.close();
-    } catch {}
-    wss = null;
-    wsServerPort = null;
-  }
+  await stopWsServer();
 
-  wss = new WebSocket.Server({
-    host: "0.0.0.0",
-    port,
-    maxPayload: 32 * 1024 * 1024,
-  });
-  wsServerPort = port;
-  setWss(wss);
-
-  wss.on("listening", () => {
+  let server;
+  try {
+    server = new WebSocket.Server({
+      host: "0.0.0.0",
+      port,
+      maxPayload: 32 * 1024 * 1024,
+    });
+  } catch (error) {
     const logger = getLogger();
-    logger.logInfo("websocket", `WebSocket 同步总线已启动: ws://0.0.0.0:${port}`);
+    logger.logOperation("websocket", "error", "wsServer", "error", `port=${port}, ${error.message}`);
+    throw error;
+  }
+
+  const ready = new Promise((resolve, reject) => {
+    const cleanup = () => {
+      server.removeListener("listening", onListening);
+      server.removeListener("error", onStartupError);
+    };
+    const onListening = () => {
+      cleanup();
+      wss = server;
+      setWss(server);
+      const address = server.address();
+      const boundPort = address && typeof address === "object" ? address.port : port;
+      const logger = getLogger();
+      logger.logInfo("websocket", `WebSocket 同步总线已启动: ws://0.0.0.0:${boundPort}`);
+      resolve(server);
+    };
+    const onStartupError = (error) => {
+      cleanup();
+      try {
+        server.close();
+      } catch {}
+      reject(error);
+    };
+    server.once("listening", onListening);
+    server.once("error", onStartupError);
   });
 
-  wss.on("error", (err) => {
+  server.on("error", (err) => {
     const logger = getLogger();
     logger.logOperation("websocket", "error", "wsServer", "error", `port=${port}, ${err.message}`);
   });
 
-  wss.on("connection", (ws, req) => {
+  server.on("connection", (ws, req) => {
     const requestUrl = req?.url || "/";
     const url = new URL(
       requestUrl,
@@ -128,7 +145,7 @@ function startWsServer({ port, syncToken, onMessage }) {
     if (pathname !== "/" && pathname !== "/ws-sync") {
       const logger = getLogger();
       logger.logOperation("websocket", "connection", req.socket?.remoteAddress || "unknown", "warn", `unknown path: ${pathname}`);
-      ws.close(1008, "Unsupported path");
+      ws.close(4002, "Unsupported path");
       return;
     }
 
@@ -183,6 +200,7 @@ function startWsServer({ port, syncToken, onMessage }) {
             "VERSION_CHECK may only appear once per connection",
           );
         }
+        validateSyncRequestFrame(payload);
         if (payload.type === "SYNC_ERROR") {
           throw withSyncErrorContext(parseSyncError(payload.error), {
             code: "MOBILE_SYNC_ERROR",
@@ -206,10 +224,10 @@ function startWsServer({ port, syncToken, onMessage }) {
           const responseText = JSON.stringify(response);
           const logger = getLogger();
           // 记录发送给手机端的响应摘要
-          if (response.type === "SYNC_DIFF_RESULTS" && Array.isArray(response.data)) {
-            const pullItems = response.data.filter(r => r.action === "PULL");
-            const pushItems = response.data.filter(r => r.action === "PUSH");
-            logger.logInfo("websocket", `→ 发送 ${response.type} (dataType=${response.dataType}): total=${response.data.length}, PULL=${pullItems.length}, PUSH=${pushItems.length}, bytes=${responseText.length}`);
+          if (response.type === "SYNC_MANIFEST_RESULT" && Array.isArray(response.results)) {
+            const pullItems = response.results.filter(r => r.action === "PULL");
+            const pushItems = response.results.filter(r => r.action === "PUSH");
+            logger.logInfo("websocket", `→ 发送 ${response.type} (manifestType=${response.manifestType}): total=${response.results.length}, PULL=${pullItems.length}, PUSH=${pushItems.length}, bytes=${responseText.length}`);
           } else {
             logger.logInfo("websocket", `→ 发送 ${response.type || "unknown"}: bytes=${responseText.length}`);
           }
@@ -220,7 +238,7 @@ function startWsServer({ port, syncToken, onMessage }) {
       } catch (e) {
         terminated = true;
         const logger = getLogger();
-        // Wire 1.2 错误契约：边界只允许补齐缺失的 origin/stage，不得把上游
+        // 结构化错误契约：边界只允许补齐缺失的 origin/stage，不得把上游
         // 已确认的 desktop_cds / mobile_sync 改写为 desktop_plugin，
         // 否则移动端与桌面日志会同时丢失真实故障源。
         const error = withSyncErrorContext(e, {
@@ -259,17 +277,16 @@ function startWsServer({ port, syncToken, onMessage }) {
     });
   });
 
-  return wss;
+  return ready;
 }
 
 /**
  * 停止 WebSocket 服务器并释放模块级引用。
- * 供测试 teardown 与降级重注册使用；生产路径目前不调用。
+ * 供测试 teardown 与重新绑定前释放旧监听使用。
  */
 async function stopWsServer() {
   const server = wss;
   wss = null;
-  wsServerPort = null;
   setWss(null);
   if (!server) return;
   for (const client of server.clients) {

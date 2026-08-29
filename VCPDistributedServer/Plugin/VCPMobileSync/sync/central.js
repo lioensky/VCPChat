@@ -4,6 +4,11 @@ const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
 const { SyncProtocolError, canonicalizeTopicFrame } = require("./canonical");
+const {
+  requireCompoundTopicStates,
+  requireMessageDiffStates,
+} = require("./diff");
+const { validateSyncManifestRequest } = require("./manifest");
 const { projectMobileTopic } = require("./projection");
 const {
   createSyncError,
@@ -46,38 +51,6 @@ function withCdsErrorContext(error, fallback = {}) {
   });
 }
 
-function translateCdsPullFrame(rawFrame) {
-  if (!rawFrame || typeof rawFrame !== "object" || Array.isArray(rawFrame)) {
-    return rawFrame;
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(rawFrame, "_stream_error") &&
-    rawFrame._stream_error !== null
-  ) {
-    throw withCdsErrorContext(rawFrame._stream_error, {
-      code: "SYNC_STREAM_FAILED",
-      origin: "desktop_cds",
-      stage: "messages",
-    });
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(rawFrame, "_error") &&
-    rawFrame._error !== null
-  ) {
-    const topicId = typeof rawFrame.topicId === "string" ? rawFrame.topicId : null;
-    return {
-      ...rawFrame,
-      _error: normalizeSyncError(rawFrame._error, {
-        code: "SYNC_MESSAGE_READ_FAILED",
-        origin: "desktop_cds",
-        stage: "messages",
-        failedTopicIds: topicId ? [topicId] : [],
-      }),
-    };
-  }
-  return rawFrame;
-}
-
 function cdsProtocolError(message, stage, failedTopicIds = []) {
   return createSyncError("SYNC_PROTOCOL_INVALID", message, {
     origin: "desktop_cds",
@@ -90,18 +63,103 @@ function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function isCdsItemError(value) {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    value.code.length > 0 &&
+    typeof value.message === "string" &&
+    typeof value.retryable === "boolean" &&
+    Object.keys(value).length === 3
+  );
+}
+
+function mapCdsItemError(error, code, context = {}) {
+  if (!isCdsItemError(error)) {
+    throw cdsProtocolError(
+      "CDS returned an invalid item error",
+      context.stage || "startup",
+      context.failedTopicIds || [],
+    );
+  }
+  return normalizeSyncError(
+    { code, message: error.message },
+    { ...context, code },
+  );
+}
+
+function topicIdentityKey(value) {
+  if (
+    !isRecord(value) ||
+    typeof value.topicId !== "string" ||
+    value.topicId.length === 0 ||
+    !["agent", "group"].includes(value.ownerType) ||
+    typeof value.ownerId !== "string" ||
+    value.ownerId.length === 0
+  ) {
+    return null;
+  }
+  return `${value.ownerType}\0${value.ownerId}\0${value.topicId}`;
+}
+
+function entityIdentityKey(value) {
+  if (
+    !isRecord(value) ||
+    !["agent", "group"].includes(value.ownerType) ||
+    typeof value.ownerId !== "string" ||
+    value.ownerId.length === 0
+  ) {
+    return null;
+  }
+  if (value.entityType === "owner" && value.topicId === undefined) {
+    return `owner\0${value.ownerType}\0${value.ownerId}`;
+  }
+  if (
+    value.entityType === "topic" &&
+    typeof value.topicId === "string" &&
+    value.topicId.length > 0
+  ) {
+    return `topic\0${value.ownerType}\0${value.ownerId}\0${value.topicId}`;
+  }
+  return null;
+}
+
+function isAvatarIdentity(ownerType, ownerId) {
+  return (
+    ["agent", "group", "user"].includes(ownerType) &&
+    typeof ownerId === "string" &&
+    /^[a-zA-Z0-9_-]+$/.test(ownerId) &&
+    (ownerType !== "user" || ownerId === "user_avatar")
+  );
+}
+
+function validateAvatarState(value, ownerType, ownerId, { requireLive = false } = {}) {
+  if (
+    !isRecord(value) ||
+    value.ownerType !== ownerType ||
+    value.ownerId !== ownerId ||
+    typeof value.filePath !== "string" ||
+    typeof value.hash !== "string" ||
+    !/^[a-f0-9]{64}$/.test(value.hash) ||
+    !Number.isSafeInteger(value.updatedAt) ||
+    value.updatedAt < 0 ||
+    (value.deletedAt !== null && value.deletedAt !== undefined &&
+      (!Number.isSafeInteger(value.deletedAt) || value.deletedAt < 0)) ||
+    (requireLive && (value.deletedAt != null || value.filePath.length === 0))
+  ) {
+    throw cdsProtocolError(
+      "CDS returned an invalid avatar state",
+      "owner_metadata",
+    );
+  }
+  return value;
+}
+
 class CentralSyncAdapter {
-  constructor(options) {
-    if (options?.chatDataService) {
-      this.chatDataService = options.chatDataService;
-      this.appDataPath = options.appDataPath || null;
-      this.compatibilityDb = options.compatibilityDb || null;
-    } else {
-      // Backward-compatible constructor for the existing contract tests.
-      this.chatDataService = options;
-      this.appDataPath = null;
-      this.compatibilityDb = null;
-    }
+  constructor(options = {}) {
+    this.chatDataService = options?.chatDataService || null;
+    this.appDataPath = options?.appDataPath || null;
+    this.compatibilityDb = options?.compatibilityDb || null;
   }
 
   get client() {
@@ -129,9 +187,7 @@ class CentralSyncAdapter {
       try {
         return await client.reconcile();
       } catch (error) {
-        const isBusy =
-          error?.code === "SERVICE_BUSY" ||
-          (error?.status === 429 && error?.retryable === true);
+        const isBusy = error?.code === "SERVICE_BUSY";
         if (!isBusy || attempt === maxAttempts) {
           throw error;
         }
@@ -148,38 +204,161 @@ class CentralSyncAdapter {
     throw new Error("VCP-CDS reconcile retry loop exhausted");
   }
 
-  async handleSyncManifest(payload) {
-    const stage = payload.dataType === "topic"
-      ? "topic_metadata"
-      : "owner_metadata";
-    // 与 legacy 路径（sync/manifest.js）对齐：phase 必须与 dataType 对应
-    // （topic=2，其余=1），且 SYNC_DIFF_RESULTS 必须回填 phase——
-    // 移动端 diff_handler 对 phase 做硬门禁，缺失即中止整个 attempt。
-    const expectedPhase = payload.dataType === "topic" ? 2 : 1;
-    if (payload.phase !== expectedPhase) {
+  async reconcileOwners(owners, stage = "owner_metadata") {
+    if (
+      !Array.isArray(owners) ||
+      owners.length === 0 ||
+      owners.length > 1_000
+    ) {
       throw createSyncError(
-        "SYNC_PROTOCOL_INVALID",
-        `${payload.dataType} manifest phase must be ${expectedPhase}`,
+        "SYNC_REQUEST_INVALID",
+        "Targeted CDS reconcile requires 1 to 1000 owners",
         { origin: "desktop_plugin", stage },
       );
     }
+    const seen = new Set();
+    for (const owner of owners) {
+      const key = entityIdentityKey({ entityType: "owner", ...owner });
+      if (!key || seen.has(key)) {
+        throw createSyncError(
+          "SYNC_REQUEST_INVALID",
+          "Targeted CDS reconcile requires unique complete owner identities",
+          { origin: "desktop_plugin", stage },
+        );
+      }
+      seen.add(key);
+    }
     try {
-      const response = await this.requireClient().syncManifest({
-        dataType: payload.dataType,
-        data: payload.data,
-        ...(payload.targetedOwners === undefined
-          ? {}
-          : { targetedOwners: payload.targetedOwners }),
-      });
+      const response = await this.requireClient().request(
+        "POST",
+        "/v3/sync/owners/reconcile",
+        { owners },
+        { timeoutMs: 270_000 },
+      );
       if (
         !isRecord(response) ||
-        response.type !== "SYNC_DIFF_RESULTS" ||
-        response.dataType !== payload.dataType ||
-        !Array.isArray(response.data)
+        response.ok !== true ||
+        response.ownersReconciled !== owners.length ||
+        !Number.isSafeInteger(response.indexedTopics) ||
+        response.indexedTopics < 0 ||
+        Object.keys(response).sort().join("\0") !==
+          "indexedTopics\0ok\0ownersReconciled"
+      ) {
+        throw cdsProtocolError(
+          "CDS returned an invalid targeted owner reconcile response",
+          stage,
+        );
+      }
+      return response;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_ENTITY_WRITE_FAILED",
+        origin: "desktop_cds",
+        stage,
+      });
+    }
+  }
+
+  async loadTopicRecoveryStates({
+    ownerType,
+    ownerId,
+    topicIds,
+    metadataTopicIds = topicIds,
+  }) {
+    const requested = new Set(topicIds);
+    const metadataRequested = new Set(metadataTopicIds);
+    const manifest = await this.handleSyncManifest({
+      type: "SYNC_MANIFEST_REQUEST",
+      manifestType: "topic",
+      items: [],
+      targetedOwners: [{ ownerType, ownerId }],
+    });
+
+    const states = new Map();
+    const liveIds = [];
+    for (const item of manifest.results) {
+      if (!requested.has(item.topicId)) continue;
+      if (item.ownerType !== ownerType || item.ownerId !== ownerId) {
+        throw cdsProtocolError(
+          "CDS recovery manifest returned a mismatched owner",
+          "topic_metadata",
+        );
+      }
+      if (item.action === "PULL_DELETE") {
+        states.set(item.topicId, { deleted: true, topic: null });
+      } else if (item.action === "PULL" && metadataRequested.has(item.topicId)) {
+        liveIds.push(item.topicId);
+      } else if (item.action === "PULL") {
+        states.set(item.topicId, { deleted: false, topic: null });
+      } else {
+        throw cdsProtocolError(
+          "CDS recovery manifest returned an unexpected action",
+          "topic_metadata",
+        );
+      }
+    }
+
+    if (liveIds.length === 0) return states;
+    const results = await this.pullEntities(
+      liveIds.map((topicId) => ({
+        entityType: "topic",
+        ownerType,
+        ownerId,
+        topicId,
+      })),
+    );
+    if (results.length !== liveIds.length) {
+      throw cdsProtocolError(
+        "CDS recovery pull returned an incomplete topic set",
+        "topic_metadata",
+        liveIds.slice(0, 8),
+      );
+    }
+    for (const result of results) {
+      if (result.ok !== true || !isRecord(result.data)) {
+        throw cdsProtocolError(
+          "CDS recovery pull could not read committed topic metadata",
+          "topic_metadata",
+          liveIds.slice(0, 8),
+        );
+      }
+      states.set(result.topicId, { deleted: false, topic: result.data });
+    }
+    return states;
+  }
+
+  async handleSyncManifest(payload) {
+    const validated = validateSyncManifestRequest(payload);
+    const stage = validated.manifestType === "topic"
+      ? "topic_metadata"
+      : "owner_metadata";
+    try {
+      const response = await this.requireClient().request(
+        "POST",
+        "/v3/sync/manifest",
+        {
+          manifestType: validated.manifestType,
+          items: validated.normalizedRemoteItems,
+          ...(validated.targetedOwners === undefined
+            ? {}
+            : { targetedOwners: validated.targetedOwners }),
+        },
+      );
+      if (
+        !isRecord(response) ||
+        response.type !== "SYNC_MANIFEST_RESULT" ||
+        response.manifestType !== payload.manifestType ||
+        !Array.isArray(response.results) ||
+        (payload.manifestType === "owner" && response.results.some((item) =>
+          !isRecord(item) ||
+          !["agent", "group"].includes(item.ownerType) ||
+          typeof item.ownerId !== "string" ||
+          item.ownerId.length === 0
+        ))
       ) {
         throw cdsProtocolError("CDS returned an invalid manifest response", stage);
       }
-      return { ...response, phase: payload.phase };
+      return response;
     } catch (error) {
       throw withCdsErrorContext(error, {
         code: "SYNC_DB_QUERY_FAILED",
@@ -189,94 +368,158 @@ class CentralSyncAdapter {
     }
   }
 
-  async handleMessageManifest(payload) {
+  async pullEntities(items) {
+    const stage = items.some((item) => item?.entityType === "topic")
+      ? "topic_metadata"
+      : "owner_metadata";
     try {
-      const result = await this.requireClient().syncMessageManifest({
-        topicId: payload.topicId,
-        ...(payload.ownerType === undefined
-          ? {}
-          : { ownerType: payload.ownerType }),
-        ...(payload.ownerId === undefined ? {} : { ownerId: payload.ownerId }),
-      });
-      const seenMessageIds = new Set();
-      if (
-        !isRecord(result) ||
-        result.type !== "MESSAGE_MANIFEST_RESULTS" ||
-        result.topicId !== payload.topicId ||
-        !["agent", "group"].includes(result.ownerType) ||
-        typeof result.ownerId !== "string" ||
-        result.ownerId.length === 0 ||
-        (payload.ownerType !== undefined && result.ownerType !== payload.ownerType) ||
-        (payload.ownerId !== undefined && result.ownerId !== payload.ownerId) ||
-        !Array.isArray(result.messages) ||
-        result.messages.some((message) => {
-          if (
-            !isRecord(message) ||
-            typeof message.msgId !== "string" ||
-            message.msgId.length === 0 ||
-            seenMessageIds.has(message.msgId) ||
-            typeof message.contentHash !== "string" ||
-            !/^[a-f0-9]{64}$/.test(message.contentHash) ||
-            !Number.isSafeInteger(message.updatedAt) ||
-            message.updatedAt < 0 ||
-            (message.deletedAt !== null && message.deletedAt !== undefined &&
-              (!Number.isSafeInteger(message.deletedAt) || message.deletedAt < 0))
-          ) {
-            return true;
-          }
-          seenMessageIds.add(message.msgId);
-          return false;
-        })
-      ) {
-        throw cdsProtocolError(
-          "CDS returned an invalid message manifest response",
-          "messages",
-          typeof payload.topicId === "string" ? [payload.topicId] : [],
-        );
+      const response = await this.requireClient().request(
+        "POST",
+        "/v3/sync/entities/pull",
+        { items },
+      );
+      if (!isRecord(response) || !Array.isArray(response.results)) {
+        throw cdsProtocolError("CDS returned an invalid entity pull response", stage);
       }
-      return {
-        type: "MESSAGE_MANIFEST_RESULTS",
-        topicId: result.topicId,
-        ownerType: result.ownerType,
-        ownerId: result.ownerId,
-        messages: result.messages.map((message) => ({
-          msg_id: message.msgId,
-          content_hash: message.contentHash,
-          updated_at: message.updatedAt,
-          deleted_at: message.deletedAt ?? null,
-        })),
-      };
+      const expected = new Set(items.map(entityIdentityKey));
+      if (expected.has(null) || expected.size !== items.length) {
+        throw cdsProtocolError("Entity pull request contains an invalid identity", stage);
+      }
+      const seen = new Set();
+      const results = response.results.map((result) => {
+        const key = entityIdentityKey(result);
+        if (!key || !expected.has(key) || seen.has(key)) {
+          throw cdsProtocolError("CDS entity pull returned an invalid identity", stage);
+        }
+        seen.add(key);
+        if (result.ok === true && isRecord(result.data) && result.error === undefined) {
+          return result;
+        }
+        if (
+          result.ok === false &&
+          result.data === undefined &&
+          isCdsItemError(result.error)
+        ) {
+          return {
+            entityType: result.entityType,
+            ownerType: result.ownerType,
+            ownerId: result.ownerId,
+            ...(result.entityType === "topic" ? { topicId: result.topicId } : {}),
+            ok: false,
+            error: mapCdsItemError(
+              result.error,
+              result.error.code === "ENTITY_NOT_FOUND"
+                ? "SYNC_ENTITY_NOT_FOUND"
+                : result.error.code === "SNAPSHOT_STALE"
+                  ? "SYNC_SNAPSHOT_STALE"
+                  : "SYNC_ENTITY_READ_FAILED",
+              {
+                origin: "desktop_cds",
+                stage,
+                failedTopicIds:
+                  result.entityType === "topic" ? [result.topicId] : [],
+              },
+            ),
+          };
+        }
+        throw cdsProtocolError("CDS entity pull returned an invalid result", stage);
+      });
+      if (seen.size !== expected.size) {
+        throw cdsProtocolError("CDS entity pull omitted requested items", stage);
+      }
+      return results;
     } catch (error) {
       throw withCdsErrorContext(error, {
-        code: "SYNC_MESSAGE_READ_FAILED",
+        code: "SYNC_ENTITY_READ_FAILED",
         origin: "desktop_cds",
-        stage: "messages",
-        failedTopicIds:
-          typeof payload.topicId === "string" ? [payload.topicId] : [],
+        stage,
       });
     }
   }
 
-  async handleTopicHashBatch(payload) {
-    const hasCompoundStates = Array.isArray(payload.topics) && payload.topics.length > 0;
-    try {
-      const response = await this.requireClient().syncTopicDiff({
-        hashes: hasCompoundStates ? {} : payload.hashes,
-        ...(hasCompoundStates ? { topics: payload.topics } : {}),
-      });
-      const expected = new Set(
-        hasCompoundStates
-          ? payload.topics.map((topic) => topic?.topicId)
-          : Object.keys(payload.hashes || {}),
+  async loadAvatarState(ownerType, ownerId) {
+    if (!isAvatarIdentity(ownerType, ownerId)) {
+      throw createSyncError(
+        "SYNC_REQUEST_INVALID",
+        "Avatar state requires a valid owner identity",
+        { origin: "desktop_plugin", stage: "owner_metadata" },
       );
+    }
+    try {
+      const value = await this.requireClient().request(
+        "POST",
+        "/v3/sync/avatars/state",
+        { ownerType, ownerId },
+      );
+      return validateAvatarState(value, ownerType, ownerId);
+    } catch (error) {
+      if (error?.code === "NOT_FOUND") return null;
+      throw withCdsErrorContext(error, {
+        code: "SYNC_AVATAR_READ_FAILED",
+        origin: "desktop_cds",
+        stage: "owner_metadata",
+      });
+    }
+  }
+
+  async commitAvatar(ownerType, ownerId, expectedHash) {
+    if (
+      !isAvatarIdentity(ownerType, ownerId) ||
+      typeof expectedHash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(expectedHash)
+    ) {
+      throw createSyncError(
+        "SYNC_REQUEST_INVALID",
+        "Avatar commit requires a valid owner identity and expected hash",
+        { origin: "desktop_plugin", stage: "owner_metadata" },
+      );
+    }
+    try {
+      const value = validateAvatarState(
+        await this.requireClient().request(
+          "POST",
+          "/v3/sync/avatars/commit",
+          { ownerType, ownerId },
+        ),
+        ownerType,
+        ownerId,
+        { requireLive: true },
+      );
+      if (value.hash !== expectedHash) {
+        throw cdsProtocolError(
+          "Avatar changed before CDS committed it",
+          "owner_metadata",
+        );
+      }
+      return value;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_AVATAR_WRITE_FAILED",
+        origin: "desktop_cds",
+        stage: "owner_metadata",
+      });
+    }
+  }
+
+  async handleTopicDiff(payload) {
+    const topics = requireCompoundTopicStates(payload);
+    const expected = new Set(topics.map(topicIdentityKey));
+    try {
+      const response = await this.requireClient().request(
+        "POST",
+        "/v3/sync/topic-diff",
+        { topics },
+        { timeoutMs: 270_000 },
+      );
+      const changedKeys = Array.isArray(response?.changedTopics)
+        ? response.changedTopics.map(topicIdentityKey)
+        : [];
       if (
         !isRecord(response) ||
-        response.type !== "SYNC_TOPIC_HASH_RESULTS" ||
+        response.type !== "SYNC_TOPIC_DIFF_RESULT" ||
         !Array.isArray(response.changedTopics) ||
-        response.changedTopics.some(
-          (topicId) => typeof topicId !== "string" || !expected.has(topicId),
-        ) ||
-        new Set(response.changedTopics).size !== response.changedTopics.length
+        changedKeys.some((key) => key === null || !expected.has(key)) ||
+        new Set(changedKeys).size !== changedKeys.length
       ) {
         throw cdsProtocolError(
           "CDS returned an invalid topic hash response",
@@ -293,37 +536,47 @@ class CentralSyncAdapter {
     }
   }
 
-  async handleMessageDiffBatch(payload) {
+  async handleMessageDiff(payload) {
+    const topics = requireMessageDiffStates(payload);
+    const expected = new Set(topics.map(topicIdentityKey));
     try {
-      const response = await this.requireClient().syncMessageDiff({
-        topics: payload.topics,
-      });
+      const response = await this.requireClient().request(
+        "POST",
+        "/v3/sync/message-diff",
+        { topics },
+        { timeoutMs: 270_000 },
+      );
       if (
         !isRecord(response) ||
-        response.type !== "SYNC_DIFF_RESULTS_BATCH" ||
-        !isRecord(response.results)
+        response.type !== "SYNC_MESSAGE_DIFF_RESULT" ||
+        !Array.isArray(response.results)
       ) {
         throw cdsProtocolError(
           "CDS returned an invalid message diff response",
           "messages",
         );
       }
-      const expectedTopicIds = Object.keys(
-        isRecord(payload.topics) ? payload.topics : {},
-      );
-      const resultTopicIds = Object.keys(response.results);
-      if (
-        resultTopicIds.length !== expectedTopicIds.length ||
-        resultTopicIds.some((topicId) => !expectedTopicIds.includes(topicId))
-      ) {
+      const actual = new Set();
+      if (response.results.some((result) => {
+        const key = topicIdentityKey(result);
+        if (!key || !expected.has(key) || actual.has(key)) return true;
+        actual.add(key);
+        return false;
+      }) || actual.size !== expected.size) {
         throw cdsProtocolError(
           "CDS message diff response does not cover the requested topics",
           "messages",
-          expectedTopicIds,
+          topics.map((topic) => topic.topicId).slice(0, 8),
         );
       }
-      const results = {};
-      for (const [topicId, decision] of Object.entries(response.results)) {
+      const results = [];
+      for (const decision of response.results) {
+        const topicId = decision.topicId;
+        const resultIdentity = {
+          topicId,
+          ownerType: decision.ownerType,
+          ownerId: decision.ownerId,
+        };
         if (!isRecord(decision)) {
           throw cdsProtocolError(
             `CDS returned an invalid message diff decision for ${topicId}`,
@@ -333,9 +586,12 @@ class CentralSyncAdapter {
         }
         if (decision.ok === false) {
           if (
-            decision.error === undefined ||
-            decision.toPull !== undefined ||
-            decision.toPush !== undefined
+            Object.keys(decision).sort().join("\0") !==
+              "error\0ok\0ownerId\0ownerType\0topicId" ||
+            !isCdsItemError(decision.error) ||
+            decision.pullMessageIds !== undefined ||
+            decision.pushTopic !== undefined ||
+            decision.deleteMessages !== undefined
           ) {
             throw cdsProtocolError(
               `CDS returned an invalid rejected decision for ${topicId}`,
@@ -343,7 +599,8 @@ class CentralSyncAdapter {
               [topicId],
             );
           }
-          results[topicId] = {
+          results.push({
+            ...resultIdentity,
             ok: false,
             error: normalizeSyncError(decision.error, {
               code: "MESSAGE_DIFF_FAILED",
@@ -351,15 +608,32 @@ class CentralSyncAdapter {
               stage: "messages",
               failedTopicIds: [topicId],
             }),
-          };
+          });
           continue;
         }
+        const deleteMessages = decision.deleteMessages;
+        const deleteIds = Array.isArray(deleteMessages)
+          ? deleteMessages.map((item) => item?.msgId)
+          : [];
         if (
+          Object.keys(decision).sort().join("\0") !==
+            "deleteMessages\0ok\0ownerId\0ownerType\0pullMessageIds\0pushTopic\0topicId" ||
           decision.ok !== true ||
-          !Array.isArray(decision.toPull) ||
-          decision.toPull.some((id) => typeof id !== "string" || id.length === 0) ||
-          new Set(decision.toPull).size !== decision.toPull.length ||
-          typeof decision.toPush !== "boolean" ||
+          !Array.isArray(decision.pullMessageIds) ||
+          decision.pullMessageIds.some((id) => typeof id !== "string" || id.length === 0) ||
+          new Set(decision.pullMessageIds).size !== decision.pullMessageIds.length ||
+          typeof decision.pushTopic !== "boolean" ||
+          !Array.isArray(deleteMessages) ||
+          deleteMessages.some(
+            (item) =>
+              !isRecord(item) ||
+              typeof item.msgId !== "string" ||
+              item.msgId.length === 0 ||
+              !Number.isSafeInteger(item.deletedAt) ||
+              item.deletedAt < 0,
+          ) ||
+          new Set(deleteIds).size !== deleteIds.length ||
+          deleteIds.some((msgId) => decision.pullMessageIds.includes(msgId)) ||
           decision.error !== undefined
         ) {
           throw cdsProtocolError(
@@ -368,11 +642,16 @@ class CentralSyncAdapter {
             [topicId],
           );
         }
-        results[topicId] = {
+        results.push({
+          ...resultIdentity,
           ok: true,
-          toPull: decision.toPull,
-          toPush: decision.toPush,
-        };
+          pullMessageIds: decision.pullMessageIds,
+          pushTopic: decision.pushTopic,
+          deleteMessages: deleteMessages.map((item) => ({
+            msgId: item.msgId,
+            deletedAt: item.deletedAt,
+          })),
+        });
       }
       return { ...response, results };
     } catch (error) {
@@ -381,36 +660,34 @@ class CentralSyncAdapter {
         origin: "desktop_cds",
         stage: "messages",
         failedTopicIds:
-          payload.topics && typeof payload.topics === "object"
-            ? Object.keys(payload.topics).slice(0, 8)
-            : [],
+          topics.map((topic) => topic.topicId).slice(0, 8),
       });
     }
   }
 
-  async downloadMessagesStreamRaw(requests, res) {
+  async pullMessagesStreamRaw(topics, res) {
     res.setHeader("Content-Type", "application/x-ndjson");
     res.setHeader("Transfer-Encoding", "chunked");
     res.flushHeaders();
 
-    if (!Array.isArray(requests) || requests.length > MAX_NDJSON_TOPICS) {
+    if (!Array.isArray(topics) || topics.length > MAX_NDJSON_TOPICS) {
       throw createSyncError(
         "SYNC_REQUEST_INVALID",
-        "Central pull requires at most 10000 topic requests",
+        "Central pull requires at most 10000 topic selectors",
         { stage: "messages" },
       );
     }
     const expected = new Map();
     let requestedMessages = 0;
-    const normalizedRequests = requests.map((request) => {
+    const normalizedTopics = topics.map((topic) => {
       if (
-        !request ||
-        typeof request.topicId !== "string" ||
-        request.topicId.length === 0 ||
-        !["agent", "group"].includes(request.ownerType) ||
-        typeof request.ownerId !== "string" ||
-        request.ownerId.length === 0 ||
-        !Array.isArray(request.msgIds)
+        !topic ||
+        typeof topic.topicId !== "string" ||
+        topic.topicId.length === 0 ||
+        !["agent", "group"].includes(topic.ownerType) ||
+        typeof topic.ownerId !== "string" ||
+        topic.ownerId.length === 0 ||
+        !Array.isArray(topic.messageIds)
       ) {
         throw createSyncError(
           "SYNC_REQUEST_INVALID",
@@ -418,56 +695,135 @@ class CentralSyncAdapter {
           { stage: "messages" },
         );
       }
-      if (expected.has(request.topicId)) {
+      const requestKey = topicIdentityKey(topic);
+      if (expected.has(requestKey)) {
         throw createSyncError(
           "SYNC_REQUEST_INVALID",
-          `Central pull contains duplicate topic ${request.topicId}`,
-          { stage: "messages", failedTopicIds: [request.topicId] },
+          `Central pull contains duplicate topic identity ${topic.topicId}`,
+          { stage: "messages", failedTopicIds: [topic.topicId] },
         );
       }
-      const uniqueIds = new Set(request.msgIds);
+      const uniqueIds = new Set(topic.messageIds);
       if (
-        uniqueIds.size !== request.msgIds.length ||
-        request.msgIds.some((id) => typeof id !== "string" || id.length === 0)
+        uniqueIds.size !== topic.messageIds.length ||
+        topic.messageIds.some((id) => typeof id !== "string" || id.length === 0)
       ) {
         throw createSyncError(
           "SYNC_REQUEST_INVALID",
-          `Central pull ${request.topicId} has invalid message ids`,
-          { stage: "messages", failedTopicIds: [request.topicId] },
+          `Central pull ${topic.topicId} has invalid message ids`,
+          { stage: "messages", failedTopicIds: [topic.topicId] },
         );
       }
-      requestedMessages += request.msgIds.length;
+      requestedMessages += topic.messageIds.length;
       if (
-        request.msgIds.length > 10_000 ||
+        topic.messageIds.length > 10_000 ||
         requestedMessages > MAX_NDJSON_MESSAGES
       ) {
         throw createSyncError(
           "SYNC_BUDGET_EXCEEDED",
           "Central pull exceeds the message count budget",
-          { stage: "messages", failedTopicIds: [request.topicId] },
+          { stage: "messages", failedTopicIds: [topic.topicId] },
         );
       }
-      expected.set(request.topicId, {
-        ownerType: request.ownerType,
-        ownerId: request.ownerId,
-      });
+      expected.set(requestKey, topic);
       return {
-        topicId: request.topicId,
-        ownerType: request.ownerType,
-        ownerId: request.ownerId,
-        msgIds: request.msgIds,
+        topicId: topic.topicId,
+        ownerType: topic.ownerType,
+        ownerId: topic.ownerId,
+        messageIds: topic.messageIds,
       };
     });
 
     const writer = new NdjsonWriter(res);
     const seen = new Set();
-    for await (const rawFrame of this.requireClient().syncMessagesPullStream({
-      requests: normalizedRequests,
-    })) {
-      // CDS protocol 2 still uses a diagnostic string in pull `_error` frames.
-      // Translate it here; only the complete Wire object may cross to Mobile.
-      const canonical = canonicalizeTopicFrame(translateCdsPullFrame(rawFrame));
-      const topicId = canonical.frame.topicId;
+    for await (const rawFrame of this.requireClient().requestNdjson(
+      "POST",
+      "/v3/sync/messages/pull",
+      { topics: normalizedTopics },
+      { timeoutMs: 270_000 },
+    )) {
+      if (rawFrame?.kind === "streamError") {
+        if (!isCdsItemError(rawFrame.error) || Object.keys(rawFrame).length !== 2) {
+          throw cdsProtocolError("CDS returned an invalid stream error frame", "messages");
+        }
+        throw withCdsErrorContext(mapCdsItemError(
+          rawFrame.error,
+          "SYNC_STREAM_FAILED",
+          {
+            origin: "desktop_cds",
+            stage: "messages",
+          },
+        ), {
+          code: "SYNC_STREAM_FAILED",
+          origin: "desktop_cds",
+          stage: "messages",
+        });
+      }
+      if (!isRecord(rawFrame) || rawFrame.kind !== "topic" || typeof rawFrame.ok !== "boolean") {
+        throw cdsProtocolError("CDS returned an invalid message pull frame", "messages");
+      }
+      const topicId = rawFrame.topicId;
+      const responseKey = topicIdentityKey(rawFrame);
+      if (!responseKey) {
+        throw createSyncError(
+          "SYNC_PROTOCOL_INVALID",
+          `CDS pull returned unexpected topic ${topicId}`,
+          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
+        );
+      }
+      if (!expected.has(responseKey)) {
+        const ownerConflict = [...expected.values()].some(
+          (request) => request.topicId === topicId,
+        );
+        throw createSyncError(
+          ownerConflict ? "SYNC_OWNER_CONFLICT" : "SYNC_PROTOCOL_INVALID",
+          ownerConflict
+            ? `CDS pull returned conflicting owner identity for ${topicId}`
+            : `CDS pull returned unexpected topic ${topicId}`,
+          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
+        );
+      }
+      if (seen.has(responseKey)) {
+        throw createSyncError(
+          "SYNC_PROTOCOL_INVALID",
+          `CDS pull returned duplicate topic ${topicId}`,
+          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
+        );
+      }
+      seen.add(responseKey);
+      if (!rawFrame.ok) {
+        if (!isCdsItemError(rawFrame.error) || rawFrame.messages !== undefined) {
+          throw cdsProtocolError(
+            `CDS returned an invalid message pull error for ${topicId}`,
+            "messages",
+            [topicId],
+          );
+        }
+        await writer.write({
+          kind: "topic",
+          topicId,
+          ownerType: rawFrame.ownerType,
+          ownerId: rawFrame.ownerId,
+          ok: false,
+          error: mapCdsItemError(rawFrame.error, "SYNC_MESSAGE_READ_FAILED", {
+            code: "SYNC_MESSAGE_READ_FAILED",
+            origin: "desktop_cds",
+            stage: "messages",
+            failedTopicIds: [topicId],
+          }),
+        });
+        continue;
+      }
+      if (rawFrame.error !== undefined || !Array.isArray(rawFrame.messages)) {
+        throw cdsProtocolError(
+          `CDS returned an invalid successful message pull for ${topicId}`,
+          "messages",
+          [topicId],
+        );
+      }
+      const canonical = canonicalizeTopicFrame(rawFrame, {
+        includeContentHash: false,
+      });
       if (canonical.topicIdRewrites > 0) {
         getLogger().logInfo(
           "central",
@@ -475,36 +831,26 @@ class CentralSyncAdapter {
           "warn",
         );
       }
-      if (!expected.has(topicId)) {
-        throw createSyncError(
-          "SYNC_PROTOCOL_INVALID",
-          `CDS pull returned unexpected topic ${topicId}`,
-          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-        );
-      }
-      if (seen.has(topicId)) {
-        throw createSyncError(
-          "SYNC_PROTOCOL_INVALID",
-          `CDS pull returned duplicate topic ${topicId}`,
-          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-        );
-      }
-      const identity = expected.get(topicId);
-      if (
-        canonical.frame.ownerType !== identity.ownerType ||
-        canonical.frame.ownerId !== identity.ownerId
-      ) {
-        throw createSyncError(
-          "SYNC_OWNER_CONFLICT",
-          `CDS pull returned conflicting owner identity for ${topicId}`,
-          { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-        );
-      }
-      seen.add(topicId);
-      await writer.write(canonical.frame);
+      await writer.write({
+        kind: "topic",
+        topicId,
+        ownerType: canonical.frame.ownerType,
+        ownerId: canonical.frame.ownerId,
+        ok: true,
+        messages: canonical.frame.messages,
+        ...(canonical.frame.legacyAttachmentWarnings === undefined
+          ? {}
+          : {
+              legacyAttachmentWarnings:
+                canonical.frame.legacyAttachmentWarnings,
+              warningSamples: canonical.frame.warningSamples,
+            }),
+      });
     }
     if (seen.size !== expected.size) {
-      const missing = [...expected.keys()].filter((topicId) => !seen.has(topicId));
+      const missing = [...expected.entries()]
+        .filter(([key]) => !seen.has(key))
+        .map(([, request]) => request.topicId);
       throw createSyncError(
         "SYNC_MESSAGE_READ_FAILED",
         `CDS pull omitted topics: ${missing.slice(0, 8).join(", ")}`,
@@ -514,7 +860,7 @@ class CentralSyncAdapter {
     res.end();
   }
 
-  async uploadMessagesBatchRaw(req, res) {
+  async pushMessagesStreamRaw(req, res) {
     res.setHeader("Content-Type", "application/x-ndjson");
     res.setHeader("Transfer-Encoding", "chunked");
     res.flushHeaders();
@@ -528,30 +874,93 @@ class CentralSyncAdapter {
     const client = this.requireClient();
     const writer = new NdjsonWriter(res);
     const seen = new Set();
+    const avatarPaths = new Map();
+    const resolveAgentAvatarPath = (agentId) => {
+      if (!avatarPaths.has(agentId)) {
+        avatarPaths.set(
+          agentId,
+          this.loadAvatarState("agent", agentId).then((avatar) =>
+            avatar?.deletedAt == null ? avatar?.filePath || null : null
+          ),
+        );
+      }
+      return avatarPaths.get(agentId);
+    };
     let topicCount = 0;
     let messageCount = 0;
     for await (const line of readNdjsonLines(req)) {
       let topicId = null;
+      let ownerType = null;
+      let ownerId = null;
       try {
         const frame = parseJsonWithoutDuplicateKeys(decodeNdjsonLine(line));
+        if (
+          !isRecord(frame) ||
+          Object.keys(frame).sort().join("\0") !==
+            ["deletedMessages", "kind", "messages", "ownerId", "ownerType", "topicId"]
+              .sort()
+              .join("\0") ||
+          frame.kind !== "topic"
+        ) {
+          throw new SyncProtocolError(
+            "Central message push requires the exact Topic frame contract",
+          );
+        }
         topicId = frame?.topicId;
+        ownerType = frame?.ownerType;
+        ownerId = frame?.ownerId;
         if (
           typeof topicId !== "string" ||
           topicId.length === 0 ||
           !["agent", "group"].includes(frame.ownerType) ||
           typeof frame.ownerId !== "string" ||
           frame.ownerId.length === 0 ||
-          !Array.isArray(frame.messages)
+          !Array.isArray(frame.messages) ||
+          !Array.isArray(frame.deletedMessages)
         ) {
           throw new SyncProtocolError(
             "Central message push requires exact topic owner identity and messages",
           );
         }
         topicCount += 1;
-        messageCount += frame.messages.length;
+        const liveIds = new Set();
+        for (const message of frame.messages) {
+          if (
+            !isRecord(message) ||
+            typeof message.id !== "string" ||
+            message.id.length === 0 ||
+            liveIds.has(message.id)
+          ) {
+            throw new SyncProtocolError(
+              "Central message push requires unique live message IDs",
+            );
+          }
+          liveIds.add(message.id);
+        }
+        const deletedIds = new Set();
+        for (const tombstone of frame.deletedMessages) {
+          if (
+            !isRecord(tombstone) ||
+            Object.keys(tombstone).sort().join("\0") !== "deletedAt\0msgId" ||
+            typeof tombstone.msgId !== "string" ||
+            tombstone.msgId.length === 0 ||
+            !Number.isSafeInteger(tombstone.deletedAt) ||
+            tombstone.deletedAt < 0 ||
+            deletedIds.has(tombstone.msgId) ||
+            liveIds.has(tombstone.msgId)
+          ) {
+            throw new SyncProtocolError(
+              "Central message push requires unique valid tombstones disjoint from live messages",
+            );
+          }
+          deletedIds.add(tombstone.msgId);
+        }
+        const topicMessageCount =
+          frame.messages.length + frame.deletedMessages.length;
+        messageCount += topicMessageCount;
         if (
           topicCount > MAX_NDJSON_TOPICS ||
-          frame.messages.length > 10_000 ||
+          topicMessageCount > 10_000 ||
           messageCount > MAX_NDJSON_MESSAGES
         ) {
           throw new SyncProtocolError(
@@ -559,55 +968,80 @@ class CentralSyncAdapter {
             "SYNC_BUDGET_EXCEEDED",
           );
         }
-        if (seen.has(topicId)) {
+        const requestKey = topicIdentityKey(frame);
+        if (seen.has(requestKey)) {
           throw new SyncProtocolError(
-            `Central message push contains duplicate topic ${topicId}`,
+            `Central message push contains duplicate topic identity ${topicId}`,
           );
         }
-        seen.add(topicId);
+        seen.add(requestKey);
 
-        const identity = await client.syncTopicIdentity({
-          topicId,
-          ownerType: frame.ownerType,
-          ownerId: frame.ownerId,
-        });
-        if (
-          identity?.topicId !== topicId ||
-          identity?.ownerType !== frame.ownerType ||
-          identity?.ownerId !== frame.ownerId
-        ) {
-          throw createSyncError(
-            "SYNC_PROTOCOL_INVALID",
-            `CDS returned an invalid identity for topic ${topicId}`,
-            { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-          );
+        let projected;
+        try {
+          projected = await projectMobileTopic({
+            topicId,
+            ownerType: frame.ownerType,
+            ownerId: frame.ownerId,
+            messages: frame.messages,
+            db,
+            appDataPath: this.appDataPath,
+            resolveAgentAvatarPath,
+          });
+        } catch (projectionError) {
+          await writer.write({
+            kind: "topic",
+            topicId,
+            ownerType,
+            ownerId,
+            ok: false,
+            error: normalizeSyncError(projectionError, {
+              code: "SYNC_MESSAGE_WRITE_FAILED",
+              origin: "desktop_cds",
+              stage: "messages",
+              failedTopicIds: [topicId],
+            }),
+          });
+          continue;
         }
-        const projected = await projectMobileTopic({
-          topicId,
-          ownerType: identity.ownerType,
-          ownerId: identity.ownerId,
-          messages: frame.messages,
-          db,
-          appDataPath: this.appDataPath,
-        });
-        const result = await client.syncMessagesPushTopic({
-          topicId,
-          ownerType: identity.ownerType,
-          ownerId: identity.ownerId,
-          messages: projected.messages,
-          deletedMessageIds: [],
-          deletedMessageTombstones: [],
-        });
-        if (result?.topicId !== topicId || typeof result?.success !== "boolean") {
+        const result = await client.request(
+          "POST",
+          "/v3/sync/messages/push",
+          {
+            topicId,
+            ownerType: frame.ownerType,
+            ownerId: frame.ownerId,
+            messages: projected.messages,
+            deletedMessages: frame.deletedMessages,
+          },
+          { timeoutMs: 270_000 },
+        );
+        if (
+          result?.topicId !== topicId ||
+          result?.ownerType !== ownerType ||
+          result?.ownerId !== ownerId ||
+          typeof result?.ok !== "boolean" ||
+          Object.keys(result).length !== (result.ok ? 4 : 5) ||
+          (result.ok ? result.error !== undefined : !isCdsItemError(result.error))
+        ) {
           throw createSyncError(
             "SYNC_PROTOCOL_INVALID",
             `CDS returned an invalid push result for ${topicId}`,
             { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
           );
         }
-        if (!result.success) {
+        if (!result.ok) {
           throw withCdsErrorContext(
-            result.error || `CDS rejected topic ${topicId}`,
+            mapCdsItemError(
+              result.error,
+              result.error.code === "SNAPSHOT_STALE"
+                ? "SYNC_SNAPSHOT_STALE"
+                : "SYNC_MESSAGE_WRITE_FAILED",
+              {
+                origin: "desktop_cds",
+                stage: "messages",
+                failedTopicIds: [topicId],
+              },
+            ),
             {
               code: "SYNC_MESSAGE_WRITE_FAILED",
               origin: "desktop_cds",
@@ -616,20 +1050,12 @@ class CentralSyncAdapter {
             },
           );
         }
-        const needed = new Set(projected.neededAttachmentHashes);
-        const cdsNeeded = result.neededAttachmentHashes;
-        if (!Array.isArray(cdsNeeded)) {
-          throw createSyncError(
-            "SYNC_PROTOCOL_INVALID",
-            `CDS omitted neededAttachmentHashes for ${topicId}`,
-            { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-          );
-        }
-        for (const hash of cdsNeeded) needed.add(hash);
         await writer.write({
+          kind: "topic",
           topicId,
-          success: true,
-          neededAttachmentHashes: [...needed].sort(),
+          ownerType,
+          ownerId,
+          ok: true,
         });
       } catch (error) {
         if (
@@ -642,9 +1068,11 @@ class CentralSyncAdapter {
         }
         if (typeof topicId !== "string" || topicId.length === 0) throw error;
         await writer.write({
+          kind: "topic",
           topicId,
-          success: false,
-          neededAttachmentHashes: [],
+          ownerType,
+          ownerId,
+          ok: false,
           error: normalizeSyncError(error, {
             code: "SYNC_MESSAGE_WRITE_FAILED",
             origin: "desktop_cds",
@@ -657,46 +1085,130 @@ class CentralSyncAdapter {
     res.end();
   }
 
-  async deleteMessage({ topicId, msgId, deletedAt }) {
+  async deleteEntityTombstone(target) {
+    const {
+      targetType,
+      ownerType,
+      ownerId,
+      topicId,
+      deletedAt,
+    } = isRecord(target) ? target : {};
+    const isTopic = targetType === "topic";
+    const isAvatar = targetType === "avatar";
+    const stage = isTopic ? "topic_metadata" : "owner_metadata";
+    const failedTopicIds = isTopic && typeof topicId === "string" ? [topicId] : [];
+    const expectedKeys = isTopic
+      ? ["targetType", "ownerType", "ownerId", "topicId", "deletedAt"]
+      : ["targetType", "ownerType", "ownerId", "deletedAt"];
+    const validOwner =
+      typeof ownerId === "string" &&
+      ownerId.length > 0 &&
+      /^[a-zA-Z0-9_-]+$/.test(ownerId) &&
+      (isAvatar
+        ? isAvatarIdentity(ownerType, ownerId)
+        : ["agent", "group"].includes(ownerType));
+    if (
+      !["owner", "topic", "avatar"].includes(targetType) ||
+      !validOwner ||
+      (isTopic &&
+        (typeof topicId !== "string" ||
+          topicId.length === 0 ||
+          !/^[a-zA-Z0-9_-]+$/.test(topicId))) ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0 ||
+      !isRecord(target) ||
+      Object.keys(target).sort().join("\0") !== expectedKeys.sort().join("\0")
+    ) {
+      throw createSyncError(
+        "SYNC_DELETE_INVALID",
+        "Central entity deletion requires targetType, complete identity and deletedAt",
+        {
+          origin: "desktop_plugin",
+          stage,
+          failedTopicIds,
+        },
+      );
+    }
+
+    try {
+      const result = await this.requireClient().request(
+        "POST",
+        "/v3/sync/entities/delete",
+        target,
+      );
+      if (
+        !isRecord(result) ||
+        result.ok !== true ||
+        Object.keys(result).length !== 1
+      ) {
+        throw cdsProtocolError(
+          "CDS returned an invalid entity delete response",
+          stage,
+          failedTopicIds,
+        );
+      }
+      return result;
+    } catch (error) {
+      throw withCdsErrorContext(error, {
+        code: "SYNC_DELETE_FAILED",
+        origin: "desktop_cds",
+        stage,
+        failedTopicIds,
+      });
+    }
+  }
+
+  async deleteMessage({ topicId, ownerType, ownerId, msgId, deletedAt }) {
     if (
       typeof topicId !== "string" ||
       topicId.length === 0 ||
+      !["agent", "group"].includes(ownerType) ||
+      typeof ownerId !== "string" ||
+      ownerId.length === 0 ||
       typeof msgId !== "string" ||
       msgId.length === 0 ||
       !Number.isSafeInteger(deletedAt) ||
       deletedAt < 0
     ) {
-      throw new Error("Central message deletion requires valid topicId, msgId, and deletedAt");
-    }
-    const client = this.requireClient();
-    const identity = await client.syncTopicIdentity({ topicId });
-    if (
-      identity?.topicId !== topicId ||
-      !["agent", "group"].includes(identity?.ownerType) ||
-      typeof identity?.ownerId !== "string" ||
-      identity.ownerId.length === 0
-    ) {
-      throw createSyncError(
-        "SYNC_PROTOCOL_INVALID",
-        `CDS returned an invalid identity for topic ${topicId}`,
-        { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
+      throw new Error(
+        "Central message deletion requires valid owner, topicId, msgId, and deletedAt",
       );
     }
-    const result = await client.syncMessagesPushTopic({
-      topicId,
-      ownerType: identity.ownerType,
-      ownerId: identity.ownerId,
-      messages: [],
-      deletedMessageIds: [],
-      deletedMessageTombstones: [{ msgId, deletedAt }],
-    });
+    const client = this.requireClient();
+    const result = await client.request(
+      "POST",
+      "/v3/sync/messages/push",
+      {
+        topicId,
+        ownerType,
+        ownerId,
+        messages: [],
+        deletedMessages: [{ msgId, deletedAt }],
+      },
+      { timeoutMs: 270_000 },
+    );
     if (
       result?.topicId !== topicId ||
-      result?.success !== true ||
-      !Array.isArray(result?.neededAttachmentHashes)
+      result?.ownerType !== ownerType ||
+      result?.ownerId !== ownerId ||
+      result?.ok !== true ||
+      result?.error !== undefined ||
+      Object.keys(result).length !== 4
     ) {
       throw withCdsErrorContext(
-        result?.error || `CDS rejected message deletion for ${topicId}`,
+        result?.error
+          ? mapCdsItemError(
+            result.error,
+            result.error.code === "SNAPSHOT_STALE"
+              ? "SYNC_SNAPSHOT_STALE"
+              : "SYNC_DELETE_FAILED",
+            {
+              origin: "desktop_cds",
+              stage: "messages",
+              failedTopicIds: [topicId],
+            },
+          )
+          : `CDS rejected message deletion for ${topicId}`,
         {
           code: "SYNC_DELETE_FAILED",
           origin: "desktop_cds",
@@ -705,26 +1217,20 @@ class CentralSyncAdapter {
         },
       );
     }
-    return { success: true, topicId, msgId };
-  }
-
-  async changes(after = 0, limit = 200) {
-    return this.requireClient().changes(after, limit);
   }
 
   logEnabled() {
     getLogger().logInfo(
       "central",
-      "VCPMobileSync 消息同步索引已切换到 VCP-CDS；旧消息扫描和 watcher 已停用。",
+      "VCPMobileSync 提交索引已切换到 VCP-CDS；Legacy 持久索引和 watcher 已停用。",
     );
   }
 }
 
-function createCentralSyncAdapter(chatDataService) {
-  return new CentralSyncAdapter(chatDataService);
+function createCentralSyncAdapter(options) {
+  return new CentralSyncAdapter(options);
 }
 
 module.exports = {
-  CentralSyncAdapter,
   createCentralSyncAdapter,
 };

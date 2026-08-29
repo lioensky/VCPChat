@@ -11,61 +11,111 @@ try {
 }
 
 const { getLogger } = require("./logger");
+const {
+  computeAggregatedHash,
+  computeTopicLeafHash,
+} = require("./hash");
 
 let db = null;
+let messageUpsertStatement = null;
+let messageTombstoneStatement = null;
+const HISTORY_INDEX_VERSION = 3;
+const LOWERCASE_SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const MESSAGE_TOMBSTONE_HASH = "0".repeat(64);
+const ENTITY_TOMBSTONE_HASH = "0".repeat(64);
+const AVATAR_TOMBSTONE_HASH = "0".repeat(64);
 
-/**
- * 初始化数据库
- * @param {string} dbPath - 数据库文件路径
- * @returns {object|null} 数据库实例
- */
-function initDb(dbPath) {
-  if (!Database) return null;
+function normalizeOwnerIdentity({ ownerType, ownerId }) {
+  if (!["agent", "group"].includes(ownerType) || typeof ownerId !== "string" || ownerId.length === 0) {
+    throw new Error("Owner index requires a complete owner identity");
+  }
+  return { ownerType, ownerId };
+}
 
-  db = new Database(dbPath);
+function normalizeTopicIdentity({ ownerType, ownerId, topicId }) {
+  const owner = normalizeOwnerIdentity({ ownerType, ownerId });
+  if (typeof topicId !== "string" || topicId.length === 0) {
+    throw new Error("Topic index requires a complete topic identity");
+  }
+  return { ...owner, topicId };
+}
 
-  // 1. 实体索引表 (Agent, Group, Topic)
+function normalizeMessageIdentity({ ownerType, ownerId, topicId, msgId }) {
+  if (
+    !["agent", "group"].includes(ownerType) ||
+    typeof ownerId !== "string" ||
+    ownerId.length === 0 ||
+    typeof topicId !== "string" ||
+    topicId.length === 0 ||
+    typeof msgId !== "string" ||
+    msgId.length === 0
+  ) {
+    throw new Error("Message state requires a complete message identity");
+  }
+  return { ownerType, ownerId, topicId, msgId };
+}
+
+function createSyncStateTables() {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS entity_index (
-      id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      aggregated_hash TEXT,
+    CREATE TABLE IF NOT EXISTS owners (
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      config_path TEXT NOT NULL,
+      config_hash TEXT NOT NULL,
+      content_hash TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL,
       deleted_at INTEGER DEFAULT NULL,
-      PRIMARY KEY (id, type)
-    )
-  `);
+      PRIMARY KEY (owner_type, owner_id),
+      CHECK (owner_type IN ('agent', 'group'))
+    );
 
-
-  // 2. 消息索引表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS message_index (
-      msg_id TEXT NOT NULL,
+    CREATE TABLE IF NOT EXISTS topics (
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
       topic_id TEXT NOT NULL,
-      hash TEXT NOT NULL,
+      config_hash TEXT NOT NULL,
+      content_hash TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL,
       deleted_at INTEGER DEFAULT NULL,
-      PRIMARY KEY (topic_id, msg_id)
-    )
-  `);
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_msg_topic ON message_index(topic_id)`,
-  );
+      PRIMARY KEY (owner_type, owner_id, topic_id),
+      FOREIGN KEY (owner_type, owner_id)
+        REFERENCES owners(owner_type, owner_id)
+        ON DELETE CASCADE
+    );
 
-  // 3. 附件索引表
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS attachment_index (
-      hash TEXT PRIMARY KEY,
-      file_path TEXT NOT NULL,
+    CREATE TABLE IF NOT EXISTS messages (
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      topic_id TEXT NOT NULL,
+      msg_id TEXT NOT NULL,
+      message_hash TEXT NOT NULL,
       updated_at INTEGER NOT NULL,
-      deleted_at INTEGER DEFAULT NULL
-    )
-  `);
+      deleted_at INTEGER DEFAULT NULL,
+      PRIMARY KEY (owner_type, owner_id, topic_id, msg_id),
+      FOREIGN KEY (owner_type, owner_id, topic_id)
+        REFERENCES topics(owner_type, owner_id, topic_id)
+        ON DELETE CASCADE
+    );
 
-  // 4. 头像索引表
-  db.exec(`
+    CREATE TABLE IF NOT EXISTS history_source_state (
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      topic_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      source_hash TEXT NOT NULL,
+      index_version INTEGER NOT NULL,
+      PRIMARY KEY (owner_type, owner_id, topic_id),
+      FOREIGN KEY (owner_type, owner_id, topic_id)
+        REFERENCES topics(owner_type, owner_id, topic_id)
+        ON DELETE CASCADE
+    );
+  `);
+}
+
+function createAvatarIndexTable(database) {
+  database.exec(`
     CREATE TABLE IF NOT EXISTS avatar_index (
       owner_id TEXT NOT NULL,
       owner_type TEXT NOT NULL,
@@ -76,31 +126,55 @@ function initDb(dbPath) {
       PRIMARY KEY (owner_id, owner_type)
     )
   `);
+}
 
-  // 5. 消息附件关联表 (与手机端对等)
+/**
+ * 初始化数据库
+ * @param {string} dbPath - 数据库文件路径
+ * @returns {object|null} 数据库实例
+ */
+function initDb(dbPath) {
+  if (!Database) return null;
+
+  db = new Database(dbPath);
+  db.exec("PRAGMA foreign_keys = ON");
+
+  // 1. Legacy 同步提交视图。Owner/Topic 根均随提交视图持久化。
+  createSyncStateTables();
+  messageUpsertStatement = db.prepare(`
+    INSERT INTO messages (
+      owner_type, owner_id, topic_id, msg_id, message_hash, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
+      message_hash = excluded.message_hash,
+      updated_at = excluded.updated_at,
+      deleted_at = NULL
+    WHERE messages.deleted_at IS NULL
+      AND (messages.message_hash <> excluded.message_hash
+        OR messages.updated_at <> excluded.updated_at)
+  `);
+  messageTombstoneStatement = db.prepare(
+    `INSERT INTO messages (
+       owner_type, owner_id, topic_id, msg_id, message_hash, updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(owner_type, owner_id, topic_id, msg_id) DO UPDATE SET
+       deleted_at = CASE
+         WHEN messages.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(messages.deleted_at, excluded.deleted_at)
+       END`,
+  );
+
+  // 2. 附件本地路径索引
   db.exec(`
-    CREATE TABLE IF NOT EXISTS message_attachments (
-      msg_id TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      attachment_order INTEGER NOT NULL,
-      display_name TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (msg_id, attachment_order)
+    CREATE TABLE IF NOT EXISTS attachment_index (
+      hash TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL
     )
   `);
 
-  // 6. history.json 源文件版本。消息 updated_at 不能用于判断物理文件
-  // 是否变化；保存 mtime + size 后，后续启动只需 stat，避免重复读取、
-  // 解析和散列数千个未变化的历史文件。
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS history_source_state (
-      topic_id TEXT PRIMARY KEY,
-      file_path TEXT NOT NULL,
-      file_size INTEGER NOT NULL,
-      mtime_ms REAL NOT NULL,
-      indexed_at INTEGER NOT NULL
-    )
-  `);
+  // 3. Legacy Avatar 提交视图。中央模式的持久状态由 CDS 自己维护；
+  // 此表只会随中央模式的其余兼容目录一起存在于内存中。
+  createAvatarIndexTable(db);
 
   const logger = getLogger();
   logger.logInfo("reconcile", "数据库初始化完成。");
@@ -115,59 +189,73 @@ function getDb() {
   return db;
 }
 
-/**
- * 更新实体索引
- * @param {string} id - 实体 ID
- * @param {string} type - 实体类型
- * @param {string} filePath - 文件路径
- * @param {string} hash - 哈希值
- * @param {number} updatedAt - 更新时间戳
- */
-function upsertEntityIndex(id, type, filePath, hash, updatedAt = Date.now()) {
+function upsertOwnerState({
+  ownerType,
+  ownerId,
+  configPath,
+  configHash,
+  updatedAt = Date.now(),
+}) {
   if (!db) return;
-
-  if (["topic", "agent_topic", "group_topic"].includes(type)) {
-    const existing = db
-      .prepare(
-        "SELECT file_path FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-      )
-      .get(id);
-    if (
-      existing?.file_path &&
-      filePath &&
-      pathIdentity(existing.file_path) !== pathIdentity(filePath)
-    ) {
-      throw new Error(`Topic id ${id} is ambiguous across desktop owners`);
-    }
+  const identity = normalizeOwnerIdentity({ ownerType, ownerId });
+  const result = db.prepare(
+    `INSERT INTO owners (
+       owner_type, owner_id, config_path, config_hash, updated_at
+     ) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+       config_path = excluded.config_path,
+       config_hash = excluded.config_hash,
+       updated_at = CASE
+         WHEN owners.config_hash <> excluded.config_hash THEN excluded.updated_at
+         ELSE owners.updated_at
+       END
+     WHERE owners.deleted_at IS NULL`,
+  ).run(
+    identity.ownerType,
+    identity.ownerId,
+    configPath,
+    configHash,
+    updatedAt,
+  );
+  if (result.changes !== 1) {
+    throw new Error(`Owner state is tombstoned for ${ownerType}/${ownerId}`);
   }
+  return result;
+}
 
-  if (filePath === null) {
-    // 仅更新已存在实体的哈希与时间戳 (用于 WS 通知等场景)
-    const result = db.prepare(
-      `
-      UPDATE entity_index 
-      SET hash = ?, updated_at = ?
-      WHERE id = ? AND type = ?
-    `,
-    ).run(hash, updatedAt, id, type);
-    if (result.changes !== 1) {
-      throw new Error(`Entity index update missed ${type}/${id}`);
-    }
-    return result;
-  } else {
-    // 标准 upsert (含文件路径)
-    db.prepare(
-      `
-      INSERT INTO entity_index (id, type, file_path, hash, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(id, type) DO UPDATE SET 
-        file_path = excluded.file_path,
-        hash = excluded.hash,
-        updated_at = CASE WHEN entity_index.hash <> excluded.hash THEN excluded.updated_at ELSE entity_index.updated_at END,
-        deleted_at = NULL
-    `,
-    ).run(id, type, filePath, hash, updatedAt);
+function upsertTopicState({
+  ownerType,
+  ownerId,
+  topicId,
+  configHash,
+  updatedAt = Date.now(),
+}) {
+  if (!db) return;
+  const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
+  const result = db.prepare(
+    `INSERT INTO topics (
+       owner_type, owner_id, topic_id, config_hash, content_hash, updated_at
+     ) VALUES (?, ?, ?, ?, '', ?)
+     ON CONFLICT(owner_type, owner_id, topic_id) DO UPDATE SET
+       config_hash = excluded.config_hash,
+       updated_at = CASE
+         WHEN topics.config_hash <> excluded.config_hash THEN excluded.updated_at
+         ELSE topics.updated_at
+       END
+     WHERE topics.deleted_at IS NULL`,
+  ).run(
+    identity.ownerType,
+    identity.ownerId,
+    identity.topicId,
+    configHash,
+    updatedAt,
+  );
+  if (result.changes !== 1) {
+    throw new Error(
+      `Topic state is tombstoned for ${ownerType}/${ownerId}/${topicId}`,
+    );
   }
+  return result;
 }
 
 function pathIdentity(value) {
@@ -176,61 +264,50 @@ function pathIdentity(value) {
 }
 
 /**
- * 更新消息索引
- * @param {string} msgId - 消息 ID
- * @param {string} topicId - 话题 ID
- * @param {string} hash - 哈希值
- * @param {number} updatedAt - 更新时间戳
+ * 更新消息提交状态。
  */
-function upsertMessageIndex(msgId, topicId, hash, updatedAt = Date.now()) {
+function upsertMessageState({
+  ownerType,
+  ownerId,
+  topicId,
+  msgId,
+  hash,
+  updatedAt = Date.now(),
+}) {
   if (!db) return;
+  const identity = normalizeMessageIdentity({
+    ownerType,
+    ownerId,
+    topicId,
+    msgId,
+  });
 
-  db.prepare(
-    `
-    INSERT INTO message_index (msg_id, topic_id, hash, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(topic_id, msg_id) DO UPDATE SET 
-      hash = excluded.hash,
-      updated_at = CASE WHEN message_index.hash <> excluded.hash THEN excluded.updated_at ELSE message_index.updated_at END,
-      deleted_at = NULL
-  `,
-  ).run(msgId, topicId, hash, updatedAt);
+  messageUpsertStatement.run(
+    identity.ownerType,
+    identity.ownerId,
+    identity.topicId,
+    identity.msgId,
+    hash,
+    updatedAt,
+  );
 }
 
 /**
  * 更新附件索引
  * @param {string} hash - 哈希值
  * @param {string} filePath - 文件路径
- * @param {number} updatedAt - 更新时间戳
  */
-function upsertAttachmentIndex(hash, filePath, updatedAt = Date.now()) {
+function upsertAttachmentIndex(hash, filePath) {
   if (!db) throw new Error("Database not initialized");
 
   db.prepare(
     `
-      INSERT INTO attachment_index (hash, file_path, updated_at)
-      VALUES (?, ?, ?)
+      INSERT INTO attachment_index (hash, file_path)
+      VALUES (?, ?)
       ON CONFLICT(hash) DO UPDATE SET
-        file_path = excluded.file_path,
-        updated_at = excluded.updated_at,
-        deleted_at = NULL
+        file_path = excluded.file_path
     `,
-  ).run(hash, filePath, updatedAt);
-}
-
-/**
- * 更新消息附件关联
- */
-function upsertMessageAttachment(msgId, hash, order, displayName, createdAt = Date.now()) {
-  if (!db) return;
-
-  db.prepare(`
-    INSERT INTO message_attachments (msg_id, hash, attachment_order, display_name, created_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(msg_id, attachment_order) DO UPDATE SET
-      hash = excluded.hash,
-      display_name = excluded.display_name
-  `).run(msgId, hash, order, displayName, createdAt);
+  ).run(hash, filePath);
 }
 
 /**
@@ -248,185 +325,245 @@ function upsertAvatarIndex(
   hash,
   updatedAt = Date.now(),
 ) {
-  if (!db) return;
+  const database = db;
+  if (!database) return;
 
-  db.prepare(
+  return database.prepare(
     `
     INSERT INTO avatar_index (owner_id, owner_type, file_path, hash, updated_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(owner_id, owner_type) DO UPDATE SET 
       file_path = excluded.file_path,
       hash = excluded.hash,
-      updated_at = CASE WHEN avatar_index.hash <> excluded.hash THEN excluded.updated_at ELSE avatar_index.updated_at END,
-      deleted_at = NULL
+      updated_at = CASE WHEN avatar_index.hash <> excluded.hash THEN excluded.updated_at ELSE avatar_index.updated_at END
+    WHERE avatar_index.deleted_at IS NULL
   `,
   ).run(ownerId, ownerType, filePath, hash, updatedAt);
 }
 
+function getAvatarIndex(ownerId, ownerType) {
+  const database = db;
+  if (!database) return null;
+  return database.prepare(
+    `SELECT owner_id, owner_type, file_path, hash, updated_at, deleted_at
+     FROM avatar_index WHERE owner_id = ? AND owner_type = ?`,
+  ).get(ownerId, ownerType) || null;
+}
+
 /**
- * 获取实体索引
- * @param {string} id - 实体 ID
- * @param {string} type - 实体类型
- * @returns {object|null}
+ * 获取 Owner 提交状态。
  */
-function getEntityIndex(id, type) {
+function getOwnerState({ ownerType, ownerId }) {
   if (!db) return null;
-
-  // 支持 generic "topic" 查询时同时匹配 agent_topic 和 group_topic
-  if (type === "topic") {
-    return db
-      .prepare(
-        "SELECT * FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-      )
-      .get(id);
-  }
-
-  // 支持 agent_topic/group_topic 查询时同时匹配旧的 "topic" 类型
-  if (type === "agent_topic" || type === "group_topic") {
-    return db
-      .prepare(
-        "SELECT * FROM entity_index WHERE id = ? AND (type = ? OR type = 'topic')",
-      )
-      .get(id, type);
-  }
-
+  const identity = normalizeOwnerIdentity({ ownerType, ownerId });
   return db
-    .prepare("SELECT * FROM entity_index WHERE id = ? AND type = ?")
-    .get(id, type);
+    .prepare(
+      `SELECT owner_type, owner_id, config_path, config_hash,
+              updated_at, deleted_at
+       FROM owners
+       WHERE owner_type = ? AND owner_id = ?`,
+    )
+    .get(identity.ownerType, identity.ownerId) || null;
+}
+
+/**
+ * 获取 Topic 提交状态，并带出唯一的父 config 路径。
+ */
+function getTopicState({ ownerType, ownerId, topicId }) {
+  if (!db) return null;
+  const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
+  return db
+    .prepare(
+      `SELECT t.owner_type, t.owner_id, t.topic_id,
+              t.config_hash, t.content_hash, t.updated_at, t.deleted_at,
+              o.config_path
+       FROM topics t
+       JOIN owners o
+         ON o.owner_type = t.owner_type AND o.owner_id = t.owner_id
+       WHERE t.owner_type = ? AND t.owner_id = ? AND t.topic_id = ?`,
+    )
+    .get(identity.ownerType, identity.ownerId, identity.topicId) || null;
 }
 
 /**
  * 获取 history.json 最近一次成功索引时的文件版本。
  */
-function getHistorySourceState(topicId) {
+function getHistorySourceState({ ownerType, ownerId, topicId }) {
   if (!db) return null;
+  const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
   return db
     .prepare(
-      "SELECT topic_id, file_path, file_size, mtime_ms, indexed_at FROM history_source_state WHERE topic_id = ?",
+      `SELECT owner_type, owner_id, topic_id, file_path, file_size,
+              mtime_ms, source_hash, index_version
+       FROM history_source_state
+       WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
     )
-    .get(topicId) || null;
+    .get(identity.ownerType, identity.ownerId, identity.topicId) || null;
 }
 
 /**
  * 仅在一个话题完整摄取成功后记录文件版本。失败文件不写状态，
  * 以便下次启动继续验证并恢复，而不是把损坏内容误判为已索引。
  */
-function upsertHistorySourceState(
+function upsertHistorySourceState({
+  ownerType,
+  ownerId,
   topicId,
   filePath,
   fileSize,
   mtimeMs,
-  indexedAt = Date.now(),
-) {
+  sourceHash,
+}) {
   if (!db) return;
+  const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
+  if (typeof sourceHash !== "string" || !LOWERCASE_SHA256_PATTERN.test(sourceHash)) {
+    throw new Error("History source state requires a lowercase SHA-256 hash");
+  }
   db.prepare(`
     INSERT INTO history_source_state (
-      topic_id, file_path, file_size, mtime_ms, indexed_at
+      owner_type, owner_id, topic_id, file_path, file_size,
+      mtime_ms, source_hash, index_version
     )
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(topic_id) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(owner_type, owner_id, topic_id) DO UPDATE SET
       file_path = excluded.file_path,
       file_size = excluded.file_size,
       mtime_ms = excluded.mtime_ms,
-      indexed_at = excluded.indexed_at
-  `).run(topicId, filePath, fileSize, mtimeMs, indexedAt);
+      source_hash = excluded.source_hash,
+      index_version = excluded.index_version
+  `).run(
+    identity.ownerType,
+    identity.ownerId,
+    identity.topicId,
+    filePath,
+    fileSize,
+    mtimeMs,
+    sourceHash,
+    HISTORY_INDEX_VERSION,
+  );
 }
 
 /**
  * 源路径也参与版本判断，避免相同 topicId 被移动或错误复用后沿用旧状态。
  */
-function isHistorySourceCurrent(topicId, filePath, fileSize, mtimeMs) {
-  const state = getHistorySourceState(topicId);
+function isHistorySourceCurrent({
+  ownerType,
+  ownerId,
+  topicId,
+  filePath,
+  fileSize,
+  mtimeMs,
+}) {
+  const state = getHistorySourceState({ ownerType, ownerId, topicId });
   return Boolean(
     state &&
+    state.index_version === HISTORY_INDEX_VERSION &&
+    Number.isFinite(state.file_size) &&
+    state.file_size > 0 &&
+    Number.isFinite(state.mtime_ms) &&
+    state.mtime_ms > 0 &&
+    typeof state.source_hash === "string" &&
+    LOWERCASE_SHA256_PATTERN.test(state.source_hash) &&
     pathIdentity(state.file_path) === pathIdentity(filePath) &&
     state.file_size === fileSize &&
     state.mtime_ms === mtimeMs
   );
 }
 
-/**
- * 获取所有指定类型的实体
- * @param {string} type - 实体类型
- * @returns {object[]}
- */
-function getEntitiesByType(type) {
-  if (!db) return [];
-  if (type === "topic") {
-    return db
-      .prepare(
-        "SELECT * FROM entity_index WHERE (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-      )
-      .all();
-  }
-  return db.prepare("SELECT * FROM entity_index WHERE type = ?").all(type);
-}
-
-/**
- * 获取话题的所有消息
- * @param {string} topicId - 话题 ID
- * @returns {object[]}
- */
-function getMessagesByTopic(topicId) {
-  if (!db) return [];
-  return db
-    .prepare("SELECT * FROM message_index WHERE topic_id = ?")
-    .all(topicId);
-}
-
-/**
- * 软删除实体索引
- * @param {string} id - 实体 ID
- * @param {string} type - 实体类型
- * @param {number} deletedAt - 删除时间戳
- */
-function softDeleteEntityIndex(id, type, deletedAt = Date.now()) {
+function upsertOwnerTombstone({
+  ownerType,
+  ownerId,
+  configPath,
+  deletedAt = Date.now(),
+}) {
   if (!db) return;
+  const identity = normalizeOwnerIdentity({ ownerType, ownerId });
+  return db.prepare(
+    `INSERT INTO owners (
+       owner_type, owner_id, config_path, config_hash, content_hash,
+       updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, '', ?, ?)
+     ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+       content_hash = '',
+       deleted_at = CASE
+         WHEN owners.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(owners.deleted_at, excluded.deleted_at)
+       END`,
+  ).run(
+    identity.ownerType,
+    identity.ownerId,
+    configPath,
+    ENTITY_TOMBSTONE_HASH,
+    deletedAt,
+    deletedAt,
+  );
+}
 
-  const topicType = ["topic", "agent_topic", "group_topic"].includes(type);
-  const sql = topicType
-    ? `UPDATE entity_index
-       SET deleted_at = CASE
-         WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
-       WHERE id = ?2
-         AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')`
-    : `UPDATE entity_index
-       SET deleted_at = CASE
-         WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
-       WHERE id = ?2 AND type = ?3`;
-  return topicType
-    ? db.prepare(sql).run(deletedAt, id)
-    : db.prepare(sql).run(deletedAt, id, type);
+function upsertTopicTombstone({
+  ownerType,
+  ownerId,
+  topicId,
+  deletedAt = Date.now(),
+}) {
+  if (!db) return;
+  const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
+  const result = db.prepare(
+    `INSERT INTO topics (
+       owner_type, owner_id, topic_id, config_hash, content_hash,
+       updated_at, deleted_at
+     ) VALUES (?, ?, ?, ?, '', ?, ?)
+     ON CONFLICT(owner_type, owner_id, topic_id) DO UPDATE SET
+       deleted_at = CASE
+         WHEN topics.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(topics.deleted_at, excluded.deleted_at)
+       END`,
+  ).run(
+    identity.ownerType,
+    identity.ownerId,
+    identity.topicId,
+    ENTITY_TOMBSTONE_HASH,
+    deletedAt,
+    deletedAt,
+  );
+  db.prepare(
+    `DELETE FROM history_source_state
+     WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+  ).run(identity.ownerType, identity.ownerId, identity.topicId);
+  const ownerIsLive = db.prepare(
+    `SELECT 1 FROM owners
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  ).get(identity.ownerType, identity.ownerId);
+  if (ownerIsLive) refreshOwnerContentHash(identity);
+  return result;
 }
 
 /**
- * 软删除消息索引
- * @param {string} msgId - 消息 ID
- * @param {number} deletedAt - 删除时间戳
- * @param {string} [topicId] - 话题 ID (可选，若提供则精确删除特定分支话题的消息)
+ * 持久化消息墓碑；即使本机从未见过该消息，也保留精确删除事实。
+ * @param {object} params - 完整消息身份与删除时间
  */
-function softDeleteMessageIndex(msgId, deletedAt = Date.now(), topicId = null) {
+function upsertMessageTombstone({
+  ownerType,
+  ownerId,
+  topicId,
+  msgId,
+  deletedAt = Date.now(),
+}) {
   if (!db) return;
-
-  if (topicId) {
-    return db
-      .prepare(
-        `UPDATE message_index
-         SET deleted_at = CASE
-           WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
-         WHERE topic_id = ?2 AND msg_id = ?3`,
-      )
-      .run(deletedAt, topicId, msgId);
-  } else {
-    return db
-      .prepare(
-        `UPDATE message_index
-         SET deleted_at = CASE
-           WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
-         WHERE msg_id = ?2`,
-      )
-      .run(deletedAt, msgId);
-  }
+  const identity = normalizeMessageIdentity({
+    ownerType,
+    ownerId,
+    topicId,
+    msgId,
+  });
+  return messageTombstoneStatement.run(
+      identity.ownerType,
+      identity.ownerId,
+      identity.topicId,
+      identity.msgId,
+      MESSAGE_TOMBSTONE_HASH,
+      deletedAt,
+      deletedAt,
+    );
 }
 
 /**
@@ -435,69 +572,173 @@ function softDeleteMessageIndex(msgId, deletedAt = Date.now(), topicId = null) {
  * @param {string} ownerType - 所有者类型
  * @param {number} deletedAt - 删除时间戳
  */
-function softDeleteAvatarIndex(ownerId, ownerType, deletedAt = Date.now()) {
-  if (!db) return;
+function softDeleteAvatarIndex(
+  ownerId,
+  ownerType,
+  deletedAt = Date.now(),
+  filePath = "",
+) {
+  const database = db;
+  if (!database) return;
 
-  return db
-    .prepare(
-      `UPDATE avatar_index
-       SET deleted_at = CASE
-         WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
-       WHERE owner_id = ?2 AND owner_type = ?3`,
-    )
-    .run(deletedAt, ownerId, ownerType);
+  return database.prepare(
+    `INSERT INTO avatar_index
+       (owner_id, owner_type, file_path, hash, updated_at, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(owner_id, owner_type) DO UPDATE SET
+       file_path = CASE
+         WHEN avatar_index.file_path = '' THEN excluded.file_path
+         ELSE avatar_index.file_path
+       END,
+       updated_at = CASE
+         WHEN avatar_index.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(avatar_index.updated_at, excluded.deleted_at)
+       END,
+       deleted_at = CASE
+         WHEN avatar_index.deleted_at IS NULL THEN excluded.deleted_at
+         ELSE MIN(avatar_index.deleted_at, excluded.deleted_at)
+       END`,
+  ).run(
+    ownerId,
+    ownerType,
+    filePath,
+    AVATAR_TOMBSTONE_HASH,
+    deletedAt,
+    deletedAt,
+  );
 }
 
-/**
- * 清理过期的删除记录（超过 30 天）
- */
-function cleanupOldDeletedRecords() {
-  if (!db) return;
+function updateTopicContentHash({ ownerType, ownerId, topicId }, contentHash) {
+  if (!db) throw new Error("Database not initialized");
+  const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
+  return db.prepare(
+    `UPDATE topics
+     SET content_hash = ?
+     WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+       AND deleted_at IS NULL`,
+  ).run(contentHash, identity.ownerType, identity.ownerId, identity.topicId);
+}
 
-  const logger = getLogger();
-  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+const STORED_HASH_PATTERN = /^[a-f0-9]{64}$/;
 
-  const entityResult = db
-    .prepare(
-      `DELETE FROM entity_index WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-    )
-    .run(thirtyDaysAgo);
-  const messageResult = db
-    .prepare(
-      `DELETE FROM message_index WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-    )
-    .run(thirtyDaysAgo);
-  const avatarResult = db
-    .prepare(
-      `DELETE FROM avatar_index WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-    )
-    .run(thirtyDaysAgo);
+function ownerContentHashFromTopics(topics) {
+  const leaves = topics.map((topic) => {
+    if (typeof topic.topic_id !== "string" || topic.topic_id.length === 0) {
+      throw new Error("Owner content hash encountered an empty Topic id");
+    }
+    if (!STORED_HASH_PATTERN.test(topic.config_hash)) {
+      throw new Error(`Topic ${topic.topic_id} has an invalid config hash`);
+    }
+    if (
+      topic.content_hash !== "" &&
+      !STORED_HASH_PATTERN.test(topic.content_hash)
+    ) {
+      throw new Error(`Topic ${topic.topic_id} has an invalid content hash`);
+    }
+    return computeTopicLeafHash(
+      topic.topic_id,
+      topic.config_hash,
+      topic.content_hash,
+    );
+  });
+  return computeAggregatedHash(leaves);
+}
 
-  if (
-    entityResult.changes > 0 ||
-    messageResult.changes > 0 ||
-    avatarResult.changes > 0
-  ) {
-    logger.logOperation("cleanup", "purge", "batch", "success", `entity=${entityResult.changes} message=${messageResult.changes} avatar=${avatarResult.changes}`);
+function refreshOwnerContentHash(
+  { ownerType, ownerId },
+  database = db,
+) {
+  if (!database) throw new Error("Database not initialized");
+  const identity = normalizeOwnerIdentity({ ownerType, ownerId });
+  const topics = database.prepare(
+    `SELECT topic_id, config_hash, content_hash
+     FROM topics
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  ).all(identity.ownerType, identity.ownerId);
+  const contentHash = ownerContentHashFromTopics(topics);
+  const result = database.prepare(
+    `UPDATE owners SET content_hash = ?
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  ).run(contentHash, identity.ownerType, identity.ownerId);
+  if (result.changes !== 1) {
+    throw new Error(
+      `Owner content hash target is missing or tombstoned for ${ownerType}/${ownerId}`,
+    );
   }
+  return contentHash;
+}
+
+function refreshAllOwnerContentHashes(database = db) {
+  if (!database) throw new Error("Database not initialized");
+  const owners = database.prepare(
+    `SELECT owner_type, owner_id FROM owners
+     WHERE deleted_at IS NULL`,
+  ).all();
+  const topics = database.prepare(
+    `SELECT owner_type, owner_id, topic_id, config_hash, content_hash
+     FROM topics
+     WHERE deleted_at IS NULL`,
+  ).all();
+  const topicsByOwner = new Map(
+    owners.map((owner) => [`${owner.owner_type}\0${owner.owner_id}`, []]),
+  );
+  for (const topic of topics) {
+    const key = `${topic.owner_type}\0${topic.owner_id}`;
+    const ownerTopics = topicsByOwner.get(key);
+    if (!ownerTopics) {
+      throw new Error(
+        `Topic ${topic.owner_type}/${topic.owner_id}/${topic.topic_id} has no live Owner`,
+      );
+    }
+    ownerTopics.push(topic);
+  }
+
+  const update = database.prepare(
+    `UPDATE owners SET content_hash = ?
+     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+  );
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    for (const owner of owners) {
+      const key = `${owner.owner_type}\0${owner.owner_id}`;
+      const result = update.run(
+        ownerContentHashFromTopics(topicsByOwner.get(key)),
+        owner.owner_type,
+        owner.owner_id,
+      );
+      if (result.changes !== 1) {
+        throw new Error(
+          `Owner content hash target disappeared for ${owner.owner_type}/${owner.owner_id}`,
+        );
+      }
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  return owners.length;
 }
 
 module.exports = {
   initDb,
   getDb,
-  upsertEntityIndex,
-  upsertMessageIndex,
+  upsertOwnerState,
+  upsertTopicState,
+  upsertMessageState,
   upsertAttachmentIndex,
-  upsertMessageAttachment,
   upsertAvatarIndex,
-  getEntityIndex,
+  getAvatarIndex,
+  getOwnerState,
+  getTopicState,
   getHistorySourceState,
   upsertHistorySourceState,
   isHistorySourceCurrent,
-  getEntitiesByType,
-  getMessagesByTopic,
-  softDeleteEntityIndex,
-  softDeleteMessageIndex,
+  upsertOwnerTombstone,
+  upsertTopicTombstone,
+  upsertMessageTombstone,
   softDeleteAvatarIndex,
-  cleanupOldDeletedRecords,
+  updateTopicContentHash,
+  refreshOwnerContentHash,
+  refreshAllOwnerContentHashes,
 };

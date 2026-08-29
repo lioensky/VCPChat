@@ -114,28 +114,52 @@ class NdjsonWriter {
     if (this.totalBytes > this.maxTotalBytes) {
       throw new Error("NDJSON response exceeds 256 MiB total budget");
     }
-    if (this.response.write(line)) return;
+    const isClosed = () =>
+      this.response.destroyed === true ||
+      this.response.closed === true ||
+      this.response.writableEnded === true ||
+      this.response.writableFinished === true;
+    if (isClosed()) {
+      throw new Error("NDJSON consumer disconnected");
+    }
+
     await new Promise((resolve, reject) => {
+      let settled = false;
       const cleanup = () => {
         this.response.removeListener("drain", onDrain);
         this.response.removeListener("close", onClose);
         this.response.removeListener("error", onError);
       };
-      const onDrain = () => {
+      const settle = (error = null) => {
+        if (settled) return;
+        settled = true;
         cleanup();
-        resolve();
+        if (error) reject(error);
+        else resolve();
       };
-      const onClose = () => {
-        cleanup();
-        reject(new Error("NDJSON consumer disconnected"));
-      };
-      const onError = (error) => {
-        cleanup();
-        reject(error);
-      };
+      const onDrain = () => settle();
+      const onClose = () => settle(new Error("NDJSON consumer disconnected"));
+      const onError = (error) => settle(error);
+
+      // Listeners must exist before write(): a destroyed response may emit close/error
+      // synchronously and those terminal events are not replayed for late subscribers.
       this.response.once("drain", onDrain);
       this.response.once("close", onClose);
       this.response.once("error", onError);
+
+      let accepted;
+      try {
+        accepted = this.response.write(line);
+      } catch (error) {
+        settle(error);
+        return;
+      }
+      if (accepted) {
+        settle();
+      } else if (isClosed()) {
+        // Close can also race without another observable event after write() returns.
+        settle(new Error("NDJSON consumer disconnected"));
+      }
     });
   }
 }

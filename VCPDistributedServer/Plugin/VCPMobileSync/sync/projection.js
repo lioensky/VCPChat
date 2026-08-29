@@ -2,8 +2,10 @@
 
 const fs = require("fs").promises;
 const path = require("path");
+const { pathToFileURL } = require("node:url");
 
 const { createDesktopAttachment } = require("../config/defaults");
+const { getAvatarIndex } = require("../core/db");
 const { getExtensionFromType } = require("../utils/mime");
 const {
   BoundedWarnings,
@@ -14,7 +16,7 @@ const {
 async function resolveAttachmentPath(db, hash, allowedRoot = null) {
   const row = db
     .prepare(
-      "SELECT file_path FROM attachment_index WHERE hash = ? AND deleted_at IS NULL",
+      "SELECT file_path FROM attachment_index WHERE hash = ?",
     )
     .get(hash);
   if (!row || typeof row.file_path !== "string" || row.file_path.length === 0) {
@@ -39,6 +41,129 @@ async function resolveAttachmentPath(db, hash, allowedRoot = null) {
   }
 }
 
+const MOBILE_MESSAGE_PATCH_FIELDS = [
+  "id",
+  "role",
+  "name",
+  "content",
+  "timestamp",
+  "updatedAt",
+  "agentId",
+  "groupId",
+  "topicId",
+  "isGroupMessage",
+  "finishReason",
+];
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function desktopAttachmentHash(attachment) {
+  if (!isRecord(attachment)) return null;
+  const top = typeof attachment.hash === "string" ? attachment.hash : null;
+  const nested = isRecord(attachment._fileManagerData) &&
+    typeof attachment._fileManagerData.hash === "string"
+    ? attachment._fileManagerData.hash
+    : null;
+  const valid = (value) =>
+    typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+  if (valid(top) && valid(nested) && top.toLowerCase() !== nested.toLowerCase()) {
+    return null;
+  }
+  const hash = valid(top) ? top : valid(nested) ? nested : null;
+  return hash?.toLowerCase() ?? null;
+}
+
+function mergeDesktopAttachment(existing, incoming) {
+  if (!isRecord(existing) || !isRecord(incoming)) return incoming;
+
+  const merged = { ...existing, ...incoming };
+  if (
+    incoming.src === "" &&
+    typeof existing.src === "string" &&
+    existing.src.length > 0
+  ) {
+    merged.src = existing.src;
+  }
+
+  const existingData = isRecord(existing._fileManagerData)
+    ? existing._fileManagerData
+    : null;
+  const incomingData = isRecord(incoming._fileManagerData)
+    ? incoming._fileManagerData
+    : null;
+  if (existingData || incomingData) {
+    merged._fileManagerData = {
+      ...(existingData || {}),
+      ...(incomingData || {}),
+    };
+    if (
+      incomingData?.internalPath === "" &&
+      typeof existingData?.internalPath === "string" &&
+      existingData.internalPath.length > 0
+    ) {
+      merged._fileManagerData.internalPath = existingData.internalPath;
+    }
+  }
+  return merged;
+}
+
+function mergeMobileAttachments(existing, incoming) {
+  const existingByHash = new Map();
+  for (const attachment of Array.isArray(existing) ? existing : []) {
+    const hash = desktopAttachmentHash(attachment);
+    if (!hash) continue;
+    const matches = existingByHash.get(hash) || [];
+    matches.push(attachment);
+    existingByHash.set(hash, matches);
+  }
+
+  return incoming.map((attachment) => {
+    const hash = desktopAttachmentHash(attachment);
+    const matches = hash ? existingByHash.get(hash) : null;
+    const existingAttachment = matches?.shift();
+    return existingAttachment
+      ? mergeDesktopAttachment(existingAttachment, attachment)
+      : attachment;
+  });
+}
+
+/**
+ * Mobile Push carries a complete portable DTO, not a complete Desktop message.
+ * Patch only portable fields and preserve Desktop-only/unknown extensions.
+ */
+function mergeMobileMessage(existing, incoming) {
+  if (!isRecord(existing) || !isRecord(incoming)) return incoming;
+
+  const merged = { ...existing };
+  for (const key of MOBILE_MESSAGE_PATCH_FIELDS) {
+    if (
+      Object.prototype.hasOwnProperty.call(incoming, key) &&
+      incoming[key] !== null
+    ) {
+      merged[key] = incoming[key];
+    } else {
+      delete merged[key];
+    }
+  }
+
+  // avatarUrl is rebuilt from the Desktop-local avatar index, never from Mobile.
+  if (typeof incoming.avatarUrl === "string" && incoming.avatarUrl.length > 0) {
+    merged.avatarUrl = incoming.avatarUrl;
+  }
+
+  if (Array.isArray(incoming.attachments) && incoming.attachments.length > 0) {
+    merged.attachments = mergeMobileAttachments(
+      existing.attachments,
+      incoming.attachments,
+    );
+  } else {
+    delete merged.attachments;
+  }
+  return merged;
+}
+
 async function projectMobileMessage({
   rawMessage,
   topicId,
@@ -46,7 +171,13 @@ async function projectMobileMessage({
   ownerType,
   db,
   appDataPath,
+  resolveAgentAvatarPath = null,
 }) {
+  if (!Number.isSafeInteger(rawMessage?.updatedAt) || rawMessage.updatedAt < 0) {
+    throw new SyncProtocolError(
+      "Mobile message updatedAt must be a non-negative safe integer",
+    );
+  }
   const warnings = new BoundedWarnings();
   const canonical = canonicalizeMessage(rawMessage, topicId, warnings);
   if (warnings.count > 0) {
@@ -56,16 +187,26 @@ async function projectMobileMessage({
     );
   }
 
-  const isGroup = ownerType === "group";
-  const isUser = canonical.role === "user";
   const desktop = {
     id: canonical.id,
     role: canonical.role,
-    name: canonical.name || (isUser ? "User" : "Assistant"),
     content: canonical.content,
     timestamp: canonical.timestamp,
+    updatedAt: canonical.updatedAt,
   };
-  const neededAttachmentHashes = new Set();
+  if (canonical.name !== undefined) desktop.name = canonical.name;
+  for (const key of [
+    "isThinking",
+    "agentId",
+    "groupId",
+    "topicId",
+    "isGroupMessage",
+    "finishReason",
+  ]) {
+    if (canonical[key] !== undefined && canonical[key] !== null) {
+      desktop[key] = canonical[key];
+    }
+  }
   const attachmentsDir = path.join(appDataPath, "UserData", "attachments");
 
   if (Array.isArray(canonical.attachments) && canonical.attachments.length > 0) {
@@ -76,16 +217,13 @@ async function projectMobileMessage({
         attachment.hash,
         attachmentsDir,
       );
-      if (!existingPath) neededAttachmentHashes.add(attachment.hash);
       const extension = existingPath
         ? path.extname(existingPath)
         : getExtensionFromType(attachment.type);
-      const expectedPath =
-        existingPath || path.join(attachmentsDir, `${attachment.hash}${extension}`);
       desktop.attachments.push(
         createDesktopAttachment(
           attachment,
-          expectedPath,
+          existingPath || "",
           extension,
           canonical.timestamp,
         ),
@@ -93,26 +231,22 @@ async function projectMobileMessage({
     }
   }
 
-  if (!isUser) {
-    desktop.isThinking = canonical.isThinking ?? false;
-    desktop.finishReason = canonical.finishReason || "completed";
-    const agentId = canonical.agentId || (isGroup ? null : parentId);
-    if (agentId) desktop.agentId = agentId;
-    if (isGroup) {
-      desktop.isGroupMessage = true;
-      desktop.groupId = canonical.groupId || parentId;
-      desktop.topicId = canonical.topicId || topicId;
+  if (canonical.role !== "user") {
+    const avatarAgentId = canonical.agentId || (ownerType === "agent" ? parentId : null);
+    if (avatarAgentId) {
+      const avatarPath = resolveAgentAvatarPath
+        ? await resolveAgentAvatarPath(avatarAgentId)
+        : (() => {
+            const avatar = getAvatarIndex(avatarAgentId, "agent");
+            return avatar?.deleted_at == null ? avatar?.file_path : null;
+          })();
+      if (avatarPath) {
+        desktop.avatarUrl = pathToFileURL(avatarPath).href;
+      }
     }
-    if (agentId) {
-      desktop.avatarUrl = `file://${path.join(appDataPath, "Agents", agentId, "avatar.png")}`;
-    }
-    desktop.avatarColor = canonical.avatarColor || "rgb(128, 128, 128)";
   }
 
-  return {
-    message: desktop,
-    neededAttachmentHashes: [...neededAttachmentHashes],
-  };
+  return desktop;
 }
 
 async function projectMobileTopic({
@@ -122,6 +256,7 @@ async function projectMobileTopic({
   messages,
   db,
   appDataPath,
+  resolveAgentAvatarPath = null,
 }) {
   if (
     typeof topicId !== "string" ||
@@ -141,33 +276,41 @@ async function projectMobileTopic({
     throw new SyncProtocolError(`Mobile push for ${topicId} exceeds 10000 messages`);
   }
   const projected = [];
-  const needed = new Set();
   const seen = new Set();
+  const avatarPaths = new Map();
+  const cachedAvatarPathResolver = resolveAgentAvatarPath
+    ? (agentId) => {
+        if (!avatarPaths.has(agentId)) {
+          avatarPaths.set(agentId, Promise.resolve(resolveAgentAvatarPath(agentId)));
+        }
+        return avatarPaths.get(agentId);
+      }
+    : null;
   for (const rawMessage of messages) {
-    const result = await projectMobileMessage({
+    const message = await projectMobileMessage({
       rawMessage,
       topicId,
       parentId: ownerId,
       ownerType,
       db,
       appDataPath,
+      resolveAgentAvatarPath: cachedAvatarPathResolver,
     });
-    if (seen.has(result.message.id)) {
+    if (seen.has(message.id)) {
       throw new SyncProtocolError(
-        `Mobile push for ${topicId} contains duplicate message ${result.message.id}`,
+        `Mobile push for ${topicId} contains duplicate message ${message.id}`,
       );
     }
-    seen.add(result.message.id);
-    projected.push(result.message);
-    for (const hash of result.neededAttachmentHashes) needed.add(hash);
+    seen.add(message.id);
+    projected.push(message);
   }
   return {
     messages: projected,
-    neededAttachmentHashes: [...needed].sort(),
   };
 }
 
 module.exports = {
+  mergeMobileMessage,
   projectMobileMessage,
   projectMobileTopic,
   resolveAttachmentPath,

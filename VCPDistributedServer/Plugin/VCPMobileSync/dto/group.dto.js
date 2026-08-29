@@ -2,7 +2,7 @@
  * Group DTO 定义与操作
  */
 
-const { GROUP_DEFAULTS } = require("../config/defaults");
+const { GROUP_DEFAULTS, normalizeMemberTags } = require("../config/defaults");
 
 // Group 同步字段白名单
 const GROUP_SYNC_FIELDS = [
@@ -30,6 +30,8 @@ function extractGroupDTO(config) {
     let val = config[field] ?? GROUP_DEFAULTS[field];
     if (field === "createdAt") {
       val = parseInt(val);
+    } else if (field === "memberTags") {
+      val = normalizeMemberTags(val);
     }
     dto[field] = val;
   });
@@ -45,7 +47,9 @@ function extractGroupDTO(config) {
 function applyGroupDTO(config, dto) {
   GROUP_SYNC_FIELDS.forEach((field) => {
     if (dto[field] !== undefined) {
-      config[field] = dto[field];
+      config[field] = field === "memberTags"
+        ? normalizeMemberTags(dto[field])
+        : dto[field];
     }
   });
   return config;

@@ -1,225 +1,356 @@
 use std::{
-    collections::{HashMap, HashSet},
-    fs::{self, File, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
-    str::FromStr,
+    collections::{HashMap, HashSet, VecDeque},
+    fs,
+    path::Path,
 };
 
 use anyhow::{Context, Result};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, params_from_iter, types::Value as SqlValue, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 
 use crate::{
-    domain::{OwnerType, TopicKey},
-    ingest::{sha256_hex, Reconciler},
-    storage::{Database, IngestCommit},
-    sync_wire::{canonicalize_for_wire, canonicalize_message, message_fingerprint, WireWarnings},
+    domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
+    ingest::{
+        normalize_history_values, sha256_hex, write_history_atomic, Reconciler, SnapshotStale,
+    },
+    storage::{Database, IngestCommit, OwnerHashMode},
+    sync_wire::{canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings},
 };
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ManifestRequest {
-    pub data_type: String,
-    pub data: Vec<RemoteManifestItem>,
-    #[serde(default)]
-    pub targeted_owners: Option<Vec<String>>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManifestType {
+    Owner,
+    Topic,
+    Avatar,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteManifestItem {
-    pub id: String,
-    pub hash: String,
-    #[serde(default)]
-    pub config_hash: Option<String>,
-    #[serde(default)]
-    pub content_hash: Option<String>,
-    pub ts: i64,
-    #[serde(default)]
-    pub deleted_at: Option<i64>,
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
+#[serde(tag = "manifestType", rename_all = "lowercase", deny_unknown_fields)]
+pub enum ManifestRequest {
+    Owner {
+        items: Vec<OwnerManifestState>,
+    },
+    Topic {
+        items: Vec<TopicManifestState>,
+        #[serde(rename = "targetedOwners")]
+        targeted_owners: Vec<OwnerKey>,
+    },
+    Avatar {
+        items: Vec<AvatarManifestState>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum OwnerManifestState {
+    Live(OwnerManifestLive),
+    Deleted(OwnerManifestDeleted),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OwnerManifestLive {
+    owner_type: OwnerType,
+    owner_id: String,
+    config_hash: String,
+    content_hash: String,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OwnerManifestDeleted {
+    owner_type: OwnerType,
+    owner_id: String,
+    deleted_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum TopicManifestState {
+    Live(TopicManifestLive),
+    Deleted(TopicManifestDeleted),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TopicManifestLive {
+    owner_type: OwnerType,
+    owner_id: String,
+    topic_id: String,
+    config_hash: String,
+    content_hash: String,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TopicManifestDeleted {
+    owner_type: OwnerType,
+    owner_id: String,
+    topic_id: String,
+    deleted_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum AvatarManifestState {
+    Live(AvatarManifestLive),
+    Deleted(AvatarManifestDeleted),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AvatarManifestLive {
+    owner_type: AvatarOwnerType,
+    owner_id: String,
+    binary_hash: String,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AvatarManifestDeleted {
+    owner_type: AvatarOwnerType,
+    owner_id: String,
+    deleted_at: i64,
+}
+
+#[derive(Debug, Clone)]
+enum ManifestIdentity {
+    Owner(OwnerKey),
+    Topic(TopicKey),
+    Avatar(AvatarKey),
+}
+
+#[derive(Debug, Clone)]
+struct ManifestItem {
+    identity: ManifestIdentity,
+    config_hash: String,
+    content_hash: String,
+    updated_at: i64,
+    deleted_at: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+struct TopicManifestRow {
+    key: TopicKey,
+    config_hash: String,
+    content_hash: String,
+    updated_at: i64,
+    deleted_at: Option<i64>,
+    source_path: String,
+    source_status: Option<String>,
+    source_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum ManifestActionKind {
+    Pull,
+    Push,
+    PullDelete,
+    PushDelete,
+    Skip,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ManifestItem {
-    pub id: String,
-    pub hash: String,
-    pub config_hash: String,
-    pub content_hash: String,
-    pub ts: i64,
-    pub deleted_at: Option<i64>,
+pub struct OwnerManifestDecision {
+    owner_type: OwnerType,
+    owner_id: String,
+    action: ManifestActionKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub owner_type: Option<OwnerType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub owner_id: Option<String>,
-    /// 缺口 B 降级标记：owner 的 config 不可读/不可解析时置位。
-    /// 纯内部状态（serde skip，不上 wire）——manifest() 据此把该条目降级为
-    /// SKIP（手机端本轮跳过），而非让单条故障炸掉整批 manifest（500）。
-    #[serde(skip)]
-    pub degraded: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ManifestAction {
-    pub id: String,
-    pub action: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deleted_at: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub owner_type: Option<OwnerType>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub owner_id: Option<String>,
+    deleted_at: Option<i64>,
     #[serde(skip_serializing_if = "is_false")]
-    pub mismatched_content: bool,
+    content_hash_mismatch: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ManifestResponse {
-    #[serde(rename = "type")]
-    pub response_type: &'static str,
-    pub data: Vec<ManifestAction>,
-    pub data_type: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TopicSelector {
-    pub topic_id: String,
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TopicIdentityResponse {
-    pub topic_id: String,
-    pub owner_type: OwnerType,
-    pub owner_id: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessageManifestItem {
-    pub msg_id: String,
-    pub content_hash: String,
-    pub updated_at: i64,
+pub struct TopicManifestDecision {
+    owner_type: OwnerType,
+    owner_id: String,
+    topic_id: String,
+    action: ManifestActionKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub deleted_at: Option<i64>,
+    deleted_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MessageManifestResponse {
-    #[serde(rename = "type")]
-    pub response_type: &'static str,
+pub struct AvatarManifestDecision {
+    owner_type: AvatarOwnerType,
+    owner_id: String,
+    action: ManifestActionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deleted_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "manifestType", rename_all = "lowercase")]
+pub enum ManifestResponse {
+    Owner {
+        #[serde(rename = "type")]
+        response_type: &'static str,
+        results: Vec<OwnerManifestDecision>,
+    },
+    Topic {
+        #[serde(rename = "type")]
+        response_type: &'static str,
+        results: Vec<TopicManifestDecision>,
+    },
+    Avatar {
+        #[serde(rename = "type")]
+        response_type: &'static str,
+        results: Vec<AvatarManifestDecision>,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct IndexedMessageState {
+    msg_id: String,
+    message_hash: Option<String>,
+    updated_at: i64,
+    deleted_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TopicDiffRequest {
+    pub topics: Vec<TopicDiffState>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TopicDiffState {
     pub topic_id: String,
     pub owner_type: OwnerType,
     pub owner_id: String,
-    pub messages: Vec<MessageManifestItem>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TopicHashDiffRequest {
-    #[serde(default)]
-    pub hashes: HashMap<String, Value>,
-    #[serde(default)]
-    pub topics: Vec<TopicHashState>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TopicHashState {
-    pub topic_id: String,
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
-    #[serde(default)]
     pub config_hash: String,
-    #[serde(default)]
     pub content_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TopicHashDiffResponse {
+pub struct TopicDiffResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
-    pub changed_topics: Vec<String>,
+    pub changed_topics: Vec<TopicKey>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageDiffRequest {
-    #[serde(default)]
-    pub topics: HashMap<String, MessageDiffState>,
+    pub topics: Vec<MessageDiffState>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageDiffState {
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
-    #[serde(default)]
-    pub topic_hash: String,
-    #[serde(default)]
-    pub messages: HashMap<String, String>,
+    pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
+    pub content_hash: String,
+    pub messages: HashMap<String, MessageVersionState>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum MessageVersionState {
+    Live(MessageLiveState),
+    Deleted(MessageDeletedState),
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageLiveState {
+    pub message_hash: String,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageDeletedState {
+    pub deleted_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum MessageDiffResult {
+    Success(MessageDiffSuccess),
+    Failure(MessageDiffFailure),
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MessageDiffResult {
+pub struct MessageDiffSuccess {
+    pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
     pub ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub to_pull: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub to_push: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<SyncDecisionError>,
+    pub pull_message_ids: Vec<String>,
+    pub push_topic: bool,
+    pub delete_messages: Vec<MessageDeleteAction>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageDiffFailure {
+    pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
+    pub ok: bool,
+    pub error: SyncItemError,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageDeleteAction {
+    pub msg_id: String,
+    pub deleted_at: i64,
 }
 
 impl MessageDiffResult {
-    fn success(to_pull: Vec<String>, to_push: bool) -> Self {
-        Self {
+    fn success(
+        topic: &TopicKey,
+        pull_message_ids: Vec<String>,
+        push_topic: bool,
+        delete_messages: Vec<MessageDeleteAction>,
+    ) -> Self {
+        Self::Success(MessageDiffSuccess {
+            topic_id: topic.topic_id.clone(),
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id.clone(),
             ok: true,
-            to_pull: Some(to_pull),
-            to_push: Some(to_push),
-            error: None,
-        }
+            pull_message_ids,
+            push_topic,
+            delete_messages,
+        })
     }
 
-    fn failure(code: &str, message: impl Into<String>) -> Self {
-        Self {
+    fn failure(topic: &TopicKey, code: &str, message: impl Into<String>) -> Self {
+        Self::Failure(MessageDiffFailure {
+            topic_id: topic.topic_id.clone(),
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id.clone(),
             ok: false,
-            to_pull: None,
-            to_push: None,
-            error: Some(SyncDecisionError {
+            error: SyncItemError {
                 code: code.to_string(),
                 message: message.into(),
-            }),
-        }
+                retryable: false,
+            },
+        })
     }
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncDecisionError {
+pub struct SyncItemError {
     pub code: String,
     pub message: String,
+    pub retryable: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -227,33 +358,33 @@ pub struct SyncDecisionError {
 pub struct MessageDiffResponse {
     #[serde(rename = "type")]
     pub response_type: &'static str,
-    pub results: HashMap<String, MessageDiffResult>,
+    pub results: Vec<MessageDiffResult>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessagesPullRequest {
-    pub requests: Vec<MessagesPullTopic>,
+    pub topics: Vec<MessagesPullTopic>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessagesPullTopic {
     pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
     #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
-    #[serde(default)]
-    pub msg_ids: Vec<String>,
+    pub message_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessagesPullFrame {
+    pub kind: &'static str,
     pub topic_id: String,
     pub owner_type: OwnerType,
     pub owner_id: String,
+    pub ok: bool,
     pub messages: Vec<Value>,
     #[serde(skip_serializing_if = "is_zero")]
     pub legacy_attachment_warnings: usize,
@@ -262,25 +393,74 @@ pub struct MessagesPullFrame {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessagesPushRequest {
-    pub topics: Vec<MessagesPushTopic>,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntitiesPullRequest {
+    pub items: Vec<EntityPullItem>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(
+    tag = "entityType",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum EntityPullItem {
+    Owner {
+        owner_type: OwnerType,
+        owner_id: String,
+    },
+    Topic {
+        owner_type: OwnerType,
+        owner_id: String,
+        topic_id: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(
+    tag = "entityType",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
+pub enum EntityPullResult {
+    Owner {
+        owner_type: OwnerType,
+        owner_id: String,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<SyncItemError>,
+    },
+    Topic {
+        owner_type: OwnerType,
+        owner_id: String,
+        topic_id: String,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<SyncItemError>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EntitiesPullResponse {
+    pub results: Vec<EntityPullResult>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessagesPushTopic {
     pub topic_id: String,
-    #[serde(default)]
-    pub owner_type: Option<OwnerType>,
-    #[serde(default)]
-    pub owner_id: Option<String>,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
     #[serde(default)]
     pub messages: Vec<Value>,
     #[serde(default)]
-    pub deleted_message_ids: Vec<String>,
-    #[serde(default)]
-    pub deleted_message_tombstones: Vec<MessageTombstoneInput>,
+    pub deleted_messages: Vec<MessageTombstoneInput>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -294,48 +474,17 @@ pub struct MessageTombstoneInput {
 #[serde(rename_all = "camelCase")]
 pub struct MessagesPushResult {
     pub topic_id: String,
-    pub success: bool,
-    pub changed: bool,
-    pub revision: Option<i64>,
-    pub message_count: usize,
-    pub needed_attachment_hashes: Vec<String>,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
+    pub ok: bool,
+    #[serde(skip)]
+    pub ingest_commit: Option<IngestCommit>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessagesPushResponse {
-    pub results: Vec<MessagesPushResult>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChangeRecord {
-    pub sequence: i64,
-    pub entity_type: String,
-    pub operation: String,
-    pub owner_type: Option<OwnerType>,
-    pub owner_id: Option<String>,
-    pub topic_id: Option<String>,
-    pub entity_id: Option<String>,
-    pub revision: i64,
-    pub origin: String,
-    pub changed_at: i64,
-    pub payload: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChangeFeedResponse {
-    pub changes: Vec<ChangeRecord>,
-    pub next_sequence: i64,
-    pub has_more: bool,
+    pub error: Option<SyncItemError>,
 }
 
 const MAX_SYNC_ITEMS: usize = 10_000;
 const MAX_SAFE_JSON_INTEGER: i64 = (1_i64 << 53) - 1;
-
 fn is_lower_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -343,105 +492,287 @@ fn is_lower_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
-    anyhow::ensure!(
-        matches!(request.data_type.as_str(), "agent" | "group" | "topic"),
-        "unsupported manifest dataType {}",
-        request.data_type
-    );
-    anyhow::ensure!(
-        request.data.len() <= MAX_SYNC_ITEMS,
-        "manifest exceeds {MAX_SYNC_ITEMS} items"
-    );
+struct NormalizedManifestRequest {
+    manifest_type: ManifestType,
+    items: Vec<ManifestItem>,
+    targeted_owners: Option<Vec<OwnerKey>>,
+}
 
-    let targeted_owners = request.targeted_owners.as_deref();
-    if request.data_type == "topic" {
-        let owners = targeted_owners.context("topic manifest requires targetedOwners")?;
-        anyhow::ensure!(
-            owners.len() <= MAX_SYNC_ITEMS,
-            "targetedOwners exceeds {MAX_SYNC_ITEMS} items"
-        );
-        let unique = owners.iter().collect::<HashSet<_>>();
-        anyhow::ensure!(
-            unique.len() == owners.len() && owners.iter().all(|owner| !owner.is_empty()),
-            "targetedOwners contains empty or duplicate owner IDs"
-        );
-    } else {
-        anyhow::ensure!(
-            targeted_owners.is_none(),
-            "targetedOwners is only valid for topic manifests"
-        );
-    }
+#[derive(Debug, Clone)]
+struct ManifestDecision {
+    identity: ManifestIdentity,
+    action: ManifestActionKind,
+    deleted_at: Option<i64>,
+    content_hash_mismatch: bool,
+}
 
-    let mut seen_ids = HashSet::new();
-    for item in &request.data {
-        anyhow::ensure!(!item.id.is_empty(), "manifest item id must not be empty");
-        anyhow::ensure!(
-            seen_ids.insert(item.id.as_str()),
-            "manifest contains duplicate id {}",
-            item.id
-        );
-        anyhow::ensure!(
-            is_lower_sha256(&item.hash),
-            "manifest item {} hash must be lowercase SHA-256",
-            item.id
-        );
-        let config_hash = item
-            .config_hash
-            .as_deref()
-            .context("manifest configHash is required")?;
-        anyhow::ensure!(
-            is_lower_sha256(config_hash),
-            "manifest item {} configHash must be lowercase SHA-256",
-            item.id
-        );
-        let content_hash = item
-            .content_hash
-            .as_deref()
-            .context("manifest contentHash is required")?;
-        anyhow::ensure!(
-            content_hash.is_empty() || is_lower_sha256(content_hash),
-            "manifest item {} contentHash must be empty or lowercase SHA-256",
-            item.id
-        );
-        anyhow::ensure!(
-            (0..=MAX_SAFE_JSON_INTEGER).contains(&item.ts),
-            "manifest item {} timestamp must be a non-negative safe integer",
-            item.id
-        );
-        if let Some(deleted_at) = item.deleted_at {
-            anyhow::ensure!(
-                (0..=MAX_SAFE_JSON_INTEGER).contains(&deleted_at),
-                "manifest item {} deletedAt must be a non-negative safe integer",
-                item.id
-            );
-        }
-        if request.data_type == "topic" {
-            let owner_type = item
-                .owner_type
-                .context("topic manifest item requires ownerType")?;
-            let owner_id = item
-                .owner_id
-                .as_deref()
-                .filter(|owner_id| !owner_id.is_empty())
-                .context("topic manifest item requires ownerId")?;
-            anyhow::ensure!(
-                targeted_owners.is_some_and(|owners| owners.iter().any(|id| id == owner_id)),
-                "topic manifest item {} has unexpected owner {}:{}",
-                item.id,
-                owner_type.as_str(),
-                owner_id
-            );
-        }
-    }
+fn validate_manifest_time(value: i64, label: &str) -> Result<i64> {
+    anyhow::ensure!(
+        (0..=MAX_SAFE_JSON_INTEGER).contains(&value),
+        "{label} must be a non-negative safe integer"
+    );
+    Ok(value)
+}
+
+fn validate_owner_key(key: &OwnerKey) -> Result<()> {
+    anyhow::ensure!(!key.owner_id.is_empty(), "ownerId must not be empty");
     Ok(())
 }
 
+fn validate_topic_key(key: &TopicKey) -> Result<()> {
+    validate_owner_key(&OwnerKey {
+        owner_type: key.owner_type,
+        owner_id: key.owner_id.clone(),
+    })?;
+    anyhow::ensure!(!key.topic_id.is_empty(), "topicId must not be empty");
+    Ok(())
+}
+
+fn validate_avatar_key(key: &AvatarKey) -> Result<()> {
+    AvatarKey::from_wire_id(&format!("{}:{}", key.owner_type, key.owner_id))?;
+    Ok(())
+}
+
+fn normalize_manifest_request(request: ManifestRequest) -> Result<NormalizedManifestRequest> {
+    let (manifest_type, items, targeted_owners) = match request {
+        ManifestRequest::Owner { items } => {
+            let items = items
+                .into_iter()
+                .map(|state| match state {
+                    OwnerManifestState::Live(item) => {
+                        let key = OwnerKey {
+                            owner_type: item.owner_type,
+                            owner_id: item.owner_id,
+                        };
+                        validate_owner_key(&key)?;
+                        anyhow::ensure!(
+                            is_lower_sha256(&item.config_hash),
+                            "owner configHash must be lowercase SHA-256"
+                        );
+                        anyhow::ensure!(
+                            item.content_hash.is_empty() || is_lower_sha256(&item.content_hash),
+                            "owner contentHash must be empty or lowercase SHA-256"
+                        );
+                        Ok(ManifestItem {
+                            identity: ManifestIdentity::Owner(key),
+                            config_hash: item.config_hash,
+                            content_hash: item.content_hash,
+                            updated_at: validate_manifest_time(item.updated_at, "updatedAt")?,
+                            deleted_at: None,
+                        })
+                    }
+                    OwnerManifestState::Deleted(item) => {
+                        let key = OwnerKey {
+                            owner_type: item.owner_type,
+                            owner_id: item.owner_id,
+                        };
+                        validate_owner_key(&key)?;
+                        Ok(ManifestItem {
+                            identity: ManifestIdentity::Owner(key),
+                            config_hash: String::new(),
+                            content_hash: String::new(),
+                            updated_at: 0,
+                            deleted_at: Some(validate_manifest_time(item.deleted_at, "deletedAt")?),
+                        })
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?;
+            (ManifestType::Owner, items, None)
+        }
+        ManifestRequest::Topic {
+            items,
+            targeted_owners,
+        } => {
+            anyhow::ensure!(
+                targeted_owners.len() <= MAX_SYNC_ITEMS,
+                "targetedOwners exceeds {MAX_SYNC_ITEMS} items"
+            );
+            let owner_set = targeted_owners.iter().cloned().collect::<HashSet<_>>();
+            anyhow::ensure!(
+                owner_set.len() == targeted_owners.len(),
+                "targetedOwners contains a duplicate owner identity"
+            );
+            for owner in &targeted_owners {
+                validate_owner_key(owner)?;
+            }
+            let items = items
+                .into_iter()
+                .map(|state| match state {
+                    TopicManifestState::Live(item) => {
+                        let key = TopicKey {
+                            owner_type: item.owner_type,
+                            owner_id: item.owner_id,
+                            topic_id: item.topic_id,
+                        };
+                        validate_topic_key(&key)?;
+                        anyhow::ensure!(
+                            owner_set.contains(&OwnerKey {
+                                owner_type: key.owner_type,
+                                owner_id: key.owner_id.clone(),
+                            }),
+                            "topic manifest item has an unexpected owner"
+                        );
+                        anyhow::ensure!(
+                            is_lower_sha256(&item.config_hash),
+                            "topic configHash must be lowercase SHA-256"
+                        );
+                        anyhow::ensure!(
+                            item.content_hash.is_empty() || is_lower_sha256(&item.content_hash),
+                            "topic contentHash must be empty or lowercase SHA-256"
+                        );
+                        Ok(ManifestItem {
+                            identity: ManifestIdentity::Topic(key),
+                            config_hash: item.config_hash,
+                            content_hash: item.content_hash,
+                            updated_at: validate_manifest_time(item.updated_at, "updatedAt")?,
+                            deleted_at: None,
+                        })
+                    }
+                    TopicManifestState::Deleted(item) => {
+                        let key = TopicKey {
+                            owner_type: item.owner_type,
+                            owner_id: item.owner_id,
+                            topic_id: item.topic_id,
+                        };
+                        validate_topic_key(&key)?;
+                        anyhow::ensure!(
+                            owner_set.contains(&OwnerKey {
+                                owner_type: key.owner_type,
+                                owner_id: key.owner_id.clone(),
+                            }),
+                            "topic manifest item has an unexpected owner"
+                        );
+                        Ok(ManifestItem {
+                            identity: ManifestIdentity::Topic(key),
+                            config_hash: String::new(),
+                            content_hash: String::new(),
+                            updated_at: 0,
+                            deleted_at: Some(validate_manifest_time(item.deleted_at, "deletedAt")?),
+                        })
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?;
+            (ManifestType::Topic, items, Some(targeted_owners))
+        }
+        ManifestRequest::Avatar { items } => {
+            let items = items
+                .into_iter()
+                .map(|state| match state {
+                    AvatarManifestState::Live(item) => {
+                        let key = AvatarKey {
+                            owner_type: item.owner_type,
+                            owner_id: item.owner_id,
+                        };
+                        validate_avatar_key(&key)?;
+                        anyhow::ensure!(
+                            is_lower_sha256(&item.binary_hash),
+                            "avatar binaryHash must be lowercase SHA-256"
+                        );
+                        Ok(ManifestItem {
+                            identity: ManifestIdentity::Avatar(key),
+                            config_hash: item.binary_hash,
+                            content_hash: String::new(),
+                            updated_at: validate_manifest_time(item.updated_at, "updatedAt")?,
+                            deleted_at: None,
+                        })
+                    }
+                    AvatarManifestState::Deleted(item) => {
+                        let key = AvatarKey {
+                            owner_type: item.owner_type,
+                            owner_id: item.owner_id,
+                        };
+                        validate_avatar_key(&key)?;
+                        Ok(ManifestItem {
+                            identity: ManifestIdentity::Avatar(key),
+                            config_hash: String::new(),
+                            content_hash: String::new(),
+                            updated_at: 0,
+                            deleted_at: Some(validate_manifest_time(item.deleted_at, "deletedAt")?),
+                        })
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?;
+            (ManifestType::Avatar, items, None)
+        }
+    };
+    anyhow::ensure!(
+        items.len() <= MAX_SYNC_ITEMS,
+        "manifest exceeds {MAX_SYNC_ITEMS} items"
+    );
+    let mut seen = HashSet::new();
+    for item in &items {
+        anyhow::ensure!(
+            seen.insert(manifest_key(&item.identity)),
+            "manifest contains a duplicate entity identity"
+        );
+    }
+    Ok(NormalizedManifestRequest {
+        manifest_type,
+        items,
+        targeted_owners,
+    })
+}
+
+fn build_manifest_response(
+    manifest_type: ManifestType,
+    actions: Vec<ManifestDecision>,
+) -> Result<ManifestResponse> {
+    match manifest_type {
+        ManifestType::Owner => Ok(ManifestResponse::Owner {
+            response_type: "SYNC_MANIFEST_RESULT",
+            results: actions
+                .into_iter()
+                .map(|action| match action.identity {
+                    ManifestIdentity::Owner(key) => Ok(OwnerManifestDecision {
+                        owner_type: key.owner_type,
+                        owner_id: key.owner_id,
+                        action: action.action,
+                        deleted_at: action.deleted_at,
+                        content_hash_mismatch: action.content_hash_mismatch,
+                    }),
+                    _ => anyhow::bail!("owner manifest produced a non-owner decision"),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        }),
+        ManifestType::Topic => Ok(ManifestResponse::Topic {
+            response_type: "SYNC_MANIFEST_RESULT",
+            results: actions
+                .into_iter()
+                .map(|action| match action.identity {
+                    ManifestIdentity::Topic(key) => Ok(TopicManifestDecision {
+                        owner_type: key.owner_type,
+                        owner_id: key.owner_id,
+                        topic_id: key.topic_id,
+                        action: action.action,
+                        deleted_at: action.deleted_at,
+                    }),
+                    _ => anyhow::bail!("topic manifest produced a non-topic decision"),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        }),
+        ManifestType::Avatar => Ok(ManifestResponse::Avatar {
+            response_type: "SYNC_MANIFEST_RESULT",
+            results: actions
+                .into_iter()
+                .map(|action| match action.identity {
+                    ManifestIdentity::Avatar(key) => Ok(AvatarManifestDecision {
+                        owner_type: key.owner_type,
+                        owner_id: key.owner_id,
+                        action: action.action,
+                        deleted_at: action.deleted_at,
+                    }),
+                    _ => anyhow::bail!("avatar manifest produced a non-avatar decision"),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        }),
+    }
+}
+
 pub fn manifest(database: &Database, request: ManifestRequest) -> Result<ManifestResponse> {
-    validate_manifest_request(&request)?;
+    let request = normalize_manifest_request(request)?;
     let local = local_manifest(
         database,
-        &request.data_type,
+        request.manifest_type,
         request.targeted_owners.as_deref(),
     )?;
     anyhow::ensure!(
@@ -449,115 +780,71 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         "local manifest exceeds {MAX_SYNC_ITEMS} items"
     );
     let mut local_by_key = HashMap::new();
-    let mut local_ids = HashSet::new();
     for item in local {
-        let key = manifest_key(&item.id, item.owner_type, item.owner_id.as_deref());
-        if request.data_type == "topic" {
-            // topics 表 PK 为 (owner_type, owner_id, topic_id)：topic id 仅在
-            // 单个 owner 内唯一，跨 owner 重名（如每个 Agent 的 default 话题）
-            // 是合法数据形态。协议 1.1 下 topic 条目强制携带 ownerType/ownerId，
-            // diff 只走 manifest_key 精确匹配、不走 id-only 回退（歧义防护由
-            // unique_manifest_item_by_id 多匹配返回 None 承担），因此唯一性
-            // 按完整 key 校验；裸 id 全局查重会把多 owner 全量同步误报成 500。
-            anyhow::ensure!(
-                !local_by_key.contains_key(&key),
-                "local manifest contains duplicate topic key {}",
-                key
-            );
-        } else {
-            // agent/group manifest 按 owner_type 过滤查询，PK 已保证唯一；
-            // 此守卫仅作为 id-only 回退路径的防御性断言保留。
-            anyhow::ensure!(
-                local_ids.insert(item.id.clone()),
-                "local manifest contains ambiguous id {}",
-                item.id
-            );
-        }
-        local_by_key.insert(key, item);
+        let key = manifest_key(&item.identity);
+        anyhow::ensure!(
+            local_by_key.insert(key.clone(), item).is_none(),
+            "local manifest contains duplicate entity key {key}"
+        );
     }
 
     let mut actions = Vec::new();
     let mut processed = HashSet::new();
-    for remote in &request.data {
-        let key = manifest_key(&remote.id, remote.owner_type, remote.owner_id.as_deref());
-        let exact = local_by_key.get(&key);
-        if request.data_type == "topic"
-            && exact.is_none()
-            && unique_manifest_item_by_id(&local_by_key, &remote.id).is_some()
-        {
-            anyhow::bail!("topic {} owner conflicts with the CDS index", remote.id);
-        }
-        let local = if request.data_type == "topic" {
-            exact
-        } else {
-            exact.or_else(|| unique_manifest_item_by_id(&local_by_key, &remote.id))
-        };
-        processed.insert(local.map_or(key, |item| {
-            manifest_key(&item.id, item.owner_type, item.owner_id.as_deref())
-        }));
+    for remote in &request.items {
+        let key = manifest_key(&remote.identity);
+        let local = local_by_key.get(&key);
+        processed.insert(key);
 
         if let Some(deleted_at) = remote.deleted_at {
             if local.is_none_or(|item| item.deleted_at.is_none()) {
-                actions.push(manifest_action(remote, "DELETE", Some(deleted_at), false));
+                actions.push(ManifestDecision {
+                    identity: remote.identity.clone(),
+                    action: ManifestActionKind::PushDelete,
+                    deleted_at: Some(deleted_at),
+                    content_hash_mismatch: false,
+                });
             }
             continue;
         }
 
         let Some(local) = local else {
-            actions.push(manifest_action(remote, "PUSH", None, false));
+            actions.push(ManifestDecision {
+                identity: remote.identity.clone(),
+                action: ManifestActionKind::Push,
+                deleted_at: None,
+                content_hash_mismatch: false,
+            });
             continue;
         };
         if let Some(deleted_at) = local.deleted_at {
-            actions.push(ManifestAction {
-                id: local.id.clone(),
-                action: "PUSH_DELETE".to_string(),
+            actions.push(ManifestDecision {
+                identity: local.identity.clone(),
+                action: ManifestActionKind::PullDelete,
                 deleted_at: Some(deleted_at),
-                owner_type: local.owner_type,
-                owner_id: local.owner_id.clone(),
-                mismatched_content: false,
+                content_hash_mismatch: false,
             });
             continue;
         }
 
-        // 缺口 B 降级：owner 条目在生成时 config 不可读（degraded）。
-        // 下游实体下载对手机端是 attempt-fatal，不能靠哨兵哈希把它推向 PULL；
-        // 降级为 SKIP——手机端本轮跳过该 owner，但 mismatchedContent=true 仍把
-        // owner 记入 changed set，其下健康 topic 在 Phase 2 照常同步
-        // （topic 元数据来自 DB，不读 owner config 文件）。
-        if local.degraded {
-            actions.push(ManifestAction {
-                id: local.id.clone(),
-                action: "SKIP".to_string(),
-                deleted_at: None,
-                owner_type: local.owner_type,
-                owner_id: local.owner_id.clone(),
-                mismatched_content: true,
-            });
-            continue;
-        }
-
-        let remote_config = remote.config_hash.as_deref().unwrap_or(&remote.hash);
-        let remote_content = remote.content_hash.as_deref().unwrap_or_default();
-        let config_changed = local.config_hash != remote_config;
-        let content_changed = local.content_hash != remote_content;
+        let config_changed = local.config_hash != remote.config_hash;
+        let content_changed = local.content_hash != remote.content_hash;
         if config_changed {
-            actions.push(ManifestAction {
-                id: local.id.clone(),
-                action: if remote.ts > local.ts { "PUSH" } else { "PULL" }.to_string(),
+            actions.push(ManifestDecision {
+                identity: local.identity.clone(),
+                action: if remote.updated_at > local.updated_at {
+                    ManifestActionKind::Push
+                } else {
+                    ManifestActionKind::Pull
+                },
                 deleted_at: None,
-                owner_type: local.owner_type,
-                owner_id: local.owner_id.clone(),
-                mismatched_content: content_changed,
+                content_hash_mismatch: content_changed,
             });
-        } else if content_changed && (request.data_type == "agent" || request.data_type == "group")
-        {
-            actions.push(ManifestAction {
-                id: local.id.clone(),
-                action: "SKIP".to_string(),
+        } else if content_changed && request.manifest_type == ManifestType::Owner {
+            actions.push(ManifestDecision {
+                identity: local.identity.clone(),
+                action: ManifestActionKind::Skip,
                 deleted_at: None,
-                owner_type: local.owner_type,
-                owner_id: local.owner_id.clone(),
-                mismatched_content: true,
+                content_hash_mismatch: true,
             });
         }
     }
@@ -566,42 +853,34 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         if processed.contains(&key) {
             continue;
         }
-        // degraded 条目在尾部循环同样降级为 SKIP：手机还没有这个 owner 时，
-        // PULL 会走向 attempt-fatal 的实体下载——本轮跳过，待 config 自愈后
-        // 下轮正常 PULL。mismatchedContent=false：手机端没有该 owner，
-        // 不把它记入 changed set，避免为其下 topic 生成孤儿动作。
-        actions.push(ManifestAction {
-            id: local.id,
+        actions.push(ManifestDecision {
+            identity: local.identity,
             action: if local.deleted_at.is_some() {
-                "PUSH_DELETE"
-            } else if local.degraded {
-                "SKIP"
+                ManifestActionKind::PullDelete
             } else {
-                "PULL"
-            }
-            .to_string(),
+                ManifestActionKind::Pull
+            },
             deleted_at: local.deleted_at,
-            owner_type: local.owner_type,
-            owner_id: local.owner_id,
-            mismatched_content: false,
+            content_hash_mismatch: false,
         });
     }
 
-    Ok(ManifestResponse {
-        response_type: "SYNC_DIFF_RESULTS",
-        data: actions,
-        data_type: request.data_type,
-    })
+    build_manifest_response(request.manifest_type, actions)
 }
 
-pub fn message_manifest(
+#[cfg(test)]
+fn load_message_states(database: &Database, key: &TopicKey) -> Result<Vec<IndexedMessageState>> {
+    ensure_topic_sync_source_healthy(database, key)?;
+    load_message_states_committed(database, key)
+}
+
+fn load_message_states_committed(
     database: &Database,
-    selector: &TopicSelector,
-) -> Result<MessageManifestResponse> {
-    let key = resolve_topic(database, selector)?;
+    key: &TopicKey,
+) -> Result<Vec<IndexedMessageState>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT msg_id, metadata_json, updated_at, deleted_at
+        "SELECT msg_id, message_hash, updated_at, deleted_at
          FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
          ORDER BY ordinal ASC",
@@ -621,185 +900,404 @@ pub fn message_manifest(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
     drop(connection);
-    ensure_topic_sync_source_healthy(database, &key)?;
     let messages = rows
         .into_iter()
-        .map(|(msg_id, metadata, updated_at, deleted_at)| {
-            // S3-ε：墓碑行跳过哈希——message_diff 的 active 表会过滤 deleted 行，
-            // 删除信号只消费 msg_id/updated_at/deleted_at；这也避开"DB 已墓碑但
-            // metadata 保留 status:\"removed\" 的历史行必然 canonicalize 失败"的毒点。
-            let content_hash = if deleted_at.is_some() {
-                TOMBSTONE_CONTENT_HASH.to_string()
+        .map(|(msg_id, stored_hash, updated_at, deleted_at)| {
+            let message_hash = if deleted_at.is_some() {
+                None
             } else {
-                // S3-ε：存活行单条失败降级为哨兵哈希（永不匹配 → 保守重拉），
-                // 不再单条毒化整个 topic 的 manifest。
-                message_hash_or_sentinel(&metadata, &key.topic_id, &msg_id)
+                anyhow::ensure!(
+                    canonical_wire_hash(&stored_hash).is_some(),
+                    "live indexed message {msg_id} has an invalid persisted messageHash"
+                );
+                Some(stored_hash)
             };
-            Ok(MessageManifestItem {
+            Ok(IndexedMessageState {
                 msg_id,
-                content_hash,
+                message_hash,
                 updated_at,
                 deleted_at,
             })
         })
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(MessageManifestResponse {
-        response_type: "MESSAGE_MANIFEST_RESULTS",
-        topic_id: key.topic_id,
-        owner_type: key.owner_type,
-        owner_id: key.owner_id,
-        messages,
-    })
+    Ok(messages)
 }
 
-pub fn topic_identity(
-    database: &Database,
-    selector: &TopicSelector,
-) -> Result<TopicIdentityResponse> {
-    let key = resolve_topic(database, selector)?;
-    Ok(TopicIdentityResponse {
-        topic_id: key.topic_id,
-        owner_type: key.owner_type,
-        owner_id: key.owner_id,
-    })
-}
-
-pub fn topic_hash_diff(
-    database: &Database,
-    request: TopicHashDiffRequest,
-) -> Result<TopicHashDiffResponse> {
-    anyhow::ensure!(
-        request.topics.len().saturating_add(request.hashes.len()) <= 10_000,
-        "topic hash diff exceeds 10000 topics"
-    );
-    let mut states = request.topics;
-    let mut seen_topic_ids = states
-        .iter()
-        .map(|state| state.topic_id.clone())
-        .collect::<HashSet<_>>();
-    anyhow::ensure!(
-        seen_topic_ids.len() == states.len(),
-        "topic hash diff contains duplicate topic ids"
-    );
-    for (topic_id, value) in request.hashes {
-        anyhow::ensure!(
-            seen_topic_ids.insert(topic_id.clone()),
-            "topic hash diff contains duplicate topic {topic_id}"
-        );
-        let (config_hash, content_hash) = match value {
-            Value::Object(object) => {
-                let config_hash = object
-                    .get("configHash")
-                    .and_then(Value::as_str)
-                    .context("topic hash configHash must be a string")?
-                    .to_string();
-                let content_hash = object
-                    .get("contentHash")
-                    .and_then(Value::as_str)
-                    .context("topic hash contentHash must be a string")?
-                    .to_string();
-                (config_hash, content_hash)
+pub fn pull_entities(database: &Database, request: EntitiesPullRequest) -> EntitiesPullResponse {
+    let results = request
+        .items
+        .into_iter()
+        .map(|item| {
+            let result = pull_entity(database, &item);
+            let (ok, data, error) = match result {
+                Ok(Some(data)) => (true, Some(data), None),
+                Ok(None) => (
+                    false,
+                    None,
+                    Some(SyncItemError {
+                        code: "ENTITY_NOT_FOUND".to_string(),
+                        message: "entity not found".to_string(),
+                        retryable: false,
+                    }),
+                ),
+                Err(error) => (
+                    false,
+                    None,
+                    Some(SyncItemError {
+                        code: if error.downcast_ref::<SnapshotStale>().is_some() {
+                            "SNAPSHOT_STALE"
+                        } else {
+                            "ENTITY_READ_FAILED"
+                        }
+                        .to_string(),
+                        message: error.to_string(),
+                        retryable: false,
+                    }),
+                ),
+            };
+            match item {
+                EntityPullItem::Owner {
+                    owner_type,
+                    owner_id,
+                } => EntityPullResult::Owner {
+                    owner_type,
+                    owner_id,
+                    ok,
+                    data,
+                    error,
+                },
+                EntityPullItem::Topic {
+                    owner_type,
+                    owner_id,
+                    topic_id,
+                } => EntityPullResult::Topic {
+                    owner_type,
+                    owner_id,
+                    topic_id,
+                    ok,
+                    data,
+                    error,
+                },
             }
-            Value::String(content_hash) => (String::new(), content_hash),
-            _ => anyhow::bail!("topic hash state must be a string or object"),
-        };
-        states.push(TopicHashState {
+        })
+        .collect();
+    EntitiesPullResponse { results }
+}
+
+fn pull_entity(database: &Database, item: &EntityPullItem) -> Result<Option<Value>> {
+    match item {
+        EntityPullItem::Owner {
+            owner_type,
+            owner_id,
+        } => {
+            let connection = database.connection.lock();
+            let row = connection
+                .query_row(
+                    "SELECT config_path, config_hash, deleted_at FROM owners
+                     WHERE owner_type=?1 AND owner_id=?2",
+                    params![owner_type.as_str(), owner_id],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            drop(connection);
+            let Some((config_path, committed_hash, None)) = row else {
+                return Ok(None);
+            };
+            let root = serde_json::from_slice::<Value>(&fs::read(&config_path)?)
+                .with_context(|| format!("invalid owner config {config_path}"))?;
+            let dto = mobile_owner_sync_dto_from_value(*owner_type, &root)?;
+            if hash_stable_object(&dto) != committed_hash {
+                return Err(SnapshotStale(
+                    "owner config changed after its manifest was committed".to_string(),
+                )
+                .into());
+            }
+            Ok(Some(Value::Object(dto)))
+        }
+        EntityPullItem::Topic {
+            owner_type,
+            owner_id,
             topic_id,
-            owner_type: None,
-            owner_id: None,
-            config_hash,
-            content_hash,
+        } => {
+            let connection = database.connection.lock();
+            let row = connection
+                .query_row(
+                    "SELECT metadata_json, deleted_at FROM topics
+                     WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+                    params![owner_type.as_str(), owner_id, topic_id],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<i64>>(1)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            drop(connection);
+            let Some((Some(metadata_json), None)) = row else {
+                return Ok(None);
+            };
+            let metadata = serde_json::from_str::<Value>(&metadata_json)
+                .context("topic metadata is invalid")?;
+            let key = TopicKey {
+                owner_type: *owner_type,
+                owner_id: owner_id.clone(),
+                topic_id: topic_id.clone(),
+            };
+            let mut dto = mobile_topic_sync_dto(&key, &metadata);
+            dto.insert("ownerId".to_string(), Value::String(owner_id.clone()));
+            Ok(Some(Value::Object(dto)))
+        }
+    }
+}
+
+pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<TopicDiffResponse> {
+    validate_topic_diff_states(&request.topics)?;
+    if request.topics.is_empty() {
+        return Ok(TopicDiffResponse {
+            response_type: "SYNC_TOPIC_DIFF_RESULT",
+            changed_topics: Vec::new(),
         });
     }
-
+    let local_topics = load_topic_manifest_rows(database)?;
     let mut changed_topics = Vec::new();
-    for state in states {
+    for state in request.topics {
+        let requested_key = TopicKey {
+            owner_type: state.owner_type,
+            owner_id: state.owner_id,
+            topic_id: state.topic_id,
+        };
+        let Some(local) = local_topics
+            .get(&requested_key)
+            .filter(|local| local.deleted_at.is_none())
+        else {
+            changed_topics.push(requested_key);
+            continue;
+        };
+        ensure_topic_manifest_row_healthy(local).with_context(|| {
+            format!(
+                "topic hash diff could not read {}/{}/{}",
+                requested_key.owner_type.as_str(),
+                requested_key.owner_id,
+                requested_key.topic_id
+            )
+        })?;
+        if local.config_hash != state.config_hash || local.content_hash != state.content_hash {
+            changed_topics.push(requested_key);
+        }
+    }
+    changed_topics.sort_by(|left, right| {
+        (left.owner_type.as_str(), &left.owner_id, &left.topic_id).cmp(&(
+            right.owner_type.as_str(),
+            &right.owner_id,
+            &right.topic_id,
+        ))
+    });
+
+    Ok(TopicDiffResponse {
+        response_type: "SYNC_TOPIC_DIFF_RESULT",
+        changed_topics,
+    })
+}
+
+fn validate_topic_diff_states(topics: &[TopicDiffState]) -> Result<()> {
+    anyhow::ensure!(
+        topics.len() <= 10_000,
+        "topic hash diff exceeds 10000 topics"
+    );
+    let mut seen_topics = HashSet::with_capacity(topics.len());
+    for state in topics {
         anyhow::ensure!(
             !state.topic_id.is_empty(),
             "topic hash diff topicId is empty"
         );
         anyhow::ensure!(
-            state.owner_type.is_some() == state.owner_id.is_some(),
-            "topic hash diff ownerType and ownerId must be supplied together"
-        );
-        anyhow::ensure!(
-            state
-                .owner_id
-                .as_deref()
-                .is_none_or(|owner_id| !owner_id.is_empty()),
+            !state.owner_id.is_empty(),
             "topic hash diff ownerId must be non-empty"
         );
         anyhow::ensure!(
-            (state.config_hash.is_empty() || canonical_wire_hash(&state.config_hash).is_some())
+            canonical_wire_hash(&state.config_hash).is_some()
                 && (state.content_hash.is_empty()
                     || canonical_wire_hash(&state.content_hash).is_some()),
             "topic hash diff contains an invalid hash for {}",
             state.topic_id
         );
-        let selector = TopicSelector {
-            topic_id: state.topic_id.clone(),
-            owner_type: state.owner_type,
-            owner_id: state.owner_id,
-        };
-        let Ok(key) = resolve_topic(database, &selector) else {
-            changed_topics.push(state.topic_id);
-            continue;
-        };
-        // 条目级容错（S3-γ）：单个 topic 的 manifest 失败（source 不健康/含毒消息）
-        // 降级为保守重拉，而非炸掉整批——对齐 message_diff 的 TOPIC_HASH_FAILED 先例。
-        let local = match topic_manifest(database, &key) {
-            Ok(local) => local,
-            Err(error) => {
-                tracing::warn!(
-                    topic_id = %state.topic_id,
-                    error = %format!("{error:#}"),
-                    "topic manifest failed during hash diff; marking topic as changed"
-                );
-                changed_topics.push(state.topic_id);
-                continue;
-            }
-        };
-        if (!state.config_hash.is_empty() && local.config_hash != state.config_hash)
-            || local.content_hash != state.content_hash
-        {
-            changed_topics.push(state.topic_id);
-        }
+        anyhow::ensure!(
+            seen_topics.insert((state.owner_type, &state.owner_id, &state.topic_id)),
+            "topic hash diff contains a duplicate topic identity"
+        );
     }
-    changed_topics.sort();
-
-    Ok(TopicHashDiffResponse {
-        response_type: "SYNC_TOPIC_HASH_RESULTS",
-        changed_topics,
-    })
+    Ok(())
 }
 
 pub fn message_diff(
     database: &Database,
     request: MessageDiffRequest,
 ) -> Result<MessageDiffResponse> {
-    anyhow::ensure!(
-        request.topics.len() <= 10_000,
-        "message diff exceeds 10000 topics"
-    );
-    let mut results = HashMap::new();
+    validate_message_diff_states(&request.topics)?;
+    if request.topics.is_empty() {
+        return Ok(MessageDiffResponse {
+            response_type: "SYNC_MESSAGE_DIFF_RESULT",
+            results: Vec::new(),
+        });
+    }
+    let local_topics = load_topic_manifest_rows(database)?;
+    let mut results = Vec::with_capacity(request.topics.len());
+    for state in request.topics {
+        let requested_key = TopicKey {
+            owner_type: state.owner_type,
+            owner_id: state.owner_id.clone(),
+            topic_id: state.topic_id.clone(),
+        };
+        let Some(local_topic) = local_topics
+            .get(&requested_key)
+            .filter(|local| local.deleted_at.is_none())
+        else {
+            results.push(MessageDiffResult::failure(
+                &requested_key,
+                "TOPIC_NOT_FOUND",
+                "topic identity was not found".to_string(),
+            ));
+            continue;
+        };
+        if let Err(error) = ensure_topic_manifest_row_healthy(local_topic) {
+            results.push(MessageDiffResult::failure(
+                &requested_key,
+                "MESSAGE_MANIFEST_FAILED",
+                format!("{error:#}"),
+            ));
+            continue;
+        }
+        let key = requested_key.clone();
+        let remote_has_tombstones = state
+            .messages
+            .values()
+            .any(|version| matches!(version, MessageVersionState::Deleted(_)));
+        if !state.content_hash.is_empty()
+            && state.content_hash == local_topic.content_hash
+            && !remote_has_tombstones
+        {
+            results.push(MessageDiffResult::success(
+                &key,
+                Vec::new(),
+                false,
+                Vec::new(),
+            ));
+            continue;
+        }
+        let indexed_messages = match load_message_states_committed(database, &key) {
+            Ok(messages) => messages,
+            Err(error) => {
+                results.push(MessageDiffResult::failure(
+                    &requested_key,
+                    "MESSAGE_MANIFEST_FAILED",
+                    format!("{error:#}"),
+                ));
+                continue;
+            }
+        };
+        let mut active = HashMap::new();
+        let mut tombstones = HashMap::new();
+        for item in indexed_messages {
+            if let Some(deleted_at) = item.deleted_at {
+                tombstones.insert(item.msg_id, deleted_at);
+            } else {
+                let message_hash = item
+                    .message_hash
+                    .context("live indexed message is missing messageHash")?;
+                active.insert(
+                    item.msg_id,
+                    MessageLiveState {
+                        message_hash,
+                        updated_at: item.updated_at,
+                    },
+                );
+            }
+        }
+        let mut to_pull = active
+            .iter()
+            .filter_map(|(id, desktop)| {
+                let remote = state.messages.get(id);
+                match remote {
+                    None => Some(id.clone()),
+                    Some(MessageVersionState::Deleted(_)) => None,
+                    Some(MessageVersionState::Live(mobile))
+                        if mobile.message_hash == desktop.message_hash =>
+                    {
+                        None
+                    }
+                    Some(MessageVersionState::Live(mobile))
+                        if desktop.updated_at > mobile.updated_at
+                            || (desktop.updated_at == mobile.updated_at
+                                && desktop.message_hash > mobile.message_hash) =>
+                    {
+                        Some(id.clone())
+                    }
+                    Some(_) => None,
+                }
+            })
+            .collect::<Vec<_>>();
+        to_pull.sort();
+
+        let mut to_delete = tombstones
+            .iter()
+            .filter_map(|(id, deleted_at)| match state.messages.get(id) {
+                Some(MessageVersionState::Live(_)) => Some(MessageDeleteAction {
+                    msg_id: id.clone(),
+                    deleted_at: *deleted_at,
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        to_delete.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
+
+        let to_push = state.messages.iter().any(|(id, mobile)| match mobile {
+            MessageVersionState::Deleted(_) => !tombstones.contains_key(id),
+            MessageVersionState::Live(mobile) => {
+                if let Some(desktop) = active.get(id) {
+                    desktop.message_hash != mobile.message_hash
+                        && (mobile.updated_at > desktop.updated_at
+                            || (mobile.updated_at == desktop.updated_at
+                                && mobile.message_hash > desktop.message_hash))
+                } else {
+                    !tombstones.contains_key(id)
+                }
+            }
+        });
+        results.push(MessageDiffResult::success(
+            &key, to_pull, to_push, to_delete,
+        ));
+    }
+
+    Ok(MessageDiffResponse {
+        response_type: "SYNC_MESSAGE_DIFF_RESULT",
+        results,
+    })
+}
+
+fn validate_message_diff_states(topics: &[MessageDiffState]) -> Result<()> {
+    anyhow::ensure!(topics.len() <= 10_000, "message diff exceeds 10000 topics");
+    let mut seen_topics = HashSet::with_capacity(topics.len());
     let mut total_messages = 0_usize;
-    for (topic_id, state) in request.topics {
+    for state in topics {
         anyhow::ensure!(
-            !topic_id.is_empty(),
+            !state.topic_id.is_empty(),
             "message diff topicId must be non-empty"
         );
-        let owner_type = state
-            .owner_type
-            .context("message diff ownerType is required")?;
-        let owner_id = state
-            .owner_id
-            .as_deref()
-            .filter(|owner_id| !owner_id.is_empty())
-            .context("message diff ownerId is required")?;
         anyhow::ensure!(
-            state.topic_hash.is_empty() || canonical_wire_hash(&state.topic_hash).is_some(),
-            "message diff topicHash is invalid for {topic_id}"
+            !state.owner_id.is_empty(),
+            "message diff ownerId must be non-empty"
+        );
+        anyhow::ensure!(
+            seen_topics.insert((state.owner_type, &state.owner_id, &state.topic_id)),
+            "message diff contains a duplicate topic identity"
         );
         anyhow::ensure!(
             state.messages.len() <= 10_000,
@@ -812,121 +1310,94 @@ pub fn message_diff(
             total_messages <= 100_000,
             "message diff exceeds 100000 messages"
         );
-        for (message_id, hash) in &state.messages {
+        anyhow::ensure!(
+            state.content_hash.is_empty() || canonical_wire_hash(&state.content_hash).is_some(),
+            "message diff contentHash is invalid for {}",
+            state.topic_id
+        );
+        for (message_id, version) in &state.messages {
             anyhow::ensure!(
                 !message_id.is_empty(),
                 "message diff message id must be non-empty"
             );
-            anyhow::ensure!(
-                hash == "DELETED" || canonical_wire_hash(hash).is_some(),
-                "message diff contains an invalid content hash for {topic_id}/{message_id}"
-            );
+            match version {
+                MessageVersionState::Live(version) => {
+                    anyhow::ensure!(
+                        canonical_wire_hash(&version.message_hash).is_some(),
+                        "message diff contains an invalid messageHash for {}/{message_id}",
+                        state.topic_id
+                    );
+                    validate_manifest_time(version.updated_at, "message updatedAt")?;
+                }
+                MessageVersionState::Deleted(version) => {
+                    validate_manifest_time(version.deleted_at, "message deletedAt")?;
+                }
+            }
         }
-        let selector = TopicSelector {
-            topic_id: topic_id.clone(),
-            owner_type: Some(owner_type),
-            owner_id: Some(owner_id.to_string()),
-        };
-        let key = match resolve_topic(database, &selector) {
-            Ok(key) => key,
-            Err(error) => {
-                results.insert(
-                    topic_id,
-                    MessageDiffResult::failure("TOPIC_NOT_FOUND", format!("{error:#}")),
-                );
-                continue;
-            }
-        };
-
-        let local_topic = match topic_manifest(database, &key) {
-            Ok(local_topic) => local_topic,
-            Err(error) => {
-                results.insert(
-                    topic_id,
-                    MessageDiffResult::failure("TOPIC_HASH_FAILED", format!("{error:#}")),
-                );
-                continue;
-            }
-        };
-        if !state.topic_hash.is_empty() && state.topic_hash == local_topic.content_hash {
-            results.insert(topic_id, MessageDiffResult::success(Vec::new(), false));
-            continue;
-        }
-
-        let manifest = match message_manifest(database, &selector) {
-            Ok(manifest) => manifest,
-            Err(error) => {
-                results.insert(
-                    topic_id,
-                    MessageDiffResult::failure("MESSAGE_MANIFEST_FAILED", format!("{error:#}")),
-                );
-                continue;
-            }
-        };
-        let active = manifest
-            .messages
-            .into_iter()
-            .filter(|item| item.deleted_at.is_none())
-            .map(|item| (item.msg_id, item.content_hash))
-            .collect::<HashMap<_, _>>();
-        let mut to_pull = active
-            .iter()
-            .filter_map(|(id, hash)| {
-                let remote = state.messages.get(id);
-                (remote.is_none()
-                    || remote.is_some_and(|value| value != hash && value != "DELETED"))
-                .then_some(id.clone())
-            })
-            .collect::<Vec<_>>();
-        to_pull.sort();
-        let to_push = state
-            .messages
-            .iter()
-            .any(|(id, hash)| hash != "DELETED" && !active.contains_key(id));
-        results.insert(topic_id, MessageDiffResult::success(to_pull, to_push));
     }
-
-    Ok(MessageDiffResponse {
-        response_type: "SYNC_DIFF_RESULTS_BATCH",
-        results,
-    })
+    Ok(())
 }
 
 pub fn pull_topic_messages(
     database: &Database,
     topic: MessagesPullTopic,
 ) -> Result<MessagesPullFrame> {
-    let selector = TopicSelector {
+    let requested_key = TopicKey {
         topic_id: topic.topic_id.clone(),
         owner_type: topic.owner_type,
         owner_id: topic.owner_id,
     };
-    let key = resolve_topic(database, &selector)?;
+    let key = resolve_topic(database, &requested_key)?;
     ensure_topic_sync_source_healthy(database, &key)?;
     anyhow::ensure!(
-        topic.msg_ids.len() <= 10_000,
+        topic.message_ids.len() <= 10_000,
         "topic message request exceeds 10000 ids"
     );
-    let wanted = topic.msg_ids.into_iter().collect::<HashSet<_>>();
+    let requested_ids = topic.message_ids;
+    let wanted = requested_ids.iter().cloned().collect::<HashSet<_>>();
     let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT metadata_json FROM messages
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
-         ORDER BY ordinal ASC",
-    )?;
-    let rows = statement
-        .query_map(
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, String>(0),
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
+    let rows = if requested_ids.is_empty() {
+        let mut statement = connection.prepare(
+            "SELECT metadata_json, updated_at FROM messages
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
+             ORDER BY ordinal ASC",
+        )?;
+        let rows = statement
+            .query_map(
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    } else {
+        let placeholders = std::iter::repeat_n("?", requested_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT metadata_json, updated_at FROM messages
+             WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted_at IS NULL
+               AND msg_id IN ({placeholders})
+             ORDER BY ordinal ASC"
+        );
+        let mut bind = Vec::with_capacity(3 + requested_ids.len());
+        bind.push(SqlValue::Text(key.owner_type.as_str().to_string()));
+        bind.push(SqlValue::Text(key.owner_id.clone()));
+        bind.push(SqlValue::Text(key.topic_id.clone()));
+        bind.extend(requested_ids.iter().cloned().map(SqlValue::Text));
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement
+            .query_map(params_from_iter(bind), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
     drop(connection);
 
     let mut warnings = WireWarnings::default();
     let mut messages = Vec::new();
     let mut seen = HashSet::new();
-    for raw in rows {
+    for (raw, updated_at) in rows {
         let value =
             serde_json::from_str::<Value>(&raw).context("stored message JSON is invalid")?;
         let id = value
@@ -941,7 +1412,17 @@ pub fn pull_topic_messages(
             seen.insert(id.to_string()),
             "duplicate stored message id {id}"
         );
-        messages.push(canonicalize_for_wire(value, &key.topic_id, &mut warnings)?);
+        anyhow::ensure!(
+            (0..=9_007_199_254_740_991).contains(&updated_at),
+            "stored message update time is invalid for topic {}",
+            key.topic_id
+        );
+        let mut canonical = canonicalize_message(value, &key.topic_id, &mut warnings)?;
+        canonical
+            .as_object_mut()
+            .context("canonical message must be an object")?
+            .insert("updatedAt".to_string(), Value::from(updated_at));
+        messages.push(canonical);
     }
     if !wanted.is_empty() {
         anyhow::ensure!(
@@ -951,70 +1432,203 @@ pub fn pull_topic_messages(
         );
     }
     Ok(MessagesPullFrame {
+        kind: "topic",
         topic_id: key.topic_id,
         owner_type: key.owner_type,
         owner_id: key.owner_id,
+        ok: true,
         messages,
         legacy_attachment_warnings: warnings.count,
         warning_samples: warnings.samples,
     })
 }
 
-pub async fn push_messages(
+pub async fn push_topic_messages(
     reconciler: &Reconciler,
-    request: MessagesPushRequest,
-) -> MessagesPushResponse {
-    let mut results = Vec::with_capacity(request.topics.len());
-    for topic in request.topics {
-        let result = push_topic(reconciler, &topic).await;
-        results.push(match result {
-            Ok(commit) => MessagesPushResult {
-                topic_id: topic.topic_id,
-                success: true,
-                changed: commit.changed,
-                revision: Some(commit.revision),
-                message_count: commit.message_count,
-                needed_attachment_hashes: Vec::new(),
-                error: None,
-            },
-            Err(error) => MessagesPushResult {
-                topic_id: topic.topic_id,
-                success: false,
-                changed: false,
-                revision: None,
-                message_count: 0,
-                needed_attachment_hashes: Vec::new(),
-                error: Some(format!("{error:#}")),
-            },
-        });
+    topic: MessagesPushTopic,
+) -> MessagesPushResult {
+    match push_topic(reconciler, &topic).await {
+        Ok(commit) => MessagesPushResult {
+            topic_id: topic.topic_id,
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id,
+            ok: true,
+            ingest_commit: Some(commit),
+            error: None,
+        },
+        Err(error) => MessagesPushResult {
+            topic_id: topic.topic_id,
+            owner_type: topic.owner_type,
+            owner_id: topic.owner_id,
+            ok: false,
+            ingest_commit: None,
+            error: Some(SyncItemError {
+                code: if error.downcast_ref::<SnapshotStale>().is_some() {
+                    "SNAPSHOT_STALE"
+                } else {
+                    "MESSAGE_WRITE_FAILED"
+                }
+                .to_string(),
+                message: format!("{error:#}"),
+                retryable: false,
+            }),
+        },
     }
-    MessagesPushResponse { results }
+}
+
+const MOBILE_MESSAGE_PATCH_FIELDS: [&str; 11] = [
+    "id",
+    "role",
+    "name",
+    "content",
+    "timestamp",
+    "updatedAt",
+    "agentId",
+    "groupId",
+    "topicId",
+    "isGroupMessage",
+    "finishReason",
+];
+
+fn desktop_attachment_hash(attachment: &Value) -> Option<String> {
+    let object = attachment.as_object()?;
+    let top = object.get("hash").and_then(Value::as_str);
+    let nested = object
+        .get("_fileManagerData")
+        .and_then(Value::as_object)
+        .and_then(|data| data.get("hash"))
+        .and_then(Value::as_str);
+    let valid =
+        |value: &str| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit());
+    match (
+        top.filter(|value| valid(value)),
+        nested.filter(|value| valid(value)),
+    ) {
+        (Some(left), Some(right)) if left.eq_ignore_ascii_case(right) => {
+            Some(left.to_ascii_lowercase())
+        }
+        (Some(_), Some(_)) => None,
+        (Some(hash), None) | (None, Some(hash)) => Some(hash.to_ascii_lowercase()),
+        (None, None) => None,
+    }
+}
+
+fn merge_desktop_attachment(existing: &Value, incoming: &Value) -> Value {
+    let (Some(existing), Some(incoming)) = (existing.as_object(), incoming.as_object()) else {
+        return incoming.clone();
+    };
+    let mut merged = existing.clone();
+    merged.extend(incoming.clone());
+
+    if incoming.get("src").and_then(Value::as_str) == Some("") {
+        if let Some(src) = existing
+            .get("src")
+            .and_then(Value::as_str)
+            .filter(|src| !src.is_empty())
+        {
+            merged.insert("src".to_string(), Value::String(src.to_string()));
+        }
+    }
+
+    let existing_data = existing.get("_fileManagerData").and_then(Value::as_object);
+    let incoming_data = incoming.get("_fileManagerData").and_then(Value::as_object);
+    if existing_data.is_some() || incoming_data.is_some() {
+        let mut merged_data = existing_data.cloned().unwrap_or_default();
+        if let Some(incoming_data) = incoming_data {
+            merged_data.extend(incoming_data.clone());
+        }
+        if incoming_data
+            .and_then(|data| data.get("internalPath"))
+            .and_then(Value::as_str)
+            == Some("")
+        {
+            if let Some(internal_path) = existing_data
+                .and_then(|data| data.get("internalPath"))
+                .and_then(Value::as_str)
+                .filter(|path| !path.is_empty())
+            {
+                merged_data.insert(
+                    "internalPath".to_string(),
+                    Value::String(internal_path.to_string()),
+                );
+            }
+        }
+        merged.insert("_fileManagerData".to_string(), Value::Object(merged_data));
+    }
+    Value::Object(merged)
+}
+
+fn merge_mobile_attachments(existing: Option<&Value>, incoming: &[Value]) -> Vec<Value> {
+    let mut existing_by_hash: HashMap<String, VecDeque<&Value>> = HashMap::new();
+    for attachment in existing.and_then(Value::as_array).into_iter().flatten() {
+        if let Some(hash) = desktop_attachment_hash(attachment) {
+            existing_by_hash
+                .entry(hash)
+                .or_default()
+                .push_back(attachment);
+        }
+    }
+    incoming
+        .iter()
+        .map(|attachment| {
+            let existing = desktop_attachment_hash(attachment)
+                .and_then(|hash| existing_by_hash.get_mut(&hash))
+                .and_then(VecDeque::pop_front);
+            existing
+                .map(|existing| merge_desktop_attachment(existing, attachment))
+                .unwrap_or_else(|| attachment.clone())
+        })
+        .collect()
+}
+
+fn merge_mobile_message(existing: &Value, incoming: &Value) -> Value {
+    let (Some(existing), Some(incoming)) = (existing.as_object(), incoming.as_object()) else {
+        return incoming.clone();
+    };
+    let mut merged = existing.clone();
+    for key in MOBILE_MESSAGE_PATCH_FIELDS {
+        if let Some(value) = incoming.get(key).filter(|value| !value.is_null()) {
+            merged.insert(key.to_string(), value.clone());
+        } else {
+            merged.remove(key);
+        }
+    }
+    if let Some(avatar_url) = incoming
+        .get("avatarUrl")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        merged.insert(
+            "avatarUrl".to_string(),
+            Value::String(avatar_url.to_string()),
+        );
+    }
+    if let Some(attachments) = incoming
+        .get("attachments")
+        .and_then(Value::as_array)
+        .filter(|attachments| !attachments.is_empty())
+    {
+        merged.insert(
+            "attachments".to_string(),
+            Value::Array(merge_mobile_attachments(
+                existing.get("attachments"),
+                attachments,
+            )),
+        );
+    } else {
+        merged.remove("attachments");
+    }
+    Value::Object(merged)
 }
 
 async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Result<IngestCommit> {
     anyhow::ensure!(
-        topic.owner_type.is_some() == topic.owner_id.is_some(),
-        "pushed topic ownerType and ownerId must be supplied together"
-    );
-    anyhow::ensure!(
-        topic
-            .owner_id
-            .as_deref()
-            .is_none_or(|owner_id| !owner_id.is_empty()),
+        !topic.owner_id.is_empty(),
         "pushed topic ownerId must be non-empty"
     );
-    let mut deleted = topic
-        .deleted_message_ids
-        .iter()
-        .cloned()
-        .collect::<HashSet<_>>();
-    anyhow::ensure!(
-        deleted.len() == topic.deleted_message_ids.len()
-            && deleted.iter().all(|message_id| !message_id.is_empty()),
-        "deleted message ids must be non-empty and unique"
-    );
-    let mut explicit_tombstones = Vec::with_capacity(topic.deleted_message_tombstones.len());
-    for tombstone in &topic.deleted_message_tombstones {
+    let mut deleted = HashSet::with_capacity(topic.deleted_messages.len());
+    let mut explicit_tombstones = Vec::with_capacity(topic.deleted_messages.len());
+    for tombstone in &topic.deleted_messages {
         anyhow::ensure!(
             !tombstone.msg_id.is_empty() && deleted.insert(tombstone.msg_id.clone()),
             "deleted message tombstones must have non-empty unique ids"
@@ -1040,6 +1654,14 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
             !deleted.contains(id),
             "message {id} is both live and deleted"
         );
+        let updated_at = message
+            .get("updatedAt")
+            .and_then(Value::as_i64)
+            .context("pushed message updatedAt is required")?;
+        anyhow::ensure!(
+            (0..=9_007_199_254_740_991).contains(&updated_at),
+            "pushed message {id} updatedAt must be a non-negative safe integer"
+        );
         let mut warnings = WireWarnings::default();
         canonicalize_message(message.clone(), &topic.topic_id, &mut warnings)
             .with_context(|| format!("pushed message {id} is invalid"))?;
@@ -1050,12 +1672,23 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
     }
     let key = resolve_topic(
         reconciler.database(),
-        &TopicSelector {
+        &TopicKey {
             topic_id: topic.topic_id.clone(),
             owner_type: topic.owner_type,
             owner_id: topic.owner_id.clone(),
         },
     )?;
+    ensure_topic_sync_source_healthy(reconciler.database(), &key)?;
+    let persisted_tombstones = reconciler.database().message_tombstone_ids(&key)?;
+    if let Some(stale_live) = live_ids
+        .iter()
+        .find(|message_id| persisted_tombstones.contains(*message_id))
+    {
+        return Err(SnapshotStale(format!(
+            "pushed live message {stale_live} is already tombstoned; rerun message diff"
+        ))
+        .into());
+    }
     let history_path = reconciler
         .config()
         .user_data_dir
@@ -1069,7 +1702,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         value
             .get("id")
             .and_then(Value::as_str)
-            .is_none_or(|id| !deleted.contains(id))
+            .is_none_or(|id| !deleted.contains(id) && !persisted_tombstones.contains(id))
     });
     let mut positions: HashMap<String, usize> = current
         .iter()
@@ -1088,100 +1721,108 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
             .and_then(Value::as_str)
             .context("pushed message id is required")?;
         if let Some(index) = positions.get(id).copied() {
-            current[index] = message.clone();
+            current[index] = merge_mobile_message(&current[index], message);
         } else {
             positions.insert(id.to_string(), current.len());
             current.push(message.clone());
         }
     }
 
-    write_json_atomic(
+    let history_bytes = serde_json::to_vec_pretty(&current)?;
+    let normalized = normalize_history_values(current, key.owner_type, &key.topic_id)
+        .context("projected history is not ingestible")?;
+    let committed = write_history_atomic(
         &history_path,
-        &Value::Array(current),
+        &history_bytes,
         expected_source_hash.as_deref(),
     )?;
-    let mut commit = reconciler
-        .ingest_path(&history_path, "mobile_sync")
-        .await?
-        .context("projected history path was not accepted by CDS")?;
-    if let Some(revision) = reconciler.database().apply_explicit_message_tombstones(
-        &key,
-        &explicit_tombstones,
-        "mobile_sync",
-    )? {
+    let mut commit = if let Some(committed) = committed {
+        reconciler.database().ingest_topic(
+            &TopicSource {
+                key: key.clone(),
+                source_path: history_path.clone(),
+            },
+            &normalized,
+            committed.mtime_ns,
+            committed.file_size,
+            &committed.source_hash,
+            OwnerHashMode::Immediate,
+        )?
+    } else {
+        reconciler
+            .ingest_path(&history_path, "mobile_sync")
+            .await?
+            .context("projected history path was not accepted by CDS")?
+    };
+    if reconciler
+        .database()
+        .apply_explicit_message_tombstones(&key, &explicit_tombstones)?
+    {
         commit.changed = true;
-        commit.revision = revision;
     }
     Ok(commit)
 }
 
-pub fn changes(database: &Database, after: i64, limit: usize) -> Result<ChangeFeedResponse> {
-    let fetch_limit = limit.clamp(1, 1000);
-    let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT sequence, entity_type, operation, owner_type, owner_id, topic_id,
-                entity_id, revision, origin, changed_at, payload_json
-         FROM change_log WHERE sequence>?1 ORDER BY sequence ASC LIMIT ?2",
-    )?;
-    let mut changes = statement
-        .query_map(params![after, fetch_limit as i64 + 1], |row| {
-            let owner_type = row
-                .get::<_, Option<String>>(3)?
-                .and_then(|value| OwnerType::from_str(&value).ok());
-            let payload = row
-                .get::<_, Option<String>>(10)?
-                .and_then(|value| serde_json::from_str(&value).ok());
-            Ok(ChangeRecord {
-                sequence: row.get(0)?,
-                entity_type: row.get(1)?,
-                operation: row.get(2)?,
-                owner_type,
-                owner_id: row.get(4)?,
-                topic_id: row.get(5)?,
-                entity_id: row.get(6)?,
-                revision: row.get(7)?,
-                origin: row.get(8)?,
-                changed_at: row.get(9)?,
-                payload,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let has_more = changes.len() > fetch_limit;
-    changes.truncate(fetch_limit);
-    let next_sequence = changes.last().map_or(after, |change| change.sequence);
-    Ok(ChangeFeedResponse {
-        changes,
-        next_sequence,
-        has_more,
-    })
-}
-
 fn local_manifest(
     database: &Database,
-    data_type: &str,
-    targeted_owners: Option<&[String]>,
+    manifest_type: ManifestType,
+    targeted_owners: Option<&[OwnerKey]>,
 ) -> Result<Vec<ManifestItem>> {
-    match data_type {
-        "agent" => owner_manifest(database, OwnerType::Agent),
-        "group" => owner_manifest(database, OwnerType::Group),
-        "topic" => topic_manifests(database, targeted_owners),
-        _ => Ok(Vec::new()),
+    match manifest_type {
+        ManifestType::Owner => owner_manifest(database),
+        ManifestType::Topic => topic_manifests(database, targeted_owners),
+        ManifestType::Avatar => avatar_manifest(database),
     }
 }
 
-fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<ManifestItem>> {
+fn avatar_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT owner_id, config_path, updated_at, deleted_at
-         FROM owners WHERE owner_type=?1",
+        "SELECT owner_type, owner_id, hash, updated_at, deleted_at
+         FROM avatars
+         ORDER BY owner_type, owner_id",
     )?;
     let rows = statement
-        .query_map([owner_type.as_str()], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    rows.into_iter()
+        .map(|(owner_type, owner_id, hash, updated_at, deleted_at)| {
+            let key = AvatarKey::from_wire_id(&format!("{owner_type}:{owner_id}"))?;
+            Ok(ManifestItem {
+                identity: ManifestIdentity::Avatar(key),
+                config_hash: hash,
+                content_hash: String::new(),
+                updated_at,
+                deleted_at,
+            })
+        })
+        .collect()
+}
+
+fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
+    let connection = database.connection.lock();
+    let mut statement = connection.prepare(
+        "SELECT owner_type, owner_id, config_hash, content_hash, updated_at, deleted_at
+         FROM owners
+         ORDER BY owner_type, owner_id",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, Option<i64>>(5)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1189,237 +1830,213 @@ fn owner_manifest(database: &Database, owner_type: OwnerType) -> Result<Vec<Mani
     drop(connection);
 
     rows.into_iter()
-        .map(|(owner_id, config_path, ts, deleted_at)| {
-            // 墓碑条目短路（S3-β）：已删 owner 的目录已物理删除，
-            // 磁盘读必然失败；删除信号不需要 hash 字段。
-            if deleted_at.is_some() {
-                return Ok(ManifestItem {
-                    id: owner_id.clone(),
-                    hash: String::new(),
-                    config_hash: String::new(),
-                    content_hash: String::new(),
-                    ts,
-                    deleted_at,
-                    owner_type: Some(owner_type),
-                    owner_id: Some(owner_id),
-                    degraded: false,
-                });
-            }
-            // 缺口 B 降级：活 owner 的 config 在两次 reconcile 之间被删/写半截/
-            // 不可读时，不再让单条失败炸掉整批 manifest（Phase 1 整表 500），
-            // 降级为 degraded 条目——manifest() 对其产出 SKIP（详见 manifest()）。
-            // owner_content_hash 内部已按 topic 哨兵化（缺口 C），到达这里的
-            // 失败基本只剩 config 本身的读/解析失败。
-            let hashes = (|| {
-                let config_hash = mobile_owner_config_hash(owner_type, Path::new(&config_path))?;
-                let content_hash = owner_content_hash(database, owner_type, &owner_id)?;
-                Ok::<_, anyhow::Error>((config_hash, content_hash))
-            })();
-            let (config_hash, content_hash, degraded) = match hashes {
-                Ok((config_hash, content_hash)) => (config_hash, content_hash, false),
-                Err(error) => {
-                    tracing::warn!(
-                        owner_type = %owner_type.as_str(),
-                        owner_id = %owner_id,
-                        error = %format!("{error:#}"),
-                        "owner manifest entry degraded: config unreadable; skipping owner this round"
-                    );
-                    (String::new(), String::new(), true)
+        .map(
+            |(raw_owner_type, owner_id, config_hash, content_hash, updated_at, deleted_at)| {
+                let owner_type = raw_owner_type.parse::<OwnerType>()?;
+                // 墓碑条目短路：已删 owner 的目录已物理删除，
+                // 磁盘读必然失败；删除信号不需要配置或内容指纹。
+                if deleted_at.is_some() {
+                    return Ok(ManifestItem {
+                        identity: ManifestIdentity::Owner(OwnerKey {
+                            owner_type,
+                            owner_id,
+                        }),
+                        config_hash: String::new(),
+                        content_hash: String::new(),
+                        updated_at,
+                        deleted_at,
+                    });
                 }
-            };
-            Ok(ManifestItem {
-                id: owner_id.clone(),
-                hash: config_hash.clone(),
-                config_hash,
-                content_hash,
-                ts,
-                deleted_at,
-                owner_type: Some(owner_type),
-                owner_id: Some(owner_id),
-                degraded,
-            })
-        })
+                Ok(ManifestItem {
+                    identity: ManifestIdentity::Owner(OwnerKey {
+                        owner_type,
+                        owner_id,
+                    }),
+                    config_hash,
+                    content_hash,
+                    updated_at,
+                    deleted_at,
+                })
+            },
+        )
         .collect()
 }
 
 fn topic_manifests(
     database: &Database,
-    targeted_owners: Option<&[String]>,
+    targeted_owners: Option<&[OwnerKey]>,
 ) -> Result<Vec<ManifestItem>> {
+    if targeted_owners.is_some_and(|owners| owners.is_empty()) {
+        return Ok(Vec::new());
+    }
+    let targeted_owners =
+        targeted_owners.map(|owners| owners.iter().cloned().collect::<HashSet<_>>());
+    let mut rows = load_topic_manifest_rows(database)?
+        .into_values()
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        (
+            left.key.owner_type.as_str(),
+            &left.key.owner_id,
+            &left.key.topic_id,
+        )
+            .cmp(&(
+                right.key.owner_type.as_str(),
+                &right.key.owner_id,
+                &right.key.topic_id,
+            ))
+    });
+    rows.into_iter()
+        .filter(|row| {
+            targeted_owners.as_ref().is_none_or(|owners| {
+                owners.contains(&OwnerKey {
+                    owner_type: row.key.owner_type,
+                    owner_id: row.key.owner_id.clone(),
+                })
+            })
+        })
+        .map(|row| topic_manifest_from_row(&row))
+        .collect()
+}
+
+#[cfg(test)]
+fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
+    let row = load_topic_manifest_row(database, key)?;
+    topic_manifest_from_row(&row)
+}
+
+fn topic_manifest_from_row(row: &TopicManifestRow) -> Result<ManifestItem> {
+    let key = &row.key;
+    if row.deleted_at.is_some() {
+        return Ok(ManifestItem {
+            identity: ManifestIdentity::Topic(key.clone()),
+            config_hash: String::new(),
+            content_hash: String::new(),
+            updated_at: row.updated_at,
+            deleted_at: row.deleted_at,
+        });
+    }
+    let content_hash = match ensure_topic_manifest_row_healthy(row) {
+        Ok(()) => row.content_hash.clone(),
+        Err(error) => {
+            tracing::warn!(
+                owner_type = %key.owner_type.as_str(),
+                owner_id = %key.owner_id,
+                topic_id = %key.topic_id,
+                error = %format!("{error:#}"),
+                "topic manifest content hash degraded"
+            );
+            unhealthy_topic_sentinel_hash(key)
+        }
+    };
+    Ok(ManifestItem {
+        identity: ManifestIdentity::Topic(key.clone()),
+        config_hash: row.config_hash.clone(),
+        content_hash,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+    })
+}
+
+#[cfg(test)]
+fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicManifestRow> {
+    let connection = database.connection.lock();
+    connection
+        .query_row(
+            "SELECT t.config_hash, t.content_hash, t.updated_at, t.deleted_at,
+                t.source_path, hs.status, hs.last_error
+         FROM topics t
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id
+         WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| {
+                Ok(TopicManifestRow {
+                    key: key.clone(),
+                    config_hash: row.get(0)?,
+                    content_hash: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    updated_at: row.get(2)?,
+                    deleted_at: row.get(3)?,
+                    source_path: row.get(4)?,
+                    source_status: row.get(5)?,
+                    source_error: row.get(6)?,
+                })
+            },
+        )
+        .map_err(Into::into)
+}
+
+fn load_topic_manifest_rows(database: &Database) -> Result<HashMap<TopicKey, TopicManifestRow>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
-        "SELECT owner_type, owner_id, topic_id
-         FROM topics ORDER BY owner_type, owner_id, topic_ordinal",
+        "SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
+         FROM topics t
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id
+         ORDER BY t.owner_type, t.owner_id, t.topic_id",
     )?;
-    let keys = statement
+    let rows = statement
         .query_map([], |row| {
-            let raw: String = row.get(0)?;
-            Ok(TopicKey {
-                owner_type: if raw == "group" {
+            let raw_owner_type: String = row.get(0)?;
+            let key = TopicKey {
+                owner_type: if raw_owner_type == "group" {
                     OwnerType::Group
                 } else {
                     OwnerType::Agent
                 },
                 owner_id: row.get(1)?,
                 topic_id: row.get(2)?,
+            };
+            Ok(TopicManifestRow {
+                key,
+                config_hash: row.get(3)?,
+                content_hash: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                updated_at: row.get(5)?,
+                deleted_at: row.get(6)?,
+                source_path: row.get(7)?,
+                source_status: row.get(8)?,
+                source_error: row.get(9)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-
-    keys.into_iter()
-        .filter(|key| targeted_owners.is_none_or(|owners| owners.contains(&key.owner_id)))
-        .map(|key| {
-            // 缺口 A 降级：活 topic 的 source 不健康（0 字节永久 invalid /
-            // exists-but-never-ingested 等 S5 毒态）时，单条 topic_manifest 失败
-            // 不再炸掉整批 manifest（Phase 2 整表 500），降级为哨兵条目——
-            // 哨兵 config_hash 迫使比对产出动作（topic 的 content-only 不匹配在
-            // manifest() 不出动作），ts 仲裁稳态偏 PULL（updated_at 每轮
-            // reconcile 刷新），毒 topic 由此进入 Phase 2.5/3 的 per-topic
-            // 隔离管线（topic_hash_diff 记 changed → message_diff ok:false），
-            // 每轮双端可见，而非静默跳过或整表爆炸。
-            match topic_manifest(database, &key) {
-                Ok(item) => Ok(item),
-                Err(error) => {
-                    tracing::warn!(
-                        owner_type = %key.owner_type.as_str(),
-                        owner_id = %key.owner_id,
-                        topic_id = %key.topic_id,
-                        error = %format!("{error:#}"),
-                        "topic manifest entry degraded: emitting sentinel hashes"
-                    );
-                    let sentinel = unhealthy_topic_sentinel_hash(&key);
-                    Ok(ManifestItem {
-                        id: key.topic_id.clone(),
-                        hash: sentinel.clone(),
-                        config_hash: sentinel.clone(),
-                        content_hash: sentinel,
-                        ts: topic_updated_at_or_now(database, &key),
-                        deleted_at: None,
-                        owner_type: Some(key.owner_type),
-                        owner_id: Some(key.owner_id.clone()),
-                        degraded: false,
-                    })
-                }
-            }
-        })
-        .collect()
+    Ok(rows.into_iter().map(|row| (row.key.clone(), row)).collect())
 }
 
-fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
-    let connection = database.connection.lock();
-    let (metadata_json, updated_at, deleted_at): (String, i64, Option<i64>) = connection
-        .query_row(
-            "SELECT metadata_json, updated_at, deleted_at FROM topics
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )?;
-    drop(connection);
-    // 墓碑条目短路（S3-α）：删除信号只需要 id/ts/deleted_at/owner 身份，
-    // manifest diff 与移动端均不消费墓碑的 hash 字段；跳过 metadata 解析、
-    // config hash、健康检查与 content hash，避免已删 topic 炸掉整批 manifest。
-    if deleted_at.is_some() {
-        return Ok(ManifestItem {
-            id: key.topic_id.clone(),
-            hash: String::new(),
-            config_hash: String::new(),
-            content_hash: String::new(),
-            ts: updated_at,
-            deleted_at,
-            owner_type: Some(key.owner_type),
-            owner_id: Some(key.owner_id.clone()),
-            degraded: false,
-        });
+fn ensure_topic_manifest_row_healthy(row: &TopicManifestRow) -> Result<()> {
+    if let Some(status) = &row.source_status {
+        anyhow::ensure!(
+            status == "ready",
+            "history source is not ready for sync: {}",
+            row.source_error.clone().unwrap_or_else(|| status.clone())
+        );
+    } else if Path::new(&row.source_path).exists() {
+        anyhow::bail!("history source exists but has not been ingested");
     }
-    let metadata =
-        serde_json::from_str::<Value>(&metadata_json).context("topic metadata is invalid")?;
-    let config_hash = mobile_topic_config_hash(key, &metadata);
-    let content_hash = topic_content_hash(database, key)?;
-    Ok(ManifestItem {
-        id: key.topic_id.clone(),
-        hash: config_hash.clone(),
-        config_hash,
-        content_hash,
-        ts: updated_at,
-        deleted_at,
-        owner_type: Some(key.owner_type),
-        owner_id: Some(key.owner_id.clone()),
-        degraded: false,
-    })
+    Ok(())
 }
 
+#[cfg(test)]
 fn owner_content_hash(
     database: &Database,
     owner_type: OwnerType,
     owner_id: &str,
 ) -> Result<String> {
     let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT topic_id FROM topics
-         WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL",
-    )?;
-    let topic_ids = statement
-        .query_map(params![owner_type.as_str(), owner_id], |row| {
-            row.get::<_, String>(0)
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-    let mut hashes = Vec::new();
-    for topic_id in topic_ids {
-        let key = TopicKey {
-            owner_type,
-            owner_id: owner_id.to_string(),
-            topic_id,
-        };
-        // 缺口 C 降级（ε 的上一层镜像）：单个 topic 的 content hash 失败
-        // （source 不健康）降级为哨兵参与聚合——owner 级毒化经 manifest()
-        // 转译为 SKIP+mismatchedContent，毒 topic 在 Phase 2/2.5/3 由
-        // topic 级哨兵管线（topic_manifests 降级 → γ → message_diff）接住并
-        // 每轮可见；不再让整个 owner manifest 因一条 topic 炸成整表 500。
-        match topic_content_hash(database, &key) {
-            Ok(hash) => hashes.push(hash),
-            Err(error) => {
-                tracing::warn!(
-                    owner_type = %owner_type.as_str(),
-                    owner_id = %owner_id,
-                    topic_id = %key.topic_id,
-                    error = %format!("{error:#}"),
-                    "topic content hash failed during owner aggregation; using sentinel hash"
-                );
-                hashes.push(unhealthy_topic_sentinel_hash(&key));
-            }
-        }
-    }
-    Ok(aggregate_hash(hashes))
-}
-
-fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
-    ensure_topic_sync_source_healthy(database, key)?;
-    let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT metadata_json FROM messages
-         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
-    )?;
-    let rows = statement
-        .query_map(
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, String>(0),
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-    // S3-ε：单条毒消息降级为哨兵哈希参与聚合，不再炸掉 topic/owner 整表 manifest。
-    // 哨兵永不可能等于移动端的诚实哈希 → topic 判定 changed → 经 diff/pull 暴露，
-    // 实际传输层（pull）仍 fail-closed，毒数据不会到达手机。
-    let hashes = rows
-        .into_iter()
-        .enumerate()
-        .map(|(index, raw)| message_hash_or_sentinel(&raw, &key.topic_id, &index.to_string()))
-        .collect::<Vec<_>>();
-    Ok(aggregate_hash(hashes))
+    connection
+        .query_row(
+            "SELECT content_hash FROM owners
+             WHERE owner_type=?1 AND owner_id=?2 AND deleted_at IS NULL",
+            params![owner_type.as_str(), owner_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
 }
 
 fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Result<()> {
@@ -1428,7 +2045,11 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
         .query_row(
             "SELECT t.source_path, hs.status, hs.last_error
              FROM topics t
-             LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+             LEFT JOIN history_sources hs
+               ON hs.source_path=t.source_path
+              AND hs.owner_type=t.owner_type
+              AND hs.owner_id=t.owner_id
+              AND hs.topic_id=t.topic_id
              WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
                AND t.deleted_at IS NULL",
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
@@ -1447,54 +2068,20 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
     Ok(())
 }
 
-fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicKey> {
+fn resolve_topic(database: &Database, key: &TopicKey) -> Result<TopicKey> {
     let connection = database.connection.lock();
-    if let (Some(owner_type), Some(owner_id)) = (selector.owner_type, selector.owner_id.as_deref())
-    {
-        let exists = connection
-            .query_row(
-                "SELECT 1 FROM topics
-                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
-                   AND deleted_at IS NULL",
-                params![owner_type.as_str(), owner_id, selector.topic_id],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        anyhow::ensure!(exists, "topic was not found");
-        return Ok(TopicKey {
-            owner_type,
-            owner_id: owner_id.to_string(),
-            topic_id: selector.topic_id.clone(),
-        });
-    }
-
-    let mut statement = connection.prepare(
-        "SELECT owner_type, owner_id FROM topics
-         WHERE topic_id=?1 AND deleted_at IS NULL",
-    )?;
-    let matches = statement
-        .query_map([&selector.topic_id], |row| {
-            let raw: String = row.get(0)?;
-            Ok((
-                if raw == "group" {
-                    OwnerType::Group
-                } else {
-                    OwnerType::Agent
-                },
-                row.get::<_, String>(1)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    match matches.as_slice() {
-        [(owner_type, owner_id)] => Ok(TopicKey {
-            owner_type: *owner_type,
-            owner_id: owner_id.clone(),
-            topic_id: selector.topic_id.clone(),
-        }),
-        [] => anyhow::bail!("topic was not found"),
-        _ => anyhow::bail!("topic id is ambiguous; ownerType and ownerId are required"),
-    }
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM topics
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+               AND deleted_at IS NULL",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    anyhow::ensure!(exists, "topic was not found");
+    Ok(key.clone())
 }
 
 fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
@@ -1510,165 +2097,6 @@ fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
     Ok((history, Some(sha256_hex(&bytes))))
 }
 
-fn write_json_atomic(path: &Path, value: &Value, expected_source_hash: Option<&str>) -> Result<()> {
-    let parent = path.parent().context("history path has no parent")?;
-    fs::create_dir_all(parent)?;
-    let temporary = temporary_path(path);
-    let bytes = serde_json::to_vec_pretty(value)?;
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&temporary)
-        .context("failed to create unique history temporary file")?;
-    if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
-        let _ = fs::remove_file(&temporary);
-        return Err(error).context("failed to durably write history temporary file");
-    }
-    drop(file);
-
-    let current_hash = match fs::read(path) {
-        Ok(current) => Some(sha256_hex(&current)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
-            let _ = fs::remove_file(&temporary);
-            return Err(error).context("failed to revalidate history before commit");
-        }
-    };
-    if current_hash.as_deref() != expected_source_hash {
-        let _ = fs::remove_file(&temporary);
-        anyhow::bail!("history changed concurrently; retry the sync topic");
-    }
-
-    if let Err(error) = atomic_replace(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
-        return Err(error).context("failed to atomically replace history");
-    }
-    sync_parent_directory(parent)?;
-    Ok(())
-}
-
-fn temporary_path(path: &Path) -> PathBuf {
-    let name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("history.json");
-    path.with_file_name(format!("{name}.cds-{}.tmp", uuid::Uuid::new_v4()))
-}
-
-#[cfg(not(windows))]
-fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
-    fs::rename(from, to)
-}
-
-#[cfg(windows)]
-fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-
-    let from = from
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    let to = to
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    let result = unsafe {
-        MoveFileExW(
-            from.as_ptr(),
-            to.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if result == 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(unix)]
-fn sync_parent_directory(parent: &Path) -> Result<()> {
-    File::open(parent)?.sync_all()?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn sync_parent_directory(_parent: &Path) -> Result<()> {
-    Ok(())
-}
-
-fn mobile_message_hash_from_json(raw: &str, topic_id: &str) -> Result<String> {
-    let value = serde_json::from_str::<Value>(raw).context("stored message JSON is invalid")?;
-    let mut warnings = WireWarnings::default();
-    let canonical = canonicalize_message(value, topic_id, &mut warnings)?;
-    message_fingerprint(&canonical)
-}
-
-/// 墓碑消息行的 content_hash 占位符（S3-ε）：sha256("") 的著名常量。
-/// 墓碑条目的 hash 无任何消费者（message_diff 过滤 deleted 行；manifest diff
-/// 只产出 DELETE/PUSH_DELETE action；移动端只校验 deletedAt），但保持 64-hex
-/// 形态以兼容插件 handleMessageManifest 的全字段格式校验。
-const TOMBSTONE_CONTENT_HASH: &str =
-    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-
-/// S3-ε 存活行降级：一条无法 wire 化的消息在清单/聚合哈希中的哨兵值。
-/// 哨兵 = sha256("vcp-invalid-message:" + raw)，保证：
-/// - 64 位小写 hex，可通过 wire 哈希格式校验；
-/// - 内容由 raw 派生 → 同一毒行每次同步得到同一哨兵，不会哈希抖动；
-/// - 前驱带污染标记，实践中不可能等于诚实内容哈希 → 移动端永远判定
-///   changed → 走 diff/pull 暴露问题（传输层 fail-closed 不变），而非静默一致。
-fn message_hash_or_sentinel(raw: &str, topic_id: &str, msg_hint: &str) -> String {
-    match mobile_message_hash_from_json(raw, topic_id) {
-        Ok(hash) => hash,
-        Err(error) => {
-            tracing::warn!(
-                topic_id = %topic_id,
-                msg = %msg_hint,
-                error = %format!("{error:#}"),
-                "message cannot cross sync wire; emitting sentinel hash"
-            );
-            sha256_hex(format!("vcp-invalid-message:{raw}").as_bytes())
-        }
-    }
-}
-
-/// 缺口 A/C 的 topic 级哨兵哈希：活 topic 的 source 不健康时用于
-/// manifest 条目（topic_manifests 降级）与 owner 聚合（owner_content_hash
-/// 降级）。与消息级哨兵同理：确定性（同 topic 每轮同值）、64-hex 合规、
-/// 永不可能等于移动端的诚实哈希 → 比对必判 changed → 进入 per-topic
-/// 隔离管线暴露问题，而非静默一致或整表 500。
-fn unhealthy_topic_sentinel_hash(key: &TopicKey) -> String {
-    sha256_hex(
-        format!(
-            "vcp-unhealthy-topic:{}:{}:{}",
-            key.owner_type.as_str(),
-            key.owner_id,
-            key.topic_id
-        )
-        .as_bytes(),
-    )
-}
-
-/// topic_manifests 降级路径的 ts 兜底：行必然存在（key 来自 topics 表查询），
-/// 兜底 now 是为了守住 ts 仲裁的 PULL 偏向（local.ts 新于手机 → PULL），
-/// 避免降级条目被反向仲裁成 PUSH。
-fn topic_updated_at_or_now(database: &Database, key: &TopicKey) -> i64 {
-    let connection = database.connection.lock();
-    connection
-        .query_row(
-            "SELECT updated_at FROM topics
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| row.get::<_, i64>(0),
-        )
-        .unwrap_or_else(|_| crate::storage::now_ms())
-}
-
 fn canonical_wire_hash(value: &str) -> Option<String> {
     let normalized = value.to_ascii_lowercase();
     (normalized.len() == 64
@@ -1677,9 +2105,19 @@ fn canonical_wire_hash(value: &str) -> Option<String> {
         .then_some(normalized)
 }
 
-fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String> {
-    let root = serde_json::from_slice::<Value>(&fs::read(path)?)
-        .with_context(|| format!("invalid owner config {}", path.display()))?;
+pub(crate) fn mobile_owner_config_hash_from_value(
+    owner_type: OwnerType,
+    root: &Value,
+) -> Result<String> {
+    Ok(hash_stable_object(&mobile_owner_sync_dto_from_value(
+        owner_type, root,
+    )?))
+}
+
+fn mobile_owner_sync_dto_from_value(
+    owner_type: OwnerType,
+    root: &Value,
+) -> Result<Map<String, Value>> {
     let object = root.as_object().context("owner config must be an object")?;
     let mut dto = Map::new();
 
@@ -1703,25 +2141,31 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
                 "model",
                 Value::String("gemini-2.5-flash".into()),
             );
-            insert_defaulted(
-                &mut dto,
-                object,
-                "temperature",
-                serde_json::Number::from_f64(1.0)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null),
+            dto.insert(
+                "temperature".into(),
+                normalize_float(&defaulted_value(
+                    object,
+                    "temperature",
+                    serde_json::Number::from_f64(1.0)
+                        .map(Value::Number)
+                        .unwrap_or(Value::Null),
+                )),
             );
-            insert_defaulted(
-                &mut dto,
-                object,
-                "contextTokenLimit",
-                Value::Number(1_000_000.into()),
+            dto.insert(
+                "contextTokenLimit".into(),
+                normalize_integer(&defaulted_value(
+                    object,
+                    "contextTokenLimit",
+                    Value::Number(1_000_000.into()),
+                )),
             );
-            insert_defaulted(
-                &mut dto,
-                object,
-                "maxOutputTokens",
-                Value::Number(64_000.into()),
+            dto.insert(
+                "maxOutputTokens".into(),
+                normalize_integer(&defaulted_value(
+                    object,
+                    "maxOutputTokens",
+                    Value::Number(64_000.into()),
+                )),
             );
             insert_defaulted(&mut dto, object, "streamOutput", Value::Bool(true));
         }
@@ -1734,7 +2178,14 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
             );
             insert_defaulted(&mut dto, object, "members", Value::Array(Vec::new()));
             insert_defaulted(&mut dto, object, "mode", Value::String("sequential".into()));
-            insert_defaulted(&mut dto, object, "memberTags", Value::Object(Map::new()));
+            dto.insert(
+                "memberTags".into(),
+                normalize_member_tags(defaulted_value(
+                    object,
+                    "memberTags",
+                    Value::Object(Map::new()),
+                ))?,
+            );
             insert_defaulted(
                 &mut dto,
                 object,
@@ -1760,15 +2211,24 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
                 "tagMatchMode",
                 Value::String("strict".into()),
             );
-            if let Some(value) = object.get("createdAt").filter(|value| !value.is_null()) {
-                dto.insert("createdAt".into(), normalize_integer(value));
-            }
+            dto.insert(
+                "createdAt".into(),
+                normalize_integer(&defaulted_value(
+                    object,
+                    "createdAt",
+                    Value::Number(0.into()),
+                )),
+            );
         }
     }
-    Ok(hash_stable_object(&dto))
+    Ok(dto)
 }
 
-fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
+pub(crate) fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
+    hash_stable_object(&mobile_topic_sync_dto(key, metadata))
+}
+
+fn mobile_topic_sync_dto(key: &TopicKey, metadata: &Value) -> Map<String, Value> {
     let source = metadata.as_object().cloned().unwrap_or_default();
     let mut dto = Map::new();
     dto.insert("id".into(), Value::String(key.topic_id.clone()));
@@ -1781,7 +2241,7 @@ fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
         source
             .get("createdAt")
             .map(normalize_integer)
-            .unwrap_or(Value::Null),
+            .unwrap_or_else(|| Value::Number(0.into())),
     );
     if key.owner_type == OwnerType::Agent {
         dto.insert(
@@ -1793,7 +2253,7 @@ fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
             source.get("unread").cloned().unwrap_or(Value::Bool(false)),
         );
     }
-    hash_stable_object(&dto)
+    dto
 }
 
 fn insert_defaulted(
@@ -1802,12 +2262,44 @@ fn insert_defaulted(
     key: &str,
     default: Value,
 ) {
-    let value = source
+    target.insert(key.to_string(), defaulted_value(source, key, default));
+}
+
+fn defaulted_value(source: &Map<String, Value>, key: &str, default: Value) -> Value {
+    source
         .get(key)
         .filter(|value| !value.is_null())
         .cloned()
-        .unwrap_or(default);
-    target.insert(key.to_string(), value);
+        .unwrap_or(default)
+}
+
+fn normalize_member_tags(value: Value) -> Result<Value> {
+    let member_tags = value
+        .as_object()
+        .context("memberTags must be an object of string values")?;
+    for (agent_id, tags) in member_tags {
+        anyhow::ensure!(
+            !agent_id.is_empty(),
+            "memberTags keys must be non-empty strings"
+        );
+        anyhow::ensure!(
+            tags.is_string(),
+            "memberTags[{agent_id:?}] must be a string"
+        );
+    }
+    Ok(value)
+}
+
+fn normalize_float(value: &Value) -> Value {
+    let number = match value {
+        Value::String(value) => value.parse::<f64>().ok(),
+        Value::Number(value) => value.as_f64(),
+        _ => None,
+    };
+    number
+        .and_then(serde_json::Number::from_f64)
+        .map(Value::Number)
+        .unwrap_or(Value::Null)
 }
 
 fn normalize_integer(value: &Value) -> Value {
@@ -1835,6 +2327,7 @@ fn stable_stringify(value: &Value, key: &str) -> String {
         Value::Number(value) if key == "temperature" => value
             .as_f64()
             .map(|number| {
+                let number = (number * 100.0).round() / 100.0;
                 if number.fract() == 0.0 {
                     format!("{number:.1}")
                 } else {
@@ -1854,7 +2347,7 @@ fn stable_stringify(value: &Value, key: &str) -> String {
         ),
         Value::Object(object) => {
             let mut keys = object.keys().collect::<Vec<_>>();
-            keys.sort();
+            keys.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
             format!(
                 "{{{}}}",
                 keys.into_iter()
@@ -1870,56 +2363,17 @@ fn stable_stringify(value: &Value, key: &str) -> String {
     }
 }
 
-fn aggregate_hash(mut hashes: Vec<String>) -> String {
-    if hashes.is_empty() {
-        return String::new();
-    }
-    hashes.sort();
-    let mut digest = Sha256::new();
-    for hash in hashes {
-        digest.update(hash.as_bytes());
-    }
-    hex::encode(digest.finalize())
-}
-
-fn unique_manifest_item_by_id<'a>(
-    local_by_key: &'a HashMap<String, ManifestItem>,
-    id: &str,
-) -> Option<&'a ManifestItem> {
-    let mut matches = local_by_key.values().filter(|item| item.id == id);
-    let first = matches.next();
-
-    // 仅在 Topic ID 跨 Owner 唯一时允许旧协议省略 Owner 上下文。
-    // 不使用 bool::then_some(matches[0])：then_some 会立即求值参数，
-    // 即使集合为空也会访问下标 0 并导致 Tokio worker panic。
-    match (first, matches.next()) {
-        (Some(item), None) => Some(item),
-        _ => None,
-    }
-}
-
-fn manifest_key(id: &str, owner_type: Option<OwnerType>, owner_id: Option<&str>) -> String {
-    format!(
-        "{}:{}:{}",
-        owner_type.map_or("", OwnerType::as_str),
-        owner_id.unwrap_or_default(),
-        id
-    )
-}
-
-fn manifest_action(
-    remote: &RemoteManifestItem,
-    action: &str,
-    deleted_at: Option<i64>,
-    mismatched_content: bool,
-) -> ManifestAction {
-    ManifestAction {
-        id: remote.id.clone(),
-        action: action.to_string(),
-        deleted_at,
-        owner_type: remote.owner_type,
-        owner_id: remote.owner_id.clone(),
-        mismatched_content,
+fn manifest_key(identity: &ManifestIdentity) -> String {
+    match identity {
+        ManifestIdentity::Owner(key) => {
+            format!("owner:{}:{}", key.owner_type, key.owner_id)
+        }
+        ManifestIdentity::Topic(key) => {
+            format!("topic:{}:{}:{}", key.owner_type, key.owner_id, key.topic_id)
+        }
+        ManifestIdentity::Avatar(key) => {
+            format!("avatar:{}:{}", key.owner_type, key.owner_id)
+        }
     }
 }
 
@@ -1940,22 +2394,91 @@ mod tests {
     };
 
     use super::{
-        aggregate_hash, manifest, message_manifest, mobile_message_hash_from_json, owner_manifest,
-        pull_topic_messages, push_messages, topic_content_hash, topic_hash_diff, topic_identity,
-        topic_manifests, unique_manifest_item_by_id, validate_manifest_request, ManifestItem,
-        ManifestRequest, MessagesPullTopic, MessagesPushRequest, MessagesPushTopic,
-        RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicKey, TopicSelector,
-        TOMBSTONE_CONTENT_HASH,
+        avatar_manifest, ensure_topic_manifest_row_healthy, load_message_states,
+        load_topic_manifest_row, manifest, message_diff, mobile_owner_config_hash_from_value,
+        owner_content_hash, owner_manifest, pull_entities, pull_topic_messages,
+        push_topic_messages, stable_stringify, topic_diff, topic_manifest, topic_manifests,
+        AvatarManifestState, EntitiesPullRequest, EntityPullItem, ManifestIdentity, ManifestItem,
+        ManifestRequest, ManifestResponse, MessageDeletedState, MessageDiffRequest,
+        MessageDiffResult, MessageDiffState, MessageLiveState, MessageVersionState,
+        MessagesPullTopic, MessagesPushTopic, OwnerManifestState, TopicDiffRequest, TopicDiffState,
+        TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::OwnerType,
+        domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
         ingest::{sha256_hex, Reconciler},
         storage::Database,
-        sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
+        sync_wire::{
+            aggregate_hash, canonicalize_message, message_fingerprint, stored_message_fingerprint,
+            topic_leaf_hash, WireWarnings,
+        },
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
     use tempfile::TempDir;
+
+    fn owner_key(owner_type: OwnerType, owner_id: &str) -> OwnerKey {
+        OwnerKey {
+            owner_type,
+            owner_id: owner_id.to_string(),
+        }
+    }
+
+    fn manifest_item_id(item: &ManifestItem) -> &str {
+        match &item.identity {
+            ManifestIdentity::Owner(key) => &key.owner_id,
+            ManifestIdentity::Topic(key) => &key.topic_id,
+            ManifestIdentity::Avatar(key) => &key.owner_id,
+        }
+    }
+
+    fn manifest_item_owner_id(item: &ManifestItem) -> &str {
+        match &item.identity {
+            ManifestIdentity::Owner(key) => &key.owner_id,
+            ManifestIdentity::Topic(key) => &key.owner_id,
+            ManifestIdentity::Avatar(key) => &key.owner_id,
+        }
+    }
+
+    #[test]
+    fn canonical_hash_matches_the_shared_cross_language_vectors() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/message_canonical_contract.json"
+        ))
+        .expect("parse canonical hash fixture");
+        for case in fixture["canonicalHashCases"]
+            .as_array()
+            .expect("canonical hash cases")
+        {
+            let canonical = stable_stringify(&case["value"], "");
+            assert_eq!(
+                canonical,
+                case["expectedCanonical"].as_str().expect("canonical bytes"),
+                "case {}",
+                case["name"].as_str().unwrap_or("unnamed")
+            );
+            assert_eq!(
+                sha256_hex(canonical.as_bytes()),
+                case["expectedHash"].as_str().expect("canonical hash"),
+                "case {}",
+                case["name"].as_str().unwrap_or("unnamed")
+            );
+        }
+    }
+
+    fn manifest_results(response: &ManifestResponse) -> Vec<serde_json::Value> {
+        serde_json::to_value(response).expect("serialize manifest response")["results"]
+            .as_array()
+            .expect("manifest results")
+            .clone()
+    }
+
+    fn successful_message_decision(result: &MessageDiffResult) -> &super::MessageDiffSuccess {
+        let MessageDiffResult::Success(decision) = result else {
+            panic!("expected successful message decision");
+        };
+        decision
+    }
 
     fn sync_fixture() -> (TempDir, Arc<ServiceConfig>, Database, Reconciler) {
         let temp = TempDir::new().expect("create temp directory");
@@ -1991,146 +2514,539 @@ mod tests {
         (temp, config, database, reconciler)
     }
 
-    fn manifest_item(id: &str, owner_type: OwnerType, owner_id: &str) -> ManifestItem {
-        ManifestItem {
-            id: id.to_string(),
-            hash: String::new(),
-            config_hash: String::new(),
-            content_hash: String::new(),
-            ts: 0,
-            deleted_at: None,
-            owner_type: Some(owner_type),
-            owner_id: Some(owner_id.to_string()),
-            degraded: false,
+    fn mark_test_source_invalid(database: &Database, config: &ServiceConfig, key: TopicKey) {
+        let source = TopicSource {
+            source_path: config
+                .user_data_dir
+                .join(&key.owner_id)
+                .join("topics")
+                .join(&key.topic_id)
+                .join("history.json"),
+            key,
+        };
+        database
+            .mark_source_invalid(&source, "boom", crate::storage::OwnerHashMode::Immediate)
+            .expect("poison history source");
+    }
+
+    #[test]
+    fn legacy_and_cds_share_the_message_diff_matrix() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/message_diff_matrix.json"
+        ))
+        .expect("parse message diff matrix");
+        for scenario in fixture["cases"].as_array().expect("matrix cases") {
+            let temp = TempDir::new().expect("create matrix database directory");
+            let database =
+                Database::open(&temp.path().join("chat.sqlite3")).expect("open matrix database");
+            let owner_type = match scenario["ownerType"].as_str().expect("ownerType") {
+                "agent" => OwnerType::Agent,
+                "group" => OwnerType::Group,
+                other => panic!("unsupported matrix ownerType {other}"),
+            };
+            let owner_id = scenario["ownerId"].as_str().expect("ownerId");
+            let topic_id = scenario["topicId"].as_str().expect("topicId");
+            let source_path = temp.path().join(format!("missing-{topic_id}.json"));
+            {
+                let connection = database.connection.lock();
+                connection
+                    .execute(
+                        "INSERT INTO owners (
+                            owner_type, owner_id, display_name, config_path,
+                            config_hash, content_hash, updated_at
+                         ) VALUES (?1, ?2, '', '', ?3, '', 1)",
+                        rusqlite::params![owner_type.as_str(), owner_id, "a".repeat(64)],
+                    )
+                    .expect("insert matrix owner");
+                connection
+                    .execute(
+                        "INSERT INTO topics (
+                            owner_type, owner_id, topic_id, config_hash, metadata_json,
+                            content_hash, source_path, updated_at
+                         ) VALUES (?1, ?2, ?3, ?4, '{}', ?5, ?6, 1)",
+                        rusqlite::params![
+                            owner_type.as_str(),
+                            owner_id,
+                            topic_id,
+                            "b".repeat(64),
+                            scenario["desktopContentHash"]
+                                .as_str()
+                                .expect("desktopContentHash"),
+                            source_path.to_string_lossy(),
+                        ],
+                    )
+                    .expect("insert matrix topic");
+                for (ordinal, message) in scenario["desktopMessages"]
+                    .as_array()
+                    .expect("desktopMessages")
+                    .iter()
+                    .enumerate()
+                {
+                    let deleted_at = message.get("deletedAt").and_then(serde_json::Value::as_i64);
+                    let updated_at = message
+                        .get("updatedAt")
+                        .and_then(serde_json::Value::as_i64)
+                        .or(deleted_at)
+                        .expect("desktop message time");
+                    let message_hash = message
+                        .get("messageHash")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| "0".repeat(64));
+                    connection
+                        .execute(
+                            "INSERT INTO messages (
+                                owner_type, owner_id, topic_id, msg_id, ordinal, role,
+                                content_raw, content_text, timestamp, message_hash,
+                                metadata_json, updated_at, deleted_at
+                             ) VALUES (?1, ?2, ?3, ?4, ?5, 'user', '', '', ?6, ?7, '{}', ?6, ?8)",
+                            rusqlite::params![
+                                owner_type.as_str(),
+                                owner_id,
+                                topic_id,
+                                message["msgId"].as_str().expect("msgId"),
+                                ordinal as i64,
+                                updated_at,
+                                message_hash,
+                                deleted_at,
+                            ],
+                        )
+                        .expect("insert matrix message");
+                }
+            }
+
+            let mobile_messages = scenario["mobileMessages"]
+                .as_object()
+                .expect("mobileMessages")
+                .iter()
+                .map(|(msg_id, state)| {
+                    let version = if let Some(deleted_at) =
+                        state.get("deletedAt").and_then(serde_json::Value::as_i64)
+                    {
+                        MessageVersionState::Deleted(MessageDeletedState { deleted_at })
+                    } else {
+                        MessageVersionState::Live(MessageLiveState {
+                            message_hash: state["messageHash"]
+                                .as_str()
+                                .expect("messageHash")
+                                .to_string(),
+                            updated_at: state["updatedAt"].as_i64().expect("updatedAt"),
+                        })
+                    };
+                    (msg_id.clone(), version)
+                })
+                .collect();
+            let response = message_diff(
+                &database,
+                MessageDiffRequest {
+                    topics: vec![MessageDiffState {
+                        topic_id: topic_id.to_string(),
+                        owner_type,
+                        owner_id: owner_id.to_string(),
+                        content_hash: scenario["mobileContentHash"]
+                            .as_str()
+                            .expect("mobileContentHash")
+                            .to_string(),
+                        messages: mobile_messages,
+                    }],
+                },
+            )
+            .expect("run message diff matrix");
+            let decision = successful_message_decision(&response.results[0]);
+            let actual = serde_json::to_value(decision).expect("serialize matrix decision");
+            assert_eq!(
+                actual["pullMessageIds"], scenario["expected"]["pullMessageIds"],
+                "{} pullMessageIds",
+                scenario["name"]
+            );
+            assert_eq!(
+                actual["pushTopic"], scenario["expected"]["pushTopic"],
+                "{} pushTopic",
+                scenario["name"]
+            );
+            assert_eq!(
+                actual["deleteMessages"], scenario["expected"]["deleteMessages"],
+                "{} deleteMessages",
+                scenario["name"]
+            );
         }
     }
 
     #[test]
-    fn legacy_manifest_lookup_handles_zero_matches_without_panicking() {
-        let items = HashMap::new();
-        assert!(unique_manifest_item_by_id(&items, "missing-topic").is_none());
-    }
-
-    #[test]
-    fn legacy_manifest_lookup_accepts_one_ownerless_match() {
-        let mut items = HashMap::new();
-        items.insert(
-            "agent:agent-1:topic-1".to_string(),
-            manifest_item("topic-1", OwnerType::Agent, "agent-1"),
-        );
-
-        let found = unique_manifest_item_by_id(&items, "topic-1").expect("unique topic");
-        assert_eq!(found.owner_id.as_deref(), Some("agent-1"));
-    }
-
-    #[test]
-    fn legacy_manifest_lookup_rejects_ambiguous_cross_owner_topic_id() {
-        let mut items = HashMap::new();
-        items.insert(
-            "agent:agent-1:shared-topic".to_string(),
-            manifest_item("shared-topic", OwnerType::Agent, "agent-1"),
-        );
-        items.insert(
-            "group:group-1:shared-topic".to_string(),
-            manifest_item("shared-topic", OwnerType::Group, "group-1"),
-        );
-
-        assert!(unique_manifest_item_by_id(&items, "shared-topic").is_none());
-    }
-
-    #[test]
-    fn mobile_fingerprint_matches_content_only_contract() {
-        let value = json!({"id":"m1","content":"hello"});
-        let mut value = value;
-        value["role"] = json!("user");
-        value["timestamp"] = json!(1);
-        let mut warnings = WireWarnings::default();
-        let canonical = canonicalize_message(value, "topic", &mut warnings).expect("canonical");
-        let hash = message_fingerprint(&canonical).expect("hash");
+    fn owner_hash_normalizes_temperature_and_numeric_strings_like_mobile_legacy() {
+        let base = json!({
+            "name": "Nova",
+            "systemPrompt": "system",
+            "model": "model-a",
+            "temperature": "0.704",
+            "contextTokenLimit": "1000",
+            "maxOutputTokens": "2000",
+            "streamOutput": true
+        });
+        let rounded = json!({
+            "name": "Nova",
+            "systemPrompt": "system",
+            "model": "model-a",
+            "temperature": 0.70,
+            "contextTokenLimit": 1000,
+            "maxOutputTokens": 2000,
+            "streamOutput": true
+        });
+        let changed = json!({
+            "name": "Nova",
+            "systemPrompt": "system",
+            "model": "model-a",
+            "temperature": 0.706,
+            "contextTokenLimit": 1000,
+            "maxOutputTokens": 2000,
+            "streamOutput": true
+        });
+        let base_hash =
+            mobile_owner_config_hash_from_value(OwnerType::Agent, &base).expect("hash base agent");
         assert_eq!(
-            hash,
-            "20b2dda940d741d9780897200aaef2ef356ab32b38c7de0d94306fb5a66b4a8e"
+            base_hash,
+            "a0d2b840400413446fb02e237d21747e735ee35af2684c25667a83ac5e066c4a"
         );
-    }
-
-    #[test]
-    fn aggregate_hash_is_order_independent() {
         assert_eq!(
-            aggregate_hash(vec!["b".to_string(), "a".to_string()]),
-            aggregate_hash(vec!["a".to_string(), "b".to_string()])
+            base_hash,
+            mobile_owner_config_hash_from_value(OwnerType::Agent, &rounded)
+                .expect("hash rounded agent")
+        );
+        assert_ne!(
+            base_hash,
+            mobile_owner_config_hash_from_value(OwnerType::Agent, &changed)
+                .expect("hash changed agent")
         );
     }
 
     #[test]
-    fn manifest_requires_exact_topic_owner_and_safe_wire_fields() {
-        let hash = "a".repeat(64);
-        let valid = ManifestRequest {
-            data_type: "topic".to_string(),
-            data: vec![RemoteManifestItem {
-                id: "topic-a".to_string(),
-                hash: hash.clone(),
-                config_hash: Some(hash),
-                content_hash: Some(String::new()),
-                ts: 1,
-                deleted_at: Some(0),
-                owner_type: Some(OwnerType::Agent),
-                owner_id: Some("agent-a".to_string()),
-            }],
-            targeted_owners: Some(vec!["agent-a".to_string()]),
+    fn group_owner_hash_requires_string_member_tags_with_non_empty_keys() {
+        let valid = json!({
+            "name": "Group",
+            "members": ["agent-a"],
+            "mode": "naturerandom",
+            "memberTags": { "agent-a": "猫娘,科学", "历史成员": "" },
+            "useUnifiedModel": false,
+            "createdAt": 1
+        });
+        mobile_owner_config_hash_from_value(OwnerType::Group, &valid)
+            .expect("hash string memberTags map");
+
+        for member_tags in [json!({ "agent-a": ["猫娘"] }), json!({ "": "猫娘" })] {
+            let invalid = json!({
+                "name": "Group",
+                "members": ["agent-a"],
+                "mode": "naturerandom",
+                "memberTags": member_tags,
+                "useUnifiedModel": false,
+                "createdAt": 1
+            });
+            assert!(mobile_owner_config_hash_from_value(OwnerType::Group, &invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn avatar_commit_and_manifest_use_cds_state_before_owner_reconcile() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let key = AvatarKey {
+            owner_type: AvatarOwnerType::Agent,
+            owner_id: "agent-a".to_string(),
         };
-        validate_manifest_request(&valid).expect("valid topic manifest");
+        fs::write(
+            config.agents_dir.join("agent-a/avatar.png"),
+            b"avatar-bytes",
+        )
+        .expect("write avatar");
 
-        let mut missing_owner = valid.clone();
-        missing_owner.data[0].owner_id = None;
-        assert!(validate_manifest_request(&missing_owner)
-            .expect_err("missing owner must fail")
-            .to_string()
-            .contains("ownerId"));
+        let committed = reconciler
+            .commit_avatar(&key)
+            .expect("commit avatar before owner reconcile");
+        assert_eq!(committed.hash, sha256_hex(b"avatar-bytes"));
+        assert_eq!(
+            avatar_manifest(&database).expect("avatar manifest").len(),
+            1
+        );
 
-        let mut unsafe_timestamp = valid;
-        unsafe_timestamp.data[0].ts = (1_i64 << 53) + 1;
-        assert!(validate_manifest_request(&unsafe_timestamp)
-            .expect_err("unsafe timestamp must fail")
-            .to_string()
-            .contains("safe integer"));
+        let remote = AvatarManifestState::Live(super::AvatarManifestLive {
+            owner_type: key.owner_type,
+            owner_id: key.owner_id.clone(),
+            binary_hash: committed.hash,
+            updated_at: committed.updated_at,
+        });
+        let equal = manifest(
+            &database,
+            ManifestRequest::Avatar {
+                items: vec![remote.clone()],
+            },
+        )
+        .expect("equal avatar manifest");
+        assert!(manifest_results(&equal).is_empty());
+
+        database
+            .apply_sync_avatar_tombstone(&key, 7)
+            .expect("tombstone avatar");
+        assert!(reconciler.commit_avatar(&key).is_err());
+        let deleted = manifest(
+            &database,
+            ManifestRequest::Avatar {
+                items: vec![remote],
+            },
+        )
+        .expect("deleted avatar manifest");
+        let deleted = manifest_results(&deleted);
+        assert_eq!(deleted.len(), 1);
+        assert_eq!(deleted[0]["action"], "PULL_DELETE");
+        assert_eq!(deleted[0]["deletedAt"], 7);
+    }
+
+    #[tokio::test]
+    async fn entity_pull_uses_cds_dto_projection_and_exact_topic_owner() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            b"[]",
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let results = pull_entities(
+            &database,
+            EntitiesPullRequest {
+                items: vec![
+                    EntityPullItem::Owner {
+                        owner_type: OwnerType::Agent,
+                        owner_id: "agent-a".to_string(),
+                    },
+                    EntityPullItem::Topic {
+                        owner_type: OwnerType::Agent,
+                        owner_id: "agent-a".to_string(),
+                        topic_id: "topic-a".to_string(),
+                    },
+                    EntityPullItem::Topic {
+                        owner_type: OwnerType::Agent,
+                        owner_id: "agent-missing".to_string(),
+                        topic_id: "topic-a".to_string(),
+                    },
+                ],
+            },
+        );
+
+        let results = serde_json::to_value(results).expect("serialize entity results");
+        let results = results["results"].as_array().expect("entity results");
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0]["data"]["name"], "Agent A");
+        let topic = &results[1]["data"];
+        assert_eq!(topic["id"], "topic-a");
+        assert_eq!(topic["ownerId"], "agent-a");
+        assert_eq!(topic["locked"], true);
+        assert_eq!(results[2]["ok"], false);
+        assert_eq!(results[2]["error"]["code"], "ENTITY_NOT_FOUND");
+    }
+
+    fn version(hash: impl Into<String>, updated_at: i64) -> MessageVersionState {
+        MessageVersionState::Live(MessageLiveState {
+            message_hash: hash.into(),
+            updated_at,
+        })
+    }
+
+    fn deleted_version(deleted_at: i64) -> MessageVersionState {
+        MessageVersionState::Deleted(MessageDeletedState { deleted_at })
+    }
+
+    #[test]
+    fn mobile_fingerprint_binds_message_identity_and_state() {
+        let value = json!({
+            "id":"m1",
+            "role":"user",
+            "name":"User",
+            "content":"hello",
+            "timestamp":1
+        });
+        let mut warnings = WireWarnings::default();
+        let canonical =
+            canonicalize_message(value.clone(), "topic", &mut warnings).expect("canonical");
+        let hash = message_fingerprint(&canonical).expect("hash");
+        for (field, changed) in [
+            ("id", json!("m2")),
+            ("role", json!("assistant")),
+            ("name", json!("Other")),
+            ("timestamp", json!(2)),
+        ] {
+            let mut candidate = value.clone();
+            candidate[field] = changed;
+            let canonical = canonicalize_message(candidate, "topic", &mut warnings)
+                .expect("changed canonical message");
+            assert_ne!(hash, message_fingerprint(&canonical).expect("changed hash"));
+        }
+    }
+
+    #[test]
+    fn manifest_requires_exact_owner_identity_and_safe_wire_fields() {
+        let hash = "a".repeat(64);
+        let topic = |owner_type, owner_id: &str, updated_at| {
+            TopicManifestState::Live(super::TopicManifestLive {
+                owner_type,
+                owner_id: owner_id.to_string(),
+                topic_id: "topic-a".to_string(),
+                config_hash: hash.clone(),
+                content_hash: String::new(),
+                updated_at,
+            })
+        };
+        let split_owners = ManifestRequest::Topic {
+            items: vec![
+                topic(OwnerType::Agent, "agent-a", 1),
+                topic(OwnerType::Group, "group-a", 1),
+            ],
+            targeted_owners: vec![
+                owner_key(OwnerType::Agent, "agent-a"),
+                owner_key(OwnerType::Group, "group-a"),
+            ],
+        };
+        super::normalize_manifest_request(split_owners)
+            .expect("same topic id under different owners is valid");
+
+        let duplicate = ManifestRequest::Topic {
+            items: vec![
+                topic(OwnerType::Agent, "agent-a", 1),
+                topic(OwnerType::Agent, "agent-a", 1),
+            ],
+            targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
+        };
+        let error = super::normalize_manifest_request(duplicate)
+            .err()
+            .expect("duplicate full topic identity must fail");
+        assert!(error.to_string().contains("duplicate entity identity"));
+
+        let unsafe_timestamp = ManifestRequest::Topic {
+            items: vec![topic(OwnerType::Agent, "agent-a", (1_i64 << 53) + 1)],
+            targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
+        };
+        let error = super::normalize_manifest_request(unsafe_timestamp)
+            .err()
+            .expect("unsafe timestamp must fail");
+        assert!(error.to_string().contains("safe integer"));
+    }
+
+    #[tokio::test]
+    async fn entity_manifest_tombstone_actions_cover_both_sources_and_presence_states() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            b"[]",
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile live owner");
+
+        {
+            let connection = database.connection.lock();
+            for (owner_type, owner_id, deleted_at) in [
+                ("group", "desktop-deleted-mobile-live", 21_i64),
+                ("group", "desktop-deleted-mobile-missing", 22_i64),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO owners (owner_type, owner_id, display_name, config_path,
+                             config_hash, updated_at, deleted_at)
+                         VALUES (?1, ?2, ?2, '/nonexistent/config.json', '', 1, ?3)",
+                        rusqlite::params![owner_type, owner_id, deleted_at],
+                    )
+                    .expect("insert desktop tombstone");
+            }
+        }
+
+        let hash = "a".repeat(64);
+        let live = |owner_type: OwnerType, id: &str| {
+            OwnerManifestState::Live(super::OwnerManifestLive {
+                owner_type,
+                owner_id: id.to_string(),
+                config_hash: hash.clone(),
+                content_hash: String::new(),
+                updated_at: 1,
+            })
+        };
+        let deleted = |owner_type: OwnerType, id: &str, deleted_at| {
+            OwnerManifestState::Deleted(super::OwnerManifestDeleted {
+                owner_type,
+                owner_id: id.to_string(),
+                deleted_at,
+            })
+        };
+        let response = manifest(
+            &database,
+            ManifestRequest::Owner {
+                items: vec![
+                    deleted(OwnerType::Agent, "agent-a", 11),
+                    deleted(OwnerType::Group, "mobile-deleted-desktop-missing", 12),
+                    live(OwnerType::Group, "desktop-deleted-mobile-live"),
+                ],
+            },
+        )
+        .expect("manifest tombstone diff");
+        let actions = manifest_results(&response)
+            .into_iter()
+            .map(|action| (action["ownerId"].as_str().unwrap().to_string(), action))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(actions.len(), 4);
+
+        for (owner_type, id, deleted_at) in [
+            (OwnerType::Agent, "agent-a", 11_i64),
+            (OwnerType::Group, "mobile-deleted-desktop-missing", 12_i64),
+        ] {
+            let action = &actions[id];
+            assert_eq!(action["action"], "PUSH_DELETE");
+            assert_eq!(action["deletedAt"], deleted_at);
+            assert_eq!(action["ownerType"], owner_type.as_str());
+        }
+        for (owner_type, id, deleted_at) in [
+            (OwnerType::Group, "desktop-deleted-mobile-live", 21_i64),
+            (OwnerType::Group, "desktop-deleted-mobile-missing", 22_i64),
+        ] {
+            let action = &actions[id];
+            assert_eq!(action["action"], "PULL_DELETE");
+            assert_eq!(action["deletedAt"], deleted_at);
+            assert_eq!(action["ownerType"], owner_type.as_str());
+        }
     }
 
     #[test]
     fn topic_hash_diff_rejects_duplicate_and_malformed_states_before_db_work() {
         let (_temp, _config, database, _reconciler) = sync_fixture();
-        let duplicate = topic_hash_diff(
+        let state = TopicDiffState {
+            topic_id: "topic-a".to_string(),
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            config_hash: "a".repeat(64),
+            content_hash: String::new(),
+        };
+        let duplicate = topic_diff(
             &database,
-            TopicHashDiffRequest {
-                hashes: HashMap::from([(
-                    "topic-a".to_string(),
-                    json!({"configHash":"", "contentHash":""}),
-                )]),
-                topics: vec![TopicHashState {
+            TopicDiffRequest {
+                topics: vec![state.clone(), state],
+            },
+        )
+        .expect_err("duplicate topic state must fail");
+        assert!(duplicate.to_string().contains("duplicate topic identity"));
+
+        let malformed = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
                     topic_id: "topic-a".to_string(),
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
-                    config_hash: String::new(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    config_hash: "not-a-hash".to_string(),
                     content_hash: String::new(),
                 }],
             },
         )
-        .expect_err("duplicate topic state must fail");
-        assert!(duplicate.to_string().contains("duplicate topic"));
-
-        let malformed = topic_hash_diff(
-            &database,
-            TopicHashDiffRequest {
-                hashes: HashMap::from([(
-                    "topic-a".to_string(),
-                    json!({"configHash":1, "contentHash":""}),
-                )]),
-                topics: Vec::new(),
-            },
-        )
         .expect_err("malformed topic hash must fail");
-        assert!(malformed
-            .to_string()
-            .contains("configHash must be a string"));
+        assert!(malformed.to_string().contains("invalid hash"));
     }
 
     #[tokio::test]
@@ -2148,6 +3064,11 @@ mod tests {
                     "role":"user",
                     "content":"legacy",
                     "timestamp":"1",
+                    "finishReason":"completed",
+                    "avatarUrl":"file://G:\\\\VCPChat\\\\avatar.png",
+                    "avatarColor":"#desktop-local-only",
+                    "model":"desktop-model",
+                    "context":{"streamOperationId":"desktop-only"},
                     "attachments":[{
                         "type":"text/plain",
                         "name":"legacy.txt",
@@ -2155,7 +3076,8 @@ mod tests {
                         "src":"file:///desktop/private",
                         "_fileManagerData":{
                             "hash":valid_hash,
-                            "internalPath":"file:///desktop/private"
+                            "internalPath":"file:///desktop/private",
+                            "thumbnailPath":"file:///desktop/private-thumb"
                         }
                     }]
                 },
@@ -2171,14 +3093,20 @@ mod tests {
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile history");
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute("UPDATE messages SET updated_at=77 WHERE msg_id='m1'", [])
+                .expect("set indexed update time");
+        }
 
         let frame = pull_topic_messages(
             &database,
             MessagesPullTopic {
                 topic_id: "topic-a".to_string(),
-                owner_type: None,
-                owner_id: None,
-                msg_ids: Vec::new(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                message_ids: Vec::new(),
             },
         )
         .expect("pull canonical frame");
@@ -2186,24 +3114,47 @@ mod tests {
         assert_eq!(frame.owner_id, "agent-a");
         assert_eq!(frame.legacy_attachment_warnings, 1);
         assert_eq!(frame.messages.len(), 2);
+        assert_eq!(frame.messages[0]["updatedAt"], 77);
         assert_eq!(frame.messages[0]["attachments"][0]["hash"], "a".repeat(64));
         assert!(frame.messages[0]["attachments"][0]
             .get("_fileManagerData")
             .is_none());
+        assert!(frame.messages[0].get("avatarColor").is_none());
+        assert!(frame.messages[0].get("context").is_none());
         assert!(frame.messages[1].get("attachments").is_none());
 
-        let response = push_messages(
+        let response = push_topic_messages(
             &reconciler,
-            MessagesPushRequest {
-                topics: vec![MessagesPushTopic {
-                    topic_id: "topic-a".to_string(),
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
-                    messages: vec![json!({
+            MessagesPushTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                messages: vec![
+                    json!({
+                        "id":"m1",
+                        "role":"user",
+                        "content":"mobile edit",
+                        "timestamp":1,
+                        "updatedAt":78,
+                        "avatarUrl":"file:///G:/VCPChat/avatar.png",
+                        "attachments":[{
+                            "type":"text/plain",
+                            "src":"",
+                            "name":"mobile-name.txt",
+                            "size":4,
+                            "_fileManagerData":{
+                                "hash":"a".repeat(64),
+                                "internalPath":"",
+                                "extractedText":"mobile text"
+                            }
+                        }]
+                    }),
+                    json!({
                         "id":"m3",
                         "role":"user",
                         "content":"projected native",
                         "timestamp":3,
+                        "updatedAt":4,
                         "attachments":[{
                             "type":"text/plain",
                             "src":"file:///actual/app-data/attachment.txt",
@@ -2214,38 +3165,62 @@ mod tests {
                                 "internalPath":"file:///actual/app-data/attachment.txt"
                             }
                         }]
-                    })],
-                    deleted_message_ids: Vec::new(),
-                    deleted_message_tombstones: Vec::new(),
-                }],
+                    }),
+                ],
+                deleted_messages: Vec::new(),
             },
         )
         .await;
-        assert!(response.results[0].success);
-        assert!(response.results[0].needed_attachment_hashes.is_empty());
+        assert!(response.ok);
         let persisted: Vec<serde_json::Value> =
             serde_json::from_slice(&fs::read(&history_path).expect("read history"))
                 .expect("parse history");
         assert_eq!(persisted.len(), 3);
+        assert_eq!(persisted[0]["content"], "mobile edit");
+        assert_eq!(persisted[0]["updatedAt"], 78);
+        assert_eq!(persisted[0]["avatarUrl"], "file:///G:/VCPChat/avatar.png");
+        assert_eq!(persisted[0]["avatarColor"], "#desktop-local-only");
+        assert_eq!(persisted[0]["model"], "desktop-model");
+        assert_eq!(persisted[0]["context"]["streamOperationId"], "desktop-only");
+        assert!(persisted[0].get("finishReason").is_none());
+        assert_eq!(
+            persisted[0]["attachments"][0]["src"],
+            "file:///desktop/private"
+        );
+        assert_eq!(
+            persisted[0]["attachments"][0]["_fileManagerData"]["internalPath"],
+            "file:///desktop/private"
+        );
+        assert_eq!(
+            persisted[0]["attachments"][0]["_fileManagerData"]["thumbnailPath"],
+            "file:///desktop/private-thumb"
+        );
+        assert_eq!(
+            persisted[0]["attachments"][0]["_fileManagerData"]["extractedText"],
+            "mobile text"
+        );
+        assert_eq!(persisted[2]["updatedAt"], 4);
         assert_eq!(
             persisted[2]["attachments"][0]["_fileManagerData"]["hash"],
             "b".repeat(64)
         );
 
-        let manifest = message_manifest(
+        let states = load_message_states(
             &database,
-            &TopicSelector {
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
                 topic_id: "topic-a".to_string(),
-                owner_type: Some(OwnerType::Agent),
-                owner_id: Some("agent-a".to_string()),
             },
         )
-        .expect("message manifest after push");
-        assert_eq!(manifest.messages.len(), 3);
-        assert!(manifest
-            .messages
-            .iter()
-            .all(|message| message.content_hash.len() == 64));
+        .expect("message states after push");
+        assert_eq!(states.len(), 3);
+        assert!(states.iter().all(|message| {
+            message
+                .message_hash
+                .as_deref()
+                .is_some_and(|hash| hash.len() == 64)
+        }));
     }
 
     #[tokio::test]
@@ -2261,29 +3236,29 @@ mod tests {
         .expect("write initial history");
         reconciler.reconcile().await.expect("initial reconcile");
 
-        let delete = |m1_deleted_at, missing_deleted_at| MessagesPushRequest {
-            topics: vec![MessagesPushTopic {
-                topic_id: "topic-a".to_string(),
-                owner_type: Some(OwnerType::Agent),
-                owner_id: Some("agent-a".to_string()),
-                messages: Vec::new(),
-                deleted_message_ids: Vec::new(),
-                deleted_message_tombstones: vec![
-                    super::MessageTombstoneInput {
-                        msg_id: "m1".to_string(),
-                        deleted_at: m1_deleted_at,
-                    },
-                    super::MessageTombstoneInput {
-                        msg_id: "never-seen".to_string(),
-                        deleted_at: missing_deleted_at,
-                    },
-                ],
-            }],
+        let delete = |m1_deleted_at, missing_deleted_at| MessagesPushTopic {
+            topic_id: "topic-a".to_string(),
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            messages: Vec::new(),
+            deleted_messages: vec![
+                super::MessageTombstoneInput {
+                    msg_id: "m1".to_string(),
+                    deleted_at: m1_deleted_at,
+                },
+                super::MessageTombstoneInput {
+                    msg_id: "never-seen".to_string(),
+                    deleted_at: missing_deleted_at,
+                },
+            ],
         };
 
-        let first = push_messages(&reconciler, delete(42, 43)).await;
-        assert!(first.results[0].success);
-        assert!(first.results[0].changed);
+        let first = push_topic_messages(&reconciler, delete(42, 43)).await;
+        assert!(first.ok);
+        assert!(first
+            .ingest_commit
+            .as_ref()
+            .is_some_and(|commit| commit.changed));
         let persisted: Vec<serde_json::Value> =
             serde_json::from_slice(&fs::read(&history_path).expect("read history"))
                 .expect("parse history");
@@ -2293,10 +3268,10 @@ mod tests {
             let connection = database.connection.lock();
             let mut statement = connection
                 .prepare(
-                    "SELECT entity_id, deleted_at FROM tombstones
-                     WHERE entity_type='message' AND owner_type='agent'
-                       AND owner_id='agent-a' AND topic_id='topic-a'
-                     ORDER BY entity_id",
+                    "SELECT msg_id, deleted_at FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND deleted_at IS NOT NULL
+                     ORDER BY msg_id",
                 )
                 .expect("prepare tombstone query");
             statement
@@ -2311,18 +3286,36 @@ mod tests {
             tombstone_times,
             vec![("m1".to_string(), 42), ("never-seen".to_string(), 43)]
         );
+        let states = load_message_states(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        )
+        .expect("message states with absent-row tombstone");
+        let never_seen = states
+            .iter()
+            .find(|message| message.msg_id == "never-seen")
+            .expect("absent-row tombstone must remain visible to other clients");
+        assert_eq!(never_seen.deleted_at, Some(43));
+        assert!(never_seen.message_hash.is_none());
 
-        let replay = push_messages(&reconciler, delete(99, 100)).await;
-        assert!(replay.results[0].success);
-        assert!(!replay.results[0].changed);
+        let replay = push_topic_messages(&reconciler, delete(99, 100)).await;
+        assert!(replay.ok);
+        assert!(replay
+            .ingest_commit
+            .as_ref()
+            .is_some_and(|commit| !commit.changed));
         let replay_times = {
             let connection = database.connection.lock();
             let mut statement = connection
                 .prepare(
-                    "SELECT entity_id, deleted_at FROM tombstones
-                     WHERE entity_type='message' AND owner_type='agent'
-                       AND owner_id='agent-a' AND topic_id='topic-a'
-                     ORDER BY entity_id",
+                    "SELECT msg_id, deleted_at FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND deleted_at IS NOT NULL
+                     ORDER BY msg_id",
                 )
                 .expect("prepare replay query");
             statement
@@ -2334,6 +3327,83 @@ mod tests {
                 .expect("collect replay tombstones")
         };
         assert_eq!(replay_times, tombstone_times);
+
+        let stale_live = push_topic_messages(
+            &reconciler,
+            MessagesPushTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                messages: vec![serde_json::json!({
+                    "id": "m1",
+                    "role": "user",
+                    "content": "stale",
+                    "timestamp": 1,
+                    "updatedAt": 101
+                })],
+                deleted_messages: Vec::new(),
+            },
+        )
+        .await;
+        assert!(!stale_live.ok);
+        assert_eq!(
+            stale_live.error.as_ref().map(|error| error.code.as_str()),
+            Some("SNAPSHOT_STALE")
+        );
+    }
+
+    #[tokio::test]
+    async fn message_diff_closes_desktop_and_mobile_tombstones_in_both_directions() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let deleted_raw =
+            r#"{"id":"desktop-deleted","role":"user","content":"gone","timestamp":1}"#;
+        let live_raw = r#"{"id":"desktop-live","role":"assistant","content":"live","timestamp":2}"#;
+        let history_path = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(&history_path, format!("[{deleted_raw},{live_raw}]"))
+            .expect("write initial history");
+        reconciler.reconcile().await.expect("initial reconcile");
+        fs::write(&history_path, format!("[{live_raw}]")).expect("remove desktop message");
+        reconciler.reconcile().await.expect("deletion reconcile");
+
+        let response = message_diff(
+            &database,
+            MessageDiffRequest {
+                topics: vec![MessageDiffState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    content_hash: String::new(),
+                    messages: HashMap::from([
+                        (
+                            "desktop-deleted".to_string(),
+                            version(
+                                stored_message_fingerprint(deleted_raw, "topic-a")
+                                    .expect("mobile hash"),
+                                1,
+                            ),
+                        ),
+                        ("desktop-live".to_string(), deleted_version(1)),
+                    ]),
+                }],
+            },
+        )
+        .expect("message diff");
+        let decision = successful_message_decision(&response.results[0]);
+        assert_eq!(decision.pull_message_ids, Vec::<String>::new());
+        assert!(decision.push_topic);
+        let to_delete = &decision.delete_messages;
+        assert_eq!(to_delete.len(), 1);
+        assert_eq!(to_delete[0].msg_id, "desktop-deleted");
+        assert!(to_delete[0].deleted_at > 0);
+
+        let wire = serde_json::to_value(decision).expect("serialize decision");
+        assert_eq!(wire["deleteMessages"][0]["msgId"], "desktop-deleted");
+        assert_eq!(
+            wire["deleteMessages"][0]["deletedAt"],
+            to_delete[0].deleted_at
+        );
     }
 
     #[tokio::test]
@@ -2359,9 +3429,9 @@ mod tests {
             &database,
             MessagesPullTopic {
                 topic_id: "topic-a".to_string(),
-                owner_type: None,
-                owner_id: None,
-                msg_ids: Vec::new(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                message_ids: Vec::new(),
             },
         )
         .expect_err("invalid source must fail closed");
@@ -2369,7 +3439,74 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn topic_identity_rejects_cross_owner_ambiguity() {
+    async fn ready_source_identity_mismatch_never_blesses_another_topic() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let shared_topic_id = "topic-a";
+        let primary_history = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &primary_history,
+            br#"[{"id":"m1","role":"user","content":"primary","timestamp":1}]"#,
+        )
+        .expect("write primary history");
+        fs::create_dir_all(config.agents_dir.join("agent-b")).expect("create second agent");
+        fs::create_dir_all(config.user_data_dir.join("agent-b/topics/topic-a"))
+            .expect("create second topic");
+        fs::write(
+            config.agents_dir.join("agent-b/config.json"),
+            serde_json::to_vec(&json!({
+                "name":"Agent B",
+                "topics":[{"id":shared_topic_id,"name":"Shared ID","createdAt":2}]
+            }))
+            .expect("serialize second agent"),
+        )
+        .expect("write second agent config");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-b/topics/topic-a/history.json"),
+            br#"[{"id":"m2","role":"user","content":"secondary","timestamp":2}]"#,
+        )
+        .expect("write second history");
+        reconciler.reconcile().await.expect("initial reconcile");
+
+        database
+            .connection
+            .lock()
+            .execute(
+                "UPDATE history_sources SET owner_id='agent-b' WHERE source_path=?1",
+                [primary_history.to_string_lossy().as_ref()],
+            )
+            .expect("misbind source identity");
+        let primary_key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: shared_topic_id.to_string(),
+        };
+        let row = load_topic_manifest_row(&database, &primary_key)
+            .expect("load mismatched source manifest row");
+        assert_eq!(row.source_status, None);
+        assert!(ensure_topic_manifest_row_healthy(&row)
+            .expect_err("mismatched ready source must be unhealthy")
+            .to_string()
+            .contains("exists but has not been ingested"));
+
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("reconcile identity conflict");
+        assert_eq!(stats.files_invalid, 1);
+        let mismatched = database
+            .source_metadata(&primary_history)
+            .expect("load conflicted source")
+            .expect("conflicted source remains visible");
+        assert_eq!(mismatched.owner_id, "agent-b");
+        assert_eq!(mismatched.status, "invalid");
+    }
+
+    #[tokio::test]
+    async fn topic_resolution_uses_the_complete_owner_identity() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::create_dir_all(config.groups_dir.join("group-a")).expect("create group");
         fs::create_dir_all(config.user_data_dir.join("group-a/topics/topic-a"))
@@ -2400,21 +3537,12 @@ mod tests {
         .expect("write group history");
         reconciler.reconcile().await.expect("reconcile owners");
 
-        assert!(topic_identity(
+        let identity = super::resolve_topic(
             &database,
-            &TopicSelector {
+            &TopicKey {
                 topic_id: "topic-a".to_string(),
-                owner_type: None,
-                owner_id: None,
-            }
-        )
-        .is_err());
-        let identity = topic_identity(
-            &database,
-            &TopicSelector {
-                topic_id: "topic-a".to_string(),
-                owner_type: Some(OwnerType::Group),
-                owner_id: Some("group-a".to_string()),
+                owner_type: OwnerType::Group,
+                owner_id: "group-a".to_string(),
             },
         )
         .expect("resolve compound identity");
@@ -2422,10 +3550,10 @@ mod tests {
         assert_eq!(identity.owner_id, "group-a");
     }
 
-    /// S3-α：已删 topic 被短路（不再触碰 metadata/健康检查/content hash），
-    /// 且 manifest diff 能产出 PUSH_DELETE 删除信号；存活 topic 输出不变。
+    /// 已删 topic 被短路（不再触碰 metadata/健康检查/content hash），
+    /// 且 manifest diff 能产出 DELETE 删除信号；存活 topic 输出不变。
     #[tokio::test]
-    async fn tombstoned_topic_is_short_circuited_and_emits_push_delete() {
+    async fn tombstoned_topic_is_short_circuited_and_emits_delete() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -2454,44 +3582,38 @@ mod tests {
         let items = topic_manifests(&database, None).expect("manifest with tombstone");
         let tombstone = items
             .iter()
-            .find(|item| item.id == "topic-deleted")
+            .find(|item| manifest_item_id(item) == "topic-deleted")
             .expect("tombstone entry");
         assert_eq!(tombstone.deleted_at, Some(123));
-        assert!(tombstone.hash.is_empty());
         assert!(tombstone.config_hash.is_empty());
         assert!(tombstone.content_hash.is_empty());
         let alive = items
             .iter()
-            .find(|item| item.id == "topic-a")
+            .find(|item| manifest_item_id(item) == "topic-a")
             .expect("alive entry");
         assert_eq!(alive.content_hash.len(), 64);
         assert_eq!(alive.deleted_at, None);
 
-        // 端到端：本地独有的墓碑条目产出 PUSH_DELETE。
+        // 端到端：Desktop 独有的墓碑条目让 Mobile 直接落 DELETE。
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "topic".to_string(),
-                data: Vec::new(),
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+            ManifestRequest::Topic {
+                items: Vec::new(),
+                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
             },
         )
         .expect("manifest diff");
-        let action = response
-            .data
+        let results = manifest_results(&response);
+        let action = results
             .iter()
-            .find(|action| action.id == "topic-deleted")
-            .expect("push delete action");
-        assert_eq!(action.action, "PUSH_DELETE");
-        assert_eq!(action.deleted_at, Some(123));
+            .find(|action| action["topicId"] == "topic-deleted")
+            .expect("delete action");
+        assert_eq!(action["action"], "PULL_DELETE");
+        assert_eq!(action["deletedAt"], 123);
     }
 
-    /// 回归：topic id 仅在单个 owner 内唯一。多个 targeted owner 各自拥有
-    /// 同名 topic（如每个 Agent 的 default 话题）时，topic manifest diff 不得
-    /// 误报 "ambiguous topic id" 500——这正是全量全新同步（targetedOwners
-    /// 包含全部 owner）此前必炸的场景。
     #[tokio::test]
-    async fn topic_manifest_allows_same_topic_id_across_targeted_owners() {
+    async fn default_topics_are_distinct_manifest_entities() {
         let (_temp, config, database, reconciler) = sync_fixture();
         // agent-a 追加 default 话题（fixture 原本只有 topic-a）。
         fs::create_dir_all(config.user_data_dir.join("agent-a/topics/default"))
@@ -2537,34 +3659,174 @@ mod tests {
         .expect("write agent-b default history");
         reconciler.reconcile().await.expect("reconcile");
 
+        let items = topic_manifests(
+            &database,
+            Some(&[
+                owner_key(OwnerType::Agent, "agent-a"),
+                owner_key(OwnerType::Agent, "agent-b"),
+            ]),
+        )
+        .expect("topic manifests");
+        let default_owners = items
+            .iter()
+            .filter(|item| manifest_item_id(item) == "default")
+            .map(manifest_item_owner_id)
+            .collect::<HashSet<_>>();
+        assert_eq!(default_owners, HashSet::from(["agent-a", "agent-b"]));
+        assert!(items.iter().any(|item| manifest_item_id(item) == "topic-a"));
+
+        let hash = "a".repeat(64);
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "topic".to_string(),
-                data: Vec::new(),
-                targeted_owners: Some(vec!["agent-a".to_string(), "agent-b".to_string()]),
+            ManifestRequest::Topic {
+                items: vec![TopicManifestState::Live(super::TopicManifestLive {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_id: "default".to_string(),
+                    config_hash: hash.clone(),
+                    content_hash: hash,
+                    updated_at: 1,
+                })],
+                targeted_owners: vec![
+                    owner_key(OwnerType::Agent, "agent-a"),
+                    owner_key(OwnerType::Agent, "agent-b"),
+                ],
             },
         )
-        .expect("cross-owner duplicate topic ids must not fail the manifest diff");
-
-        let pulls: Vec<_> = response
-            .data
+        .expect("diff default topics");
+        let default_actions = manifest_results(&response)
             .iter()
-            .filter(|action| action.id == "default" && action.action == "PULL")
-            .collect();
+            .filter(|action| action["topicId"] == "default")
+            .filter_map(|action| action["ownerId"].as_str())
+            .map(str::to_string)
+            .collect::<HashSet<_>>();
         assert_eq!(
-            pulls.len(),
-            2,
-            "both owners' default topics must produce PULL actions"
+            default_actions,
+            HashSet::from(["agent-a".to_string(), "agent-b".to_string()])
         );
-        let owners: HashSet<_> = pulls
-            .iter()
-            .filter_map(|action| action.owner_id.as_deref())
-            .collect();
-        assert!(owners.contains("agent-a") && owners.contains("agent-b"));
+        let agent_a_messages = load_message_states(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "default".to_string(),
+            },
+        )
+        .expect("agent-a default messages");
+        let agent_b_messages = load_message_states(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-b".to_string(),
+                topic_id: "default".to_string(),
+            },
+        )
+        .expect("agent-b default messages");
+        assert_eq!(agent_a_messages[0].msg_id, "a1");
+        assert_eq!(agent_b_messages[0].msg_id, "b1");
     }
 
-    /// S3-β：已删 owner（目录已物理删除）不再炸掉 owner manifest。
+    #[tokio::test]
+    async fn owner_root_matches_mobile_topic_leaf_contract_with_default() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/default"))
+            .expect("create default topic");
+        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/topic-b"))
+            .expect("create topic-b");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"a","role":"user","content":"a","timestamp":1}]"#,
+        )
+        .expect("write topic-a");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-b/history.json"),
+            br#"[{"id":"b","role":"user","content":"b","timestamp":2}]"#,
+        )
+        .expect("write topic-b");
+        let default_path = config
+            .user_data_dir
+            .join("agent-a/topics/default/history.json");
+        fs::write(
+            &default_path,
+            br#"[{"id":"d","role":"user","content":"first","timestamp":3}]"#,
+        )
+        .expect("write default");
+        fs::write(
+            config.agents_dir.join("agent-a/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent A",
+                "topics": [
+                    {"id":"topic-b","name":"Topic B","createdAt":2},
+                    {"id":"default","name":"Default","createdAt":3},
+                    {"id":"topic-a","name":"Topic A","createdAt":1}
+                ]
+            }))
+            .expect("serialize agent config"),
+        )
+        .expect("write agent config");
+
+        reconciler.reconcile().await.expect("reconcile");
+        let topic_a = topic_manifest(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        )
+        .expect("topic-a manifest");
+        let topic_b = topic_manifest(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-b".to_string(),
+            },
+        )
+        .expect("topic-b manifest");
+        let default_topic = topic_manifest(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "default".to_string(),
+            },
+        )
+        .expect("default manifest");
+        let expected = aggregate_hash(vec![
+            topic_leaf_hash("topic-a", &topic_a.config_hash, &topic_a.content_hash),
+            topic_leaf_hash("topic-b", &topic_b.config_hash, &topic_b.content_hash),
+            topic_leaf_hash(
+                "default",
+                &default_topic.config_hash,
+                &default_topic.content_hash,
+            ),
+        ]);
+        assert_eq!(
+            owner_content_hash(&database, OwnerType::Agent, "agent-a").expect("agent root"),
+            expected
+        );
+        fs::write(
+            &default_path,
+            br#"[{"id":"d","role":"user","content":"changed","timestamp":4}]"#,
+        )
+        .expect("change default");
+        reconciler
+            .reconcile()
+            .await
+            .expect("reconcile default change");
+        assert_ne!(
+            owner_content_hash(&database, OwnerType::Agent, "agent-a")
+                .expect("agent root after default change"),
+            expected
+        );
+    }
+
+    /// 已删 owner（目录已物理删除）不再炸掉 owner manifest。
     #[tokio::test]
     async fn tombstoned_owner_is_short_circuited_without_disk_read() {
         let (_temp, config, database, reconciler) = sync_fixture();
@@ -2590,26 +3852,26 @@ mod tests {
                 .expect("insert tombstoned owner");
         }
 
-        let items = owner_manifest(&database, OwnerType::Group).expect("group manifest");
+        let items = owner_manifest(&database).expect("owner manifest");
         let tombstone = items
             .iter()
-            .find(|item| item.id == "group-deleted")
+            .find(|item| manifest_item_id(item) == "group-deleted")
             .expect("tombstone entry");
         assert_eq!(tombstone.deleted_at, Some(321));
         assert!(tombstone.config_hash.is_empty() && tombstone.content_hash.is_empty());
 
         // 存活 owner 路径不受影响。
-        let agents = owner_manifest(&database, OwnerType::Agent).expect("agent manifest");
+        let agents = owner_manifest(&database).expect("owner manifest");
         let alive = agents
             .iter()
-            .find(|item| item.id == "agent-a")
+            .find(|item| manifest_item_id(item) == "agent-a")
             .expect("alive agent");
         assert_eq!(alive.config_hash.len(), 64);
     }
 
-    /// S3-γ：topic_hash_diff 对单个不健康 topic 降级为保守重拉，而非整批 500。
+    /// Topic Validation 无法读取已提交状态时直接失败，与 Legacy 保持一致。
     #[tokio::test]
-    async fn topic_hash_diff_marks_unhealthy_topic_changed_instead_of_failing() {
+    async fn topic_hash_diff_fails_when_committed_topic_is_unhealthy() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -2621,38 +3883,35 @@ mod tests {
         reconciler.reconcile().await.expect("reconcile");
 
         // 把 source 标记为 invalid → topic_manifest 必然失败。
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
-
-        let response = topic_hash_diff(
+        mark_test_source_invalid(
             &database,
-            TopicHashDiffRequest {
-                hashes: HashMap::new(),
-                topics: vec![TopicHashState {
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
+
+        let error = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
                     topic_id: "topic-a".to_string(),
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
-                    config_hash: String::new(),
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    config_hash: "a".repeat(64),
                     content_hash: "f".repeat(64),
                 }],
             },
         )
-        .expect("diff must not fail on one unhealthy topic");
-        assert_eq!(response.changed_topics, vec!["topic-a".to_string()]);
+        .expect_err("unhealthy topic must fail topic validation");
+        assert!(error.to_string().contains("topic hash diff could not read"));
     }
 
-    /// S3-ε（墓碑行）：deleted 行跳过哈希，占位符为固定 64-hex 常量——
-    /// 覆盖"DB 已墓碑但 metadata 保留 status:\"removed\""的现实毒点。
+    /// 墓碑行不再伪造 live Hash；残留的 removed metadata 也不会被解析。
     #[tokio::test]
-    async fn message_manifest_tombstone_rows_use_placeholder_hash() {
+    async fn message_states_keep_tombstones_separate_from_live_hashes() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -2686,97 +3945,66 @@ mod tests {
                 .expect("insert removed tombstone row");
         }
 
-        let manifest = message_manifest(
+        let states = load_message_states(
             &database,
-            &TopicSelector {
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
                 topic_id: "topic-a".to_string(),
-                owner_type: Some(OwnerType::Agent),
-                owner_id: Some("agent-a".to_string()),
             },
         )
-        .expect("message manifest with tombstones");
-        let by_id: HashMap<_, _> = manifest
-            .messages
+        .expect("message states with tombstones");
+        let by_id: HashMap<_, _> = states
             .iter()
             .map(|message| (message.msg_id.as_str(), message))
             .collect();
-        assert_eq!(by_id["m1"].content_hash, TOMBSTONE_CONTENT_HASH);
+        assert!(by_id["m1"].message_hash.is_none());
         assert_eq!(by_id["m1"].deleted_at, Some(99));
-        assert_eq!(by_id["m-gone"].content_hash, TOMBSTONE_CONTENT_HASH);
+        assert!(by_id["m-gone"].message_hash.is_none());
         assert_eq!(by_id["m-gone"].deleted_at, Some(100));
-        assert_eq!(by_id["m2"].content_hash.len(), 64);
-        assert_ne!(by_id["m2"].content_hash, TOMBSTONE_CONTENT_HASH);
+        assert_eq!(by_id["m2"].message_hash.as_deref().unwrap().len(), 64);
         assert_eq!(by_id["m2"].deleted_at, None);
     }
 
-    /// S3-ε（存活行，Option A）：无法 wire 化的存活消息降级为确定性哨兵哈希，
-    /// message manifest 与 topic content hash 都不再整批失败。
+    /// 无法 wire 化的物理消息不能伪装成合法 messageHash；整份 history 保持未提交，
+    /// 已有 source 健康状态负责阻止旧 SQLite 镜像参与同步。
     #[tokio::test]
-    async fn live_poison_message_degrades_to_deterministic_sentinel() {
+    async fn live_poison_message_marks_source_invalid_without_fake_hash() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
                 .user_data_dir
                 .join("agent-a/topics/topic-a/history.json"),
-            br#"[{"id":"m1","role":"user","content":"healthy","timestamp":1}]"#,
+            br#"[{"id":"m1","role":"user","content":"healthy","timestamp":1},{"role":"user","content":"no id","timestamp":5}]"#,
         )
-        .expect("write history");
-        reconciler.reconcile().await.expect("reconcile");
+        .expect("write history with poison row");
+        let stats = reconciler.reconcile().await.expect("reconcile");
+        assert_eq!(stats.files_invalid, 1);
 
-        // 缺 id 的存活毒行（1.0 时代合法入库的形态）。
-        let poison_raw = r#"{"role":"user","content":"no id","timestamp":5}"#;
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "INSERT INTO messages (owner_type, owner_id, topic_id, msg_id, ordinal,
-                         role, content_raw, content_text, message_hash, metadata_json, updated_at)
-                     VALUES ('agent','agent-a','topic-a','synthetic_1',2,'user','','','x',
-                             ?1, 5)",
-                    [poison_raw],
-                )
-                .expect("insert poison row");
-        }
-
-        let selector = TopicSelector {
-            topic_id: "topic-a".to_string(),
-            owner_type: Some(OwnerType::Agent),
-            owner_id: Some("agent-a".to_string()),
-        };
-        let manifest = message_manifest(&database, &selector).expect("manifest with poison");
-        let by_id: HashMap<_, _> = manifest
-            .messages
-            .iter()
-            .map(|message| (message.msg_id.as_str(), message))
-            .collect();
-        let expected_sentinel = sha256_hex(format!("vcp-invalid-message:{poison_raw}").as_bytes());
-        assert_eq!(by_id["synthetic_1"].content_hash, expected_sentinel);
-        // 健康消息的哈希与无哨兵时逐字节一致。
-        assert_eq!(
-            by_id["m1"].content_hash,
-            mobile_message_hash_from_json(
-                r#"{"id":"m1","role":"user","content":"healthy","timestamp":1}"#,
-                "topic-a",
-            )
-            .expect("healthy hash")
-        );
-
-        // topic content hash 同样不再失败，且确定性（两次调用相等、包含哨兵）。
         let key = TopicKey {
             owner_type: OwnerType::Agent,
             owner_id: "agent-a".to_string(),
             topic_id: "topic-a".to_string(),
         };
-        let first = topic_content_hash(&database, &key).expect("content hash with sentinel");
-        let second = topic_content_hash(&database, &key).expect("deterministic");
-        assert_eq!(first, second);
-        assert_eq!(
-            first,
-            aggregate_hash(vec![by_id["m1"].content_hash.clone(), expected_sentinel])
-        );
+        let connection = database.connection.lock();
+        let (message_count, status): (i64, String) = connection
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM messages
+                     WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a'),
+                    (SELECT status FROM history_sources
+                     WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read rejected source state");
+        drop(connection);
+        assert_eq!(message_count, 0);
+        assert_eq!(status, "invalid");
+        assert!(load_message_states(&database, &key).is_err());
     }
 
-    /// 缺口 A（F1）：活 topic 的 source 不健康时，topic_manifests 不再整批 500，
+    /// 活 topic 的 source 不健康时，topic_manifests 不再整批 500，
     /// 降级为哨兵条目；比对逻辑据此产出 PULL（ts 仲裁稳态偏向），健康 topic
     /// 输出逐字节不变。
     #[tokio::test]
@@ -2813,86 +4041,75 @@ mod tests {
         .expect("write config");
         reconciler.reconcile().await.expect("reconcile");
 
-        // 基线：毒化前健康 topic 的三字段输出。
+        // 基线：毒化前健康 topic 的配置与内容指纹。
         let baseline = topic_manifests(&database, None).expect("baseline manifest");
+        let baseline_a_config = baseline
+            .iter()
+            .find(|item| manifest_item_id(item) == "topic-a")
+            .map(|item| item.config_hash.clone())
+            .expect("baseline topic-a");
         let baseline_b = baseline
             .iter()
-            .find(|item| item.id == "topic-b")
-            .map(|item| {
-                (
-                    item.hash.clone(),
-                    item.config_hash.clone(),
-                    item.content_hash.clone(),
-                )
-            })
+            .find(|item| manifest_item_id(item) == "topic-b")
+            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("baseline topic-b");
 
         // 毒化 topic-a 的 source（对齐 S5 的 invalid 毒态）。
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
-        // 整批不再失败；topic-a 三字段均为确定性哨兵。
+        // 整批不再失败；topic-a 保留配置提交 Hash，仅内容降级为确定性哨兵。
         let items = topic_manifests(&database, None).expect("manifest must not 500");
         let degraded_a = items
             .iter()
-            .find(|item| item.id == "topic-a")
+            .find(|item| manifest_item_id(item) == "topic-a")
             .expect("degraded topic-a entry");
         let sentinel = sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
-        assert_eq!(degraded_a.config_hash, sentinel);
+        assert_eq!(degraded_a.config_hash, baseline_a_config);
         assert_eq!(degraded_a.content_hash, sentinel);
         assert_eq!(degraded_a.deleted_at, None);
         // 健康 topic 逐字节不变。
         let after_b = items
             .iter()
-            .find(|item| item.id == "topic-b")
-            .map(|item| {
-                (
-                    item.hash.clone(),
-                    item.config_hash.clone(),
-                    item.content_hash.clone(),
-                )
-            })
+            .find(|item| manifest_item_id(item) == "topic-b")
+            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("topic-b after degradation");
         assert_eq!(after_b, baseline_b);
 
         // 端到端：remote 存活且 ts 旧 → 哨兵 config_hash 迫使出 PULL。
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "topic".to_string(),
-                data: vec![RemoteManifestItem {
-                    id: "topic-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some("b".repeat(64)),
-                    ts: 1,
-                    deleted_at: None,
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
-                }],
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+            ManifestRequest::Topic {
+                items: vec![TopicManifestState::Live(super::TopicManifestLive {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_id: "topic-a".to_string(),
+                    config_hash: "a".repeat(64),
+                    content_hash: "b".repeat(64),
+                    updated_at: 1,
+                })],
+                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
             },
         )
         .expect("manifest diff with unhealthy topic");
-        let action = response
-            .data
+        let results = manifest_results(&response);
+        let action = results
             .iter()
-            .find(|action| action.id == "topic-a")
+            .find(|action| action["topicId"] == "topic-a")
             .expect("topic-a action");
-        assert_eq!(action.action, "PULL");
-        assert_eq!(action.owner_type, Some(OwnerType::Agent));
-        assert_eq!(action.owner_id.as_deref(), Some("agent-a"));
+        assert_eq!(action["action"], "PULL");
+        assert_eq!(action["ownerType"], "agent");
+        assert_eq!(action["ownerId"], "agent-a");
     }
 
-    /// 缺口 A（F1）边界：降级 topic 遇 remote 墓碑仍出 DELETE（删除语义不被
+    /// 降级 topic 遇 Mobile 墓碑仍出 PUSH_DELETE（删除语义不被
     /// 哨兵吞掉）；手机没有该 topic 时尾部循环出 PULL（进入 per-topic 隔离管线）。
     #[tokio::test]
     async fn unhealthy_topic_delete_precedence_and_tail_pull() {
@@ -2905,65 +4122,58 @@ mod tests {
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
-        // remote 已删 → DELETE 优先于降级。
+        // Mobile 已删 → PUSH_DELETE 优先于降级，随后由 Mobile NotifyDelete Desktop。
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "topic".to_string(),
-                data: vec![RemoteManifestItem {
-                    id: "topic-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some(String::new()),
-                    ts: 1,
-                    deleted_at: Some(7),
-                    owner_type: Some(OwnerType::Agent),
-                    owner_id: Some("agent-a".to_string()),
-                }],
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+            ManifestRequest::Topic {
+                items: vec![TopicManifestState::Deleted(super::TopicManifestDeleted {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_id: "topic-a".to_string(),
+                    deleted_at: 7,
+                })],
+                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
             },
         )
         .expect("manifest with remote tombstone");
-        let action = response
-            .data
+        let results = manifest_results(&response);
+        let action = results
             .iter()
-            .find(|action| action.id == "topic-a")
-            .expect("delete action");
-        assert_eq!(action.action, "DELETE");
-        assert_eq!(action.deleted_at, Some(7));
+            .find(|action| action["topicId"] == "topic-a")
+            .expect("push delete action");
+        assert_eq!(action["action"], "PUSH_DELETE");
+        assert_eq!(action["deletedAt"], 7);
 
         // remote 不含该 topic → 尾部循环对降级条目出 PULL。
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "topic".to_string(),
-                data: Vec::new(),
-                targeted_owners: Some(vec!["agent-a".to_string()]),
+            ManifestRequest::Topic {
+                items: Vec::new(),
+                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
             },
         )
         .expect("manifest with empty remote");
-        let action = response
-            .data
+        let results = manifest_results(&response);
+        let action = results
             .iter()
-            .find(|action| action.id == "topic-a")
+            .find(|action| action["topicId"] == "topic-a")
             .expect("tail action");
-        assert_eq!(action.action, "PULL");
+        assert_eq!(action["action"], "PULL");
     }
 
-    /// 缺口 C（F2）：owner_content_hash 聚合内单 topic 失败降级为哨兵——
+    /// owner_content_hash 聚合内单 topic 失败降级为哨兵——
     /// owner manifest 不再整批 500；毒化经既有 content-only 分支转译为
-    /// SKIP+mismatchedContent；兄弟 owner 逐字节不变。
+    /// SKIP+contentHashMismatch；兄弟 owner 逐字节不变。
     #[tokio::test]
     async fn owner_content_hash_sentinel_keeps_owner_manifest_alive() {
         let (_temp, config, database, reconciler) = sync_fixture();
@@ -3017,32 +4227,36 @@ mod tests {
         .expect("write topic-c history");
         reconciler.reconcile().await.expect("reconcile");
 
-        let baseline_agents = owner_manifest(&database, OwnerType::Agent).expect("baseline");
+        let baseline_agents = owner_manifest(&database).expect("baseline");
+        let baseline_a = baseline_agents
+            .iter()
+            .find(|item| manifest_item_id(item) == "agent-a")
+            .map(|item| item.content_hash.clone())
+            .expect("baseline agent-a");
         let baseline_b = baseline_agents
             .iter()
-            .find(|item| item.id == "agent-b")
+            .find(|item| manifest_item_id(item) == "agent-b")
             .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("baseline agent-b");
 
-        {
-            let connection = database.connection.lock();
-            connection
-                .execute(
-                    "UPDATE history_sources SET status='invalid', last_error='boom'
-                     WHERE topic_id='topic-a'",
-                    [],
-                )
-                .expect("poison history source");
-        }
+        mark_test_source_invalid(
+            &database,
+            &config,
+            TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        );
 
-        // owner manifest 不再失败；agent-a content_hash = 哨兵与健康 topic 的聚合。
-        let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
+        // owner manifest 不再失败；毒 topic 的 keyed 叶子保留配置 Hash 并使用
+        // content 哨兵，健康 topic 仍以 topicId + config/content 参与聚合。
+        let agents = owner_manifest(&database).expect("manifest must not 500");
         let poisoned_a = agents
             .iter()
-            .find(|item| item.id == "agent-a")
+            .find(|item| manifest_item_id(item) == "agent-a")
             .expect("agent-a entry");
-        assert!(!poisoned_a.degraded, "config 可读时不得标记 degraded");
-        let healthy_b = topic_content_hash(
+        let healthy_b = topic_manifest(
             &database,
             &TopicKey {
                 owner_type: OwnerType::Agent,
@@ -3050,54 +4264,65 @@ mod tests {
                 topic_id: "topic-b".to_string(),
             },
         )
-        .expect("topic-b hash");
+        .expect("topic-b manifest");
+        let degraded_a = topic_manifest(
+            &database,
+            &TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            },
+        )
+        .expect("topic-a degraded manifest");
+        let sentinel = sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
         let expected = aggregate_hash(vec![
-            sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a"),
-            healthy_b,
+            topic_leaf_hash("topic-a", &degraded_a.config_hash, &sentinel),
+            topic_leaf_hash("topic-b", &healthy_b.config_hash, &healthy_b.content_hash),
         ]);
         assert_eq!(poisoned_a.content_hash, expected);
         assert_eq!(poisoned_a.config_hash.len(), 64);
         // 兄弟 owner 逐字节不变。
         let after_b = agents
             .iter()
-            .find(|item| item.id == "agent-b")
+            .find(|item| manifest_item_id(item) == "agent-b")
             .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
             .expect("agent-b after");
         assert_eq!(after_b, baseline_b);
 
-        // 效果链：config 相等 + content 毒化 → 既有分支出 SKIP+mismatchedContent。
+        // 效果链：config 相等 + content 毒化 → 既有分支出 SKIP+contentHashMismatch。
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "agent".to_string(),
-                data: vec![RemoteManifestItem {
-                    id: "agent-a".to_string(),
-                    hash: poisoned_a.config_hash.clone(),
-                    config_hash: Some(poisoned_a.config_hash.clone()),
-                    content_hash: Some("0".repeat(64)),
-                    ts: 1,
-                    deleted_at: None,
-                    owner_type: None,
-                    owner_id: None,
-                }],
-                targeted_owners: None,
+            ManifestRequest::Owner {
+                items: vec![OwnerManifestState::Live(super::OwnerManifestLive {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    config_hash: poisoned_a.config_hash.clone(),
+                    content_hash: "0".repeat(64),
+                    updated_at: 1,
+                })],
             },
         )
-        .expect("agent manifest diff");
-        let action = response
-            .data
+        .expect("owner manifest diff");
+        let results = manifest_results(&response);
+        let action = results
             .iter()
-            .find(|action| action.id == "agent-a")
+            .find(|action| action["ownerId"] == "agent-a")
             .expect("agent-a action");
-        assert_eq!(action.action, "SKIP");
-        assert!(action.mismatched_content);
+        assert_eq!(action["action"], "SKIP");
+        assert_eq!(action["contentHashMismatch"], true);
+
+        reconciler.reconcile().await.expect("heal source state");
+        let healed_a = owner_manifest(&database)
+            .expect("healed owner manifest")
+            .into_iter()
+            .find(|item| manifest_item_id(item) == "agent-a")
+            .expect("healed agent-a");
+        assert_eq!(healed_a.content_hash, baseline_a);
     }
 
-    /// 缺口 B（F3）：活 owner 的 config 在 reconcile 间隙被物理删除 →
-    /// 条目降级为 degraded；manifest() 出 SKIP（remote 存活带 mismatchedContent，
-    /// 尾部循环不带），不再整表 500。
+    /// Manifest 只使用 CDS 已提交的 DTO hash，不在读取阶段重算物理 config。
     #[tokio::test]
-    async fn unreadable_owner_config_degrades_to_skip() {
+    async fn owner_manifest_uses_committed_config_hash() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -3107,70 +4332,29 @@ mod tests {
         )
         .expect("write history");
         reconciler.reconcile().await.expect("reconcile");
+
+        let before = owner_manifest(&database)
+            .expect("baseline manifest")
+            .into_iter()
+            .find(|item| manifest_item_id(item) == "agent-a")
+            .expect("baseline owner");
 
         // reconcile 间隙删掉 config（目录还在、行还是活的）。
         fs::remove_file(config.app_data.join("Agents/agent-a/config.json")).expect("remove config");
 
-        let agents = owner_manifest(&database, OwnerType::Agent).expect("manifest must not 500");
-        let degraded = agents
+        let agents = owner_manifest(&database).expect("manifest must not 500");
+        let after = agents
             .iter()
-            .find(|item| item.id == "agent-a")
-            .expect("degraded entry");
-        assert!(degraded.degraded);
-        assert!(degraded.config_hash.is_empty() && degraded.content_hash.is_empty());
-
-        // remote 存活 → SKIP + mismatchedContent（owner 仍进 changed set，
-        // 其下 topic 的 Phase 2 同步不被连坐）。
-        let response = manifest(
-            &database,
-            ManifestRequest {
-                data_type: "agent".to_string(),
-                data: vec![RemoteManifestItem {
-                    id: "agent-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some("b".repeat(64)),
-                    ts: 1,
-                    deleted_at: None,
-                    owner_type: None,
-                    owner_id: None,
-                }],
-                targeted_owners: None,
-            },
-        )
-        .expect("agent manifest diff");
-        let action = response
-            .data
-            .iter()
-            .find(|action| action.id == "agent-a")
-            .expect("skip action");
-        assert_eq!(action.action, "SKIP");
-        assert!(action.mismatched_content);
-
-        // remote 没有此 owner → 尾部循环 SKIP（避免新手机撞上坏 config 时
-        // 实体下载 attempt-fatal）。
-        let response = manifest(
-            &database,
-            ManifestRequest {
-                data_type: "agent".to_string(),
-                data: Vec::new(),
-                targeted_owners: None,
-            },
-        )
-        .expect("agent manifest tail");
-        let action = response
-            .data
-            .iter()
-            .find(|action| action.id == "agent-a")
-            .expect("tail skip");
-        assert_eq!(action.action, "SKIP");
-        assert!(!action.mismatched_content);
+            .find(|item| manifest_item_id(item) == "agent-a")
+            .expect("owner after physical removal");
+        assert_eq!(after.config_hash, before.config_hash);
+        assert_eq!(after.content_hash, before.content_hash);
+        assert_eq!(after.updated_at, before.updated_at);
     }
 
-    /// 缺口 B（F3）边界：degraded owner 遇 remote 墓碑仍出 DELETE——
-    /// 删除语义优先于降级。
+    /// 删除语义不依赖物理 config 是否仍可读取。
     #[tokio::test]
-    async fn degraded_owner_delete_precedence() {
+    async fn owner_delete_precedence_does_not_read_physical_config() {
         let (_temp, config, database, reconciler) = sync_fixture();
         fs::write(
             config
@@ -3184,28 +4368,21 @@ mod tests {
 
         let response = manifest(
             &database,
-            ManifestRequest {
-                data_type: "agent".to_string(),
-                data: vec![RemoteManifestItem {
-                    id: "agent-a".to_string(),
-                    hash: "a".repeat(64),
-                    config_hash: Some("a".repeat(64)),
-                    content_hash: Some(String::new()),
-                    ts: 1,
-                    deleted_at: Some(9),
-                    owner_type: None,
-                    owner_id: None,
-                }],
-                targeted_owners: None,
+            ManifestRequest::Owner {
+                items: vec![OwnerManifestState::Deleted(super::OwnerManifestDeleted {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    deleted_at: 9,
+                })],
             },
         )
         .expect("manifest with remote tombstone");
-        let action = response
-            .data
+        let results = manifest_results(&response);
+        let action = results
             .iter()
-            .find(|action| action.id == "agent-a")
-            .expect("delete action");
-        assert_eq!(action.action, "DELETE");
-        assert_eq!(action.deleted_at, Some(9));
+            .find(|action| action["ownerId"] == "agent-a")
+            .expect("push delete action");
+        assert_eq!(action["action"], "PUSH_DELETE");
+        assert_eq!(action["deletedAt"], 9);
     }
 }

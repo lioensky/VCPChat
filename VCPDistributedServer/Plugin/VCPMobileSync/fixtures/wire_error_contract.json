@@ -1,0 +1,105 @@
+{
+  "schema": "vcp-sync-wire-error-contract",
+  "validErrors": [
+    {
+      "name": "handshake_plugin_version_mismatch",
+      "error": {
+        "code": "PLUGIN_VERSION_MISMATCH",
+        "origin": "desktop_plugin",
+        "stage": "handshake",
+        "kind": "compatibility",
+        "retry": "after_user_action",
+        "message": "plugin package mismatch",
+        "failedTopicIds": []
+      }
+    },
+    {
+      "name": "desktop_cds_message_failure",
+      "error": {
+        "code": "SYNC_DB_QUERY_FAILED",
+        "origin": "desktop_cds",
+        "stage": "messages",
+        "kind": "storage",
+        "retry": "manual",
+        "message": "message diff query failed",
+        "failedTopicIds": ["topic-a"]
+      }
+    },
+    {
+      "name": "unknown_stable_upstream_code",
+      "error": {
+        "code": "UPSTREAM_EXTENSION_FAILED",
+        "origin": "desktop_plugin",
+        "stage": "finalize",
+        "kind": "internal",
+        "retry": "manual",
+        "message": "extension returned an unknown stable code",
+        "failedTopicIds": []
+      }
+    }
+  ],
+  "invalidErrors": [
+    {
+      "name": "legacy_string_error",
+      "error": "database failed"
+    },
+    {
+      "name": "missing_stage",
+      "error": {
+        "code": "SYNC_DB_QUERY_FAILED",
+        "origin": "desktop_plugin",
+        "kind": "storage",
+        "retry": "manual",
+        "message": "missing stage"
+      }
+    },
+    {
+      "name": "invalid_code",
+      "error": {
+        "code": "desktop raw code",
+        "origin": "desktop_plugin",
+        "stage": "messages",
+        "kind": "internal",
+        "retry": "manual",
+        "message": "invalid code"
+      }
+    },
+    {
+      "name": "platform_dns_code",
+      "error": {
+        "code": "EAI_AGAIN",
+        "origin": "desktop_plugin",
+        "stage": "connect",
+        "kind": "connection",
+        "retry": "manual",
+        "message": "platform DNS code must use a boundary code",
+        "failedTopicIds": []
+      }
+    },
+    {
+      "name": "unknown_field",
+      "error": {
+        "code": "SYNC_DB_QUERY_FAILED",
+        "origin": "desktop_plugin",
+        "stage": "messages",
+        "kind": "storage",
+        "retry": "manual",
+        "message": "unexpected extension",
+        "failedTopicIds": [],
+        "debug": "not part of the wire contract"
+      }
+    },
+    {
+      "name": "known_code_kind_mismatch",
+      "error": {
+        "code": "POWER_SAVE_MODE",
+        "origin": "mobile_native",
+        "stage": "preflight",
+        "kind": "compatibility",
+        "retry": "after_user_action",
+        "message": "known code claims the wrong category",
+        "failedTopicIds": []
+      }
+    }
+  ]
+}

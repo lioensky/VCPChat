@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -19,7 +19,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ingest::{parse_history_path, Reconciler},
+    domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType},
+    ingest::{is_avatar_path, parse_history_path, Reconciler},
     search::SearchIndex,
 };
 
@@ -230,40 +231,155 @@ async fn run_ingest_worker(
             _ = cancellation.cancelled() => break,
             path = path_rx.recv() => {
                 let Some(path) = path else { break };
-                if is_owner_config(&path, &reconciler.config().agents_dir)
-                    || is_owner_config(&path, &reconciler.config().groups_dir)
-                {
-                    metrics.reconcile_required.store(true, Ordering::Release);
-                    continue;
+                let mut paths = vec![path];
+                while let Ok(path) = path_rx.try_recv() {
+                    paths.push(path);
                 }
-
-                if !path.exists() {
-                    // Deletions need config-aware topic/message tombstones.
-                    metrics.reconcile_required.store(true, Ordering::Release);
-                    continue;
-                }
-
-                // Keep direct notification ingestion from interleaving with a
-                // startup, recovery, or API-triggered consistency pass.
                 let _guard = reconcile_lock.lock().await;
-                match reconciler.ingest_path(&path, "notify").await {
-                    Ok(Some(commit)) => {
-                        if commit.changed {
-                            if let Some(index) = &search {
-                                if let Err(error) = index.update_topic(&commit.topic, commit.revision) {
-                                    tracing::error!(error = ?error, path = %path.display(), "index update failed");
-                                    metrics.reconcile_required.store(true, Ordering::Release);
-                                }
-                            }
-                        }
-                        metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Ok(None) => {}
-                    Err(error) => {
-                        metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
-                        tracing::warn!(error = ?error, path = %path.display(), "notify ingest failed");
-                    }
+                process_ingest_batch(&paths, &reconciler, search.as_ref(), &metrics).await;
+            }
+        }
+    }
+}
+
+async fn process_ingest_batch(
+    paths: &[PathBuf],
+    reconciler: &Reconciler,
+    search: Option<&SearchIndex>,
+    metrics: &WatcherMetrics,
+) {
+    let config = reconciler.config();
+    let mut owner_events = HashMap::<OwnerKey, Vec<&PathBuf>>::new();
+    let mut avatar_events = Vec::<(&PathBuf, AvatarKey)>::new();
+    let mut history_events = Vec::<&PathBuf>::new();
+
+    for path in paths {
+        if let Some(owner) = owner_config_key(path, &config.agents_dir, &config.groups_dir) {
+            owner_events.entry(owner).or_default().push(path);
+        } else if let Some(avatar) = avatar_key(
+            path,
+            &config.agents_dir,
+            &config.groups_dir,
+            &config.user_data_dir,
+        ) {
+            avatar_events.push((path, avatar));
+        } else {
+            history_events.push(path);
+        }
+    }
+
+    for path in history_events.iter().copied().filter(|path| !path.exists()) {
+        match reconciler.database().live_topic_source_by_path(path) {
+            Ok(Some(source)) => {
+                owner_events
+                    .entry(OwnerKey {
+                        owner_type: source.key.owner_type,
+                        owner_id: source.key.owner_id,
+                    })
+                    .or_default()
+                    .push(path);
+            }
+            Ok(None) => {
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+            Err(error) => {
+                metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                tracing::warn!(error = ?error, path = %path.display(), "deleted history lookup failed");
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    let needs_revision_reconcile = !owner_events.is_empty();
+    let mut reconciled_owner_ids = HashSet::new();
+    for (owner, event_paths) in &owner_events {
+        match reconciler.reconcile_owner_key(owner).await {
+            Ok(_) => {
+                reconciled_owner_ids.insert(owner.owner_id.as_str());
+                metrics
+                    .ingest_success_total
+                    .fetch_add(event_paths.len() as u64, Ordering::Relaxed);
+            }
+            Err(error) => {
+                metrics
+                    .ingest_failure_total
+                    .fetch_add(event_paths.len() as u64, Ordering::Relaxed);
+                tracing::warn!(
+                    error = ?error,
+                    owner_type = %owner.owner_type,
+                    owner_id = %owner.owner_id,
+                    "owner reconcile failed"
+                );
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    for (path, avatar) in avatar_events {
+        match reconciler.reconcile_avatar_key(&avatar) {
+            Ok(_) => {
+                metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(error) => {
+                metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                tracing::warn!(error = ?error, path = %path.display(), "avatar reconcile failed");
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    let mut commits = Vec::new();
+    let mut dirty_owners = HashSet::new();
+    for path in history_events {
+        let Some((owner_id, _)) = parse_history_path(&config.user_data_dir, path) else {
+            continue;
+        };
+        if !path.exists() {
+            continue;
+        }
+        if reconciled_owner_ids.contains(owner_id.as_str()) {
+            metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
+            continue;
+        }
+        match reconciler
+            .ingest_path_with_owner_hash_mode(path, crate::storage::OwnerHashMode::Deferred)
+            .await
+        {
+            Ok(Some(commit)) => {
+                if commit.owner_hash_dirty {
+                    dirty_owners.insert(OwnerKey {
+                        owner_type: commit.topic.owner_type,
+                        owner_id: commit.topic.owner_id.clone(),
+                    });
                 }
+                commits.push(commit);
+                metrics.ingest_success_total.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                metrics.ingest_failure_total.fetch_add(1, Ordering::Relaxed);
+                tracing::warn!(error = ?error, path = %path.display(), "notify ingest failed");
+                metrics.reconcile_required.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    for owner in dirty_owners {
+        if let Err(error) = reconciler.database().refresh_owner_content_hash(&owner) {
+            tracing::error!(error = ?error, owner_type = %owner.owner_type, owner_id = %owner.owner_id, "owner hash refresh failed");
+            metrics.reconcile_required.store(true, Ordering::Release);
+        }
+    }
+
+    if let Some(index) = search {
+        if let Err(error) = index.apply_ingest_commits(&commits) {
+            tracing::error!(error = ?error, "watcher index batch update failed");
+            metrics.reconcile_required.store(true, Ordering::Release);
+        }
+        if needs_revision_reconcile {
+            if let Err(error) = index.reconcile_revisions() {
+                tracing::error!(error = ?error, "watcher owner revision reconcile failed");
+                metrics.reconcile_required.store(true, Ordering::Release);
             }
         }
     }
@@ -278,6 +394,8 @@ async fn run_overflow_recovery(
 ) {
     let mut ticker = interval(Duration::from_secs(2));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut retry_delay = Duration::from_secs(2);
+    let mut retry_not_before = Instant::now();
 
     loop {
         tokio::select! {
@@ -286,26 +404,42 @@ async fn run_overflow_recovery(
                 if !metrics.reconcile_required.swap(false, Ordering::AcqRel) {
                     continue;
                 }
+                if Instant::now() < retry_not_before {
+                    metrics.reconcile_required.store(true, Ordering::Release);
+                    continue;
+                }
 
                 // Serialize recovery with startup and API-triggered reconciles.
                 // Filesystem events may arrive while the background startup pass
                 // is running; they remain represented by reconcile_required and
                 // are processed after that pass releases this lock.
                 let _guard = reconcile_lock.lock().await;
-                match reconciler.reconcile().await {
+                let recovered = match reconciler.reconcile().await {
                     Ok(stats) => {
                         tracing::info!(?stats, "watcher recovery reconcile completed");
                         if let Some(index) = &search {
                             if let Err(error) = index.reconcile_revisions() {
                                 tracing::error!(error = ?error, "revision recovery failed");
-                                metrics.reconcile_required.store(true, Ordering::Release);
+                                false
+                            } else {
+                                true
                             }
+                        } else {
+                            true
                         }
                     }
                     Err(error) => {
                         tracing::error!(error = ?error, "watcher recovery reconcile failed");
-                        metrics.reconcile_required.store(true, Ordering::Release);
+                        false
                     }
+                };
+                if recovered {
+                    retry_delay = Duration::from_secs(2);
+                    retry_not_before = Instant::now();
+                } else {
+                    metrics.reconcile_required.store(true, Ordering::Release);
+                    retry_not_before = Instant::now() + retry_delay;
+                    retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                 }
             }
         }
@@ -338,6 +472,7 @@ fn is_relevant_path(
 ) -> bool {
     is_owner_config(path, agents_dir)
         || is_owner_config(path, groups_dir)
+        || is_avatar_path(path, agents_dir, groups_dir, user_data_dir)
         || parse_history_path(user_data_dir, path).is_some()
 }
 
@@ -351,4 +486,77 @@ fn is_owner_config(path: &Path, base: &Path) -> bool {
             .as_os_str()
             .to_string_lossy()
             .eq_ignore_ascii_case("config.json")
+}
+
+fn owner_config_key(path: &Path, agents_dir: &Path, groups_dir: &Path) -> Option<OwnerKey> {
+    for (owner_type, base) in [
+        (OwnerType::Agent, agents_dir),
+        (OwnerType::Group, groups_dir),
+    ] {
+        if !is_owner_config(path, base) {
+            continue;
+        }
+        let owner_id = path
+            .strip_prefix(base)
+            .ok()?
+            .components()
+            .next()?
+            .as_os_str()
+            .to_string_lossy()
+            .to_string();
+        if !owner_id.is_empty() {
+            return Some(OwnerKey {
+                owner_type,
+                owner_id,
+            });
+        }
+    }
+    None
+}
+
+fn avatar_key(
+    path: &Path,
+    agents_dir: &Path,
+    groups_dir: &Path,
+    user_data_dir: &Path,
+) -> Option<AvatarKey> {
+    if path == user_data_dir.join("user_avatar.png") {
+        return Some(AvatarKey {
+            owner_type: AvatarOwnerType::User,
+            owner_id: "user_avatar".to_string(),
+        });
+    }
+    for (owner_type, base) in [
+        (AvatarOwnerType::Agent, agents_dir),
+        (AvatarOwnerType::Group, groups_dir),
+    ] {
+        let Ok(relative) = path.strip_prefix(base) else {
+            continue;
+        };
+        let components = relative.components().collect::<Vec<_>>();
+        if components.len() != 2 {
+            continue;
+        }
+        let file_name = components[1].as_os_str().to_string_lossy();
+        if ![
+            "avatar.png",
+            "avatar.jpg",
+            "avatar.jpeg",
+            "avatar.webp",
+            "avatar.gif",
+        ]
+        .iter()
+        .any(|candidate| file_name.eq_ignore_ascii_case(candidate))
+        {
+            continue;
+        }
+        let owner_id = components[0].as_os_str().to_string_lossy().to_string();
+        if !owner_id.is_empty() {
+            return Some(AvatarKey {
+                owner_type,
+                owner_id,
+            });
+        }
+    }
+    None
 }

@@ -1,0 +1,136 @@
+{
+  "schema": "vcp-sync-message-diff-matrix",
+  "cases": [
+    {
+      "name": "mixed_lww_presence_and_tombstones",
+      "ownerType": "agent",
+      "ownerId": "agent-a",
+      "topicId": "topic-mixed",
+      "mobileContentHash": "9999999999999999999999999999999999999999999999999999999999999999",
+      "desktopContentHash": "8888888888888888888888888888888888888888888888888888888888888888",
+      "mobileMessages": {
+        "both-deleted": { "deletedAt": 80 },
+        "desktop-deleted-mobile-live": {
+          "messageHash": "3333333333333333333333333333333333333333333333333333333333333333",
+          "updatedAt": 70
+        },
+        "desktop-live-mobile-deleted": { "deletedAt": 60 },
+        "desktop-newer": {
+          "messageHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "updatedAt": 10
+        },
+        "desktop-tie-wins": {
+          "messageHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "updatedAt": 40
+        },
+        "matched": {
+          "messageHash": "4444444444444444444444444444444444444444444444444444444444444444",
+          "updatedAt": 90
+        },
+        "mobile-newer": {
+          "messageHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "updatedAt": 20
+        },
+        "mobile-only-deleted": { "deletedAt": 81 },
+        "mobile-only-live": {
+          "messageHash": "2222222222222222222222222222222222222222222222222222222222222222",
+          "updatedAt": 50
+        },
+        "mobile-tie-wins": {
+          "messageHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "updatedAt": 30
+        }
+      },
+      "desktopMessages": [
+        {
+          "msgId": "both-deleted",
+          "deletedAt": 62
+        },
+        {
+          "msgId": "desktop-deleted-mobile-live",
+          "deletedAt": 61
+        },
+        {
+          "msgId": "desktop-live-mobile-deleted",
+          "messageHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "updatedAt": 60
+        },
+        {
+          "msgId": "desktop-newer",
+          "messageHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "updatedAt": 20
+        },
+        {
+          "msgId": "desktop-only-live",
+          "messageHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "updatedAt": 5
+        },
+        {
+          "msgId": "desktop-tie-wins",
+          "messageHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "updatedAt": 40
+        },
+        {
+          "msgId": "matched",
+          "messageHash": "4444444444444444444444444444444444444444444444444444444444444444",
+          "updatedAt": 90
+        },
+        {
+          "msgId": "mobile-newer",
+          "messageHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "updatedAt": 10
+        },
+        {
+          "msgId": "mobile-tie-wins",
+          "messageHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "updatedAt": 30
+        }
+      ],
+      "expected": {
+        "pullMessageIds": ["desktop-newer", "desktop-only-live", "desktop-tie-wins"],
+        "pushTopic": true,
+        "deleteMessages": [
+          { "msgId": "desktop-deleted-mobile-live", "deletedAt": 61 }
+        ]
+      }
+    },
+    {
+      "name": "equal_live_root_uses_fast_path",
+      "ownerType": "group",
+      "ownerId": "group-a",
+      "topicId": "topic-equal",
+      "mobileContentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "desktopContentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mobileMessages": {},
+      "desktopMessages": [
+        {
+          "msgId": "not-materialized-on-fast-path",
+          "messageHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "updatedAt": 1
+        }
+      ],
+      "expected": {
+        "pullMessageIds": [],
+        "pushTopic": false,
+        "deleteMessages": []
+      }
+    },
+    {
+      "name": "equal_root_does_not_hide_mobile_tombstone",
+      "ownerType": "agent",
+      "ownerId": "agent-b",
+      "topicId": "topic-equal-tombstone",
+      "mobileContentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "desktopContentHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "mobileMessages": {
+        "mobile-only-deleted": { "deletedAt": 91 }
+      },
+      "desktopMessages": [],
+      "expected": {
+        "pullMessageIds": [],
+        "pushTopic": true,
+        "deleteMessages": []
+      }
+    }
+  ]
+}

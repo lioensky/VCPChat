@@ -102,7 +102,7 @@ async function* decodeNdjsonBody(body, { maxLineBytes, maxTotalBytes }) {
 }
 
 class ChatDataServiceClient {
-    constructor({ port, authToken, protocolVersion = 2, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+    constructor({ port, authToken, protocolVersion = 3, timeoutMs = DEFAULT_TIMEOUT_MS }) {
         if (!Number.isInteger(port) || port <= 0 || port > 65535) {
             throw new ChatDataServiceError('Invalid VCP-CDS port.', { code: 'INVALID_CONFIGURATION' });
         }
@@ -323,7 +323,7 @@ class ChatDataServiceClient {
 
     reconcile(options) {
         return this.request('POST', '/v1/reconcile', {}, {
-            timeoutMs: 120_000,
+            timeoutMs: 270_000,
             ...options
         });
     }
@@ -345,57 +345,6 @@ class ChatDataServiceClient {
 
     searchMemories(request, options) {
         return this.request('POST', '/v1/search/memories', request, options);
-    }
-
-    syncManifest(request, options) {
-        return this.request('POST', '/v1/sync/manifest', request, options);
-    }
-
-    syncMessageManifest(request, options) {
-        return this.request('POST', '/v1/sync/message-manifest', request, options);
-    }
-
-    syncTopicIdentity(request, options) {
-        return this.request('POST', '/v2/sync/topic-identity', request, options);
-    }
-
-    syncTopicDiff(request, options) {
-        return this.request('POST', '/v1/sync/topic-diff', request, options);
-    }
-
-    syncMessageDiff(request, options) {
-        return this.request('POST', '/v1/sync/message-diff', request, options);
-    }
-
-    // v1 `/v1/sync/messages/pull` 已随 CDS 端一同弃用移除（S3-δ）：全有或全无
-    // 且无活调用方；消息拉取统一走 v2 流式（per-topic `_error` 帧隔离）。
-    syncMessagesPullStream(request, options) {
-        return this.requestNdjson('POST', '/v2/sync/messages/pull', request, {
-            timeoutMs: 120_000,
-            ...options
-        });
-    }
-
-    syncMessagesPush(request, options) {
-        return this.request('POST', '/v1/sync/messages/push', request, {
-            timeoutMs: 120_000,
-            ...options
-        });
-    }
-
-    syncMessagesPushTopic(topic, options) {
-        return this.request('POST', '/v2/sync/messages/push-topic', topic, {
-            timeoutMs: 120_000,
-            ...options
-        });
-    }
-
-    changes(after = 0, limit = 200, options) {
-        const query = new URLSearchParams({
-            after: String(after),
-            limit: String(limit)
-        });
-        return this.request('GET', `/v1/changes?${query}`, undefined, options);
     }
 
     flush(options) {

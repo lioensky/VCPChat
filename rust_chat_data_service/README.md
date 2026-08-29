@@ -10,8 +10,8 @@ VCP-CDS 是 VCPChat 的中央聊天数据服务。第一阶段建立旁路镜像
 - Tantivy 是可删除、可重建的搜索派生物。
 - DeepMemo 通过中央搜索接口工作。
 - `MobileSyncUseCentralIndex=True` 时，VCPMobileSync 的 Manifest、Topic/Message Diff、
-  Message Pull/Push、消息 Tombstone 与 Change Feed 由 VCP-CDS 提供。
-- 中央同步模式不打开或写入旧 `VCPMobileSync/sync_state.db`，也不启动其历史扫描和 watcher。
+  Message Pull/Push 与消息 Tombstone 由 VCP-CDS 提供。
+- 中央同步模式不打开或写入 `sync_state_v2.db`，也不启动 Legacy 历史扫描和 watcher；插件只保留进程内配置/附件兼容视图，Avatar 状态由 CDS 数据库持久化，头像字节仍由插件读写物理文件。
 - 关闭 `MobileSyncUseCentralIndex` 可恢复旧同步索引链路；旧数据库文件不会自动删除。
 - 普通桌面聊天保存仍先写 `history.json`，由直接通知或 `notify` 摄取。
 - VCP-CDS 的 Mobile Push 属于同步数据面：它会把 Mobile wire DTO 投影为 VCPChat 原生消息后写回 `history.json`，但不会参与模型调用、提示词、渲染或普通聊天保存。
@@ -82,8 +82,8 @@ vcp_chat_data_service --app-data ../AppData --port 0
 ```json
 {
   "type": "ready",
-  "protocolVersion": 2,
-  "schemaVersion": 1,
+  "protocolVersion": 3,
+  "schemaVersion": 3,
   "port": 49152,
   "instanceId": "uuid",
   "authToken": "ephemeral-token"
@@ -191,47 +191,52 @@ GET /v1/health
 
 ```text
 GET  /v1/status
-GET  /v1/changes?after=<sequence>&limit=<limit>
 POST /v1/reconcile
 POST /v1/rebuild-search-index
 POST /v1/ingest/history-path
 POST /v1/search/messages
 POST /v1/search/memories
-POST /v1/sync/manifest
-POST /v1/sync/message-manifest
-POST /v1/sync/topic-diff
-POST /v1/sync/message-diff
-POST /v1/sync/messages/pull
-POST /v1/sync/messages/push
-POST /v2/sync/messages/pull
-POST /v2/sync/messages/push-topic
-POST /v2/sync/topic-identity
+POST /v3/sync/manifest
+POST /v3/sync/topic-diff
+POST /v3/sync/message-diff
+POST /v3/sync/entities/pull
+POST /v3/sync/entities/delete
+POST /v3/sync/avatars/state
+POST /v3/sync/avatars/commit
+POST /v3/sync/messages/pull
+POST /v3/sync/messages/push
 POST /v1/flush
 POST /v1/shutdown
 ```
 
-`/v2/sync/messages/pull` 返回逐 Topic NDJSON。每帧先通过与 Node/Mobile golden fixture 一致的 canonicalizer：消息 ID、role 和 timestamp 必须合法；桌面附件只从顶层或 `_fileManagerData.hash` 接受一致的 SHA-256，非法附件产生有界 warning 而不丢消息。`history_sources.status` 非 ready 时禁止从旧 SQLite 镜像下发。
+`/v3/sync/messages/pull` 返回逐 Topic NDJSON。每帧先通过与 Node/Mobile golden fixture 一致的 canonicalizer：消息 ID、role 和 timestamp 必须合法；桌面附件只从顶层或 `_fileManagerData.hash` 接受一致的 SHA-256，非法附件产生有界 warning 而不丢消息。`history_sources.status` 非 ready 时禁止从旧 SQLite 镜像下发。
 
-`/v2/sync/messages/push-topic` 每次只提交一个 Topic，接受 VCPChat 原生投影消息及 `deletedMessageTombstones: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并为本地缺失消息也建立稳定墓碑；重放保留最早删除时间。结果始终显式返回 `neededAttachmentHashes`，调用方必须检查 HTTP 状态、Topic 身份和逐项成功值。
+`/v3/sync/messages/push` 每次提交一个完整 TopicKey，接受 VCPChat 原生投影消息及 `deletedMessages: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并在 `messages` 中为本地缺失消息保留 tombstone-only 行；重放保留最早删除时间。结果回显完整 TopicKey 和 `ok/error`。
 
 同步流预算为单帧 32 MiB、单 attempt 256 MiB、最多 10,000 Topic 和 100,000 Message。SQLite 阻塞读取在受控 blocking task 中执行，NDJSON Body 由 HTTP 消费节奏驱动，不在服务端预先累计完整响应。
 
 VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中央模式下：
 
-1. 启动时等待 CDS READY 并执行一次 reconcile。
-2. 不初始化旧 `sync_state.db`。
+1. CDS 在 READY 后自行执行一次后台 reconcile；MobileSync 注册不重复扫描，真实同步在 Owner Phase 开始前等待一次新鲜 reconcile。
+2. 不初始化 Legacy Owner/Topic/Message 持久索引；仅建立插件兼容资产视图。
 3. 不扫描历史文件。
 4. 不启动旧 chokidar watcher。
 5. 消息下载与上传通过中央客户端转发。
-6. `/api/mobile-sync/changes` 暴露带游标的 Change Feed。
 
 `MobileSyncUseCentralIndex` 的优先级固定为：插件显式布尔值 > 主程序 Facade 布尔值 > 默认 `true`。显式 `false` 只影响重启后的新 session，不在 attempt 中途回退。CDS 启动在后台进行，失败只禁用中央同步，不阻塞普通 Chat 窗口创建。
 
+SQLite 中的同步 Hash 使用与公开 Wire 相同的分层语义：`messages.message_hash`
+保存消息指纹，`topics.content_hash` 保存消息叶聚合根，`owners.content_hash` 保存
+Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
+`history_sources.source_hash`；只有全文检索可见的消息集合、正文或发言者变化才推进
+`content_revision`，Tantivy 通过 `content_revision/indexed_revision` 追赶 SQLite。普通追加
+只补入新消息文档；存在编辑或删除时回退为整 Topic 重写。
+
 ## 协议与失败语义
 
-- VCPMobileSync public wire 固定为 1.1；CDS Node/Rust 内部握手固定为 protocol 2。
-- 1.0/1.1 不支持混跑，桌面插件、CDS runtime 与 APK 必须配对发布和回滚。
-- Phase 3 decision 是严格判别联合：`{ok:true,toPull,toPush}` 或 `{ok:false,error}`。
+- VCPMobileSync public wire 固定为 1.4；CDS Node/Rust 内部握手固定为 protocol 3。
+- Public wire 不支持跨版本混跑，桌面插件、CDS runtime 与 APK 必须配对发布和回滚。
+- Phase 3 decision 是严格判别联合：`{ok:true,pullMessageIds,pushTopic,deleteMessages}` 或 `{ok:false,error}`。
 - 缺 Topic、重复 Topic、错误字段类型、无效历史、DB/HTTP/附件错误均终止当前 attempt；不得以空集合降级成成功。
 - Topic manifest 和 NDJSON 消息帧必须携带 `ownerType + ownerId + topicId` 复合身份；CDS 不接受路径模糊匹配或跨 Owner 同名 Topic 降级。
 - Desktop→Mobile 不新增附件二进制下载。合法 hash 仍随消息下发，Mobile 缺少 CAS 文件时保存为 `desktop_only` 占位。
@@ -252,10 +257,10 @@ cargo clippy --locked --all-targets -- -D warnings
 - 群聊发言 Agent 身份保留。
 - `Nova` 对 `vcp小助手Nova` 的唯一包含匹配。
 - 多个包含候选的歧义拒绝。
-- 移动消息指纹与旧 `content + attachment hashes` 合约一致。
+- 移动消息指纹绑定消息身份、规范正文、时间、发言 Agent 与排序后的附件内容 Hash。
 - 中央同步聚合哈希顺序无关。
-- VCPMobileSync 中央适配器 Manifest 字段兼容和 Change Feed 游标转发。
-- wire 1.1 golden canonical output、hash 与 JavaScript safe-integer 边界。
+- VCPMobileSync 中央适配器统一 Owner/Topic/Avatar Manifest 字段合同与完整复合身份。
+- Wire 1.4 强类型状态、canonical output、Hash 与 JavaScript safe-integer 边界。
 - ingest → streaming pull → canonicalizer → native push 全链路。
 - 损坏 history source fail closed、Owner/Topic 歧义拒绝及稳定消息 Tombstone 重放。
 

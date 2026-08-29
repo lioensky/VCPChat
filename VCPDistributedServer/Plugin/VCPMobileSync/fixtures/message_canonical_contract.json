@@ -1,6 +1,5 @@
 {
-  "schema": "vcp-sync-protocol-1.2-golden",
-  "wireProtocol": "1.2",
+  "schema": "vcp-sync-message-canonical-contract",
   "validFrames": [
     {
       "name": "flat_nested_null_missing_conflict_unicode_html_empty",
@@ -12,6 +11,7 @@
             "role": "user",
             "content": "你好 <section data-raw=\"yes\">raw html</section>",
             "timestamp": "1700000000",
+            "updatedAt": 1700000100,
             "topicId": "topic-golden",
             "attachments": [
               {
@@ -70,8 +70,12 @@
           {
             "id": "message-empty",
             "role": "assistant",
+            "name": "Nova",
+            "agentId": "agent-nova",
+            "avatarColor": "#desktop-local-only",
             "content": "",
-            "timestamp": 1700000001
+            "timestamp": 1700000001,
+            "updatedAt": 1700000101
           }
         ]
       },
@@ -91,6 +95,7 @@
             "role": "user",
             "content": "你好 <section data-raw=\"yes\">raw html</section>",
             "timestamp": 1700000000,
+            "updatedAt": 1700000100,
             "isThinking": null,
             "agentId": null,
             "groupId": null,
@@ -121,18 +126,20 @@
           {
             "id": "message-empty",
             "role": "assistant",
+            "name": "Nova",
             "content": "",
             "timestamp": 1700000001,
+            "updatedAt": 1700000101,
             "isThinking": null,
-            "agentId": null,
+            "agentId": "agent-nova",
             "groupId": null,
             "topicId": null,
             "isGroupMessage": null
           }
         ],
         "contentHashes": [
-          "f1bddfc028a86b52a400027e85b6db09e43b50a57298bea25fe3c77bbb61354b",
-          "48ccd6c4782cb6d3408131d10950321aa7e29efd550e5fdde387e044389c786f"
+          "4c020f54137f92cd790eeacd0f07acbb8e02baa7ccf0328fe48f70d1ce62c526",
+          "c7809741b18b9f3800949599b7dac8dd3c588147f6c2a3e064857f9b7484cf7d"
         ]
       }
     },
@@ -146,6 +153,7 @@
             "role": "user",
             "content": "owner conflict",
             "timestamp": 1700000002,
+            "updatedAt": 1700000102,
             "topicId": "topic-owner-b"
           }
         ]
@@ -161,6 +169,7 @@
             "role": "user",
             "content": "owner conflict",
             "timestamp": 1700000002,
+            "updatedAt": 1700000102,
             "isThinking": null,
             "agentId": null,
             "groupId": null,
@@ -169,9 +178,25 @@
           }
         ],
         "contentHashes": [
-          "c93a37834218f0ac613767fae1bbd47577782e4f3aac81fbef8fd4ec950d9612"
+          "93e09bacfaebdf9bb21f776f1046e06951df5c4e06741331e42eca1b016d5851"
         ]
       }
+    }
+  ],
+  "canonicalHashCases": [
+    {
+      "name": "escaped_dynamic_keys_and_utf8_order",
+      "value": {
+        "memberTags": {
+          "😀": "astral",
+          "": "private-use",
+          "a\":\"x\",\"b": "y",
+          "line\nkey": "control",
+          "slash\\key": "slash"
+        }
+      },
+      "expectedCanonical": "{\"memberTags\":{\"a\\\":\\\"x\\\",\\\"b\":\"y\",\"line\\nkey\":\"control\",\"slash\\\\key\":\"slash\",\"\":\"private-use\",\"😀\":\"astral\"}}",
+      "expectedHash": "ec2a40f5180600d91ea1621b75e00db55cbbdca6ad1db1c23841c426c81e3670"
     }
   ],
   "invalidFrames": [
@@ -185,6 +210,7 @@
             "role": "user",
             "content": "must not resurrect",
             "timestamp": 1700000003,
+            "updatedAt": 1700000103,
             "status": "removed",
             "deletedAt": 1700000004
           }

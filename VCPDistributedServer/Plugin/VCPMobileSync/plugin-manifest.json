@@ -1,7 +1,7 @@
 {
   "name": "VCPMobileSync",
   "displayName": "VCP Mobile Sync Service",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "description": "Provides bidirectional sync API for VCPMobile to sync AppData securely.",
   "author": "Nova",
   "pluginType": "service",

@@ -7,17 +7,21 @@ const path = require("path");
 const {
   initDb,
   getDb,
-  getEntityIndex,
-  upsertEntityIndex,
+  getOwnerState,
+  getTopicState,
+  upsertOwnerState,
+  upsertTopicState,
   upsertAttachmentIndex,
   upsertAvatarIndex,
+  softDeleteAvatarIndex,
+  getHistorySourceState,
   isHistorySourceCurrent,
-  cleanupOldDeletedRecords,
+  refreshOwnerContentHash,
+  refreshAllOwnerContentHashes,
 } = require("./core/db");
 const {
   computeBinaryHash,
   computeDtoHash,
-  computeAggregatedHash,
 } = require("./core/hash");
 const {
   startWsServer,
@@ -27,15 +31,29 @@ const {
 } = require("./transport/routes");
 const {
   handleSyncManifest,
-  handleMessageManifest,
 } = require("./sync/manifest");
-const { handleSyncTopicHashBatch, handleSyncMessageDiffBatch } = require("./sync/diff");
-const { ingestHistoryToDb, readHistoryStrict, markHistoryTopicUnhealthy } = require("./sync/message");
+const { handleSyncMessageDiff, handleSyncTopicDiff } = require("./sync/diff");
+const {
+  ingestHistoryToDb,
+  readHistoryStrict,
+  markHistoryTopicUnhealthy,
+  isHistoryTopicUnhealthy,
+  clearHistoryTopicUnhealthy,
+} = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
-const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
+const {
+  isWriteLocked,
+  scanPhysicalTopicTree,
+  repairTopicProjectionsFromDisk,
+  reconcileMissingPhysicalIndexes,
+  sanitizeId,
+  deleteEntity,
+  deleteMessage,
+} = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
 const { createPhaseAck, createVersionAck } = require("./protocol");
 const { withSyncErrorContext } = require("./error-contract");
+const { acquireLock } = require("./utils/lock");
 const {
   AGENT_SYNC_FIELDS,
   GROUP_SYNC_FIELDS,
@@ -50,6 +68,10 @@ const {
 } = require("./config/defaults");
 
 let chokidar = null;
+const AVATAR_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+// Legacy config 损坏只影响当前进程中的该 Owner：保留最后一次提交索引，
+// 但本轮 Manifest 不对其做 Pull/Push/Delete，避免旧状态冒充有效物理配置。
+const unhealthyLegacyOwners = new Set();
 
 try {
   chokidar = require("chokidar");
@@ -60,6 +82,9 @@ try {
  */
 async function registerRoutes(app, pluginConfig, projectBasePath, services = {}) {
   const syncToken = pluginConfig.MobileSyncToken;
+  if (typeof syncToken !== "string" || syncToken.trim().length === 0) {
+    throw new Error("MobileSyncToken must be configured before starting VCPMobileSync");
+  }
   // 最终修正：AppData 位于 projectBasePath (VCPDistributedServer) 的上一级目录
   const appDataPath = path.resolve(projectBasePath, "..", "AppData");
   const wsPort = parseInt(pluginConfig.MobileSyncPort) || 5975;
@@ -80,15 +105,6 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     await services.chatDataService.startShadowMode();
   }
 
-  const cdsClient = services.chatDataService?.client ?? null;
-  // S8 降级注册（F7）：CDS 不可用（启动失败/版本不匹配熔断等）时不再让插件
-  // 整体缺席——WS/HTTP 照常注册，中央入口经 requireClient() 抛结构化
-  // CDS_UNAVAILABLE（origin=desktop_cds，stage 由观测边界按契约收窄）
-  // → WS 边界转 SYNC_ERROR 上 wire，手机端可诊断为"桌面数据服务不可用"，
-  // 而非只见 TCP 拒绝。
-  // avatar/attachment 等本地功能在降级模式下保留；回退 legacy 请设
-  // MobileSyncUseCentralIndex=false 并重启。
-  const centralDegraded = Boolean(centralRequested && !cdsClient);
   const centralSync = centralRequested
     ? createCentralSyncAdapter({
         chatDataService: services.chatDataService ?? { client: null },
@@ -98,132 +114,126 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
 
   const logger = resetLogger();
   logger.startSession("system");
-  if (centralDegraded) {
-    logger.logInfo(
-      "startup",
-      "VCP-CDS 不可用，MobileSync 以降级模式注册：同步请求将收到结构化 CDS_UNAVAILABLE；如需回退 legacy 本地索引，请设置 MobileSyncUseCentralIndex=false 并重启",
-      "warn",
-    );
-  }
 
-  // 中央模式不再打开持久化 sync_state.db。保留一个仅服务于附件、头像和
+  // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
   // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
   if (centralSync) {
+    centralSync.requireClient();
+    const physicalOwners = await scanPhysicalTopicTree(appDataPath);
+    await repairTopicProjectionsFromDisk(
+      appDataPath,
+      physicalOwners,
+      (request) => centralSync.loadTopicRecoveryStates(request),
+    );
     initDb(":memory:");
-    // 降级模式下 CDS 缺席，跳过启动 reconcile（避免 CDS_UNAVAILABLE 中止注册）。
-    if (!centralDegraded) {
-      await centralSync.reconcile();
-      centralSync.logEnabled();
-    }
-    await reconcileCompatibilityAssets(appDataPath);
+    // CDS 在 READY 后自行完成启动 reconcile。MobileSync 的真实一致性门禁
+    // 位于 owner_metadata PHASE_START；这里不再紧跟着重复扫描同一份 AppData。
+    centralSync.logEnabled();
+    await reconcileCompatibilityAssets(appDataPath, physicalOwners);
   } else {
-    const dbPath = path.join(__dirname, "sync_state.db");
+    // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
+    const dbPath = path.join(__dirname, "sync_state_v2.db");
     initDb(dbPath);
-    await reconcileLocalFiles(appDataPath);
+    const physicalOwners = await scanPhysicalTopicTree(appDataPath);
+    await repairTopicProjectionsFromDisk(appDataPath, physicalOwners);
+    await reconcileLocalFiles(appDataPath, physicalOwners);
   }
 
   // 启动 WebSocket（仅在索引完成后开放，防止手机端提前连接）
-  startWsServer({
+  await startWsServer({
     port: wsPort,
     syncToken,
     onMessage: async (payload) => {
       const logger = getLogger();
 
       switch (payload.type) {
-        case "SYNC_MANIFEST": {
-          logger.logOperation("websocket", "message", payload.type, "info", `dataType=${payload.dataType}`);
+        case "SYNC_MANIFEST_REQUEST": {
+          logger.logOperation("websocket", "message", payload.type, "info", `manifestType=${payload.manifestType}`);
 
-          // VCP-CDS 只持有 Agent、Group、Topic 与 Message 的中央索引。
-          // Avatar 仍由本插件的兼容资产目录（内存 avatar_index + 物理文件）
-          // 负责。不能把 avatar Manifest 转给 CDS，否则 CDS 会把本地清单
-          // 视为空集，生成错误的全量 PUSH，并破坏 Owner Metadata 阶段。
-          if (centralSync && payload.dataType !== "avatar") {
+          if (payload.manifestType === "avatar" && !centralSync) {
+            await reconcileAvatarFiles(appDataPath);
+          }
+
+          if (centralSync) {
             return centralSync.handleSyncManifest(payload);
           }
-          return handleSyncManifest(payload);
-        }
-        case "GET_MESSAGE_MANIFEST": {
-          logger.logOperation("websocket", "message", payload.type, "info", `topicId=${payload.topicId}`);
-          return centralSync
-            ? centralSync.handleMessageManifest(payload)
-            : handleMessageManifest(payload);
-        }
-        case "SYNC_TOPIC_HASH_BATCH": {
-          const topicCount = Object.keys(payload.hashes || {}).length;
-          logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
-          return centralSync
-            ? centralSync.handleTopicHashBatch(payload)
-            : handleSyncTopicHashBatch(payload);
-        }
-        case "SYNC_TOPIC_HASH_BATCH_V2": {
-          const topicCount = Object.keys(payload.hashes || {}).length;
-          logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
-          if (centralSync) {
-            return centralSync.handleTopicHashBatch(payload);
-          }
-          const { handleSyncTopicHashBatchV2 } = require("./sync/diff");
-          return handleSyncTopicHashBatchV2(payload);
-        }
-        case "SYNC_MESSAGE_DIFF_BATCH": {
-          const topicCount = Object.keys(payload.topics || {}).length;
-          logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
-          return centralSync
-            ? centralSync.handleMessageDiffBatch(payload)
-            : handleSyncMessageDiffBatch(payload);
-        }
-        case "PHASE_START": {
-          const phase = payload.phase || "owner_metadata";
-          logger.startPhase(phase, 0);
-
-          // 所有 manifest 已在 SYNC_MANIFEST 阶段由手机端主动发送并处理完毕。
-          // PHASE_START 仅作为阶段确认，不再返回冗余的 PHASE_MANIFESTS。
-          return createPhaseAck(payload);
-        }
-        case "PHASE_COMPLETED": {
-          const phase = payload.phase || "owner_metadata";
+          const response = handleSyncManifest(payload);
           if (
-            centralSync &&
-            (phase === "owner_metadata" || phase === "topic_metadata")
+            ["owner", "avatar"].includes(payload.manifestType) &&
+            unhealthyLegacyOwners.size > 0
           ) {
-            // Entity/topic files are written by the plugin while CDS owns the
-            // central SQLite view. Do not acknowledge the phase until that view
-            // has durably observed the parent records needed by later messages.
-            await centralSync.reconcile();
-          }
-          logger.completePhase(phase);
-          return createPhaseAck(payload, { echoFinalIdentity: true });
-        }
-        case "SYNC_ENTITY_UPDATE": {
-          const { id, dataType, hash, ts } = payload;
-          if (
-            typeof id !== "string" ||
-            sanitizeId(id) !== id ||
-            !["agent", "group", "topic", "agent_topic", "group_topic"].includes(dataType) ||
-            typeof hash !== "string" ||
-            !/^[a-f0-9]{64}$/.test(hash) ||
-            !Number.isSafeInteger(ts) ||
-            ts < 0
-          ) {
-            throw Object.assign(new Error("SYNC_ENTITY_UPDATE contains invalid fields"), {
-              code: "SYNC_PROTOCOL_INVALID",
-            });
-          }
-          logger.logOperation("websocket", "entity_update", id, "info", `type=${dataType}`);
-
-          // 旧通知只携带派生哈希，无法更新 CDS 完整数据；中央模式等待
-          // 随后的实体 HTTP 上传或消息 Push，不再双写私有数据库。
-          if (!centralSync) {
-            const existing = getEntityIndex(id, dataType);
-            if (!existing?.file_path) {
-              throw Object.assign(
-                new Error(`Cannot update missing local entity ${dataType}/${id}`),
-                { code: "SYNC_ENTITY_NOT_FOUND" },
+            const before = response.results.length;
+            response.results = response.results.filter(
+              (item) => !unhealthyLegacyOwners.has(`${item.ownerType}\0${item.ownerId}`),
+            );
+            const skipped = before - response.results.length;
+            if (skipped > 0) {
+              logger.logInfo(
+                "owner_metadata",
+                `本轮已跳过 ${skipped} 个损坏 Owner 的同步动作`,
+                "warn",
               );
             }
-            upsertEntityIndex(id, dataType, existing.file_path, hash, ts);
+          }
+          return response;
+        }
+        case "SYNC_TOPIC_DIFF_REQUEST": {
+          const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
+          logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
+          if (centralSync) {
+            return centralSync.handleTopicDiff(payload);
+          }
+          return handleSyncTopicDiff(payload);
+        }
+        case "SYNC_MESSAGE_DIFF_REQUEST": {
+          const topicCount = Array.isArray(payload.topics) ? payload.topics.length : 0;
+          logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
+          return centralSync
+            ? centralSync.handleMessageDiff(payload)
+            : handleSyncMessageDiff(payload);
+        }
+        case "PHASE_START": {
+          const ack = createPhaseAck(payload);
+          const phase = ack.phase;
+          logger.startPhase(phase, 0);
+
+          // Mobile 会在首批 Owner Manifest 前发送 owner_metadata PHASE_START。
+          // WebSocket 的单一 messageChain 会让后续帧等待此处完成，因此在 ACK
+          // 前刷新 CDS，后续 Manifest 只能读取已经观察到桌面业务写入的提交视图。
+          if (centralSync && phase === "owner_metadata") {
+            try {
+              await centralSync.reconcile();
+            } catch (error) {
+              throw withSyncErrorContext(error, {
+                origin: "desktop_cds",
+                stage: "owner_metadata",
+              });
+            }
+          } else if (!centralSync && phase === "owner_metadata") {
+            try {
+              const stats = await refreshLegacyCommitView(appDataPath);
+              logger.logOperation(
+                "owner_metadata",
+                "pre_manifest_reconcile",
+                "legacy",
+                "success",
+                `agents=${stats.agentCount} groups=${stats.groupCount} topics=${stats.topicCount} changedHistories=${stats.historyChangedCount} skippedHistories=${stats.historySkippedCount} staleOwners=${stats.deleted.ownersDeleted} staleTopics=${stats.deleted.topicsDeleted} staleMessages=${stats.deleted.messagesDeleted}`,
+              );
+            } catch (error) {
+              throw withSyncErrorContext(error, {
+                origin: "desktop_plugin",
+                stage: "owner_metadata",
+              });
+            }
           }
 
-          return { type: "SYNC_ACK", id };
+          return ack;
+        }
+        case "PHASE_COMPLETED": {
+          const ack = createPhaseAck(payload, { echoFinalIdentity: true });
+          const phase = ack.phase;
+          logger.completePhase(phase);
+          return ack;
         }
         case "VERSION_CHECK": {
           const manifest = require("./plugin-manifest.json");
@@ -231,144 +241,161 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           return createVersionAck(payload, manifest.version);
         }
         case "SYNC_ENTITY_DELETE": {
-          const { id: rawId, dataType, topicId } = payload;
-          const deletedAt = payload.deletedAt;
-          let safeId = "";
-          let avatarOwnerType = null;
-          if (dataType === "avatar" && typeof rawId === "string") {
-            const separator = rawId.indexOf(":");
-            if (separator > 0 && separator === rawId.lastIndexOf(":")) {
-              avatarOwnerType = rawId.slice(0, separator);
-              const ownerId = rawId.slice(separator + 1);
-              if (
-                ["agent", "group", "user"].includes(avatarOwnerType) &&
-                sanitizeId(ownerId) === ownerId &&
-                (avatarOwnerType !== "user" || ownerId === "user_avatar")
-              ) {
-                safeId = ownerId;
-              }
-            }
-          } else if (typeof rawId === "string" && sanitizeId(rawId) === rawId) {
-            safeId = rawId;
-          }
-
+          const {
+            targetType,
+            topicId,
+            msgId,
+            ownerType,
+            ownerId,
+            deletedAt,
+          } = payload;
+          const validOwnerType = targetType === "avatar"
+            ? ["agent", "group", "user"].includes(ownerType)
+            : ["agent", "group"].includes(ownerType);
           if (
-            !safeId ||
-            ![
-              "agent",
-              "group",
-              "topic",
-              "agent_topic",
-              "group_topic",
-              "avatar",
-              "message",
-            ].includes(dataType) ||
+            !["owner", "topic", "avatar", "message"].includes(targetType) ||
+            !validOwnerType ||
+            typeof ownerId !== "string" ||
+            !ownerId ||
+            sanitizeId(ownerId) !== ownerId ||
+            (ownerType === "user" && ownerId !== "user_avatar") ||
             !Number.isSafeInteger(deletedAt) ||
             deletedAt < 0
           ) {
             const error = new Error(
-              "SYNC_ENTITY_DELETE requires id, dataType and non-negative integer deletedAt",
+              "SYNC_ENTITY_DELETE requires targetType, full owner identity and deletedAt",
             );
             error.code = "SYNC_DELETE_INVALID";
             throw error;
           }
+          const isTopicDelete = targetType === "topic";
+          const isMessageDelete = targetType === "message";
+          if (
+            (isTopicDelete || isMessageDelete) &&
+            (typeof topicId !== "string" || !topicId || sanitizeId(topicId) !== topicId)
+          ) {
+            const error = new Error(
+              "Topic and message deletion require a complete topic identity",
+            );
+            error.code = "SYNC_DELETE_INVALID";
+            throw error;
+          }
+          if (
+            isMessageDelete &&
+            (typeof msgId !== "string" || !msgId || sanitizeId(msgId) !== msgId)
+          ) {
+            const error = new Error("Message deletion requires a valid msgId");
+            error.code = "SYNC_DELETE_INVALID";
+            throw error;
+          }
+          const entityDeleteContext = {
+            code: "SYNC_DELETE_FAILED",
+            stage: isMessageDelete
+              ? "messages"
+              : isTopicDelete
+                ? "topic_metadata"
+                : "owner_metadata",
+            failedTopicIds: isTopicDelete || isMessageDelete ? [topicId] : [],
+          };
 
           if (centralSync) {
-            if (dataType === "message") {
-              if (
-                typeof topicId !== "string" ||
-                !sanitizeId(topicId) ||
-                sanitizeId(topicId) !== topicId
-              ) {
-                const error = new Error(
-                  "Message delete requires a non-empty topicId",
-                );
-                error.code = "SYNC_DELETE_INVALID";
-                throw error;
-              }
+            if (isMessageDelete) {
               await centralSync.deleteMessage({
-                topicId: sanitizeId(topicId),
-                msgId: safeId,
+                topicId,
+                ownerType,
+                ownerId,
+                msgId,
                 deletedAt,
               });
             } else {
+              const physicalType = targetType === "owner" ? ownerType : targetType;
               const result = await deleteEntity({
-                id: safeId,
-                type: dataType,
-                ownerType: avatarOwnerType,
+                id: isTopicDelete ? topicId : ownerId,
+                type: physicalType,
+                ownerType: isTopicDelete || targetType === "avatar" ? ownerType : null,
+                ownerId: isTopicDelete ? ownerId : null,
                 deletedAt,
                 appDataPath,
+                persistAvatarIndex: false,
               });
               if (!result?.success) {
                 throw withSyncErrorContext(
                   result?.error || "entity delete failed",
-                  { code: "SYNC_DELETE_FAILED", stage: "owner_metadata" },
+                  entityDeleteContext,
                 );
               }
-              await centralSync.reconcile();
+              await centralSync.deleteEntityTombstone({
+                targetType,
+                ownerType: isTopicDelete ? result.ownerType : ownerType,
+                ownerId: isTopicDelete ? result.ownerId : ownerId,
+                ...(isTopicDelete ? { topicId } : {}),
+                deletedAt,
+              });
             }
-            return { type: "SYNC_ACK", id: safeId };
+            return null;
           }
 
-          if (dataType === "message") {
-            const safeTopicId = sanitizeId(topicId);
-            if (!safeTopicId || safeTopicId !== topicId) {
-              const error = new Error("Message delete requires a non-empty topicId");
-              error.code = "SYNC_DELETE_INVALID";
-              throw error;
-            }
+          if (isMessageDelete) {
             const result = await deleteMessage({
-              msgId: safeId,
+              msgId,
               deletedAt,
-              topicId: safeTopicId,
+              topicId,
+              ownerType,
+              ownerId,
               appDataPath,
             });
             if (!result?.success) {
               throw withSyncErrorContext(
-                result?.error || "message delete failed",
-                {
-                  code: "SYNC_DELETE_FAILED",
-                  stage: "messages",
-                  failedTopicIds: [safeTopicId],
-                },
-              );
+                  result?.error || "message delete failed",
+                  {
+                    code: "SYNC_DELETE_FAILED",
+                    stage: "messages",
+                    failedTopicIds: [topicId],
+                  },
+                );
             }
-            logger.logOperation("websocket", "delete_notify", safeId, "success", "type=message");
-          } else if (dataType === "avatar") {
+            logger.logOperation("websocket", "delete_notify", msgId, "success", "type=message");
+          } else if (targetType === "avatar") {
             const result = await deleteEntity({
-              id: safeId,
+              id: ownerId,
               type: "avatar",
-              ownerType: avatarOwnerType,
+              ownerType,
               deletedAt,
               appDataPath,
             });
             if (!result?.success) {
               throw withSyncErrorContext(
                 result?.error || "avatar delete failed",
-                { code: "SYNC_DELETE_FAILED", stage: "owner_metadata" },
+                entityDeleteContext,
               );
             }
-            logger.logOperation("websocket", "delete_notify", rawId, "success", "type=avatar");
+            logger.logOperation("websocket", "delete_notify", ownerId, "success", "type=avatar");
           } else {
-            const result = await deleteEntity({ id: safeId, type: dataType, deletedAt, appDataPath });
+            const physicalType = targetType === "owner" ? ownerType : "topic";
+            const result = await deleteEntity({
+              id: isTopicDelete ? topicId : ownerId,
+              type: physicalType,
+              ownerType: isTopicDelete ? ownerType : null,
+              ownerId: isTopicDelete ? ownerId : null,
+              deletedAt,
+              appDataPath,
+            });
             if (!result?.success) {
               throw withSyncErrorContext(
                 result?.error || "entity delete failed",
-                {
-                  code: "SYNC_DELETE_FAILED",
-                  stage: ["topic", "agent_topic", "group_topic"].includes(dataType)
-                    ? "topic_metadata"
-                    : "owner_metadata",
-                  failedTopicIds: ["topic", "agent_topic", "group_topic"].includes(dataType)
-                    ? [safeId]
-                    : [],
-                },
+                entityDeleteContext,
               );
             }
-            logger.logOperation("websocket", "delete_notify", safeId, "success", `type=${dataType}`);
+            logger.logOperation(
+              "websocket",
+              "delete_notify",
+              isTopicDelete ? topicId : ownerId,
+              "success",
+              `type=${targetType}`,
+            );
           }
 
-          return { type: "SYNC_ACK", id: rawId };
+          return null;
         }
         default:
           logger.logOperation("websocket", "unknown_message", payload.type, "warn");
@@ -387,27 +414,16 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   if (!centralSync && chokidar) {
     startFileWatcher(appDataPath);
   }
-
-  if (!centralSync) {
-    setInterval(
-      () => {
-        cleanupOldDeletedRecords();
-      },
-      60 * 60 * 1000,
-    );
-    cleanupOldDeletedRecords();
-  }
 }
 
 /**
- * 中央模式兼容目录：只定位配置 DTO、头像和附件二进制。
- * history.json、message_index、消息墓碑和聚合历史哈希全部由 CDS 负责。
+ * 中央模式兼容目录：只定位配置 DTO 和本机附件文件。
+ * history.json、消息提交状态、消息墓碑和 Topic 内容 Hash 全部由 CDS 负责。
  */
-async function reconcileCompatibilityAssets(appDataPath) {
+async function reconcileCompatibilityAssets(appDataPath, physicalOwners = null) {
   const db = getDb();
   if (!db) return;
 
-  const logger = getLogger();
   const userDataDir = path.join(appDataPath, "UserData");
   const attachmentsDir = path.join(userDataDir, "attachments");
   const now = Date.now();
@@ -422,47 +438,159 @@ async function reconcileCompatibilityAssets(appDataPath) {
       if (!/^[a-f0-9]{64}$/.test(hash)) {
         hash = computeBinaryHash(await fs.readFile(filePath));
       }
-      upsertAttachmentIndex(hash, filePath, now);
+      upsertAttachmentIndex(hash, filePath);
     }
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
 
-  try {
-    const avatar = path.join(userDataDir, "user_avatar.png");
-    upsertAvatarIndex(
-      "user_avatar",
-      "user",
-      avatar,
-      computeBinaryHash(await fs.readFile(avatar)),
-      now,
-    );
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
+  await refreshCompatibilityOwners(appDataPath, now, physicalOwners);
+}
 
+async function refreshCompatibilityOwners(
+  appDataPath,
+  updatedAt = Date.now(),
+  physicalOwners = null,
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not initialized");
+  const logger = getLogger();
   await scanEntities(
     path.join(appDataPath, "Agents"),
     "agent",
     db,
-    now,
+    updatedAt,
     appDataPath,
     logger,
+    physicalOwners,
   );
   await scanEntities(
     path.join(appDataPath, "AgentGroups"),
     "group",
     db,
+    updatedAt,
+    appDataPath,
+    logger,
+    physicalOwners,
+  );
+}
+
+async function reconcileAvatarFiles(appDataPath, updatedAt = Date.now()) {
+  const database = getDb();
+  if (!database) throw new Error("Avatar database not initialized");
+
+  const physicalAvatars = new Set();
+  let indexedCount = 0;
+  const indexFile = async (ownerType, ownerId, filePath) => {
+    const hash = computeBinaryHash(await fs.readFile(filePath));
+    upsertAvatarIndex(ownerId, ownerType, filePath, hash, updatedAt);
+    physicalAvatars.add(`${ownerType}\0${ownerId}`);
+    indexedCount += 1;
+  };
+
+  const userAvatarPath = path.join(appDataPath, "UserData", "user_avatar.png");
+  try {
+    await indexFile("user", "user_avatar", userAvatarPath);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  for (const [ownerType, rootName] of [
+    ["agent", "Agents"],
+    ["group", "AgentGroups"],
+  ]) {
+    const root = path.join(appDataPath, rootName);
+    let entries = [];
+    try {
+      entries = await fs.readdir(root, { withFileTypes: true });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || sanitizeId(entry.name) !== entry.name) continue;
+      for (const extension of AVATAR_EXTENSIONS) {
+        const avatarPath = path.join(root, entry.name, `avatar${extension}`);
+        try {
+          await indexFile(ownerType, entry.name, avatarPath);
+          break;
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
+    }
+  }
+
+  let tombstonedCount = 0;
+  const liveRows = database.prepare(
+    `SELECT owner_id, owner_type, file_path FROM avatar_index
+     WHERE deleted_at IS NULL`,
+  ).all();
+  for (const row of liveRows) {
+    if (physicalAvatars.has(`${row.owner_type}\0${row.owner_id}`)) continue;
+    tombstonedCount += softDeleteAvatarIndex(
+      row.owner_id,
+      row.owner_type,
+      updatedAt,
+      row.file_path,
+    ).changes;
+  }
+
+  return { indexedCount, tombstonedCount };
+}
+
+async function refreshLegacyCommitView(appDataPath, physicalOwners = null) {
+  const db = getDb();
+  if (!db) throw new Error("Database not initialized");
+
+  const logger = getLogger();
+  const now = Date.now();
+  const agentsDir = path.join(appDataPath, "Agents");
+  const groupsDir = path.join(appDataPath, "AgentGroups");
+  const userDataDir = path.join(appDataPath, "UserData");
+  const physical = physicalOwners || await scanPhysicalTopicTree(appDataPath);
+  for (const key of unhealthyLegacyOwners) {
+    if (!physical.has(key)) unhealthyLegacyOwners.delete(key);
+  }
+
+  const agentResult = await scanEntities(
+    agentsDir,
+    "agent",
+    db,
     now,
     appDataPath,
     logger,
+    physical,
   );
+  const groupResult = await scanEntities(
+    groupsDir,
+    "group",
+    db,
+    now,
+    appDataPath,
+    logger,
+    physical,
+  );
+  const historyResult = await scanHistory(userDataDir, db, logger, physical);
+  const deleted = await reconcileMissingPhysicalIndexes(appDataPath, physical);
+  refreshAllOwnerContentHashes(db);
+
+  return {
+    agentCount: agentResult.count,
+    groupCount: groupResult.count,
+    topicCount: agentResult.topicCount + groupResult.topicCount,
+    messageCount: historyResult.messageCount,
+    historyChangedCount: historyResult.changedCount,
+    historySkippedCount: historyResult.skippedCount,
+    legacyAttachmentWarningCount: historyResult.warningCount,
+    legacyAttachmentWarningTopicCount: historyResult.warningTopicCount,
+    deleted,
+  };
 }
 
 /**
  * 扫描本地文件并建立索引
  */
-async function reconcileLocalFiles(appDataPath) {
+async function reconcileLocalFiles(appDataPath, physicalOwners = null) {
   const db = getDb();
   if (!db) return;
 
@@ -470,25 +598,11 @@ async function reconcileLocalFiles(appDataPath) {
   logger.startPhase("reconcile", 0);
   logger.logInfo("reconcile", "正在执行轻量级索引扫描...");
 
-  // 物理清除任何残留的 default 脏话题索引以及冗余的 agent_topic / group_topic 类型记录
-  db.prepare("DELETE FROM entity_index WHERE id = 'default'").run();
-  db.prepare("DELETE FROM message_index WHERE topic_id = 'default'").run();
-  db.prepare("DELETE FROM entity_index WHERE type = 'agent_topic' OR type = 'group_topic'").run();
-
-  const agentsDir = path.join(appDataPath, "Agents");
-  const groupsDir = path.join(appDataPath, "AgentGroups");
   const userDataDir = path.join(appDataPath, "UserData");
   const attachmentsDir = path.join(userDataDir, "attachments");
   const now = Date.now();
 
   let attachmentCount = 0;
-  let agentCount = 0;
-  let groupCount = 0;
-  let topicCount = 0;
-  let messageCount = 0;
-  let historyChangedCount = 0;
-  let historySkippedCount = 0;
-  let legacyAttachmentWarningCount = 0;
 
   // 1. 扫描附件
   let attachmentFiles = [];
@@ -509,46 +623,23 @@ async function reconcileLocalFiles(appDataPath) {
       hash = computeBinaryHash(buffer);
     }
 
-    upsertAttachmentIndex(hash, filePath, now);
+    upsertAttachmentIndex(hash, filePath);
     attachmentCount++;
   }
 
-  // 2. 扫描系统级头像 (用户头像)
-  const userAvatarPath = path.join(userDataDir, "user_avatar.png");
-  try {
-    const buffer = await fs.readFile(userAvatarPath);
-    const hash = computeBinaryHash(buffer);
-    upsertAvatarIndex("user_avatar", "user", userAvatarPath, hash, now);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
+  // 2. 刷新 Owner/Topic/Message 提交视图；未变化 history 只做 stat。
+  const stats = await refreshLegacyCommitView(appDataPath, physicalOwners);
 
-  // 3. 扫描智能体与群组
-  const agentResult = await scanEntities(agentsDir, "agent", db, now, appDataPath, logger);
-  agentCount = agentResult.count;
-  topicCount += agentResult.topicCount;
+  // 3. Avatar 使用独立持久兼容视图，不混入 Owner/Topic 扫描。
+  await reconcileAvatarFiles(appDataPath, now);
 
-  const groupResult = await scanEntities(groupsDir, "group", db, now, appDataPath, logger);
-  groupCount = groupResult.count;
-  topicCount += groupResult.topicCount;
-
-  // 4. 增量扫描历史记录。未变化文件只做 stat，不读取和解析正文。
-  const historyResult = await scanHistory(userDataDir, db, logger);
-  messageCount = historyResult.messageCount;
-  historyChangedCount = historyResult.changedCount;
-  historySkippedCount = historyResult.skippedCount;
-  legacyAttachmentWarningCount = historyResult.warningCount;
-
-  // 5. 计算层级聚合指纹
-  const aggregatedCount = computeAggregatedHashes(db, logger);
-
-  if (legacyAttachmentWarningCount > 0) {
+  if (stats.legacyAttachmentWarningCount > 0) {
     logger.logOperation(
       "reconcile",
       "legacy_attachment_summary",
       "history",
       "warn",
-      `attachments=${legacyAttachmentWarningCount} topics=${historyResult.warningTopicCount}; 旧附件缺少有效或一致的 SHA-256，同步投影已忽略，原始 history.json 未修改`,
+      `attachments=${stats.legacyAttachmentWarningCount} topics=${stats.legacyAttachmentWarningTopicCount}; 旧附件缺少有效或一致的 SHA-256，同步投影已忽略，原始 history.json 未修改`,
     );
   }
   logger.logOperation(
@@ -556,7 +647,7 @@ async function reconcileLocalFiles(appDataPath) {
     "summary",
     "reconcile",
     "success",
-    `agents=${agentCount} groups=${groupCount} topics=${topicCount} changedHistories=${historyChangedCount} skippedHistories=${historySkippedCount} indexedMessages=${messageCount} attachments=${attachmentCount} aggregated=${aggregatedCount}`,
+    `agents=${stats.agentCount} groups=${stats.groupCount} topics=${stats.topicCount} changedHistories=${stats.historyChangedCount} skippedHistories=${stats.historySkippedCount} indexedMessages=${stats.messageCount} attachments=${attachmentCount} staleOwners=${stats.deleted.ownersDeleted} staleTopics=${stats.deleted.topicsDeleted} staleMessages=${stats.deleted.messagesDeleted}`,
   );
   logger.completePhase("reconcile");
   logger.logInfo("reconcile", "索引扫描完成。");
@@ -602,7 +693,15 @@ const SYSTEM_FOLDERS = [
 /**
  * 扫描实体目录
  */
-async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
+async function scanEntities(
+  baseDir,
+  type,
+  db,
+  now,
+  appDataPath,
+  logger,
+  physicalOwners = null,
+) {
   let count = 0;
   let topicCount = 0;
   let entries;
@@ -616,59 +715,110 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
     if (!entry.isDirectory()) continue;
     if (SYSTEM_FOLDERS.includes(entry.name)) continue;
 
+    const id = entry.name;
+    const ownerKey = `${type}\0${id}`;
+    const previousOwner = getOwnerState({ ownerType: type, ownerId: id });
+    if (previousOwner?.deleted_at != null) {
+      unhealthyLegacyOwners.delete(ownerKey);
+      continue;
+    }
+
     const entityDir = path.join(baseDir, entry.name);
     const configPath = path.join(entityDir, "config.json");
 
+    let config;
+    let hash;
+    let physicalTopics;
     try {
       const content = await fs.readFile(configPath, "utf-8");
-      const config = JSON.parse(content);
+      config = JSON.parse(content);
       if (!config || typeof config !== "object" || Array.isArray(config)) {
         throw new Error("Entity config root must be an object");
       }
-      const id = config.id || entry.name;
-
       // 索引主实体 (V2: 使用 DTO 提取以对齐默认值处理)
       const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
-      const hash = computeDtoHash(
+      hash = computeDtoHash(
         dto,
         type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
       );
-      upsertEntityIndex(id, type, configPath, hash, now);
-      count++;
-
-      const topicLen = Array.isArray(config.topics) ? config.topics.length : 0;
-      if (topicLen > 0) topicCount += topicLen;
-      const avatarExts = ["png", "jpg", "jpeg", "webp", "gif"];
-      for (const ext of avatarExts) {
-        const avatarPath = path.join(entityDir, `avatar.${ext}`);
+      const topicsDir = path.join(appDataPath, "UserData", id, "topics");
+      physicalTopics = physicalOwners
+        ?.get(`${type}\0${id}`)
+        ?.physicalTopics;
+      if (!physicalTopics) {
+        let topicEntries = [];
         try {
-          const buffer = await fs.readFile(avatarPath);
-          const avatarHash = computeBinaryHash(buffer);
-          upsertAvatarIndex(id, type, avatarPath, avatarHash, now);
-          break;
+          topicEntries = await fs.readdir(topicsDir, { withFileTypes: true });
         } catch (error) {
           if (error.code !== "ENOENT") throw error;
         }
+        physicalTopics = new Set(
+          topicEntries
+            .filter((topicEntry) => topicEntry.isDirectory())
+            .map((topicEntry) => topicEntry.name),
+        );
       }
+    } catch (error) {
+      // 只有当前 Owner 的物理来源不可读时才降级；数据库事务错误必须中止刷新。
+      unhealthyLegacyOwners.add(ownerKey);
+      logger.logOperation("reconcile", type, entry.name, "error", error.message);
+      logger.logInfo(
+        "owner_metadata",
+        `已跳过损坏的 ${type} Owner：${entry.name}`,
+        "warn",
+      );
+      continue;
+    }
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      let indexedTopics = 0;
+      upsertOwnerState({
+        ownerType: type,
+        ownerId: id,
+        configPath,
+        configHash: hash,
+        updatedAt: now,
+      });
 
       if (Array.isArray(config.topics)) {
         for (const topic of config.topics) {
-          if (topic.id === "default") continue;
+          if (
+            sanitizeId(topic?.id) !== topic?.id ||
+            !physicalTopics.has(topic.id)
+          ) {
+            continue;
+          }
+          const previous = getTopicState({
+            ownerType: type,
+            ownerId: id,
+            topicId: topic.id,
+          });
+          if (previous?.deleted_at != null) continue;
           const topicDto = extractTopicDTO(topic, id, type);
-          const topicHash = computeDtoHash(
+          const configHash = computeDtoHash(
             topicDto,
             type === "group"
               ? GROUP_TOPIC_SYNC_FIELDS
               : AGENT_TOPIC_SYNC_FIELDS,
           );
-          upsertEntityIndex(topic.id, "topic", configPath, topicHash, now);
+          upsertTopicState({
+            ownerType: type,
+            ownerId: id,
+            topicId: topic.id,
+            configHash,
+            updatedAt: now,
+          });
+          indexedTopics += 1;
         }
       }
+      db.exec("COMMIT");
+      unhealthyLegacyOwners.delete(ownerKey);
+      count += 1;
+      topicCount += indexedTopics;
     } catch (error) {
-      // 条目级降级：单个实体 config 损坏不应中止整个 reconcile；
-      // 该实体缺席索引后，其磁盘历史目录会在 scanHistory 按孤儿话题跳过
-      logger.logOperation("reconcile", type, entry.name, "error", error.message);
-      continue;
+      db.exec("ROLLBACK");
+      throw error;
     }
   }
   return { count, topicCount };
@@ -677,10 +827,10 @@ async function scanEntities(baseDir, type, db, now, appDataPath, logger) {
 /**
  * 增量扫描历史记录。
  *
- * history_source_state 保存最近一次成功摄取的 mtime + size。二者未变化时
- * 不再读取 history.json；变化文件只读取一次，并把快照传给摄取函数复用。
+ * history_source_state 先用 mtime + size 跳过未变文件；元数据变化后再用原始
+ * SHA-256 排除 touch/等价替换，只有真实 bytes 变化才进入 canonical 摄取。
  */
-async function scanHistory(userDataDir, db, logger) {
+async function scanHistory(userDataDir, db, logger, physicalOwners = null) {
   const result = {
     messageCount: 0,
     changedCount: 0,
@@ -688,62 +838,138 @@ async function scanHistory(userDataDir, db, logger) {
     warningCount: 0,
     warningTopicCount: 0,
   };
-  let visitedCount = 0;
-  let entries;
-  try {
-    entries = await fs.readdir(userDataDir, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === "ENOENT") return result;
-    throw error;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (SYSTEM_FOLDERS.includes(entry.name)) continue;
-
-    const topicsDir = path.join(userDataDir, entry.name, "topics");
-    let topicFolders;
+  const liveOwnerRows = db
+    .prepare(
+      `SELECT owner_type, owner_id FROM owners WHERE deleted_at IS NULL`,
+    )
+    .all();
+  const liveOwnerKeys = new Set(
+    liveOwnerRows.map((owner) => `${owner.owner_type}\0${owner.owner_id}`),
+  );
+  const sources = [];
+  if (physicalOwners) {
+    for (const owner of physicalOwners.values()) {
+      for (const topicId of owner.physicalTopics) {
+        sources.push({
+          ownerType: liveOwnerKeys.has(`${owner.ownerType}\0${owner.ownerId}`)
+            ? owner.ownerType
+            : null,
+          ownerId: owner.ownerId,
+          topicId,
+          historyPath: path.join(
+            userDataDir,
+            owner.ownerId,
+            "topics",
+            topicId,
+            "history.json",
+          ),
+        });
+      }
+    }
+  } else {
+    const ownerTypes = new Map();
+    for (const owner of liveOwnerRows) {
+      ownerTypes.set(owner.owner_id, owner.owner_type);
+    }
+    let entries;
     try {
-      topicFolders = await fs.readdir(topicsDir, { withFileTypes: true });
+      entries = await fs.readdir(userDataDir, { withFileTypes: true });
     } catch (error) {
-      if (error.code === "ENOENT") continue;
+      if (error.code === "ENOENT") return result;
       throw error;
     }
-    for (const topicEntry of topicFolders) {
-      if (!topicEntry.isDirectory() || topicEntry.name === "default") continue;
-      const topicId = topicEntry.name;
-      const historyPath = path.join(topicsDir, topicId, "history.json");
+    for (const entry of entries) {
+      if (!entry.isDirectory() || SYSTEM_FOLDERS.includes(entry.name)) continue;
+      const ownerId = entry.name;
+      const ownerType = ownerTypes.get(ownerId) || null;
+      const topicsDir = path.join(userDataDir, ownerId, "topics");
+      let topicFolders;
       try {
+        topicFolders = await fs.readdir(topicsDir, { withFileTypes: true });
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+      for (const topicEntry of topicFolders) {
+        if (!topicEntry.isDirectory()) continue;
+        sources.push({
+          ownerType,
+          ownerId,
+          topicId: topicEntry.name,
+          historyPath: path.join(topicsDir, topicEntry.name, "history.json"),
+        });
+      }
+    }
+  }
+  let visitedCount = 0;
+  for (const { ownerType, ownerId, topicId, historyPath } of sources) {
+      try {
+        if (!ownerType) {
+          throw new Error(`History owner ${ownerId} has no live Agent or Group index`);
+        }
         const sourceStats = await fs.stat(historyPath);
         if (!sourceStats.isFile()) continue;
         if (
-          isHistorySourceCurrent(
+          !isHistoryTopicUnhealthy({ ownerType, ownerId, topicId }) &&
+          isHistorySourceCurrent({
+            ownerType,
+            ownerId,
             topicId,
-            historyPath,
-            sourceStats.size,
-            sourceStats.mtimeMs,
-          )
+            filePath: historyPath,
+            fileSize: sourceStats.size,
+            mtimeMs: sourceStats.mtimeMs,
+          })
         ) {
           result.skippedCount += 1;
           continue;
         }
 
-        const { history } = await readHistoryStrict(historyPath);
+        const { history, sourceHash } = await readHistoryStrict(historyPath);
         const ingestResult = await ingestHistoryToDb(
           historyPath,
-          topicId,
+          { topicId, ownerType, ownerId },
           "reconcile",
-          { history, sourceStats },
+          { history, sourceStats, sourceHash },
         );
-        result.changedCount += 1;
+        result.changedCount += Number(ingestResult.changed);
+        result.skippedCount += Number(!ingestResult.changed);
         result.messageCount += ingestResult.messageCount;
         result.warningCount += ingestResult.warningCount;
         if (ingestResult.warningCount > 0) {
           result.warningTopicCount += 1;
         }
       } catch (error) {
+        if (error.code === "ENOENT") {
+          const previousSource = ownerType
+            ? getHistorySourceState({ ownerType, ownerId, topicId })
+            : null;
+          if (previousSource) {
+            const missingError = new Error(
+              `Previously indexed history source is missing: ${historyPath}`,
+            );
+            markHistoryTopicUnhealthy(
+              { topicId, ownerType, ownerId },
+              missingError,
+            );
+            logger.logOperation(
+              "reconcile",
+              "history",
+              topicId,
+              "error",
+              missingError.message,
+            );
+          }
+          result.skippedCount += 1;
+          continue;
+        }
         // 条目级降级：孤儿话题、损坏 JSON 等单话题故障不应中止整批。
         // 失败时不更新 history_source_state，保证后续启动仍会重试。
-        markHistoryTopicUnhealthy(topicId, error);
+        if (ownerType) {
+          markHistoryTopicUnhealthy(
+            { topicId, ownerType, ownerId },
+            error,
+          );
+        }
         logger.logOperation("reconcile", "history", topicId, "error", error.message);
       } finally {
         visitedCount += 1;
@@ -753,73 +979,8 @@ async function scanHistory(userDataDir, db, logger) {
           await new Promise((resolve) => setImmediate(resolve));
         }
       }
-    }
   }
   return result;
-}
-
-/**
- * 计算层级聚合指纹
- */
-function computeAggregatedHashes(db, logger) {
-  let updatedCount = 0;
-  const entities = db
-    .prepare(
-      "SELECT id, type, hash, aggregated_hash, file_path FROM entity_index WHERE deleted_at IS NULL",
-    )
-    .all();
-
-  // 1. 预加载所有 Topic 并按 Parent ID 分组，消除 N+1 查询
-  const topicMap = new Map(); // Map<parentId, Array<{hash, aggregated_hash}>>
-  entities
-    .filter((e) => e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic")
-    .forEach((t) => {
-      if (t.file_path) {
-        const parts = t.file_path.split(/[\\/]/);
-        const parentId = parts[parts.length - 2];
-        if (!topicMap.has(parentId)) topicMap.set(parentId, []);
-        topicMap.get(parentId).push(t);
-      }
-    });
-
-  // 2. 为 Agent 和 Group 计算聚合指纹 (V2: 聚合子话题的 config_hash 和 content_hash)
-  for (const e of entities) {
-    if (e.type === "agent" || e.type === "group") {
-      const topicsOfEntity = topicMap.get(e.id) || [];
-
-      const childHashes = [];
-      topicsOfEntity.forEach((t) => {
-        childHashes.push(t.hash);
-        childHashes.push(t.aggregated_hash || "");
-      });
-      const rootHash = computeAggregatedHash(childHashes);
-
-      if (rootHash !== e.aggregated_hash) {
-        db.prepare(
-          "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND type = ?",
-        ).run(rootHash, Date.now(), e.id, e.type);
-        updatedCount++;
-      }
-    }
-  }
-
-  // 3. 兜底：为所有缺失 aggregated_hash 的 topic 写入标准空聚合值 (V2: 对齐手机端 computeAggregatedHash([]))
-  const nullTopics = entities.filter(e => (e.type === "topic" || e.type === "agent_topic" || e.type === "group_topic") && (e.aggregated_hash === null || e.aggregated_hash === ""));
-  if (nullTopics.length > 0) {
-    const { computeAggregatedHash } = require("./core/hash");
-    const emptyContentHash = computeAggregatedHash([]);
-    
-    for (const t of nullTopics) {
-      if (t.aggregated_hash !== emptyContentHash) {
-        db.prepare(
-          "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-        ).run(emptyContentHash, Date.now(), t.id);
-        updatedCount++;
-      }
-    }
-  }
-
-  return updatedCount;
 }
 
 /**
@@ -836,6 +997,72 @@ function startFileWatcher(appDataPath) {
   logger.logInfo("watcher", `文件监听已启动: path=${appDataPath}`);
 
   watcher.on("all", async (event, filePath) => {
+    if (event === "unlinkDir") {
+      const relative = path.relative(appDataPath, filePath);
+      const parts = relative.split(path.sep).filter(Boolean);
+      const isOwnerDirectory =
+        ["Agents", "AgentGroups"].includes(parts[0]) && parts.length === 2;
+      const isTopicDirectory =
+        parts[0] === "UserData" &&
+        (
+          parts.length === 2 ||
+          (parts[2] === "topics" && [3, 4].includes(parts.length))
+        );
+      if (
+        relative &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative) &&
+        (isOwnerDirectory || isTopicDirectory)
+      ) {
+        try {
+          if (
+            parts[0] === "UserData" &&
+            parts[2] === "topics" &&
+            parts.length === 4 &&
+            sanitizeId(parts[1]) === parts[1] &&
+            sanitizeId(parts[3]) === parts[3]
+          ) {
+            const ownerId = parts[1];
+            const topicId = parts[3];
+            const owner = getDb()
+              .prepare(
+                `SELECT owner_type FROM owners
+                 WHERE owner_id = ? AND deleted_at IS NULL`,
+              )
+              .get(ownerId);
+            if (
+              owner &&
+              isWriteLocked({
+                id: topicId,
+                type: "topic",
+                ownerType: owner.owner_type,
+                ownerId,
+              })
+            ) {
+              return;
+            }
+          }
+          const deleted = await reconcileMissingPhysicalIndexes(appDataPath);
+          logger.logOperation(
+            "watcher",
+            "unlinkDir",
+            relative,
+            "success",
+            `owners=${deleted.ownersDeleted} topics=${deleted.topicsDeleted} messages=${deleted.messagesDeleted}`,
+          );
+        } catch (error) {
+          logger.logOperation(
+            "watcher",
+            "unlinkDir",
+            relative,
+            "error",
+            error.message,
+          );
+        }
+      }
+      return;
+    }
+
     const fileName = path.basename(filePath);
     const isHistory = fileName === "history.json";
     const isConfig = fileName === "config.json";
@@ -852,19 +1079,99 @@ function startFileWatcher(appDataPath) {
       ? getTopicIdFromPath(filePath)
       : path.basename(path.dirname(filePath));
     id = sanitizeId(id);
-    if (!id || isWriteLocked(id)) return;
-
-    logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
+    if (!id) return;
 
     try {
       if (isConfig) {
-        // 只有 Agents 或 AgentGroups 目录下的 config.json 才作为实体索引
+        // 只有 Agents 或 AgentGroups 目录下的 config.json 才作为 Owner 提交状态
         if (isAgentPath || isGroupPath) {
           const type = isAgentPath ? "agent" : "group";
-          await ingestConfigToDb(filePath, type);
+          if (isWriteLocked({
+            id,
+            type,
+            ownerType: type,
+            ownerId: id,
+          })) {
+            return;
+          }
+          logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
+          const newTopics = await ingestConfigToDb(filePath, type, appDataPath);
+          if (newTopics.length > 0) {
+            for (const topic of newTopics) {
+              const release = await acquireLock(topic.historyPath);
+              try {
+                await ingestHistoryToDb(
+                  topic.historyPath,
+                  {
+                    topicId: topic.topicId,
+                    ownerType: topic.ownerType,
+                    ownerId: topic.ownerId,
+                  },
+                );
+              } catch {
+                // ingestHistoryToDb 已记录并标记精确 Topic 的错误；继续处理同批其他 Topic。
+              } finally {
+                release();
+              }
+            }
+          }
         }
       } else if (isHistory) {
-        await ingestHistoryToDb(filePath, id);
+        const ownerId = sanitizeId(getHistoryOwnerIdFromPath(filePath));
+        const owner = ownerId
+          ? getDb()
+              .prepare(
+                `SELECT owner_type FROM owners
+                 WHERE owner_id = ? AND deleted_at IS NULL`,
+              )
+              .get(ownerId)
+          : null;
+        if (!owner) {
+          throw new Error(`History owner ${ownerId || "unknown"} is missing`);
+        }
+        const ownerType = owner.owner_type;
+        if (isWriteLocked({
+          id,
+          type: "topic",
+          ownerType,
+          ownerId,
+        })) {
+          return;
+        }
+        let topic = getTopicState({
+          ownerType,
+          ownerId,
+          topicId: id,
+        });
+        if (!topic || topic.deleted_at !== null) {
+          const ownerRoot = ownerType === "group" ? "AgentGroups" : "Agents";
+          await ingestConfigToDb(
+            path.join(appDataPath, ownerRoot, ownerId, "config.json"),
+            ownerType,
+            appDataPath,
+          );
+          topic = getTopicState({
+            ownerType,
+            ownerId,
+            topicId: id,
+          });
+        }
+        if (!topic || topic.deleted_at !== null) {
+          throw new Error(
+            `History topic ${ownerType}/${ownerId}/${id} has no live config index`,
+          );
+        }
+        logger.logOperation("watcher", "file", id, "info", `${event}: ${filePath}`);
+        const release = await acquireLock(filePath);
+        try {
+          await ingestHistoryToDb(filePath, {
+            topicId: id,
+            ownerType,
+            ownerId,
+          });
+        } finally {
+          release();
+        }
       }
     } catch (e) {
       logger.logOperation("watcher", "file", id, "error", `${event} failed: ${e.message}`);
@@ -884,52 +1191,188 @@ function getTopicIdFromPath(filePath) {
   return null;
 }
 
+function getHistoryOwnerIdFromPath(filePath) {
+  const parts = filePath.split(path.sep);
+  const topicIdx = parts.lastIndexOf("topics");
+  if (topicIdx > 0 && parts[topicIdx - 1]) {
+    return parts[topicIdx - 1];
+  }
+  return null;
+}
+
 /**
  * 摄取配置文件到索引
  */
-async function ingestConfigToDb(configPath, type) {
+async function ingestConfigToDb(configPath, type, appDataPath) {
+  const release = await acquireLock(configPath);
+  try {
+    return await ingestConfigToDbUnlocked(configPath, type, appDataPath);
+  } finally {
+    release();
+  }
+}
+
+async function ingestConfigToDbUnlocked(configPath, type, appDataPath) {
   const db = getDb();
-  if (!db) return;
+  if (!db) return [];
 
   const logger = getLogger();
-
+  const ownerId = path.basename(path.dirname(configPath));
+  const ownerKey = `${type}\0${ownerId}`;
   try {
     const content = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(content);
     const now = Date.now();
-    const id = config.id || path.basename(path.dirname(configPath));
+    const id = path.basename(path.dirname(configPath));
+    const topicsDir = path.join(appDataPath, "UserData", ownerId, "topics");
+    let topicEntries = [];
+    try {
+      topicEntries = await fs.readdir(topicsDir, { withFileTypes: true });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const physicalTopics = new Set(
+      topicEntries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name),
+    );
 
-    // 索引主实体
-    const hash = computeDtoHash(
-      config,
+    const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
+    const ownerConfigHash = computeDtoHash(
+      dto,
       type === "agent" ? AGENT_SYNC_FIELDS : GROUP_SYNC_FIELDS,
     );
-    upsertEntityIndex(id, type, configPath, hash, now);
-
-    // 索引子话题
-    let topicLen = 0;
+    const topicUpdates = [];
     if (Array.isArray(config.topics)) {
-      topicLen = config.topics.length;
       for (const topic of config.topics) {
-        if (topic.id === "default") continue;
-        const topicHash = computeDtoHash(
-          topic,
+        if (
+          sanitizeId(topic?.id) !== topic?.id ||
+          !physicalTopics.has(topic.id)
+        ) {
+          continue;
+        }
+        const topicDto = extractTopicDTO(topic, id, type);
+        const configHash = computeDtoHash(
+          topicDto,
           type === "group" ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
         );
-        upsertEntityIndex(topic.id, "topic", configPath, topicHash, now);
+        topicUpdates.push({ topicId: topic.id, configHash });
       }
     }
 
-    // V2: 触发层级冒泡
-    computeAggregatedHashes(db, logger);
+    const applyConfigIndex = db.transaction(() => {
+      const previousOwner = getOwnerState({ ownerType: type, ownerId });
+      if (previousOwner?.deleted_at != null) {
+        return { newTopicIds: [], deletedTopicIds: [] };
+      }
+      if (
+        !previousOwner ||
+        previousOwner.config_path !== configPath ||
+        previousOwner.config_hash !== ownerConfigHash
+      ) {
+        upsertOwnerState({
+          ownerType: type,
+          ownerId: id,
+          configPath,
+          configHash: ownerConfigHash,
+          updatedAt: now,
+        });
+      }
 
-    logger.logOperation("watcher", type, id, "success", `hash updated, topics=${topicLen}`);
+      const existingRows = db
+        .prepare(
+          `SELECT topic_id, config_hash, deleted_at FROM topics
+           WHERE owner_type = ? AND owner_id = ?`,
+        )
+        .all(type, ownerId);
+      const existingById = new Map(
+        existingRows.map((row) => [row.topic_id, row]),
+      );
+      const newTopicIds = [];
+      let ownerContentDirty = !previousOwner;
+      for (const topic of topicUpdates) {
+        const previous = existingById.get(topic.topicId);
+        if (previous?.deleted_at != null) continue;
+        if (!previous || previous.config_hash !== topic.configHash) {
+          upsertTopicState({
+            ownerType: type,
+            ownerId: id,
+            topicId: topic.topicId,
+            configHash: topic.configHash,
+            updatedAt: now,
+          });
+          ownerContentDirty = true;
+        }
+        if (!previous) newTopicIds.push(topic.topicId);
+      }
+
+      const deleteTopic = db.prepare(
+        `UPDATE topics SET deleted_at = ?
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+           AND deleted_at IS NULL`,
+      );
+      const deleteMessages = db.prepare(
+        `UPDATE messages SET deleted_at = ?
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+           AND deleted_at IS NULL`,
+      );
+      const deleteSource = db.prepare(
+        `DELETE FROM history_source_state
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+      );
+      const deletedTopicIds = [];
+      for (const row of existingRows) {
+        if (row.deleted_at !== null || physicalTopics.has(row.topic_id)) continue;
+        deleteTopic.run(now, type, ownerId, row.topic_id);
+        deleteMessages.run(now, type, ownerId, row.topic_id);
+        deleteSource.run(type, ownerId, row.topic_id);
+        deletedTopicIds.push(row.topic_id);
+        ownerContentDirty = true;
+      }
+      if (ownerContentDirty) {
+        refreshOwnerContentHash({ ownerType: type, ownerId }, db);
+      }
+      return { newTopicIds, deletedTopicIds };
+    });
+    const { newTopicIds, deletedTopicIds } = applyConfigIndex();
+    for (const topicId of deletedTopicIds) {
+      clearHistoryTopicUnhealthy({ topicId, ownerType: type, ownerId });
+    }
+
+    const newTopics = [];
+    for (const topicId of newTopicIds) {
+      const historyPath = path.join(topicsDir, topicId, "history.json");
+      try {
+        if ((await fs.stat(historyPath)).isFile()) {
+          newTopics.push({ topicId, ownerType: type, ownerId: id, historyPath });
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+
+    logger.logOperation(
+      "watcher",
+      type,
+      id,
+      "success",
+      `hash updated, topics=${topicUpdates.length}`,
+    );
+    unhealthyLegacyOwners.delete(ownerKey);
+    return newTopics;
   } catch (e) {
+    unhealthyLegacyOwners.add(ownerKey);
     logger.logOperation("watcher", type, configPath, "error", e.message);
+    logger.logInfo(
+      "owner_metadata",
+      `已跳过损坏的 ${type} Owner：${ownerId}`,
+      "warn",
+    );
+    return [];
   }
 }
 
 module.exports = {
   registerRoutes,
-  computeAggregatedHashes,
+  ingestConfigToDb,
 };

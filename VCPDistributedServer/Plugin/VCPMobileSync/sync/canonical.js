@@ -1,9 +1,7 @@
 "use strict";
 
 const { computeMessageFingerprint } = require("../core/hash");
-const { parseSyncError } = require("../error-contract");
 
-const WIRE_PROTOCOL_VERSION = "1.2";
 const MAX_WARNING_SAMPLES = 8;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_SQLITE_INTEGER = BigInt("9223372036854775807");
@@ -184,7 +182,7 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
   const role = requireNonEmptyString(value.role, `Message ${id} role`);
   // topicId 是来源元数据而非消息身份：frame topic 才是双端存储权威，消息指纹
   // 也不含 topicId。话题分支会合法地让消息携带旧话题的 topicId（1.0 时代从未
-  // 校验过），因此 Wire 1.1 硬切引入的"topicId 必须等于 frame topic"硬校验
+  // 校验过），因此早期引入的"topicId 必须等于 frame topic"硬校验
   // 降级为 frame 权威归一化：不一致（或非字符串）时重写为 frame topic。
   // 注意：重写计数不得混入 warnings（附件告警在 push 路径是硬失败门禁）。
   if (
@@ -227,6 +225,14 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
     value.timestamp,
     `Message ${id} timestamp`,
   );
+  if (
+    value.updatedAt !== undefined &&
+    value.updatedAt !== null &&
+    Number.isSafeInteger(value.updatedAt) &&
+    value.updatedAt >= 0
+  ) {
+    message.updatedAt = value.updatedAt;
+  }
 
   for (const [key, type] of [
     ["isThinking", "boolean"],
@@ -242,7 +248,7 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
     message[key] = fieldValue ?? null;
   }
 
-  for (const key of ["finishReason", "avatarColor"]) {
+  for (const key of ["finishReason"]) {
     const fieldValue = value[key];
     if (fieldValue !== undefined && fieldValue !== null) {
       if (typeof fieldValue !== "string") {
@@ -303,23 +309,6 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
       ),
     };
   }
-  if (value._error !== undefined && value._error !== null) {
-    if (
-      value.messages !== undefined &&
-      (!Array.isArray(value.messages) || value.messages.length !== 0)
-    ) {
-      throw new SyncProtocolError(
-        `NDJSON error frame for ${topicId} must not contain live messages`,
-      );
-    }
-    const error = parseSyncError(value._error);
-    return {
-      frame: { topicId, ...ownerIdentity, messages: [], _error: error },
-      warningCount: 0,
-      warningSamples: [],
-      contentHashes: [],
-    };
-  }
   if (!Array.isArray(value.messages)) {
     throw new SyncProtocolError(`NDJSON frame for ${topicId} requires messages array`);
   }
@@ -377,7 +366,6 @@ function canonicalizeTopicFrame(value, { includeContentHash = true } = {}) {
     warningSamples: [...warnings.samples],
     topicIdRewrites: topicIdRewrites.count,
     topicIdRewriteSamples: [...topicIdRewrites.samples],
-    contentHashes: messages.map(messageContentHash),
   };
 }
 
@@ -392,7 +380,6 @@ module.exports = {
   BoundedWarnings,
   MAX_WARNING_SAMPLES,
   SyncProtocolError,
-  WIRE_PROTOCOL_VERSION,
   canonicalSha256,
   canonicalizeAttachment,
   canonicalizeHistory,
