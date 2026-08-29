@@ -1,11 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use active_win_pos_rs::get_active_window;
 use arboard::Clipboard;
-use lazy_static::lazy_static;
 use log::info;
 use serde::{Deserialize, Serialize};
 
@@ -30,11 +29,6 @@ const MIN_DISTANCE: i32 = 8;
 const SCREENSHOT_SUSPEND_MS: u64 = 3000;
 const CLIPBOARD_CONFLICT_SUSPEND_MS: u64 = 1000;
 const CLIPBOARD_CHECK_INTERVAL_MS: u64 = 500;
-
-// 问题2修复：存储本程序最近写入剪贴板的内容，用于区分本程序写入和外部写入
-lazy_static! {
-    static ref OWN_CLIPBOARD_CONTENT: RwLock<Option<String>> = RwLock::new(None);
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectionEvent {
@@ -600,24 +594,6 @@ impl SelectionListener {
                 }
                 
                 if let Some(current_clipboard) = read_clipboard_text_snapshot() {
-                    // 问题2修复：原子性地检测本程序写入并清除标记
-                    let is_own_write = {
-                        if let Ok(mut content) = OWN_CLIPBOARD_CONTENT.write() {
-                            if content.as_ref().map(|c| c == &current_clipboard).unwrap_or(false) {
-                                *content = None;  // 消费后清除
-                                true
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    };
-
-                    if is_own_write {
-                        continue;
-                    }
-
                     let mut ctx = lock_or_recover(&context, "context");
                     let rules = lock_or_recover(&guard_rules, "guard_rules");
                     
@@ -916,43 +892,21 @@ fn lock_result_or_recover<T>(result: std::sync::LockResult<T>, name: &str) -> T 
     }
 }
 
+fn should_read_clipboard_fallback(keyboard_triggered: bool) -> bool {
+    keyboard_triggered
+}
+
 #[cfg(target_os = "windows")]
-fn capture_selected_text_fallback(_keyboard_triggered: bool) -> Option<String> {
-    use winapi::um::winuser::{SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP};
-    use winapi::um::winuser::GetClipboardSequenceNumber;
-    use winapi::um::winuser::VK_CONTROL;
-
-    const VK_C: u16 = 0x43;
-
-    let previous_clipboard = read_clipboard_text_snapshot();
-
-    // 问题1修复：使用 SendInput 替代废弃的 keybd_event
-    unsafe {
-        let mut inputs: [INPUT; 4] = std::mem::zeroed();
-
-        // Ctrl down
-        inputs[0].type_ = INPUT_KEYBOARD;
-        inputs[0].u.ki_mut().wVk = VK_CONTROL as u16;
-
-        // C down
-        inputs[1].type_ = INPUT_KEYBOARD;
-        inputs[1].u.ki_mut().wVk = VK_C;
-
-        // C up
-        inputs[2].type_ = INPUT_KEYBOARD;
-        inputs[2].u.ki_mut().wVk = VK_C;
-        inputs[2].u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
-
-        // Ctrl up
-        inputs[3].type_ = INPUT_KEYBOARD;
-        inputs[3].u.ki_mut().wVk = VK_CONTROL as u16;
-        inputs[3].u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
-
-        SendInput(4, inputs.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32);
+fn capture_selected_text_fallback(keyboard_triggered: bool) -> Option<String> {
+    // 鼠标拖选不得向前台窗口注入 Ctrl+C。终端会将其解释为 ETX，
+    // 从而中断前台命令或终止启动脚本。鼠标路径仅允许使用 UIA。
+    if !should_read_clipboard_fallback(keyboard_triggered) {
+        return None;
     }
 
-    let mut selected: Option<String> = None;
-    let mut seq_at_capture: Option<u32> = None;
+    // 对真实用户 Ctrl+C，只等待目标程序自然产生的剪贴板变化：
+    // 不再合成按键，也不覆盖用户刚复制的内容。
+    let previous_clipboard = read_clipboard_text_snapshot();
 
     for _ in 0..8 {
         thread::sleep(Duration::from_millis(40));
@@ -960,36 +914,13 @@ fn capture_selected_text_fallback(_keyboard_triggered: bool) -> Option<String> {
         let current = read_clipboard_text_snapshot();
 
         match (&previous_clipboard, &current) {
-            (Some(prev), Some(curr)) if curr != prev => {
-                selected = Some(curr.clone());
-                seq_at_capture = Some(unsafe { GetClipboardSequenceNumber() });
-                break;
-            }
-            (None, Some(curr)) => {
-                selected = Some(curr.clone());
-                seq_at_capture = Some(unsafe { GetClipboardSequenceNumber() });
-                break;
-            }
+            (Some(prev), Some(curr)) if curr != prev => return Some(curr.clone()),
+            (None, Some(curr)) => return Some(curr.clone()),
             _ => {}
         }
     }
 
-    // 问题1修复：使用序列号判断是否安全恢复
-    if let (Some(previous), Some(seq_captured)) = (&previous_clipboard, seq_at_capture) {
-        let seq_now = unsafe { GetClipboardSequenceNumber() };
-        if seq_now == seq_captured {
-            // 从捕获到此刻无外部写入，安全恢复
-            write_clipboard_text_snapshot_with_record(previous);
-        }
-        // 否则外部已修改，放弃恢复
-    } else {
-        // 未捕获到内容，无条件恢复
-        if let Some(previous) = previous_clipboard {
-            write_clipboard_text_snapshot_with_record(&previous);
-        }
-    }
-
-    selected
+    None
 }
 
 #[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
@@ -1024,17 +955,6 @@ fn write_clipboard_text_snapshot(value: &str) {
     }
 }
 
-// 问题2修复：写入剪贴板时记录内容，用于区分本程序写入和外部写入
-fn write_clipboard_text_snapshot_with_record(value: &str) {
-    if let Ok(mut clipboard) = Clipboard::new() {
-        if clipboard.set_text(value.to_string()).is_ok() {
-            if let Ok(mut content) = OWN_CLIPBOARD_CONTENT.write() {
-                *content = Some(value.to_string());
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1065,5 +985,11 @@ mod tests {
         rules.whitelist.push("visual studio code".to_string());
 
         assert!(!should_skip_app("Visual Studio Code", "", &rules));
+    }
+
+    #[test]
+    fn test_mouse_selection_never_uses_clipboard_fallback() {
+        assert!(!should_read_clipboard_fallback(false));
+        assert!(should_read_clipboard_fallback(true));
     }
 }

@@ -1189,10 +1189,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? window.marked.parse.bind(window.marked)
                 : (window.marked.marked && typeof window.marked.marked === 'function' ? window.marked.marked.bind(window.marked) : null);
             if (parser) {
-                div.innerHTML = parser(text);
+                // 工具结果经常是带单换行的纯文本。启用 breaks，避免 Markdown
+                // 将段落内的 \n 折叠成空格，同时继续支持表格、代码块等 GFM 语法。
+                div.innerHTML = parser(text, { breaks: true, gfm: true });
                 return div;
             }
         }
+        // marked 不可用时也应忠实保留工具返回文本中的换行。
+        div.style.whiteSpace = 'pre-wrap';
         div.textContent = text;
         return div;
     }
