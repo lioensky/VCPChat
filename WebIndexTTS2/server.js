@@ -1,780 +1,369 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const { URL } = require('url');
+import 'dotenv/config';
+import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const PORT = Number(process.env.PORT || 3012);
-const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 30000);
-const UPLOAD_FETCH_TIMEOUT_MS = Number(process.env.UPLOAD_FETCH_TIMEOUT_MS || 300000);
-const ROOT_DIR = __dirname;
-const CONFIG_PATH = path.join(ROOT_DIR, 'config.env');
-const REFERENCE_ROOT_DIR = path.join(ROOT_DIR, 'references');
-const OUTPUT_DIR = path.join(ROOT_DIR, 'tmp-output');
-const APP_DATA_DIR = path.join(ROOT_DIR, '..', 'AppData');
-const SETTINGS_JSON_PATH = path.join(APP_DATA_DIR, 'settings.json');
-const TRUTH_JSON_PATH = path.join(APP_DATA_DIR, 'webindexmodel.json');
-const MODEL_NAME = 'IndexTeam/IndexTTS-2';
-const DEFAULT_VOICE = 'IndexTeam/IndexTTS-2:alex';
-const DEFAULT_VOICES = [
-  'IndexTeam/IndexTTS-2:alex',
-  'IndexTeam/IndexTTS-2:anna',
-  'IndexTeam/IndexTTS-2:bella',
-  'IndexTeam/IndexTTS-2:benjamin',
-  'IndexTeam/IndexTTS-2:charles',
-  'IndexTeam/IndexTTS-2:claire',
-  'IndexTeam/IndexTTS-2:david',
-  'IndexTeam/IndexTTS-2:diana'
-];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-fs.mkdirSync(APP_DATA_DIR, { recursive: true });
-fs.mkdirSync(REFERENCE_ROOT_DIR, { recursive: true });
+const app = express();
 
-function readEnvFile(filePath) {
-  const env = {};
-  if (!fs.existsSync(filePath)) {
-    return env;
-  }
-  const content = fs.readFileSync(filePath, 'utf8');
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-    const index = line.indexOf('=');
-    if (index === -1) {
-      continue;
-    }
-    const key = line.slice(0, index).trim();
-    const value = line.slice(index + 1).trim();
-    env[key] = value;
-  }
-  return env;
+const PORT = Number(process.env.PORT || 3460);
+const API_KEY = process.env.MIMO_API_KEY || '';
+const CONFIGURED_API_URL = process.env.MIMO_API_URL || 'https://www.dmxapi.cn/v1/chat/completions';
+const API_URL = /\/chat\/completions\/?$/.test(CONFIGURED_API_URL)
+  ? CONFIGURED_API_URL.replace(/\/$/, '')
+  : `${CONFIGURED_API_URL.replace(/\/$/, '')}/chat/completions`;
+const CONFIGURED_MODEL = process.env.MIMO_MODEL || 'mimo-v2.5-tts';
+const BASE_MODEL = CONFIGURED_MODEL.replace(/-(?:voicedesign|voiceclone)$/, '');
+const SAMPLE_RATE = 24000;
+const MODELS = Object.freeze({
+  preset: BASE_MODEL,
+  voicedesign: `${BASE_MODEL}-voicedesign`,
+  voiceclone: `${BASE_MODEL}-voiceclone`
+});
+const ALLOWED_VOICES = new Set([
+  'mimo_default',
+  '冰糖',
+  '茉莉',
+  '苏打',
+  '白桦',
+  'Mia',
+  'Chloe',
+  'Milo',
+  'Dean'
+]);
+
+app.use(express.json({ limit: '15mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function createHttpError(message, status = 500, details) {
+  const error = new Error(message);
+  error.status = status;
+  error.details = details;
+  return error;
 }
 
-function readMainSettings() {
-  if (!fs.existsSync(SETTINGS_JSON_PATH)) {
-    return {};
+function normalizeContent({ style, text }) {
+  const safeStyle = String(style || '').trim();
+  const safeText = String(text || '').trim();
+
+  if (!safeText) {
+    throw createHttpError('待合成文本不能为空。', 400);
   }
+
+  if (safeStyle.includes('(') || safeStyle.includes(')') || safeStyle.includes('<') || safeStyle.includes('>')) {
+    throw createHttpError('风格名称中不能包含括号或尖括号，请只填写风格文字，例如：开心 变快。', 400);
+  }
+
+  if (safeStyle && /唱歌|sing(?:ing)?/i.test(safeStyle) && !/^(唱歌|sing|singing)$/i.test(safeStyle)) {
+    throw createHttpError('唱歌风格必须单独使用，不能与其他风格混用。', 400);
+  }
+
+  return `${safeStyle ? `(${safeStyle})` : ''}${safeText}`;
+}
+
+function buildRequest({ mode, voice, style, text, userPrompt, optimizeTextPreview, referenceAudio }) {
+  if (!Object.hasOwn(MODELS, mode)) {
+    throw createHttpError(`不支持的合成模式：${mode}。`, 400);
+  }
+
+  const content = normalizeContent({ style, text });
+  const safeUserPrompt = String(userPrompt || '').trim();
+  const messages = [];
+  const audio = { format: 'pcm16' };
+
+  if (mode === 'preset') {
+    if (!ALLOWED_VOICES.has(voice)) {
+      throw createHttpError(`不支持的 MiMo 2.5 预置音色：${voice}。`, 400);
+    }
+
+    if (safeUserPrompt) messages.push({ role: 'user', content: safeUserPrompt });
+    audio.voice = voice;
+  } else if (mode === 'voicedesign') {
+    if (!safeUserPrompt) {
+      throw createHttpError('音色设计模式必须填写自然语言音色描述。', 400);
+    }
+
+    messages.push({ role: 'user', content: safeUserPrompt });
+    audio.optimize_text_preview = Boolean(optimizeTextPreview);
+  } else {
+    if (!/^data:audio\/(?:wav|mpeg);base64,[A-Za-z0-9+/=\s]+$/.test(String(referenceAudio || ''))) {
+      throw createHttpError('音色克隆模式需要 wav 或 mp3 格式的参考音频。', 400);
+    }
+
+    if (Buffer.byteLength(referenceAudio, 'utf8') > 10 * 1024 * 1024) {
+      throw createHttpError('参考音频 Base64 编码后不能超过 10 MB。', 413);
+    }
+
+    messages.push({ role: 'user', content: safeUserPrompt });
+    audio.voice = referenceAudio;
+  }
+
+  messages.push({ role: 'assistant', content });
+
+  return {
+    payload: {
+      model: MODELS[mode],
+      messages,
+      audio,
+      stream: true
+    },
+    preview: {
+      mode,
+      model: MODELS[mode],
+      voice: mode === 'preset' ? voice : undefined,
+      referenceAudio: mode === 'voiceclone' ? '已提供（内容已隐藏）' : undefined,
+      optimizeTextPreview: mode === 'voicedesign' ? Boolean(optimizeTextPreview) : undefined,
+      content,
+      userPrompt: safeUserPrompt
+    }
+  };
+}
+
+function sendSse(res, event) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+async function readUpstreamError(upstream) {
+  const raw = await upstream.text();
+  let details = raw;
 
   try {
-    return JSON.parse(fs.readFileSync(SETTINGS_JSON_PATH, 'utf8'));
-  } catch (error) {
-    console.warn(`[WebIndexTTS2] Failed to read main settings from ${SETTINGS_JSON_PATH}: ${error.message}`);
-    return {};
+    details = raw ? JSON.parse(raw) : {};
+  } catch {
+    // 保留上游的原始文本，便于排查网关错误。
   }
+
+  const message = details?.error?.message
+    || details?.message
+    || `MiMo API 请求失败，HTTP ${upstream.status}。`;
+
+  return createHttpError(message, upstream.status, details);
 }
 
-function getEnvConfig() {
-  const env = readEnvFile(CONFIG_PATH);
-  const mainSettings = readMainSettings();
-  // 兼容旧版 settings.json：旧版中 voiceLocalSettings 存的是网络供应商配置（命名反了）。
-  // 新版已修正：voiceNetworkSettings 存网络供应商配置。
-  // 通过检测字段名自动适配新旧两种格式。
-  const rawNetwork = mainSettings.voiceNetworkSettings || {};
-  const rawLocal = mainSettings.voiceLocalSettings || {};
-  const networkModeSettings = rawNetwork.providerUrl !== undefined ? rawNetwork
-    : (rawLocal.providerUrl !== undefined ? rawLocal : rawNetwork);
-
-  const resolvedUrl = (networkModeSettings.providerUrl || env.siliconflow_url || 'https://api.siliconflow.cn').replace(/\/+$/, '');
-  const resolvedKey = networkModeSettings.providerKey || env.siliconflow_key || '';
-
-  return {
-    siliconflowUrl: resolvedUrl,
-    siliconflowKey: resolvedKey,
-    source: networkModeSettings.providerUrl || networkModeSettings.providerKey ? 'AppData/settings.json' : 'config.env'
-  };
-}
-
-function json(res, statusCode, payload) {
-  const body = JSON.stringify(payload, null, 2);
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body)
+app.get('/api/config', (req, res) => {
+  res.json({
+    model: BASE_MODEL,
+    models: MODELS,
+    modes: [
+      { id: 'preset', label: '预置音色' },
+      { id: 'voicedesign', label: '自然语言设计音色' },
+      { id: 'voiceclone', label: '参考音频克隆音色' }
+    ],
+    apiUrl: API_URL,
+    defaultPort: PORT,
+    hasApiKey: Boolean(API_KEY),
+    streaming: true,
+    sampleRate: SAMPLE_RATE,
+    voices: [
+      { id: 'mimo_default', label: 'mimo_default · 默认音色' },
+      { id: '冰糖', label: '冰糖 · 中文女声' },
+      { id: '茉莉', label: '茉莉 · 中文女声' },
+      { id: '苏打', label: '苏打 · 中文男声' },
+      { id: '白桦', label: '白桦 · 中文男声' },
+      { id: 'Mia', label: 'Mia · 英文女声' },
+      { id: 'Chloe', label: 'Chloe · 英文女声' },
+      { id: 'Milo', label: 'Milo · 英文男声' },
+      { id: 'Dean', label: 'Dean · 英文男声' }
+    ],
+    stylePresets: [
+      '开心',
+      '悲伤',
+      '愤怒',
+      '温柔',
+      '高冷',
+      '活泼',
+      '严肃',
+      '变快',
+      '变慢',
+      '东北话',
+      '四川话',
+      '粤语',
+      '夹子音',
+      '御姐音',
+      '大叔音',
+      '孙悟空',
+      '林黛玉',
+      '唱歌'
+    ],
+    inlineTagExamples: [
+      '[吸气]',
+      '[深呼吸]',
+      '[叹气]',
+      '[紧张]',
+      '[激动]',
+      '[疲惫]',
+      '[颤抖]',
+      '[气声]',
+      '[笑]',
+      '[轻笑]',
+      '[抽泣]',
+      '[哽咽]'
+    ]
   });
-  res.end(body);
-}
+});
 
-function text(res, statusCode, body, contentType = 'text/plain; charset=utf-8') {
-  res.writeHead(statusCode, {
-    'Content-Type': contentType,
-    'Content-Length': Buffer.byteLength(body)
-  });
-  res.end(body);
-}
-
-function serveFile(res, filePath, contentType) {
-  const data = fs.readFileSync(filePath);
-  res.writeHead(200, {
-    'Content-Type': contentType,
-    'Content-Length': data.length
-  });
-  res.end(data);
-}
-
-function safeReadText(filePath) {
-  return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8').trim() : '';
-}
-
-function normalizeModelFolderName(modelId) {
-  return modelId.replace(/[\\/:*?"<>|]+/g, '_');
-}
-
-function listReferenceSourceDirectories() {
-  if (!fs.existsSync(REFERENCE_ROOT_DIR)) {
-    return [];
-  }
-
-  return fs.readdirSync(REFERENCE_ROOT_DIR)
-    .map(name => ({
-      name,
-      fullPath: path.join(REFERENCE_ROOT_DIR, name)
-    }))
-    .filter(item => fs.existsSync(item.fullPath) && fs.statSync(item.fullPath).isDirectory())
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-}
-
-function collectSamplesFromDirectory(dirPath, folderName) {
-  const results = [];
-  if (!fs.existsSync(dirPath)) {
-    return results;
-  }
-
-  const files = fs.readdirSync(dirPath).sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  for (const file of files) {
-    if (!/\.(wav|mp3|opus|m4a|flac|ogg)$/i.test(file)) {
-      continue;
-    }
-    const ext = path.extname(file);
-    const name = path.basename(file, ext);
-    const txtPath = path.join(dirPath, `${name}.txt`);
-    const audioPath = path.join(dirPath, file);
-    results.push({
-      id: `${folderName}/${name}`,
-      audioPath,
-      text: safeReadText(txtPath),
-      fileName: file,
-      sampleName: name,
-      modelId: MODEL_NAME,
-      folderName,
-      sourceDir: dirPath
-    });
-  }
-
-  return results;
-}
-
-function getReferenceSources() {
-  return listReferenceSourceDirectories().map(item => ({
-    folderName: item.name,
-    fullPath: item.fullPath,
-    samples: collectSamplesFromDirectory(item.fullPath, item.name)
-  }));
-}
-
-function getReferenceSamples() {
-  return getReferenceSources().flatMap(item => item.samples);
-}
-
-function getSampleById(sampleId) {
-  const normalizedId = String(sampleId || '').trim();
-  if (!normalizedId) {
-    return null;
-  }
-  return getReferenceSamples().find(item => item.id === normalizedId) || null;
-}
-
-function normalizeRemoteVoiceListPayload(payload) {
-  if (Array.isArray(payload?.results)) {
-    return payload.results;
-  }
-  if (Array.isArray(payload?.result)) {
-    return payload.result;
-  }
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  return [];
-}
-
-function normalizeUploadedVoice(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const nested = payload.result && typeof payload.result === 'object' ? payload.result : null;
-  const candidate = nested || payload;
-  const uri = candidate.uri || candidate.voice || candidate.id || payload.uri || '';
-  return {
-    uri,
-    customName: candidate.customName || candidate.name || payload.customName || '',
-    model: candidate.model || payload.model || MODEL_NAME,
-    text: candidate.text || payload.text || '',
-    raw: payload
-  };
-}
-
-function buildTruthPayload(remoteVoices = []) {
-  const env = getEnvConfig();
-  const defaultVoices = DEFAULT_VOICES.map(voice => ({
-    id: voice,
-    type: 'default',
-    modelId: MODEL_NAME,
-    displayName: voice.split(':').pop() || voice,
-    voice
-  }));
-
-  const remoteVoiceItems = remoteVoices
-    .filter(voice => voice && voice.uri)
-    .map(voice => ({
-      id: voice.uri,
-      type: 'remote',
-      modelId: voice.model || MODEL_NAME,
-      displayName: voice.customName || voice.uri,
-      voice: voice.uri,
-      uri: voice.uri,
-      customName: voice.customName || '',
-      text: voice.text || '',
-      raw: voice
-    }));
-
-  const localSamples = getReferenceSamples().map(sample => ({
-    id: sample.id,
-    sampleName: sample.sampleName,
-    fileName: sample.fileName,
-    text: sample.text,
-    folderName: sample.folderName,
-    modelId: sample.modelId
-  }));
-
-  return {
-    updatedAt: new Date().toISOString(),
-    source: 'WebIndexTTS2',
-    providerUrl: env.siliconflowUrl,
-    referenceRootDir: REFERENCE_ROOT_DIR,
-    modelId: MODEL_NAME,
-    defaults: defaultVoices,
-    remoteVoices: remoteVoiceItems,
-    mergedVoiceOptions: [...defaultVoices, ...remoteVoiceItems],
-    localSamples
-  };
-}
-
-function writeTruthJson(payload) {
-  fs.writeFileSync(TRUTH_JSON_PATH, JSON.stringify(payload, null, 2), 'utf8');
-}
-
-async function refreshTruthJson(remoteVoices = null) {
-  let normalizedVoices = remoteVoices;
-  if (!Array.isArray(normalizedVoices)) {
-    try {
-      const remote = await siliconJsonFetch('/v1/audio/voice/list', { method: 'GET' });
-      normalizedVoices = normalizeRemoteVoiceListPayload(remote);
-    } catch (error) {
-      normalizedVoices = [];
-    }
-  }
-
-  const payload = buildTruthPayload(normalizedVoices);
-  writeTruthJson(payload);
-  return payload;
-}
-
-function readRequestBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', chunk => {
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
-
-async function parseJsonBody(req) {
-  const body = await readRequestBody(req);
-  if (!body.length) {
-    return {};
-  }
-  return JSON.parse(body.toString('utf8'));
-}
-
-function ensureApiKey() {
-  const { siliconflowKey, source } = getEnvConfig();
-  if (!siliconflowKey) {
-    const error = new Error(`缺少网络 API Key。当前读取来源: ${source}`);
-    error.statusCode = 500;
-    throw error;
-  }
-}
-
-async function siliconJsonFetch(pathname, options = {}) {
-  const { siliconflowUrl, siliconflowKey } = getEnvConfig();
-  ensureApiKey();
-  const headers = {
-    Authorization: `Bearer ${siliconflowKey}`,
-    ...(options.headers || {})
-  };
-  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : FETCH_TIMEOUT_MS;
-  const fetchOptions = { ...options };
-  delete fetchOptions.timeoutMs;
-
+app.post('/api/tts', async (req, res, next) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort(new Error(`SiliconFlow 请求超时: ${pathname}`));
-  }, timeoutMs);
+  let streamStarted = false;
+  let streamFinished = false;
+
+  req.once('aborted', () => controller.abort());
+  res.once('close', () => {
+    if (!streamFinished) controller.abort();
+  });
 
   try {
-    console.log(`[WebIndexTTS2] -> ${fetchOptions.method || 'GET'} ${siliconflowUrl}${pathname} timeout=${timeoutMs}ms`);
-    const response = await fetch(`${siliconflowUrl}${pathname}`, {
-      ...fetchOptions,
-      headers,
+    if (!API_KEY) {
+      throw createHttpError('未配置 MIMO_API_KEY。请复制 .env.example 为 .env 并填入 API Key。', 500);
+    }
+
+    const {
+      mode = 'preset',
+      voice = 'mimo_default',
+      style = '',
+      text = '',
+      userPrompt = '',
+      optimizeTextPreview = false,
+      referenceAudio = ''
+    } = req.body || {};
+
+    const { payload, preview } = buildRequest({
+      mode,
+      voice,
+      style,
+      text,
+      userPrompt,
+      optimizeTextPreview,
+      referenceAudio
+    });
+
+    const upstream = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream'
+      },
+      body: JSON.stringify(payload),
       signal: controller.signal
     });
-    const contentType = response.headers.get('content-type') || '';
-    const isJson = contentType.includes('application/json');
-    const data = isJson ? await response.json() : await response.text();
-    console.log(`[WebIndexTTS2] <- ${response.status} ${pathname}`);
 
-    if (!response.ok) {
-      const error = new Error(`SiliconFlow 请求失败: ${response.status}`);
-      error.statusCode = response.status;
-      error.details = data;
-      throw error;
+    if (!upstream.ok) {
+      throw await readUpstreamError(upstream);
     }
-    return data;
+
+    if (!upstream.body) {
+      throw createHttpError('MiMo API 未返回可读取的流式响应。', 502);
+    }
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    res.flushHeaders();
+    streamStarted = true;
+
+    sendSse(res, {
+      type: 'start',
+      sampleRate: SAMPLE_RATE,
+      format: 'pcm16',
+      filename: `mimo_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.wav`,
+      requestPreview: preview
+    });
+
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let audioChunkCount = 0;
+
+    const processLine = (line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data:')) return false;
+
+      const value = trimmed.slice(5).trim();
+      if (value === '[DONE]') return true;
+
+      let chunk;
+      try {
+        chunk = JSON.parse(value);
+      } catch {
+        return false;
+      }
+
+      const audio = chunk?.choices?.[0]?.delta?.audio;
+      if (audio?.data) {
+        audioChunkCount += 1;
+        sendSse(res, {
+          type: 'audio',
+          data: audio.data,
+          chunk: audioChunkCount
+        });
+      }
+
+      return false;
+    };
+
+    let done = false;
+    while (!done) {
+      const result = await reader.read();
+      buffer += decoder.decode(result.value || new Uint8Array(), { stream: !result.done });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (processLine(line)) {
+          done = true;
+          break;
+        }
+      }
+
+      if (result.done) {
+        if (buffer) processLine(buffer);
+        break;
+      }
+    }
+
+    if (audioChunkCount === 0) {
+      throw createHttpError('MiMo API 流结束，但没有返回音频数据。', 502);
+    }
+
+    streamFinished = true;
+    sendSse(res, { type: 'done', chunks: audioChunkCount });
+    res.end();
   } catch (error) {
     if (error.name === 'AbortError') {
-      const timeoutError = new Error(`SiliconFlow 请求超时(${timeoutMs}ms): ${pathname}`);
-      timeoutError.statusCode = 504;
-      timeoutError.details = error.message;
-      throw timeoutError;
+      if (!res.writableEnded) res.end();
+      return;
     }
-    console.error(`[WebIndexTTS2] 请求异常 ${pathname}:`, error);
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
-async function siliconBinaryFetch(pathname, payload) {
-  const { siliconflowUrl, siliconflowKey } = getEnvConfig();
-  ensureApiKey();
-  const response = await fetch(`${siliconflowUrl}${pathname}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${siliconflowKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-  const contentType = response.headers.get('content-type') || 'application/octet-stream';
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  if (!response.ok) {
-    const errorText = buffer.toString('utf8');
-    const error = new Error(`SiliconFlow 语音生成失败: ${response.status}`);
-    error.statusCode = response.status;
-    error.details = errorText;
-    throw error;
-  }
-  return { buffer, contentType };
-}
-
-function buildMultipartBody(parts, boundary) {
-  const chunks = [];
-  for (const part of parts) {
-    chunks.push(Buffer.from(`--${boundary}\r\n`));
-    let disposition = `Content-Disposition: form-data; name="${part.name}"`;
-    if (part.filename) {
-      disposition += `; filename="${encodeURIComponent(part.filename)}"`;
-    }
-    chunks.push(Buffer.from(`${disposition}\r\n`));
-    if (part.contentType) {
-      chunks.push(Buffer.from(`Content-Type: ${part.contentType}\r\n`));
-    }
-    chunks.push(Buffer.from('\r\n'));
-    chunks.push(Buffer.isBuffer(part.value) ? part.value : Buffer.from(String(part.value)));
-    chunks.push(Buffer.from('\r\n'));
-  }
-  chunks.push(Buffer.from(`--${boundary}--\r\n`));
-  return Buffer.concat(chunks);
-}
-
-function guessMime(filename) {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith('.wav')) return 'audio/wav';
-  if (lower.endsWith('.mp3')) return 'audio/mpeg';
-  if (lower.endsWith('.opus')) return 'audio/ogg';
-  return 'application/octet-stream';
-}
-
-function saveGeneratedFile(prefix, extension, buffer) {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `${prefix}-${timestamp}.${extension}`;
-  const fullPath = path.join(OUTPUT_DIR, fileName);
-  fs.writeFileSync(fullPath, buffer);
-  return fileName;
-}
-
-function extensionFromFormat(format, contentType) {
-  if (format) {
-    if (format === 'pcm') return 'pcm';
-    return format;
-  }
-  if (contentType.includes('wav')) return 'wav';
-  if (contentType.includes('mpeg')) return 'mp3';
-  if (contentType.includes('ogg')) return 'opus';
-  return 'bin';
-}
-
-async function handlePresetSpeech(req, res) {
-  const body = await parseJsonBody(req);
-  const payload = {
-    model: MODEL_NAME,
-    input: body.input || '你好，这是一段默认音色测试文本。',
-    voice: body.voice || DEFAULT_VOICE,
-    response_format: body.response_format || 'mp3',
-    speed: typeof body.speed === 'number' ? body.speed : 1
-  };
-  const { buffer, contentType } = await siliconBinaryFetch('/v1/audio/speech', payload);
-  const fileName = saveGeneratedFile('preset', extensionFromFormat(payload.response_format, contentType), buffer);
-  json(res, 200, {
-    ok: true,
-    request: payload,
-    fileName,
-    audioUrl: `/outputs/${encodeURIComponent(fileName)}`,
-    contentType,
-    size: buffer.length
-  });
-}
-
-async function handleReferenceSpeech(req, res) {
-  const body = await parseJsonBody(req);
-  if (!body.voiceUri) {
-    return json(res, 400, { ok: false, error: '缺少 voiceUri' });
-  }
-  const payload = {
-    model: MODEL_NAME,
-    input: body.input || '你好，这是一段使用已上传参考音频的测试文本。',
-    voice: body.voiceUri,
-    response_format: body.response_format || 'mp3',
-    speed: typeof body.speed === 'number' ? body.speed : 1
-  };
-  const { buffer, contentType } = await siliconBinaryFetch('/v1/audio/speech', payload);
-  const fileName = saveGeneratedFile('reference-uri', extensionFromFormat(payload.response_format, contentType), buffer);
-  json(res, 200, {
-    ok: true,
-    request: payload,
-    fileName,
-    audioUrl: `/outputs/${encodeURIComponent(fileName)}`,
-    contentType,
-    size: buffer.length
-  });
-}
-
-async function handleDynamicReferences(req, res) {
-  const body = await parseJsonBody(req);
-  const sampleIds = Array.isArray(body.sampleIds) && body.sampleIds.length
-    ? body.sampleIds.map(item => String(item))
-    : ['1', '2'];
-
-  const allSamples = getReferenceSamples();
-  const selected = allSamples.filter(item => sampleIds.includes(item.id));
-  if (!selected.length) {
-    return json(res, 400, { ok: false, error: '未匹配到任何本地参考音频样本' });
-  }
-
-  const references = selected.map(item => {
-    const audioBuffer = fs.readFileSync(item.audioPath);
-    return {
-      audio: audioBuffer.toString('base64'),
-      text: item.text
-    };
-  });
-
-  const payload = {
-    model: MODEL_NAME,
-    input: body.input || '[S1]你好，这里是动态参考音频测试。[S2]这是第二段声音表现。',
-    references,
-    response_format: body.response_format || 'wav'
-  };
-
-  const { buffer, contentType } = await siliconBinaryFetch('/v1/audio/speech', payload);
-  const fileName = saveGeneratedFile('references', extensionFromFormat(payload.response_format, contentType), buffer);
-  json(res, 200, {
-    ok: true,
-    requestSummary: {
-      model: payload.model,
-      input: payload.input,
-      referenceCount: references.length,
-      response_format: payload.response_format
-    },
-    fileName,
-    audioUrl: `/outputs/${encodeURIComponent(fileName)}`,
-    contentType,
-    size: buffer.length
-  });
-}
-
-async function uploadVoiceSample(sample, customName) {
-  const boundary = `----NodeBoundary${Date.now().toString(16)}${sample.id}`;
-
-  const multipart = buildMultipartBody([
-    { name: 'model', value: MODEL_NAME },
-    { name: 'customName', value: customName },
-    { name: 'text', value: sample.text },
-    {
-      name: 'file',
-      filename: sample.fileName,
-      contentType: guessMime(sample.fileName),
-      value: fs.readFileSync(sample.audioPath)
-    }
-  ], boundary);
-
-  return await siliconJsonFetch('/v1/uploads/audio/voice', {
-    method: 'POST',
-    timeoutMs: UPLOAD_FETCH_TIMEOUT_MS,
-    headers: {
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      'Content-Length': String(multipart.length)
-    },
-    body: multipart
-  });
-}
-
-async function handleUploadVoice(req, res) {
-  const body = await parseJsonBody(req);
-  const sampleId = String(body.sampleId || '').trim();
-  const sample = getSampleById(sampleId);
-  if (!sample) {
-    return json(res, 400, { ok: false, error: `未找到样本 ${sampleId}` });
-  }
-  const customName = body.customName || `amis_voice_${sample.sampleName}_${Date.now()}`;
-  console.log(`[WebIndexTTS2] 开始上传参考音频 sampleId=${sampleId}, customName=${customName}`);
-  const data = await uploadVoiceSample(sample, customName);
-  const normalizedVoice = normalizeUploadedVoice(data);
-  console.log(`[WebIndexTTS2] 上传完成 sampleId=${sampleId}, uri=${normalizedVoice?.uri || ''}`);
-  const payload = await refreshTruthJson();
-
-  json(res, 200, {
-    ok: true,
-    sampleId,
-    customName,
-    uploadResult: data,
-    uploadedVoice: normalizedVoice,
-    uri: normalizedVoice?.uri || '',
-    truthJsonPath: TRUTH_JSON_PATH,
-    truthPayload: payload
-  });
-}
-
-async function handleBatchUploadVoices(req, res) {
-  const body = await parseJsonBody(req);
-  const sampleIds = Array.isArray(body.sampleIds) ? body.sampleIds.map(item => String(item)) : [];
-  const prefix = body.prefix || 'amis_batch';
-
-  if (!sampleIds.length) {
-    return json(res, 400, { ok: false, error: '缺少 sampleIds' });
-  }
-
-  const allSamples = getReferenceSamples();
-  const results = [];
-  for (let index = 0; index < sampleIds.length; index += 1) {
-    const sampleId = sampleIds[index];
-    const sample = allSamples.find(item => item.id === sampleId);
-    if (!sample) {
-      results.push({
-        sampleId,
-        ok: false,
-        error: `未找到样本 ${sampleId}`
+    if (streamStarted) {
+      sendSse(res, {
+        type: 'error',
+        error: error.message || '流式语音合成失败。',
+        details: error.details
       });
-      continue;
+      streamFinished = true;
+      res.end();
+      return;
     }
 
-    const safeSampleName = sample.sampleName.replace(/[^\w\u4e00-\u9fa5-]+/g, '_');
-    const customName = `${prefix}_${safeSampleName}_${index + 1}`;
-    try {
-      const uploadResult = await uploadVoiceSample(sample, customName);
-      const uploadedVoice = normalizeUploadedVoice(uploadResult);
-      results.push({
-        sampleId,
-        ok: true,
-        customName,
-        uploadResult,
-        uploadedVoice,
-        uri: uploadedVoice?.uri || ''
-      });
-    } catch (error) {
-      results.push({
-        sampleId,
-        ok: false,
-        customName,
-        error: error.message,
-        details: error.details || null
-      });
-    }
-  }
-
-  const payload = await refreshTruthJson();
-
-  json(res, 200, {
-    ok: true,
-    count: results.length,
-    results,
-    truthJsonPath: TRUTH_JSON_PATH,
-    truthPayload: payload
-  });
-}
-
-async function handleListVoices(req, res) {
-  const data = await siliconJsonFetch('/v1/audio/voice/list', {
-    method: 'GET'
-  });
-  const results = normalizeRemoteVoiceListPayload(data);
-  const env = getEnvConfig();
-  const truthPayload = await refreshTruthJson(results);
-  json(res, 200, {
-    ok: true,
-    providerUrl: env.siliconflowUrl,
-    modelId: MODEL_NAME,
-    defaults: DEFAULT_VOICES.map(voice => ({
-      id: voice,
-      type: 'default',
-      modelId: MODEL_NAME,
-      displayName: voice.split(':').pop() || voice,
-      voice
-    })),
-    results,
-    raw: data,
-    truthJsonPath: TRUTH_JSON_PATH,
-    truthPayload
-  });
-}
-
-async function handleDeleteVoice(req, res) {
-  const body = await parseJsonBody(req);
-  if (!body.uri) {
-    return json(res, 400, { ok: false, error: '缺少 uri' });
-  }
-  let data = null;
-  let endpoint = '/v1/audio/voice/deletions';
-  try {
-    data = await siliconJsonFetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ uri: body.uri })
-    });
-  } catch (error) {
-    endpoint = '/v1/audio/voice/delete';
-    data = await siliconJsonFetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ uri: body.uri })
-    });
-  }
-  const payload = await refreshTruthJson();
-  json(res, 200, {
-    ok: true,
-    endpoint,
-    deleteResult: data,
-    truthJsonPath: TRUTH_JSON_PATH,
-    truthPayload: payload
-  });
-}
-
-function handleSamples(res) {
-  const env = getEnvConfig();
-  const sources = getReferenceSources();
-  const samples = sources.flatMap(source => source.samples).map(item => ({
-    id: item.id,
-    text: item.text,
-    fileName: item.fileName,
-    sampleName: item.sampleName,
-    folderName: item.folderName
-  }));
-  json(res, 200, {
-    ok: true,
-    model: MODEL_NAME,
-    defaultVoice: DEFAULT_VOICE,
-    baseUrl: env.siliconflowUrl,
-    hasApiKey: Boolean(env.siliconflowKey),
-    configSource: env.source,
-    settingsJsonPath: SETTINGS_JSON_PATH,
-    truthJsonPath: TRUTH_JSON_PATH,
-    referenceRootDir: REFERENCE_ROOT_DIR,
-    sourceFolders: sources.map(source => ({
-      folderName: source.folderName,
-      sampleCount: source.samples.length
-    })),
-    samples
-  });
-}
-
-function handleError(res, error) {
-  const statusCode = error.statusCode || 500;
-  json(res, statusCode, {
-    ok: false,
-    error: error.message || '未知错误',
-    details: error.details || null
-  });
-}
-
-const server = http.createServer(async (req, res) => {
-  try {
-    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-    const { pathname } = parsedUrl;
-
-    if (req.method === 'GET' && pathname === '/') {
-      return serveFile(res, path.join(ROOT_DIR, 'public', 'index.html'), 'text/html; charset=utf-8');
-    }
-    if (req.method === 'GET' && pathname === '/app.js') {
-      return serveFile(res, path.join(ROOT_DIR, 'public', 'app.js'), 'application/javascript; charset=utf-8');
-    }
-    if (req.method === 'GET' && pathname === '/styles.css') {
-      return serveFile(res, path.join(ROOT_DIR, 'public', 'styles.css'), 'text/css; charset=utf-8');
-    }
-    if (req.method === 'GET' && pathname === '/api/config') {
-      return handleSamples(res);
-    }
-    if (req.method === 'POST' && pathname === '/api/speech/preset') {
-      return await handlePresetSpeech(req, res);
-    }
-    if (req.method === 'POST' && pathname === '/api/speech/reference-uri') {
-      return await handleReferenceSpeech(req, res);
-    }
-    if (req.method === 'POST' && pathname === '/api/speech/dynamic-references') {
-      return await handleDynamicReferences(req, res);
-    }
-    if (req.method === 'POST' && pathname === '/api/voice/upload') {
-      return await handleUploadVoice(req, res);
-    }
-    if (req.method === 'POST' && pathname === '/api/voice/upload-batch') {
-      return await handleBatchUploadVoices(req, res);
-    }
-    if (req.method === 'GET' && pathname === '/api/voice/list') {
-      return await handleListVoices(req, res);
-    }
-    if (req.method === 'POST' && pathname === '/api/voice/delete') {
-      return await handleDeleteVoice(req, res);
-    }
-    if (req.method === 'GET' && pathname.startsWith('/outputs/')) {
-      const fileName = decodeURIComponent(pathname.replace('/outputs/', ''));
-      const outputPath = path.join(OUTPUT_DIR, fileName);
-      if (!outputPath.startsWith(OUTPUT_DIR) || !fs.existsSync(outputPath)) {
-        return text(res, 404, 'Not Found');
-      }
-      return serveFile(res, outputPath, guessMime(outputPath));
-    }
-    return text(res, 404, 'Not Found');
-  } catch (error) {
-    return handleError(res, error);
+    next(error);
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+app.use((error, req, res, _next) => {
+  const status = Number(error.status || 500);
+  res.status(status >= 400 && status < 600 ? status : 500).json({
+    error: error.message || '服务器内部错误。',
+    details: error.details
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`MiMo TTS local tester is running at http://localhost:${PORT}`);
 });
