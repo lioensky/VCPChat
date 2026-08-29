@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     path::Path,
 };
@@ -1476,6 +1476,151 @@ pub async fn push_topic_messages(
     }
 }
 
+const MOBILE_MESSAGE_PATCH_FIELDS: [&str; 11] = [
+    "id",
+    "role",
+    "name",
+    "content",
+    "timestamp",
+    "updatedAt",
+    "agentId",
+    "groupId",
+    "topicId",
+    "isGroupMessage",
+    "finishReason",
+];
+
+fn desktop_attachment_hash(attachment: &Value) -> Option<String> {
+    let object = attachment.as_object()?;
+    let top = object.get("hash").and_then(Value::as_str);
+    let nested = object
+        .get("_fileManagerData")
+        .and_then(Value::as_object)
+        .and_then(|data| data.get("hash"))
+        .and_then(Value::as_str);
+    let valid =
+        |value: &str| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit());
+    match (
+        top.filter(|value| valid(value)),
+        nested.filter(|value| valid(value)),
+    ) {
+        (Some(left), Some(right)) if left.eq_ignore_ascii_case(right) => {
+            Some(left.to_ascii_lowercase())
+        }
+        (Some(_), Some(_)) => None,
+        (Some(hash), None) | (None, Some(hash)) => Some(hash.to_ascii_lowercase()),
+        (None, None) => None,
+    }
+}
+
+fn merge_desktop_attachment(existing: &Value, incoming: &Value) -> Value {
+    let (Some(existing), Some(incoming)) = (existing.as_object(), incoming.as_object()) else {
+        return incoming.clone();
+    };
+    let mut merged = existing.clone();
+    merged.extend(incoming.clone());
+
+    if incoming.get("src").and_then(Value::as_str) == Some("") {
+        if let Some(src) = existing
+            .get("src")
+            .and_then(Value::as_str)
+            .filter(|src| !src.is_empty())
+        {
+            merged.insert("src".to_string(), Value::String(src.to_string()));
+        }
+    }
+
+    let existing_data = existing.get("_fileManagerData").and_then(Value::as_object);
+    let incoming_data = incoming.get("_fileManagerData").and_then(Value::as_object);
+    if existing_data.is_some() || incoming_data.is_some() {
+        let mut merged_data = existing_data.cloned().unwrap_or_default();
+        if let Some(incoming_data) = incoming_data {
+            merged_data.extend(incoming_data.clone());
+        }
+        if incoming_data
+            .and_then(|data| data.get("internalPath"))
+            .and_then(Value::as_str)
+            == Some("")
+        {
+            if let Some(internal_path) = existing_data
+                .and_then(|data| data.get("internalPath"))
+                .and_then(Value::as_str)
+                .filter(|path| !path.is_empty())
+            {
+                merged_data.insert(
+                    "internalPath".to_string(),
+                    Value::String(internal_path.to_string()),
+                );
+            }
+        }
+        merged.insert("_fileManagerData".to_string(), Value::Object(merged_data));
+    }
+    Value::Object(merged)
+}
+
+fn merge_mobile_attachments(existing: Option<&Value>, incoming: &[Value]) -> Vec<Value> {
+    let mut existing_by_hash: HashMap<String, VecDeque<&Value>> = HashMap::new();
+    for attachment in existing.and_then(Value::as_array).into_iter().flatten() {
+        if let Some(hash) = desktop_attachment_hash(attachment) {
+            existing_by_hash
+                .entry(hash)
+                .or_default()
+                .push_back(attachment);
+        }
+    }
+    incoming
+        .iter()
+        .map(|attachment| {
+            let existing = desktop_attachment_hash(attachment)
+                .and_then(|hash| existing_by_hash.get_mut(&hash))
+                .and_then(VecDeque::pop_front);
+            existing
+                .map(|existing| merge_desktop_attachment(existing, attachment))
+                .unwrap_or_else(|| attachment.clone())
+        })
+        .collect()
+}
+
+fn merge_mobile_message(existing: &Value, incoming: &Value) -> Value {
+    let (Some(existing), Some(incoming)) = (existing.as_object(), incoming.as_object()) else {
+        return incoming.clone();
+    };
+    let mut merged = existing.clone();
+    for key in MOBILE_MESSAGE_PATCH_FIELDS {
+        if let Some(value) = incoming.get(key).filter(|value| !value.is_null()) {
+            merged.insert(key.to_string(), value.clone());
+        } else {
+            merged.remove(key);
+        }
+    }
+    if let Some(avatar_url) = incoming
+        .get("avatarUrl")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        merged.insert(
+            "avatarUrl".to_string(),
+            Value::String(avatar_url.to_string()),
+        );
+    }
+    if let Some(attachments) = incoming
+        .get("attachments")
+        .and_then(Value::as_array)
+        .filter(|attachments| !attachments.is_empty())
+    {
+        merged.insert(
+            "attachments".to_string(),
+            Value::Array(merge_mobile_attachments(
+                existing.get("attachments"),
+                attachments,
+            )),
+        );
+    } else {
+        merged.remove("attachments");
+    }
+    Value::Object(merged)
+}
+
 async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Result<IngestCommit> {
     anyhow::ensure!(
         !topic.owner_id.is_empty(),
@@ -1576,7 +1721,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
             .and_then(Value::as_str)
             .context("pushed message id is required")?;
         if let Some(index) = positions.get(id).copied() {
-            current[index] = message.clone();
+            current[index] = merge_mobile_message(&current[index], message);
         } else {
             positions.insert(id.to_string(), current.len());
             current.push(message.clone());
@@ -2919,6 +3064,11 @@ mod tests {
                     "role":"user",
                     "content":"legacy",
                     "timestamp":"1",
+                    "finishReason":"completed",
+                    "avatarUrl":"file://G:\\\\VCPChat\\\\avatar.png",
+                    "avatarColor":"#desktop-local-only",
+                    "model":"desktop-model",
+                    "context":{"streamOperationId":"desktop-only"},
                     "attachments":[{
                         "type":"text/plain",
                         "name":"legacy.txt",
@@ -2926,7 +3076,8 @@ mod tests {
                         "src":"file:///desktop/private",
                         "_fileManagerData":{
                             "hash":valid_hash,
-                            "internalPath":"file:///desktop/private"
+                            "internalPath":"file:///desktop/private",
+                            "thumbnailPath":"file:///desktop/private-thumb"
                         }
                     }]
                 },
@@ -2968,6 +3119,8 @@ mod tests {
         assert!(frame.messages[0]["attachments"][0]
             .get("_fileManagerData")
             .is_none());
+        assert!(frame.messages[0].get("avatarColor").is_none());
+        assert!(frame.messages[0].get("context").is_none());
         assert!(frame.messages[1].get("attachments").is_none());
 
         let response = push_topic_messages(
@@ -2976,23 +3129,44 @@ mod tests {
                 topic_id: "topic-a".to_string(),
                 owner_type: OwnerType::Agent,
                 owner_id: "agent-a".to_string(),
-                messages: vec![json!({
-                    "id":"m3",
-                    "role":"user",
-                    "content":"projected native",
-                    "timestamp":3,
-                    "updatedAt":4,
-                    "attachments":[{
-                        "type":"text/plain",
-                        "src":"file:///actual/app-data/attachment.txt",
-                        "name":"attachment.txt",
-                        "size":1,
-                        "_fileManagerData":{
-                            "hash":"b".repeat(64),
-                            "internalPath":"file:///actual/app-data/attachment.txt"
-                        }
-                    }]
-                })],
+                messages: vec![
+                    json!({
+                        "id":"m1",
+                        "role":"user",
+                        "content":"mobile edit",
+                        "timestamp":1,
+                        "updatedAt":78,
+                        "avatarUrl":"file:///G:/VCPChat/avatar.png",
+                        "attachments":[{
+                            "type":"text/plain",
+                            "src":"",
+                            "name":"mobile-name.txt",
+                            "size":4,
+                            "_fileManagerData":{
+                                "hash":"a".repeat(64),
+                                "internalPath":"",
+                                "extractedText":"mobile text"
+                            }
+                        }]
+                    }),
+                    json!({
+                        "id":"m3",
+                        "role":"user",
+                        "content":"projected native",
+                        "timestamp":3,
+                        "updatedAt":4,
+                        "attachments":[{
+                            "type":"text/plain",
+                            "src":"file:///actual/app-data/attachment.txt",
+                            "name":"attachment.txt",
+                            "size":1,
+                            "_fileManagerData":{
+                                "hash":"b".repeat(64),
+                                "internalPath":"file:///actual/app-data/attachment.txt"
+                            }
+                        }]
+                    }),
+                ],
                 deleted_messages: Vec::new(),
             },
         )
@@ -3002,6 +3176,29 @@ mod tests {
             serde_json::from_slice(&fs::read(&history_path).expect("read history"))
                 .expect("parse history");
         assert_eq!(persisted.len(), 3);
+        assert_eq!(persisted[0]["content"], "mobile edit");
+        assert_eq!(persisted[0]["updatedAt"], 78);
+        assert_eq!(persisted[0]["avatarUrl"], "file:///G:/VCPChat/avatar.png");
+        assert_eq!(persisted[0]["avatarColor"], "#desktop-local-only");
+        assert_eq!(persisted[0]["model"], "desktop-model");
+        assert_eq!(persisted[0]["context"]["streamOperationId"], "desktop-only");
+        assert!(persisted[0].get("finishReason").is_none());
+        assert_eq!(
+            persisted[0]["attachments"][0]["src"],
+            "file:///desktop/private"
+        );
+        assert_eq!(
+            persisted[0]["attachments"][0]["_fileManagerData"]["internalPath"],
+            "file:///desktop/private"
+        );
+        assert_eq!(
+            persisted[0]["attachments"][0]["_fileManagerData"]["thumbnailPath"],
+            "file:///desktop/private-thumb"
+        );
+        assert_eq!(
+            persisted[0]["attachments"][0]["_fileManagerData"]["extractedText"],
+            "mobile text"
+        );
         assert_eq!(persisted[2]["updatedAt"], 4);
         assert_eq!(
             persisted[2]["attachments"][0]["_fileManagerData"]["hash"],

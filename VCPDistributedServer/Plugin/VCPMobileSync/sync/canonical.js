@@ -248,7 +248,7 @@ function canonicalizeMessage(value, topicId, warnings = new BoundedWarnings(), r
     message[key] = fieldValue ?? null;
   }
 
-  for (const key of ["finishReason", "avatarColor"]) {
+  for (const key of ["finishReason"]) {
     const fieldValue = value[key];
     if (fieldValue !== undefined && fieldValue !== null) {
       if (typeof fieldValue !== "string") {

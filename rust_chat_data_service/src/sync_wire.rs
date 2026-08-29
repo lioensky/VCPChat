@@ -254,7 +254,7 @@ pub fn canonicalize_message(
         canonical.insert(key.to_string(), value);
     }
 
-    for key in ["finishReason", "avatarColor"] {
+    for key in ["finishReason"] {
         if let Some(value) = object.get(key).filter(|value| !value.is_null()) {
             anyhow::ensure!(
                 value.is_string(),

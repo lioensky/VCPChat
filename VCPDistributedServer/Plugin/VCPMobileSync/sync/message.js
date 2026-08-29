@@ -30,7 +30,7 @@ const { getLogger } = require("../core/logger");
 const { acquireLock } = require("../utils/lock");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
 const { canonicalizeHistory } = require("./canonical");
-const { projectMobileTopic } = require("./projection");
+const { mergeMobileMessage, projectMobileTopic } = require("./projection");
 const {
   createHttpErrorBody,
   createStreamErrorFrame,
@@ -537,7 +537,13 @@ async function doPushSingleTopic(
     });
 
     for (const desktopMessage of projected.messages) {
-      msgMap.set(desktopMessage.id, desktopMessage);
+      const existing = msgMap.get(desktopMessage.id);
+      msgMap.set(
+        desktopMessage.id,
+        existing
+          ? mergeMobileMessage(existing, desktopMessage)
+          : desktopMessage,
+      );
     }
     for (const tombstone of deletedMessages) {
       msgMap.delete(tombstone.msgId);
