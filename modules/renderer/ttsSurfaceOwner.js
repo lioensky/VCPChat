@@ -61,7 +61,7 @@ export function createTtsSurfaceOwner({
         if (disposed || playing || queue.length === 0 || !audioContext) return;
         playing = true;
         const ownerGeneration = generation;
-        const { audioData, msgId } = queue.shift();
+        const { audioData, msgId, playbackRate = 1 } = queue.shift();
         if (currentMessageId !== msgId) {
             setIndicator(currentMessageId, false);
             currentMessageId = msgId;
@@ -76,6 +76,7 @@ export function createTtsSurfaceOwner({
                 const source = audioContext.createBufferSource();
                 currentSource = source;
                 source.buffer = buffer;
+                source.playbackRate.value = Math.min(2, Math.max(0.5, Number(playbackRate) || 1));
                 source.connect(audioContext.destination);
                 source.onended = () => {
                     if (disposed || ownerGeneration !== generation) return;
@@ -97,7 +98,7 @@ export function createTtsSurfaceOwner({
         await work;
     };
 
-    const scheduleStreamingChunk = ({ audioData, msgId }, ownerGeneration) => {
+    const scheduleStreamingChunk = ({ audioData, msgId, playbackRate = 1 }, ownerGeneration) => {
         streamDecodeTail = streamDecodeTail.then(async () => {
             if (disposed || ownerGeneration !== generation || !audioContext) return;
             const bytes = decodeBase64(audioData);
@@ -111,14 +112,16 @@ export function createTtsSurfaceOwner({
             }
 
             const source = audioContext.createBufferSource();
+            const normalizedRate = Math.min(2, Math.max(0.5, Number(playbackRate) || 1));
             source.buffer = buffer;
+            source.playbackRate.value = normalizedRate;
             source.connect(audioContext.destination);
             streamingSources.add(source);
 
             // 提前解码并按音频时钟连续排程，而不是等上一块 onended 后才解码，
             // 避免 MiMo PCM SSE 块之间因 JS 调度和解码产生明显空隙。
             const startAt = Math.max(audioContext.currentTime + 0.025, nextStreamingStartTime);
-            nextStreamingStartTime = startAt + buffer.duration;
+            nextStreamingStartTime = startAt + (buffer.duration / normalizedRate);
             source.onended = () => {
                 streamingSources.delete(source);
                 if (!disposed && ownerGeneration === generation && streamingSources.size === 0) {
@@ -163,7 +166,8 @@ export function createTtsSurfaceOwner({
             audioData,
             msgId,
             sessionId: incomingSession,
-            streaming = false
+            streaming = false,
+            playbackRate = 1
         }) => {
             if (disposed || incomingSession < sessionId) return;
             if (incomingSession > sessionId) {
@@ -172,10 +176,10 @@ export function createTtsSurfaceOwner({
             }
             if (!ensureAudioContext()) return;
             if (streaming) {
-                scheduleStreamingChunk({ audioData, msgId }, generation);
+                scheduleStreamingChunk({ audioData, msgId, playbackRate }, generation);
                 return;
             }
-            queue.push({ audioData, msgId });
+            queue.push({ audioData, msgId, playbackRate });
             void processQueue();
         }));
         unsubscribers.push(subscribeStop(() => stopPlayback()));

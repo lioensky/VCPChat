@@ -602,6 +602,10 @@ class SovitsTTS {
             const currentTask = this.speechQueue.shift();
             this.currentSpeechItemId = currentTask.msgId;
 
+            const taskRuntimeConfig = await this.getRuntimeConfig();
+            const playbackRate = taskRuntimeConfig.voiceMode === 'network'
+                ? Math.min(2, Math.max(0.5, Number(currentTask.speed) || 1))
+                : 1;
             let streamedChunkCount = 0;
             const speechResult = await this.textToSpeech(
                 currentTask.text,
@@ -618,7 +622,8 @@ class SovitsTTS {
                         sessionId: loopSessionId,
                         streaming: true,
                         chunkIndex: streamedChunkCount,
-                        audioFormat: 'wav'
+                        audioFormat: 'wav',
+                        playbackRate
                     });
                 }
             );
@@ -641,7 +646,8 @@ class SovitsTTS {
                             msgId: currentTask.msgId,
                             sessionId: loopSessionId,
                             streaming: false,
-                            audioFormat: audioBuffer.subarray(0, 4).toString('ascii') === 'RIFF' ? 'wav' : 'mp3'
+                            audioFormat: audioBuffer.subarray(0, 4).toString('ascii') === 'RIFF' ? 'wav' : 'mp3',
+                            playbackRate
                         });
                     } else {
                         console.error(`[TTS] 无法发送音频，因为发送方窗口已被销毁。`);
