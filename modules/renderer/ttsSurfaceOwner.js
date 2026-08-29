@@ -17,6 +17,9 @@ export function createTtsSurfaceOwner({
 
     let audioContext = null;
     let currentSource = null;
+    const streamingSources = new Set();
+    let streamDecodeTail = Promise.resolve();
+    let nextStreamingStartTime = 0;
     let queue = [];
     let playing = false;
     let currentMessageId = null;
@@ -38,11 +41,18 @@ export function createTtsSurfaceOwner({
         sessionId += 1;
         queue = [];
         playing = false;
+        streamDecodeTail = Promise.resolve();
+        nextStreamingStartTime = 0;
         if (currentSource) {
             currentSource.onended = null;
             try { currentSource.stop(); } catch (error) { logger.warn?.('[TTS] failed to stop source', error); }
             currentSource = null;
         }
+        streamingSources.forEach(source => {
+            source.onended = null;
+            try { source.stop(); } catch (error) { logger.warn?.('[TTS] failed to stop streaming source', error); }
+        });
+        streamingSources.clear();
         setIndicator(currentMessageId, false);
         currentMessageId = null;
     };
@@ -87,6 +97,47 @@ export function createTtsSurfaceOwner({
         await work;
     };
 
+    const scheduleStreamingChunk = ({ audioData, msgId }, ownerGeneration) => {
+        streamDecodeTail = streamDecodeTail.then(async () => {
+            if (disposed || ownerGeneration !== generation || !audioContext) return;
+            const bytes = decodeBase64(audioData);
+            const buffer = await audioContext.decodeAudioData(bytes);
+            if (disposed || ownerGeneration !== generation) return;
+
+            if (currentMessageId !== msgId) {
+                setIndicator(currentMessageId, false);
+                currentMessageId = msgId;
+                setIndicator(currentMessageId, true);
+            }
+
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            streamingSources.add(source);
+
+            // 提前解码并按音频时钟连续排程，而不是等上一块 onended 后才解码，
+            // 避免 MiMo PCM SSE 块之间因 JS 调度和解码产生明显空隙。
+            const startAt = Math.max(audioContext.currentTime + 0.025, nextStreamingStartTime);
+            nextStreamingStartTime = startAt + buffer.duration;
+            source.onended = () => {
+                streamingSources.delete(source);
+                if (!disposed && ownerGeneration === generation && streamingSources.size === 0) {
+                    nextStreamingStartTime = 0;
+                    setIndicator(currentMessageId, false);
+                    currentMessageId = null;
+                }
+            };
+            source.start(startAt);
+        }).catch(error => {
+            if (!disposed && ownerGeneration === generation) {
+                showError?.(`播放流式音频失败: ${error.message}`);
+            }
+        });
+
+        activeWork.add(streamDecodeTail);
+        streamDecodeTail.finally(() => activeWork.delete(streamDecodeTail)).catch(() => {});
+    };
+
     const ensureAudioContext = () => {
         if (disposed) return false;
         if (audioContext) {
@@ -108,11 +159,21 @@ export function createTtsSurfaceOwner({
         if (disposed) throw new Error('TtsSurfaceOwner is disposed');
         if (mounted) return;
         mounted = true;
-        unsubscribers.push(subscribePlay(({ audioData, msgId, sessionId: incomingSession }) => {
+        unsubscribers.push(subscribePlay(({
+            audioData,
+            msgId,
+            sessionId: incomingSession,
+            streaming = false
+        }) => {
             if (disposed || incomingSession < sessionId) return;
             if (incomingSession > sessionId) {
                 stopPlayback();
                 sessionId = incomingSession;
+            }
+            if (!ensureAudioContext()) return;
+            if (streaming) {
+                scheduleStreamingChunk({ audioData, msgId }, generation);
+                return;
             }
             queue.push({ audioData, msgId });
             void processQueue();

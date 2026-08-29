@@ -83,6 +83,7 @@
                 speed: agentConfig.ttsSpeed || 1,
                 msgId: messageId,
                 ttsRegex: agentConfig.ttsRegexPrimary,
+                directorPrompts: agentConfig.ttsDirectorPrompts,
                 voiceSecondary: agentConfig.ttsVoiceSecondary,
                 ttsRegexSecondary: agentConfig.ttsRegexSecondary
             });

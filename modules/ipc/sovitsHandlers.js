@@ -29,25 +29,34 @@ function initialize(mainWindow, settingsManager) {
     ipcMain.on('sovits-speak', (event, options) => {
         const instance = getSovitsTTS();
         if (!instance) return;
-        // The speak method now expects a single options object.
-        instance.stop(); // Ensure any previous speech is stopped.
+
+        // 新朗读必须在发起合成前立即停止当前窗口中的旧播放。
+        // 如果只依赖下一批音频携带的新 sessionId，旧语音会一直播放到
+        // MiMo 首个 SSE 音频块返回，造成切换导演提示词后短暂叠音。
+        instance.stop();
+        if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('stop-tts-audio');
+        }
+
         // Pass the event sender to the speak method to reply to the correct window
         instance.speak(options, event.sender);
     });
 
-    ipcMain.on('sovits-stop', () => {
+    ipcMain.on('sovits-stop', (event) => {
         // 首先，让 SovitsTTS 实例清理其内部状态（如队列）
         if (sovitsTTSInstance) {
             sovitsTTSInstance.stop();
         }
-        
-        // 关键修复：直接从 IPC handler 发送停止事件到渲染器，
-        // 确保无论 SovitsTTS 实例的状态如何，停止命令都能被发送。
-        if (internalMainWindow && !internalMainWindow.isDestroyed()) {
-            console.log("[IPC Handler] Directly sending 'stop-tts-audio' to renderer.");
+
+        // 优先通知实际发出停止命令的窗口，兼容主聊天和独立语音聊天窗口。
+        if (event.sender && !event.sender.isDestroyed()) {
+            console.log("[IPC Handler] Sending 'stop-tts-audio' to requesting renderer.");
+            event.sender.send('stop-tts-audio');
+        } else if (internalMainWindow && !internalMainWindow.isDestroyed()) {
+            console.log("[IPC Handler] Falling back to main window for 'stop-tts-audio'.");
             internalMainWindow.webContents.send('stop-tts-audio');
         } else {
-            console.error("[IPC Handler] Cannot send 'stop-tts-audio', mainWindow reference is invalid.");
+            console.error("[IPC Handler] Cannot send 'stop-tts-audio'; no valid renderer.");
         }
     });
 

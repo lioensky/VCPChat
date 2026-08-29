@@ -271,6 +271,7 @@ function showContextMenu(event, messageItem, message) {
                                 speed: agentConfig.ttsSpeed || 1.0,
                                 msgId: message.id,
                                 ttsRegex: agentConfig.ttsRegexPrimary, // Legacy 'ttsRegex' is now primary
+                                directorPrompts: agentConfig.ttsDirectorPrompts,
                                 // New bilingual fields
                                 voiceSecondary: agentConfig.ttsVoiceSecondary,
                                 ttsRegexSecondary: agentConfig.ttsRegexSecondary

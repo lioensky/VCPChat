@@ -678,6 +678,7 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                                 speed: agentConfig.ttsSpeed || 1.0,
                                 msgId: message.id,
                                 ttsRegex: agentConfig.ttsRegexPrimary,
+                                directorPrompts: agentConfig.ttsDirectorPrompts,
                                 voiceSecondary: agentConfig.ttsVoiceSecondary,
                                 ttsRegexSecondary: agentConfig.ttsRegexSecondary
                             });

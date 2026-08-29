@@ -83,7 +83,7 @@ const mainChatSettingsOwner = createMainChatSettingsOwner({ initial: {
         sovitsKey: ''
     },
     voiceNetworkSettings: {
-        providerUrl: 'https://api.siliconflow.cn',
+        providerUrl: 'https://www.dmxapi.cn/v1',
         providerKey: ''
     }
 } });

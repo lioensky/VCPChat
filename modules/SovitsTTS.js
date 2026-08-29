@@ -4,7 +4,20 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
-const DEFAULT_NETWORK_TTS_MODEL = 'IndexTeam/IndexTTS-2';
+const DEFAULT_MIMO_API_URL = 'https://www.dmxapi.cn/v1/chat/completions';
+const DEFAULT_NETWORK_TTS_MODEL = 'mimo-v2.5-tts';
+const MIMO_SAMPLE_RATE = 24000;
+const MIMO_PRESET_VOICES = Object.freeze([
+    { id: 'mimo_default', voice: 'mimo_default', displayName: 'mimo_default · 默认音色', type: 'preset' },
+    { id: '冰糖', voice: '冰糖', displayName: '冰糖 · 中文女声', type: 'preset' },
+    { id: '茉莉', voice: '茉莉', displayName: '茉莉 · 中文女声', type: 'preset' },
+    { id: '苏打', voice: '苏打', displayName: '苏打 · 中文男声', type: 'preset' },
+    { id: '白桦', voice: '白桦', displayName: '白桦 · 中文男声', type: 'preset' },
+    { id: 'Mia', voice: 'Mia', displayName: 'Mia · 英文女声', type: 'preset' },
+    { id: 'Chloe', voice: 'Chloe', displayName: 'Chloe · 英文女声', type: 'preset' },
+    { id: 'Milo', voice: 'Milo', displayName: 'Milo · 英文男声', type: 'preset' },
+    { id: 'Dean', voice: 'Dean', displayName: 'Dean · 英文男声', type: 'preset' }
+]);
 // 修正路径问题，确保缓存和模型列表都在项目内的AppData目录
 const PROJECT_ROOT = path.join(__dirname, '..'); // 更可靠的方式获取项目根目录
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
@@ -29,38 +42,116 @@ class SovitsTTS {
                 ? await this.settingsManager.readSettings()
                 : null;
         } catch (error) {
-            console.warn('[TTS] Failed to read global settings, using default Sovits config:', error.message);
+            console.warn('[TTS] Failed to read global settings, using defaults:', error.message);
         }
 
-        const voiceMode = settings?.voiceMode || 'local';
-
-        // 兼容旧版 settings.json：旧版中 voiceNetworkSettings 存的是本地 SoVITS 配置，
-        // voiceLocalSettings 存的是网络供应商配置（命名反了）。
-        // 新版已修正：voiceLocalSettings 存本地，voiceNetworkSettings 存网络。
-        // 这里通过检测字段名来自动适配新旧两种格式。
-        const rawLocal = settings?.voiceLocalSettings || {};
-        const rawNetwork = settings?.voiceNetworkSettings || {};
-
-        const localSovitsConfig = rawLocal.sovitsUrl !== undefined ? rawLocal
-            : (rawNetwork.sovitsUrl !== undefined ? rawNetwork : rawLocal);
-        const networkProviderConfig = rawNetwork.providerUrl !== undefined ? rawNetwork
-            : (rawLocal.providerUrl !== undefined ? rawLocal : rawNetwork);
-
-        const baseUrl = voiceMode === 'network'
-            ? ((networkProviderConfig.providerUrl || '').trim() || DEFAULT_SOVITS_API_BASE_URL)
-            : ((localSovitsConfig.sovitsUrl || '').trim() || DEFAULT_SOVITS_API_BASE_URL);
-
-        const apiKey = voiceMode === 'network'
-            ? (networkProviderConfig.providerKey || '')
-            : (localSovitsConfig.sovitsKey || '');
-
-        const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+        const voiceMode = settings?.voiceMode === 'network' ? 'network' : 'local';
+        const localConfig = settings?.voiceLocalSettings || {};
+        const networkConfig = settings?.voiceNetworkSettings || {};
+        const configuredUrl = voiceMode === 'network'
+            ? String(networkConfig.providerUrl || '').trim()
+            : String(localConfig.sovitsUrl || '').trim();
 
         return {
             voiceMode,
-            baseUrl: normalizedBaseUrl,
-            apiKey
+            baseUrl: (configuredUrl || (voiceMode === 'network' ? DEFAULT_MIMO_API_URL : DEFAULT_SOVITS_API_BASE_URL))
+                .replace(/\/+$/, ''),
+            apiKey: voiceMode === 'network'
+                ? String(networkConfig.providerKey || '')
+                : String(localConfig.sovitsKey || '')
         };
+    }
+
+    normalizeMimoEndpoint(url) {
+        const normalized = String(url || DEFAULT_MIMO_API_URL).trim().replace(/\/+$/, '');
+        return /\/chat\/completions$/i.test(normalized)
+            ? normalized
+            : `${normalized}/chat/completions`;
+    }
+
+    pcm16ToWav(pcmBuffer, sampleRate = MIMO_SAMPLE_RATE) {
+        const wav = Buffer.alloc(44 + pcmBuffer.length);
+        wav.write('RIFF', 0);
+        wav.writeUInt32LE(36 + pcmBuffer.length, 4);
+        wav.write('WAVE', 8);
+        wav.write('fmt ', 12);
+        wav.writeUInt32LE(16, 16);
+        wav.writeUInt16LE(1, 20);
+        wav.writeUInt16LE(1, 22);
+        wav.writeUInt32LE(sampleRate, 24);
+        wav.writeUInt32LE(sampleRate * 2, 28);
+        wav.writeUInt16LE(2, 32);
+        wav.writeUInt16LE(16, 34);
+        wav.write('data', 36);
+        wav.writeUInt32LE(pcmBuffer.length, 40);
+        pcmBuffer.copy(wav, 44);
+        return wav;
+    }
+
+    async requestMimoSpeech(runtimeConfig, text, voice, directorPrompts = [], onAudioChunk = null) {
+        if (!runtimeConfig.apiKey) {
+            throw new Error('网络 MiMo TTS 未配置 API Key');
+        }
+
+        const prompts = Array.isArray(directorPrompts)
+            ? directorPrompts.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        const messages = prompts.map(content => ({ role: 'user', content }));
+        messages.push({ role: 'assistant', content: text });
+
+        const response = await axios.post(this.normalizeMimoEndpoint(runtimeConfig.baseUrl), {
+            model: DEFAULT_NETWORK_TTS_MODEL,
+            messages,
+            audio: { format: 'pcm16', voice: voice || 'mimo_default' },
+            stream: true
+        }, {
+            responseType: 'stream',
+            headers: {
+                ...this.buildHeaders(runtimeConfig.apiKey),
+                'Content-Type': 'application/json',
+                Accept: 'text/event-stream'
+            },
+            validateStatus: () => true
+        });
+
+        if (response.status < 200 || response.status >= 300) {
+            const chunks = [];
+            for await (const chunk of response.data) chunks.push(Buffer.from(chunk));
+            throw new Error(`MiMo API HTTP ${response.status}: ${Buffer.concat(chunks).toString('utf8')}`);
+        }
+
+        const pcmChunks = [];
+        const processSseLine = (line) => {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) return;
+            const value = trimmed.slice(5).trim();
+            if (!value || value === '[DONE]') return;
+            try {
+                const audioData = JSON.parse(value)?.choices?.[0]?.delta?.audio?.data;
+                if (!audioData) return;
+                const pcmChunk = Buffer.from(audioData, 'base64');
+                pcmChunks.push(pcmChunk);
+                if (typeof onAudioChunk === 'function') {
+                    onAudioChunk(this.pcm16ToWav(pcmChunk));
+                }
+            } catch {
+                // 忽略 SSE 心跳或非 JSON 扩展事件。
+            }
+        };
+
+        let pending = '';
+        for await (const chunk of response.data) {
+            pending += Buffer.from(chunk).toString('utf8');
+            const lines = pending.split(/\r?\n/);
+            pending = lines.pop() || '';
+            lines.forEach(processSseLine);
+        }
+        if (pending.trim()) processSseLine(pending);
+
+        if (!pcmChunks.length) {
+            throw new Error('MiMo API 流结束，但没有返回音频数据');
+        }
+        return this.pcm16ToWav(Buffer.concat(pcmChunks));
     }
 
     buildHeaders(apiKey = '') {
@@ -135,65 +226,53 @@ class SovitsTTS {
         const isNetwork = runtimeConfig.voiceMode === 'network';
         const cachePath = isNetwork ? NETWORK_MODELS_CACHE_PATH : LOCAL_MODELS_CACHE_PATH;
 
+        // MiMo 预置音色是协议内置常量，不读取旧网络供应商留下的缓存。
+        // 每次直接返回当前版本的固定列表，确保已下线供应商不会污染 Agent 设置。
+        if (isNetwork) {
+            const mergedVoiceOptions = MIMO_PRESET_VOICES.map(item => ({ ...item }));
+            if (forceRefresh) {
+                await fs.writeFile(NETWORK_MODELS_CACHE_PATH, JSON.stringify({
+                    providerUrl: this.normalizeMimoEndpoint(runtimeConfig.baseUrl),
+                    modelId: DEFAULT_NETWORK_TTS_MODEL,
+                    defaults: mergedVoiceOptions,
+                    remoteVoices: [],
+                    mergedVoiceOptions,
+                    updatedAt: new Date().toISOString()
+                }, null, 2));
+            }
+            return mergedVoiceOptions;
+        }
+
         if (!forceRefresh) {
             try {
                 const cachedModels = await fs.readFile(cachePath, 'utf-8');
-                console.log(`从缓存加载 ${isNetwork ? '网络' : '本地'} Sovits模型列表。`);
-                const parsedCache = JSON.parse(cachedModels);
-                return isNetwork ? this._extractNetworkModelsFromCache(parsedCache) : parsedCache;
+                console.log('从缓存加载本地 SoVITS 模型列表。');
+                return JSON.parse(cachedModels);
             } catch (error) {
-                console.log(`${isNetwork ? '网络' : '本地'} Sovits模型缓存不存在或读取失败，将从API获取。`);
+                console.log('本地 SoVITS 模型缓存不存在或读取失败，将从 API 获取。');
             }
         }
 
         try {
-            if (isNetwork) {
-                console.log(`正在从 ${runtimeConfig.baseUrl}/api/voice/list 获取网络音色列表...`);
-                const response = await axios.get(`${runtimeConfig.baseUrl}/api/voice/list`, {
-                    headers: this.buildHeaders(runtimeConfig.apiKey)
-                });
+            console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取本地模型列表...`);
+            const response = await axios.post(`${runtimeConfig.baseUrl}/models`, { version: "v2ProPlus" }, {
+                headers: this.buildHeaders(runtimeConfig.apiKey)
+            });
 
-                const defaults = Array.isArray(response.data?.defaults) ? response.data.defaults : [];
-                const remoteVoices = Array.isArray(response.data?.results)
-                    ? response.data.results
-                    : Array.isArray(response.data?.result)
-                        ? response.data.result
-                        : Array.isArray(response.data)
-                            ? response.data
-                            : [];
-                const mergedVoiceOptions = this._normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
-
-                await fs.writeFile(NETWORK_MODELS_CACHE_PATH, JSON.stringify({
-                    providerUrl: response.data?.providerUrl || runtimeConfig.baseUrl,
-                    modelId: response.data?.modelId || DEFAULT_NETWORK_TTS_MODEL,
-                    defaults,
-                    remoteVoices,
-                    mergedVoiceOptions,
-                    updatedAt: new Date().toISOString()
-                }, null, 2));
-                console.log('网络音色列表已获取并缓存。');
-                return mergedVoiceOptions;
+            if (response.data && response.data.msg === "获取成功" && response.data.models) {
+                await fs.writeFile(LOCAL_MODELS_CACHE_PATH, JSON.stringify(response.data.models, null, 2));
+                console.log('本地 SoVITS 模型列表已获取并缓存。');
+                return response.data.models;
             } else {
-                console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取本地模型列表...`);
-                const response = await axios.post(`${runtimeConfig.baseUrl}/models`, { version: "v2ProPlus" }, {
-                    headers: this.buildHeaders(runtimeConfig.apiKey)
-                });
-
-                if (response.data && response.data.msg === "获取成功" && response.data.models) {
-                    await fs.writeFile(LOCAL_MODELS_CACHE_PATH, JSON.stringify(response.data.models, null, 2));
-                    console.log('本地Sovits模型列表已获取并缓存。');
-                    return response.data.models;
-                } else {
-                    console.error("获取本地Sovits模型列表失败: ", response.data);
-                    return null;
-                }
+                console.error("获取本地 SoVITS 模型列表失败: ", response.data);
+                return null;
             }
         } catch (error) {
-            console.error(`请求 ${isNetwork ? '网络' : '本地'} Sovits模型列表API时出错: `, error.message);
+            console.error('请求本地 SoVITS 模型列表 API 时出错: ', error.message);
             try {
                 const cachedModels = await fs.readFile(cachePath, 'utf-8');
                 const parsedCache = JSON.parse(cachedModels);
-                return isNetwork ? this._extractNetworkModelsFromCache(parsedCache) : parsedCache;
+                return parsedCache;
             } catch (e) {
                 return null;
             }
@@ -205,39 +284,46 @@ class SovitsTTS {
      * @param {string} text 要转换的文本
      * @param {string} voice 使用的模型名称
      * @param {number} speed 语速
-     * @returns {Promise<Buffer|null>} 音频数据的Buffer
+     * @param {string[]} directorPrompts MiMo 自然语言导演提示词
+     * @param {Function|null} onAudioChunk 网络模式收到 PCM 块后的即时回调
+     * @returns {Promise<{audioBuffer: Buffer, streamed: boolean}|null>} 音频结果
      */
-    async textToSpeech(text, voice, speed) {
-        const cacheKey = crypto.createHash('md5').update(text + voice + speed).digest('hex');
-        const cacheFilePath = path.join(TTS_CACHE_DIR, `${cacheKey}.mp3`);
+    async textToSpeech(text, voice, speed, directorPrompts = [], onAudioChunk = null) {
+        const runtimeConfig = await this.getRuntimeConfig();
+        const promptSignature = Array.isArray(directorPrompts) ? directorPrompts.join('\n') : '';
+        const cacheKey = crypto.createHash('md5')
+            .update([runtimeConfig.voiceMode, runtimeConfig.baseUrl, text, voice, speed, promptSignature].join('\0'))
+            .digest('hex');
+        const cacheExtension = runtimeConfig.voiceMode === 'network' ? 'wav' : 'mp3';
+        const cacheFilePath = path.join(TTS_CACHE_DIR, `${cacheKey}.${cacheExtension}`);
         console.log(`[TTS] 尝试缓存路径: ${cacheFilePath}`);
 
         // 1. 检查缓存
         try {
             const cachedAudio = await fs.readFile(cacheFilePath);
             console.log(`[TTS] 成功从缓存加载音频: ${cacheKey}`);
-            return cachedAudio;
+            return { audioBuffer: cachedAudio, streamed: false };
         } catch (error) {
             console.log(`[TTS] 缓存未命中或读取失败: ${error.message}`);
         }
 
         // 2. 如果没有缓存，请求API
         try {
-            const runtimeConfig = await this.getRuntimeConfig();
+            if (runtimeConfig.voiceMode === 'network') {
+                const audioBuffer = await this.requestMimoSpeech(
+                    runtimeConfig,
+                    text,
+                    voice,
+                    directorPrompts,
+                    onAudioChunk
+                );
+                await fs.writeFile(cacheFilePath, audioBuffer);
+                return { audioBuffer, streamed: typeof onAudioChunk === 'function' };
+            }
 
             let payload;
             let endpoint;
-
-            if (runtimeConfig.voiceMode === 'network') {
-                payload = {
-                    model: DEFAULT_NETWORK_TTS_MODEL,
-                    input: text,
-                    voice: voice,
-                    response_format: "mp3",
-                    speed: speed
-                };
-                endpoint = '/v1/audio/speech';
-            } else {
+            {
                 let promptLang = "中文";
                 if (voice.includes('日语')) {
                     promptLang = "日语";
@@ -259,9 +345,8 @@ class SovitsTTS {
                 endpoint = '/v1/audio/speech';
             }
 
-            console.log('[TTS] 发送API请求:', JSON.stringify({
+            console.log('[TTS] 发送本地 SoVITS API 请求:', JSON.stringify({
                 baseUrl: runtimeConfig.baseUrl,
-                voiceMode: runtimeConfig.voiceMode,
                 payload
             }));
 
@@ -287,7 +372,7 @@ class SovitsTTS {
                 } catch (cacheError) {
                     console.error("[TTS] 保存音频缓存失败:", cacheError);
                 }
-                return audioBuffer;
+                return { audioBuffer, streamed: false };
             } else {
                 const nonAudioBody = Buffer.from(response.data || []).toString('utf8');
                 console.error("[TTS] API没有返回正确的音频文件类型。", nonAudioBody);
@@ -451,6 +536,9 @@ class SovitsTTS {
             return;
         }
 
+        const directorPrompts = Array.isArray(options.directorPrompts)
+            ? options.directorPrompts.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
         const tasks = segments.map(seg => {
             const taskVoice = seg.lang === 'secondary' && voiceSecondary ? voiceSecondary : voice;
             // 将每个片段再按换行符分割，以保持原有的分段逻辑
@@ -458,6 +546,7 @@ class SovitsTTS {
                 text: chunk,
                 voice: taskVoice,
                 speed,
+                directorPrompts,
                 msgId,
                 sender // Pass sender to each task
             }));
@@ -487,7 +576,27 @@ class SovitsTTS {
             const currentTask = this.speechQueue.shift();
             this.currentSpeechItemId = currentTask.msgId;
 
-            const audioBuffer = await this.textToSpeech(currentTask.text, currentTask.voice, currentTask.speed);
+            let streamedChunkCount = 0;
+            const speechResult = await this.textToSpeech(
+                currentTask.text,
+                currentTask.voice,
+                currentTask.speed,
+                currentTask.directorPrompts,
+                (audioChunk) => {
+                    if (this.sessionId !== loopSessionId) return;
+                    if (!currentTask.sender || currentTask.sender.isDestroyed()) return;
+                    streamedChunkCount += 1;
+                    currentTask.sender.send('play-tts-audio', {
+                        audioData: audioChunk.toString('base64'),
+                        msgId: currentTask.msgId,
+                        sessionId: loopSessionId,
+                        streaming: true,
+                        chunkIndex: streamedChunkCount,
+                        audioFormat: 'wav'
+                    });
+                }
+            );
+            const audioBuffer = speechResult?.audioBuffer || null;
 
             // 在异步操作后，再次检查会话ID
             if (this.sessionId !== loopSessionId) {
@@ -496,16 +605,21 @@ class SovitsTTS {
             }
 
             if (audioBuffer) {
-                const audioBase64 = audioBuffer.toString('base64');
-                // 发送音频数据、msgId 和会话ID
-                if (currentTask.sender && !currentTask.sender.isDestroyed()) {
-                    currentTask.sender.send('play-tts-audio', {
-                        audioData: audioBase64,
-                        msgId: currentTask.msgId,
-                        sessionId: loopSessionId
-                    });
-                } else {
-                    console.error(`[TTS] 无法发送音频，因为发送方窗口已被销毁。`);
+                // 网络 MiMo 请求已经把 SSE PCM 块逐块推送给渲染器；
+                // 这里只对缓存命中和本地 SoVITS 的完整音频发送一次，避免重复播放。
+                if (!speechResult.streamed) {
+                    const audioBase64 = audioBuffer.toString('base64');
+                    if (currentTask.sender && !currentTask.sender.isDestroyed()) {
+                        currentTask.sender.send('play-tts-audio', {
+                            audioData: audioBase64,
+                            msgId: currentTask.msgId,
+                            sessionId: loopSessionId,
+                            streaming: false,
+                            audioFormat: audioBuffer.subarray(0, 4).toString('ascii') === 'RIFF' ? 'wav' : 'mp3'
+                        });
+                    } else {
+                        console.error(`[TTS] 无法发送音频，因为发送方窗口已被销毁。`);
+                    }
                 }
             } else {
                 console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
