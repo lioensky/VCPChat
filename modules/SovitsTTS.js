@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const DEFAULT_SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
 const DEFAULT_MIMO_API_URL = 'https://www.dmxapi.cn/v1/chat/completions';
 const DEFAULT_NETWORK_TTS_MODEL = 'mimo-v2.5-tts';
+const MIMO_VOICE_DESIGN_MODEL = `${DEFAULT_NETWORK_TTS_MODEL}-voicedesign`;
 const MIMO_SAMPLE_RATE = 24000;
 const MIMO_PRESET_VOICES = Object.freeze([
     { id: 'mimo_default', voice: 'mimo_default', displayName: 'mimo_default · 默认音色', type: 'preset' },
@@ -96,15 +97,40 @@ class SovitsTTS {
         const prompts = Array.isArray(directorPrompts)
             ? directorPrompts.map(item => String(item || '').trim()).filter(Boolean)
             : [];
-        const messages = prompts.map(content => ({ role: 'user', content }));
+        const isVoiceDesign = prompts.length > 0;
+        const messages = [];
+        // MiMo voicedesign 使用严格的 user → assistant 结构。设置页允许维护
+        // 多条导演卡片，但请求时必须合并为一条自然语言指令，不能发送连续
+        // 多个 user 消息，否则部分 OpenAI 兼容网关会返回 HTTP 400。
+        if (isVoiceDesign) {
+            messages.push({ role: 'user', content: prompts.join('\n\n') });
+        }
         messages.push({ role: 'assistant', content: text });
 
-        const response = await axios.post(this.normalizeMimoEndpoint(runtimeConfig.baseUrl), {
-            model: DEFAULT_NETWORK_TTS_MODEL,
+        // voicedesign 模型由自然语言描述生成音色，本轮联调不发送 voice；
+        // 普通 preset 模型仍使用 Agent 当前选择的预置音色。
+        const audio = { format: 'pcm16' };
+        if (!isVoiceDesign) {
+            audio.voice = voice || 'mimo_default';
+        }
+
+        const payload = {
+            model: isVoiceDesign ? MIMO_VOICE_DESIGN_MODEL : DEFAULT_NETWORK_TTS_MODEL,
             messages,
-            audio: { format: 'pcm16', voice: voice || 'mimo_default' },
+            audio,
             stream: true
-        }, {
+        };
+        console.log('[TTS] MiMo request:', JSON.stringify({
+            endpoint: this.normalizeMimoEndpoint(runtimeConfig.baseUrl),
+            model: payload.model,
+            messageRoles: payload.messages.map(message => message.role),
+            userPromptLength: isVoiceDesign ? payload.messages[0].content.length : 0,
+            assistantTextLength: text.length,
+            audio: payload.audio,
+            stream: payload.stream
+        }));
+
+        const response = await axios.post(this.normalizeMimoEndpoint(runtimeConfig.baseUrl), payload, {
             responseType: 'stream',
             headers: {
                 ...this.buildHeaders(runtimeConfig.apiKey),
