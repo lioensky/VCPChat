@@ -1764,8 +1764,42 @@ var numericJoinerChars = /* @__PURE__ */ new Set([
   "\u2013",
   "\u2014"
 ]);
-var noSpacePunctuationChainJoiners = /* @__PURE__ */ new Set([".", ",", ":", ";"]);
-function endsWithNoSpacePunctuationChainJoiner(text) {
+var wordInternalSymbolRe = /[\p{P}\p{S}\p{Co}]/u;
+var emojiPresentationRe = /\p{Emoji_Presentation}/u;
+var noSpaceWordBreakAfterChars = /* @__PURE__ */ new Set([
+  "?",
+  "\u058A",
+  "-",
+  "\u2010",
+  "\u2012",
+  "\u2013",
+  "\u2014",
+  "\u2026",
+  "\u203C",
+  "\u203D",
+  "\u2049"
+]);
+function isAsciiWordInternalSymbolCode(code) {
+  return code >= 33 && code <= 47 && code !== 45 || code >= 58 && code <= 64 && code !== 63 || code >= 91 && code <= 96 || code >= 123 && code <= 126;
+}
+function isNoSpaceWordInternalSymbol(ch) {
+  const code = ch.charCodeAt(0);
+  if (code < 128)
+    return isAsciiWordInternalSymbolCode(code);
+  return !noSpaceWordBreakAfterChars.has(ch) && !emojiPresentationRe.test(ch) && wordInternalSymbolRe.test(ch);
+}
+function isNoSpaceWordInternalSymbolSegment(text) {
+  let sawSymbol = false;
+  for (const ch of text) {
+    if (combiningMarkRe.test(ch))
+      continue;
+    if (!isNoSpaceWordInternalSymbol(ch))
+      return false;
+    sawSymbol = true;
+  }
+  return sawSymbol;
+}
+function endsWithNoSpaceWordJoiner(text) {
   for (let end = text.length; end > 0; ) {
     const start = previousCodePointStart(text, end);
     const ch = text.slice(start, end);
@@ -1773,12 +1807,20 @@ function endsWithNoSpacePunctuationChainJoiner(text) {
       end = start;
       continue;
     }
-    return noSpacePunctuationChainJoiners.has(ch) || isLineBreakNumericAffix(ch);
+    return isNoSpaceWordInternalSymbol(ch) || isLineBreakNumericAffix(ch);
   }
   return false;
 }
-function isNoSpacePunctuationChainSegment(text, wordLike) {
-  return wordLike && !isCJK(text);
+function canJoinNoSpaceWordBoundary(leftText, leftWordLike, rightText, rightWordLike) {
+  const leftSymbol = !leftWordLike && isNoSpaceWordInternalSymbolSegment(leftText);
+  const rightSymbol = !rightWordLike && isNoSpaceWordInternalSymbolSegment(rightText);
+  const leftAffix = endsWithLineBreakNumericAffix(leftText);
+  const leftEndsJoiner = (leftWordLike || leftAffix) && endsWithNoSpaceWordJoiner(leftText);
+  if (!leftSymbol && !rightSymbol && !leftEndsJoiner)
+    return false;
+  if (isCJK(leftText) || isCJK(rightText))
+    return false;
+  return (leftWordLike || leftSymbol || leftAffix) && (rightWordLike || rightSymbol);
 }
 function segmentContainsDecimalDigit(text) {
   for (const ch of text) {
@@ -1832,36 +1874,40 @@ function mergeNumericRuns(segmentation) {
     starts
   };
 }
-function mergeNoSpacePunctuationChains(segmentation) {
+function mergeNoSpaceWordChains(segmentation) {
   const texts = [];
   const isWordLike = [];
   const kinds = [];
   const starts = [];
-  for (let i = 0; i < segmentation.len; i++) {
+  let i = 0;
+  while (i < segmentation.len) {
     const text = segmentation.texts[i];
     const kind = segmentation.kinds[i];
     const wordLike = segmentation.isWordLike[i];
-    if (kind === "text" && endsWithNoSpacePunctuationChainJoiner(text) && (wordLike || endsWithLineBreakNumericAffix(text)) && !isCJK(text)) {
+    if (kind === "text") {
       const mergedParts = [text];
-      let endsWithJoiners = true;
       let j = i + 1;
-      while (endsWithJoiners && j < segmentation.len && segmentation.kinds[j] === "text" && isNoSpacePunctuationChainSegment(segmentation.texts[j], segmentation.isWordLike[j])) {
+      let mergedWordLike = wordLike;
+      while (j < segmentation.len && segmentation.kinds[j] === "text" && canJoinNoSpaceWordBoundary(segmentation.texts[j - 1], segmentation.isWordLike[j - 1], segmentation.texts[j], segmentation.isWordLike[j])) {
         const nextText = segmentation.texts[j];
         mergedParts.push(nextText);
-        endsWithJoiners = endsWithNoSpacePunctuationChainJoiner(nextText);
+        mergedWordLike = mergedWordLike || segmentation.isWordLike[j];
         j++;
       }
-      texts.push(joinTextParts(mergedParts));
-      isWordLike.push(true);
-      kinds.push("text");
-      starts.push(segmentation.starts[i]);
-      i = j - 1;
-      continue;
+      if (j > i + 1) {
+        texts.push(joinTextParts(mergedParts));
+        isWordLike.push(mergedWordLike);
+        kinds.push("text");
+        starts.push(segmentation.starts[i]);
+        i = j;
+        continue;
+      }
     }
     texts.push(text);
     isWordLike.push(wordLike);
     kinds.push(kind);
     starts.push(segmentation.starts[i]);
+    i++;
   }
   return {
     len: texts.length,
@@ -2138,7 +2184,7 @@ function buildMergedSegmentation(normalized, profile, whiteSpaceProfile) {
     kinds: mergedKinds,
     starts: mergedStarts
   });
-  const withMergedUrls = carryTrailingForwardStickyAcrossCJKBoundary(mergeNoSpacePunctuationChains(splitHyphenatedNumericRuns(mergeNumericRuns(mergeUrlQueryRuns(mergeUrlLikeRuns(compacted))))));
+  const withMergedUrls = carryTrailingForwardStickyAcrossCJKBoundary(mergeNoSpaceWordChains(splitHyphenatedNumericRuns(mergeNumericRuns(mergeUrlQueryRuns(mergeUrlLikeRuns(compacted))))));
   for (let i = 0; i < withMergedUrls.len - 1; i++) {
     const split = splitLeadingSpaceAndMarks(withMergedUrls.texts[i]);
     if (split === null)
@@ -2283,7 +2329,7 @@ var measureContext = null;
 var segmentMetricCaches = /* @__PURE__ */ new Map();
 var cachedEngineProfile = null;
 var MAX_PREFIX_FIT_GRAPHEMES = 96;
-var emojiPresentationRe = /\p{Emoji_Presentation}/u;
+var emojiPresentationRe2 = /\p{Emoji_Presentation}/u;
 var maybeEmojiRe = /[\p{Emoji_Presentation}\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u20E3]/u;
 var sharedGraphemeSegmenter = null;
 var emojiCorrectionCache = /* @__PURE__ */ new Map();
@@ -2357,7 +2403,7 @@ function getSharedGraphemeSegmenter() {
   return sharedGraphemeSegmenter;
 }
 function isEmojiGrapheme(g) {
-  return emojiPresentationRe.test(g) || g.includes("\uFE0F");
+  return emojiPresentationRe2.test(g) || g.includes("\uFE0F");
 }
 function textMayContainEmoji(text) {
   return maybeEmojiRe.test(text);
@@ -2528,6 +2574,13 @@ function getBreakableGraphemeAdvance(prepared, hasContent, baseAdvance) {
 function getBreakableCandidateFitWidth(prepared, candidatePaintWidth) {
   return prepared.letterSpacing === 0 ? candidatePaintWidth : candidatePaintWidth + prepared.letterSpacing;
 }
+function getNextPreferredBreakIndex(preferredBreaks, preferredBreakIndex, graphemeEnd) {
+  let index = preferredBreakIndex;
+  while (index < preferredBreaks.length && preferredBreaks[index] < graphemeEnd) {
+    index++;
+  }
+  return index;
+}
 function getTerminalLetterSpacing(prepared, startSegmentIndex, startGraphemeIndex, endSegmentIndex, endGraphemeIndex) {
   if (prepared.letterSpacing === 0)
     return 0;
@@ -2613,7 +2666,7 @@ function countPreparedLines(prepared, maxWidth) {
   return walkPreparedLinesRaw(prepared, maxWidth);
 }
 function walkPreparedLinesSimple(prepared, maxWidth, onLine) {
-  const { widths, kinds, breakableFitAdvances } = prepared;
+  const { widths, kinds, breakableFitAdvances, breakablePreferredBreaks } = prepared;
   if (widths.length === 0)
     return 0;
   const engineProfile = getEngineProfile();
@@ -2666,11 +2719,24 @@ function walkPreparedLinesSimple(prepared, maxWidth, onLine) {
   }
   function appendBreakableSegmentFrom(segmentIndex, startGraphemeIndex) {
     const fitAdvances = breakableFitAdvances[segmentIndex];
-    for (let g = startGraphemeIndex; g < fitAdvances.length; g++) {
+    const preferredBreaks = breakablePreferredBreaks[segmentIndex] ?? null;
+    let preferredBreakIndex = preferredBreaks === null ? -1 : getNextPreferredBreakIndex(preferredBreaks, 0, startGraphemeIndex + 1);
+    let lastPreferredBreakEnd = -1;
+    let lastPreferredBreakWidth = 0;
+    let g = startGraphemeIndex;
+    while (g < fitAdvances.length) {
       const gw = fitAdvances[g];
       if (!hasContent) {
         startLineAtGrapheme(segmentIndex, g, gw);
       } else if (lineW + gw > fitLimit) {
+        if (preferredBreaks !== null && lastPreferredBreakEnd > startGraphemeIndex) {
+          emitCurrentLine(segmentIndex, lastPreferredBreakEnd, lastPreferredBreakWidth);
+          g = lastPreferredBreakEnd;
+          preferredBreakIndex = getNextPreferredBreakIndex(preferredBreaks, preferredBreakIndex, g + 1);
+          lastPreferredBreakEnd = -1;
+          lastPreferredBreakWidth = 0;
+          continue;
+        }
         emitCurrentLine();
         startLineAtGrapheme(segmentIndex, g, gw);
       } else {
@@ -2678,6 +2744,13 @@ function walkPreparedLinesSimple(prepared, maxWidth, onLine) {
         lineEndSegmentIndex = segmentIndex;
         lineEndGraphemeIndex = g + 1;
       }
+      const graphemeEnd = g + 1;
+      if (preferredBreaks !== null && preferredBreaks[preferredBreakIndex] === graphemeEnd) {
+        lastPreferredBreakEnd = graphemeEnd;
+        lastPreferredBreakWidth = lineW;
+        preferredBreakIndex++;
+      }
+      g++;
     }
     if (hasContent && lineEndSegmentIndex === segmentIndex && lineEndGraphemeIndex === fitAdvances.length) {
       lineEndSegmentIndex = segmentIndex + 1;
@@ -2747,7 +2820,7 @@ function walkPreparedLinesRaw(prepared, maxWidth, onLine) {
   if (prepared.simpleLineWalkFastPath) {
     return walkPreparedLinesSimple(prepared, maxWidth, onLine);
   }
-  const { widths, kinds, breakableFitAdvances, discretionaryHyphenWidth, chunks } = prepared;
+  const { widths, kinds, breakableFitAdvances, breakablePreferredBreaks, discretionaryHyphenWidth, chunks } = prepared;
   if (widths.length === 0 || chunks.length === 0)
     return 0;
   const engineProfile = getEngineProfile();
@@ -2819,7 +2892,12 @@ function walkPreparedLinesRaw(prepared, maxWidth, onLine) {
   }
   function appendBreakableSegmentFrom(segmentIndex, startGraphemeIndex) {
     const fitAdvances = breakableFitAdvances[segmentIndex];
-    for (let g = startGraphemeIndex; g < fitAdvances.length; g++) {
+    const preferredBreaks = breakablePreferredBreaks[segmentIndex] ?? null;
+    let preferredBreakIndex = preferredBreaks === null ? -1 : getNextPreferredBreakIndex(preferredBreaks, 0, startGraphemeIndex + 1);
+    let lastPreferredBreakEnd = -1;
+    let lastPreferredBreakWidth = 0;
+    let g = startGraphemeIndex;
+    while (g < fitAdvances.length) {
       const baseGw = fitAdvances[g];
       if (!hasContent) {
         startLineAtGrapheme(segmentIndex, g, baseGw);
@@ -2827,6 +2905,14 @@ function walkPreparedLinesRaw(prepared, maxWidth, onLine) {
         const gw = getBreakableGraphemeAdvance(prepared, true, baseGw);
         const candidatePaintWidth = lineW + gw;
         if (getBreakableCandidateFitWidth(prepared, candidatePaintWidth) > fitLimit) {
+          if (preferredBreaks !== null && lastPreferredBreakEnd > startGraphemeIndex) {
+            emitCurrentLine(segmentIndex, lastPreferredBreakEnd, lastPreferredBreakWidth);
+            g = lastPreferredBreakEnd;
+            preferredBreakIndex = getNextPreferredBreakIndex(preferredBreaks, preferredBreakIndex, g + 1);
+            lastPreferredBreakEnd = -1;
+            lastPreferredBreakWidth = 0;
+            continue;
+          }
           emitCurrentLine();
           startLineAtGrapheme(segmentIndex, g, baseGw);
         } else {
@@ -2835,6 +2921,13 @@ function walkPreparedLinesRaw(prepared, maxWidth, onLine) {
           lineEndGraphemeIndex = g + 1;
         }
       }
+      const graphemeEnd = g + 1;
+      if (preferredBreaks !== null && preferredBreaks[preferredBreakIndex] === graphemeEnd) {
+        lastPreferredBreakEnd = graphemeEnd;
+        lastPreferredBreakWidth = lineW;
+        preferredBreakIndex++;
+      }
+      g++;
     }
     if (hasContent && lineEndSegmentIndex === segmentIndex && lineEndGraphemeIndex === fitAdvances.length) {
       lineEndSegmentIndex = segmentIndex + 1;
@@ -2945,7 +3038,7 @@ function stepPreparedChunkLineGeometry(prepared, cursor, chunkIndex, maxWidth) {
     cursor.graphemeIndex = 0;
     return 0;
   }
-  const { widths, kinds, breakableFitAdvances, discretionaryHyphenWidth } = prepared;
+  const { widths, kinds, breakableFitAdvances, breakablePreferredBreaks, discretionaryHyphenWidth } = prepared;
   const engineProfile = getEngineProfile();
   const lineFitEpsilon = engineProfile.lineFitEpsilon;
   const fitLimit = maxWidth + lineFitEpsilon;
@@ -3002,6 +3095,10 @@ function stepPreparedChunkLineGeometry(prepared, cursor, chunkIndex, maxWidth) {
   }
   function appendBreakableSegmentFrom(segmentIndex, startGraphemeIndex) {
     const fitAdvances = breakableFitAdvances[segmentIndex];
+    const preferredBreaks = breakablePreferredBreaks[segmentIndex] ?? null;
+    let preferredBreakIndex = preferredBreaks === null ? -1 : getNextPreferredBreakIndex(preferredBreaks, 0, startGraphemeIndex + 1);
+    let lastPreferredBreakEnd = -1;
+    let lastPreferredBreakWidth = 0;
     for (let g = startGraphemeIndex; g < fitAdvances.length; g++) {
       const baseGw = fitAdvances[g];
       if (!hasContent) {
@@ -3010,11 +3107,20 @@ function stepPreparedChunkLineGeometry(prepared, cursor, chunkIndex, maxWidth) {
         const gw = getBreakableGraphemeAdvance(prepared, true, baseGw);
         const candidatePaintWidth = lineW + gw;
         if (getBreakableCandidateFitWidth(prepared, candidatePaintWidth) > fitLimit) {
+          if (preferredBreaks !== null && lastPreferredBreakEnd > startGraphemeIndex) {
+            return finishLine(segmentIndex, lastPreferredBreakEnd, lastPreferredBreakWidth);
+          }
           return finishLine();
         }
         lineW = candidatePaintWidth;
         lineEndSegmentIndex = segmentIndex;
         lineEndGraphemeIndex = g + 1;
+      }
+      const graphemeEnd = g + 1;
+      if (preferredBreaks !== null && preferredBreaks[preferredBreakIndex] === graphemeEnd) {
+        lastPreferredBreakEnd = graphemeEnd;
+        lastPreferredBreakWidth = lineW;
+        preferredBreakIndex++;
       }
     }
     if (hasContent && lineEndSegmentIndex === segmentIndex && lineEndGraphemeIndex === fitAdvances.length) {
@@ -3104,7 +3210,7 @@ function stepPreparedChunkLineGeometry(prepared, cursor, chunkIndex, maxWidth) {
   return finishLine(chunk.consumedEndSegmentIndex, 0, lineW);
 }
 function stepPreparedSimpleLineGeometry(prepared, cursor, maxWidth) {
-  const { widths, kinds, breakableFitAdvances } = prepared;
+  const { widths, kinds, breakableFitAdvances, breakablePreferredBreaks } = prepared;
   const engineProfile = getEngineProfile();
   const lineFitEpsilon = engineProfile.lineFitEpsilon;
   const fitLimit = maxWidth + lineFitEpsilon;
@@ -3123,14 +3229,28 @@ function stepPreparedSimpleLineGeometry(prepared, cursor, maxWidth) {
     if (!hasContent) {
       if (startGraphemeIndex > 0 || w > fitLimit && breakableFitAdvance !== null) {
         const fitAdvances = breakableFitAdvance;
+        const preferredBreaks = breakablePreferredBreaks[i] ?? null;
+        let preferredBreakIndex = preferredBreaks === null ? -1 : getNextPreferredBreakIndex(preferredBreaks, 0, startGraphemeIndex + 1);
+        let lastPreferredBreakEnd = -1;
+        let lastPreferredBreakWidth = 0;
         const firstGraphemeWidth = fitAdvances[startGraphemeIndex];
         hasContent = true;
         lineW = firstGraphemeWidth;
         lineEndSegmentIndex = i;
         lineEndGraphemeIndex = startGraphemeIndex + 1;
+        if (preferredBreaks !== null && preferredBreaks[preferredBreakIndex] === lineEndGraphemeIndex) {
+          lastPreferredBreakEnd = lineEndGraphemeIndex;
+          lastPreferredBreakWidth = lineW;
+          preferredBreakIndex++;
+        }
         for (let g = startGraphemeIndex + 1; g < fitAdvances.length; g++) {
           const gw = fitAdvances[g];
           if (lineW + gw > fitLimit) {
+            if (preferredBreaks !== null && lastPreferredBreakEnd > startGraphemeIndex) {
+              cursor.segmentIndex = i;
+              cursor.graphemeIndex = lastPreferredBreakEnd;
+              return lastPreferredBreakWidth;
+            }
             cursor.segmentIndex = lineEndSegmentIndex;
             cursor.graphemeIndex = lineEndGraphemeIndex;
             return lineW;
@@ -3138,6 +3258,11 @@ function stepPreparedSimpleLineGeometry(prepared, cursor, maxWidth) {
           lineW += gw;
           lineEndSegmentIndex = i;
           lineEndGraphemeIndex = g + 1;
+          if (preferredBreaks !== null && preferredBreaks[preferredBreakIndex] === lineEndGraphemeIndex) {
+            lastPreferredBreakEnd = lineEndGraphemeIndex;
+            lastPreferredBreakWidth = lineW;
+            preferredBreakIndex++;
+          }
         }
         if (lineEndSegmentIndex === i && lineEndGraphemeIndex === fitAdvances.length) {
           lineEndSegmentIndex = i + 1;
@@ -3332,6 +3457,7 @@ function createEmptyPrepared(includeSegments) {
       simpleLineWalkFastPath: true,
       segLevels: null,
       breakableFitAdvances: [],
+      breakablePreferredBreaks: [],
       letterSpacing: 0,
       spacingGraphemeCounts: [],
       discretionaryHyphenWidth: 0,
@@ -3348,6 +3474,7 @@ function createEmptyPrepared(includeSegments) {
     simpleLineWalkFastPath: true,
     segLevels: null,
     breakableFitAdvances: [],
+    breakablePreferredBreaks: [],
     letterSpacing: 0,
     spacingGraphemeCounts: [],
     discretionaryHyphenWidth: 0,
@@ -3467,6 +3594,21 @@ function countRenderedSpacingGraphemes(text, kind) {
     count++;
   return count;
 }
+function isPreferredBreakGrapheme(grapheme) {
+  return grapheme === "-" || grapheme === "\u058A" || grapheme === "\u2010" || grapheme === "\u2012" || grapheme === "\u2013" || grapheme === "\u2014";
+}
+function getBreakablePreferredBreaks(text) {
+  if (!/[-\u058A\u2010\u2012\u2013\u2014]/u.test(text))
+    return null;
+  const breaks = [];
+  let graphemeIndex = 0;
+  for (const gs of getSharedGraphemeSegmenter3().segment(text)) {
+    graphemeIndex++;
+    if (isPreferredBreakGrapheme(gs.segment))
+      breaks.push(graphemeIndex);
+  }
+  return breaks.length === 0 ? null : breaks;
+}
 function addInternalLetterSpacing(width, graphemeCount, letterSpacing) {
   return graphemeCount > 1 ? width + (graphemeCount - 1) * letterSpacing : width;
 }
@@ -3486,10 +3628,11 @@ function measureAnalysis(analysis, font, includeSegments, wordBreak, letterSpaci
   let simpleLineWalkFastPath = analysis.chunks.length <= 1 && !hasLetterSpacing;
   const segStarts = includeSegments ? [] : null;
   const breakableFitAdvances = [];
+  const breakablePreferredBreaks = [];
   const spacingGraphemeCounts = [];
   const segments = includeSegments ? [] : null;
   const preparedStartByAnalysisIndex = Array.from({ length: analysis.len });
-  function pushMeasuredSegment(text, width, lineEndFitAdvance, lineEndPaintAdvance, kind, start, breakableFitAdvance, spacingGraphemeCount) {
+  function pushMeasuredSegment(text, width, lineEndFitAdvance, lineEndPaintAdvance, kind, start, breakableFitAdvance, breakablePreferredBreak, spacingGraphemeCount) {
     if (kind !== "text" && kind !== "space" && kind !== "zero-width-break") {
       simpleLineWalkFastPath = false;
     }
@@ -3499,6 +3642,7 @@ function measureAnalysis(analysis, font, includeSegments, wordBreak, letterSpaci
     kinds.push(kind);
     segStarts?.push(start);
     breakableFitAdvances.push(breakableFitAdvance);
+    breakablePreferredBreaks.push(breakablePreferredBreak);
     if (hasLetterSpacing)
       spacingGraphemeCounts.push(spacingGraphemeCount);
     if (segments !== null)
@@ -3521,10 +3665,11 @@ function measureAnalysis(analysis, font, includeSegments, wordBreak, letterSpaci
         fitMode = "segment-prefixes";
       }
       const fitAdvances = getSegmentBreakableFitAdvances(text, textMetrics, cache, emojiCorrection, fitMode);
-      pushMeasuredSegment(text, width, lineEndFitAdvance, lineEndPaintAdvance, kind, start, fitAdvances, spacingGraphemeCount);
+      const preferredBreaks = fitAdvances === null || wordBreak === "keep-all" ? null : getBreakablePreferredBreaks(text);
+      pushMeasuredSegment(text, width, lineEndFitAdvance, lineEndPaintAdvance, kind, start, fitAdvances, preferredBreaks, spacingGraphemeCount);
       return;
     }
-    pushMeasuredSegment(text, width, lineEndFitAdvance, lineEndPaintAdvance, kind, start, null, spacingGraphemeCount);
+    pushMeasuredSegment(text, width, lineEndFitAdvance, lineEndPaintAdvance, kind, start, null, null, spacingGraphemeCount);
   }
   for (let mi = 0; mi < analysis.len; mi++) {
     preparedStartByAnalysisIndex[mi] = widths.length;
@@ -3533,15 +3678,15 @@ function measureAnalysis(analysis, font, includeSegments, wordBreak, letterSpaci
     const segKind = analysis.kinds[mi];
     const segStart = analysis.starts[mi];
     if (segKind === "soft-hyphen") {
-      pushMeasuredSegment(segText, 0, discretionaryHyphenWidth, discretionaryHyphenWidth, segKind, segStart, null, 0);
+      pushMeasuredSegment(segText, 0, discretionaryHyphenWidth, discretionaryHyphenWidth, segKind, segStart, null, null, 0);
       continue;
     }
     if (segKind === "hard-break") {
-      pushMeasuredSegment(segText, 0, 0, 0, segKind, segStart, null, 0);
+      pushMeasuredSegment(segText, 0, 0, 0, segKind, segStart, null, null, 0);
       continue;
     }
     if (segKind === "tab") {
-      pushMeasuredSegment(segText, 0, 0, 0, segKind, segStart, null, hasLetterSpacing ? countRenderedSpacingGraphemes(segText, segKind) : 0);
+      pushMeasuredSegment(segText, 0, 0, 0, segKind, segStart, null, null, hasLetterSpacing ? countRenderedSpacingGraphemes(segText, segKind) : 0);
       continue;
     }
     const segMetrics = getSegmentMetrics(segText, cache);
@@ -3567,6 +3712,7 @@ function measureAnalysis(analysis, font, includeSegments, wordBreak, letterSpaci
       simpleLineWalkFastPath,
       segLevels,
       breakableFitAdvances,
+      breakablePreferredBreaks,
       letterSpacing,
       spacingGraphemeCounts,
       discretionaryHyphenWidth,
@@ -3583,6 +3729,7 @@ function measureAnalysis(analysis, font, includeSegments, wordBreak, letterSpaci
     simpleLineWalkFastPath,
     segLevels,
     breakableFitAdvances,
+    breakablePreferredBreaks,
     letterSpacing,
     spacingGraphemeCounts,
     discretionaryHyphenWidth,
