@@ -1713,20 +1713,26 @@ function renderStreamFrame(messageId) {
             },
 
             onNodeAdded: function(node) {
-                // 增强：包含更多常见的块级元素，确保列表、表格等都能触发横向渐入
+                // 新块级节点使用当前全局动效预设；关闭动效时不创建动画层。
                 if (node.nodeType === 1 && STREAM_BLOCK_TAG_REGEX.test(node.tagName)) {
-                    // 确保新节点应用横向渐入类
-                    node.classList.add('vcp-stream-element-fade-in');
+                    const animationSettings = refs.globalSettingsRef?.get?.() || {};
+                    const animationPreset = animationSettings.streamAnimationPreset || 'slide-left';
+                    const rawDuration = Number(animationSettings.streamAnimationDurationMs);
+                    const animationDuration = Number.isFinite(rawDuration)
+                        ? Math.min(2000, Math.max(100, rawDuration))
+                        : 500;
 
-                    // 初始化长度缓存用于后续的脉冲检测
+                    if (animationPreset !== 'none') {
+                        node.classList.add('vcp-stream-element-fade-in');
+
+                        // 清理时间跟随设置时长，额外保留一帧级缓冲供 morphdom 继承动态类。
+                        scheduleOwnedTimeout(() => {
+                            node?.classList?.remove('vcp-stream-element-fade-in');
+                        }, animationDuration + 100);
+                    }
+
+                    // 初始化长度缓存用于后续的脉冲检测。
                     elementContentLengthCache.set(node, node.textContent.length);
-
-                    // 动画结束后清理类名，但保留一小段时间确保渲染稳定
-                    scheduleOwnedTimeout(() => {
-                        if (node && node.classList) {
-                            node.classList.remove('vcp-stream-element-fade-in');
-                        }
-                    }, 1000);
                 }
                 return node;
             }

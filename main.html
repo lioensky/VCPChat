@@ -1666,6 +1666,80 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <div class="settings-subsection stream-animation-settings">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">流式内容动效</div>
+                                        <p class="settings-subsection-description">为新出现的段落、列表、代码块等内容选择进入动画。系统启用“减少动态效果”时会自动停用。</p>
+                                    </div>
+
+                                    <div class="stream-animation-control-grid">
+                                        <label class="settings-form-group" for="streamAnimationPreset">
+                                            <span>动画预设</span>
+                                            <select id="streamAnimationPreset" name="streamAnimationPreset">
+                                                <option value="slide-left">右侧滑入（经典）</option>
+                                                <option value="fade">纯淡入</option>
+                                                <option value="rise">柔和上浮</option>
+                                                <option value="scale">轻微缩放</option>
+                                                <option value="none">关闭动画</option>
+                                                <option value="custom">自定义 CSS</option>
+                                            </select>
+                                        </label>
+
+                                        <label class="settings-form-group stream-animation-duration-control" for="streamAnimationDurationMs">
+                                            <span class="stream-animation-range-heading">
+                                                <span>动画时长</span>
+                                                <output id="streamAnimationDurationValue" for="streamAnimationDurationMs">500ms</output>
+                                            </span>
+                                            <input type="range" id="streamAnimationDurationMs" name="streamAnimationDurationMs"
+                                                min="100" max="2000" step="50" value="500">
+                                            <small>统一微调所有预设的播放速度；数值越小，动画越快。</small>
+                                        </label>
+                                    </div>
+
+                                    <div id="streamAnimationCustomPanel" class="settings-nested-panel stream-animation-custom-panel" hidden>
+                                        <label class="settings-form-group" for="streamAnimationCustomCss">
+                                            <span>自定义动画 CSS 声明</span>
+                                            <textarea id="streamAnimationCustomCss" name="streamAnimationCustomCss" rows="5"
+                                                spellcheck="false"
+                                                placeholder="例如：&#10;opacity: 0;&#10;transform: translateY(12px) scale(0.98);&#10;filter: blur(3px);"></textarea>
+                                            <small>填写动画元素进入前的初始状态，无需选择器或花括号。结束状态固定恢复为 opacity: 1、transform: none、filter: none。</small>
+                                        </label>
+                                        <div class="stream-animation-custom-example">
+                                            <div class="stream-animation-custom-example-heading">
+                                                <strong>定义示例</strong>
+                                                <button type="button" id="fillStreamAnimationCssExample" class="small-button">填入示例</button>
+                                            </div>
+                                            <pre><code>opacity: 0;
+transform: translateY(12px) scale(0.98);
+filter: blur(3px);
+transform-origin: center bottom;</code></pre>
+                                            <small>保存后，每个新内容块会从上述状态过渡到正常状态；动画时长仍由上方滑杆统一控制。</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="stream-animation-preview" aria-labelledby="streamAnimationPreviewTitle">
+                                        <div class="stream-animation-preview-toolbar">
+                                            <div>
+                                                <strong id="streamAnimationPreviewTitle">动画预览</strong>
+                                                <small>预览会使用当前未保存的选项</small>
+                                            </div>
+                                            <button type="button" id="replayStreamAnimationPreview" class="small-button">
+                                                <span aria-hidden="true">↻</span>
+                                                重新播放
+                                            </button>
+                                        </div>
+                                        <div class="stream-animation-preview-stage">
+                                            <div id="streamAnimationPreviewElement" class="stream-animation-preview-message">
+                                                <span class="stream-animation-preview-avatar" aria-hidden="true">AI</span>
+                                                <span>
+                                                    <strong>流式内容块</strong>
+                                                    <small>这是一段新生成的回复内容。</small>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- 划词助手 -->

@@ -40,6 +40,30 @@ class SettingsValidator {
             console.log('Fixed invalid chatPresentationMode');
         }
 
+        const allowedStreamAnimationPresets = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
+        if (!allowedStreamAnimationPresets.has(validated.streamAnimationPreset)) {
+            validated.streamAnimationPreset = 'slide-left';
+            hasIssues = true;
+            console.log('Fixed invalid streamAnimationPreset');
+        }
+
+        const streamAnimationDurationMs = Number(validated.streamAnimationDurationMs);
+        const normalizedStreamAnimationDurationMs = Number.isFinite(streamAnimationDurationMs)
+            ? Math.min(2000, Math.max(100, Math.round(streamAnimationDurationMs / 50) * 50))
+            : 500;
+        if (normalizedStreamAnimationDurationMs !== validated.streamAnimationDurationMs) {
+            validated.streamAnimationDurationMs = normalizedStreamAnimationDurationMs;
+            hasIssues = true;
+        }
+
+        if (typeof validated.streamAnimationCustomCss !== 'string') {
+            validated.streamAnimationCustomCss = '';
+            hasIssues = true;
+        } else if (validated.streamAnimationCustomCss.length > 4000) {
+            validated.streamAnimationCustomCss = validated.streamAnimationCustomCss.slice(0, 4000);
+            hasIssues = true;
+        }
+
         const appearanceDefaults = defaultSettings.appearanceProfile;
         const appearanceOptions = {
             density: new Set(['compact', 'comfortable', 'relaxed']),
@@ -149,6 +173,9 @@ class SettingsManager extends EventEmitter {
             toolAutoApprovalEnabled: false,
             toolAutoApprovalRules: [],
             enableSmoothStreaming: false,
+            streamAnimationPreset: 'slide-left',
+            streamAnimationDurationMs: 500,
+            streamAnimationCustomCss: '',
             uiMode: 'next',
             showHomeVisualBrand: true,
             showHomeVisualTagline: true,

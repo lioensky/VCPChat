@@ -69,6 +69,16 @@ async function saveGlobalSettings(deps, settingsForm) {
     const voiceMode = document.getElementById('voiceModeNetwork')?.checked ? 'network' : 'local';
     const speechRecognizerBrowserPath = document.getElementById('speechRecognizerBrowserPath')?.value.trim() || '';
     const speechRecognizerPagePath = document.getElementById('speechRecognizerPagePath')?.value.trim() || '';
+    const allowedStreamAnimationPresets = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
+    const selectedStreamAnimationPreset = document.getElementById('streamAnimationPreset')?.value;
+    const streamAnimationPreset = allowedStreamAnimationPresets.has(selectedStreamAnimationPreset)
+        ? selectedStreamAnimationPreset
+        : 'slide-left';
+    const rawStreamAnimationDurationMs = Number(document.getElementById('streamAnimationDurationMs')?.value);
+    const streamAnimationDurationMs = Number.isFinite(rawStreamAnimationDurationMs)
+        ? Math.min(2000, Math.max(100, Math.round(rawStreamAnimationDurationMs / 50) * 50))
+        : 500;
+    const streamAnimationCustomCss = (document.getElementById('streamAnimationCustomCss')?.value || '').slice(0, 4000);
 
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
@@ -92,6 +102,9 @@ async function saveGlobalSettings(deps, settingsForm) {
         sidebarWidth: refs.globalSettings.get().sidebarWidth,
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
+        streamAnimationPreset,
+        streamAnimationDurationMs,
+        streamAnimationCustomCss,
         showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
         showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
         homeVisualTagline: document.getElementById('homeVisualTagline')?.value.trim().slice(0, 120)
