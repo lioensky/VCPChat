@@ -7,6 +7,7 @@ import { createWindowStreamRuntime } from '../../modules/renderer/windowStreamRu
 import { createMessageRenderer } from '../../modules/messageRenderer.js';
 import { createStreamProjection } from '../../modules/renderer/streamManager.js';
 import { createStreamTransientHistory } from '../../modules/chat/streamTransientHistory.js';
+import { createSingleChatRequestOrchestrator } from '../../modules/chat/singleChatRequestOrchestrator.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -30,6 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let streamRuntime = null;
     let historyMutationAuthority = null;
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
+    const singleChatRequestOrchestrator = createSingleChatRequestOrchestrator({
+        electronAPI: window.electronAPI,
+    });
 
     const scrollToBottom = () => {
         chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
@@ -384,65 +388,15 @@ window.electronAPI.onAssistantData(async (data) => {
             if (!latestAgentConfig || latestAgentConfig.error) throw new Error(`无法获取最新的助手配置: ${latestAgentConfig?.error || '未知错误'}`);
             agentConfig = latestAgentConfig;
 
-            const systemPrompt = (agentConfig.systemPrompt || '').replace(/\{\{AgentName\}\}/g, agentConfig.name);
-            const messagesForVCP = [];
-            if (systemPrompt) {
-                messagesForVCP.push({ role: 'system', content: [{ type: 'text', text: systemPrompt }] });
-            }
-
-            const historyForVCP = await Promise.all(currentChatHistory.filter(msg => !msg.isThinking).map(async msg => {
-                let currentMessageTextContent = msg.content;
-                let vcpImageAttachmentsPayload = [];
-
-                if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
-                    let appendedText = "";
-                    for (const att of msg.attachments) {
-                        const fileManagerData = att._fileManagerData || {};
-                        const filePathForContext = att.src || att.name;
-
-                        if (fileManagerData.extractedText) {
-                            appendedText += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name}]`;
-                        } else {
-                            appendedText += `\n\n[附加文件: ${filePathForContext}]`;
-                        }
-
-                        if (att.type.startsWith('image/')) {
-                            const result = await window.electronAPI.getFileAsBase64(att.src);
-                            if (result && result.success) {
-                                result.base64Frames.forEach(frameData => {
-                                    vcpImageAttachmentsPayload.push({
-                                        type: 'image_url',
-                                        image_url: { url: `data:image/jpeg;base64,${frameData}` }
-                                    });
-                                });
-                            }
-                        }
-                    }
-                    currentMessageTextContent += appendedText;
-                }
-
-                const contentPayload = [{ type: 'text', text: currentMessageTextContent }];
-                contentPayload.push(...vcpImageAttachmentsPayload);
-
-                return {
-                    role: msg.role,
-                    content: contentPayload
-                };
-            }));
-            messagesForVCP.push(...historyForVCP);
-
-            const modelConfig = {
-                model: agentConfig.model,
-                temperature: agentConfig.temperature,
-                stream: true,
-                ...(agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens, 10) }),
-                ...(agentConfig.contextTokenLimit && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit, 10) }),
-                ...(agentConfig.top_p && { top_p: parseFloat(agentConfig.top_p) }),
-                ...(agentConfig.top_k && { top_k: parseInt(agentConfig.top_k, 10) })
-            };
-
-            // Call with new signature, including context. isGroupCall is false.
-            await window.electronAPI.sendToVCP(globalSettings.vcpServerUrl, globalSettings.vcpApiKey, messagesForVCP, modelConfig, thinkingMessageId, false, context);
+            await singleChatRequestOrchestrator.send({
+                settings: globalSettings,
+                agentConfig,
+                history: currentChatHistory,
+                messageId: thinkingMessageId,
+                context,
+                currentUserMessageId: userMessage.id,
+                modelConfigOverrides: { stream: true },
+            });
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);

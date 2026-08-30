@@ -23,7 +23,20 @@ function createFixture(options = {}) {
         <ul class="topic-list" id="topicList"></ul>
     </body></html>`, { runScripts: 'outside-only', url: 'https://vcpchat.local/' });
     const { window } = dom;
-    window.eval(`${fs.readFileSync('modules/chatManager.js', 'utf8').replace(/\bexport\s+(?=const\s+chatManager\b)/, '')}\nwindow.__testChatManager = chatManager;`);
+    window.buildDefaultMessageContent = async ({ message }) => [{
+        type: 'text',
+        text: typeof message?.content === 'string' ? message.content : '',
+    }];
+    window.updateFirstTextPart = (content, transform) => {
+        const parts = Array.isArray(content) ? content.map(part => ({ ...part })) : [];
+        const index = parts.findIndex(part => part?.type === 'text');
+        if (index >= 0) parts[index].text = transform(parts[index].text || '');
+        return parts;
+    };
+    const chatManagerSource = fs.readFileSync('modules/chatManager.js', 'utf8')
+        .replace(/import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/chat\/singleChatRequestOrchestrator\.js['"];\s*/, '')
+        .replace(/\bexport\s+(?=const\s+chatManager\b)/, '');
+    window.eval(`${chatManagerSource}\nwindow.__testChatManager = chatManager;`);
     window.chatManager = window.__testChatManager;
 
     let selected = Object.freeze({ id: null, type: null, name: null, avatarUrl: null, config: null });
@@ -163,9 +176,37 @@ function createFixture(options = {}) {
             return { success: true };
         },
     };
+    const singleChatRequestOrchestrator = {
+        async buildRequest({ settings, agentConfig, history, messageId, context }) {
+            return {
+                messages: history
+                    .filter(message => message?.isThinking !== true)
+                    .map(message => ({ role: message.role, content: message.content })),
+                modelConfig: {
+                    model: agentConfig.model || 'fixture-model',
+                    stream: true,
+                },
+                messageId,
+                context,
+                settings,
+            };
+        },
+        async sendPrepared(request, settings) {
+            return electronAPI.sendToVCP(
+                settings.vcpServerUrl,
+                settings.vcpApiKey,
+                request.messages,
+                request.modelConfig,
+                request.messageId,
+                false,
+                request.context,
+            );
+        },
+    };
     let initError = null;
     try {
         window.chatManager.init({
+        singleChatRequestOrchestrator,
         chatRepository: {
             getHistory: (itemId, _itemType, requestedTopicId) => electronAPI.getChatHistory(itemId, requestedTopicId),
             saveHistory: (itemId, _itemType, requestedTopicId, messages) => electronAPI.saveChatHistory(itemId, requestedTopicId, messages),

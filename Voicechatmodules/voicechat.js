@@ -8,6 +8,7 @@ import { createMessageRenderer } from '../modules/messageRenderer.js';
 import { createStreamProjection } from '../modules/renderer/streamManager.js';
 import { createStreamTransientHistory } from '../modules/chat/streamTransientHistory.js';
 import { createTtsSurfaceOwner } from '../modules/renderer/ttsSurfaceOwner.js';
+import { createSingleChatRequestOrchestrator } from '../modules/chat/singleChatRequestOrchestrator.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -48,6 +49,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let streamRuntime = null;
     let inputMode = 'text'; // 'text' or 'voice'
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
+    const singleChatRequestOrchestrator = createSingleChatRequestOrchestrator({
+        electronAPI: window.electronAPI,
+    });
 
     // Local UI Helper for this window
     const uiHelperFunctions = {
@@ -451,33 +455,17 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         try {
-            const voiceModePromptInjection = "\n\n当前处于语音模式中，你的回复应当口语化，内容简短直白。由于用户输入同样是语音识别模型构成，注意自主判断、理解其中的同音错别字或者错误语义识别。";
-            const systemPrompt = (agentConfig.systemPrompt || '').replace(/\{\{AgentName\}\}/g, agentConfig.name) + voiceModePromptInjection;
-            
-            const messagesForVCP = [];
-            if (systemPrompt) {
-                messagesForVCP.push({ role: 'system', content: [{ type: 'text', text: systemPrompt }] });
-            }
-
-            const historyForVCP = currentChatHistory.filter(msg => !msg.isThinking).map(msg => {
-                const contentPayload = (typeof msg.content === 'string')
-                    ? [{ type: 'text', text: msg.content }]
-                    : msg.content;
-                return { role: msg.role, content: contentPayload };
+            const voiceModePromptInjection = '当前处于语音模式中，你的回复应当口语化，内容简短直白。由于用户输入同样是语音识别模型构成，注意自主判断、理解其中的同音错别字或者错误语义识别。';
+            await singleChatRequestOrchestrator.send({
+                settings: globalSettings,
+                agentConfig,
+                history: currentChatHistory,
+                messageId: thinkingMessageId,
+                context,
+                currentUserMessageId: userMessage.id,
+                systemPromptAppend: voiceModePromptInjection,
+                modelConfigOverrides: { stream: true },
             });
-            messagesForVCP.push(...historyForVCP);
-
-            const modelConfig = {
-                model: agentConfig.model,
-                temperature: agentConfig.temperature,
-                stream: true,
-                ...(agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens, 10) }),
-                ...(agentConfig.contextTokenLimit && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit, 10) }),
-                ...(agentConfig.top_p && { top_p: parseFloat(agentConfig.top_p) }),
-                ...(agentConfig.top_k && { top_k: parseInt(agentConfig.top_k, 10) })
-            };
-
-            await window.electronAPI.sendToVCP(globalSettings.vcpServerUrl, globalSettings.vcpApiKey, messagesForVCP, modelConfig, thinkingMessageId, false, context);
 
         } catch (error) {
             console.error('Error sending message to VCP:', error);
