@@ -72,8 +72,10 @@ async function saveGlobalSettings(deps, settingsForm) {
     const voiceInputMode = allowedVoiceInputModes.has(selectedVoiceInputMode)
         ? selectedVoiceInputMode
         : 'windows_voice_typing';
-    const voiceInputShortcut = document.getElementById('voiceInputShortcut')?.value.trim()
-        || 'Control+Alt+Space';
+    const voiceInputShortcut = (
+        document.getElementById('voiceInputShortcut')?.value.trim()
+        || 'F7'
+    ).toUpperCase();
     const allowedStreamAnimationPresets = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
     const selectedStreamAnimationPreset = document.getElementById('streamAnimationPreset')?.value;
     const streamAnimationPreset = allowedStreamAnimationPresets.has(selectedStreamAnimationPreset)

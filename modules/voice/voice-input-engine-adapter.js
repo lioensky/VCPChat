@@ -22,6 +22,7 @@ class VoiceInputEngineAdapter {
         this.lastError = null;
         this.lastEvent = null;
         this.lifecycleState = 'stopped';
+        this.eventListeners = new Set();
     }
 
     getRuntimeTarget() {
@@ -178,6 +179,24 @@ class VoiceInputEngineAdapter {
         });
     }
 
+    onEvent(listener) {
+        if (typeof listener !== 'function') {
+            throw new TypeError('Voice input engine event listener must be a function.');
+        }
+        this.eventListeners.add(listener);
+        return () => this.eventListeners.delete(listener);
+    }
+
+    emitEvent(event) {
+        for (const listener of this.eventListeners) {
+            try {
+                listener(event);
+            } catch (error) {
+                this.logger.error('[VoiceInputEngine] Event listener failed:', error);
+            }
+        }
+    }
+
     handleStdoutLine(child, line) {
         if (this.process !== child || !line.trim()) return;
 
@@ -198,7 +217,10 @@ class VoiceInputEngineAdapter {
         }
 
         const requestId = event.request_id;
-        if (!requestId) return;
+        if (!requestId) {
+            this.emitEvent(event);
+            return;
+        }
         const pending = this.pendingRequests.get(requestId);
         if (!pending) return;
 
@@ -256,9 +278,15 @@ class VoiceInputEngineAdapter {
         });
     }
 
-    startSession({ mode, targetWindowHandle }) {
-        return this.request('start_session', {
-            mode,
+    configureHotkey({ shortcut, mode }) {
+        return this.request('configure_hotkey', {
+            shortcut: String(shortcut),
+            mode: String(mode),
+        });
+    }
+
+    focusReady({ targetWindowHandle }) {
+        return this.request('focus_ready', {
             target_window_handle: String(targetWindowHandle),
         });
     }

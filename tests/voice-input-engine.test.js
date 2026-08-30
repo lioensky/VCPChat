@@ -63,7 +63,8 @@ test('voice input sidecar starts on demand, answers ping, and shuts down', async
     assert.equal(pong.event, 'pong');
     assert.equal(pong.success, true);
     assert.equal(pong.detail.platform, process.platform === 'win32' ? 'windows' : process.platform);
-    assert.equal(pong.detail.active, false);
+    assert.equal(pong.detail.hotkeyPressed, false);
+    assert.equal(pong.detail.awaitingFocus, false);
     assert.equal(pong.detail.rightAltHeld, false);
 
     await adapter.shutdown();
@@ -77,28 +78,37 @@ test('voice chat native input stays isolated to the auxiliary surface', () => {
     const voiceSource = source('Voicechatmodules/voicechat.js');
     const mainRendererSource = source('renderer.js');
     const voiceHandlersSource = source('modules/ipc/voiceHandlers.js');
+    const captureSource = source('Voicechatmodules/voice-input-capture.js');
+    const rustSource = source('rust_voice_input_engine/src/main.rs');
 
-    assert.match(voiceSource, /startNativeVoiceInput/);
-    assert.match(voiceSource, /stopNativeVoiceInput/);
-    assert.match(voiceSource, /cancelNativeVoiceInput/);
-    assert.match(voiceSource, /onVoiceInputGlobalToggle/);
-    assert.match(voiceSource, /waitForNativeVoiceTextToSettle/);
-    assert.match(voiceSource, /NATIVE_VOICE_FINAL_QUIET_MS/);
+    assert.match(voiceSource, /onVoiceInputCapturedText/);
+    assert.match(voiceSource, /sendMessage\(text\)/);
     assert.doesNotMatch(voiceSource, /startSpeechRecognition\(\)/);
     assert.doesNotMatch(voiceSource, /stopSpeechRecognition\(\)/);
     assert.doesNotMatch(mainRendererSource, /startNativeVoiceInput|voice-input-native/);
-    assert.match(voiceHandlersSource, /findVoiceChatWindowBySender/);
-    assert.match(voiceHandlersSource, /globalShortcut\.register\(shortcut/);
-    assert.match(voiceHandlersSource, /voice-input-global-toggle/);
-    assert.match(voiceHandlersSource, /仅语音聊天子窗口可以启动原生语音输入/);
+    assert.doesNotMatch(voiceHandlersSource, /globalShortcut\.register/);
+    assert.doesNotMatch(voiceHandlersSource, /voice-input-global-toggle/);
+    assert.match(voiceHandlersSource, /voice-input-capture:focus-ready/);
+    assert.match(voiceHandlersSource, /voice-input-captured-text/);
+    assert.match(captureSource, /compositionstart/);
+    assert.match(captureSource, /compositionend/);
+    assert.match(captureSource, /focusReady/);
+    assert.match(rustSource, /WH_KEYBOARD_LL/);
+    assert.match(rustSource, /hotkey_down/);
+    assert.match(rustSource, /hotkey_up/);
+    assert.match(rustSource, /HOOK_KEY_PRESSED/);
 });
 
-test('voice input lifecycle has close and application quit safety cleanup', () => {
-    const voiceSource = source('Voicechatmodules/voicechat.js');
+test('voice input lifecycle has native key release and application quit safety cleanup', () => {
     const voiceHandlersSource = source('modules/ipc/voiceHandlers.js');
+    const rustSource = source('rust_voice_input_engine/src/main.rs');
     const mainSource = source('main.js');
 
-    assert.match(voiceSource, /cancelNativeVoiceInput\?\.\(\)/);
+    assert.match(rustSource, /RIGHT_ALT_WATCHDOG_MS/);
+    assert.match(rustSource, /watchdog_release/);
+    assert.match(rustSource, /stdin EOF is authoritative/);
+    assert.match(rustSource, /KEYEVENTF_EXTENDEDKEY \| KEYEVENTF_KEYUP/);
+    assert.match(rustSource, /state\.release_all\(\)/);
     assert.match(voiceHandlersSource, /releaseNativeVoiceInput\(\{ restoreFocus: true, shutdown: true \}\)/);
     assert.match(voiceHandlersSource, /shutdownVoiceInputEngine/);
     assert.match(mainSource, /await voiceHandlers\.shutdownVoiceInputEngine\(\)/);
@@ -113,7 +123,7 @@ test('global voice settings expose native mode and shortcut instead of Puppeteer
     assert.ok(settingsRoot.getElementById('voiceInputMode'));
     assert.ok(settingsRoot.getElementById('voiceInputShortcut'));
     assert.equal(settingsRoot.getElementById('voiceInputMode').value, 'windows_voice_typing');
-    assert.equal(settingsRoot.getElementById('voiceInputShortcut').value, 'Control+Alt+Space');
+    assert.equal(settingsRoot.getElementById('voiceInputShortcut').value, 'F7');
     assert.equal(settingsRoot.getElementById('speechRecognizerBrowserPath'), null);
     assert.equal(settingsRoot.getElementById('speechRecognizerPagePath'), null);
     dom.window.close();
@@ -133,13 +143,13 @@ test('settings persistence migrates legacy Puppeteer STT fields', async t => {
     const manager = new AppSettingsManager(settingsPath);
     const result = await manager.updateSettings({
         voiceInputMode: 'right_alt_hold',
-        voiceInputShortcut: 'Control+Shift+Space',
+        voiceInputShortcut: 'f8',
     });
     assert.equal(result.success, true);
 
     const persisted = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     assert.equal(persisted.voiceInputMode, 'right_alt_hold');
-    assert.equal(persisted.voiceInputShortcut, 'Control+Shift+Space');
+    assert.equal(persisted.voiceInputShortcut, 'F8');
     assert.equal('speechRecognizerBrowserPath' in persisted, false);
     assert.equal('speechRecognizerPagePath' in persisted, false);
 });

@@ -77,7 +77,7 @@ const mainChatSettingsOwner = createMainChatSettingsOwner({ initial: {
     showUserMetaInChatBubbleUi: true,
     voiceMode: 'local',
     voiceInputMode: 'windows_voice_typing',
-    voiceInputShortcut: 'Control+Alt+Space',
+    voiceInputShortcut: 'F7',
     voiceLocalSettings: {
         sovitsUrl: '',
         sovitsKey: ''

@@ -48,11 +48,11 @@ class SettingsValidator {
         }
 
         if (typeof validated.voiceInputShortcut !== 'string' || !validated.voiceInputShortcut.trim()) {
-            validated.voiceInputShortcut = 'Control+Alt+Space';
+            validated.voiceInputShortcut = 'F7';
             hasIssues = true;
             console.log('Fixed invalid voiceInputShortcut');
         } else {
-            validated.voiceInputShortcut = validated.voiceInputShortcut.trim();
+            validated.voiceInputShortcut = validated.voiceInputShortcut.trim().toUpperCase();
         }
 
         if ('speechRecognizerBrowserPath' in validated) {
@@ -250,7 +250,7 @@ class SettingsManager extends EventEmitter {
             assistantAgent: '',
             voiceMode: 'local',
             voiceInputMode: 'windows_voice_typing',
-            voiceInputShortcut: 'Control+Alt+Space',
+            voiceInputShortcut: 'F7',
             voiceLocalSettings: {
                 sovitsUrl: '',
                 sovitsKey: ''

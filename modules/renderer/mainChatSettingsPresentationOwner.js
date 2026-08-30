@@ -757,7 +757,7 @@ transform-origin: center bottom;`;
                 ? globalSettings.voiceInputMode
                 : 'windows_voice_typing'
         );
-        safeSet('voiceInputShortcut', globalSettings.voiceInputShortcut || 'Control+Alt+Space');
+        safeSet('voiceInputShortcut', globalSettings.voiceInputShortcut || 'F7');
         safeSet('voiceLocalSovitsUrl', globalSettings.voiceLocalSettings?.sovitsUrl || '');
         safeSet('voiceLocalSovitsKey', globalSettings.voiceLocalSettings?.sovitsKey || '');
         safeSet('voiceNetworkProviderUrl', globalSettings.voiceNetworkSettings?.providerUrl || '');
