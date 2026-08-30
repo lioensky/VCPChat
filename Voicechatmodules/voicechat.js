@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const voiceInputShortcutStatus = document.getElementById('voiceInputShortcutStatus');
     const closeBtn = document.getElementById('close-btn-voicechat');
     const toggleInputModeBtn = document.getElementById('toggleInputModeBtn');
-    const nativeVoiceInputMode = document.getElementById('nativeVoiceInputMode');
     const keyboardIcon = document.getElementById('keyboard-icon');
     const micIcon = document.getElementById('mic-icon');
     let historyMutationAuthority = null;
@@ -242,7 +241,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.body.classList.toggle('light-theme', theme === 'light');
         document.body.classList.toggle('dark-theme', theme === 'dark');
-        nativeVoiceInputMode.value = globalSettings.voiceInputMode;
         const nativeStatus = await window.electronAPI.getNativeVoiceInputStatus?.();
         renderVoiceInputShortcutStatus(
             nativeStatus?.shortcut?.registered
@@ -371,11 +369,13 @@ document.addEventListener('DOMContentLoaded', () => {
         inputMode = active ? 'voice' : 'text';
         keyboardIcon.style.display = active ? 'none' : 'block';
         micIcon.style.display = active ? 'block' : 'none';
-        nativeVoiceInputMode.disabled = active;
         toggleInputModeBtn.setAttribute('aria-pressed', String(active));
+        const voiceInputModeLabel = globalSettings.voiceInputMode === 'right_alt_hold'
+            ? '右 Alt'
+            : 'Win+H';
         messageInput.placeholder = active
-            ? `正在使用 ${nativeVoiceInputMode.selectedOptions[0]?.textContent || '系统听写'}...`
-            : '输入消息...';
+            ? `正在使用 ${voiceInputModeLabel} 系统听写...`
+            : '输入消息或使用全局语音快捷键...';
     }
 
     function renderVoiceInputShortcutStatus(status, state = null) {

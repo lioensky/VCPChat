@@ -22,8 +22,9 @@ let voiceCaptureSession = null;
 let voiceCaptureSequence = 0;
 let releaseVoiceEngineEvents = null;
 
-const CAPTURE_QUIET_MS = 800;
-const CAPTURE_MAX_SETTLE_MS = 5000;
+const CAPTURE_MIN_SETTLE_MS = 1500;
+const CAPTURE_QUIET_MS = 1200;
+const CAPTURE_MAX_SETTLE_MS = 7000;
 
 function getNativeWindowHandleString(win) {
     if (!win || win.isDestroyed() || typeof win.getNativeWindowHandle !== 'function') {
@@ -186,17 +187,39 @@ async function beginVoiceCaptureFromHotkey(eventData = {}) {
 
 function waitForCaptureTextToSettle(session) {
     const startedAt = Date.now();
+    let lastObservedText = session.text;
+    let lastObservedComposing = session.composing;
+    let lastChangeAt = startedAt;
+
     return new Promise(resolve => {
         const check = () => {
             if (!voiceCaptureSession || voiceCaptureSession !== session) {
                 resolve('');
                 return;
             }
-            const quietFor = Date.now() - session.updatedAt;
+
+            const now = Date.now();
             if (
-                (!session.composing && quietFor >= CAPTURE_QUIET_MS)
-                || Date.now() - startedAt >= CAPTURE_MAX_SETTLE_MS
+                session.text !== lastObservedText
+                || session.composing !== lastObservedComposing
             ) {
+                lastObservedText = session.text;
+                lastObservedComposing = session.composing;
+                lastChangeAt = now;
+            }
+
+            const elapsed = now - startedAt;
+            const quietFor = now - Math.max(lastChangeAt, session.updatedAt);
+            const textIsStable = (
+                elapsed >= CAPTURE_MIN_SETTLE_MS
+                && !session.composing
+                && quietFor >= CAPTURE_QUIET_MS
+            );
+
+            // Win+H may continue committing recognition results after the stop
+            // key is sent. Require a minimum grace period and then debounce
+            // every text/composition update before consuming the final value.
+            if (textIsStable || elapsed >= CAPTURE_MAX_SETTLE_MS) {
                 resolve(session.text.trim());
                 return;
             }

@@ -164,6 +164,7 @@ struct SharedState {
     native_hook_active: AtomicBool,
     hotkey_pressed: AtomicBool,
     awaiting_focus: AtomicBool,
+    windows_voice_session_active: AtomicBool,
     right_alt_held: AtomicBool,
     original_window_handle: AtomicU64,
     target_window_handle: AtomicU64,
@@ -178,6 +179,7 @@ impl Default for SharedState {
             native_hook_active: AtomicBool::new(false),
             hotkey_pressed: AtomicBool::new(false),
             awaiting_focus: AtomicBool::new(false),
+            windows_voice_session_active: AtomicBool::new(false),
             right_alt_held: AtomicBool::new(false),
             original_window_handle: AtomicU64::new(0),
             target_window_handle: AtomicU64::new(0),
@@ -214,8 +216,17 @@ impl SharedState {
     }
 
     fn stop_session(&self) -> Result<(), String> {
-        if matches!(self.mode(), Some(InputMode::WindowsVoiceTyping)) {
-            platform::tap_windows_h()?;
+        if matches!(self.mode(), Some(InputMode::WindowsVoiceTyping))
+            && self
+                .windows_voice_session_active
+                .swap(false, Ordering::SeqCst)
+        {
+            // Windows voice typing is started by tapping Win+H, but should be
+            // stopped by a separate harmless key press. Tapping Win+H again
+            // behaves like another toggle and can race the asynchronous text
+            // recognition/commit, causing the last dictated characters to be
+            // dropped.
+            platform::tap_voice_typing_stop_key()?;
         }
         self.release_all();
         Ok(())
@@ -260,41 +271,68 @@ fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
                 Ok(true) => {
                     let vk = CONFIGURED_HOTKEY_VK.load(Ordering::SeqCst);
                     state.hotkey_pressed.store(true, Ordering::SeqCst);
-                    state.release_all();
-                    let original = platform::foreground_window_handle().unwrap_or(0);
-                    state
-                        .original_window_handle
-                        .store(original, Ordering::SeqCst);
-                    state.awaiting_focus.store(true, Ordering::SeqCst);
-                    emit_unsolicited(
-                        "hotkey_down",
-                        state.mode(),
-                        json!({
-                            "virtualKey": vk,
-                            "originalWindowHandle": if original == 0 { None } else { Some(original.to_string()) }
-                        }),
-                    );
+
+                    if matches!(state.mode(), Some(InputMode::WindowsVoiceTyping))
+                        && state
+                            .windows_voice_session_active
+                            .load(Ordering::SeqCst)
+                    {
+                        // Win+H itself was only tapped and fully released when
+                        // the session started. A second shortcut press asks the
+                        // application to finish it using the harmless stop key.
+                        let target = state.target_window_handle.load(Ordering::SeqCst);
+                        emit_unsolicited(
+                            "hotkey_up",
+                            state.mode(),
+                            json!({
+                                "virtualKey": vk,
+                                "targetWindowHandle": if target == 0 {
+                                    None
+                                } else {
+                                    Some(target.to_string())
+                                },
+                                "trigger": "second_hotkey_press"
+                            }),
+                        );
+                    } else if !state.awaiting_focus.load(Ordering::SeqCst) {
+                        state.release_all();
+                        let original = platform::foreground_window_handle().unwrap_or(0);
+                        state
+                            .original_window_handle
+                            .store(original, Ordering::SeqCst);
+                        state.awaiting_focus.store(true, Ordering::SeqCst);
+                        emit_unsolicited(
+                            "hotkey_down",
+                            state.mode(),
+                            json!({
+                                "virtualKey": vk,
+                                "originalWindowHandle": if original == 0 { None } else { Some(original.to_string()) }
+                            }),
+                        );
+                    }
                 }
                 Ok(false) => {
                     let vk = CONFIGURED_HOTKEY_VK.load(Ordering::SeqCst);
                     state.hotkey_pressed.store(false, Ordering::SeqCst);
-                    // P0 invariant: the native key-up path releases every
-                    // simulated modifier before Electron can perform any work.
-                    state.release_all();
-                    let target = state.target_window_handle.load(Ordering::SeqCst);
-                    let target_window_handle = if target == 0 {
-                        None
-                    } else {
-                        Some(target.to_string())
-                    };
-                    emit_unsolicited(
-                        "hotkey_up",
-                        state.mode(),
-                        json!({
-                            "virtualKey": vk,
-                            "targetWindowHandle": target_window_handle
-                        }),
-                    );
+
+                    if !matches!(state.mode(), Some(InputMode::WindowsVoiceTyping)) {
+                        // Hold mode ends on the physical shortcut release.
+                        state.release_all();
+                        let target = state.target_window_handle.load(Ordering::SeqCst);
+                        let target_window_handle = if target == 0 {
+                            None
+                        } else {
+                            Some(target.to_string())
+                        };
+                        emit_unsolicited(
+                            "hotkey_up",
+                            state.mode(),
+                            json!({
+                                "virtualKey": vk,
+                                "targetWindowHandle": target_window_handle
+                            }),
+                        );
+                    }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -340,6 +378,7 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                 "nativeHookActive": state.native_hook_active.load(Ordering::SeqCst),
                 "hotkeyPressed": state.hotkey_pressed.load(Ordering::SeqCst),
                 "awaitingFocus": state.awaiting_focus.load(Ordering::SeqCst),
+                "windowsVoiceSessionActive": state.windows_voice_session_active.load(Ordering::SeqCst),
                 "rightAltHeld": state.right_alt_held.load(Ordering::SeqCst)
             })),
         }),
@@ -362,6 +401,9 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                 Ok((parsed_mode, vk)) => {
                     state.release_all();
                     state
+                        .windows_voice_session_active
+                        .store(false, Ordering::SeqCst);
+                    state
                         .configured_mode
                         .store(parsed_mode.code(), Ordering::SeqCst);
                     CONFIGURED_HOTKEY_VK.store(vk, Ordering::SeqCst);
@@ -382,18 +424,29 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
             ..
         } => {
             let result = parse_window_handle(&target_window_handle).and_then(|target| {
-                if !state.hotkey_pressed.load(Ordering::SeqCst)
-                    || !state.awaiting_focus.load(Ordering::SeqCst)
+                let awaiting_focus = state.awaiting_focus.load(Ordering::SeqCst);
+                let physical_hotkey_required =
+                    matches!(state.mode(), Some(InputMode::RightAltHold));
+                if !awaiting_focus
+                    || (physical_hotkey_required
+                        && !state.hotkey_pressed.load(Ordering::SeqCst))
                 {
                     return Err(
-                        "focus_ready rejected without an active physical hotkey".to_string()
+                        "focus_ready rejected without an active voice input request".to_string()
                     );
                 }
                 platform::focus_window(target)?;
                 state.target_window_handle.store(target, Ordering::SeqCst);
                 thread::sleep(Duration::from_millis(80));
                 match state.mode() {
-                    Some(InputMode::WindowsVoiceTyping) => platform::tap_windows_h()?,
+                    Some(InputMode::WindowsVoiceTyping) => {
+                        // This is a complete one-shot chord: Win down, H down,
+                        // H up, Win up. No Win+H key is retained while speaking.
+                        platform::tap_windows_h()?;
+                        state
+                            .windows_voice_session_active
+                            .store(true, Ordering::SeqCst);
+                    }
                     Some(InputMode::RightAltHold) => {
                         platform::set_right_alt(true)?;
                         state.right_alt_held.store(true, Ordering::SeqCst);
@@ -479,6 +532,9 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
         }
         Command::Shutdown { .. } => {
             state.running.store(false, Ordering::SeqCst);
+            state
+                .windows_voice_session_active
+                .store(false, Ordering::SeqCst);
             state.release_all();
             emit(EngineEvent {
                 event: "shutdown",
@@ -562,6 +618,9 @@ mod platform {
     };
 
     const VK_H: VIRTUAL_KEY = VIRTUAL_KEY(0x48);
+    // F24 does not insert or edit text and still counts as a normal key press,
+    // so Windows voice typing can finish recognition without another Win+H.
+    const VK_VOICE_TYPING_STOP: VIRTUAL_KEY = VIRTUAL_KEY(0x87);
     static HOOK_EVENT_SENDER: OnceLock<Mutex<Option<Sender<bool>>>> = OnceLock::new();
 
     unsafe extern "system" fn low_level_keyboard_proc(
@@ -740,6 +799,13 @@ mod platform {
         ])
     }
 
+    pub fn tap_voice_typing_stop_key() -> Result<(), String> {
+        send_inputs(&[
+            keyboard_input(VK_VOICE_TYPING_STOP, KEYBD_EVENT_FLAGS(0)),
+            keyboard_input(VK_VOICE_TYPING_STOP, KEYEVENTF_KEYUP),
+        ])
+    }
+
     pub fn set_right_alt(pressed: bool) -> Result<(), String> {
         let flags = KEYEVENTF_EXTENDEDKEY
             | if pressed {
@@ -756,6 +822,7 @@ mod platform {
                 &[
                     keyboard_input(VK_H, KEYEVENTF_KEYUP),
                     keyboard_input(VK_LWIN, KEYEVENTF_KEYUP),
+                    keyboard_input(VK_VOICE_TYPING_STOP, KEYEVENTF_KEYUP),
                     keyboard_input(VK_RMENU, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP),
                 ],
                 size_of::<INPUT>() as i32,
@@ -788,6 +855,9 @@ mod platform {
         Err(unsupported())
     }
     pub fn tap_windows_h() -> Result<(), String> {
+        Err(unsupported())
+    }
+    pub fn tap_voice_typing_stop_key() -> Result<(), String> {
         Err(unsupported())
     }
     pub fn set_right_alt(_pressed: bool) -> Result<(), String> {
