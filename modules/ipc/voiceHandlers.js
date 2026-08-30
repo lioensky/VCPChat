@@ -475,12 +475,16 @@ function initialize(options) {
         voiceCaptureSession.composing = payload.composing === true;
         voiceCaptureSession.updatedAt = Number(payload.updatedAt) || Date.now();
     });
-    ipcMain.on('voice-input-capture:focus-ready', async event => {
+    ipcMain.on('voice-input-capture:focus-ready', async (event, payload = {}) => {
         if (
             voiceCaptureWindow?.webContents !== event.sender
             || !voiceCaptureSession
             || voiceCaptureSession.focusReadySent
             || !voiceInputEngine
+            || payload.sessionId !== voiceCaptureSession.id
+            || payload.editable !== true
+            || !Number.isInteger(payload.selectionStart)
+            || !Number.isInteger(payload.selectionEnd)
         ) return;
 
         // DOM focus alone is insufficient: Windows voice typing requires the

@@ -4,7 +4,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('voiceCaptureAPI', Object.freeze({
     ready: () => ipcRenderer.send('voice-input-capture:ready'),
-    focusReady: () => ipcRenderer.send('voice-input-capture:focus-ready'),
+    focusReady: payload => ipcRenderer.send('voice-input-capture:focus-ready', {
+        sessionId: String(payload?.sessionId || ''),
+        editable: payload?.editable === true,
+        selectionStart: Number(payload?.selectionStart),
+        selectionEnd: Number(payload?.selectionEnd),
+    }),
     update: payload => ipcRenderer.send('voice-input-capture:update', {
         text: String(payload?.text || ''),
         composing: payload?.composing === true,
