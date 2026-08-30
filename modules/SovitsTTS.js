@@ -7,7 +7,22 @@ const DEFAULT_SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
 const DEFAULT_MIMO_API_URL = 'https://www.dmxapi.cn/v1/chat/completions';
 const DEFAULT_NETWORK_TTS_MODEL = 'mimo-v2.5-tts';
 const MIMO_VOICE_DESIGN_MODEL = `${DEFAULT_NETWORK_TTS_MODEL}-voicedesign`;
+const MIMO_VOICE_CLONE_MODEL = `${DEFAULT_NETWORK_TTS_MODEL}-voiceclone`;
+const MIMO_NATURAL_CONTROL_VOICE = 'mimo:natural-control';
+const MIMO_CLONE_VOICE_PREFIX = 'mimo:clone:';
 const MIMO_SAMPLE_RATE = 24000;
+const MIMO_CLONE_MEMORY_LIMIT = 2;
+const MIMO_CLONE_AUDIO_TYPES = Object.freeze({
+    '.wav': 'audio/wav',
+    '.mp3': 'audio/mpeg',
+    '.mpeg': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.flac': 'audio/flac',
+    '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
+    '.webm': 'audio/webm'
+});
 const MIMO_PRESET_VOICES = Object.freeze([
     { id: 'mimo_default', voice: 'mimo_default', displayName: 'mimo_default · 默认音色', type: 'preset' },
     { id: '冰糖', voice: '冰糖', displayName: '冰糖 · 中文女声', type: 'preset' },
@@ -25,6 +40,7 @@ const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
 const LOCAL_MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_local_models.json');
 const NETWORK_MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_network_models.json');
 const TTS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_cache');
+const MIMO_CLONE_AUDIO_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'mimotts');
 
 class SovitsTTS {
     constructor(settingsManager = null) {
@@ -33,6 +49,9 @@ class SovitsTTS {
         this.speechQueue = [];
         this.currentSpeechItemId = null; // 用于跟踪当前朗读的气泡ID
         this.sessionId = 0; // 新增：会话ID，用于作废过时的播放事件
+        // Map 保持插入顺序，用作最多两个参考音频的进程内 LRU。
+        // value 中保存文件签名，用户替换同名文件后不会继续使用旧数据。
+        this.cloneAudioMemory = new Map();
         this.initCacheDir();
     }
 
@@ -89,6 +108,59 @@ class SovitsTTS {
         return wav;
     }
 
+    _decodeCloneVoiceFilename(voice) {
+        if (!String(voice || '').startsWith(MIMO_CLONE_VOICE_PREFIX)) return '';
+        try {
+            return decodeURIComponent(String(voice).slice(MIMO_CLONE_VOICE_PREFIX.length));
+        } catch {
+            return '';
+        }
+    }
+
+    async _scanCloneAudioFiles() {
+        await fs.mkdir(MIMO_CLONE_AUDIO_DIR, { recursive: true });
+        const entries = await fs.readdir(MIMO_CLONE_AUDIO_DIR, { withFileTypes: true });
+        return entries
+            .filter(entry => entry.isFile() && MIMO_CLONE_AUDIO_TYPES[path.extname(entry.name).toLowerCase()])
+            .map(entry => entry.name)
+            .sort((left, right) => left.localeCompare(right, 'zh-CN', {
+                numeric: true,
+                sensitivity: 'base'
+            }));
+    }
+
+    async _loadCloneAudioDataUri(filename) {
+        const availableFiles = await this._scanCloneAudioFiles();
+        if (!availableFiles.includes(filename)) {
+            throw new Error(`MiMo 克隆参考音频不存在或格式不受支持：${filename}`);
+        }
+
+        const filePath = path.join(MIMO_CLONE_AUDIO_DIR, filename);
+        const stats = await fs.stat(filePath);
+        const signature = `${stats.size}:${stats.mtimeMs}`;
+        const cached = this.cloneAudioMemory.get(filename);
+        if (cached?.signature === signature) {
+            // 删除后重插，把最近访问项移动到 Map 末尾。
+            this.cloneAudioMemory.delete(filename);
+            this.cloneAudioMemory.set(filename, cached);
+            return cached.dataUri;
+        }
+
+        const extension = path.extname(filename).toLowerCase();
+        const mimeType = MIMO_CLONE_AUDIO_TYPES[extension];
+        const audioBuffer = await fs.readFile(filePath);
+        const dataUri = `data:${mimeType};base64,${audioBuffer.toString('base64')}`;
+        this.cloneAudioMemory.delete(filename);
+        this.cloneAudioMemory.set(filename, { signature, dataUri });
+
+        while (this.cloneAudioMemory.size > MIMO_CLONE_MEMORY_LIMIT) {
+            const leastRecentlyUsed = this.cloneAudioMemory.keys().next().value;
+            this.cloneAudioMemory.delete(leastRecentlyUsed);
+        }
+        console.log(`[TTS] MiMo clone reference loaded into memory: ${filename} (${this.cloneAudioMemory.size}/${MIMO_CLONE_MEMORY_LIMIT})`);
+        return dataUri;
+    }
+
     async requestMimoSpeech(runtimeConfig, text, voice, directorPrompts = [], onAudioChunk = null) {
         if (!runtimeConfig.apiKey) {
             throw new Error('网络 MiMo TTS 未配置 API Key');
@@ -97,36 +169,55 @@ class SovitsTTS {
         const prompts = Array.isArray(directorPrompts)
             ? directorPrompts.map(item => String(item || '').trim()).filter(Boolean)
             : [];
-        const isVoiceDesign = prompts.length > 0;
+        const userPrompt = prompts.join('\n\n');
+        const cloneFilename = this._decodeCloneVoiceFilename(voice);
+        const mode = cloneFilename
+            ? 'voiceclone'
+            : voice === MIMO_NATURAL_CONTROL_VOICE
+                ? 'voicedesign'
+                : 'preset';
         const messages = [];
-        // MiMo voicedesign 使用严格的 user → assistant 结构。设置页允许维护
-        // 多条导演卡片，但请求时必须合并为一条自然语言指令，不能发送连续
-        // 多个 user 消息，否则部分 OpenAI 兼容网关会返回 HTTP 400。
-        if (isVoiceDesign) {
-            messages.push({ role: 'user', content: prompts.join('\n\n') });
+
+        // 三种模式都允许一条合并后的自然语言 user 指令：
+        // preset 用于配合预置 voice 控制演绎；voiceclone 用于微调克隆音色的
+        // 发音风格；voicedesign 则把它作为生成音色的核心描述。
+        if (userPrompt) {
+            messages.push({ role: 'user', content: userPrompt });
+        }
+        if (mode === 'voicedesign' && !userPrompt) {
+            throw new Error('MiMo 自然语言控制模式需要至少一条导演提示词');
         }
         messages.push({ role: 'assistant', content: text });
 
-        // voicedesign 模型由自然语言描述生成音色，本轮联调不发送 voice；
-        // 普通 preset 模型仍使用 Agent 当前选择的预置音色。
         const audio = { format: 'pcm16' };
-        if (!isVoiceDesign) {
+        let model = DEFAULT_NETWORK_TTS_MODEL;
+        if (mode === 'preset') {
             audio.voice = voice || 'mimo_default';
+        } else if (mode === 'voicedesign') {
+            model = MIMO_VOICE_DESIGN_MODEL;
+        } else {
+            model = MIMO_VOICE_CLONE_MODEL;
+            audio.voice = await this._loadCloneAudioDataUri(cloneFilename);
         }
 
         const payload = {
-            model: isVoiceDesign ? MIMO_VOICE_DESIGN_MODEL : DEFAULT_NETWORK_TTS_MODEL,
+            model,
             messages,
             audio,
             stream: true
         };
         console.log('[TTS] MiMo request:', JSON.stringify({
             endpoint: this.normalizeMimoEndpoint(runtimeConfig.baseUrl),
+            mode,
             model: payload.model,
+            cloneFilename: cloneFilename || undefined,
             messageRoles: payload.messages.map(message => message.role),
-            userPromptLength: isVoiceDesign ? payload.messages[0].content.length : 0,
+            userPromptLength: userPrompt.length,
             assistantTextLength: text.length,
-            audio: payload.audio,
+            audio: {
+                ...payload.audio,
+                voice: mode === 'voiceclone' ? '[reference audio hidden]' : payload.audio.voice
+            },
             stream: payload.stream
         }));
 
@@ -190,7 +281,10 @@ class SovitsTTS {
 
     async initCacheDir() {
         try {
-            await fs.mkdir(TTS_CACHE_DIR, { recursive: true });
+            await Promise.all([
+                fs.mkdir(TTS_CACHE_DIR, { recursive: true }),
+                fs.mkdir(MIMO_CLONE_AUDIO_DIR, { recursive: true })
+            ]);
         } catch (error) {
             console.error("无法创建TTS缓存目录:", error);
         }
@@ -252,15 +346,34 @@ class SovitsTTS {
         const isNetwork = runtimeConfig.voiceMode === 'network';
         const cachePath = isNetwork ? NETWORK_MODELS_CACHE_PATH : LOCAL_MODELS_CACHE_PATH;
 
-        // MiMo 预置音色是协议内置常量，不读取旧网络供应商留下的缓存。
-        // 每次直接返回当前版本的固定列表，确保已下线供应商不会污染 Agent 设置。
+        // 网络模式同时提供 MiMo 预置音色、独立的自然语言控制模式，以及
+        // AppData/mimotts 中扫描到的本地参考音频。克隆文件只暴露编码后的
+        // 逻辑 ID，后续加载仍通过扫描结果校验，避免任意路径读取。
         if (isNetwork) {
-            const mergedVoiceOptions = MIMO_PRESET_VOICES.map(item => ({ ...item }));
+            const cloneFiles = await this._scanCloneAudioFiles();
+            const mergedVoiceOptions = [
+                ...MIMO_PRESET_VOICES.map(item => ({ ...item })),
+                {
+                    id: MIMO_NATURAL_CONTROL_VOICE,
+                    voice: MIMO_NATURAL_CONTROL_VOICE,
+                    displayName: '自然语言控制 · 不发送预置 voice',
+                    type: 'voicedesign'
+                },
+                ...cloneFiles.map(filename => ({
+                    id: `${MIMO_CLONE_VOICE_PREFIX}${encodeURIComponent(filename)}`,
+                    voice: `${MIMO_CLONE_VOICE_PREFIX}${encodeURIComponent(filename)}`,
+                    displayName: `${filename} · 克隆音色`,
+                    filename,
+                    type: 'voiceclone'
+                }))
+            ];
             if (forceRefresh) {
                 await fs.writeFile(NETWORK_MODELS_CACHE_PATH, JSON.stringify({
                     providerUrl: this.normalizeMimoEndpoint(runtimeConfig.baseUrl),
                     modelId: DEFAULT_NETWORK_TTS_MODEL,
-                    defaults: mergedVoiceOptions,
+                    defaults: MIMO_PRESET_VOICES,
+                    cloneDirectory: MIMO_CLONE_AUDIO_DIR,
+                    cloneFiles,
                     remoteVoices: [],
                     mergedVoiceOptions,
                     updatedAt: new Date().toISOString()

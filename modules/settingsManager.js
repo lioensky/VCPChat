@@ -620,11 +620,15 @@ const settingsManager = (() => {
         const isNetworkMode = globalSettings.voiceMode === 'network';
         const commitOptions = (select, options, selectedValue = '') => {
             const current = [...select.options];
-            const sameStructure = current.length === options.length
-                && options.every((option, index) => (
+            const nextFlatOptions = options.flatMap(node => (
+                node.tagName === 'OPTGROUP' ? [...node.querySelectorAll('option')] : [node]
+            ));
+            const sameStructure = current.length === nextFlatOptions.length
+                && nextFlatOptions.every((option, index) => (
                     current[index]?.value === option.value
                     && current[index]?.textContent === option.textContent
                     && current[index]?.disabled === option.disabled
+                    && current[index]?.parentElement?.label === option.parentElement?.label
                 ));
             if (!sameStructure) select.replaceChildren(...options);
             select.value = selectedValue || '';
@@ -679,22 +683,45 @@ const settingsManager = (() => {
                 option.selected = selected;
                 return option;
             };
-            const primaryOptions = [createOption('', '不使用语音')];
-            const secondaryOptions = [createOption('', '不使用')];
-            if (optionList.length > 0) {
-                optionList.forEach(item => {
-                    const optionValue = item.voice || item.id;
-                    const optionLabel = item.displayName || item.voice || item.id;
-                    primaryOptions.push(createOption(optionValue, optionLabel, {
-                        selected: optionValue === currentPrimaryVoice
-                    }));
-                    secondaryOptions.push(createOption(optionValue, optionLabel, {
-                        selected: optionValue === currentSecondaryVoice
-                    }));
+            const createOptionGroups = (emptyLabel, selectedValue) => {
+                const nodes = [createOption('', emptyLabel)];
+                if (!isNetworkMode) {
+                    optionList.forEach(item => {
+                        const optionValue = item.voice || item.id;
+                        nodes.push(createOption(optionValue, item.displayName || optionValue, {
+                            selected: optionValue === selectedValue
+                        }));
+                    });
+                    return nodes;
+                }
+
+                const groupDefinitions = [
+                    ['preset', 'MiMo 预置音色'],
+                    ['voicedesign', 'MiMo 自然语言控制'],
+                    ['voiceclone', 'MiMo 克隆音色（AppData/mimotts）']
+                ];
+                groupDefinitions.forEach(([type, label]) => {
+                    const items = optionList.filter(item => item.type === type);
+                    if (!items.length) return;
+                    const group = document.createElement('optgroup');
+                    group.label = label;
+                    items.forEach(item => {
+                        const optionValue = item.voice || item.id;
+                        group.appendChild(createOption(
+                            optionValue,
+                            item.displayName || optionValue,
+                            { selected: optionValue === selectedValue }
+                        ));
+                    });
+                    nodes.push(group);
                 });
-            } else {
+                return nodes;
+            };
+            const primaryOptions = createOptionGroups('不使用语音', currentPrimaryVoice);
+            const secondaryOptions = createOptionGroups('不使用', currentSecondaryVoice);
+            if (optionList.length === 0) {
                 const emptyLabel = isNetworkMode
-                    ? '未找到 MiMo 预置音色'
+                    ? '未找到 MiMo 音色'
                     : '未找到模型,请启动Sovits';
                 primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
                 secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
@@ -1123,13 +1150,13 @@ const settingsManager = (() => {
             if (refreshTtsModelsBtn) {
                 refreshTtsModelsBtn.addEventListener('click', async () => {
                     const isNetworkMode = getGlobalSettings().voiceMode === 'network';
-                    uiHelper.showToastNotification(isNetworkMode ? '正在刷新网络音色列表...' : '正在刷新语音模型...', 'info');
+                    uiHelper.showToastNotification(isNetworkMode ? '正在刷新 MiMo 预置音色并扫描 AppData/mimotts...' : '正在刷新语音模型...', 'info');
                     try {
                         if (electronAPI.sovitsGetModels) {
                             await electronAPI.sovitsGetModels(true);
                         }
                         await populateTtsModels(agentTtsVoicePrimarySelect.value, agentTtsVoiceSecondarySelect.value);
-                        uiHelper.showToastNotification(isNetworkMode ? '网络音色列表已刷新' : '语音模型列表已刷新', 'success');
+                        uiHelper.showToastNotification(isNetworkMode ? 'MiMo 模式与克隆音频列表已刷新' : '语音模型列表已刷新', 'success');
                     } catch (e) {
                         uiHelper.showToastNotification(isNetworkMode ? '刷新网络音色失败' : '刷新语音模型失败', 'error');
                     }
