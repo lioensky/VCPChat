@@ -83,8 +83,9 @@
   "devDependencies": {
     "@awesome.me/webawesome": "3.11.0",
     "@electron/rebuild": "^4.0.3",
-    "electron": "^41.7.1",
+    "electron": "^44.0.0",
     "electron-builder": "^26.0.12",
+    "node-abi": "^4.35.0",
     "node-addon-api": "^8.3.1",
     "node-gyp": "^11.4.2"
   },
@@ -94,7 +95,7 @@
     "@xterm/headless": "^6.0.0",
     "animejs": "^4.0.2",
     "axios": "^1.10.0",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^13.0.3",
     "cheerio": "^1.1.2",
     "child_process": "^1.0.2",
     "chokidar": "^4.0.3",
@@ -128,7 +129,7 @@
     "pdf-parse": "^1.1.1",
     "pdf-poppler": "^0.2.1",
     "portfinder": "^1.0.37",
-    "puppeteer": "^24.15.0",
+    "puppeteer": "^25.9.0",
     "sharp": "^0.35.3",
     "stylelint": "^16.25.0",
     "superdoc": "^1.45.0",

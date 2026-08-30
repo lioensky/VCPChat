@@ -44,15 +44,18 @@ VCPChat 的核心价值在于其极致的**抽象与集成能力**。
 
 2.  **安装依赖**
 
-    本项目需要 Node.js 和 Python 环境。(Error invoking remote method 'get-agents': Error: No handler registered for 'get-agents'报错通常由Npx依赖安装失败造成)
+    本项目需要 Node.js 和 Python 环境。（`Error invoking remote method 'get-agents': Error: No handler registered for 'get-agents'` 报错通常由 Node.js 依赖安装或原生模块重建失败造成。）
 
     *   **安装 Node.js 依赖:**
         ```bash
         npm install
-        npx electron-rebuild --only better-sqlite3   
+        npx electron-rebuild -f --only better-sqlite3,node-pty,sharp
+        npm run doctor -- --deep
         ```
 
-        > VCPChat 与部分分布式/同步能力依赖 SQLite 原生模块。每次首次安装依赖、升级 Electron、切换 Node.js/Electron 版本，或遇到 `better-sqlite3` 提示 `NODE_MODULE_VERSION` 不匹配时，都需要执行 `npx electron-rebuild --only better-sqlite3` 重新编译原生扩展，否则可能出现数据库无法初始化、同步索引不创建等问题。
+        > VCPChat 的 SQLite、终端和图像处理能力依赖原生模块。每次首次安装依赖、升级 Electron、切换 Node.js/Electron 版本，或遇到 `NODE_MODULE_VERSION` 不匹配时，都应执行上述完整重建命令；`-f` 用于避免错误复用旧 ABI 二进制。随后使用深度诊断实际打开内存 SQLite、加载 PTY 并调用 Sharp。
+        >
+        > Electron 44 使用 `NODE_MODULE_VERSION 149`。当前依赖组合要求 `better-sqlite3` 13.x，并通过项目锁定的新版 `node-abi` 识别 Electron 44。旧版 `better-sqlite3` 12.x 无法针对 Electron 44 所带的新版 V8 API 编译；旧版 `node-abi` 则会报 `Could not detect abi for version 44.0.0`。不要只在 `node_modules` 中手工替换二进制，应同步更新 `package.json` 与 `package-lock.json` 后再执行重建。
 
     *   **安装 Python 依赖** (用于音频引擎、高级插件等):
         ```bash

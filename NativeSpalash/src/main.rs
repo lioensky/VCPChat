@@ -91,6 +91,11 @@ fn spawn_vchat(
     let mut child = Command::new(electron)
         .arg(".")
         .current_dir(project_root)
+        // Recovery/diagnostic processes may set this variable to run Electron
+        // as Node.js. It must never reach the real GUI application; otherwise
+        // require("electron") exposes no app API and main.js exits before a
+        // window can be created.
+        .env_remove("ELECTRON_RUN_AS_NODE")
         .env("VCP_LAUNCHER_PROTOCOL", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
