@@ -897,9 +897,14 @@
 
     function buildHeadingIndex(source, editRegions, lexer) {
         const headings = [];
+        const headingStarts = new Set();
         const add = (level, text, start, headingEnd, editRegionOrdinal) => {
             const normalizedText = decodeHeadingText(text);
-            if (!normalizedText || level < 1 || level > 6) return;
+            if (!normalizedText || level < 1 || level > 6
+                || headingStarts.has(start)) {
+                return;
+            }
+            headingStarts.add(start);
             headings.push({
                 id: `heading-${start}-${simpleHash(normalizedText)}`,
                 index: headings.length,
@@ -934,6 +939,44 @@
                         );
                     }
                 } catch {}
+            }
+
+            if (region.type === 'markdown') {
+                // 目录是文档的基础语义索引，不能完全依赖 Marked 的可选
+                // Lexer API。某些浏览器/UMD 运行形态只暴露 parse()，此时
+                // Markdown 可以正常渲染为 h1-h6，但旧实现会漏掉全部目录项。
+                // 编辑区域已经排除了代码围栏、样式和可编程岛，因此可在这里
+                // 安全扫描 ATX 与 Setext 标题，并由 headingStarts 与 Lexer
+                // 结果去重。
+                const atxPattern =
+                    /^( {0,3})(#{1,6})(?:[ \t]+|$)(.*?)(?:[ \t]+#+[ \t]*)?(?:\r?\n|$)/gm;
+                let atxMatch;
+                while ((atxMatch = atxPattern.exec(raw))) {
+                    const start = atxMatch.index;
+                    add(
+                        atxMatch[2].length,
+                        atxMatch[3],
+                        regionStart + start,
+                        regionStart + start + atxMatch[0].length,
+                        region.ordinal
+                    );
+                    if (!atxMatch[0].length) atxPattern.lastIndex += 1;
+                }
+
+                const setextPattern =
+                    /^( {0,3})([^\r\n]+)\r?\n {0,3}(=+|-+)[ \t]*(?:\r?\n|$)/gm;
+                let setextMatch;
+                while ((setextMatch = setextPattern.exec(raw))) {
+                    const start = setextMatch.index;
+                    add(
+                        setextMatch[3][0] === '=' ? 1 : 2,
+                        setextMatch[2],
+                        regionStart + start,
+                        regionStart + start + setextMatch[0].length,
+                        region.ordinal
+                    );
+                    if (!setextMatch[0].length) setextPattern.lastIndex += 1;
+                }
             }
 
             if (!['html', 'island'].includes(region.type)) return;

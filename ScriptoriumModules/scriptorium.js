@@ -337,6 +337,8 @@
                 open: () => mediaPort?.open?.(),
             },
             notificationPort: notificationFacade,
+            onTransaction: () =>
+                navigationPort?.render?.(),
             onSelectionChange: () =>
                 formattingPort?.scheduleSync?.(),
             onContextMenu: (input) =>
