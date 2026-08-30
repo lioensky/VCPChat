@@ -173,6 +173,15 @@ const settingsManager = (() => {
     function populateAgentSettingsForm(agentId, agentConfig) {
         const populateToken = ++agentSettingsPopulateToken;
 
+        // 新增提示词编辑器只是尚未提交到列表的临时草稿，不属于 Agent 配置。
+        // 表单 DOM 会被所有 Agent 复用，因此切换 Agent 时必须立即清空，否则 A 的
+        // 草稿会继续显示在 B 的设置中，并可能被误添加、误保存到 B。
+        if (agentTtsDirectorPromptInput && editingAgentIdInput?.value !== agentId) {
+            agentTtsDirectorPromptInput.value = '';
+            agentTtsDirectorPromptInput.closest('.tts-director-composer')?.classList.remove('is-editing');
+            resizeTtsDirectorEditor(agentTtsDirectorPromptInput, false);
+        }
+
         // 所有 Agent 共用同一套表单和 PromptManager。串行切换上下文，并让较新的请求淘汰
         // 尚未开始写 DOM 的旧请求，避免异步初始化/保存交错后把 A 的内容显示或保存到 B。
         const populateTask = async () => {
@@ -292,6 +301,13 @@ const settingsManager = (() => {
 
         // Populate bilingual TTS settings
         await populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
+
+        // 音色查询是异步边界。等待期间若用户切换到了其他 Agent，旧任务不能再把
+        // TTS 正则、导演提示词列表和其他共享状态写回当前表单。
+        if (populateToken !== agentSettingsPopulateToken) {
+            console.debug(`[SettingsManager] Aborting stale TTS settings render for agent ${agentId}.`);
+            return { stale: true };
+        }
 
         agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
         agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';

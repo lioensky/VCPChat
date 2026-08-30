@@ -7,6 +7,7 @@ import { createWindowStreamRuntime } from '../modules/renderer/windowStreamRunti
 import { createMessageRenderer } from '../modules/messageRenderer.js';
 import { createStreamProjection } from '../modules/renderer/streamManager.js';
 import { createStreamTransientHistory } from '../modules/chat/streamTransientHistory.js';
+import { createTtsSurfaceOwner } from '../modules/renderer/ttsSurfaceOwner.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -22,34 +23,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const keyboardIcon = document.getElementById('keyboard-icon');
     const micIcon = document.getElementById('mic-icon');
     let historyMutationAuthority = null;
+    let ttsSurfaceOwner = null;
 
-    // Initialize audio context on first user gesture
-    function initAudioContext() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            console.log('[VoiceChat] Audio context initialized');
-        }
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
-    }
-
-    // Detect user gestures to enable audio playback
+    // Detect user gestures to unlock the shared Web Audio playback surface.
     function detectUserGesture() {
-        if (!userGestureDetected) {
-            userGestureDetected = true;
-            initAudioContext();
-            console.log('[VoiceChat] User gesture detected, audio playback enabled');
-
-            // Remove any existing hints or errors
-            document.querySelectorAll('.audio-playback-hint, .audio-playback-error').forEach(el => el.remove());
-
-            // Try to restart audio queue if there are pending items
-            if (audioQueue.length > 0 && !isPlaying) {
-                console.log('[VoiceChat] Restarting audio queue after user gesture');
-                setTimeout(() => processAudioQueue(), 100);
-            }
-        }
+        ttsSurfaceOwner?.ensureAudioContext();
+        document.querySelectorAll('.audio-playback-hint, .audio-playback-error').forEach(el => el.remove());
     }
 
     // Add gesture listeners to enable audio
@@ -93,6 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await saveVoiceChatToHistory();
         } finally {
+            await ttsSurfaceOwner?.dispose();
+            ttsSurfaceOwner = null;
             await streamRuntime?.dispose();
             await streamManager.dispose();
             await messageRenderer.disposeRootResources(chatMessagesDiv);
@@ -315,6 +296,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
                 handleCreateBranch: () => {} // Stub
             });
+            ttsSurfaceOwner = createTtsSurfaceOwner({
+                subscribePlay: callback => window.electronAPI.onPlayTtsAudio(callback),
+                subscribeStop: callback => window.electronAPI.onStopTtsAudio(callback),
+                createAudioContext: () => new (window.AudioContext || window.webkitAudioContext)(),
+                decodeBase64: value => Uint8Array.from(
+                    atob(value),
+                    character => character.charCodeAt(0)
+                ).buffer,
+                updateSpeakingIndicator: (messageId, active) => {
+                    const messageItem = chatMessagesDiv.querySelector(
+                        `.message-item[data-message-id="${messageId}"]`
+                    );
+                    if (!messageItem) return;
+                    const avatar = messageItem.querySelector('.chat-avatar');
+                    messageItem.classList.toggle('speaking-active', active);
+                    avatar?.classList.toggle('speaking', active);
+                    if (avatar) {
+                        avatar.title = active ? '正在朗读，点击头像停止' : '';
+                        avatar.setAttribute('aria-label', active ? '停止朗读' : 'Agent 头像');
+                    }
+                },
+                showError: message => console.error(`[VoiceChat] ${message}`),
+            });
+            ttsSurfaceOwner.mount();
+
             streamRuntime = createWindowStreamRuntime({
                 root: chatMessagesDiv,
                 streamProjection: streamManager,
@@ -519,126 +525,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ttsRegexSecondary: agentConfig.ttsRegexSecondary
         });
     }
-
-    // --- TTS Audio Playback Logic ---
-    let currentAudio = null;
-    let audioQueue = []; // Queue for pending audio clips
-    let isPlaying = false;
-    let audioContext = null;
-    let userGestureDetected = false;
-
-    function processAudioQueue() {
-        if (isPlaying || audioQueue.length === 0) {
-            return; // Don't start a new audio if one is already playing or queue is empty
-        }
-
-        isPlaying = true;
-        const {
-            audioData,
-            msgId,
-            audioFormat = 'mp3',
-            playbackRate = 1
-        } = audioQueue.shift(); // Get the next audio from the queue
-
-        console.log(`[VoiceChat] Processing audio from queue for msgId ${msgId}`);
-
-        const byteCharacters = atob(audioData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const audioBlob = new Blob([byteArray], { type: audioFormat === 'wav' ? 'audio/wav' : 'audio/mpeg' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-
-        currentAudio = new Audio(audioUrl);
-        currentAudio.playbackRate = Math.min(2, Math.max(0.5, Number(playbackRate) || 1));
-        // 尽量请求浏览器保留音高；不同 Electron/Chromium 版本可能降级为变调播放。
-        if ('preservesPitch' in currentAudio) currentAudio.preservesPitch = true;
-
-        // Check if user gesture has been detected
-        if (!userGestureDetected) {
-            console.warn('[VoiceChat] No user gesture detected, audio may be blocked');
-            // Show user a hint
-            const messageElement = document.querySelector(`[data-message-id="${msgId}"]`);
-            if (messageElement) {
-                const hint = document.createElement('div');
-                hint.className = 'audio-playback-hint';
-                hint.textContent = '点击任意位置以启用语音播放';
-                hint.style.cssText = 'color: var(--warning-color); font-size: 0.8em; margin-top: 5px; cursor: pointer;';
-                hint.addEventListener('click', detectUserGesture);
-                messageElement.appendChild(hint);
-
-                // Remove hint after 5 seconds
-                setTimeout(() => {
-                    if (hint.parentNode) {
-                        hint.remove();
-                    }
-                }, 5000);
-            }
-        }
-
-        currentAudio.play().then(() => {
-            console.log(`[VoiceChat] Audio playback started for msgId ${msgId}`);
-        }).catch(e => {
-            console.error("Audio playback failed:", e);
-
-            // Show error message to user
-            const messageElement = document.querySelector(`[data-message-id="${msgId}"]`);
-            if (messageElement) {
-                const errorMsg = document.createElement('div');
-                errorMsg.className = 'audio-playback-error';
-                errorMsg.textContent = '语音播放失败，请点击页面任意位置后重试';
-                errorMsg.style.cssText = 'color: var(--danger-color); font-size: 0.8em; margin-top: 5px; cursor: pointer;';
-                errorMsg.addEventListener('click', () => {
-                    detectUserGesture();
-                    errorMsg.remove();
-                    // Retry playing this audio
-                    audioQueue.unshift({ audioData, msgId, audioFormat, playbackRate });
-                    processAudioQueue();
-                });
-                messageElement.appendChild(errorMsg);
-
-                // Remove error after 10 seconds
-                setTimeout(() => {
-                    if (errorMsg.parentNode) {
-                        errorMsg.remove();
-                    }
-                }, 10000);
-            }
-
-            isPlaying = false; // Reset flag on error
-            processAudioQueue(); // Try to play the next one
-        });
-
-        currentAudio.onended = () => {
-            console.log(`[VoiceChat] Audio for msgId ${msgId} finished playing.`);
-            URL.revokeObjectURL(audioUrl);
-            currentAudio = null;
-            isPlaying = false;
-            processAudioQueue(); // Play the next item in the queue
-        };
-    }
-
-    window.electronAPI.onPlayTtsAudio((data) => {
-        const { audioData, msgId, audioFormat = 'mp3', playbackRate = 1 } = data;
-        console.log(`[VoiceChat] Queued audio for msgId ${msgId} at ${playbackRate}x`);
-        audioQueue.push({ audioData, msgId, audioFormat, playbackRate });
-        processAudioQueue(); // Attempt to process the queue
-    });
-
-    // Listen for stop command from main process
-    window.electronAPI.onStopTtsAudio(() => {
-        console.log('[VoiceChat] Received stop TTS command. Clearing queue and stopping current audio.');
-        audioQueue = []; // Clear the pending audio queue
-        if (currentAudio) {
-            currentAudio.pause();
-            URL.revokeObjectURL(currentAudio.src);
-            currentAudio = null;
-        }
-        isPlaying = false;
-    });
-
 
     // Listen for theme updates from the main process
     window.electronAPI.onThemeUpdated((theme) => {
