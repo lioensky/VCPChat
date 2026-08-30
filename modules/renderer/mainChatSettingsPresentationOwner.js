@@ -751,8 +751,13 @@ transform-origin: center bottom;`;
         safeSet('flowlockContinueDelay', globalSettings.flowlockContinueDelay ?? 5);
         safeCheck('voiceModeLocal', (globalSettings.voiceMode || 'local') !== 'network');
         safeCheck('voiceModeNetwork', (globalSettings.voiceMode || 'local') === 'network');
-        safeSet('speechRecognizerBrowserPath', globalSettings.speechRecognizerBrowserPath || '');
-        safeSet('speechRecognizerPagePath', globalSettings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html');
+        safeSet(
+            'voiceInputMode',
+            ['windows_voice_typing', 'right_alt_hold'].includes(globalSettings.voiceInputMode)
+                ? globalSettings.voiceInputMode
+                : 'windows_voice_typing'
+        );
+        safeSet('voiceInputShortcut', globalSettings.voiceInputShortcut || 'Control+Alt+Space');
         safeSet('voiceLocalSovitsUrl', globalSettings.voiceLocalSettings?.sovitsUrl || '');
         safeSet('voiceLocalSovitsKey', globalSettings.voiceLocalSettings?.sovitsKey || '');
         safeSet('voiceNetworkProviderUrl', globalSettings.voiceNetworkSettings?.providerUrl || '');

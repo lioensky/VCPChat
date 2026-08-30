@@ -128,7 +128,7 @@ body, html {
 
 .chat-input-area {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 48px 48px;
+    grid-template-columns: 88px minmax(0, 1fr) 48px 48px;
     align-items: center;
     gap: 10px;
     padding: 10px 12px 12px;
@@ -139,8 +139,34 @@ body, html {
     box-sizing: border-box;
 }
 
-#messageInput {
+#nativeVoiceInputMode {
     grid-column: 1;
+    grid-row: 1;
+    width: 88px;
+    height: 48px;
+    min-width: 0;
+    padding: 0 8px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+    border-radius: 12px;
+    background-color: color-mix(in srgb, var(--input-bg) 90%, transparent);
+    color: var(--primary-text);
+    font: inherit;
+    box-sizing: border-box;
+}
+
+#nativeVoiceInputMode:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--button-bg) 56%, var(--border-color));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--button-bg) 18%, transparent);
+}
+
+#nativeVoiceInputMode:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+}
+
+#messageInput {
+    grid-column: 2;
     grid-row: 1;
     width: 100%;
     min-width: 0;
@@ -184,12 +210,12 @@ body, html {
 }
 
 #toggleInputModeBtn {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
 }
 
 #sendMessageBtn {
-    grid-column: 3;
+    grid-column: 4;
     grid-row: 1;
 }
 
@@ -211,9 +237,16 @@ body, html {
 
 @media (max-width: 420px) {
     .chat-input-area {
-        grid-template-columns: minmax(0, 1fr) 44px 44px;
+        grid-template-columns: 76px minmax(0, 1fr) 44px 44px;
         gap: 8px;
         padding: 8px 10px 10px;
+    }
+
+    #nativeVoiceInputMode {
+        width: 76px;
+        height: 44px;
+        padding-inline: 6px;
+        font-size: 0.9em;
     }
 
     #sendMessageBtn,

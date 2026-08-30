@@ -648,6 +648,12 @@ async function performQuitCleanup() {
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
 
+        try {
+            await voiceHandlers.shutdownVoiceInputEngine();
+        } catch (error) {
+            console.warn('[Main] Failed to shut down native voice input engine:', error.message || error);
+        }
+
         if (distributedServer) {
             console.log('[Main] Stopping distributed server...');
             try {

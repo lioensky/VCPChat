@@ -24,7 +24,7 @@
     "evidence:managed": "node scripts/vcpchat-release-evidence.mjs",
     "start:desktop": "electron . --desktop-only",
     "start:rag-observer": "electron . --rag-observer-only",
-    "build": "node rust_chat_data_service/build-runtime.js",
+    "build": "node rust_chat_data_service/build-runtime.js && node rust_voice_input_engine/build-runtime.js",
     "lint:ui-system": "stylelint \"styles/ui-system/**/*.css\" --config stylelint.ui-system.config.cjs",
     "guard:design-subtraction": "node scripts/check-design-system-boundary.mjs",
     "guard:classic-parity": "node scripts/check-classic-parity.mjs",
@@ -151,7 +151,8 @@
     "asarUnpack": [
       "modules/services/chatDataService/bin/**/*",
       "audio_engine/**/*",
-      "rust_assistant_engine/runtime/**/*"
+      "rust_assistant_engine/runtime/**/*",
+      "rust_voice_input_engine/runtime/**/*"
     ],
     "files": [
       "main.js",
@@ -180,6 +181,7 @@
       "Tavernmodules/**/*",
       "rust_assistant_engine/ui/**/*",
       "rust_assistant_engine/runtime/**/*",
+      "rust_voice_input_engine/runtime/**/*",
       "Notemodules/**/*",
       "Translatormodules/**/*",
       "vendor/**/*",

@@ -35,8 +35,12 @@
         </div>
     </div>
     <footer class="chat-input-area">
+        <select id="nativeVoiceInputMode" title="选择系统语音输入方式" aria-label="系统语音输入方式">
+            <option value="windows_voice_typing">Win+H</option>
+            <option value="right_alt_hold">右 Alt</option>
+        </select>
         <textarea id="messageInput" placeholder="输入消息或点击麦克风开始语音输入..." rows="1"></textarea>
-        <button id="toggleInputModeBtn" title="切换输入模式">
+        <button id="toggleInputModeBtn" title="开始系统语音输入" aria-pressed="false">
             <svg id="keyboard-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
                 <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zm-3-3h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
             </svg>

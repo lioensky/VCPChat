@@ -1949,20 +1949,23 @@ transform-origin: center bottom;</code></pre>
                                     </div>
 
                                     <div class="settings-form-group">
-                                        <label for="speechRecognizerBrowserPath">STT 浏览器路径:</label>
-                                        <input type="text" id="speechRecognizerBrowserPath" name="speechRecognizerBrowserPath"
-                                            placeholder="留空自动探测系统 Chrome / Puppeteer Chromium">
+                                        <label for="voiceInputMode">语音输入模式:</label>
+                                        <select id="voiceInputMode" name="voiceInputMode">
+                                            <option value="windows_voice_typing">Windows 语音键入（Win+H）</option>
+                                            <option value="right_alt_hold">输入法语音（按住右 Alt）</option>
+                                        </select>
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            用于反代网页获取 STT 功能时启动浏览器。支持自定义 Chrome / Chromium 可执行文件路径。
+                                            选择系统听写适配方式。当前先在语音聊天子窗口生效；后续可继续加入其他平台和输入法预置。
                                         </small>
                                     </div>
 
                                     <div class="settings-form-group">
-                                        <label for="speechRecognizerPagePath">STT 浏览器识别页路径:</label>
-                                        <input type="text" id="speechRecognizerPagePath" name="speechRecognizerPagePath"
-                                            placeholder="默认: Voicechatmodules/recognizer.html">
+                                        <label for="voiceInputShortcut">语音输入快捷键:</label>
+                                        <input type="text" id="voiceInputShortcut" name="voiceInputShortcut"
+                                            value="Control+Alt+Space"
+                                            placeholder="例如 Control+Alt+Space">
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            可配置用于浏览器语音识别的本地 HTML 页面相对路径，默认使用内置识别页。
+                                            VChat 全局按住说话快捷键。使用 Electron Accelerator 格式；该字段先持久化，后续全局 Push-to-Talk 接入时直接启用。
                                         </small>
                                     </div>
                                 </div>

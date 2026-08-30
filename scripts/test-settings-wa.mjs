@@ -146,8 +146,8 @@ const populateForm = (settings) => {
     set('rustScreenshotApps', (settings.rustConfig?.screenshotApps || []).join('\n'));
     check('voiceModeNetwork', (settings.voiceMode || 'local') === 'network');
     check('voiceModeLocal', (settings.voiceMode || 'local') !== 'network');
-    set('speechRecognizerBrowserPath', settings.speechRecognizerBrowserPath || '');
-    set('speechRecognizerPagePath', settings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html');
+    set('voiceInputMode', settings.voiceInputMode || 'windows_voice_typing');
+    set('voiceInputShortcut', settings.voiceInputShortcut || 'Control+Alt+Space');
     set('voiceLocalSovitsUrl', settings.voiceLocalSettings?.sovitsUrl || '');
     set('voiceNetworkProviderUrl', settings.voiceNetworkSettings?.providerUrl || '');
     check('enableDistributedServer', Boolean(settings.enableDistributedServer));
@@ -328,17 +328,20 @@ const categories = [
     },
     {
         name: '语音设置', key: 'voice-settings',
-        initial: { voiceMode: 'local', speechRecognizerBrowserPath: '', speechRecognizerPagePath: 'Voicechatmodules/recognizer.html' },
-        assertLoaded: () => document.getElementById('voiceModeNetwork').checked === false,
-        modify: () => {
-            const network = document.getElementById('voiceModeNetwork');
-            network.checked = true;
-            network.dispatchEvent(new Event('change', { bubbles: true }));
-            setField('speechRecognizerBrowserPath', 'C:\\chrome.exe');
+        initial: {
+            voiceMode: 'local',
+            voiceInputMode: 'windows_voice_typing',
+            voiceInputShortcut: 'Control+Alt+Space'
         },
-        savedKey: 'voiceMode', expected: 'network',
-        assertRestored: () => document.getElementById('voiceModeNetwork').checked === true
-            && document.getElementById('speechRecognizerBrowserPath').value === 'C:\\chrome.exe',
+        assertLoaded: () => document.getElementById('voiceInputMode').value === 'windows_voice_typing'
+            && document.getElementById('voiceInputShortcut').value === 'Control+Alt+Space',
+        modify: () => {
+            setField('voiceInputMode', 'right_alt_hold');
+            setField('voiceInputShortcut', 'Control+Shift+Space');
+        },
+        savedKey: 'voiceInputMode', expected: 'right_alt_hold',
+        assertRestored: () => document.getElementById('voiceInputMode').value === 'right_alt_hold'
+            && document.getElementById('voiceInputShortcut').value === 'Control+Shift+Space',
     },
     {
         name: '高级功能', key: 'advanced-features',

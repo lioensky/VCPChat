@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentNameSpan = document.getElementById('currentChatAgentName');
     const closeBtn = document.getElementById('close-btn-voicechat');
     const toggleInputModeBtn = document.getElementById('toggleInputModeBtn');
+    const nativeVoiceInputMode = document.getElementById('nativeVoiceInputMode');
     const keyboardIcon = document.getElementById('keyboard-icon');
     const micIcon = document.getElementById('mic-icon');
     let historyMutationAuthority = null;
@@ -45,9 +46,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeStreamingMessageId = null;
     let streamRuntime = null;
     let inputMode = 'text'; // 'text' or 'voice'
+    let nativeVoiceInputBusy = false;
+    let nativeVoiceCompositionActive = false;
+    let nativeVoiceLastInputAt = 0;
     const markedInstance = new window.marked.Marked({ gfm: true, breaks: true });
-    let speechRecognitionTimeout = null;
-    const SPEECH_TIMEOUT_DURATION = 3000; // 3 seconds
+    const NATIVE_VOICE_FINAL_QUIET_MS = 800;
+    const NATIVE_VOICE_FINAL_TIMEOUT_MS = 5000;
 
     // Local UI Helper for this window
     const uiHelperFunctions = {
@@ -66,6 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
     closeBtn.addEventListener('click', async () => {
         closeBtn.disabled = true;
         try {
+            if (inputMode === 'voice') {
+                await window.electronAPI.cancelNativeVoiceInput?.();
+                inputMode = 'text';
+            }
             if (activeStreamingMessageId) {
                 await window.electronAPI.interruptVcpRequest?.({ messageId: activeStreamingMessageId });
                 await streamRuntime?.cancel(activeStreamingMessageId, 'voice-window-close');
@@ -175,6 +183,16 @@ document.addEventListener('DOMContentLoaded', () => {
             sendMessage(messageInput.value);
         }
     });
+    messageInput.addEventListener('compositionstart', () => {
+        nativeVoiceCompositionActive = true;
+    });
+    messageInput.addEventListener('compositionend', () => {
+        nativeVoiceCompositionActive = false;
+        nativeVoiceLastInputAt = Date.now();
+    });
+    messageInput.addEventListener('input', () => {
+        nativeVoiceLastInputAt = Date.now();
+    });
     toggleInputModeBtn.addEventListener('click', toggleMode);
 
     // --- Initialization ---
@@ -203,8 +221,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function getVoiceRuntimeSettings(settings = {}) {
         return {
             voiceMode: settings.voiceMode === 'network' ? 'network' : 'local',
-            speechRecognizerBrowserPath: settings.speechRecognizerBrowserPath || '',
-            speechRecognizerPagePath: settings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html',
+            voiceInputMode: ['windows_voice_typing', 'right_alt_hold'].includes(settings.voiceInputMode)
+                ? settings.voiceInputMode
+                : 'windows_voice_typing',
+            voiceInputShortcut: settings.voiceInputShortcut || 'Control+Alt+Space',
             voiceNetworkSettings: settings.voiceNetworkSettings || { providerUrl: '', providerKey: '' },
             voiceLocalSettings: settings.voiceLocalSettings || { sovitsUrl: '', sovitsKey: '' }
         };
@@ -235,6 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.body.classList.toggle('light-theme', theme === 'light');
         document.body.classList.toggle('dark-theme', theme === 'dark');
+        nativeVoiceInputMode.value = globalSettings.voiceInputMode;
         agentAvatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
         agentNameSpan.textContent = `${agentConfig.name} - ${getVoiceModeLabel(globalSettings)}`;
 
@@ -345,26 +366,122 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function toggleMode() {
-        if (inputMode === 'text') {
+    function applyInputModePresentation() {
+        const voiceActive = inputMode === 'voice';
+        keyboardIcon.style.display = voiceActive ? 'none' : 'block';
+        micIcon.style.display = voiceActive ? 'block' : 'none';
+        nativeVoiceInputMode.disabled = voiceActive || nativeVoiceInputBusy;
+        toggleInputModeBtn.disabled = nativeVoiceInputBusy;
+        toggleInputModeBtn.setAttribute('aria-pressed', String(voiceActive));
+        toggleInputModeBtn.title = voiceActive ? '结束系统语音输入' : '开始系统语音输入';
+        messageInput.placeholder = voiceActive
+            ? `正在使用 ${nativeVoiceInputMode.selectedOptions[0]?.textContent || '系统听写'}...`
+            : '输入消息...';
+    }
+
+    function waitForNativeVoiceTextToSettle() {
+        const startedAt = Date.now();
+        return new Promise(resolve => {
+            const check = () => {
+                const now = Date.now();
+                const quietFor = now - nativeVoiceLastInputAt;
+                if (
+                    (!nativeVoiceCompositionActive && quietFor >= NATIVE_VOICE_FINAL_QUIET_MS)
+                    || now - startedAt >= NATIVE_VOICE_FINAL_TIMEOUT_MS
+                ) {
+                    resolve();
+                    return;
+                }
+                setTimeout(check, 100);
+            };
+            check();
+        });
+    }
+
+    async function startNativeVoiceMode() {
+        nativeVoiceInputBusy = true;
+        applyInputModePresentation();
+        messageInput.value = '';
+        messageInput.focus();
+        nativeVoiceLastInputAt = Date.now();
+
+        try {
+            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 60)));
+            const result = await window.electronAPI.startNativeVoiceInput({
+                mode: nativeVoiceInputMode.value,
+            });
+            if (!result?.success) {
+                throw new Error(result?.error || '原生语音输入启动失败');
+            }
             inputMode = 'voice';
-            keyboardIcon.style.display = 'none';
-            micIcon.style.display = 'block';
-            messageInput.placeholder = `正在聆听... (${getVoiceModeLabel(globalSettings)})`;
-            messageInput.value = '';
-            window.electronAPI.startSpeechRecognition();
-        } else {
+        } catch (error) {
             inputMode = 'text';
-            keyboardIcon.style.display = 'block';
-            micIcon.style.display = 'none';
-            messageInput.placeholder = '输入消息...';
-            window.electronAPI.stopSpeechRecognition();
-            clearTimeout(speechRecognitionTimeout);
+            console.error('[VoiceChat] Failed to start native voice input:', error);
+            messageInput.placeholder = `语音输入启动失败：${error.message || error}`;
+        } finally {
+            nativeVoiceInputBusy = false;
+            applyInputModePresentation();
         }
     }
 
+    async function stopNativeVoiceMode() {
+        nativeVoiceInputBusy = true;
+        applyInputModePresentation();
+
+        try {
+            const stopResult = await window.electronAPI.stopNativeVoiceInput({
+                restoreFocus: false,
+                shutdown: false,
+            });
+            if (!stopResult?.success) {
+                throw new Error(stopResult?.error || '原生语音输入停止失败');
+            }
+
+            await waitForNativeVoiceTextToSettle();
+            await window.electronAPI.stopNativeVoiceInput({
+                restoreFocus: true,
+                shutdown: true,
+            });
+        } catch (error) {
+            console.error('[VoiceChat] Failed to stop native voice input:', error);
+            await window.electronAPI.cancelNativeVoiceInput?.();
+        } finally {
+            inputMode = 'text';
+            nativeVoiceInputBusy = false;
+            applyInputModePresentation();
+        }
+
+        const finalText = messageInput.value.trim();
+        if (finalText) {
+            await sendMessage(finalText);
+        }
+    }
+
+    async function toggleMode() {
+        if (nativeVoiceInputBusy) return;
+        if (inputMode === 'text') {
+            await startNativeVoiceMode();
+        } else {
+            await stopNativeVoiceMode();
+        }
+    }
+
+    window.electronAPI.onVoiceInputGlobalToggle?.(() => {
+        toggleMode().catch(error => {
+            console.error('[VoiceChat] Global voice input toggle failed:', error);
+        });
+    });
+
+    window.electronAPI.onVoiceInputShortcutStatus?.((status) => {
+        if (status?.success) return;
+        const error = status?.error || '语音输入快捷键注册失败';
+        console.warn('[VoiceChat] Voice input shortcut unavailable:', error);
+        if (inputMode === 'text') {
+            messageInput.placeholder = `快捷键不可用：${error}`;
+        }
+    });
+
     const sendMessage = async (messageContent) => {
-        clearTimeout(speechRecognitionTimeout); // Stop any pending auto-send
         if (!messageContent.trim() || !agentConfig || !messageRenderer) return;
 
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
@@ -533,19 +650,4 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('dark-theme', theme !== 'light');
     });
 
-    // --- Speech Recognition IPC Listener ---
-    window.electronAPI.onSpeechRecognitionResult((text) => {
-        messageInput.value = text;
-
-        // Reset the timeout every time new text is received
-        clearTimeout(speechRecognitionTimeout);
-        if (messageInput.value.trim() !== '') {
-            speechRecognitionTimeout = setTimeout(() => {
-                if (messageInput.value.trim()) {
-                    console.log('Speech unchanged for 3 seconds, sending message.');
-                    sendMessage(messageInput.value);
-                }
-            }, SPEECH_TIMEOUT_DURATION);
-        }
-    });
 });

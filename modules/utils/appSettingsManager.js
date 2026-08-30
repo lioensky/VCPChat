@@ -40,6 +40,30 @@ class SettingsValidator {
             console.log('Fixed invalid chatPresentationMode');
         }
 
+        const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold']);
+        if (!allowedVoiceInputModes.has(validated.voiceInputMode)) {
+            validated.voiceInputMode = 'windows_voice_typing';
+            hasIssues = true;
+            console.log('Fixed invalid voiceInputMode');
+        }
+
+        if (typeof validated.voiceInputShortcut !== 'string' || !validated.voiceInputShortcut.trim()) {
+            validated.voiceInputShortcut = 'Control+Alt+Space';
+            hasIssues = true;
+            console.log('Fixed invalid voiceInputShortcut');
+        } else {
+            validated.voiceInputShortcut = validated.voiceInputShortcut.trim();
+        }
+
+        if ('speechRecognizerBrowserPath' in validated) {
+            delete validated.speechRecognizerBrowserPath;
+            hasIssues = true;
+        }
+        if ('speechRecognizerPagePath' in validated) {
+            delete validated.speechRecognizerPagePath;
+            hasIssues = true;
+        }
+
         const allowedStreamAnimationPresets = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
         if (!allowedStreamAnimationPresets.has(validated.streamAnimationPreset)) {
             validated.streamAnimationPreset = 'slide-left';
@@ -225,8 +249,8 @@ class SettingsManager extends EventEmitter {
             smoothStreamIntervalMs: 25,
             assistantAgent: '',
             voiceMode: 'local',
-            speechRecognizerBrowserPath: '',
-            speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
+            voiceInputMode: 'windows_voice_typing',
+            voiceInputShortcut: 'Control+Alt+Space',
             voiceLocalSettings: {
                 sovitsUrl: '',
                 sovitsKey: ''
