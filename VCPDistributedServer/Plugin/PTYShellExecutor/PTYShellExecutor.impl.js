@@ -1562,9 +1562,9 @@ async function handleSyncExecute(args) {
         // 确保 GUI 窗口存在
         ensureGuiWindow();
 
-        // 创建或复用会话
-        if (newSession || !ptyProcess) {
-            const created = await createNewShellSession(preferredShell);
+        // 创建会话
+        if (!ptyProcess) {
+            const created = await createNewShellSession(args.shell);
             await new Promise(resolve => setTimeout(resolve, 800)); // 等待 shell 初始化
             console.log(`[PTYShellExecutor] Session started with ${created.shellName} (mode=${created.mode})`);
         }
