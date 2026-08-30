@@ -11,10 +11,12 @@ export function decodeHtmlEntities(value) {
     });
 }
 
-export function createMermaidPlaceholderTransform({ escapeHtml = value => String(value ?? '') } = {}) {
+export function createMermaidPlaceholderTransform() {
     const mermaidCodeRegex = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi;
     const mermaidFenceRegex = /```(mermaid|flowchart|graph)[^\S\n]*\n([\s\S]*?)```/gi;
     return text => String(text ?? '')
         .replace(mermaidCodeRegex, (_match, _lang, code) => `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodeURIComponent(decodeHtmlEntities(code).trim())}"></div>`)
-        .replace(mermaidFenceRegex, (_match, _lang, code) => `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodeURIComponent(escapeHtml(code.trim()))}"></div>`);
+        // encodeURIComponent 已足以安全承载双引号 HTML 属性值；不能先做 HTML
+        // 转义，否则 Mermaid 箭头 "-->" 会变成 "-->" 并导致语法解析失败。
+        .replace(mermaidFenceRegex, (_match, _lang, code) => `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodeURIComponent(code.trim())}"></div>`);
 }
