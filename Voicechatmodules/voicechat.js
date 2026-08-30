@@ -262,6 +262,34 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    async function interruptActiveVoiceRequest(messageId) {
+        if (!messageId || activeStreamingMessageId !== messageId) {
+            return { success: false, error: '消息当前没有正在进行的请求。' };
+        }
+        if (typeof window.electronAPI.interruptVcpRequest !== 'function') {
+            return { success: false, error: '中止请求接口不可用。' };
+        }
+
+        try {
+            const result = await window.electronAPI.interruptVcpRequest({ messageId });
+            if (!result?.success) {
+                return {
+                    success: false,
+                    error: result?.error || '主进程未能中止请求。',
+                };
+            }
+
+            // The backend has accepted the interrupt. Finalize this auxiliary
+            // window immediately instead of depending on a later socket-close
+            // event, which may be absent or filtered after server-side abort.
+            await streamRuntime?.cancel(messageId, 'user-interrupt');
+            return result;
+        } catch (error) {
+            console.error(`[VoiceChat] Failed to interrupt request ${messageId}:`, error);
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
     function initializeRenderer() {
         if (messageRenderer) {
             const chatHistoryRef = {
@@ -314,7 +342,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 uiHelper: uiHelperFunctions, // Pass the local helper
                 messageCommands: { handleSendMessage: text => sendMessage(text) },
                 summarizeTopicFromMessages: window.summarizeTopicFromMessages || (async () => ""),
-                handleCreateBranch: () => {} // Stub
+                handleCreateBranch: () => {}, // Stub
+                interruptHandler: {
+                    interrupt: interruptActiveVoiceRequest,
+                },
             });
             ttsSurfaceOwner = createTtsSurfaceOwner({
                 subscribePlay: callback => window.electronAPI.onPlayTtsAudio(callback),

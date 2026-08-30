@@ -202,14 +202,34 @@ window.electronAPI.onAssistantData(async (data) => {
             const interruptHandler = {
                 interrupt: async (messageId) => {
                     console.log(`[Assistant] Interrupting via handler for message: ${messageId}`);
-                    if (activeStreamingMessageId === messageId) {
-                        // Notify the main process to stop the VCP request.
-                        // The main process should then send an 'end' or 'error' stream event,
-                        // which will publish the coordinator-owned terminal outcome.
-                        await window.electronAPI.interruptVcpRequest({ messageId });
-                        return { success: true };
+                    if (activeStreamingMessageId !== messageId) {
+                        return { success: false, error: '消息当前没有正在进行的请求。' };
                     }
-                    return { success: false, error: "Message not actively streaming." };
+                    if (typeof window.electronAPI.interruptVcpRequest !== 'function') {
+                        return { success: false, error: '中止请求接口不可用。' };
+                    }
+
+                    try {
+                        // Return the real main-process result. The context-menu
+                        // owner must not treat a rejected interrupt as success.
+                        const result = await window.electronAPI.interruptVcpRequest({ messageId });
+                        if (!result?.success) {
+                            return {
+                                success: false,
+                                error: result?.error || '主进程未能中止请求。',
+                            };
+                        }
+
+                        // Backend interruption succeeded. Settle this window's
+                        // stream bridge immediately so the thinking state and
+                        // disabled composer do not wait for a missing socket
+                        // terminal event.
+                        await streamRuntime?.cancel(messageId, 'user-interrupt');
+                        return result;
+                    } catch (error) {
+                        console.error(`[Assistant] Failed to interrupt request ${messageId}:`, error);
+                        return { success: false, error: error.message || String(error) };
+                    }
                 }
             };
 
