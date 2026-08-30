@@ -22,8 +22,7 @@ let voiceCaptureSession = null;
 let voiceCaptureSequence = 0;
 let releaseVoiceEngineEvents = null;
 
-const CAPTURE_MIN_SETTLE_MS = 1500;
-const CAPTURE_QUIET_MS = 1200;
+const CAPTURE_QUIET_MS = 700;
 const CAPTURE_MAX_SETTLE_MS = 7000;
 
 function getNativeWindowHandleString(win) {
@@ -153,6 +152,10 @@ async function beginVoiceCaptureFromHotkey(eventData = {}) {
         composing: false,
         updatedAt: Date.now(),
         stopping: false,
+        autoFinishTimer: null,
+        settleTimer: null,
+        settleDeadlineTimer: null,
+        settleResolve: null,
         focusReadySent: false,
         hotkey: configuredVoiceInputShortcut,
         mode: configuredVoiceInputMode,
@@ -185,47 +188,76 @@ async function beginVoiceCaptureFromHotkey(eventData = {}) {
     });
 }
 
+function clearCaptureSettleTimers(session) {
+    clearTimeout(session.autoFinishTimer);
+    clearTimeout(session.settleTimer);
+    clearTimeout(session.settleDeadlineTimer);
+    session.autoFinishTimer = null;
+    session.settleTimer = null;
+    session.settleDeadlineTimer = null;
+}
+
+function resolveCaptureText(session) {
+    if (!session.settleResolve) return;
+    const resolve = session.settleResolve;
+    session.settleResolve = null;
+    clearCaptureSettleTimers(session);
+    resolve(session.text.trim());
+}
+
+function resetCaptureSettleTimer(session) {
+    if (!session.stopping || !session.settleResolve) return;
+
+    clearTimeout(session.settleTimer);
+    session.settleTimer = null;
+
+    // compositionend/input can arrive after the stop key. Every update resets
+    // this trailing-edge timer, so there is only one short wait after the last
+    // actual Windows recognition commit.
+    if (!session.composing) {
+        session.settleTimer = setTimeout(() => {
+            if (voiceCaptureSession === session) {
+                resolveCaptureText(session);
+            }
+        }, CAPTURE_QUIET_MS);
+    }
+}
+
+function scheduleCaptureAutoFinish(session) {
+    clearTimeout(session.autoFinishTimer);
+    session.autoFinishTimer = null;
+
+    if (
+        session.mode !== 'windows_voice_typing'
+        || session.stopping
+        || session.composing
+        || !session.text.trim()
+    ) {
+        return;
+    }
+
+    // Windows has solidified a non-composing value. Any subsequent recognition
+    // update clears and restarts this timer; only the trailing edge completes
+    // the session, so there is no fixed minimum delay added to every capture.
+    session.autoFinishTimer = setTimeout(() => {
+        session.autoFinishTimer = null;
+        if (voiceCaptureSession === session && !session.stopping) {
+            finishVoiceCaptureFromHotkey().catch(error => {
+                console.error('[VoiceHandlers] Failed to auto-finish settled dictation:', error);
+            });
+        }
+    }, CAPTURE_QUIET_MS);
+}
+
 function waitForCaptureTextToSettle(session) {
-    const startedAt = Date.now();
-    let lastObservedText = session.text;
-    let lastObservedComposing = session.composing;
-    let lastChangeAt = startedAt;
-
     return new Promise(resolve => {
-        const check = () => {
-            if (!voiceCaptureSession || voiceCaptureSession !== session) {
-                resolve('');
-                return;
+        session.settleResolve = resolve;
+        session.settleDeadlineTimer = setTimeout(() => {
+            if (voiceCaptureSession === session) {
+                resolveCaptureText(session);
             }
-
-            const now = Date.now();
-            if (
-                session.text !== lastObservedText
-                || session.composing !== lastObservedComposing
-            ) {
-                lastObservedText = session.text;
-                lastObservedComposing = session.composing;
-                lastChangeAt = now;
-            }
-
-            const elapsed = now - startedAt;
-            const quietFor = now - Math.max(lastChangeAt, session.updatedAt);
-            const textIsStable = (
-                elapsed >= CAPTURE_MIN_SETTLE_MS
-                && !session.composing
-                && quietFor >= CAPTURE_QUIET_MS
-            );
-
-            // Win+H may continue committing recognition results after the stop
-            // key is sent. Require a minimum grace period and then debounce
-            // every text/composition update before consuming the final value.
-            if (textIsStable || elapsed >= CAPTURE_MAX_SETTLE_MS) {
-                resolve(session.text.trim());
-                return;
-            }
-            setTimeout(check, 80);
-        };
-        check();
+        }, CAPTURE_MAX_SETTLE_MS);
+        resetCaptureSettleTimer(session);
     });
 }
 
@@ -494,9 +526,15 @@ function initialize(options) {
     });
     ipcMain.on('voice-input-capture:update', (event, payload = {}) => {
         if (voiceCaptureWindow?.webContents !== event.sender || !voiceCaptureSession) return;
-        voiceCaptureSession.text = String(payload.text || '');
-        voiceCaptureSession.composing = payload.composing === true;
-        voiceCaptureSession.updatedAt = Number(payload.updatedAt) || Date.now();
+        const session = voiceCaptureSession;
+        session.text = String(payload.text || '');
+        session.composing = payload.composing === true;
+        session.updatedAt = Number(payload.updatedAt) || Date.now();
+        if (session.stopping) {
+            resetCaptureSettleTimer(session);
+        } else {
+            scheduleCaptureAutoFinish(session);
+        }
     });
     ipcMain.on('voice-input-capture:focus-ready', async (event, payload = {}) => {
         if (
