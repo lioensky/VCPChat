@@ -44,6 +44,36 @@ body, html {
     flex-grow: 1;
 }
 
+.voice-input-shortcut-status {
+    max-width: 150px;
+    margin-right: 10px;
+    padding: 3px 7px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+    border-radius: 999px;
+    color: var(--secondary-text);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-app-region: no-drag;
+}
+
+.voice-input-shortcut-status.is-ready {
+    border-color: color-mix(in srgb, #35b96f 58%, var(--border-color));
+    color: #35b96f;
+}
+
+.voice-input-shortcut-status.is-active {
+    border-color: color-mix(in srgb, var(--button-bg) 68%, var(--border-color));
+    color: var(--button-bg);
+}
+
+.voice-input-shortcut-status.is-error {
+    border-color: color-mix(in srgb, var(--danger-color) 68%, var(--border-color));
+    color: var(--danger-color);
+}
+
 .header-controls {
     display: flex;
 }

@@ -162,6 +162,13 @@ async function handleStartNativeVoiceInput(event, options = {}) {
     const mode = options.mode === 'right_alt_hold'
         ? 'right_alt_hold'
         : 'windows_voice_typing';
+    if (mode === 'right_alt_hold') {
+        return {
+            success: false,
+            error: '右 Alt 持续按下模式因可能造成系统键盘锁定，已被紧急禁用。请改用 Win+H。',
+            code: 'RIGHT_ALT_MODE_SAFETY_DISABLED',
+        };
+    }
     const ownerId = voiceChatWindow.webContents.id;
 
     if (nativeVoiceInputOwnerId !== null && nativeVoiceInputOwnerId !== ownerId) {
@@ -250,21 +257,31 @@ function createVoiceChatWindow(agentId) {
 
     const voiceWebContentsId = voiceChatWindow.webContents.id;
     const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-    voiceChatWindow.webContents.once('did-finish-load', () => {
+    voiceChatWindow.webContents.once('did-finish-load', async () => {
+        if (voiceChatWindow.isDestroyed() || voiceChatWindow.webContents.isDestroyed()) return;
         voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
+
+        try {
+            const shortcutStatus = await registerVoiceInputShortcut();
+            if (!voiceChatWindow.isDestroyed() && !voiceChatWindow.webContents.isDestroyed()) {
+                voiceChatWindow.webContents.send('voice-input-shortcut-status', shortcutStatus);
+            }
+        } catch (error) {
+            console.warn('[VoiceHandlers] Failed to register voice input shortcut:', error.message);
+            if (!voiceChatWindow.isDestroyed() && !voiceChatWindow.webContents.isDestroyed()) {
+                voiceChatWindow.webContents.send('voice-input-shortcut-status', {
+                    success: false,
+                    registered: false,
+                    error: error.message,
+                });
+            }
+        }
     });
 
     voiceChatWindow.loadFile(path.join(PROJECT_ROOT, 'Voicechatmodules', 'voicechat.html'));
 
     voiceChatWindow.once('ready-to-show', () => {
         voiceChatWindow.show();
-        registerVoiceInputShortcut().then(result => {
-            if (!result.success) {
-                voiceChatWindow.webContents.send('voice-input-shortcut-status', result);
-            }
-        }).catch(error => {
-            console.warn('[VoiceHandlers] Failed to register voice input shortcut:', error.message);
-        });
     });
 
     openChildWindows.push(voiceChatWindow);
@@ -320,6 +337,13 @@ function initialize(options) {
         return {
             success: true,
             owner: nativeVoiceInputOwnerId === voiceChatWindow.webContents.id,
+            shortcut: {
+                value: registeredVoiceInputShortcut,
+                registered: Boolean(
+                    registeredVoiceInputShortcut
+                    && globalShortcut.isRegistered(registeredVoiceInputShortcut)
+                ),
+            },
             engine: voiceInputEngine?.getStatus() || {
                 lifecycleState: 'stopped',
                 ready: false,

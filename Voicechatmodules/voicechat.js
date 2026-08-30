@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendMessageBtn = document.getElementById('sendMessageBtn');
     const agentAvatarImg = document.getElementById('agentAvatar');
     const agentNameSpan = document.getElementById('currentChatAgentName');
+    const voiceInputShortcutStatus = document.getElementById('voiceInputShortcutStatus');
     const closeBtn = document.getElementById('close-btn-voicechat');
     const toggleInputModeBtn = document.getElementById('toggleInputModeBtn');
     const nativeVoiceInputMode = document.getElementById('nativeVoiceInputMode');
@@ -256,6 +257,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('light-theme', theme === 'light');
         document.body.classList.toggle('dark-theme', theme === 'dark');
         nativeVoiceInputMode.value = globalSettings.voiceInputMode;
+        const nativeStatus = await window.electronAPI.getNativeVoiceInputStatus?.();
+        renderVoiceInputShortcutStatus(
+            nativeStatus?.shortcut?.registered
+                ? {
+                    success: true,
+                    registered: true,
+                    shortcut: nativeStatus.shortcut.value || globalSettings.voiceInputShortcut,
+                }
+                : {
+                    success: false,
+                    registered: false,
+                    error: `快捷键 ${globalSettings.voiceInputShortcut} 未注册`,
+                }
+        );
         agentAvatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
         agentNameSpan.textContent = `${agentConfig.name} - ${getVoiceModeLabel(globalSettings)}`;
 
@@ -466,13 +481,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    window.electronAPI.onVoiceInputGlobalToggle?.(() => {
-        toggleMode().catch(error => {
+    function renderVoiceInputShortcutStatus(status, state = null) {
+        if (!voiceInputShortcutStatus) return;
+        voiceInputShortcutStatus.classList.remove('is-ready', 'is-active', 'is-error');
+
+        if (state === 'active') {
+            voiceInputShortcutStatus.classList.add('is-active');
+            voiceInputShortcutStatus.textContent = `${status?.shortcut || globalSettings.voiceInputShortcut || '快捷键'} 已触发`;
+            return;
+        }
+
+        if (status?.success && status?.registered !== false) {
+            voiceInputShortcutStatus.classList.add('is-ready');
+            voiceInputShortcutStatus.textContent = `${status.shortcut || globalSettings.voiceInputShortcut || '快捷键'} 已注册`;
+            return;
+        }
+
+        const error = status?.error || '快捷键未注册';
+        voiceInputShortcutStatus.classList.add('is-error');
+        voiceInputShortcutStatus.textContent = error;
+        voiceInputShortcutStatus.title = error;
+    }
+
+    window.electronAPI.onVoiceInputGlobalToggle?.((eventData) => {
+        renderVoiceInputShortcutStatus(eventData, 'active');
+        toggleMode().then(() => {
+            renderVoiceInputShortcutStatus({
+                success: true,
+                registered: true,
+                shortcut: eventData?.shortcut || globalSettings.voiceInputShortcut,
+            });
+        }).catch(error => {
             console.error('[VoiceChat] Global voice input toggle failed:', error);
+            renderVoiceInputShortcutStatus({ success: false, error: error.message || String(error) });
         });
     });
 
     window.electronAPI.onVoiceInputShortcutStatus?.((status) => {
+        renderVoiceInputShortcutStatus(status);
         if (status?.success) return;
         const error = status?.error || '语音输入快捷键注册失败';
         console.warn('[VoiceChat] Voice input shortcut unavailable:', error);
