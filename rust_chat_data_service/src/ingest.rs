@@ -1,7 +1,7 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fs::{self, OpenOptions},
-    io::{ErrorKind, Write},
+    io::{ErrorKind, Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, LazyLock},
     time::{Duration, UNIX_EPOCH},
@@ -46,6 +46,11 @@ pub struct ReconcileStats {
     pub duration_ms: i64,
 }
 
+struct OwnerCandidate {
+    key: OwnerKey,
+    config_path: PathBuf,
+}
+
 #[derive(Clone)]
 pub struct Reconciler {
     config: Arc<ServiceConfig>,
@@ -67,14 +72,17 @@ impl Reconciler {
 
     pub async fn reconcile(&self) -> Result<ReconcileStats> {
         let started = now_ms();
-        let owners = self.scan_owner_registry()?;
+        let owner_candidates = self.scan_owner_candidates()?;
         let mut live_owner_keys = HashSet::new();
-        let mut stats = ReconcileStats {
-            owners_seen: owners.len(),
-            ..Default::default()
-        };
+        let mut active_owner_keys = HashSet::new();
+        let mut stats = ReconcileStats::default();
 
-        for configured_owner in owners.values() {
+        for candidate in owner_candidates {
+            let Some(configured_owner) = self.owner_from_candidate(candidate)? else {
+                continue;
+            };
+            stats.owners_seen += 1;
+            active_owner_keys.insert(configured_owner.key.clone());
             if let Some(key) = self
                 .reconcile_owner_record(configured_owner, &mut stats)
                 .await?
@@ -83,7 +91,6 @@ impl Reconciler {
             }
         }
 
-        let active_owner_keys = owners.keys().cloned().collect::<HashSet<_>>();
         stats.owners_deleted = self.database.reconcile_missing_owners(&active_owner_keys)?;
         let (avatars_seen, avatars_deleted) = self.reconcile_avatars(&live_owner_keys)?;
         stats.avatars_seen = avatars_seen;
@@ -96,7 +103,7 @@ impl Reconciler {
 
     async fn reconcile_owner_record(
         &self,
-        configured_owner: &OwnerRecord,
+        configured_owner: OwnerRecord,
         stats: &mut ReconcileStats,
     ) -> Result<Option<OwnerKey>> {
         let owner = self.effective_owner(configured_owner)?;
@@ -163,7 +170,7 @@ impl Reconciler {
         match self.configured_owner_for_key(key)? {
             Some(owner) => {
                 stats.owners_seen = 1;
-                self.reconcile_owner_record(&owner, &mut stats).await?;
+                self.reconcile_owner_record(owner, &mut stats).await?;
             }
             None => {
                 stats.owners_deleted = usize::from(self.database.reconcile_missing_owner(key)?);
@@ -321,7 +328,7 @@ impl Reconciler {
         }
 
         let configured_owner = self.configured_owner_by_id(&owner_id)?;
-        let owner = self.effective_owner(&configured_owner)?;
+        let owner = self.effective_owner(configured_owner)?;
 
         let topic = owner
             .topics
@@ -354,13 +361,13 @@ impl Reconciler {
         }
     }
 
-    fn effective_owner(&self, configured_owner: &OwnerRecord) -> Result<OwnerRecord> {
+    fn effective_owner(&self, mut configured_owner: OwnerRecord) -> Result<OwnerRecord> {
         let physical_topic_ids = self.physical_topic_ids(&configured_owner.key.owner_id)?;
         let physical_topic_set = physical_topic_ids.iter().cloned().collect::<HashSet<_>>();
         let mut recovered_topics = Vec::new();
         let mut configured_topics = Vec::new();
         let mut active_topic_ids = HashSet::new();
-        for topic in &configured_owner.topics {
+        for topic in std::mem::take(&mut configured_owner.topics) {
             if !physical_topic_set.contains(&topic.topic_id)
                 || !active_topic_ids.insert(topic.topic_id.clone())
             {
@@ -374,7 +381,7 @@ impl Reconciler {
             if self.database.topic_is_tombstoned(&key)? {
                 continue;
             }
-            let normalized = self.normalize_recovered_timestamp(&key, topic.clone())?;
+            let normalized = self.normalize_recovered_timestamp(&key, topic)?;
             if is_synthetic_recovered_topic(&normalized) {
                 recovered_topics.push(normalized);
             } else {
@@ -442,9 +449,8 @@ impl Reconciler {
         for (ordinal, topic) in recovered_topics.iter_mut().enumerate() {
             topic.ordinal = ordinal as i64;
         }
-        let mut effective = configured_owner.clone();
-        effective.topics = recovered_topics;
-        Ok(effective)
+        configured_owner.topics = recovered_topics;
+        Ok(configured_owner)
     }
 
     fn normalize_recovered_timestamp(
@@ -525,11 +531,19 @@ impl Reconciler {
         Ok(topic_ids)
     }
 
-    pub fn scan_owner_registry(&self) -> Result<HashMap<OwnerKey, OwnerRecord>> {
-        let mut owners = HashMap::new();
-        self.scan_owner_directory(OwnerType::Agent, &self.config.agents_dir, &mut owners)?;
-        self.scan_owner_directory(OwnerType::Group, &self.config.groups_dir, &mut owners)?;
-        Ok(owners)
+    fn scan_owner_candidates(&self) -> Result<Vec<OwnerCandidate>> {
+        let mut candidates = Vec::new();
+        self.scan_owner_directory_candidates(
+            OwnerType::Agent,
+            &self.config.agents_dir,
+            &mut candidates,
+        )?;
+        self.scan_owner_directory_candidates(
+            OwnerType::Group,
+            &self.config.groups_dir,
+            &mut candidates,
+        )?;
+        Ok(candidates)
     }
 
     fn configured_owner_by_id(&self, owner_id: &str) -> Result<OwnerRecord> {
@@ -578,11 +592,11 @@ impl Reconciler {
         self.recovery_owner(key.owner_type, key.owner_id.clone(), config_path)
     }
 
-    fn scan_owner_directory(
+    fn scan_owner_directory_candidates(
         &self,
         owner_type: OwnerType,
         directory: &Path,
-        owners: &mut HashMap<OwnerKey, OwnerRecord>,
+        candidates: &mut Vec<OwnerCandidate>,
     ) -> Result<()> {
         if !directory.exists() {
             return Ok(());
@@ -597,38 +611,42 @@ impl Reconciler {
             }
             let owner_id = entry.file_name().to_string_lossy().to_string();
             let config_path = entry.path().join("config.json");
-            if !config_path.is_file() {
-                tracing::warn!(
-                    owner_type = %owner_type,
+            candidates.push(OwnerCandidate {
+                key: OwnerKey {
+                    owner_type,
                     owner_id,
-                    config_path = %config_path.display(),
-                    "owner config is missing; checking physical topics for recovery"
-                );
-                if let Some(owner) = self.recovery_owner(owner_type, owner_id, config_path)? {
-                    owners.insert(owner.key.clone(), owner);
-                }
-                continue;
-            }
-
-            match parse_owner_config(owner_type, owner_id.clone(), &config_path) {
-                Ok(owner) => {
-                    owners.insert(owner.key.clone(), owner);
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        owner_type = %owner_type,
-                        owner_id,
-                        config_path = %config_path.display(),
-                        error = ?error,
-                        "owner config is invalid; checking physical topics for recovery"
-                    );
-                    if let Some(owner) = self.recovery_owner(owner_type, owner_id, config_path)? {
-                        owners.insert(owner.key.clone(), owner);
-                    }
-                }
-            }
+                },
+                config_path,
+            });
         }
         Ok(())
+    }
+
+    fn owner_from_candidate(&self, candidate: OwnerCandidate) -> Result<Option<OwnerRecord>> {
+        let OwnerCandidate { key, config_path } = candidate;
+        if !config_path.is_file() {
+            tracing::warn!(
+                owner_type = %key.owner_type,
+                owner_id = %key.owner_id,
+                config_path = %config_path.display(),
+                "owner config is missing; checking physical topics for recovery"
+            );
+            return self.recovery_owner(key.owner_type, key.owner_id, config_path);
+        }
+
+        match parse_owner_config(key.owner_type, key.owner_id.clone(), &config_path) {
+            Ok(owner) => Ok(Some(owner)),
+            Err(error) => {
+                tracing::warn!(
+                    owner_type = %key.owner_type,
+                    owner_id = %key.owner_id,
+                    config_path = %config_path.display(),
+                    error = ?error,
+                    "owner config is invalid; checking physical topics for recovery"
+                );
+                self.recovery_owner(key.owner_type, key.owner_id, config_path)
+            }
+        }
     }
 
     fn recovery_owner(
@@ -747,6 +765,10 @@ impl Reconciler {
             });
             let removed = previous_len - history.len();
             if removed > 0 {
+                // The original source hash is already fixed above. Release the old file buffer
+                // before materializing the repaired JSON so the two full byte images never
+                // coexist for a large Topic.
+                drop(std::mem::take(&mut bytes));
                 let repaired = serde_json::to_vec_pretty(&history)?;
                 let committed =
                     write_history_atomic(&source.source_path, &repaired, Some(&source_hash))?
@@ -774,6 +796,7 @@ impl Reconciler {
             return Ok(Some(commit));
         }
         let messages = normalize_history(&bytes, source.key.owner_type, &source.key.topic_id)?;
+        drop(bytes);
 
         self.database
             .ingest_topic(
@@ -1106,6 +1129,20 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
 fn is_internal_sha256(value: Option<&str>) -> bool {
     value.is_some_and(|hash| {
         hash.len() == 64
@@ -1148,8 +1185,8 @@ pub(crate) fn write_history_atomic(
         }
     };
 
-    let current_hash = match fs::read(path) {
-        Ok(current) => Some(sha256_hex(&current)),
+    let current_hash = match sha256_file(path) {
+        Ok(current_hash) => Some(current_hash),
         Err(error) if error.kind() == ErrorKind::NotFound => None,
         Err(error) => {
             let _ = fs::remove_file(&temporary);
@@ -1248,7 +1285,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        normalize_history, parse_owner_config, sha256_hex, topic_timestamp_from_id, Reconciler,
+        normalize_history, parse_owner_config, sha256_hex, topic_timestamp_from_id,
+        write_history_atomic, Reconciler, SnapshotStale,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -1283,6 +1321,37 @@ mod tests {
         let database = Database::open(&config.database_path).expect("open database");
         let reconciler = Reconciler::new(config.clone(), database.clone());
         (temp, config, database, reconciler)
+    }
+
+    #[test]
+    fn atomic_history_write_streams_hash_and_rejects_a_preexisting_stale_source() {
+        let temp = TempDir::new().expect("create temp directory");
+        let path = temp.path().join("history.json");
+        let original = vec![b'a'; 128 * 1024 + 17];
+        let replacement = vec![b'b'; 96 * 1024 + 11];
+        fs::write(&path, &original).expect("write original history");
+
+        let original_hash = sha256_hex(&original);
+        let committed = write_history_atomic(&path, &replacement, Some(&original_hash))
+            .expect("commit matching history snapshot")
+            .expect("replacement should change the source");
+        assert_eq!(committed.source_hash, sha256_hex(&replacement));
+        assert_eq!(
+            fs::read(&path).expect("read committed history"),
+            replacement
+        );
+
+        let concurrent = vec![b'c'; 80 * 1024 + 5];
+        fs::write(&path, &concurrent).expect("write concurrent history");
+        let error = match write_history_atomic(&path, b"next", Some(&committed.source_hash)) {
+            Ok(_) => panic!("stale source hash must reject replacement"),
+            Err(error) => error,
+        };
+        assert!(error.downcast_ref::<SnapshotStale>().is_some());
+        assert_eq!(
+            fs::read(&path).expect("read preserved concurrent history"),
+            concurrent
+        );
     }
 
     fn write_owner(

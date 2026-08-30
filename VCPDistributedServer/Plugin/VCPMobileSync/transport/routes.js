@@ -268,13 +268,12 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       typeof req.body !== "object" ||
       Array.isArray(req.body) ||
       Object.keys(req.body).length !== 1 ||
-      !Array.isArray(items) ||
-      items.length > 1_000
+      !Array.isArray(items)
     ) {
       return sendHttpError(
         res,
         400,
-        "items must be an array of at most 1000 entities",
+        "items must be an array",
         { code: "SYNC_REQUEST_INVALID", stage: "owner_metadata" },
       );
     }
@@ -325,12 +324,6 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         return sendHttpError(res, 400, "items must be an array", {
           code: "SYNC_REQUEST_INVALID",
           stage: "owner_metadata",
-        });
-      }
-      if (items.length > 10_000) {
-        return sendHttpError(res, 413, "items exceed the 10000 item budget", {
-          code: "SYNC_BUDGET_EXCEEDED",
-          stage: entityContractStage(items),
         });
       }
       let parsed;
@@ -414,43 +407,47 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   );
 
   // 3. 流式批量下载消息 (NDJSON) — Phase 3 万级话题 Pull 优化
-  router.post("/messages/pull", express.json({ limit: "5mb" }), async (req, res) => {
-    const { topics } = req.body || {};
-    if (
-      !req.body ||
-      typeof req.body !== "object" ||
-      Array.isArray(req.body) ||
-      Object.keys(req.body).length !== 1 ||
-      !Array.isArray(topics) ||
-      topics.length === 0 ||
-      topics.some((topic) =>
-        !topic ||
-        typeof topic !== "object" ||
-        Array.isArray(topic) ||
-        Object.keys(topic).sort().join("\0") !==
-          "messageIds\0ownerId\0ownerType\0topicId"
-      )
-    ) {
-      return sendHttpError(res, 400, "topics must be a non-empty array", {
-        code: "SYNC_REQUEST_INVALID",
-        stage: "messages",
-      });
-    }
+  router.post(
+    "/messages/pull",
+    express.json({ limit: 34 * 1024 * 1024 }),
+    async (req, res) => {
+      const { topics } = req.body || {};
+      if (
+        !req.body ||
+        typeof req.body !== "object" ||
+        Array.isArray(req.body) ||
+        Object.keys(req.body).length !== 1 ||
+        !Array.isArray(topics) ||
+        topics.length === 0 ||
+        topics.some((topic) =>
+          !topic ||
+          typeof topic !== "object" ||
+          Array.isArray(topic) ||
+          Object.keys(topic).sort().join("\0") !==
+            "messageIds\0ownerId\0ownerType\0topicId"
+        )
+      ) {
+        return sendHttpError(res, 400, "topics must be a non-empty array", {
+          code: "SYNC_REQUEST_INVALID",
+          stage: "messages",
+        });
+      }
 
-    try {
-      if (centralSync) {
-        await centralSync.pullMessagesStreamRaw(topics, res);
-      } else {
-        await pullMessagesStreamRaw(topics, appDataPath, res);
+      try {
+        if (centralSync) {
+          await centralSync.pullMessagesStreamRaw(topics, res);
+        } else {
+          await pullMessagesStreamRaw(topics, appDataPath, res);
+        }
+      } catch (e) {
+        if (!res.headersSent) {
+          sendHttpError(res, 500, e, streamErrorFallback(centralSync));
+        } else {
+          await finishStreamWithError(res, e, streamErrorFallback(centralSync));
+        }
       }
-    } catch (e) {
-      if (!res.headersSent) {
-        sendHttpError(res, 500, e, streamErrorFallback(centralSync));
-      } else {
-        await finishStreamWithError(res, e, streamErrorFallback(centralSync));
-      }
-    }
-  });
+    },
+  );
 
   // 4. 批量上传消息 (NDJSON 流式)
   router.post(

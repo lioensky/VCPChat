@@ -16,8 +16,6 @@ const {
   withSyncErrorContext,
 } = require("../error-contract");
 const {
-  MAX_NDJSON_MESSAGES,
-  MAX_NDJSON_TOPICS,
   NdjsonWriter,
   decodeNdjsonLine,
   readNdjsonLines,
@@ -177,15 +175,20 @@ class CentralSyncAdapter {
     return client;
   }
 
-  async reconcile({ maxAttempts = 30, retryDelayMs = 500 } = {}) {
-    const client = this.requireClient();
+  requestCds(method, pathname, body, options = {}) {
+    return this.requireClient().request(method, pathname, body, {
+      ...options,
+      timeoutMs: null,
+    });
+  }
 
+  async reconcile({ maxAttempts = 30, retryDelayMs = 500 } = {}) {
     // VCP-CDS 在发布 READY 后会启动一次后台 reconcile。MobileSync 紧接着
     // 初始化时可能与该任务争用 reconcile_lock，并收到可重试的 SERVICE_BUSY
     // (HTTP 429)。不能让这个瞬时状态阻止整个 HTTP/WS 同步路由注册。
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await client.reconcile();
+        return await this.requireClient().reconcile();
       } catch (error) {
         const isBusy = error?.code === "SERVICE_BUSY";
         if (!isBusy || attempt === maxAttempts) {
@@ -205,14 +208,10 @@ class CentralSyncAdapter {
   }
 
   async reconcileOwners(owners, stage = "owner_metadata") {
-    if (
-      !Array.isArray(owners) ||
-      owners.length === 0 ||
-      owners.length > 1_000
-    ) {
+    if (!Array.isArray(owners) || owners.length === 0) {
       throw createSyncError(
         "SYNC_REQUEST_INVALID",
-        "Targeted CDS reconcile requires 1 to 1000 owners",
+        "Targeted CDS reconcile requires at least one owner",
         { origin: "desktop_plugin", stage },
       );
     }
@@ -229,11 +228,10 @@ class CentralSyncAdapter {
       seen.add(key);
     }
     try {
-      const response = await this.requireClient().request(
+      const response = await this.requestCds(
         "POST",
         "/v3/sync/owners/reconcile",
         { owners },
-        { timeoutMs: 270_000 },
       );
       if (
         !isRecord(response) ||
@@ -333,7 +331,7 @@ class CentralSyncAdapter {
       ? "topic_metadata"
       : "owner_metadata";
     try {
-      const response = await this.requireClient().request(
+      const response = await this.requestCds(
         "POST",
         "/v3/sync/manifest",
         {
@@ -373,7 +371,7 @@ class CentralSyncAdapter {
       ? "topic_metadata"
       : "owner_metadata";
     try {
-      const response = await this.requireClient().request(
+      const response = await this.requestCds(
         "POST",
         "/v3/sync/entities/pull",
         { items },
@@ -446,7 +444,7 @@ class CentralSyncAdapter {
       );
     }
     try {
-      const value = await this.requireClient().request(
+      const value = await this.requestCds(
         "POST",
         "/v3/sync/avatars/state",
         { ownerType, ownerId },
@@ -476,7 +474,7 @@ class CentralSyncAdapter {
     }
     try {
       const value = validateAvatarState(
-        await this.requireClient().request(
+        await this.requestCds(
           "POST",
           "/v3/sync/avatars/commit",
           { ownerType, ownerId },
@@ -505,11 +503,10 @@ class CentralSyncAdapter {
     const topics = requireCompoundTopicStates(payload);
     const expected = new Set(topics.map(topicIdentityKey));
     try {
-      const response = await this.requireClient().request(
+      const response = await this.requestCds(
         "POST",
         "/v3/sync/topic-diff",
         { topics },
-        { timeoutMs: 270_000 },
       );
       const changedKeys = Array.isArray(response?.changedTopics)
         ? response.changedTopics.map(topicIdentityKey)
@@ -540,11 +537,10 @@ class CentralSyncAdapter {
     const topics = requireMessageDiffStates(payload);
     const expected = new Set(topics.map(topicIdentityKey));
     try {
-      const response = await this.requireClient().request(
+      const response = await this.requestCds(
         "POST",
         "/v3/sync/message-diff",
         { topics },
-        { timeoutMs: 270_000 },
       );
       if (
         !isRecord(response) ||
@@ -670,15 +666,14 @@ class CentralSyncAdapter {
     res.setHeader("Transfer-Encoding", "chunked");
     res.flushHeaders();
 
-    if (!Array.isArray(topics) || topics.length > MAX_NDJSON_TOPICS) {
+    if (!Array.isArray(topics)) {
       throw createSyncError(
         "SYNC_REQUEST_INVALID",
-        "Central pull requires at most 10000 topic selectors",
+        "Central pull requires a topic selector array",
         { stage: "messages" },
       );
     }
     const expected = new Map();
-    let requestedMessages = 0;
     const normalizedTopics = topics.map((topic) => {
       if (
         !topic ||
@@ -714,17 +709,6 @@ class CentralSyncAdapter {
           { stage: "messages", failedTopicIds: [topic.topicId] },
         );
       }
-      requestedMessages += topic.messageIds.length;
-      if (
-        topic.messageIds.length > 10_000 ||
-        requestedMessages > MAX_NDJSON_MESSAGES
-      ) {
-        throw createSyncError(
-          "SYNC_BUDGET_EXCEEDED",
-          "Central pull exceeds the message count budget",
-          { stage: "messages", failedTopicIds: [topic.topicId] },
-        );
-      }
       expected.set(requestKey, topic);
       return {
         topicId: topic.topicId,
@@ -736,11 +720,22 @@ class CentralSyncAdapter {
 
     const writer = new NdjsonWriter(res);
     const seen = new Set();
+    const upstreamController = new AbortController();
+    const releaseUpstreamListeners = () => {
+      res.removeListener("close", abortUpstream);
+      res.removeListener("finish", releaseUpstreamListeners);
+    };
+    const abortUpstream = () => {
+      releaseUpstreamListeners();
+      upstreamController.abort();
+    };
+    res.once("close", abortUpstream);
+    res.once("finish", releaseUpstreamListeners);
     for await (const rawFrame of this.requireClient().requestNdjson(
       "POST",
       "/v3/sync/messages/pull",
       { topics: normalizedTopics },
-      { timeoutMs: 270_000 },
+      { signal: upstreamController.signal },
     )) {
       if (rawFrame?.kind === "streamError") {
         if (!isCdsItemError(rawFrame.error) || Object.keys(rawFrame).length !== 2) {
@@ -799,14 +794,17 @@ class CentralSyncAdapter {
             [topicId],
           );
         }
+        const wireCode = rawFrame.error.code === "BUDGET_EXCEEDED"
+          ? "SYNC_BUDGET_EXCEEDED"
+          : "SYNC_MESSAGE_READ_FAILED";
         await writer.write({
           kind: "topic",
           topicId,
           ownerType: rawFrame.ownerType,
           ownerId: rawFrame.ownerId,
           ok: false,
-          error: mapCdsItemError(rawFrame.error, "SYNC_MESSAGE_READ_FAILED", {
-            code: "SYNC_MESSAGE_READ_FAILED",
+          error: mapCdsItemError(rawFrame.error, wireCode, {
+            code: wireCode,
             origin: "desktop_cds",
             stage: "messages",
             failedTopicIds: [topicId],
@@ -871,7 +869,6 @@ class CentralSyncAdapter {
     const db = this.compatibilityDb || getDb();
     if (!db) throw new Error("Central compatibility index is unavailable");
 
-    const client = this.requireClient();
     const writer = new NdjsonWriter(res);
     const seen = new Set();
     const avatarPaths = new Map();
@@ -886,8 +883,6 @@ class CentralSyncAdapter {
       }
       return avatarPaths.get(agentId);
     };
-    let topicCount = 0;
-    let messageCount = 0;
     for await (const line of readNdjsonLines(req)) {
       let topicId = null;
       let ownerType = null;
@@ -922,7 +917,6 @@ class CentralSyncAdapter {
             "Central message push requires exact topic owner identity and messages",
           );
         }
-        topicCount += 1;
         const liveIds = new Set();
         for (const message of frame.messages) {
           if (
@@ -954,19 +948,6 @@ class CentralSyncAdapter {
             );
           }
           deletedIds.add(tombstone.msgId);
-        }
-        const topicMessageCount =
-          frame.messages.length + frame.deletedMessages.length;
-        messageCount += topicMessageCount;
-        if (
-          topicCount > MAX_NDJSON_TOPICS ||
-          topicMessageCount > 10_000 ||
-          messageCount > MAX_NDJSON_MESSAGES
-        ) {
-          throw new SyncProtocolError(
-            "Central message push exceeds its count budget",
-            "SYNC_BUDGET_EXCEEDED",
-          );
         }
         const requestKey = topicIdentityKey(frame);
         if (seen.has(requestKey)) {
@@ -1003,7 +984,7 @@ class CentralSyncAdapter {
           });
           continue;
         }
-        const result = await client.request(
+        const result = await this.requestCds(
           "POST",
           "/v3/sync/messages/push",
           {
@@ -1013,7 +994,6 @@ class CentralSyncAdapter {
             messages: projected.messages,
             deletedMessages: frame.deletedMessages,
           },
-          { timeoutMs: 270_000 },
         );
         if (
           result?.topicId !== topicId ||
@@ -1131,7 +1111,7 @@ class CentralSyncAdapter {
     }
 
     try {
-      const result = await this.requireClient().request(
+      const result = await this.requestCds(
         "POST",
         "/v3/sync/entities/delete",
         target,
@@ -1174,8 +1154,7 @@ class CentralSyncAdapter {
         "Central message deletion requires valid owner, topicId, msgId, and deletedAt",
       );
     }
-    const client = this.requireClient();
-    const result = await client.request(
+    const result = await this.requestCds(
       "POST",
       "/v3/sync/messages/push",
       {
@@ -1185,7 +1164,6 @@ class CentralSyncAdapter {
         messages: [],
         deletedMessages: [{ msgId, deletedAt }],
       },
-      { timeoutMs: 270_000 },
     );
     if (
       result?.topicId !== topicId ||

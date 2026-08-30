@@ -26,11 +26,6 @@ function requireCompoundTopicStates(payload) {
     );
   }
   const topicStates = payload.topics;
-  if (topicStates.length > 10_000) {
-    throw Object.assign(new Error("Topic hash batch exceeds 10000 topics"), {
-      code: "SYNC_BUDGET_EXCEEDED",
-    });
-  }
   const states = new Map();
   for (const state of topicStates) {
     if (
@@ -170,13 +165,7 @@ function requireMessageDiffStates(payload) {
     });
   }
   const topics = payload.topics;
-  if (topics.length > 10_000) {
-    throw Object.assign(new Error("Message diff exceeds 10000 topics"), {
-      code: "SYNC_BUDGET_EXCEEDED",
-    });
-  }
   const seenTopics = new Set();
-  let messageCount = 0;
   for (const localState of topics) {
     const topicId = localState?.topicId;
     if (
@@ -206,14 +195,11 @@ function requireMessageDiffStates(payload) {
       });
     }
     seenTopics.add(identity);
-    const localEntries = Object.entries(localState.messages);
-    messageCount += localEntries.length;
-    if (localEntries.length > 10_000 || messageCount > 100_000) {
-      throw Object.assign(new Error("Message diff exceeds its message count budget"), {
-        code: "SYNC_BUDGET_EXCEEDED",
-      });
-    }
-    for (const [msgId, state] of localEntries) {
+    for (const msgId in localState.messages) {
+      if (!Object.prototype.hasOwnProperty.call(localState.messages, msgId)) {
+        continue;
+      }
+      const state = localState.messages[msgId];
       if (!msgId || !validateMessageState(state)) {
         throw Object.assign(
           new Error(`Invalid message diff entry ${topicId}/${msgId}`),
@@ -283,9 +269,16 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         continue;
       }
 
-      const mobileHasTombstones = Object.values(localState.messages).some(
-        isMessageTombstone,
-      );
+      let mobileHasTombstones = false;
+      for (const msgId in localState.messages) {
+        if (
+          Object.prototype.hasOwnProperty.call(localState.messages, msgId) &&
+          isMessageTombstone(localState.messages[msgId])
+        ) {
+          mobileHasTombstones = true;
+          break;
+        }
+      }
       if (
         topicRow.content_hash !== null &&
         topicRow.content_hash === localState.contentHash &&
@@ -311,7 +304,10 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         )
         .all(localState.ownerType, localState.ownerId, topicId);
 
-      const remoteMap = new Map(remoteRows.map((row) => [row.msg_id, row]));
+      const remoteMap = new Map();
+      for (const row of remoteRows) {
+        remoteMap.set(row.msg_id, row);
+      }
       const localMap = localState.messages;
 
       const pullMessageIds = [];

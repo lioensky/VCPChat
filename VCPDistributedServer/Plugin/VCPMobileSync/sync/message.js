@@ -38,8 +38,6 @@ const {
   normalizeSyncError,
 } = require("../error-contract");
 const {
-  MAX_NDJSON_MESSAGES,
-  MAX_NDJSON_TOPICS,
   NdjsonWriter,
   decodeNdjsonLine,
   readNdjsonLines,
@@ -258,14 +256,6 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
 
   const writer = new NdjsonWriter(res);
   const seenTopics = new Set();
-  let requestedMessages = 0;
-  if (topics.length > MAX_NDJSON_TOPICS) {
-    throw createSyncError(
-      "SYNC_BUDGET_EXCEEDED",
-      "Message pull exceeds 10000 topics",
-      { stage: "messages" },
-    );
-  }
   for (const { topicId, ownerType, ownerId, messageIds } of topics) {
     const safeTopicId = sanitizeId(topicId);
     try {
@@ -308,14 +298,6 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
       }
       seenTopics.add(topicKey);
       assertHistoryTopicHealthy({ topicId: safeTopicId, ownerType, ownerId });
-      requestedMessages += messageIds.length;
-      if (messageIds.length > 10_000 || requestedMessages > MAX_NDJSON_MESSAGES) {
-        throw createSyncError(
-          "SYNC_BUDGET_EXCEEDED",
-          "Message pull exceeds message count budget",
-          { stage: "messages", failedTopicIds: [safeTopicId] },
-        );
-      }
       const row = getTopicState({
         ownerType,
         ownerId,
@@ -628,7 +610,6 @@ async function pushMessagesStreamRaw(req, appDataPath, res) {
   const writer = new NdjsonWriter(res);
   const seenTopics = new Set();
   let topicCount = 0;
-  let messageCount = 0;
 
   try {
     for await (const line of readNdjsonLines(req)) {
@@ -736,20 +717,6 @@ async function pushMessagesStreamRaw(req, appDataPath, res) {
             );
           }
           deletedIds.add(tombstone.msgId);
-        }
-        const topicMessageCount = messages.length + deletedMessages.length;
-        messageCount += topicMessageCount;
-        if (
-          topicCount > MAX_NDJSON_TOPICS ||
-          topicMessageCount > 10_000 ||
-          messageCount > MAX_NDJSON_MESSAGES
-        ) {
-          streamFatal = true;
-          throw createSyncError(
-            "SYNC_BUDGET_EXCEEDED",
-            "Message push exceeds topic or message count budget",
-            { stage: "messages", failedTopicIds: [safeTopicId] },
-          );
         }
         const topicKey = topicIdentityKey(ownerType, ownerId, safeTopicId);
         if (seenTopics.has(topicKey)) {

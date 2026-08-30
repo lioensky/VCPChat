@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::{
     config::SCHEMA_VERSION,
@@ -212,6 +213,14 @@ impl SourceMetadata {
             && self.owner_id == key.owner_id
             && self.topic_id == key.topic_id
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct SyncHistorySnapshot {
+    pub(crate) source_path: PathBuf,
+    pub(crate) source_hash: String,
+    pub(crate) messages: Vec<Value>,
+    pub(crate) tombstone_ids: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1192,6 +1201,13 @@ impl Database {
         let existing = load_active_message_states(&transaction, &source.key)?;
         // Physical history is detection input, not an undelete protocol.
         let tombstoned_ids = load_message_tombstone_ids(&transaction, &source.key)?;
+        let message_digests = messages
+            .iter()
+            .map(|message| MessageDigests {
+                content_text: text_digest(&message.content_text),
+                metadata_json: text_digest(&message.metadata_json),
+            })
+            .collect::<Vec<_>>();
         let incoming_ids: HashSet<&str> = messages
             .iter()
             .filter(|message| !tombstoned_ids.contains(message.msg_id.as_str()))
@@ -1204,10 +1220,11 @@ impl Database {
         let search_changed = search_requires_rewrite
             || messages
                 .iter()
-                .filter(|message| incoming_ids.contains(message.msg_id.as_str()))
-                .any(|message| {
+                .zip(&message_digests)
+                .filter(|(message, _)| incoming_ids.contains(message.msg_id.as_str()))
+                .any(|(message, digests)| {
                     existing.get(&message.msg_id).is_none_or(|previous| {
-                        previous.content_text != message.content_text
+                        previous.content_text_digest != digests.content_text
                             || previous.speaker_name != message.speaker_name
                     })
                 });
@@ -1264,7 +1281,7 @@ impl Database {
                     updated_at=excluded.updated_at,
                     deleted_at=NULL",
             )?;
-            for message in messages {
+            for (message, digests) in messages.iter().zip(&message_digests) {
                 if tombstoned_ids.contains(message.msg_id.as_str()) {
                     continue;
                 }
@@ -1279,9 +1296,9 @@ impl Database {
                 let needs_write = previous.is_none_or(|previous| {
                     previous.ordinal != message.ordinal
                         || previous.speaker_name != message.speaker_name
-                        || previous.content_text != message.content_text
+                        || previous.content_text_digest != digests.content_text
                         || previous.message_hash != message.message_hash
-                        || previous.metadata_json != message.metadata_json
+                        || previous.metadata_json_digest != digests.metadata_json
                         || previous.updated_at != effective_updated_at
                 });
                 if !needs_write {
@@ -1306,7 +1323,7 @@ impl Database {
                 if previous.is_none() {
                     appended_row_ids.push(transaction.last_insert_rowid());
                 } else if previous.is_some_and(|previous| {
-                    previous.content_text != message.content_text
+                    previous.content_text_digest != digests.content_text
                         || previous.speaker_name != message.speaker_name
                 }) {
                     search_requires_rewrite = true;
@@ -1571,6 +1588,129 @@ impl Database {
                 |row| row.get(0),
             )
             .map_err(Into::into)
+    }
+
+    pub(crate) fn sync_history_snapshot(&self, key: &TopicKey) -> Result<SyncHistorySnapshot> {
+        let connection = self.connection.lock();
+        let source = connection
+            .query_row(
+                "SELECT t.source_path,
+                        hs.owner_type, hs.owner_id, hs.topic_id,
+                        hs.status, hs.source_hash
+                 FROM topics t
+                 JOIN owners o
+                   ON o.owner_type=t.owner_type AND o.owner_id=t.owner_id
+                 LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+                 WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
+                   AND t.deleted_at IS NULL AND o.deleted_at IS NULL",
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
+                },
+            )
+            .optional()?
+            .with_context(|| {
+                format!(
+                    "sync history topic is not live: {}/{}/{}",
+                    key.owner_type.as_str(),
+                    key.owner_id,
+                    key.topic_id
+                )
+            })?;
+        let (source_path, source_owner_type, source_owner_id, source_topic_id, status, source_hash) =
+            source;
+        anyhow::ensure!(!source_path.is_empty(), "sync history source path is empty");
+        let source_owner_type =
+            source_owner_type.context("sync history topic has no matching history source")?;
+        let source_owner_id =
+            source_owner_id.context("sync history topic has no matching history source")?;
+        let source_topic_id =
+            source_topic_id.context("sync history topic has no matching history source")?;
+        anyhow::ensure!(
+            source_owner_type == key.owner_type.as_str()
+                && source_owner_id == key.owner_id
+                && source_topic_id == key.topic_id,
+            "sync history source identity does not match the requested topic"
+        );
+        anyhow::ensure!(
+            status.as_deref() == Some("ready"),
+            "sync history source is not ready"
+        );
+        let source_hash = source_hash.context("sync history source hash is missing")?;
+        anyhow::ensure!(
+            source_hash.len() == 64
+                && source_hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "sync history source hash is not lowercase SHA-256"
+        );
+
+        let mut messages = Vec::new();
+        {
+            let mut statement = connection.prepare(
+                "SELECT msg_id, metadata_json
+                 FROM messages
+                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                   AND deleted_at IS NULL
+                 ORDER BY ordinal ASC, row_id ASC",
+            )?;
+            let rows = statement.query_map(
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?;
+            for row in rows {
+                let (msg_id, metadata_json) = row?;
+                anyhow::ensure!(!msg_id.is_empty(), "sync history message id is empty");
+                let message: Value = serde_json::from_str(&metadata_json)
+                    .with_context(|| format!("stored message {msg_id} metadata is invalid JSON"))?;
+                let message_id = message
+                    .as_object()
+                    .with_context(|| format!("stored message {msg_id} metadata is not an object"))?
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .with_context(|| format!("stored message {msg_id} metadata id is missing"))?;
+                anyhow::ensure!(
+                    message_id == msg_id,
+                    "stored message metadata id {message_id} does not match database id {msg_id}"
+                );
+                messages.push(message);
+            }
+        }
+
+        let mut tombstone_ids = HashSet::new();
+        {
+            let mut statement = connection.prepare(
+                "SELECT msg_id FROM messages
+                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                   AND deleted_at IS NOT NULL",
+            )?;
+            let rows = statement.query_map(
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |row| row.get::<_, String>(0),
+            )?;
+            for row in rows {
+                let msg_id = row?;
+                anyhow::ensure!(!msg_id.is_empty(), "sync history tombstone id is empty");
+                anyhow::ensure!(
+                    tombstone_ids.insert(msg_id.clone()),
+                    "sync history contains duplicate tombstone id {msg_id}"
+                );
+            }
+        }
+
+        Ok(SyncHistorySnapshot {
+            source_path: PathBuf::from(source_path),
+            source_hash,
+            messages,
+            tombstone_ids,
+        })
     }
 
     pub(crate) fn message_tombstone_ids(&self, key: &TopicKey) -> Result<HashSet<String>> {
@@ -2202,9 +2342,18 @@ struct ActiveMessageState {
     ordinal: i64,
     message_hash: String,
     updated_at: i64,
-    content_text: String,
+    content_text_digest: [u8; 32],
     speaker_name: Option<String>,
-    metadata_json: String,
+    metadata_json_digest: [u8; 32],
+}
+
+struct MessageDigests {
+    content_text: [u8; 32],
+    metadata_json: [u8; 32],
+}
+
+fn text_digest(value: &str) -> [u8; 32] {
+    Sha256::digest(value.as_bytes()).into()
 }
 
 fn load_active_message_states(
@@ -2227,9 +2376,9 @@ fn load_active_message_states(
                     ordinal: row.get(2)?,
                     message_hash: row.get(3)?,
                     updated_at: row.get(4)?,
-                    content_text: row.get(5)?,
+                    content_text_digest: text_digest(&row.get::<_, String>(5)?),
                     speaker_name: row.get(6)?,
-                    metadata_json: row.get(7)?,
+                    metadata_json_digest: text_digest(&row.get::<_, String>(7)?),
                 },
             ))
         },
@@ -2407,6 +2556,146 @@ mod tests {
         let database =
             Database::open(&directory.path().join("chat.sqlite3")).expect("open test database");
         (directory, database)
+    }
+
+    #[test]
+    fn sync_history_snapshot_preserves_wire_messages_and_source_state() {
+        let (directory, database) = test_database();
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: "topic-a".to_string(),
+        };
+        let source_path = directory.path().join("missing-history.json");
+        let source_hash = "a".repeat(64);
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "INSERT INTO owners(
+                        owner_type, owner_id, display_name, config_path, config_hash, updated_at
+                     ) VALUES('agent', 'agent-a', 'Agent', 'agent.json', 'config-hash', 1)",
+                    [],
+                )
+                .expect("insert snapshot owner");
+            connection
+                .execute(
+                    "INSERT INTO topics(
+                        owner_type, owner_id, topic_id, config_hash, metadata_json,
+                        source_path, updated_at
+                     ) VALUES('agent', 'agent-a', 'topic-a', 'topic-hash', '{}', ?1, 1)",
+                    [source_path.to_string_lossy().as_ref()],
+                )
+                .expect("insert snapshot topic");
+            connection
+                .execute(
+                    "INSERT INTO history_sources(
+                        source_path, owner_type, owner_id, topic_id, mtime_ns, file_size,
+                        source_hash, last_revision, indexed_at, status, last_error
+                     ) VALUES(?1, 'agent', 'agent-a', 'topic-a', 1, 2, ?2, 3, 4, 'ready', NULL)",
+                    params![source_path.to_string_lossy().as_ref(), source_hash],
+                )
+                .expect("insert ready history source");
+            for (msg_id, ordinal, metadata_json, deleted_at) in [
+                (
+                    "message-late",
+                    20_i64,
+                    serde_json::json!({
+                        "id": "message-late",
+                        "role": "assistant",
+                        "content": "late",
+                        "timestamp": 20,
+                        "desktopOnly": { "sequence": 2 }
+                    })
+                    .to_string(),
+                    None,
+                ),
+                (
+                    "message-early",
+                    10_i64,
+                    serde_json::json!({
+                        "id": "message-early",
+                        "role": "user",
+                        "content": "early",
+                        "timestamp": 10,
+                        "desktopOnly": { "sequence": 1, "preserved": true }
+                    })
+                    .to_string(),
+                    None,
+                ),
+                (
+                    "message-deleted",
+                    5_i64,
+                    serde_json::json!({
+                        "id": "message-deleted",
+                        "role": "user",
+                        "content": "gone",
+                        "timestamp": 5
+                    })
+                    .to_string(),
+                    Some(99_i64),
+                ),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO messages(
+                            owner_type, owner_id, topic_id, msg_id, ordinal, role,
+                            content_raw, content_text, timestamp, message_hash,
+                            metadata_json, updated_at, deleted_at
+                         ) VALUES('agent', 'agent-a', 'topic-a', ?1, ?2, 'user',
+                                  '', '', ?2, ?3, ?4, ?2, ?5)",
+                        params![msg_id, ordinal, "b".repeat(64), metadata_json, deleted_at],
+                    )
+                    .expect("insert snapshot message");
+            }
+        }
+
+        let snapshot = database
+            .sync_history_snapshot(&key)
+            .expect("load committed sync history snapshot");
+        assert_eq!(snapshot.source_path, source_path);
+        assert_eq!(snapshot.source_hash, "a".repeat(64));
+        assert_eq!(
+            snapshot
+                .messages
+                .iter()
+                .map(|message| message["id"].as_str().expect("snapshot message id"))
+                .collect::<Vec<_>>(),
+            vec!["message-early", "message-late"]
+        );
+        assert_eq!(snapshot.messages[0]["desktopOnly"]["sequence"], 1);
+        assert_eq!(snapshot.messages[0]["desktopOnly"]["preserved"], true);
+        assert_eq!(
+            snapshot.tombstone_ids,
+            HashSet::from(["message-deleted".to_string()])
+        );
+        assert!(
+            !source_path.exists(),
+            "snapshot must not read the physical file"
+        );
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE history_sources SET source_hash=?2 WHERE source_path=?1",
+                    params![source_path.to_string_lossy().as_ref(), "A".repeat(64)],
+                )
+                .expect("poison snapshot source hash");
+        }
+        assert!(database.sync_history_snapshot(&key).is_err());
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE history_sources SET source_hash=?2, status='invalid'
+                     WHERE source_path=?1",
+                    params![source_path.to_string_lossy().as_ref(), "a".repeat(64)],
+                )
+                .expect("poison snapshot source status");
+        }
+        assert!(database.sync_history_snapshot(&key).is_err());
     }
 
     #[test]

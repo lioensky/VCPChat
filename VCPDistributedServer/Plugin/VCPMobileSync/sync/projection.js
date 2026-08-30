@@ -272,9 +272,6 @@ async function projectMobileTopic({
       `Mobile push for ${topicId} requires messages array`,
     );
   }
-  if (messages.length > 10_000) {
-    throw new SyncProtocolError(`Mobile push for ${topicId} exceeds 10000 messages`);
-  }
   const projected = [];
   const seen = new Set();
   const avatarPaths = new Map();

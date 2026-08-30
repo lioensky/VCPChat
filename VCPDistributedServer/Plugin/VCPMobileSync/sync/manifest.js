@@ -5,7 +5,6 @@
 const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 
-const MAX_MANIFEST_ITEMS = 10_000;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const CONTENT_HASH_PATTERN = /^(?:|[a-f0-9]{64})$/;
 
@@ -44,9 +43,6 @@ function requireTargetedOwners(manifestType, targetedOwners) {
   if (targetedOwners == null) return null;
   if (manifestType !== "topic" || !Array.isArray(targetedOwners)) {
     throw syncContractError("targetedOwners is only valid for topic manifests");
-  }
-  if (targetedOwners.length > MAX_MANIFEST_ITEMS) {
-    throw syncContractError("targetedOwners exceeds 10000 owners", "SYNC_BUDGET_EXCEEDED");
   }
   const owners = targetedOwners.map((owner, index) => {
     if (!owner || typeof owner !== "object" || Array.isArray(owner)) {
@@ -117,9 +113,6 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
         "SELECT owner_id, owner_type, hash, updated_at, deleted_at FROM avatar_index",
       )
       .all();
-    if (rows.length > MAX_MANIFEST_ITEMS) {
-      throw syncContractError("Avatar manifest exceeds 10000 items", "SYNC_BUDGET_EXCEEDED");
-    }
     return rows.map((row) => {
       const ownerType = row.owner_type;
       const ownerId = row.owner_id;
@@ -151,12 +144,6 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
               updated_at, deleted_at
        FROM owners`,
     ).all();
-    if (rows.length > MAX_MANIFEST_ITEMS) {
-      throw syncContractError(
-        "owner manifest exceeds 10000 items",
-        "SYNC_BUDGET_EXCEEDED",
-      );
-    }
     return rows.map((row) => {
       const ownerId = requireNonEmptyString(row.owner_id, "Owner manifest ownerId");
       const ownerType = requireNonEmptyString(
@@ -203,12 +190,6 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
   const filteredRows = ownerFilter
     ? rows.filter((row) => ownerFilter.has(`${row.owner_type}\0${row.owner_id}`))
     : rows;
-  if (filteredRows.length > MAX_MANIFEST_ITEMS) {
-    throw syncContractError(
-      "topic manifest exceeds 10000 items",
-      "SYNC_BUDGET_EXCEEDED",
-    );
-  }
   return filteredRows.map((row) => {
     const topicId = requireNonEmptyString(row.topic_id, "Topic manifest topicId");
     const ownerType = requireNonEmptyString(
@@ -356,13 +337,6 @@ function validateSyncManifestRequest(payload) {
   if (!Array.isArray(remoteItems)) {
     throw syncContractError("SYNC_MANIFEST_REQUEST.items must be an array");
   }
-  if (remoteItems.length > MAX_MANIFEST_ITEMS) {
-    throw syncContractError(
-      `${manifestType} manifest exceeds 10000 items`,
-      "SYNC_BUDGET_EXCEEDED",
-    );
-  }
-
   const ownerFilter = requireTargetedOwners(manifestType, targetedOwners);
   if (manifestType === "topic" && ownerFilter === null) {
     throw syncContractError("Topic manifest requires targetedOwners");

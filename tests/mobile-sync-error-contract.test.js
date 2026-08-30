@@ -396,7 +396,7 @@ test("HTTP route handlers return the same structured error contract", async () =
       stage: "owner_metadata",
       kind: "protocol",
       retry: "after_user_action",
-      message: "items must be an array of at most 1000 entities",
+      message: "items must be an array",
       failedTopicIds: [],
     },
   });

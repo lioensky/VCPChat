@@ -10,7 +10,7 @@ use std::{
 
 use axum::{
     body::{Body, Bytes},
-    extract::{Request, State},
+    extract::{DefaultBodyLimit, Request, State},
     http::{
         header::{AUTHORIZATION, CONTENT_TYPE},
         HeaderValue, StatusCode,
@@ -20,6 +20,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
@@ -37,7 +38,7 @@ use crate::{
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
     ingest::{ReconcileStats, Reconciler},
     search::{MemorySearchRequest, MessageSearchRequest, SearchIndex},
-    storage::now_ms,
+    storage::{now_ms, Database},
     sync::{
         self, ManifestRequest, ManifestResponse, MessageDiffRequest, MessageDiffResponse,
         MessagesPullRequest, TopicDiffRequest, TopicDiffResponse,
@@ -256,7 +257,6 @@ struct ReconcileOwnersResponse {
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/v1/status", get(status))
-        .route("/v1/reconcile", post(reconcile))
         .route("/v1/rebuild-search-index", post(rebuild_search))
         .route("/v1/ingest/history-path", post(ingest_history_path))
         .route("/v1/search/messages", post(search_messages))
@@ -264,9 +264,14 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/flush", post(flush))
         .route("/v1/shutdown", post(shutdown))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
-        .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024));
+        .layer(RequestBodyLimitLayer::new(16 * 1024 * 1024))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(270),
+        ));
 
-    let sync_v3 = Router::new()
+    let sync_routes = Router::new()
+        .route("/v1/reconcile", post(reconcile))
         .route("/v3/sync/manifest", post(sync_manifest))
         .route("/v3/sync/topic-diff", post(sync_topic_diff))
         .route("/v3/sync/message-diff", post(sync_message_diff))
@@ -278,16 +283,13 @@ pub fn router(state: AppState) -> Router {
         .route("/v3/sync/messages/pull", post(sync_messages_pull_stream))
         .route("/v3/sync/messages/push", post(sync_messages_push))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate))
+        .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(34 * 1024 * 1024));
 
     Router::new()
         .route("/v1/health", get(health))
         .merge(protected)
-        .merge(sync_v3)
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(270),
-        ))
+        .merge(sync_routes)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -568,9 +570,9 @@ async fn sync_reconcile_owners(
     State(state): State<AppState>,
     Json(request): Json<ReconcileOwnersRequest>,
 ) -> ServiceResult<Json<ReconcileOwnersResponse>> {
-    if request.owners.is_empty() || request.owners.len() > 1_000 {
+    if request.owners.is_empty() {
         return Err(ServiceError::InvalidRequest(
-            "sync owner reconcile requires 1 to 1000 owners".to_string(),
+            "sync owner reconcile requires at least one owner".to_string(),
         ));
     }
     let mut seen = HashSet::with_capacity(request.owners.len());
@@ -721,11 +723,6 @@ async fn sync_entities_pull(
 }
 
 fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> ServiceResult<()> {
-    if request.items.len() > 1_000 {
-        return Err(ServiceError::InvalidRequest(
-            "sync entity pull accepts at most 1000 items".to_string(),
-        ));
-    }
     let is_safe_id = |id: &str| {
         !id.is_empty()
             && id
@@ -765,10 +762,7 @@ fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> Servic
 }
 
 // 消息拉取只保留流式端点，以 kind=topic、ok=false 隔离单 Topic 失败。
-const MAX_SYNC_TOPICS: usize = 10_000;
-const MAX_SYNC_MESSAGES: usize = 100_000;
 const MAX_SYNC_FRAME_BYTES: usize = 32 * 1024 * 1024;
-const MAX_SYNC_TOTAL_BYTES: usize = 256 * 1024 * 1024;
 
 async fn sync_messages_pull_stream(
     State(state): State<AppState>,
@@ -778,57 +772,34 @@ async fn sync_messages_pull_stream(
     let database = state.reconciler.database().clone();
     let topics = request.topics.into_iter();
     let stream = futures::stream::unfold(
-        (topics, database, 0_usize),
-        |(mut topics, database, total_bytes)| async move {
+        (topics, database, None),
+        |(mut topics, database, read_connection)| async move {
             let topic = topics.next()?;
             let topic_id = topic.topic_id.clone();
             let owner_type = topic.owner_type;
             let owner_id = topic.owner_id.clone();
             let worker_database = database.clone();
-            let mut bytes = match tokio::task::spawn_blocking(move || {
-                encode_pull_topic_frame(&worker_database, topic)
+            let (read_connection, bytes) = match tokio::task::spawn_blocking(move || {
+                encode_pull_topic_frame_with_connection(&worker_database, read_connection, topic)
             })
             .await
             {
-                Ok(bytes) => bytes,
-                Err(error) => encode_pull_error_frame(
-                    &topic_id,
-                    owner_type,
-                    &owner_id,
-                    "MESSAGE_READ_FAILED",
-                    &format!("CDS pull worker failed: {error}"),
-                    false,
+                Ok(result) => result,
+                Err(error) => (
+                    None,
+                    encode_pull_error_frame(
+                        &topic_id,
+                        owner_type,
+                        &owner_id,
+                        "MESSAGE_READ_FAILED",
+                        &format!("CDS pull worker failed: {error}"),
+                        false,
+                    ),
                 ),
             };
-            if bytes.len() > MAX_SYNC_FRAME_BYTES {
-                bytes = encode_pull_error_frame(
-                    &topic_id,
-                    owner_type,
-                    &owner_id,
-                    "BUDGET_EXCEEDED",
-                    "CDS pull frame exceeds 32 MiB budget",
-                    false,
-                );
-            }
-            let next_total = total_bytes.checked_add(bytes.len());
-            if next_total.is_none_or(|total| total > MAX_SYNC_TOTAL_BYTES) {
-                bytes = encode_pull_error_frame(
-                    &topic_id,
-                    owner_type,
-                    &owner_id,
-                    "BUDGET_EXCEEDED",
-                    "CDS pull response exceeds 256 MiB total budget",
-                    false,
-                );
-                topics = Vec::new().into_iter();
-                if total_bytes.saturating_add(bytes.len()) > MAX_SYNC_TOTAL_BYTES {
-                    return None;
-                }
-            }
-            let next_total = total_bytes.saturating_add(bytes.len());
             Some((
                 Ok::<Bytes, Infallible>(Bytes::from(bytes)),
-                (topics, database, next_total),
+                (topics, database, read_connection),
             ))
         },
     );
@@ -840,42 +811,70 @@ async fn sync_messages_pull_stream(
     Ok(response)
 }
 
-fn encode_pull_topic_frame(
-    database: &crate::storage::Database,
+fn encode_pull_topic_frame_with_connection(
+    database: &Database,
+    read_connection: Option<Connection>,
     topic: sync::MessagesPullTopic,
-) -> Vec<u8> {
+) -> (Option<Connection>, Vec<u8>) {
     let topic_id = topic.topic_id.clone();
     let owner_type = topic.owner_type;
     let owner_id = topic.owner_id.clone();
-    let frame = match sync::pull_topic_messages(database, topic) {
-        Ok(frame) => serde_json::to_value(frame),
-        Err(error) => Ok(serde_json::json!({
-            "kind": "topic",
-            "topicId": topic_id,
-            "ownerType": owner_type,
-            "ownerId": owner_id,
-            "ok": false,
-            "error": {
-                "code": "MESSAGE_READ_FAILED",
-                "message": format!("{error:#}"),
-                "retryable": false,
-            },
-        })),
+    let mut read_connection = match read_connection {
+        Some(connection) => connection,
+        None => match Connection::open_with_flags(
+            database.path(),
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ) {
+            Ok(connection) => connection,
+            Err(error) => {
+                return (
+                    None,
+                    encode_pull_error_frame(
+                        &topic_id,
+                        owner_type,
+                        &owner_id,
+                        "MESSAGE_READ_FAILED",
+                        &format!("failed to open CDS pull snapshot: {error}"),
+                        false,
+                    ),
+                );
+            }
+        },
     };
-    match frame.and_then(|frame| serde_json::to_vec(&frame)) {
-        Ok(mut bytes) => {
-            bytes.push(b'\n');
-            bytes
-        }
-        Err(error) => encode_pull_error_frame(
-            &topic_id,
-            owner_type,
-            &owner_id,
-            "STREAM_FAILED",
-            &format!("failed to encode CDS pull frame: {error}"),
-            false,
-        ),
+    if let Err(error) = read_connection.busy_timeout(Duration::from_secs(5)) {
+        return (
+            None,
+            encode_pull_error_frame(
+                &topic_id,
+                owner_type,
+                &owner_id,
+                "MESSAGE_READ_FAILED",
+                &format!("failed to configure CDS pull snapshot: {error}"),
+                false,
+            ),
+        );
     }
+    let bytes =
+        match sync::encode_pull_topic_frame(&mut read_connection, topic, MAX_SYNC_FRAME_BYTES) {
+            Ok(bytes) => bytes,
+            Err(sync::PullTopicFrameError::BudgetExceeded) => encode_pull_error_frame(
+                &topic_id,
+                owner_type,
+                &owner_id,
+                "BUDGET_EXCEEDED",
+                "CDS pull frame exceeds 32 MiB budget",
+                false,
+            ),
+            Err(sync::PullTopicFrameError::Failed(error)) => encode_pull_error_frame(
+                &topic_id,
+                owner_type,
+                &owner_id,
+                "MESSAGE_READ_FAILED",
+                &format!("{error:#}"),
+                false,
+            ),
+        };
+    (Some(read_connection), bytes)
 }
 
 fn encode_pull_error_frame(
@@ -907,13 +906,12 @@ fn encode_pull_error_frame(
 }
 
 fn validate_pull_request(request: &MessagesPullRequest) -> ServiceResult<()> {
-    if request.topics.is_empty() || request.topics.len() > MAX_SYNC_TOPICS {
-        return Err(ServiceError::InvalidRequest(format!(
-            "sync pull requires between 1 and {MAX_SYNC_TOPICS} topics"
-        )));
+    if request.topics.is_empty() {
+        return Err(ServiceError::InvalidRequest(
+            "sync pull requires at least one topic".to_string(),
+        ));
     }
     let mut identities = HashSet::new();
-    let mut message_count = 0_usize;
     for topic in &request.topics {
         if topic.topic_id.is_empty() {
             return Err(ServiceError::InvalidRequest(
@@ -935,24 +933,11 @@ fn validate_pull_request(request: &MessagesPullRequest) -> ServiceResult<()> {
                 "sync pull contains a duplicate topic identity".to_string(),
             ));
         }
-        if topic.message_ids.len() > 10_000 {
-            return Err(ServiceError::InvalidRequest(
-                "sync pull topic exceeds 10000 message ids".to_string(),
-            ));
-        }
         let unique_ids = topic.message_ids.iter().collect::<HashSet<_>>();
         if unique_ids.len() != topic.message_ids.len() || unique_ids.iter().any(|id| id.is_empty())
         {
             return Err(ServiceError::InvalidRequest(
                 "sync pull message ids must be non-empty and unique".to_string(),
-            ));
-        }
-        message_count = message_count
-            .checked_add(topic.message_ids.len())
-            .ok_or_else(|| ServiceError::InvalidRequest("sync pull count overflow".to_string()))?;
-        if message_count > MAX_SYNC_MESSAGES {
-            return Err(ServiceError::InvalidRequest(
-                "sync pull exceeds 100000 requested messages".to_string(),
             ));
         }
     }
@@ -963,17 +948,9 @@ async fn sync_messages_push(
     State(state): State<AppState>,
     Json(topic): Json<sync::MessagesPushTopic>,
 ) -> ServiceResult<Json<sync::MessagesPushResult>> {
-    if topic.topic_id.is_empty()
-        || topic.messages.len() > 10_000
-        || topic.deleted_messages.len() > 10_000
-        || topic
-            .messages
-            .len()
-            .saturating_add(topic.deleted_messages.len())
-            > 10_000
-    {
+    if topic.topic_id.is_empty() {
         return Err(ServiceError::InvalidRequest(
-            "sync push topicId is required and messages are limited to 10000".to_string(),
+            "sync push topicId is required".to_string(),
         ));
     }
     let _guard = state.reconcile_lock.lock().await;

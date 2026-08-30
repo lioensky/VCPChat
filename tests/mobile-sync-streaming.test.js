@@ -60,6 +60,7 @@ class FakeResponse extends EventEmitter {
 
   end() {
     this.ended = true;
+    this.emit("finish");
   }
 
   frames() {
@@ -84,20 +85,15 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
   const hash = "a".repeat(64);
   const client = {
     async *requestNdjson(method, route, body, options) {
-      assert.deepEqual(
-        { method, route, body, options },
-        {
-          method: "POST",
-          route: "/v3/sync/messages/pull",
-          body: {
-            topics: [
-              { topicId: "topic-a", ownerType: "agent", ownerId: "agent-a", messageIds: [] },
-              { topicId: "topic-b", ownerType: "group", ownerId: "group-b", messageIds: [] },
-            ],
-          },
-          options: { timeoutMs: 270_000 },
-        },
-      );
+      assert.equal(method, "POST");
+      assert.equal(route, "/v3/sync/messages/pull");
+      assert.deepEqual(body, {
+        topics: [
+          { topicId: "topic-a", ownerType: "agent", ownerId: "agent-a", messageIds: [] },
+          { topicId: "topic-b", ownerType: "group", ownerId: "group-b", messageIds: [] },
+        ],
+      });
+      assert.ok(options.signal instanceof AbortSignal);
       yield {
         kind: "topic",
         topicId: "topic-a",
@@ -168,6 +164,47 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
     [frames[0].ownerType, frames[0].ownerId, frames[1].ownerType, frames[1].ownerId],
     ["agent", "agent-a", "group", "group-b"],
   );
+});
+
+test("中央 pull 在 Mobile 断开时取消真实 CDS client 流", { timeout: 1_000 }, async (t) => {
+  const originalFetch = global.fetch;
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+  const response = new FakeResponse();
+  let startUpstream;
+  const upstreamStarted = new Promise((resolve) => {
+    startUpstream = resolve;
+  });
+  global.fetch = async (_url, options) => ({
+    ok: true,
+    status: 200,
+    body: Readable.from((async function* hangingBody() {
+      startUpstream();
+      await new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const error = new Error("cancelled");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      });
+      if (false) yield null;
+    })()),
+  });
+  const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
+  const pending = createClientAdapter(client).pullMessagesStreamRaw([
+    { topicId: "topic-a", ownerType: "agent", ownerId: "agent-a", messageIds: [] },
+  ], response);
+
+  await upstreamStarted;
+  response.emit("close");
+
+  await assert.rejects(
+    pending,
+    (error) => error?.code === "CANCELLED" && error.retryable === false,
+  );
+  assert.equal(response.listenerCount("close"), 0);
+  assert.equal(response.listenerCount("finish"), 0);
 });
 
 test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
@@ -244,16 +281,55 @@ test("中央 pull 将 CDS item error 补全为 WireSyncError", async () => {
   }]);
 });
 
+test("中央 pull 保留 CDS 单帧预算错误的公开语义", async () => {
+  const adapter = createClientAdapter({
+    async *requestNdjson() {
+      yield {
+        kind: "topic",
+        topicId: "topic-a",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        ok: false,
+        error: {
+          code: "BUDGET_EXCEEDED",
+          message: "CDS pull frame exceeds 32 MiB budget",
+          retryable: false,
+        },
+      };
+    },
+  });
+  const response = new FakeResponse();
+
+  await adapter.pullMessagesStreamRaw(
+    [{
+      topicId: "topic-a",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      messageIds: [],
+    }],
+    response,
+  );
+
+  assert.deepEqual(response.frames()[0].error, {
+    code: "SYNC_BUDGET_EXCEEDED",
+    origin: "desktop_cds",
+    stage: "messages",
+    kind: "data",
+    retry: "after_user_action",
+    message: "CDS pull frame exceeds 32 MiB budget",
+    failedTopicIds: ["topic-a"],
+  });
+});
+
 test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-central-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const hash = "b".repeat(64);
   let pushedTopic = null;
   const client = {
-    async request(method, route, topic, options) {
+    async request(method, route, topic) {
       assert.equal(method, "POST");
       assert.equal(route, "/v3/sync/messages/push");
-      assert.deepEqual(options, { timeoutMs: 270_000 });
       pushedTopic = topic;
       return {
         topicId: topic.topicId,
@@ -381,10 +457,9 @@ test("中央 push 将 CDS 快照过期映射为可重新比对的统一错误", 
 test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", async () => {
   let pushedTopic = null;
   const client = {
-    async request(method, route, topic, options) {
+    async request(method, route, topic) {
       assert.equal(method, "POST");
       assert.equal(route, "/v3/sync/messages/push");
-      assert.deepEqual(options, { timeoutMs: 270_000 });
       pushedTopic = topic;
       return {
         topicId: topic.topicId,
@@ -415,15 +490,16 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
   });
 });
 
-test("NDJSON reader 在 JSON parse 前拒绝 32 MiB 以上单帧", async () => {
-  const oversized = Buffer.alloc(32 * 1024 * 1024 + 1, 0x61);
+test("NDJSON reader 在 JSON parse 前拒绝越界单帧", async () => {
   await assert.rejects(
     async () => {
-      for await (const _line of readNdjsonLines(Readable.from([oversized]))) {
+      for await (const _line of readNdjsonLines(Readable.from(["ab", "cd"]), {
+        maxLineBytes: 3,
+      })) {
         assert.fail("oversized line must not be yielded");
       }
     },
-    /32 MiB/,
+    (error) => error?.code === "SYNC_BUDGET_EXCEEDED",
   );
 });
 
@@ -514,17 +590,26 @@ test("WebSocket 启动等待 listening，并把端口绑定错误返回调用链
   );
 });
 
-test("CDS Node client 以字节边界消费拆分 Unicode NDJSON", async (t) => {
+test("CDS Node client 用非零偏移字节视图消费拆分 Unicode NDJSON", async (t) => {
   const originalFetch = global.fetch;
   t.after(() => {
     global.fetch = originalFetch;
   });
   const bytes = Buffer.from(`${JSON.stringify({ topicId: "主题", messages: [] })}\n`);
   const split = bytes.indexOf(Buffer.from("题")) + 1;
+  const offsetView = (part) => {
+    const backing = new Uint8Array(part.length + 4);
+    backing.fill(0xff);
+    backing.set(part, 2);
+    return backing.subarray(2, 2 + part.length);
+  };
   global.fetch = async () => ({
     ok: true,
     status: 200,
-    body: Readable.from([bytes.subarray(0, split), bytes.subarray(split)]),
+    body: (async function* body() {
+      yield offsetView(bytes.subarray(0, split));
+      yield offsetView(bytes.subarray(split));
+    })(),
   });
   const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
   const frames = [];
@@ -536,4 +621,78 @@ test("CDS Node client 以字节边界消费拆分 Unicode NDJSON", async (t) => 
     frames.push(frame);
   }
   assert.deepEqual(frames, [{ topicId: "主题", messages: [] }]);
+});
+
+test("CDS Node client 的同步请求可显式禁用总时限", async (t) => {
+  const originalFetch = global.fetch;
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+  global.fetch = async (_url, options) => {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, 20);
+      options.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        const error = new Error("aborted");
+        error.name = "AbortError";
+        reject(error);
+      }, { once: true });
+    });
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    };
+  };
+  const client = new ChatDataServiceClient({
+    port: 1,
+    authToken: "test",
+    timeoutMs: 1,
+  });
+
+  const result = await client.request("POST", "/v3/sync/manifest", {}, {
+    timeoutMs: null,
+  });
+
+  assert.deepEqual(result, { ok: true });
+});
+
+test("CDS Node client 不对 NDJSON 下载施加墙钟时限", async (t) => {
+  const originalFetch = global.fetch;
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+  const bytes = Buffer.from(`${JSON.stringify({ topicId: "topic-a", messages: [] })}\n`);
+  global.fetch = async (_url, options) => ({
+    ok: true,
+    status: 200,
+    body: Readable.from((async function* delayedBody() {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 20);
+        options.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      });
+      yield bytes;
+    })()),
+  });
+  const client = new ChatDataServiceClient({
+    port: 1,
+    authToken: "test",
+    timeoutMs: 1,
+  });
+  const frames = [];
+
+  for await (const frame of client.requestNdjson(
+    "POST",
+    "/v3/sync/messages/pull",
+    { topics: [] },
+  )) {
+    frames.push(frame);
+  }
+
+  assert.deepEqual(frames, [{ topicId: "topic-a", messages: [] }]);
 });

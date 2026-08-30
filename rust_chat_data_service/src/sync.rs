@@ -1,11 +1,12 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
+    io::{self, Write},
     path::Path,
 };
 
 use anyhow::{Context, Result};
-use rusqlite::{params, params_from_iter, types::Value as SqlValue, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -117,7 +118,7 @@ pub struct AvatarManifestDeleted {
     deleted_at: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ManifestIdentity {
     Owner(OwnerKey),
     Topic(TopicKey),
@@ -133,9 +134,15 @@ struct ManifestItem {
     deleted_at: Option<i64>,
 }
 
+struct ManifestSnapshot {
+    config_hash: String,
+    content_hash: String,
+    updated_at: i64,
+    deleted_at: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 struct TopicManifestRow {
-    key: TopicKey,
     config_hash: String,
     content_hash: String,
     updated_at: i64,
@@ -143,6 +150,14 @@ struct TopicManifestRow {
     source_path: String,
     source_status: Option<String>,
     source_error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TopicLookup<'a> {
+    owner_type: OwnerType,
+    owner_id: &'a str,
+    topic_id: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -314,15 +329,15 @@ pub struct MessageDeleteAction {
 
 impl MessageDiffResult {
     fn success(
-        topic: &TopicKey,
+        topic: TopicKey,
         pull_message_ids: Vec<String>,
         push_topic: bool,
         delete_messages: Vec<MessageDeleteAction>,
     ) -> Self {
         Self::Success(MessageDiffSuccess {
-            topic_id: topic.topic_id.clone(),
+            topic_id: topic.topic_id,
             owner_type: topic.owner_type,
-            owner_id: topic.owner_id.clone(),
+            owner_id: topic.owner_id,
             ok: true,
             pull_message_ids,
             push_topic,
@@ -330,11 +345,11 @@ impl MessageDiffResult {
         })
     }
 
-    fn failure(topic: &TopicKey, code: &str, message: impl Into<String>) -> Self {
+    fn failure(topic: TopicKey, code: &str, message: impl Into<String>) -> Self {
         Self::Failure(MessageDiffFailure {
-            topic_id: topic.topic_id.clone(),
+            topic_id: topic.topic_id,
             owner_type: topic.owner_type,
-            owner_id: topic.owner_id.clone(),
+            owner_id: topic.owner_id,
             ok: false,
             error: SyncItemError {
                 code: code.to_string(),
@@ -377,9 +392,10 @@ pub struct MessagesPullTopic {
     pub message_ids: Vec<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MessagesPullFrame {
+struct MessagesPullFrame {
     pub kind: &'static str,
     pub topic_id: String,
     pub owner_type: OwnerType,
@@ -390,6 +406,43 @@ pub struct MessagesPullFrame {
     pub legacy_attachment_warnings: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warning_samples: Vec<String>,
+}
+
+#[derive(Debug)]
+pub(crate) enum PullTopicFrameError {
+    BudgetExceeded,
+    Failed(anyhow::Error),
+}
+
+struct BoundedFrameBuffer {
+    bytes: Vec<u8>,
+    limit: usize,
+    exceeded: bool,
+}
+
+impl BoundedFrameBuffer {
+    fn new(limit: usize) -> Self {
+        Self {
+            bytes: Vec::new(),
+            limit,
+            exceeded: false,
+        }
+    }
+}
+
+impl Write for BoundedFrameBuffer {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        if buffer.len() > self.limit.saturating_sub(self.bytes.len()) {
+            self.exceeded = true;
+            return Err(io::Error::other("CDS pull frame exceeds its byte budget"));
+        }
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -483,7 +536,6 @@ pub struct MessagesPushResult {
     pub error: Option<SyncItemError>,
 }
 
-const MAX_SYNC_ITEMS: usize = 10_000;
 const MAX_SAFE_JSON_INTEGER: i64 = (1_i64 << 53) - 1;
 fn is_lower_sha256(value: &str) -> bool {
     value.len() == 64
@@ -520,10 +572,7 @@ fn validate_owner_key(key: &OwnerKey) -> Result<()> {
 }
 
 fn validate_topic_key(key: &TopicKey) -> Result<()> {
-    validate_owner_key(&OwnerKey {
-        owner_type: key.owner_type,
-        owner_id: key.owner_id.clone(),
-    })?;
+    anyhow::ensure!(!key.owner_id.is_empty(), "ownerId must not be empty");
     anyhow::ensure!(!key.topic_id.is_empty(), "topicId must not be empty");
     Ok(())
 }
@@ -583,10 +632,6 @@ fn normalize_manifest_request(request: ManifestRequest) -> Result<NormalizedMani
             items,
             targeted_owners,
         } => {
-            anyhow::ensure!(
-                targeted_owners.len() <= MAX_SYNC_ITEMS,
-                "targetedOwners exceeds {MAX_SYNC_ITEMS} items"
-            );
             let owner_set = targeted_owners.iter().cloned().collect::<HashSet<_>>();
             anyhow::ensure!(
                 owner_set.len() == targeted_owners.len(),
@@ -695,14 +740,10 @@ fn normalize_manifest_request(request: ManifestRequest) -> Result<NormalizedMani
             (ManifestType::Avatar, items, None)
         }
     };
-    anyhow::ensure!(
-        items.len() <= MAX_SYNC_ITEMS,
-        "manifest exceeds {MAX_SYNC_ITEMS} items"
-    );
-    let mut seen = HashSet::new();
+    let mut seen = HashSet::with_capacity(items.len());
     for item in &items {
         anyhow::ensure!(
-            seen.insert(manifest_key(&item.identity)),
+            seen.insert(&item.identity),
             "manifest contains a duplicate entity identity"
         );
     }
@@ -769,36 +810,48 @@ fn build_manifest_response(
 }
 
 pub fn manifest(database: &Database, request: ManifestRequest) -> Result<ManifestResponse> {
-    let request = normalize_manifest_request(request)?;
-    let local = local_manifest(
-        database,
-        request.manifest_type,
-        request.targeted_owners.as_deref(),
-    )?;
-    anyhow::ensure!(
-        local.len() <= MAX_SYNC_ITEMS,
-        "local manifest exceeds {MAX_SYNC_ITEMS} items"
-    );
-    let mut local_by_key = HashMap::new();
+    let NormalizedManifestRequest {
+        manifest_type,
+        items,
+        targeted_owners,
+    } = normalize_manifest_request(request)?;
+    let local = local_manifest(database, manifest_type, targeted_owners.as_deref())?;
+    let mut local_by_identity = HashMap::with_capacity(local.len());
     for item in local {
-        let key = manifest_key(&item.identity);
+        let ManifestItem {
+            identity,
+            config_hash,
+            content_hash,
+            updated_at,
+            deleted_at,
+        } = item;
         anyhow::ensure!(
-            local_by_key.insert(key.clone(), item).is_none(),
-            "local manifest contains duplicate entity key {key}"
+            local_by_identity
+                .insert(
+                    identity,
+                    ManifestSnapshot {
+                        config_hash,
+                        content_hash,
+                        updated_at,
+                        deleted_at,
+                    },
+                )
+                .is_none(),
+            "local manifest contains a duplicate entity identity"
         );
     }
 
     let mut actions = Vec::new();
-    let mut processed = HashSet::new();
-    for remote in &request.items {
-        let key = manifest_key(&remote.identity);
-        let local = local_by_key.get(&key);
-        processed.insert(key);
+    for remote in items {
+        let local = local_by_identity.remove_entry(&remote.identity);
 
         if let Some(deleted_at) = remote.deleted_at {
-            if local.is_none_or(|item| item.deleted_at.is_none()) {
+            if local
+                .as_ref()
+                .is_none_or(|(_, snapshot)| snapshot.deleted_at.is_none())
+            {
                 actions.push(ManifestDecision {
-                    identity: remote.identity.clone(),
+                    identity: remote.identity,
                     action: ManifestActionKind::PushDelete,
                     deleted_at: Some(deleted_at),
                     content_hash_mismatch: false,
@@ -807,9 +860,9 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
             continue;
         }
 
-        let Some(local) = local else {
+        let Some((local_identity, local)) = local else {
             actions.push(ManifestDecision {
-                identity: remote.identity.clone(),
+                identity: remote.identity,
                 action: ManifestActionKind::Push,
                 deleted_at: None,
                 content_hash_mismatch: false,
@@ -818,7 +871,7 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         };
         if let Some(deleted_at) = local.deleted_at {
             actions.push(ManifestDecision {
-                identity: local.identity.clone(),
+                identity: local_identity,
                 action: ManifestActionKind::PullDelete,
                 deleted_at: Some(deleted_at),
                 content_hash_mismatch: false,
@@ -830,7 +883,7 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         let content_changed = local.content_hash != remote.content_hash;
         if config_changed {
             actions.push(ManifestDecision {
-                identity: local.identity.clone(),
+                identity: local_identity,
                 action: if remote.updated_at > local.updated_at {
                     ManifestActionKind::Push
                 } else {
@@ -839,9 +892,9 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
                 deleted_at: None,
                 content_hash_mismatch: content_changed,
             });
-        } else if content_changed && request.manifest_type == ManifestType::Owner {
+        } else if content_changed && manifest_type == ManifestType::Owner {
             actions.push(ManifestDecision {
-                identity: local.identity.clone(),
+                identity: local_identity,
                 action: ManifestActionKind::Skip,
                 deleted_at: None,
                 content_hash_mismatch: true,
@@ -849,12 +902,9 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         }
     }
 
-    for (key, local) in local_by_key {
-        if processed.contains(&key) {
-            continue;
-        }
+    for (identity, local) in local_by_identity {
         actions.push(ManifestDecision {
-            identity: local.identity,
+            identity,
             action: if local.deleted_at.is_some() {
                 ManifestActionKind::PullDelete
             } else {
@@ -865,19 +915,25 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         });
     }
 
-    build_manifest_response(request.manifest_type, actions)
+    build_manifest_response(manifest_type, actions)
 }
 
 #[cfg(test)]
 fn load_message_states(database: &Database, key: &TopicKey) -> Result<Vec<IndexedMessageState>> {
     ensure_topic_sync_source_healthy(database, key)?;
-    load_message_states_committed(database, key)
+    let mut messages = Vec::new();
+    visit_message_states_committed(database, key, |message| {
+        messages.push(message);
+        Ok(())
+    })?;
+    Ok(messages)
 }
 
-fn load_message_states_committed(
+fn visit_message_states_committed(
     database: &Database,
     key: &TopicKey,
-) -> Result<Vec<IndexedMessageState>> {
+    mut visit: impl FnMut(IndexedMessageState) -> Result<()>,
+) -> Result<()> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
         "SELECT msg_id, message_hash, updated_at, deleted_at
@@ -885,43 +941,29 @@ fn load_message_states_committed(
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
          ORDER BY ordinal ASC",
     )?;
-    let rows = statement
-        .query_map(
-            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                ))
-            },
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(statement);
-    drop(connection);
-    let messages = rows
-        .into_iter()
-        .map(|(msg_id, stored_hash, updated_at, deleted_at)| {
-            let message_hash = if deleted_at.is_some() {
-                None
-            } else {
-                anyhow::ensure!(
-                    canonical_wire_hash(&stored_hash).is_some(),
-                    "live indexed message {msg_id} has an invalid persisted messageHash"
-                );
-                Some(stored_hash)
-            };
-            Ok(IndexedMessageState {
-                msg_id,
-                message_hash,
-                updated_at,
-                deleted_at,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    Ok(messages)
+    let mut rows = statement.query(params![key.owner_type.as_str(), key.owner_id, key.topic_id])?;
+    while let Some(row) = rows.next()? {
+        let msg_id = row.get::<_, String>(0)?;
+        let stored_hash = row.get::<_, String>(1)?;
+        let updated_at = row.get::<_, i64>(2)?;
+        let deleted_at = row.get::<_, Option<i64>>(3)?;
+        let message_hash = if deleted_at.is_some() {
+            None
+        } else {
+            anyhow::ensure!(
+                canonical_wire_hash(&stored_hash).is_some(),
+                "live indexed message {msg_id} has an invalid persisted messageHash"
+            );
+            Some(stored_hash)
+        };
+        visit(IndexedMessageState {
+            msg_id,
+            message_hash,
+            updated_at,
+            deleted_at,
+        })?;
+    }
+    Ok(())
 }
 
 pub fn pull_entities(database: &Database, request: EntitiesPullRequest) -> EntitiesPullResponse {
@@ -1066,7 +1108,17 @@ pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<Topi
             changed_topics: Vec::new(),
         });
     }
-    let local_topics = load_topic_manifest_rows(database)?;
+    let selectors = request
+        .topics
+        .iter()
+        .map(|topic| TopicLookup {
+            owner_type: topic.owner_type,
+            owner_id: &topic.owner_id,
+            topic_id: &topic.topic_id,
+        })
+        .collect::<Vec<_>>();
+    let local_topics = load_topic_manifest_rows_for_topics(database, &selectors)?;
+    drop(selectors);
     let mut changed_topics = Vec::new();
     for state in request.topics {
         let requested_key = TopicKey {
@@ -1108,10 +1160,6 @@ pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<Topi
 }
 
 fn validate_topic_diff_states(topics: &[TopicDiffState]) -> Result<()> {
-    anyhow::ensure!(
-        topics.len() <= 10_000,
-        "topic hash diff exceeds 10000 topics"
-    );
     let mut seen_topics = HashSet::with_capacity(topics.len());
     for state in topics {
         anyhow::ensure!(
@@ -1148,20 +1196,37 @@ pub fn message_diff(
             results: Vec::new(),
         });
     }
-    let local_topics = load_topic_manifest_rows(database)?;
+    let selectors = request
+        .topics
+        .iter()
+        .map(|topic| TopicLookup {
+            owner_type: topic.owner_type,
+            owner_id: &topic.owner_id,
+            topic_id: &topic.topic_id,
+        })
+        .collect::<Vec<_>>();
+    let local_topics = load_topic_manifest_rows_for_topics(database, &selectors)?;
+    drop(selectors);
     let mut results = Vec::with_capacity(request.topics.len());
     for state in request.topics {
+        let MessageDiffState {
+            topic_id,
+            owner_type,
+            owner_id,
+            content_hash,
+            mut messages,
+        } = state;
         let requested_key = TopicKey {
-            owner_type: state.owner_type,
-            owner_id: state.owner_id.clone(),
-            topic_id: state.topic_id.clone(),
+            owner_type,
+            owner_id,
+            topic_id,
         };
         let Some(local_topic) = local_topics
             .get(&requested_key)
             .filter(|local| local.deleted_at.is_none())
         else {
             results.push(MessageDiffResult::failure(
-                &requested_key,
+                requested_key,
                 "TOPIC_NOT_FOUND",
                 "topic identity was not found".to_string(),
             ));
@@ -1169,110 +1234,76 @@ pub fn message_diff(
         };
         if let Err(error) = ensure_topic_manifest_row_healthy(local_topic) {
             results.push(MessageDiffResult::failure(
-                &requested_key,
+                requested_key,
                 "MESSAGE_MANIFEST_FAILED",
                 format!("{error:#}"),
             ));
             continue;
         }
-        let key = requested_key.clone();
-        let remote_has_tombstones = state
-            .messages
+        let remote_has_tombstones = messages
             .values()
             .any(|version| matches!(version, MessageVersionState::Deleted(_)));
-        if !state.content_hash.is_empty()
-            && state.content_hash == local_topic.content_hash
+        if !content_hash.is_empty()
+            && content_hash == local_topic.content_hash
             && !remote_has_tombstones
         {
             results.push(MessageDiffResult::success(
-                &key,
+                requested_key,
                 Vec::new(),
                 false,
                 Vec::new(),
             ));
             continue;
         }
-        let indexed_messages = match load_message_states_committed(database, &key) {
-            Ok(messages) => messages,
-            Err(error) => {
-                results.push(MessageDiffResult::failure(
-                    &requested_key,
-                    "MESSAGE_MANIFEST_FAILED",
-                    format!("{error:#}"),
-                ));
-                continue;
-            }
-        };
-        let mut active = HashMap::new();
-        let mut tombstones = HashMap::new();
-        for item in indexed_messages {
+        let mut to_pull = Vec::new();
+        let mut to_delete = Vec::new();
+        let mut to_push = false;
+        let comparison = visit_message_states_committed(database, &requested_key, |item| {
+            let remote = messages.remove(&item.msg_id);
             if let Some(deleted_at) = item.deleted_at {
-                tombstones.insert(item.msg_id, deleted_at);
-            } else {
-                let message_hash = item
-                    .message_hash
-                    .context("live indexed message is missing messageHash")?;
-                active.insert(
-                    item.msg_id,
-                    MessageLiveState {
-                        message_hash,
-                        updated_at: item.updated_at,
-                    },
-                );
-            }
-        }
-        let mut to_pull = active
-            .iter()
-            .filter_map(|(id, desktop)| {
-                let remote = state.messages.get(id);
-                match remote {
-                    None => Some(id.clone()),
-                    Some(MessageVersionState::Deleted(_)) => None,
-                    Some(MessageVersionState::Live(mobile))
-                        if mobile.message_hash == desktop.message_hash =>
-                    {
-                        None
-                    }
-                    Some(MessageVersionState::Live(mobile))
-                        if desktop.updated_at > mobile.updated_at
-                            || (desktop.updated_at == mobile.updated_at
-                                && desktop.message_hash > mobile.message_hash) =>
-                    {
-                        Some(id.clone())
-                    }
-                    Some(_) => None,
+                if matches!(remote, Some(MessageVersionState::Live(_))) {
+                    to_delete.push(MessageDeleteAction {
+                        msg_id: item.msg_id,
+                        deleted_at,
+                    });
                 }
-            })
-            .collect::<Vec<_>>();
-        to_pull.sort();
-
-        let mut to_delete = tombstones
-            .iter()
-            .filter_map(|(id, deleted_at)| match state.messages.get(id) {
-                Some(MessageVersionState::Live(_)) => Some(MessageDeleteAction {
-                    msg_id: id.clone(),
-                    deleted_at: *deleted_at,
-                }),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        to_delete.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
-
-        let to_push = state.messages.iter().any(|(id, mobile)| match mobile {
-            MessageVersionState::Deleted(_) => !tombstones.contains_key(id),
-            MessageVersionState::Live(mobile) => {
-                if let Some(desktop) = active.get(id) {
-                    desktop.message_hash != mobile.message_hash
-                        && (mobile.updated_at > desktop.updated_at
-                            || (mobile.updated_at == desktop.updated_at
-                                && mobile.message_hash > desktop.message_hash))
-                } else {
-                    !tombstones.contains_key(id)
-                }
+                return Ok(());
             }
+
+            let desktop_hash = item
+                .message_hash
+                .context("live indexed message is missing messageHash")?;
+            match remote {
+                None => to_pull.push(item.msg_id),
+                Some(MessageVersionState::Deleted(_)) => to_push = true,
+                Some(MessageVersionState::Live(mobile)) if mobile.message_hash == desktop_hash => {}
+                Some(MessageVersionState::Live(mobile))
+                    if item.updated_at > mobile.updated_at
+                        || (item.updated_at == mobile.updated_at
+                            && desktop_hash > mobile.message_hash) =>
+                {
+                    to_pull.push(item.msg_id);
+                }
+                Some(MessageVersionState::Live(_)) => to_push = true,
+            }
+            Ok(())
         });
+        if let Err(error) = comparison {
+            results.push(MessageDiffResult::failure(
+                requested_key,
+                "MESSAGE_MANIFEST_FAILED",
+                format!("{error:#}"),
+            ));
+            continue;
+        }
+        to_push |= !messages.is_empty();
+        to_pull.sort();
+        to_delete.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
         results.push(MessageDiffResult::success(
-            &key, to_pull, to_push, to_delete,
+            requested_key,
+            to_pull,
+            to_push,
+            to_delete,
         ));
     }
 
@@ -1283,9 +1314,7 @@ pub fn message_diff(
 }
 
 fn validate_message_diff_states(topics: &[MessageDiffState]) -> Result<()> {
-    anyhow::ensure!(topics.len() <= 10_000, "message diff exceeds 10000 topics");
     let mut seen_topics = HashSet::with_capacity(topics.len());
-    let mut total_messages = 0_usize;
     for state in topics {
         anyhow::ensure!(
             !state.topic_id.is_empty(),
@@ -1298,17 +1327,6 @@ fn validate_message_diff_states(topics: &[MessageDiffState]) -> Result<()> {
         anyhow::ensure!(
             seen_topics.insert((state.owner_type, &state.owner_id, &state.topic_id)),
             "message diff contains a duplicate topic identity"
-        );
-        anyhow::ensure!(
-            state.messages.len() <= 10_000,
-            "message diff topic exceeds 10000 messages"
-        );
-        total_messages = total_messages
-            .checked_add(state.messages.len())
-            .context("message diff count overflow")?;
-        anyhow::ensure!(
-            total_messages <= 100_000,
-            "message diff exceeds 100000 messages"
         );
         anyhow::ensure!(
             state.content_hash.is_empty() || canonical_wire_hash(&state.content_hash).is_some(),
@@ -1338,82 +1356,98 @@ fn validate_message_diff_states(topics: &[MessageDiffState]) -> Result<()> {
     Ok(())
 }
 
-pub fn pull_topic_messages(
-    database: &Database,
+pub(crate) fn encode_pull_topic_frame(
+    connection: &mut Connection,
     topic: MessagesPullTopic,
-) -> Result<MessagesPullFrame> {
-    let requested_key = TopicKey {
-        topic_id: topic.topic_id.clone(),
-        owner_type: topic.owner_type,
-        owner_id: topic.owner_id,
-    };
-    let key = resolve_topic(database, &requested_key)?;
-    ensure_topic_sync_source_healthy(database, &key)?;
-    anyhow::ensure!(
-        topic.message_ids.len() <= 10_000,
-        "topic message request exceeds 10000 ids"
-    );
-    let requested_ids = topic.message_ids;
-    let wanted = requested_ids.iter().cloned().collect::<HashSet<_>>();
-    let connection = database.connection.lock();
-    let rows = if requested_ids.is_empty() {
-        let mut statement = connection.prepare(
-            "SELECT metadata_json, updated_at FROM messages
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
-             ORDER BY ordinal ASC",
-        )?;
-        let rows = statement
-            .query_map(
-                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-            )?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows
-    } else {
-        let placeholders = std::iter::repeat_n("?", requested_ids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT metadata_json, updated_at FROM messages
-             WHERE owner_type=? AND owner_id=? AND topic_id=? AND deleted_at IS NULL
-               AND msg_id IN ({placeholders})
-             ORDER BY ordinal ASC"
-        );
-        let mut bind = Vec::with_capacity(3 + requested_ids.len());
-        bind.push(SqlValue::Text(key.owner_type.as_str().to_string()));
-        bind.push(SqlValue::Text(key.owner_id.clone()));
-        bind.push(SqlValue::Text(key.topic_id.clone()));
-        bind.extend(requested_ids.iter().cloned().map(SqlValue::Text));
-        let mut statement = connection.prepare(&sql)?;
-        let rows = statement
-            .query_map(params_from_iter(bind), |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows
-    };
-    drop(connection);
+    max_frame_bytes: usize,
+) -> std::result::Result<Vec<u8>, PullTopicFrameError> {
+    let mut output = BoundedFrameBuffer::new(max_frame_bytes);
+    let result = encode_pull_topic_frame_into(connection, topic, &mut output);
+    if output.exceeded {
+        return Err(PullTopicFrameError::BudgetExceeded);
+    }
+    result.map_err(PullTopicFrameError::Failed)?;
+    Ok(output.bytes)
+}
 
+fn encode_pull_topic_frame_into(
+    connection: &mut Connection,
+    topic: MessagesPullTopic,
+    output: &mut BoundedFrameBuffer,
+) -> Result<()> {
+    let MessagesPullTopic {
+        topic_id,
+        owner_type,
+        owner_id,
+        message_ids,
+    } = topic;
+    let requested_key = TopicKey {
+        topic_id,
+        owner_type,
+        owner_id,
+    };
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let key = resolve_topic_in_connection(&transaction, &requested_key)?;
+    ensure_topic_sync_source_healthy_in_connection(&transaction, &key)?;
+
+    let selected = !message_ids.is_empty();
+    let requested_count = message_ids.len();
+    let mut remaining = message_ids.into_iter().collect::<HashSet<_>>();
+    anyhow::ensure!(
+        remaining.len() == requested_count && remaining.iter().all(|id| !id.is_empty()),
+        "topic message request contains duplicate or empty ids"
+    );
+    let requested_json = selected
+        .then(|| serde_json::to_string(&remaining))
+        .transpose()
+        .context("message pull ids JSON encoding failed")?;
+
+    output.write_all(br#"{"kind":"topic","topicId":"#)?;
+    serde_json::to_writer(&mut *output, &key.topic_id)?;
+    output.write_all(b",\"ownerType\":")?;
+    serde_json::to_writer(&mut *output, &key.owner_type)?;
+    output.write_all(b",\"ownerId\":")?;
+    serde_json::to_writer(&mut *output, &key.owner_id)?;
+    output.write_all(b",\"ok\":true,\"messages\":[")?;
+
+    let mut statement = transaction.prepare(
+        "SELECT msg_id, metadata_json, updated_at FROM messages
+         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
+           AND (?4 IS NULL OR msg_id IN (SELECT value FROM json_each(?4)))
+         ORDER BY ordinal ASC",
+    )?;
+    let mut rows = statement.query(params![
+        key.owner_type.as_str(),
+        key.owner_id,
+        key.topic_id,
+        requested_json
+    ])?;
     let mut warnings = WireWarnings::default();
-    let mut messages = Vec::new();
-    let mut seen = HashSet::new();
-    for (raw, updated_at) in rows {
+    let mut first = true;
+    while let Some(row) = rows.next()? {
+        let stored_id = row.get::<_, String>(0)?;
+        let raw = row.get::<_, String>(1)?;
+        let updated_at = row.get::<_, i64>(2)?;
         let value =
             serde_json::from_str::<Value>(&raw).context("stored message JSON is invalid")?;
-        let id = value
+        drop(raw);
+        let message_id = value
             .get("id")
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
             .context("stored message id is missing")?;
-        if !wanted.is_empty() && !wanted.contains(id) {
-            continue;
+        anyhow::ensure!(
+            message_id == stored_id,
+            "stored message identity does not match its database key"
+        );
+        if selected {
+            anyhow::ensure!(
+                remaining.remove(message_id),
+                "stored message set contains an unexpected or duplicate id"
+            );
         }
         anyhow::ensure!(
-            seen.insert(id.to_string()),
-            "duplicate stored message id {id}"
-        );
-        anyhow::ensure!(
-            (0..=9_007_199_254_740_991).contains(&updated_at),
+            (0..=MAX_SAFE_JSON_INTEGER).contains(&updated_at),
             "stored message update time is invalid for topic {}",
             key.topic_id
         );
@@ -1422,24 +1456,68 @@ pub fn pull_topic_messages(
             .as_object_mut()
             .context("canonical message must be an object")?
             .insert("updatedAt".to_string(), Value::from(updated_at));
-        messages.push(canonical);
+        if !first {
+            output.write_all(b",")?;
+        }
+        first = false;
+        serde_json::to_writer(&mut *output, &canonical)?;
     }
-    if !wanted.is_empty() {
-        anyhow::ensure!(
-            seen == wanted,
-            "requested message set is incomplete for topic {}",
-            key.topic_id
-        );
+    anyhow::ensure!(
+        !selected || remaining.is_empty(),
+        "requested message set is incomplete for topic {}",
+        key.topic_id
+    );
+    drop(rows);
+    drop(statement);
+    transaction.commit()?;
+
+    output.write_all(b"]")?;
+    if warnings.count > 0 {
+        output.write_all(b",\"legacyAttachmentWarnings\":")?;
+        serde_json::to_writer(&mut *output, &warnings.count)?;
+        output.write_all(b",\"warningSamples\":")?;
+        serde_json::to_writer(&mut *output, &warnings.samples)?;
     }
+    output.write_all(b"}\n")?;
+    Ok(())
+}
+
+#[cfg(test)]
+fn pull_topic_messages(database: &Database, topic: MessagesPullTopic) -> Result<MessagesPullFrame> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct DecodedFrame {
+        kind: String,
+        topic_id: String,
+        owner_type: OwnerType,
+        owner_id: String,
+        ok: bool,
+        messages: Vec<Value>,
+        #[serde(default)]
+        legacy_attachment_warnings: usize,
+        #[serde(default)]
+        warning_samples: Vec<String>,
+    }
+
+    let mut connection = database.connection.lock();
+    let bytes = match encode_pull_topic_frame(&mut connection, topic, usize::MAX) {
+        Ok(bytes) => bytes,
+        Err(PullTopicFrameError::BudgetExceeded) => {
+            anyhow::bail!("test pull frame unexpectedly exceeded its byte budget")
+        }
+        Err(PullTopicFrameError::Failed(error)) => return Err(error),
+    };
+    let decoded = serde_json::from_slice::<DecodedFrame>(&bytes)?;
+    anyhow::ensure!(decoded.kind == "topic" && decoded.ok, "invalid pull frame");
     Ok(MessagesPullFrame {
         kind: "topic",
-        topic_id: key.topic_id,
-        owner_type: key.owner_type,
-        owner_id: key.owner_id,
+        topic_id: decoded.topic_id,
+        owner_type: decoded.owner_type,
+        owner_id: decoded.owner_id,
         ok: true,
-        messages,
-        legacy_attachment_warnings: warnings.count,
-        warning_samples: warnings.samples,
+        messages: decoded.messages,
+        legacy_attachment_warnings: decoded.legacy_attachment_warnings,
+        warning_samples: decoded.warning_samples,
     })
 }
 
@@ -1447,19 +1525,22 @@ pub async fn push_topic_messages(
     reconciler: &Reconciler,
     topic: MessagesPushTopic,
 ) -> MessagesPushResult {
-    match push_topic(reconciler, &topic).await {
+    let response_topic_id = topic.topic_id.clone();
+    let response_owner_type = topic.owner_type;
+    let response_owner_id = topic.owner_id.clone();
+    match push_topic(reconciler, topic).await {
         Ok(commit) => MessagesPushResult {
-            topic_id: topic.topic_id,
-            owner_type: topic.owner_type,
-            owner_id: topic.owner_id,
+            topic_id: response_topic_id,
+            owner_type: response_owner_type,
+            owner_id: response_owner_id,
             ok: true,
             ingest_commit: Some(commit),
             error: None,
         },
         Err(error) => MessagesPushResult {
-            topic_id: topic.topic_id,
-            owner_type: topic.owner_type,
-            owner_id: topic.owner_id,
+            topic_id: response_topic_id,
+            owner_type: response_owner_type,
+            owner_id: response_owner_id,
             ok: false,
             ingest_commit: None,
             error: Some(SyncItemError {
@@ -1621,16 +1702,23 @@ fn merge_mobile_message(existing: &Value, incoming: &Value) -> Value {
     Value::Object(merged)
 }
 
-async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Result<IngestCommit> {
+async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result<IngestCommit> {
+    let MessagesPushTopic {
+        topic_id,
+        owner_type,
+        owner_id,
+        messages,
+        deleted_messages,
+    } = topic;
     anyhow::ensure!(
-        !topic.owner_id.is_empty(),
+        !owner_id.is_empty(),
         "pushed topic ownerId must be non-empty"
     );
-    let mut deleted = HashSet::with_capacity(topic.deleted_messages.len());
-    let mut explicit_tombstones = Vec::with_capacity(topic.deleted_messages.len());
-    for tombstone in &topic.deleted_messages {
+    let mut deleted = HashSet::with_capacity(deleted_messages.len());
+    let mut explicit_tombstones = Vec::with_capacity(deleted_messages.len());
+    for tombstone in &deleted_messages {
         anyhow::ensure!(
-            !tombstone.msg_id.is_empty() && deleted.insert(tombstone.msg_id.clone()),
+            !tombstone.msg_id.is_empty() && deleted.insert(tombstone.msg_id.as_str()),
             "deleted message tombstones must have non-empty unique ids"
         );
         anyhow::ensure!(
@@ -1640,16 +1728,13 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         explicit_tombstones.push((tombstone.msg_id.clone(), tombstone.deleted_at));
     }
     let mut live_ids = HashSet::new();
-    for message in &topic.messages {
+    for message in &messages {
         let id = message
             .get("id")
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
             .context("pushed message id is required")?;
-        anyhow::ensure!(
-            live_ids.insert(id.to_string()),
-            "duplicate pushed message id {id}"
-        );
+        anyhow::ensure!(live_ids.insert(id), "duplicate pushed message id {id}");
         anyhow::ensure!(
             !deleted.contains(id),
             "message {id} is both live and deleted"
@@ -1663,7 +1748,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
             "pushed message {id} updatedAt must be a non-negative safe integer"
         );
         let mut warnings = WireWarnings::default();
-        canonicalize_message(message.clone(), &topic.topic_id, &mut warnings)
+        canonicalize_message(message.clone(), &topic_id, &mut warnings)
             .with_context(|| format!("pushed message {id} is invalid"))?;
         anyhow::ensure!(
             warnings.count == 0,
@@ -1673,15 +1758,16 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
     let key = resolve_topic(
         reconciler.database(),
         &TopicKey {
-            topic_id: topic.topic_id.clone(),
-            owner_type: topic.owner_type,
-            owner_id: topic.owner_id.clone(),
+            topic_id: topic_id.clone(),
+            owner_type,
+            owner_id: owner_id.clone(),
         },
     )?;
-    ensure_topic_sync_source_healthy(reconciler.database(), &key)?;
-    let persisted_tombstones = reconciler.database().message_tombstone_ids(&key)?;
+    let snapshot = reconciler.database().sync_history_snapshot(&key)?;
+    let persisted_tombstones = snapshot.tombstone_ids;
     if let Some(stale_live) = live_ids
         .iter()
+        .copied()
         .find(|message_id| persisted_tombstones.contains(*message_id))
     {
         return Err(SnapshotStale(format!(
@@ -1689,21 +1775,20 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         ))
         .into());
     }
-    let history_path = reconciler
-        .config()
-        .user_data_dir
-        .join(&key.owner_id)
-        .join("topics")
-        .join(&topic.topic_id)
-        .join("history.json");
+    drop(live_ids);
 
-    let (mut current, expected_source_hash) = read_history_snapshot(&history_path)?;
+    let history_path = snapshot.source_path;
+    let expected_source_hash = snapshot.source_hash;
+    let mut current = snapshot.messages;
     current.retain(|value| {
         value
             .get("id")
             .and_then(Value::as_str)
             .is_none_or(|id| !deleted.contains(id) && !persisted_tombstones.contains(id))
     });
+    drop(deleted);
+    drop(deleted_messages);
+    drop(persisted_tombstones);
     let mut positions: HashMap<String, usize> = current
         .iter()
         .enumerate()
@@ -1715,27 +1800,26 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         })
         .collect();
 
-    for message in &topic.messages {
+    for message in messages {
         let id = message
             .get("id")
             .and_then(Value::as_str)
             .context("pushed message id is required")?;
         if let Some(index) = positions.get(id).copied() {
-            current[index] = merge_mobile_message(&current[index], message);
+            current[index] = merge_mobile_message(&current[index], &message);
         } else {
             positions.insert(id.to_string(), current.len());
-            current.push(message.clone());
+            current.push(message);
         }
     }
+    drop(positions);
 
     let history_bytes = serde_json::to_vec_pretty(&current)?;
     let normalized = normalize_history_values(current, key.owner_type, &key.topic_id)
         .context("projected history is not ingestible")?;
-    let committed = write_history_atomic(
-        &history_path,
-        &history_bytes,
-        expected_source_hash.as_deref(),
-    )?;
+    let committed =
+        write_history_atomic(&history_path, &history_bytes, Some(&expected_source_hash))?;
+    drop(history_bytes);
     let mut commit = if let Some(committed) = committed {
         reconciler.database().ingest_topic(
             &TopicSource {
@@ -1869,44 +1953,22 @@ fn topic_manifests(
     if targeted_owners.is_some_and(|owners| owners.is_empty()) {
         return Ok(Vec::new());
     }
-    let targeted_owners =
-        targeted_owners.map(|owners| owners.iter().cloned().collect::<HashSet<_>>());
-    let mut rows = load_topic_manifest_rows(database)?
-        .into_values()
-        .collect::<Vec<_>>();
-    rows.sort_by(|left, right| {
-        (
-            left.key.owner_type.as_str(),
-            &left.key.owner_id,
-            &left.key.topic_id,
-        )
-            .cmp(&(
-                right.key.owner_type.as_str(),
-                &right.key.owner_id,
-                &right.key.topic_id,
-            ))
-    });
+    let rows = match targeted_owners {
+        Some(owners) => load_topic_manifest_rows_for_owners(database, owners)?,
+        None => load_topic_manifest_rows(database)?,
+    };
     rows.into_iter()
-        .filter(|row| {
-            targeted_owners.as_ref().is_none_or(|owners| {
-                owners.contains(&OwnerKey {
-                    owner_type: row.key.owner_type,
-                    owner_id: row.key.owner_id.clone(),
-                })
-            })
-        })
-        .map(|row| topic_manifest_from_row(&row))
+        .map(|(key, row)| topic_manifest_from_row(&key, &row))
         .collect()
 }
 
 #[cfg(test)]
 fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     let row = load_topic_manifest_row(database, key)?;
-    topic_manifest_from_row(&row)
+    topic_manifest_from_row(key, &row)
 }
 
-fn topic_manifest_from_row(row: &TopicManifestRow) -> Result<ManifestItem> {
-    let key = &row.key;
+fn topic_manifest_from_row(key: &TopicKey, row: &TopicManifestRow) -> Result<ManifestItem> {
     if row.deleted_at.is_some() {
         return Ok(ManifestItem {
             identity: ManifestIdentity::Topic(key.clone()),
@@ -1955,7 +2017,6 @@ fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicM
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
             |row| {
                 Ok(TopicManifestRow {
-                    key: key.clone(),
                     config_hash: row.get(0)?,
                     content_hash: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                     updated_at: row.get(2)?,
@@ -1969,7 +2030,33 @@ fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicM
         .map_err(Into::into)
 }
 
-fn load_topic_manifest_rows(database: &Database) -> Result<HashMap<TopicKey, TopicManifestRow>> {
+fn topic_manifest_row_from_sql(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<(TopicKey, TopicManifestRow)> {
+    let raw_owner_type: String = row.get(0)?;
+    Ok((
+        TopicKey {
+            owner_type: if raw_owner_type == "group" {
+                OwnerType::Group
+            } else {
+                OwnerType::Agent
+            },
+            owner_id: row.get(1)?,
+            topic_id: row.get(2)?,
+        },
+        TopicManifestRow {
+            config_hash: row.get(3)?,
+            content_hash: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+            updated_at: row.get(5)?,
+            deleted_at: row.get(6)?,
+            source_path: row.get(7)?,
+            source_status: row.get(8)?,
+            source_error: row.get(9)?,
+        },
+    ))
+}
+
+fn load_topic_manifest_rows(database: &Database) -> Result<Vec<(TopicKey, TopicManifestRow)>> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
         "SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
@@ -1983,30 +2070,77 @@ fn load_topic_manifest_rows(database: &Database) -> Result<HashMap<TopicKey, Top
          ORDER BY t.owner_type, t.owner_id, t.topic_id",
     )?;
     let rows = statement
-        .query_map([], |row| {
-            let raw_owner_type: String = row.get(0)?;
-            let key = TopicKey {
-                owner_type: if raw_owner_type == "group" {
-                    OwnerType::Group
-                } else {
-                    OwnerType::Agent
-                },
-                owner_id: row.get(1)?,
-                topic_id: row.get(2)?,
-            };
-            Ok(TopicManifestRow {
-                key,
-                config_hash: row.get(3)?,
-                content_hash: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                updated_at: row.get(5)?,
-                deleted_at: row.get(6)?,
-                source_path: row.get(7)?,
-                source_status: row.get(8)?,
-                source_error: row.get(9)?,
-            })
-        })?
+        .query_map([], topic_manifest_row_from_sql)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows.into_iter().map(|row| (row.key.clone(), row)).collect())
+    Ok(rows)
+}
+
+fn load_topic_manifest_rows_for_owners(
+    database: &Database,
+    owners: &[OwnerKey],
+) -> Result<Vec<(TopicKey, TopicManifestRow)>> {
+    if owners.is_empty() {
+        return Ok(Vec::new());
+    }
+    let selectors = serde_json::to_string(owners).context("owner selector JSON encoding failed")?;
+    let connection = database.connection.lock();
+    let mut statement = connection.prepare(
+        "WITH requested AS (
+             SELECT json_extract(value, '$.ownerType') AS owner_type,
+                    json_extract(value, '$.ownerId') AS owner_id
+             FROM json_each(?1)
+         )
+         SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
+         FROM requested r
+         JOIN topics t
+           ON t.owner_type=r.owner_type AND t.owner_id=r.owner_id
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id
+         ORDER BY t.owner_type, t.owner_id, t.topic_id",
+    )?;
+    let rows = statement
+        .query_map([selectors], topic_manifest_row_from_sql)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+fn load_topic_manifest_rows_for_topics(
+    database: &Database,
+    topics: &[TopicLookup<'_>],
+) -> Result<HashMap<TopicKey, TopicManifestRow>> {
+    if topics.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let selectors = serde_json::to_string(topics).context("topic selector JSON encoding failed")?;
+    let connection = database.connection.lock();
+    let mut statement = connection.prepare(
+        "WITH requested AS (
+             SELECT json_extract(value, '$.ownerType') AS owner_type,
+                    json_extract(value, '$.ownerId') AS owner_id,
+                    json_extract(value, '$.topicId') AS topic_id
+             FROM json_each(?1)
+         )
+         SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
+         FROM requested r
+         JOIN topics t
+           ON t.owner_type=r.owner_type
+          AND t.owner_id=r.owner_id
+          AND t.topic_id=r.topic_id
+         LEFT JOIN history_sources hs
+           ON hs.source_path=t.source_path
+          AND hs.owner_type=t.owner_type
+          AND hs.owner_id=t.owner_id
+          AND hs.topic_id=t.topic_id",
+    )?;
+    let rows = statement
+        .query_map([selectors], topic_manifest_row_from_sql)?
+        .collect::<rusqlite::Result<HashMap<_, _>>>()?;
+    Ok(rows)
 }
 
 fn ensure_topic_manifest_row_healthy(row: &TopicManifestRow) -> Result<()> {
@@ -2039,8 +2173,16 @@ fn owner_content_hash(
         .map_err(Into::into)
 }
 
+#[cfg(test)]
 fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Result<()> {
     let connection = database.connection.lock();
+    ensure_topic_sync_source_healthy_in_connection(&connection, key)
+}
+
+fn ensure_topic_sync_source_healthy_in_connection(
+    connection: &Connection,
+    key: &TopicKey,
+) -> Result<()> {
     let (source_path, status, last_error): (String, Option<String>, Option<String>) = connection
         .query_row(
             "SELECT t.source_path, hs.status, hs.last_error
@@ -2055,7 +2197,6 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-    drop(connection);
     if let Some(status) = status {
         anyhow::ensure!(
             status == "ready",
@@ -2070,6 +2211,10 @@ fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Resu
 
 fn resolve_topic(database: &Database, key: &TopicKey) -> Result<TopicKey> {
     let connection = database.connection.lock();
+    resolve_topic_in_connection(&connection, key)
+}
+
+fn resolve_topic_in_connection(connection: &Connection, key: &TopicKey) -> Result<TopicKey> {
     let exists = connection
         .query_row(
             "SELECT 1 FROM topics
@@ -2082,19 +2227,6 @@ fn resolve_topic(database: &Database, key: &TopicKey) -> Result<TopicKey> {
         .is_some();
     anyhow::ensure!(exists, "topic was not found");
     Ok(key.clone())
-}
-
-fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok((Vec::new(), None));
-        }
-        Err(error) => return Err(error).context("failed to read existing history"),
-    };
-    let history = serde_json::from_slice::<Vec<Value>>(&bytes)
-        .context("existing history is invalid or has a non-array root")?;
-    Ok((history, Some(sha256_hex(&bytes))))
 }
 
 fn canonical_wire_hash(value: &str) -> Option<String> {
@@ -2363,24 +2495,11 @@ fn stable_stringify(value: &Value, key: &str) -> String {
     }
 }
 
-fn manifest_key(identity: &ManifestIdentity) -> String {
-    match identity {
-        ManifestIdentity::Owner(key) => {
-            format!("owner:{}:{}", key.owner_type, key.owner_id)
-        }
-        ManifestIdentity::Topic(key) => {
-            format!("topic:{}:{}:{}", key.owner_type, key.owner_id, key.topic_id)
-        }
-        ManifestIdentity::Avatar(key) => {
-            format!("avatar:{}:{}", key.owner_type, key.owner_id)
-        }
-    }
-}
-
 const fn is_false(value: &bool) -> bool {
     !*value
 }
 
+#[cfg(test)]
 const fn is_zero(value: &usize) -> bool {
     *value == 0
 }
@@ -2394,15 +2513,15 @@ mod tests {
     };
 
     use super::{
-        avatar_manifest, ensure_topic_manifest_row_healthy, load_message_states,
-        load_topic_manifest_row, manifest, message_diff, mobile_owner_config_hash_from_value,
-        owner_content_hash, owner_manifest, pull_entities, pull_topic_messages,
-        push_topic_messages, stable_stringify, topic_diff, topic_manifest, topic_manifests,
-        AvatarManifestState, EntitiesPullRequest, EntityPullItem, ManifestIdentity, ManifestItem,
-        ManifestRequest, ManifestResponse, MessageDeletedState, MessageDiffRequest,
-        MessageDiffResult, MessageDiffState, MessageLiveState, MessageVersionState,
-        MessagesPullTopic, MessagesPushTopic, OwnerManifestState, TopicDiffRequest, TopicDiffState,
-        TopicManifestState,
+        avatar_manifest, encode_pull_topic_frame, ensure_topic_manifest_row_healthy,
+        load_message_states, load_topic_manifest_row, manifest, message_diff,
+        mobile_owner_config_hash_from_value, owner_content_hash, owner_manifest, pull_entities,
+        pull_topic_messages, push_topic_messages, stable_stringify, topic_diff, topic_manifest,
+        topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
+        ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
+        MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
+        MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
+        PullTopicFrameError, TopicDiffRequest, TopicDiffState, TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -3123,6 +3242,25 @@ mod tests {
         assert!(frame.messages[0].get("context").is_none());
         assert!(frame.messages[1].get("attachments").is_none());
 
+        let selected = pull_topic_messages(
+            &database,
+            MessagesPullTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                message_ids: vec!["m2".to_string(), "m1".to_string()],
+            },
+        )
+        .expect("pull selected messages");
+        assert_eq!(
+            selected
+                .messages
+                .iter()
+                .map(|message| message["id"].as_str().expect("message id"))
+                .collect::<Vec<_>>(),
+            vec!["m1", "m2"]
+        );
+
         let response = push_topic_messages(
             &reconciler,
             MessagesPushTopic {
@@ -3221,6 +3359,65 @@ mod tests {
                 .as_deref()
                 .is_some_and(|hash| hash.len() == 64)
         }));
+    }
+
+    #[tokio::test]
+    async fn pull_frame_budget_stops_before_later_rows_are_materialized() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let history_path = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &history_path,
+            serde_json::to_vec(&json!([
+                {"id":"m1","role":"user","content":"x".repeat(4096),"timestamp":1},
+                {"id":"m2","role":"assistant","content":"valid before poison","timestamp":2}
+            ]))
+            .expect("serialize pull budget history"),
+        )
+        .expect("write pull budget history");
+        reconciler
+            .reconcile()
+            .await
+            .expect("index pull budget history");
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE messages SET metadata_json='not-json'
+                     WHERE owner_type='agent' AND owner_id='agent-a'
+                       AND topic_id='topic-a' AND msg_id='m2'",
+                    [],
+                )
+                .expect("poison later pull row");
+        }
+
+        let mut connection = database.connection.lock();
+        let result = encode_pull_topic_frame(
+            &mut connection,
+            MessagesPullTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                message_ids: Vec::new(),
+            },
+            256,
+        );
+        assert!(matches!(result, Err(PullTopicFrameError::BudgetExceeded)));
+
+        let next_frame = encode_pull_topic_frame(
+            &mut connection,
+            MessagesPullTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                message_ids: vec!["m1".to_string()],
+            },
+            16 * 1024,
+        )
+        .expect("reuse pull connection after bounded frame rollback");
+        let decoded: Value = serde_json::from_slice(&next_frame).expect("decode next pull frame");
+        assert_eq!(decoded["messages"][0]["id"], "m1");
     }
 
     #[tokio::test]

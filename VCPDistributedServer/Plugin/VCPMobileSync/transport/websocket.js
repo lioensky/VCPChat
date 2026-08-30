@@ -25,6 +25,7 @@ try {
 }
 
 let wss = null;
+const MAX_WS_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
 function errorStageForPayload(payload, versionAccepted, currentStage) {
   if (!versionAccepted || payload?.type === "VERSION_CHECK") return "handshake";
@@ -89,7 +90,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
     server = new WebSocket.Server({
       host: "0.0.0.0",
       port,
-      maxPayload: 32 * 1024 * 1024,
+      maxPayload: MAX_WS_PAYLOAD_BYTES,
     });
   } catch (error) {
     const logger = getLogger();
@@ -174,6 +175,18 @@ async function startWsServer({ port, syncToken, onMessage }) {
     let messageChain = Promise.resolve();
     const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
+    ws.on("error", (error) => {
+      terminated = true;
+      const logger = getLogger();
+      logger.logOperation(
+        "websocket",
+        "socket_error",
+        req.socket?.remoteAddress || "unknown",
+        "error",
+        error.message,
+      );
+    });
+
     const handleMessage = async (message) => {
       if (terminated) return;
       let payload = null;
@@ -222,14 +235,28 @@ async function startWsServer({ port, syncToken, onMessage }) {
         }
         if (response) {
           const responseText = JSON.stringify(response);
+          const responseBytes = Buffer.byteLength(responseText, "utf8");
+          if (responseBytes > MAX_WS_PAYLOAD_BYTES) {
+            throw createSyncError(
+              "SYNC_BUDGET_EXCEEDED",
+              "WebSocket response frame exceeds 32 MiB",
+              {
+                stage: errorStageForPayload(
+                  payload,
+                  versionAccepted,
+                  currentStage,
+                ),
+              },
+            );
+          }
           const logger = getLogger();
           // 记录发送给手机端的响应摘要
           if (response.type === "SYNC_MANIFEST_RESULT" && Array.isArray(response.results)) {
             const pullItems = response.results.filter(r => r.action === "PULL");
             const pushItems = response.results.filter(r => r.action === "PUSH");
-            logger.logInfo("websocket", `→ 发送 ${response.type} (manifestType=${response.manifestType}): total=${response.results.length}, PULL=${pullItems.length}, PUSH=${pushItems.length}, bytes=${responseText.length}`);
+            logger.logInfo("websocket", `→ 发送 ${response.type} (manifestType=${response.manifestType}): total=${response.results.length}, PULL=${pullItems.length}, PUSH=${pushItems.length}, bytes=${responseBytes}`);
           } else {
-            logger.logInfo("websocket", `→ 发送 ${response.type || "unknown"}: bytes=${responseText.length}`);
+            logger.logInfo("websocket", `→ 发送 ${response.type || "unknown"}: bytes=${responseBytes}`);
           }
           await new Promise((resolve, reject) => {
             ws.send(responseText, (error) => (error ? reject(error) : resolve()));
