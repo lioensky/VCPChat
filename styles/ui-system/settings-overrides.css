@@ -48,10 +48,42 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > label:first-child,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > span:first-child {
     min-width: 0;
-    color: var(--vcp-ui-text-1);
+    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
     font-size: var(--vcp-ui-font-body);
     font-weight: 400;
     line-height: 22px;
+}
+
+/* Typography unification (参照 ui-theme AppearanceRow/FontSizeRow 的行规格):
+ * every row title reads 14/400/22 in one ink, every row description reads
+ * 12/18 in the tertiary label color — regardless of which section module or
+ * row primitive mounted it. The primitive-injected description styles win
+ * source order (head styles mount last), so these carry !important; this is
+ * the settings ownership layer, the one place allowed to overrule them. */
+
+/* Copy-wrapped titles (radio groups, composed rows) obey the same spec; the
+   wrapper carries the ink too so stray children inherit it. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy > :is(label, span, strong, h4, h5) {
+    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
+    font-size: var(--vcp-ui-font-body) !important;
+    font-weight: 400 !important;
+    line-height: 22px !important;
+}
+
+/* Switch rows wrap their title + helper in a bare <div> beside the switch. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > div:not([class]) > :is(label, span, strong):first-child {
+    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
+    font-size: var(--vcp-ui-font-body) !important;
+    font-weight: 400 !important;
+    line-height: 22px !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row :is(small, [class*='-description'], [class*='-hint']) {
+    font-size: var(--vcp-ui-font-caption) !important;
+    font-weight: 400 !important;
+    line-height: 18px !important;
+    color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3)) !important;
 }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > :is(input, select, textarea, .vcp-uiux-input-wrap, .vcp-uiux-select, .model-input-container, .switch) {
