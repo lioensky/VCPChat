@@ -31,4 +31,46 @@ for (const section of sections) {
         `main.html must stamp data-settings-section-key on section-${section}`);
 }
 assert.doesNotMatch(bridge, /createGlobalSettingsStore|new GlobalSettingsStore/, 'section contract must not add a second durable store');
-console.log(`Global Settings section ownership contract passed (${sections.length} sections; single bridge entry preserved).`);
+
+// Every control the settings JS binds must actually exist in main.html.
+// A three-way merge can drop markup while keeping the code that drives it;
+// those lookups are written defensively (`if (!el) return`), so the loss is
+// silent -- no crash, no red assertion, and a screenshot shows nothing wrong
+// beyond a feature that simply never appears. This contract turns that whole
+// class of regression into a hard failure.
+const controlProbeFiles = [
+    'modules/renderer/mainChatSettingsPresentationOwner.js',
+    'modules/ui-system/settings-bridge.js',
+    'modules/ui-system/typed-field-owners.js',
+    'modules/global-settings-manager.js',
+    'modules/settingsManager.js',
+    'modules/ui-system/settings/canonical-rows.js',
+    'modules/ui-system/settings/render-visibility.js',
+    'modules/ui-system/settings/dependent-rows.js',
+];
+// Ids intentionally absent from main.html, each with the reason it is safe:
+// containers the flattening removed or renamed (the JS guards them or falls
+// back to the new id), plus ids upstream does not ship either.
+const controlProbeAllowlist = new Map([
+    ['streamAnimationCustomPanel', 'flattened to streamAnimationCustomRow; the lookup falls back to it'],
+    ['rustGuardRulesContainer', 'nested container removed by flattening; guarded with if (container)'],
+    ['userUseThemeColorsInChat', 'absent upstream as well; pre-existing optional control'],
+    ['stripRegexListContainer', 'absent upstream as well; pre-existing optional container'],
+]);
+const htmlIds = new Set([...mainHtml.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]));
+const missingControls = [];
+for (const relativePath of controlProbeFiles) {
+    const source = fs.readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+    const referenced = new Set([
+        ...[...source.matchAll(/getElementById\(\s*['"]([A-Za-z][A-Za-z0-9_-]*)['"]/g)].map(match => match[1]),
+        ...[...source.matchAll(/querySelector\(\s*['"]#([A-Za-z][A-Za-z0-9_-]*)['"]/g)].map(match => match[1]),
+    ]);
+    for (const id of referenced) {
+        if (htmlIds.has(id) || controlProbeAllowlist.has(id)) continue;
+        missingControls.push(`${id} (referenced by ${relativePath})`);
+    }
+}
+assert.deepEqual(missingControls, [],
+    `main.html is missing controls the settings JS binds:\n  ${missingControls.join('\n  ')}`);
+
+console.log(`Global Settings section ownership contract passed (${sections.length} sections; single bridge entry preserved; ${htmlIds.size} markup ids cross-checked against ${controlProbeFiles.length} settings modules).`);
