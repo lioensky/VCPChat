@@ -1856,13 +1856,22 @@ function processAndRenderSmoothChunk(messageId) {
 
     if (!shouldRender) return;
 
+    // Capture bottom-follow before the DOM mutation. Measuring only after the
+    // tail grows confuses a large stream frame with deliberate user scrolling.
+    const context = messageContextMap.get(messageId);
+    const isForCurrentView = isMessageForCurrentView(context);
+    const scrollFollowSnapshot = isForCurrentView
+        ? refs.uiHelper.captureChatScrollFollow?.()
+        : null;
+
     // Render the current state of the accumulated text using our lightweight method.
     renderStreamFrame(messageId);
 
-    // Scroll if the message is in the current view.
-    const context = messageContextMap.get(messageId);
-    if (isMessageForCurrentView(context)) {
-        throttledScrollToBottom(messageId);
+    if (isForCurrentView && scrollFollowSnapshot?.followBottom) {
+        refs.uiHelper.scrollToBottom({
+            force: true,
+            expectedGeneration: scrollFollowSnapshot.generation
+        });
     }
 }
 

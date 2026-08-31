@@ -10,6 +10,8 @@
 
     const uiHelperFunctions = {};
     const textareaResizeStates = new WeakMap();
+    const chatScrollStates = new WeakMap();
+    const CHAT_BOTTOM_THRESHOLD_PX = 50;
     const REGEX_CACHE_MAX_ENTRIES = 512;
     const regexCompileCache = new Map();
     const filePreviewIconMarkup = `
@@ -257,26 +259,154 @@
         regexCompileCache.clear();
     };
 
+    function getChatScrollContainer() {
+        return document.querySelector('.chat-messages-container');
+    }
+
+    function getDistanceFromChatBottom(container) {
+        return Math.max(0, container.scrollHeight - container.clientHeight - container.scrollTop);
+    }
+
+    function isChatNearBottom(container, threshold = CHAT_BOTTOM_THRESHOLD_PX) {
+        return getDistanceFromChatBottom(container) <= threshold;
+    }
+
+    function getChatScrollState(container) {
+        let state = chatScrollStates.get(container);
+        if (state) return state;
+
+        state = {
+            followBottom: true,
+            generation: 0,
+            programmatic: false,
+            frameId: 0,
+            requestedGeneration: null
+        };
+        chatScrollStates.set(container, state);
+
+        const markUserIntent = () => {
+            state.programmatic = false;
+            state.generation += 1;
+            if (state.frameId) {
+                cancelAnimationFrame(state.frameId);
+                state.frameId = 0;
+                state.requestedGeneration = null;
+            }
+        };
+
+        container.addEventListener('wheel', (event) => {
+            markUserIntent();
+            if (event.deltaY < 0) {
+                state.followBottom = false;
+            } else {
+                requestAnimationFrame(() => {
+                    if (container.isConnected) {
+                        state.followBottom = isChatNearBottom(container);
+                    }
+                });
+            }
+        }, { passive: true });
+
+        container.addEventListener('touchstart', markUserIntent, { passive: true });
+        container.addEventListener('pointerdown', (event) => {
+            // 普通内容点击不改变跟随状态；只把滚动条槽附近的按下视为滚动意图。
+            const scrollbarWidth = Math.max(0, container.offsetWidth - container.clientWidth);
+            const rect = container.getBoundingClientRect();
+            if (scrollbarWidth > 0 && event.clientX >= rect.right - scrollbarWidth - 2) {
+                markUserIntent();
+            }
+        }, { passive: true });
+
+        container.addEventListener('scroll', () => {
+            if (state.programmatic) return;
+            state.followBottom = isChatNearBottom(container);
+        }, { passive: true });
+
+        return state;
+    }
+
     /**
-     * Scrolls the chat messages div to the bottom.
+     * Captures the Surface-level bottom-follow intent before a DOM mutation.
+     * The generation prevents a deferred programmatic scroll from overriding
+     * user input that occurs between the mutation and the next animation frame.
      */
-    uiHelperFunctions.scrollToBottom = function() {
-        const parentContainer = document.querySelector('.chat-messages-container');
-        if (!parentContainer) return;
+    uiHelperFunctions.captureChatScrollFollow = function() {
+        const container = getChatScrollContainer();
+        if (!container) return { followBottom: false, generation: -1 };
+        const state = getChatScrollState(container);
+        return {
+            followBottom: state.followBottom,
+            generation: state.generation
+        };
+    };
 
-        const scrollThreshold = 50;
-        const isNearBottom = () => (
-            parentContainer.scrollHeight - parentContainer.clientHeight
-            <= parentContainer.scrollTop + scrollThreshold
-        );
+    uiHelperFunctions.isNearChatBottom = function(threshold = CHAT_BOTTOM_THRESHOLD_PX) {
+        const container = getChatScrollContainer();
+        return !!container && isChatNearBottom(container, threshold);
+    };
 
-        if (isNearBottom()) {
+    uiHelperFunctions.resetChatScrollFollow = function() {
+        const container = getChatScrollContainer();
+        if (!container) return;
+        const state = getChatScrollState(container);
+        state.generation += 1;
+        state.followBottom = true;
+        state.programmatic = false;
+        state.requestedGeneration = null;
+        if (state.frameId) {
+            cancelAnimationFrame(state.frameId);
+            state.frameId = 0;
+        }
+    };
+
+    /**
+     * Scrolls the chat Surface to the bottom when bottom-follow is active.
+     * Calls in one paint frame are coalesced. `force` bypasses the current
+     * geometry check, while `expectedGeneration` still protects user intent.
+     */
+    uiHelperFunctions.scrollToBottom = function(options = {}) {
+        const container = getChatScrollContainer();
+        if (!container) return false;
+
+        const state = getChatScrollState(container);
+        const force = options?.force === true;
+        const expectedGeneration = Number.isInteger(options?.expectedGeneration)
+            ? options.expectedGeneration
+            : null;
+
+        if (expectedGeneration !== null && state.generation !== expectedGeneration) {
+            return false;
+        }
+        if (!force && !state.followBottom && !isChatNearBottom(container)) {
+            return false;
+        }
+
+        state.followBottom = true;
+        state.requestedGeneration = expectedGeneration ?? state.generation;
+        if (state.frameId) return true;
+
+        state.frameId = requestAnimationFrame(() => {
+            state.frameId = 0;
+            const requestedGeneration = state.requestedGeneration;
+            state.requestedGeneration = null;
+            if (
+                !container.isConnected
+                || requestedGeneration !== state.generation
+                || !state.followBottom
+            ) {
+                return;
+            }
+
+            state.programmatic = true;
+            container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
             requestAnimationFrame(() => {
-                if (parentContainer.isConnected && isNearBottom()) {
-                    parentContainer.scrollTop = parentContainer.scrollHeight;
+                state.programmatic = false;
+                if (container.isConnected) {
+                    state.followBottom = isChatNearBottom(container);
                 }
             });
-        }
+        });
+        return true;
     };
 
     /**

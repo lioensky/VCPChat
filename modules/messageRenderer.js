@@ -2481,6 +2481,7 @@ function removeMessageById(messageId, saveHistory = false, root = mainRendererRe
 
 function clearChat(root = mainRendererReferences.chatMessagesDiv) {
     invalidateRenderSession(root);
+    mainRendererReferences.uiHelper.resetChatScrollFollow?.();
 
     // 清空聊天通常意味着用户希望释放当前渲染上下文占用；HTML 字符串缓存不持有 DOM，但这里主动释放更保守。
     clearRenderHtmlCache();
@@ -4020,6 +4021,7 @@ function prepareUserMessageText(text) {
  */
 async function renderHistory(history, options = {}) {
     const renderSessionId = invalidateRenderSession(options.root || mainRendererReferences.chatMessagesDiv);
+    mainRendererReferences.uiHelper.resetChatScrollFollow?.();
 
     const {
         initialBatch = 5,
