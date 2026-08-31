@@ -3,10 +3,12 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel {
     display: flex;
-    width: 800px;
-    height: min(800px, calc(100vh - 48px));
+    /* Match the upstream Classic settings modal footprint
+       (.global-settings-modal-content: 90vw capped at 900px, 80vh tall). */
+    width: min(900px, 90vw);
+    height: 80vh;
+    min-height: 600px;
     max-width: calc(100vw - 48px);
-    min-height: 0;
     overflow: hidden;
     border-radius: 24px;
     background: var(--vcp-ui-bg-1);
