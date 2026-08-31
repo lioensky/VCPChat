@@ -54,7 +54,7 @@ export function mountPrimitiveLab(root, scope) {
     lab.className = 'vcp-uiux-primitive-lab vcp-ui-scope';
     lab.dataset.maturity = 'candidate';
     root.replaceChildren(lab);
-    const buttonRow = group(lab, 'Button', 'deepseek-uiux/packages/client/ui-primitives/src/Button.tsx');
+    const buttonRow = group(lab, 'Button', 'reference-design/packages/client/ui-primitives/src/Button.tsx');
     const variants = [
         ['Primary', { variant: 'primary' }],
         ['Ghost', { variant: 'ghost' }],
@@ -69,23 +69,23 @@ export function mountPrimitiveLab(root, scope) {
         buttonRow.append(button);
         mountButton(button, props, labScope);
     });
-    const pillRow = group(lab, 'Pill', 'deepseek-uiux/packages/client/ui-primitives/src/Pill.tsx');
+    const pillRow = group(lab, 'Pill', 'reference-design/packages/client/ui-primitives/src/Pill.tsx');
     for (const [label, active] of [['Static', false], ['Interactive', false], ['Active', true]]) {
         const pill = document.createElement(label === 'Interactive' ? 'button' : 'span');
         pill.textContent = label;
         pillRow.append(pill);
         mountPill(pill, { active, interactive: label === 'Interactive', onClick: label === 'Interactive' ? () => { pill.dataset.clicked = 'true'; } : undefined }, labScope);
     }
-    const connectionRow = group(lab, 'ConnectionBanner', 'deepseek-uiux/packages/client/ui-primitives/src/ConnectionBanner.tsx');
+    const connectionRow = group(lab, 'ConnectionBanner', 'reference-design/packages/client/ui-primitives/src/ConnectionBanner.tsx');
     const connectionHost = document.createElement('div');
     connectionRow.append(connectionHost);
     mountConnectionBanner(connectionHost, { reconnecting: true }, labScope);
-    const onboardingRow = group(lab, 'OnboardingSurface', 'deepseek-uiux/packages/client/ui-primitives/src/OnboardingSurface.tsx');
+    const onboardingRow = group(lab, 'OnboardingSurface', 'reference-design/packages/client/ui-primitives/src/OnboardingSurface.tsx');
     const onboardingContent = document.createElement('div');
     onboardingContent.textContent = 'Onboarding content';
     onboardingRow.append(onboardingContent);
     mountOnboardingSurface({ content: onboardingContent, appRoot: null, open: false }, labScope);
-    const inputRow = group(lab, 'Input', 'deepseek-uiux/packages/client/ui-primitives/src/Input.tsx');
+    const inputRow = group(lab, 'Input', 'reference-design/packages/client/ui-primitives/src/Input.tsx');
     const inputHost = document.createElement('span');
     inputHost.className = 'vcp-uiux-lab-input-host';
     const input = document.createElement('input');
@@ -96,14 +96,14 @@ export function mountPrimitiveLab(root, scope) {
     searchIcon.className = 'vcp-ui-icon';
     searchIcon.textContent = 'search';
     mountInput(input, { icon: searchIcon }, labScope);
-    const fieldRow = group(lab, 'Field', 'deepseek-uiux/packages/client/ui-settings-plugins ValueField production contract');
+    const fieldRow = group(lab, 'Field', 'reference-design/packages/client/ui-settings-plugins ValueField production contract');
     const field = document.createElement('div');
     field.className = 'vcp-uiux-lab-field';
     const fieldInput = document.createElement('input');
     field.append(fieldInput);
     fieldRow.append(field);
     mountField(field, { label: 'Workspace name', description: 'Shown in the workspace switcher.', control: fieldInput }, labScope);
-    const selectRow = group(lab, 'Select / Menu', 'deepseek-uiux AgentPresetSeat + ui-primitives/Menu production contracts');
+    const selectRow = group(lab, 'Select / Menu', 'reference-design AgentPresetSeat + ui-primitives/Menu production contracts');
     const select = document.createElement('select');
     select.setAttribute('aria-label', 'Agent preset');
     ['Standard mode', 'Minimal mode', 'Planning mode'].forEach(label => {
@@ -114,7 +114,7 @@ export function mountPrimitiveLab(root, scope) {
     });
     selectRow.append(select);
     mountSelect(select, { label: 'Agent preset', portal: true }, labScope);
-    const menuRow = group(lab, 'Menu atom', 'deepseek-uiux/packages/client/ui-primitives/src/Menu.tsx + WorkspaceBrowser production consumer');
+    const menuRow = group(lab, 'Menu atom', 'reference-design/packages/client/ui-primitives/src/Menu.tsx + WorkspaceBrowser production consumer');
     const menuTrigger = document.createElement('button');
     menuTrigger.type = 'button';
     menuTrigger.textContent = 'View options';
@@ -150,7 +150,7 @@ export function mountPrimitiveLab(root, scope) {
     // token `--dsw-alias-label-quaternary` is undefined upstream in Uiux
     // ui-theme; the primitive keeps that variable name so a future uiux-side
     // definition applies verbatim.
-    const seatRow = group(lab, 'Agent Preset seat', 'deepseek-uiux/packages/client/ui-agent-preset/src/client/AgentPresetSeat.tsx + chat new-session hero consumer; Candidate only, no VCP production consumer');
+    const seatRow = group(lab, 'Agent Preset seat', 'reference-design/packages/client/ui-agent-preset/src/client/AgentPresetSeat.tsx + chat new-session hero consumer; Candidate only, no VCP production consumer');
     const seatTrigger = document.createElement('button');
     seatTrigger.type = 'button';
     seatRow.append(seatTrigger);
@@ -197,7 +197,7 @@ export function mountPrimitiveLab(root, scope) {
     // appends `· <userTrust>` to locally authored presets, matching
     // PresetMenu's trust==='user' label rule.
     const presetRowHost = document.createElement('div');
-    const presetRowGroup = group(lab, 'Agent Preset row', 'deepseek-uiux/packages/client/ui-agent-preset/src/client/AgentPresetRow.tsx; Candidate only, no VCP production consumer');
+    const presetRowGroup = group(lab, 'Agent Preset row', 'reference-design/packages/client/ui-agent-preset/src/client/AgentPresetRow.tsx; Candidate only, no VCP production consumer');
     presetRowGroup.append(presetRowHost);
     let presetRow;
     const presetRowOptions = [
@@ -228,7 +228,7 @@ export function mountPrimitiveLab(root, scope) {
     // Uiux locale/LanguageRow is a real General-settings composite. VCP
     // currently has no UI-locale capability or persisted setting, so the Lab
     // projection owns only its temporary selection and is never a consumer.
-    const languageRowGroup = group(lab, 'Language row', 'deepseek-uiux/packages/client/locale/src/client/LanguageRow.tsx; Candidate only, no VCP locale capability or production consumer');
+    const languageRowGroup = group(lab, 'Language row', 'reference-design/packages/client/locale/src/client/LanguageRow.tsx; Candidate only, no VCP locale capability or production consumer');
     const languageRowHost = document.createElement('div');
     languageRowHost.className = 'vcp-uiux-lab-field';
     languageRowGroup.append(languageRowHost);
@@ -246,7 +246,7 @@ export function mountPrimitiveLab(root, scope) {
     // conversation.input.overlay slot. That slot and the composer are frozen
     // in VCP, so this is a standalone Lab-only host: its deps are local DOM
     // callbacks, not an input-machine, IPC, command or token-consumption path.
-    const popupRow = group(lab, 'Command PopupSelect', 'deepseek-uiux/packages/client/ui-commands/src/client/PopupSelectView.tsx; Candidate Lab only, no VCP Composer or command wiring');
+    const popupRow = group(lab, 'Command PopupSelect', 'reference-design/packages/client/ui-commands/src/client/PopupSelectView.tsx; Candidate Lab only, no VCP Composer or command wiring');
     const popupHost = document.createElement('div');
     popupHost.className = 'vcp-uiux-lab-popup-host';
     const popupTrigger = document.createElement('button');
@@ -267,7 +267,7 @@ export function mountPrimitiveLab(root, scope) {
     });
     mountPopupSelectView(popupHost, { popup }, labScope);
     labScope.listen(popupTrigger, 'click', () => popup.open('model', {}, { via: 'enter', token: '/model' }));
-    const modelPickerRow = group(lab, 'Agent Model Picker', 'deepseek-uiux/packages/client/ui-model-selection/ModelSelect.tsx; Candidate Lab only, injected capability');
+    const modelPickerRow = group(lab, 'Agent Model Picker', 'reference-design/packages/client/ui-model-selection/ModelSelect.tsx; Candidate Lab only, injected capability');
     const modelPickerHost = document.createElement('div');
     modelPickerHost.dataset.uiuxCandidate = 'agent-model-picker';
     modelPickerRow.append(modelPickerHost);
@@ -295,7 +295,7 @@ export function mountPrimitiveLab(root, scope) {
     // Candidate owns only presentation state; this Lab supplies an in-memory
     // fixture tree, never VCP filesystem IPC, persisted Workspace paths or
     // workspace adoption.
-    const directoryRow = group(lab, 'Directory Browser', 'deepseek-uiux/packages/client/ui-directory-picker-browse/src/client/DirectoryBrowser.tsx; Candidate Lab only, injected in-memory tree');
+    const directoryRow = group(lab, 'Directory Browser', 'reference-design/packages/client/ui-directory-picker-browse/src/client/DirectoryBrowser.tsx; Candidate Lab only, injected in-memory tree');
     const directoryTrigger = document.createElement('button');
     directoryTrigger.type = 'button';
     directoryTrigger.textContent = 'Browse fixture folder';
@@ -314,7 +314,7 @@ export function mountPrimitiveLab(root, scope) {
         onClose: () => directory.setOpen(false),
     }, labScope);
     labScope.listen(directoryTrigger, 'click', () => directory.setOpen(true));
-    const modalRow = group(lab, 'Modal', 'deepseek-uiux/packages/client/ui-primitives/src/Modal.tsx + Workspace/Settings production consumers');
+    const modalRow = group(lab, 'Modal', 'reference-design/packages/client/ui-primitives/src/Modal.tsx + Workspace/Settings production consumers');
     const modalTrigger = document.createElement('button');
     modalTrigger.type = 'button';
     modalTrigger.textContent = 'Open modal';
@@ -358,7 +358,7 @@ export function mountPrimitiveLab(root, scope) {
     const headless = mountModal({ title: 'Custom modal frame', body: headlessBody, headless: true, onClose: () => headless.setOpen(false) }, labScope);
     labScope.listen(headlessTrigger, 'click', () => headless.setOpen(true));
     labScope.listen(headlessClose, 'click', () => headless.setOpen(false));
-    const tooltipRow = group(lab, 'Tooltip / HoverCard', 'deepseek-uiux/packages/client/ui-primitives/src/Tooltip.tsx + HoverCard.tsx; Goal/Sidebar/Workspace consumers');
+    const tooltipRow = group(lab, 'Tooltip / HoverCard', 'reference-design/packages/client/ui-primitives/src/Tooltip.tsx + HoverCard.tsx; Goal/Sidebar/Workspace consumers');
     const tooltipButton = document.createElement('button');
     tooltipButton.type = 'button';
     tooltipButton.textContent = 'Hover for details';
@@ -379,7 +379,7 @@ export function mountPrimitiveLab(root, scope) {
         copyLabel: 'Copy path',
         copiedLabel: 'Copied',
     }, labScope);
-    const disclosureRow = group(lab, 'DisclosureRow', 'deepseek-uiux/packages/client/ui-primitives/src/DisclosureRow.tsx + ToolRow/WorkflowRun production consumers');
+    const disclosureRow = group(lab, 'DisclosureRow', 'reference-design/packages/client/ui-primitives/src/DisclosureRow.tsx + ToolRow/WorkflowRun production consumers');
     const disclosureHost = document.createElement('div');
     disclosureHost.className = 'vcp-uiux-lab-disclosure-host';
     disclosureRow.append(disclosureHost);
@@ -404,7 +404,7 @@ export function mountPrimitiveLab(root, scope) {
         children: disclosureBody,
         onToggle: () => disclosure.setOpen(!disclosure.open),
     }, labScope);
-    const stateDotRow = group(lab, 'StateDot', 'deepseek-uiux/packages/client/ui-primitives/src/StateDot.tsx + Jobs/Workflow/Workspace production consumers');
+    const stateDotRow = group(lab, 'StateDot', 'reference-design/packages/client/ui-primitives/src/StateDot.tsx + Jobs/Workflow/Workspace production consumers');
     ['done', 'warning', 'ongoing', 'error'].forEach(state => {
         const fixture = document.createElement('span');
         fixture.className = 'vcp-uiux-lab-state-dot-fixture';
@@ -416,7 +416,7 @@ export function mountPrimitiveLab(root, scope) {
         stateDotRow.append(fixture);
         mountStateDot(dotHost, { state }, labScope);
     });
-    const toastRow = group(lab, 'Toast', 'deepseek-uiux/packages/client/ui-primitives/src/Toast.tsx + InputBar/ModelSelect production consumers');
+    const toastRow = group(lab, 'Toast', 'reference-design/packages/client/ui-primitives/src/Toast.tsx + InputBar/ModelSelect production consumers');
     const toastAnchor = document.createElement('div');
     toastAnchor.className = 'vcp-uiux-lab-toast-anchor';
     const toastTrigger = document.createElement('button');
@@ -445,7 +445,7 @@ export function mountPrimitiveLab(root, scope) {
         }, labScope);
         activeToast = toast;
     });
-    const riskRow = group(lab, 'RiskConfirmation', 'deepseek-uiux/packages/client/ui-primitives/src/RiskConfirmation.tsx + Permission/Command production consumers; Candidate only, no VCP business command');
+    const riskRow = group(lab, 'RiskConfirmation', 'reference-design/packages/client/ui-primitives/src/RiskConfirmation.tsx + Permission/Command production consumers; Candidate only, no VCP business command');
     const riskTrigger = document.createElement('button');
     riskTrigger.type = 'button';
     riskTrigger.textContent = 'Open risk confirmation';
@@ -464,7 +464,7 @@ export function mountPrimitiveLab(root, scope) {
         onConfirm: () => risk.setOpen(false),
     }, labScope);
     labScope.listen(riskTrigger, 'click', () => { risk.setAcknowledged(false); risk.setDisabled(false); risk.setOpen(true); });
-    const iconRow = group(lab, 'Semantic icon slots', 'deepseek-uiux/packages/client/ui-primitives/src/icons/index.tsx; delegates to existing VCP Lucide adapter, private Candidate contract');
+    const iconRow = group(lab, 'Semantic icon slots', 'reference-design/packages/client/ui-primitives/src/icons/index.tsx; delegates to existing VCP Lucide adapter, private Candidate contract');
     ['warning', 'close', 'check', 'chevron-down'].forEach(name => {
         const fixture = document.createElement('span');
         fixture.className = 'vcp-uiux-lab-icon-fixture';

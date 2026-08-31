@@ -292,7 +292,7 @@ test('Uiux AgentModelPicker projects loading, load failure and retry through one
             options: async () => {
                 calls += 1;
                 if (calls === 1) throw new Error('catalog unavailable');
-                return [{ id: 'ready', label: 'Ready', provider: 'DeepSeek' }];
+                return [{ id: 'ready', label: 'Ready', provider: 'Nova' }];
             },
             onSelect: () => {},
         }, scope);
@@ -338,7 +338,7 @@ test('Uiux AgentModelPicker keeps injected directory actions transient and relea
         const controller = mountAgentModelPicker(host, {
             options: async () => {
                 loads += 1;
-                return [{ id: 'flash', label: 'Flash', provider: 'DeepSeek', favorite: toggleCalls > 0 }];
+                return [{ id: 'flash', label: 'Flash', provider: 'Nova', favorite: toggleCalls > 0 }];
             },
             directory: {
                 refresh: signal => new Promise(resolve => {
@@ -521,8 +521,8 @@ test('Uiux AgentModelPicker locks its native trigger and routes rejected selecti
             searchEnabled: false,
             selectedId: 'flash',
             options: async () => [
-                { id: 'flash', label: 'Flash', provider: 'DeepSeek' },
-                { id: 'think', label: 'Think', provider: 'DeepSeek' },
+                { id: 'flash', label: 'Flash', provider: 'Nova' },
+                { id: 'think', label: 'Think', provider: 'Nova' },
             ],
             onSelect: () => false,
         }, scope);
@@ -557,8 +557,8 @@ test('Uiux AgentModelPicker projects selecting as busy native rows and restores 
             uiuxEquivalent: true,
             searchEnabled: false,
             options: async () => [
-                { id: 'flash', label: 'Flash', provider: 'DeepSeek' },
-                { id: 'think', label: 'Think', provider: 'DeepSeek' },
+                { id: 'flash', label: 'Flash', provider: 'Nova' },
+                { id: 'think', label: 'Think', provider: 'Nova' },
             ],
             onSelect: async () => selection,
         }, scope);
@@ -594,7 +594,7 @@ test('Uiux AgentModelPicker reports rejected selection through an owner-bound To
         const controller = mountAgentModelPicker(host, {
             uiuxEquivalent: true,
             searchEnabled: false,
-            options: async () => [{ id: 'unavailable', label: 'Unavailable', provider: 'DeepSeek' }],
+            options: async () => [{ id: 'unavailable', label: 'Unavailable', provider: 'Nova' }],
             onSelect: async () => { throw new Error('session already contains images'); },
         }, scope);
         controller.open();
@@ -729,7 +729,7 @@ test('Uiux PopupSelect parity mode preserves provider groups and menuitemradio s
         const host = document.getElementById('host');
         const popup = createPopupSelectController({
             options: async () => [
-                { id: 'deepseek', label: 'DeepSeek-V4-Flash', group: 'DeepSeek' },
+                { id: 'nova', label: 'Nova-V4-Flash', group: 'Nova' },
                 { id: 'acme', label: 'Acme Think', group: 'Acme Gateway', active: true },
             ],
             onSelect: async () => {},
@@ -763,8 +763,8 @@ test('Uiux PopupSelect parity skips disabled rows and hands keyboard focus to th
         const host = document.getElementById('host');
         const popup = createPopupSelectController({
             options: async () => [
-                { id: 'blocked', label: 'Blocked', group: 'DeepSeek', disabled: true },
-                { id: 'available', label: 'Available', group: 'DeepSeek' },
+                { id: 'blocked', label: 'Blocked', group: 'Nova', disabled: true },
+                { id: 'available', label: 'Available', group: 'Nova' },
             ],
             onSelect: async option => { selected.push(option.id); },
         }, { consume: () => true, focusComposer: () => {} });

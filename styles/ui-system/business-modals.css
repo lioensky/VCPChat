@@ -34,8 +34,8 @@
         padding: 24px 28px 0;
     }
 
-    /* 全局设置模态框使用上游经典宽度（styles/setting/settings-global-modal.css），
-       不受通用 .modal .modal-content 的窄宽（--vcp-ui-modal-width: 520px）限制。 */
+    /* 全局设置模态框保持上游经典设置页足迹，不受通用 .modal .modal-content
+       的窄宽（--vcp-ui-modal-width: 520px）限制。 */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-modal-content {
         width: 90vw;
         max-width: 900px;
