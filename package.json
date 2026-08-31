@@ -143,7 +143,7 @@
     "xterm-addon-fit": "^0.8.0"
   },
   "optionalDependencies": {
-    "electron-edge-js": "^38.0.0"
+    "electron-edge-js": "^44.0.0"
   },
   "build": {
     "appId": "com.vcp.chatdesktop",
