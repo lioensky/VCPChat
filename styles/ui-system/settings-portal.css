@@ -1,3 +1,7 @@
+/* The settings override layer deliberately out-ranks runtime-injected
+   primitive styles (which enter <head> last), so !important and repeated
+   selectors are the layering mechanism here, not accidents. */
+/* stylelint-disable declaration-no-important, no-duplicate-selectors */
 
 /* Body-level portal menus must stack above the settings overlay.  The
    generated select primitive appends its open menu (.vcp-uiux-primitive-menu)
