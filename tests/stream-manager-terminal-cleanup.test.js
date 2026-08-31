@@ -589,10 +589,239 @@ test('terminal projection recreates a missing message DOM from canonical final c
     dom.window.close();
 });
 
+test('reconcile preserves the thinking placeholder until the first visible token arrives', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM(
+        '<!doctype html><div id="chat"><article class="message-item thinking" data-message-id="waiting-switch"><div class="md-content"><span class="thinking-indicator">思考中<span class="thinking-indicator-dots">...</span></span></div></article></div>',
+        { url: 'https://vcpchat.local/', pretendToBeVisual: true }
+    );
+    const root = dom.window.document.getElementById('chat');
+    let currentTopic = 'topic-a';
+    let history = [];
+    const renderMessage = async message => {
+        const existing = root.querySelector(`[data-message-id="${message.id}"]`);
+        if (existing) return existing;
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.innerHTML = message.isThinking
+            ? '<div class="md-content"><span class="thinking-indicator">思考中<span class="thinking-indicator-dots">...</span></span></div>'
+            : '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        currentChatHistoryRef: {
+            get: () => history,
+            set: value => { history = [...value]; },
+        },
+        currentTopicIdRef: { get: () => currentTopic },
+        viewAuthority: { isCurrent: context => context?.topicId === currentTopic },
+        renderMessage,
+        parseTail: text => `<p>${text}</p>`,
+    }));
+
+    const initialItem = root.querySelector('[data-message-id="waiting-switch"]');
+    await projection.startStreamingMessage({
+        id: 'waiting-switch',
+        role: 'assistant',
+        agentId: 'visible-agent',
+        topicId: 'topic-a',
+        content: '',
+        isThinking: true,
+        streamOperationId: 'waiting-operation',
+    }, initialItem);
+
+    currentTopic = 'topic-b';
+    root.replaceChildren();
+    currentTopic = 'topic-a';
+    const rebuilt = await renderMessage({
+        id: 'waiting-switch',
+        isThinking: true,
+    });
+    await projection.reconcileConversation({
+        itemType: 'agent',
+        itemId: 'visible-agent',
+        topicId: 'topic-a',
+    });
+
+    assert.equal(root.querySelectorAll('[data-message-id="waiting-switch"]').length, 1);
+    assert.ok(rebuilt.classList.contains('streaming'));
+    assert.ok(rebuilt.classList.contains('thinking'));
+    assert.equal(rebuilt.querySelectorAll('.thinking-indicator').length, 1);
+    assert.match(rebuilt.querySelector('.md-content')?.textContent || '', /思考中/);
+    assert.equal(rebuilt.querySelector('.vcp-stream-tail-root'), null);
+
+    projection.appendStreamChunk(
+        'waiting-switch',
+        { content: 'first visible token' },
+        { agentId: 'visible-agent', topicId: 'topic-a' },
+        'waiting-operation'
+    );
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    assert.equal(rebuilt.classList.contains('thinking'), false);
+    assert.equal(rebuilt.querySelector('.thinking-indicator'), null);
+    assert.match(rebuilt.querySelector('.md-content')?.textContent || '', /first visible token/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
+test('stream DOM recovery atomically removes a concurrent history duplicate', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        url: 'https://vcpchat.local/',
+        pretendToBeVisual: true,
+    });
+    const root = dom.window.document.getElementById('chat');
+    let releaseRecovery;
+    let renderCount = 0;
+    const renderMessage = async message => {
+        renderCount += 1;
+        if (renderCount > 1) {
+            await new Promise(resolve => { releaseRecovery = resolve; });
+        }
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.dataset.projectionOwner = 'stream-recovery';
+        node.innerHTML = '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        renderMessage,
+        parseTail: text => `<p>${text}</p>`,
+    }));
+
+    const initialItem = await renderMessage({
+        id: 'recovery-race',
+        isThinking: true,
+    });
+    await projection.startStreamingMessage({
+        id: 'recovery-race',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        isThinking: true,
+        streamOperationId: 'recovery-race-operation',
+    }, initialItem);
+
+    initialItem.remove();
+    projection.appendStreamChunk(
+        'recovery-race',
+        { content: 'single live bubble' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'recovery-race-operation'
+    );
+
+    while (!releaseRecovery) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    const historyDuplicate = dom.window.document.createElement('article');
+    historyDuplicate.className = 'message-item';
+    historyDuplicate.dataset.messageId = 'recovery-race';
+    historyDuplicate.dataset.projectionOwner = 'history-batch';
+    historyDuplicate.innerHTML = '<div class="md-content">stale history copy</div>';
+    root.prepend(historyDuplicate);
+    releaseRecovery();
+    await new Promise(resolve => setTimeout(resolve, 120));
+
+    const projectedItems = root.querySelectorAll('[data-message-id="recovery-race"]');
+    assert.equal(projectedItems.length, 1, 'one message id must own exactly one outer bubble');
+    assert.equal(projectedItems[0].dataset.projectionOwner, 'stream-recovery');
+    assert.ok(projectedItems[0].classList.contains('streaming'));
+    assert.match(projectedItems[0].querySelector('.md-content')?.textContent || '', /single live bubble/);
+    assert.doesNotMatch(root.textContent, /stale history copy/);
+
+    await projection.dispose();
+    dom.window.close();
+});
+
 test('thinking and streaming messages opt out of content-visibility clipping', () => {
     const chatCss = fs.readFileSync('styles/chat.css', 'utf8');
     assert.match(
         chatCss,
         /\.message-item\.streaming,\s*\.message-item\.thinking\s*\{[\s\S]*?content-visibility:\s*visible;[\s\S]*?contain-intrinsic-size:\s*auto;[\s\S]*?\}/
     );
+});
+
+
+test('a live stream frame reclaims the final message floor after a late history batch mounts', async () => {
+    const createStreamProjection = await loadFactory();
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        url: 'https://vcpchat.local/',
+        pretendToBeVisual: true,
+    });
+    const root = dom.window.document.getElementById('chat');
+    const renderMessage = async message => {
+        const node = dom.window.document.createElement('article');
+        node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
+        node.dataset.messageId = message.id;
+        node.innerHTML = message.isThinking
+            ? '<div class="md-content"><span class="thinking-indicator">思考中...</span></div>'
+            : '<div class="md-content"></div>';
+        root.appendChild(node);
+        return node;
+    };
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createDependencies(dom, {
+        renderMessage,
+        parseTail: text => `<p>${text}</p>`,
+    }));
+
+    const liveItem = await renderMessage({
+        id: 'final-floor-stream',
+        isThinking: true,
+    });
+    await projection.startStreamingMessage({
+        id: 'final-floor-stream',
+        agentId: 'visible-agent',
+        topicId: 'visible-topic',
+        content: '',
+        isThinking: true,
+        streamOperationId: 'final-floor-operation',
+    }, liveItem);
+
+    projection.appendStreamChunk(
+        'final-floor-stream',
+        { content: 'first' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'final-floor-operation'
+    );
+    await new Promise(resolve => setTimeout(resolve, 80));
+
+    for (const id of ['late-history-1', 'late-history-2']) {
+        const historyItem = dom.window.document.createElement('article');
+        historyItem.className = 'message-item';
+        historyItem.dataset.messageId = id;
+        historyItem.innerHTML = `<div class="md-content">${id}</div>`;
+        root.appendChild(historyItem);
+    }
+    assert.equal(root.lastElementChild?.dataset.messageId, 'late-history-2');
+
+    projection.appendStreamChunk(
+        'final-floor-stream',
+        { content: ' second' },
+        { agentId: 'visible-agent', topicId: 'visible-topic' },
+        'final-floor-operation'
+    );
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const messageOrder = Array.from(root.querySelectorAll('.message-item'))
+        .map(element => element.dataset.messageId);
+    assert.equal(messageOrder.at(-1), 'final-floor-stream');
+    assert.equal(
+        messageOrder.filter(messageId => messageId === 'final-floor-stream').length,
+        1,
+        'floor correction must move the live node instead of cloning it'
+    );
+    assert.match(liveItem.querySelector('.md-content')?.textContent || '', /first second/);
+
+    await projection.dispose();
+    dom.window.close();
 });

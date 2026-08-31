@@ -1294,14 +1294,26 @@ function requestStreamDomRecovery(messageId) {
             return null;
         }
 
+        // 补建期间历史批次也可能投影同一个活动消息。以补建返回节点为优先，
+        // 否则采用最后一个（最新楼层）节点，并原子移除其余副本。这样后续
+        // stable/tail 恢复始终只绑定一个外层气泡，不会散落到历史上方。
+        const matchingItems = Array.from(
+            refs.chatMessagesDiv?.querySelectorAll?.(`.message-item[data-message-id="${messageId}"]`) || []
+        );
         const messageItem = recoveredItem?.isConnected
             ? recoveredItem
-            : refs.chatMessagesDiv?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
-        const contentDiv = messageItem?.querySelector?.('.md-content');
-        if (!messageItem || !contentDiv) return null;
+            : matchingItems.at(-1);
+        if (!messageItem) return null;
+
+        for (const duplicate of matchingItems) {
+            if (duplicate !== messageItem) duplicate.remove();
+        }
+
+        const contentDiv = messageItem.querySelector?.('.md-content');
+        if (!contentDiv) return null;
 
         messageItem.classList.add('streaming');
-        if (hasVisibleContent) messageItem.classList.remove('thinking');
+        messageItem.classList.toggle('thinking', !hasVisibleContent);
         messageDomCache.set(messageId, { messageItem, contentDiv });
         return messageItem;
     })();
@@ -1501,6 +1513,20 @@ function decorateStreamingCodeLines(container) {
     });
 }
 
+function ensureStreamMessageAtFinalFloor(messageItem) {
+    const root = refs.chatMessagesDiv;
+    if (!messageItem?.isConnected || messageItem.parentNode !== root) return;
+
+    // 话题时间气泡不是消息楼层；活动 assistant 流必须位于所有已投影
+    // message-item 之后。历史渐进批次可能在任意异步边界继续挂载，
+    // 因此每个有效流帧都重新声明这一顺序不变量。
+    let following = messageItem.nextElementSibling;
+    while (following && !following.classList?.contains('message-item')) {
+        following = following.nextElementSibling;
+    }
+    if (following) root.appendChild(messageItem);
+}
+
 /**
  * Renders a single frame of the streaming message using morphdom for efficient DOM updates.
  * This version performs minimal processing to keep it fast and avoid destroying JS state.
@@ -1538,8 +1564,37 @@ function renderStreamFrame(messageId) {
     }
 
     const { contentDiv, messageItem } = cachedDom;
-    const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
+    ensureStreamMessageAtFinalFloor(messageItem);
+    const receivedText = accumulatedStreamText.get(messageId) || "";
     const segmentState = getOrCreateStreamSegmentState(messageId);
+    const visibleTextLength = shouldEnableSmoothStreaming()
+        ? Math.min(receivedText.length, Math.max(0, segmentState.visibleTextLength))
+        : receivedText.length;
+    const textForRendering = receivedText.slice(0, visibleTextLength);
+
+    // 等待首个可见 token 时，“思考中”是活动流的规范投影，不能为了建立
+    // 空 stable/tail 根而清空它。切回会话及高速切换后的 reconcile 都会
+    // 经过这里，因此必须在任何 innerHTML 替换之前短路。
+    if (textForRendering.trim() === '') {
+        let thinkingIndicator = contentDiv.querySelector('.thinking-indicator');
+        if (!thinkingIndicator) {
+            contentDiv.replaceChildren();
+            thinkingIndicator = ownerDocument().createElement('span');
+            thinkingIndicator.className = 'thinking-indicator';
+            thinkingIndicator.append('思考中');
+            const dots = ownerDocument().createElement('span');
+            dots.className = 'thinking-indicator-dots';
+            dots.textContent = '...';
+            thinkingIndicator.appendChild(dots);
+            contentDiv.appendChild(thinkingIndicator);
+        }
+        messageItem.classList.add('streaming', 'thinking');
+        return;
+    }
+
+    messageItem.classList.add('streaming');
+    messageItem.classList.remove('thinking');
+    const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
     const streamMessageModel = streamMessageModels.get(messageId);
     const streamRenderOptions = {
         messageId,
@@ -1553,12 +1608,6 @@ function renderStreamFrame(messageId) {
     // 切回仍在流式输出的会话时，消息 DOM 已重建而稳定区状态仍在。
     // 在计算/追加新稳定范围前恢复旧 blocks，避免只看得到新的 tail。
     restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, streamRenderOptions);
-
-    const receivedText = accumulatedStreamText.get(messageId) || "";
-    const visibleTextLength = shouldEnableSmoothStreaming()
-        ? Math.min(receivedText.length, Math.max(0, segmentState.visibleTextLength))
-        : receivedText.length;
-    const textForRendering = receivedText.slice(0, visibleTextLength);
 
     // 消息级 CSS 必须基于完整可见源码统一重算。稳定块与 tail 随后只剥离
     // 各自片段里的 style，不再分别覆盖同一个消息 scope 样式节点。
@@ -1943,10 +1992,12 @@ async function startStreamingMessage(message, passedMessageItem = null) {
                 return null;
             }
         }
-        // Add streaming class and remove thinking class when we have a valid messageItem
+        // 流所有权建立后保持准确的等待态。首个可见 token 到达时，
+        // renderStreamFrame 才会原子移除 thinking 并建立 stable/tail 根。
         if (messageItem && messageItem.classList) {
             messageItem.classList.add('streaming');
-            messageItem.classList.remove('thinking');
+            const initialVisibleText = accumulatedStreamText.get(messageId) || '';
+            messageItem.classList.toggle('thinking', initialVisibleText.trim() === '');
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) messageDomCache.set(messageId, { messageItem, contentDiv });
         }

@@ -3364,11 +3364,12 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const currentChatHistory = mainRendererReferences.currentChatHistoryRef.get();
 
-    // Prevent re-rendering if the message already exists in the DOM, unless it's a thinking message being replaced.
+    // 同一个 Surface 内，message id 是外层气泡的唯一身份。历史批次、活动流补建
+    // 和文件同步可能并发请求渲染；默认复用已挂载节点，禁止生成第二个气泡。
+    // 只有显式的离屏 UI 替换流程可以请求创建新节点。
     const existingMessageDom = renderRoot.querySelector(`.message-item[data-message-id="${message.id}"]`);
-    if (existingMessageDom && !existingMessageDom.classList.contains('thinking')) {
-        // console.log(`[MessageRenderer] Message ${message.id} already in DOM. Skipping render.`);
-        // return existingMessageDom;
+    if (existingMessageDom && renderContext.replaceExisting !== true) {
+        return existingMessageDom;
     }
 
     if (!chatMessagesDiv || !electronAPI || !markedInstance) {
@@ -4129,6 +4130,17 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
     return renderTaskOwner.animationFrame(renderRoot, () => {
             if (!isRenderSessionActive(renderSessionId)) return;
 
+            // 在异步批次构建期间，活动流恢复可能已经挂载了相同 message id。
+            // 不能只删除 fragment 中的历史快照，否则实时节点会留在旧位置并被
+            // 随后追加的历史消息压到顶部。把实时节点移动到快照槽位，才能同时
+            // 保持唯一身份和 history 数组定义的最终楼层。
+            messageElements.forEach(el => {
+                const messageId = el.dataset?.messageId;
+                if (!messageId) return;
+                const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
+                if (mounted && mounted !== el) el.replaceWith(mounted);
+            });
+
             // Step 1: Append all elements to the DOM at once.
             renderRoot.appendChild(fragment);
             mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
@@ -4181,6 +4193,15 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         // 🟢 owner-managed idle work，当前 root revoke/dispose 时会被取消。
         await renderTaskOwner.idle(renderRoot, () => {
                 if (!isRenderSessionActive(renderSessionId)) return;
+
+                // idle 等待期间流式恢复可能已建立同 ID 节点。用实时节点替换
+                // fragment 中的快照槽位，使节点随该批次进入准确的历史位置。
+                elementsForProcessing.forEach(el => {
+                    const messageId = el.dataset?.messageId;
+                    if (!messageId) return;
+                    const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
+                    if (mounted && mounted !== el) el.replaceWith(mounted);
+                });
 
                 let insertPoint = renderRoot.firstChild;
                 while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
@@ -4241,6 +4262,15 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
 
     return renderTaskOwner.animationFrame(renderRoot, () => {
             if (!isRenderSessionActive(renderSessionId)) return;
+
+            // 构建 fragment 后到本帧挂载前，活动流补建可能已经恢复同 ID 节点。
+            // 将实时节点移入对应快照槽位，避免它停留在历史队列顶部。
+            allMessageElements.forEach(el => {
+                const messageId = el.dataset?.messageId;
+                if (!messageId) return;
+                const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
+                if (mounted && mounted !== el) el.replaceWith(mounted);
+            });
 
             // Step 1: Append all elements to the DOM.
             renderRoot.appendChild(fragment);
@@ -4307,7 +4337,13 @@ const messageRenderer = {
     updateMessageUI: async (messageId, updatedMessage, root = mainRendererReferences.chatMessagesDiv) => {
         const existingMessageDom = root?.querySelector?.(`.message-item[data-message-id="${messageId}"]`);
         if (!existingMessageDom) return;
-        const newMessageDom = await renderMessage(updatedMessage, true, false);
+        const newMessageDom = await renderMessage(
+            updatedMessage,
+            true,
+            false,
+            null,
+            { root, replaceExisting: true }
+        );
         if (newMessageDom) {
             cleanupMessageDomResources(existingMessageDom, messageId);
             existingMessageDom.replaceWith(newMessageDom);
