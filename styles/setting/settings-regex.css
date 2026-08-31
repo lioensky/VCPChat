@@ -63,7 +63,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     box-sizing: border-box;
     height: 38px;
     width: 38px;
@@ -87,7 +87,7 @@
 
 .custom-select-button svg {
     stroke: currentColor;
-    transition: transform 0.2s ease;
+    transition: transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .custom-select-button.has-selection::after {
@@ -125,7 +125,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .dropdown-option:hover {
@@ -169,11 +169,11 @@
     color: var(--highlight-text);
     box-sizing: border-box;
     transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease,
-        color 0.2s ease,
-        transform 0.2s ease;
+        background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .btn-add-regex:hover {
@@ -209,7 +209,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
     flex-shrink: 0;
 }
 
@@ -225,7 +225,7 @@
     height: 16px;
 }
 
-body.light-theme .btn-add-regex {
+body[data-vcp-theme="light"] .btn-add-regex {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
@@ -240,7 +240,7 @@ body.light-theme .btn-add-regex {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body.light-theme .btn-add-regex.btn-add-regex-secondary {
+body[data-vcp-theme="light"] .btn-add-regex.btn-add-regex-secondary {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.82),
@@ -249,13 +249,13 @@ body.light-theme .btn-add-regex.btn-add-regex-secondary {
     color: color-mix(in srgb, var(--primary-text) 72%, var(--secondary-text) 28%);
 }
 
-body.light-theme .btn-add-regex.btn-add-regex-secondary:hover {
+body[data-vcp-theme="light"] .btn-add-regex.btn-add-regex-secondary:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: #ffffff;
 }
 
-body:not(.light-theme) .btn-add-regex {
+body[data-vcp-theme="dark"] .btn-add-regex {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -270,7 +270,7 @@ body:not(.light-theme) .btn-add-regex {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body:not(.light-theme) .btn-add-regex.btn-add-regex-secondary {
+body[data-vcp-theme="dark"] .btn-add-regex.btn-add-regex-secondary {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.08),
@@ -279,7 +279,7 @@ body:not(.light-theme) .btn-add-regex.btn-add-regex-secondary {
     color: color-mix(in srgb, #ffffff 70%, var(--secondary-text) 30%);
 }
 
-body:not(.light-theme) .btn-add-regex.btn-add-regex-secondary:hover {
+body[data-vcp-theme="dark"] .btn-add-regex.btn-add-regex-secondary:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
@@ -289,7 +289,7 @@ body:not(.light-theme) .btn-add-regex.btn-add-regex-secondary:hover {
 }
 
 /* 亮色主题调整 */
-body.light-theme .custom-dropdown {
+body[data-vcp-theme="light"] .custom-dropdown {
     background-color: var(--secondary-bg);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -331,7 +331,7 @@ body.light-theme .custom-dropdown {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     flex-shrink: 0;
 }
 

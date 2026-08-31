@@ -121,8 +121,8 @@
         display: grid;
         gap: var(--vcp-ui-space-2);
     }
-    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-grid, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-preset-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-density-grid, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-font-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-radius-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-mode-grid button {
         min-width: 0;
@@ -1238,7 +1238,7 @@
         border: 0;
         background: transparent;
     }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .settings-form-group { margin: 0; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .vcp-settings-row { margin: 0; }
 
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor {
         margin-top: var(--vcp-ui-space-4);
@@ -1322,4 +1322,41 @@
     @media (prefers-reduced-motion: reduce) {
         :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope.vcp-appearance-studio-overlay, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tile, :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-option { transition: none; }
     }
+}
+
+/* Restore the pre-sync single-row geometry for Global Settings appearance
+   controls while leaving the standalone Appearance Studio layout intact. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-settings-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-settings-grid > [id$="Row"] {
+    width: 100%;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-sidebar-geometry-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control {
+    display: flex;
+    align-items: center;
+    gap: var(--vcp-ui-space-4);
+    width: 100%;
+    margin: 0;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1));
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control .appearance-range-heading {
+    flex: 1;
+    min-width: 0;
+    padding-right: 48px;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control input[type="range"] {
+    flex: 0 1 220px;
+    width: 220px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
 }

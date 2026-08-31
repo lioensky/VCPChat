@@ -88,7 +88,7 @@
     border-radius: 8px;
     border: none;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color var(--vcp-motion-duration-normal);
     color: #ffffff;
     flex: 0 0 auto;
     text-align: center;
@@ -111,19 +111,19 @@
     background-color: var(--danger-hover-bg);
 }
 
-body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"] {
     background-color: var(--button-bg);
 }
 
-body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"]:hover {
     background-color: var(--button-hover-bg);
 }
 
-body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn {
     background-color: var(--danger-color);
 }
 
-body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     background-color: var(--danger-hover-bg);
 }
 

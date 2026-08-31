@@ -20,7 +20,7 @@
     z-index: 1001;
     box-sizing: border-box; /* Added */
 }
-body.light-theme .title-bar {
+body[data-vcp-theme="light"] .title-bar {
     background-color: var(--panel-bg-light);
 }
 
@@ -85,7 +85,7 @@ body.light-theme .title-bar {
 }
 
 /* 浅色主题下的 Resizer 背景 */
-body.light-theme .resizer {
+body[data-vcp-theme="light"] .resizer {
     background-color: var(--panel-bg-light);
 }
 
@@ -107,7 +107,7 @@ body.light-theme .resizer {
     flex-shrink: 0;
     text-shadow: var(--panel-text-shadow);
 }
-body.light-theme .sidebar {
+body[data-vcp-theme="light"] .sidebar {
     background-color: var(--panel-bg-light);
 }
 
@@ -275,7 +275,7 @@ body.light-theme .sidebar {
     transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
-body.light-theme .sidebar-compact-trigger {
+body[data-vcp-theme="light"] .sidebar-compact-trigger {
     background: color-mix(in srgb, var(--panel-bg-light) 82%, transparent);
 }
 
@@ -319,7 +319,7 @@ body.light-theme .sidebar-compact-trigger {
         transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-body.light-theme .sidebar-compact-menu {
+body[data-vcp-theme="light"] .sidebar-compact-menu {
     background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.56), transparent 42%),
         color-mix(in srgb, var(--panel-bg-light) 90%, transparent);
@@ -407,7 +407,7 @@ body.light-theme .sidebar-compact-menu {
     animation: compactTopicDrawerIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-body.light-theme .sidebar.avatar-only #tabContentTopics.compact-drawer-open {
+body[data-vcp-theme="light"] .sidebar.avatar-only #tabContentTopics.compact-drawer-open {
     background-color: color-mix(in srgb, var(--secondary-bg) 94%, transparent);
     background-image:
         linear-gradient(145deg, rgba(255, 255, 255, 0.72), transparent 38%),
@@ -493,7 +493,7 @@ body.light-theme .sidebar.avatar-only #tabContentTopics.compact-drawer-open {
     overflow: hidden;
     flex-shrink: 0; /* Prevent shrinking */
 }
-body.light-theme .notifications-sidebar {
+body[data-vcp-theme="light"] .notifications-sidebar {
     background-color: var(--panel-bg-light);
 }
 
@@ -628,7 +628,7 @@ body.light-theme .notifications-sidebar {
     flex-grow: 1;
 }
 
-body.light-theme .emoticon-panel {
+body[data-vcp-theme="light"] .emoticon-panel {
     background-color: var(--panel-bg-light);
 }
 

@@ -574,7 +574,7 @@
     margin: -1px 0;
 }
 
-body:not(.light-theme) .maid-diary-update-bubble {
+body[data-vcp-theme="dark"] .maid-diary-update-bubble {
     background: rgba(44, 42, 58, 0.5) !important;
     border-color: #4a485f;
     color: #d8d2c9 !important;
@@ -602,43 +602,43 @@ body:not(.light-theme) .maid-diary-update-bubble {
     background: rgba(96, 125, 154, 0.08);
 }
 
-body:not(.light-theme) .diary-update-header {
+body[data-vcp-theme="dark"] .diary-update-header {
     border-bottom-color: #4a485f;
 }
 
-body:not(.light-theme) .diary-update-title {
+body[data-vcp-theme="dark"] .diary-update-title {
     color: #ffb74d;
 }
 
-body:not(.light-theme) .diary-update-meta {
+body[data-vcp-theme="dark"] .diary-update-meta {
     color: #b0bec5;
 }
 
-body:not(.light-theme) .diary-update-side {
+body[data-vcp-theme="dark"] .diary-update-side {
     border-color: rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.04);
 }
 
-body:not(.light-theme) .diary-update-before {
+body[data-vcp-theme="dark"] .diary-update-before {
     border-left-color: #7f7f90;
 }
 
-body:not(.light-theme) .diary-update-after {
+body[data-vcp-theme="dark"] .diary-update-after {
     border-left-color: #66bb6a;
     background: rgba(102, 187, 106, 0.08);
 }
 
-body:not(.light-theme) .diary-update-label,
-body:not(.light-theme) .diary-update-arrow {
+body[data-vcp-theme="dark"] .diary-update-label,
+body[data-vcp-theme="dark"] .diary-update-arrow {
     color: #a0a0b0;
 }
 
-body:not(.light-theme) .diary-update-content {
+body[data-vcp-theme="dark"] .diary-update-content {
     color: #c5c8c6;
 }
 
 /* --- Maid Diary Dark Theme Overrides --- */
-body:not(.light-theme) .maid-diary-bubble {
+body[data-vcp-theme="dark"] .maid-diary-bubble {
     background: rgba(44, 42, 58, 0.5) !important;
     /* A deep, slightly magical purple-gray */
     border-color: #4a485f;
@@ -647,59 +647,59 @@ body:not(.light-theme) .maid-diary-bubble {
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
-body:not(.light-theme) .diary-header {
+body[data-vcp-theme="dark"] .diary-header {
     border-bottom-color: #4a485f;
 }
 
-body:not(.light-theme) .diary-title {
+body[data-vcp-theme="dark"] .diary-title {
     color: #ffb74d;
     /* A warm, golden-orange for the title */
 }
 
-body:not(.light-theme) .diary-date {
+body[data-vcp-theme="dark"] .diary-date {
     color: #a0a0b0;
     /* A muted gray for secondary info */
 }
 
-body:not(.light-theme) .diary-maid-info {
+body[data-vcp-theme="dark"] .diary-maid-info {
     color: #b0bec5;
 }
 
-body:not(.light-theme) .diary-maid-name,
-body:not(.light-theme) .diary-folder-name {
+body[data-vcp-theme="dark"] .diary-maid-name,
+body[data-vcp-theme="dark"] .diary-folder-name {
     color: #ffcc80;
     /* Lighter shade of the title color */
     background: rgba(255, 183, 77, 0.1);
 }
 
-body:not(.light-theme) .valet-diary-bubble,
-body:not(.light-theme) .valet-diary-update-bubble {
+body[data-vcp-theme="dark"] .valet-diary-bubble,
+body[data-vcp-theme="dark"] .valet-diary-update-bubble {
     background: rgba(38, 50, 65, 0.5) !important;
     border-color: #3e536b;
     color: #d4dde8 !important;
 }
 
-body:not(.light-theme) .valet-diary-bubble .diary-title,
-body:not(.light-theme) .valet-diary-update-bubble .diary-update-title {
+body[data-vcp-theme="dark"] .valet-diary-bubble .diary-title,
+body[data-vcp-theme="dark"] .valet-diary-update-bubble .diary-update-title {
     color: #90caf9;
 }
 
-body:not(.light-theme) .valet-diary-bubble .diary-date,
-body:not(.light-theme) .valet-diary-bubble .diary-maid-info,
-body:not(.light-theme) .valet-diary-bubble .diary-maid-name,
-body:not(.light-theme) .valet-diary-bubble .diary-folder-name,
-body:not(.light-theme) .valet-diary-update-bubble .diary-update-meta,
-body:not(.light-theme) .valet-diary-update-bubble .diary-maid-name,
-body:not(.light-theme) .valet-diary-update-bubble .diary-folder-name {
+body[data-vcp-theme="dark"] .valet-diary-bubble .diary-date,
+body[data-vcp-theme="dark"] .valet-diary-bubble .diary-maid-info,
+body[data-vcp-theme="dark"] .valet-diary-bubble .diary-maid-name,
+body[data-vcp-theme="dark"] .valet-diary-bubble .diary-folder-name,
+body[data-vcp-theme="dark"] .valet-diary-update-bubble .diary-update-meta,
+body[data-vcp-theme="dark"] .valet-diary-update-bubble .diary-maid-name,
+body[data-vcp-theme="dark"] .valet-diary-update-bubble .diary-folder-name {
     color: #bbdefb;
     background: rgba(144, 202, 249, 0.1);
 }
 
-body:not(.light-theme) .diary-meta-separator {
+body[data-vcp-theme="dark"] .diary-meta-separator {
     color: #7f7f90;
 }
 
-body:not(.light-theme) .diary-content {
+body[data-vcp-theme="dark"] .diary-content {
     color: #c5c8c6;
     /* A clear, readable light gray for the main content */
 }
@@ -974,7 +974,7 @@ body:not(.light-theme) .diary-content {
     height: 30px;
 }
 
-body.light-theme .vcp-audio-player {
+body[data-vcp-theme="light"] .vcp-audio-player {
     --vcp-audio-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(240, 247, 255, 0.97));
     --vcp-audio-border: rgba(30, 64, 100, 0.15);
     --vcp-audio-text: #172033;
@@ -987,7 +987,7 @@ body.light-theme .vcp-audio-player {
     --vcp-audio-shadow: 0 12px 28px rgba(30, 64, 100, 0.12);
 }
 
-body.light-theme .vcp-audio-play {
+body[data-vcp-theme="light"] .vcp-audio-play {
     color: #ffffff;
 }
 
@@ -1052,17 +1052,17 @@ body.light-theme .vcp-audio-play {
     outline-offset: -2px;
 }
 
-body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak) {
+body[data-vcp-theme="light"] #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak) {
     color: #1f2a37 !important;
 }
 
-body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):hover {
+body[data-vcp-theme="light"] #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):hover {
     color: #111827 !important;
     background-color: rgba(17, 24, 39, 0.08) !important;
     border-left-color: rgba(17, 24, 39, 0.26);
 }
 
-body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):focus-visible {
+body[data-vcp-theme="light"] #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):focus-visible {
     outline: 2px solid rgba(17, 24, 39, 0.38);
 }
 
@@ -1105,7 +1105,7 @@ body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info
     line-height: 1.4;
 }
 
-body.light-theme .md-content .highlighted-tag {
+body[data-vcp-theme="light"] .md-content .highlighted-tag {
     color: #00796b;
     background-color: rgba(0, 121, 107, 0.08);
 }
@@ -1123,7 +1123,7 @@ body.light-theme .md-content .highlighted-tag {
     border: 1px solid rgba(241, 196, 15, 0.2);
 }
 
-body.light-theme .md-content .highlighted-alert-tag {
+body[data-vcp-theme="light"] .md-content .highlighted-alert-tag {
     color: #b8860b;
     /* DarkGoldenRod for better contrast in light theme */
     background-color: rgba(184, 134, 11, 0.1);
@@ -1162,7 +1162,7 @@ body.light-theme .md-content .highlighted-alert-tag {
 }
 
 /* Define dark theme variables when .dark-theme (or lack of .light-theme) is active */
-body:not(.light-theme) {
+body[data-vcp-theme="dark"] {
     /* Or just .dark-theme if that's how your theme switching works */
     --table-border-color: var(--border-color);
     --table-text-color: var(--primary-text);
@@ -1191,7 +1191,7 @@ body:not(.light-theme) {
     --vcp-canvas-dots-color: #48bb78;
 }
 
-body.light-theme {
+body[data-vcp-theme="light"] {
     --table-border-color: var(--border-color);
     --table-text-color: var(--primary-text);
     --table-bg-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.6);
@@ -1397,7 +1397,7 @@ body.light-theme {
 }
 
 /* Specific style for SUCCESS status in light theme */
-body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
+body[data-vcp-theme="light"] .vcp-tool-result-status:containing("SUCCESS") {
     color: #1b5e20;
     /* Dark green text */
     background-color: rgba(76, 175, 80, 0.15);
@@ -1499,7 +1499,7 @@ body.chat-presentation-immersive.chat-wide-layout .message-item .md-content.cont
     scrollbar-width: thin;
 }
 
-body:not(.light-theme) .vcp-tool-result-raw-content {
+body[data-vcp-theme="dark"] .vcp-tool-result-raw-content {
     background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1533,7 +1533,7 @@ body:not(.light-theme) .vcp-tool-result-raw-content {
     overflow-x: auto;
 }
 
-body:not(.light-theme) .vcp-tool-result-markdown-content pre {
+body[data-vcp-theme="dark"] .vcp-tool-result-markdown-content pre {
     background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1601,7 +1601,7 @@ body:not(.light-theme) .vcp-tool-result-markdown-content pre {
     white-space: normal;
 }
 
-body:not(.light-theme) .vcp-tool-result-bubble table {
+body[data-vcp-theme="dark"] .vcp-tool-result-bubble table {
     background-color: rgba(255, 255, 255, 0.05);
 }
 
@@ -1620,7 +1620,7 @@ body:not(.light-theme) .vcp-tool-result-bubble table {
     background-color: rgba(0, 0, 0, 0.1);
 }
 
-body:not(.light-theme) .vcp-tool-result-bubble th {
+body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
     background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -1735,13 +1735,13 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
     transform: translateY(0);
 }
 
-body.light-theme .vcp-tool-result-truncated-notice {
+body[data-vcp-theme="light"] .vcp-tool-result-truncated-notice {
     background: rgba(2, 119, 189, 0.06);
     border-color: rgba(2, 119, 189, 0.2);
     color: var(--tool-result-name-color);
 }
 
-body.light-theme .vcp-tool-result-truncated-notice:hover {
+body[data-vcp-theme="light"] .vcp-tool-result-truncated-notice:hover {
     background: rgba(2, 119, 189, 0.12);
     border-color: rgba(2, 119, 189, 0.4);
 }
@@ -1942,7 +1942,7 @@ body.light-theme .vcp-tool-result-truncated-notice:hover {
     user-select: none;
 }
 
-body.light-theme .mermaid-viewer {
+body[data-vcp-theme="light"] .mermaid-viewer {
     border-color: rgba(30, 64, 100, 0.16);
     background:
         radial-gradient(circle at 18px 18px, rgba(30, 64, 100, 0.12) 1px, transparent 1px),
@@ -1950,18 +1950,18 @@ body.light-theme .mermaid-viewer {
     background-size: 18px 18px, auto;
 }
 
-body.light-theme .mermaid-viewer-toolbar {
+body[data-vcp-theme="light"] .mermaid-viewer-toolbar {
     background: linear-gradient(180deg, rgba(245, 249, 255, 0.88), rgba(245, 249, 255, 0.62));
     border-bottom-color: rgba(30, 64, 100, 0.12);
 }
 
-body.light-theme .mermaid-viewer-btn {
+body[data-vcp-theme="light"] .mermaid-viewer-btn {
     border-color: rgba(30, 64, 100, 0.18);
     background: rgba(30, 64, 100, 0.06);
     color: #1f2a37;
 }
 
-body.light-theme .mermaid-viewer-btn:hover {
+body[data-vcp-theme="light"] .mermaid-viewer-btn:hover {
     background: rgba(25, 118, 210, 0.12);
     border-color: rgba(25, 118, 210, 0.32);
 }
@@ -1976,7 +1976,7 @@ body.light-theme .mermaid-viewer-btn:hover {
     text-align: left;
 }
 
-body:not(.light-theme) .mermaid-error {
+body[data-vcp-theme="dark"] .mermaid-error {
     background-color: #3e2727;
     border-color: #e57373;
     color: #ef9a9a;
@@ -2259,21 +2259,21 @@ body:not(.light-theme) .mermaid-error {
 }
 
 /* Light theme code blocks and syntax highlighting. */
-body.light-theme .message-item .md-content pre {
+body[data-vcp-theme="light"] .message-item .md-content pre {
     background-color: rgba(255, 250, 240, 0.5);
     color: #333333;
     border-color: rgba(0, 0, 0, 0.1);
 }
 
-body.light-theme .message-item .md-content pre code {
+body[data-vcp-theme="light"] .message-item .md-content pre code {
     color: #333333;
 }
 
-body.light-theme .message-item.streaming .md-content .vcp-stream-code-line {
+body[data-vcp-theme="light"] .message-item.streaming .md-content .vcp-stream-code-line {
     color: #333333;
 }
 
-body.light-theme .message-item.streaming .md-content .vcp-stream-code-line--new {
+body[data-vcp-theme="light"] .message-item.streaming .md-content .vcp-stream-code-line--new {
     background-image: linear-gradient(
         90deg,
         #333333 0%,
@@ -2288,37 +2288,37 @@ body.light-theme .message-item.streaming .md-content .vcp-stream-code-line--new 
     );
 }
 
-body.light-theme .message-item .md-content pre .hljs-keyword {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-keyword {
     color: #d73a49;
 }
 
-body.light-theme .message-item .md-content pre .hljs-built_in {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-built_in {
     color: #6f42c1;
 }
 
-body.light-theme .message-item .md-content pre .hljs-string {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-string {
     color: #032f62;
 }
 
-body.light-theme .message-item .md-content pre .hljs-comment {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-comment {
     color: #6a737d;
     font-style: italic;
 }
 
-body.light-theme .message-item .md-content pre .hljs-number {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-number {
     color: #005cc5;
 }
 
-body.light-theme .message-item .md-content pre .hljs-title,
-body.light-theme .message-item .md-content pre .hljs-class .hljs-title {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-title,
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-class .hljs-title {
     color: #6f42c1;
 }
 
-body.light-theme .message-item .md-content pre .hljs-params {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-params {
     color: #24292e;
 }
 
-body.light-theme .message-item .md-content pre .hljs-meta {
+body[data-vcp-theme="light"] .message-item .md-content pre .hljs-meta {
     color: #e36209;
 }
 
@@ -2330,7 +2330,7 @@ body.light-theme .message-item .md-content pre .hljs-meta {
         -webkit-text-fill-color: currentColor;
     }
 
-    body.light-theme .message-item.streaming .md-content .vcp-stream-code-line--new {
+    body[data-vcp-theme="light"] .message-item.streaming .md-content .vcp-stream-code-line--new {
         color: #333333;
     }
 }
@@ -2435,26 +2435,26 @@ body.light-theme .message-item .md-content pre .hljs-meta {
     font-size: 12px;
 }
 
-body.light-theme .vcp-html-preview-toggle,
-body.light-theme .vcp-code-copy-button {
+body[data-vcp-theme="light"] .vcp-html-preview-toggle,
+body[data-vcp-theme="light"] .vcp-code-copy-button {
     background: rgba(255, 255, 255, 0.78);
     color: #1f2a37;
     border-color: rgba(30, 64, 100, 0.18);
 }
 
-body.light-theme .vcp-html-preview-toggle:hover,
-body.light-theme .vcp-code-copy-button:hover {
+body[data-vcp-theme="light"] .vcp-html-preview-toggle:hover,
+body[data-vcp-theme="light"] .vcp-code-copy-button:hover {
     background: rgba(255, 255, 255, 0.94);
     border-color: rgba(25, 118, 210, 0.32);
 }
 
-body.light-theme .vcp-code-copy-button.copied {
+body[data-vcp-theme="light"] .vcp-code-copy-button.copied {
     background: rgba(34, 197, 94, 0.18);
     color: #14532d;
     border-color: rgba(22, 163, 74, 0.35);
 }
 
-body.light-theme .vcp-code-copy-button.failed {
+body[data-vcp-theme="light"] .vcp-code-copy-button.failed {
     background: rgba(244, 63, 94, 0.16);
     color: #881337;
     border-color: rgba(225, 29, 72, 0.34);
@@ -2497,7 +2497,7 @@ body.light-theme .vcp-code-copy-button.failed {
 }
 
 /* Dark theme adjustments for the container */
-body:not(.light-theme) .vcp-html-preview-container {
+body[data-vcp-theme="dark"] .vcp-html-preview-container {
     border-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -2518,7 +2518,7 @@ body:not(.light-theme) .vcp-html-preview-container {
     transition: all 0.3s ease;
 }
 
-body.light-theme .vcp-thought-chain-bubble {
+body[data-vcp-theme="light"] .vcp-thought-chain-bubble {
     background: rgba(0, 0, 0, 0.03) !important;
     border-color: rgba(0, 0, 0, 0.1);
 }
@@ -2711,43 +2711,43 @@ body.light-theme .vcp-thought-chain-bubble {
     --tool-summary-status-text: #ffffff;
 }
 
-body.light-theme .vcp-tool-call-summary-chip.status-success {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-success {
     --tool-summary-chip-color: #14532d;
     --tool-summary-chip-bg: rgba(34, 197, 94, 0.14);
     --tool-summary-chip-border: rgba(22, 163, 74, 0.35);
     --tool-summary-status-bg: #15803d;
 }
 
-body.light-theme .vcp-tool-call-summary-chip.status-timeout {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-timeout {
     --tool-summary-chip-color: #78350f;
     --tool-summary-chip-bg: rgba(245, 158, 11, 0.16);
     --tool-summary-chip-border: rgba(217, 119, 6, 0.36);
     --tool-summary-status-bg: #b45309;
 }
 
-body.light-theme .vcp-tool-call-summary-chip.status-failure {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-failure {
     --tool-summary-chip-color: #881337;
     --tool-summary-chip-bg: rgba(244, 63, 94, 0.14);
     --tool-summary-chip-border: rgba(225, 29, 72, 0.34);
     --tool-summary-status-bg: #be123c;
 }
 
-body.light-theme .vcp-tool-call-summary-chip.status-rejected {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-rejected {
     --tool-summary-chip-color: #7c2d12;
     --tool-summary-chip-bg: rgba(249, 115, 22, 0.15);
     --tool-summary-chip-border: rgba(234, 88, 12, 0.36);
     --tool-summary-status-bg: #c2410c;
 }
 
-body.light-theme .vcp-tool-call-summary-chip.status-cancelled,
-body.light-theme .vcp-tool-call-summary-chip.status-skipped {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-cancelled,
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-skipped {
     --tool-summary-chip-color: #4c1d95;
     --tool-summary-chip-bg: rgba(139, 92, 246, 0.14);
     --tool-summary-chip-border: rgba(124, 58, 237, 0.32);
     --tool-summary-status-bg: #6d28d9;
 }
 
-body.light-theme .vcp-tool-call-summary-chip.status-unknown {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-chip.status-unknown {
     --tool-summary-chip-color: #334155;
     --tool-summary-chip-bg: rgba(100, 116, 139, 0.12);
     --tool-summary-chip-border: rgba(71, 85, 105, 0.28);
@@ -2760,7 +2760,7 @@ body.light-theme .vcp-tool-call-summary-chip.status-unknown {
     word-break: break-word;
 }
 
-body.light-theme .vcp-tool-call-summary-bubble {
+body[data-vcp-theme="light"] .vcp-tool-call-summary-bubble {
     --tool-summary-bg: linear-gradient(145deg, rgba(245, 249, 255, 0.96), rgba(229, 239, 250, 0.92));
     --tool-summary-border-color: rgba(25, 118, 210, 0.18);
     --tool-summary-header-border-color: rgba(25, 118, 210, 0.12);
@@ -2843,15 +2843,15 @@ body.light-theme .vcp-tool-call-summary-bubble {
     font-weight: 500;
 }
 
-body.light-theme .vcp-role-divider.role-system {
+body[data-vcp-theme="light"] .vcp-role-divider.role-system {
     --role-divider-color: #b45309;
 }
 
-body.light-theme .vcp-role-divider.role-assistant {
+body[data-vcp-theme="light"] .vcp-role-divider.role-assistant {
     --role-divider-color: #0369a1;
 }
 
-body.light-theme .vcp-role-divider.role-user {
+body[data-vcp-theme="light"] .vcp-role-divider.role-user {
     --role-divider-color: #047857;
 }
 
@@ -2920,16 +2920,16 @@ body.light-theme .vcp-role-divider.role-user {
     overflow: hidden;
 }
 
-body.light-theme .vcp-desktop-push-placeholder {
+body[data-vcp-theme="light"] .vcp-desktop-push-placeholder {
     background: linear-gradient(145deg, rgba(200, 220, 240, 0.3), rgba(180, 210, 240, 0.2)) !important;
     border-color: rgba(50, 120, 200, 0.2);
 }
 
-body.light-theme .vcp-desktop-push-label {
+body[data-vcp-theme="light"] .vcp-desktop-push-label {
     color: rgba(30, 100, 180, 0.9);
 }
 
-body.light-theme .vcp-desktop-push-preview pre {
+body[data-vcp-theme="light"] .vcp-desktop-push-preview pre {
     background: rgba(0, 0, 0, 0.05);
     color: rgba(0, 0, 0, 0.5);
 }
@@ -2953,10 +2953,10 @@ body.light-theme .vcp-desktop-push-preview pre {
     opacity: 0.95;
 }
 
-body.light-theme .md-content hr,
-body.light-theme .diary-content hr,
-body.light-theme .vcp-tool-result-markdown-content hr,
-body.light-theme .vcp-thought-chain-body hr {
+body[data-vcp-theme="light"] .md-content hr,
+body[data-vcp-theme="light"] .diary-content hr,
+body[data-vcp-theme="light"] .vcp-tool-result-markdown-content hr,
+body[data-vcp-theme="light"] .vcp-thought-chain-body hr {
     background: linear-gradient(
         90deg,
         transparent 0%,
@@ -3096,30 +3096,30 @@ body.light-theme .vcp-thought-chain-body hr {
 }
 
 /* Light theme overrides */
-body.light-theme .vcp-flowlock-bubble {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme .vcp-flowlock-bubble.state-start .vcp-flowlock-icon {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-start .vcp-flowlock-icon {
     color: #15803d;
 }
 
-body.light-theme .vcp-flowlock-bubble.state-stop .vcp-flowlock-icon {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-stop .vcp-flowlock-icon {
     color: #475569;
 }
 
-body.light-theme .vcp-flowlock-bubble.state-complete .vcp-flowlock-icon {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-complete .vcp-flowlock-icon {
     color: #1d4ed8;
 }
 
-body.light-theme .vcp-flowlock-bubble.state-fail .vcp-flowlock-icon {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-fail .vcp-flowlock-icon {
     color: #dc2626;
 }
 
-body.light-theme .vcp-flowlock-bubble.state-heartbeat .vcp-flowlock-icon {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-heartbeat .vcp-flowlock-icon {
     color: #7e22ce;
 }
 
-body.light-theme .vcp-flowlock-bubble.state-prompt .vcp-flowlock-icon {
+body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-prompt .vcp-flowlock-icon {
     color: #b45309;
 }

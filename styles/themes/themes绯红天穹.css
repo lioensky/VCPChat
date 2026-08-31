@@ -86,7 +86,7 @@ body {
  * A theme of serenity, imagination, and ethereal beauty.
  * =================================================================
  */
-body.light-theme {
+body[data-vcp-theme="light"] {
     /* --- Wallpaper Interface --- */
     /*
      * 使用方法: 将 'none' 替换为您的壁纸文件路径, 例如 url('ComfyUI_003700_242440569464029_00016.jpg')
@@ -156,7 +156,7 @@ body.light-theme {
     -webkit-backdrop-filter: blur(12px) saturate(120%);
     border: 1px solid rgba(255, 255, 255, 0.18);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard), backdrop-filter var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 .message-bubble:hover {
@@ -181,9 +181,48 @@ body.light-theme {
 }
 
 /* 浅色主题下的柔和阴影 */
-body.light-theme .message-bubble {
+body[data-vcp-theme="light"] .message-bubble {
     box-shadow: 
         0 4px 20px rgba(45, 41, 34, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
+/* Fine official-theme scrollbar. */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+    border-radius: 8px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) !important;
+}
+
+/* Keyboard focus remains visible in both modes. */
+:focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+}
+
+/* Respect users who prefer low-motion interfaces. */
+@media (prefers-reduced-motion: reduce) {
+    .message-item.streaming.agent .md-content,
+    .message-item.streaming.assistant .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
+        animation: none !important;
+    }
+
+    .header-button,
+    .title-bar-button {
+        transition: none !important;
+    }
+}

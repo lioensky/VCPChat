@@ -38,7 +38,7 @@
     box-sizing: border-box;
     min-width: 0;
     box-shadow: none;
-    transition: color 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .topic-search-input:hover {
@@ -269,8 +269,8 @@
 }
 
 /* Dark mode: keep the search pill frosted, but tone down the liquid-glass highlights. */
-body:not(.light-theme) .agents-header .sidebar-search-subtab,
-body:not(.light-theme) .topics-header-container .sidebar-search-subtab {
+body[data-vcp-theme="dark"] .agents-header .sidebar-search-subtab,
+body[data-vcp-theme="dark"] .topics-header-container .sidebar-search-subtab {
     border: 1px solid color-mix(in srgb, rgba(255, 255, 255, 0.07) 84%, var(--highlight-text) 16%);
     background: linear-gradient(
         180deg,
@@ -286,16 +286,16 @@ body:not(.light-theme) .topics-header-container .sidebar-search-subtab {
     filter: none;
 }
 
-body:not(.light-theme) .agents-header .sidebar-search-subtab::before,
-body:not(.light-theme) .agents-header .sidebar-search-subtab::after,
-body:not(.light-theme) .topics-header-container .sidebar-search-subtab::before,
-body:not(.light-theme) .topics-header-container .sidebar-search-subtab::after,
-body:not(.light-theme) .agent-search-icon::after {
+body[data-vcp-theme="dark"] .agents-header .sidebar-search-subtab::before,
+body[data-vcp-theme="dark"] .agents-header .sidebar-search-subtab::after,
+body[data-vcp-theme="dark"] .topics-header-container .sidebar-search-subtab::before,
+body[data-vcp-theme="dark"] .topics-header-container .sidebar-search-subtab::after,
+body[data-vcp-theme="dark"] .agent-search-icon::after {
     display: none;
 }
 
-body:not(.light-theme) .agents-header .sidebar-search-subtab:hover,
-body:not(.light-theme) .topics-header-container .sidebar-search-subtab:hover {
+body[data-vcp-theme="dark"] .agents-header .sidebar-search-subtab:hover,
+body[data-vcp-theme="dark"] .topics-header-container .sidebar-search-subtab:hover {
     border-color: color-mix(in srgb, rgba(255, 255, 255, 0.08) 80%, var(--highlight-text) 20%);
     background: linear-gradient(
         180deg,
@@ -310,8 +310,8 @@ body:not(.light-theme) .topics-header-container .sidebar-search-subtab:hover {
         inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-body:not(.light-theme) .agents-header .sidebar-search-subtab:focus-within,
-body:not(.light-theme) .topics-header-container .sidebar-search-subtab:focus-within {
+body[data-vcp-theme="dark"] .agents-header .sidebar-search-subtab:focus-within,
+body[data-vcp-theme="dark"] .topics-header-container .sidebar-search-subtab:focus-within {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, rgba(255, 255, 255, 0.11) 82%, var(--highlight-text) 18%),
@@ -326,7 +326,7 @@ body:not(.light-theme) .topics-header-container .sidebar-search-subtab:focus-wit
         inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-body:not(.light-theme) .agent-search-icon {
+body[data-vcp-theme="dark"] .agent-search-icon {
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(6px);
@@ -337,24 +337,24 @@ body:not(.light-theme) .agent-search-icon {
     color: rgba(225, 230, 238, 0.82);
 }
 
-body:not(.light-theme) .agent-search-icon svg {
+body[data-vcp-theme="dark"] .agent-search-icon svg {
     filter: none;
 }
 
-body:not(.light-theme) #agentSearchInput {
+body[data-vcp-theme="dark"] #agentSearchInput {
     color: rgba(235, 239, 245, 0.92);
 }
 
-body:not(.light-theme) #agentSearchInput::placeholder {
+body[data-vcp-theme="dark"] #agentSearchInput::placeholder {
     color: rgba(214, 221, 231, 0.6);
     opacity: 1;
 }
 
-body:not(.light-theme) #topicSearchInput {
+body[data-vcp-theme="dark"] #topicSearchInput {
     color: rgba(235, 239, 245, 0.92);
 }
 
-body:not(.light-theme) #topicSearchInput::placeholder {
+body[data-vcp-theme="dark"] #topicSearchInput::placeholder {
     color: rgba(214, 221, 231, 0.6);
     opacity: 1;
 }

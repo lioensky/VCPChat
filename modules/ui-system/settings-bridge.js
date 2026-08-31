@@ -1,47 +1,57 @@
-// settings-bridge — Next UI enhancement bridge for the settings surfaces.
+// settings-bridge — unified VCPUI enhancement bridge for settings surfaces.
 //
-// The sidebar settings forms (agent/group) and the global settings modal keep
-// their original business DOM, form ids, defaults and IPC; this module only
-// layers the VCPUI presentation on top of the canonical main-window shell.
+// The entry stays the orchestrator: it owns the global settings modal shell,
+// the public window.VCPUISettingsBridge contract and the refresh/teardown
+// lifecycle.  The domains live in their own modules —
+// settings/bridge-shared.js (presentation scope/controller/Select
+// projection/shared passes), agent-settings-bridge.js (Agent/Group sidebar
+// forms) and typed-field-owners.js (typed settings seam) — and compose here.
 //
-// Global settings (R5.1): in Next, the modal is rebuilt into a
-// SettingsShell-style layout — left rail with a VCPUI-enhanced search field and
-// a VCPUI List category navigation, the original form as the content area, and
-// the existing footer as the fixed save bar.
+// Global settings: the modal is rebuilt into one Harness SettingsRoot-style
+// layout — native nav cells in the left rail, a header/options content column,
+// the original form as the business source, and autosave status in the header.
 
-const controllers = new Set();
-const controllerReleases = new Map();
-const injectedNodes = new Set();
-// Per-modal shell state: { layout, nav, listHost, originalNavHtml, meta,
-// active, query, list } keyed by the modal root so teardown can restore the
-// exact original navigation markup. WeakMap cannot be iterated, so built
-// roots are tracked separately.
+import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, mountHarnessSwitches, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
+import { mountSettingsAutosave, flushLegacyAutosave, teardownLegacyAutosave } from './settings/autosave.js';
+import { claimSaveCoordinator, getSaveCoordinator } from './settings/save-coordinator.js';
+import { mountCanonicalSettingsRows, removeLegacySubsectionHeadings } from './settings/canonical-rows.js';
+import { runSettingsPipeline } from './settings/pipeline.js';
+import { syncRenderSettingsVisibility } from './settings/render-visibility.js';
+import { mountAppearanceSelects, mountAppearanceLanguageRows, mountChatFontRows, mountAppearanceRadiusLanguageRow, mountAppearanceFontSizeRow } from './settings/appearance-controls.js';
+import { mountAppearanceRanges } from './settings/appearance-ranges.js';
+import { mountAppearanceToggles } from './settings/appearance-toggles.js';
+import { mountHomeTaglineInput } from './settings/home-controls.js';
+import { mountIdentityColorPairs } from './settings/identity-controls.js';
+import { mountChoiceControls } from './settings/choice-controls.js';
+import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
+import { mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
+import { fieldProjection } from './settings/field-registry.js';
+import { mountForumCredentialInputs } from './settings/forum-controls.js';
+import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
+import { addTypedNetworkPathInput, ensureTypedSettingsService, ensureRustAssistantUiService, ensureForumConfigUiService, ensureAssistantRuntimeUiService, mountTypedSettingsConsumer, mountTypedForumFieldOwner, mountTypedFieldOwner, flushTypedOwners, flushTypedForumFields, teardownTypedOwners, disposeTypedSettings } from './typed-field-owners.js';
+
+// Per-modal shell state is keyed by modal root so teardown can restore the
+// exact original business nodes/classes after the canonical tree is removed.
+// WeakMap cannot be iterated, so built roots are tracked separately.
 const shellState = new WeakMap();
 const shellRoots = new Set();
+const disclosureStates = new Set();
 // Replaced inline SVGs inside the global form, keyed by container, so teardown
-// restores the original Lucide-style paths (classic must not lose them).
+// restores the original upstream paths during teardown.
 const iconReplacements = new Set();
 let refreshQueued = false;
-const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
-const bridgeScope = LifecycleScope ? new LifecycleScope('next:settings-bridge-controller') : null;
 const settingsHost = document.getElementById('tabContentSettings');
-let presentationScope = null;
-let destroyed = false;
 let destroyPromise = null;
 
-function ensurePresentationScope() {
-    if (destroyed) return null;
-    if (!presentationScope) {
-        presentationScope = bridgeScope?.child('next:settings-presentation') || null;
-    }
-    return presentationScope;
+function shouldEnhanceSidebarSettings() {
+    // Global settings has one presentation contract.  The data attribute is
+    // retained only as bootstrap metadata; it never selects a second layout.
+    return Boolean(settingsHost);
 }
 
-function isNextUi() {
-    return settingsHost?.dataset.settingsPresentation !== 'classic';
-}
-
-function isGlobalSettingsNextUi() {
+function hasGlobalSettingsSurface() {
+    // Global settings has one canonical surface.  Keep this helper as a
+    // compatibility seam for callers, but never branch its presentation mode.
     return Boolean(document.getElementById('globalSettingsModal'));
 }
 
@@ -49,46 +59,56 @@ function syncGlobalSettingsHost() {
     const modal = document.getElementById('globalSettingsModal');
     const active = Boolean(modal?.classList.contains('active'));
     document.documentElement.classList.toggle('vcp-global-settings-host', active);
-    modal?.classList.add('vcp-global-settings-next');
+    // Keep the historical marker as a non-branching compatibility alias for
+    // automation/tests; all styling is owned by the unified surface marker.
+    modal?.classList.add('vcp-global-settings-surface');
     return modal;
 }
 
-function enhance(name, element, options = {}) {
-    if (!element || window.VCPUI.getController(element)) return;
+// The sidebar entry is a routine text action, so it can use the same generated
+// Button contract as the other high-frequency Settings actions.  Its existing
+// click handler stays outside this bridge: this owner changes only the visual
+// presentation and retracts it with the Settings surface scope.
+function mountGlobalSettingsEntryButton() {
+    const button = document.getElementById('globalSettingsBtn');
+    const api = window.VCPUIUX;
+    const scope = ensurePresentationScope();
+    if (!button || !api?.mountButton || !scope || button.dataset.vcpTypedGlobalSettingsEntry === 'true') return;
     try {
-        const controller = window.VCPUI.enhance(name, element, options);
-        controllers.add(controller);
-        const scope = ensurePresentationScope();
-        if (scope) {
-            controllerReleases.set(controller, scope.own(() => controller.destroy(), `settings:${name}`, 'ui-registration'));
-        }
+        api.mountButton(button, { variant: 'outline', size: 'sm' }, scope);
+        button.dataset.vcpTypedGlobalSettingsEntry = 'true';
+        scope.own(() => {
+            delete button.dataset.vcpTypedGlobalSettingsEntry;
+        }, 'typed-global-settings-entry-marker', 'ui-presentation');
     } catch (error) {
-        console.warn(`[VCPUI SettingsBridge] Could not enhance ${name}:`, error);
+        // The existing native button and listener remain fully operational if
+        // the optional presentation artifact cannot mount.
+        console.warn('[VCPUI SettingsBridge] Could not mount global Settings entry Button:', error);
     }
 }
 
-function enhanceForm(form) {
-    form.querySelectorAll('.agent-settings-section, .group-settings-section').forEach(section => {
-        enhance('SettingsSection', section);
-    });
-    form.querySelectorAll('input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])').forEach(input => {
-        enhance('Input', input);
-    });
-    form.querySelectorAll('textarea').forEach(textarea => enhance('Textarea', textarea));
-    form.querySelectorAll('select').forEach(select => enhance('Select', select, { kernel: 'native' }));
-    form.querySelectorAll('input[type="range"]').forEach(range => enhance('Range', range));
-    form.querySelectorAll('label.switch').forEach(control => enhance('Switch', control));
-    form.querySelectorAll('.agent-name-wrapper, .group-name-wrapper, .group-settings-field-shell, .style-control-item, .params-content > div:not(.form-group-inline)').forEach(field => {
-        if (field.querySelector('input:not([type="hidden"]), select, textarea')) enhance('Field', field);
-    });
-    form.querySelectorAll(':scope > .form-actions').forEach(actionBar => {
-        enhance('SettingsActionBar', actionBar, { form });
-    });
+// The network-path add action is a routine, non-destructive Settings command.
+// Keep its existing event handler and canonical form mutation, while adopting
+// the same generated Button owner as the Settings entry itself.
+function mountGlobalSettingsPathAction(root) {
+    const button = root?.querySelector?.('#addNetworkPathBtn');
+    const api = window.VCPUIUX;
+    const scope = ensurePresentationScope();
+    if (!button || !api?.mountButton || !scope || button.dataset.vcpTypedNetworkPathAction === 'true') return;
+    try {
+        api.mountButton(button, { variant: 'outline', size: 'sm' }, scope);
+        button.dataset.vcpTypedNetworkPathAction = 'true';
+        scope.own(() => {
+            delete button.dataset.vcpTypedNetworkPathAction;
+        }, 'typed-network-path-action-marker', 'ui-presentation');
+    } catch (error) {
+        console.warn('[VCPUI SettingsBridge] Could not mount network-path action Button:', error);
+    }
 }
 
 // Lucide icon names for the global settings categories. Icons are always
 // rendered through VCPUI (`.vcp-ui-icon` -> lucide-adapter); no inline SVG,
-// emoji or text arrows on this surface in next mode.
+// emoji or text arrows on this surface.
 const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'user-identity': 'user',
     'server-connection': 'server',
@@ -100,34 +120,232 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
     'quick-actions': 'zap',
 });
 
-// Global settings modal: control enhancement, VCP save bar on the footer and a
-// SettingsShell-style layout (search + category List in the left rail).
+// Global settings modal: control enhancement, autosave status, and the
+// source-equivalent SettingsRoot shell.
 function enhanceGlobalSettings(root, form) {
-    form.querySelectorAll('input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])').forEach(input => {
-        enhance('Input', input);
+    // The mount sequence is declared, not positional: every implicit "this
+    // pass must own its nodes before X sees them" constraint is an explicit
+    // `before` edge, and runSettingsPipeline resolves the same historical
+    // order deterministically (declaration order breaks ties).
+    const api = () => window.VCPUIUX;
+    const scope = ensurePresentationScope;
+    const steps = [
+        // Claimed before every save client mounts: legacy autosave, the typed
+        // settings owner, and the forum owner all register with it as
+        // clients. It only needs the form, so it stays step zero — a save
+        // client mounting first would silently miss its registration.
+        { name: 'save-coordinator', run: () => claimSaveCoordinator(form) },
+        {
+            name: 'canonical-rows',
+            before: ['harness-inputs', 'appearance-rows', 'global-pill-steppers',
+                'global-typed-primitives', 'legacy-range-pass', 'harness-switches',
+                'harness-disclosures', 'agent-name-fields'],
+            run: () => mountCanonicalSettingsRows(form),
+        },
+        {
+            name: 'harness-inputs',
+            // The legacy VCPUI native-kernel Input/Textarea class enhancement
+            // is retired here: the Input primitive owns single-line input
+            // presentation, textareas keep the bare-control contract. Short
+            // enumerations remain native/segmented controls; long ones get a
+            // Harness-style popover while the native select stays canonical.
+            run: () => mountHarnessInputs(form),
+        },
+        {
+            name: 'appearance-rows',
+            before: ['select-projection'],
+            run: () => {
+                mountAppearanceFontSizeRow(form, api(), scope());
+                mountAppearanceLanguageRows(form, api(), scope());
+                mountChatFontRows(form, api(), scope());
+                mountAppearanceSelects(form, api(), scope());
+                mountAppearanceRadiusLanguageRow(form, api(), scope());
+            },
+        },
+        {
+            name: 'global-pill-steppers',
+            // Global pill/stepper projections must own their nodes before the
+            // catch-all select projection and the legacy Range enhance pass.
+            before: ['select-projection', 'legacy-range-pass'],
+            run: () => {
+                mountGlobalLanguageRows(form, api(), scope());
+                mountGlobalSteppers(form, api(), scope());
+                mountVoiceShortcutInput(form, api(), scope());
+            },
+        },
+        { name: 'select-projection', run: () => selectProjection.mount(form) },
+        {
+            name: 'global-typed-primitives',
+            run: () => {
+                mountHomeTaglineInput(form, api(), scope());
+                mountChoiceControls(form, api(), scope());
+                mountAppearanceRanges(form, api(), scope());
+                mountAppearanceToggles(form, api(), scope());
+                mountIdentityColorPairs(form, api(), scope(), (message, kind) => window.uiHelperFunctions?.showToastNotification?.(message, kind));
+                mountForumCredentialInputs(form, api(), scope());
+            },
+        },
+        {
+            name: 'topic-summary-picker',
+            // Reuse the production AgentModelPicker contract for the
+            // topic-summary field.  The native input remains canonical; the
+            // legacy modal template stays available until its shared business
+            // callers are fully retired.
+            run: () => mountTypedTopicSummaryModelPicker(form),
+        },
+        { name: 'forum-field-owner', run: () => mountTypedForumFieldOwner(root, form) },
+        {
+            name: 'legacy-range-pass',
+            run: () => form.querySelectorAll('input[type="range"]').forEach(range => { if (!['appearanceSidebarAvatarSize', 'appearanceSidebarRowHeight', 'appearanceCustomRadius', 'streamAnimationDurationMs'].includes(range.id)) enhance('Range', range); }),
+        },
+        { name: 'harness-switches', run: () => mountHarnessSwitches(form) },
+        {
+            name: 'harness-disclosures',
+            run: () => {
+                form.querySelectorAll('.agent-style-collapsible-container').forEach(disclosure => {
+                    disclosure.dataset.settingPrimitive = 'disclosure';
+                    disclosure.querySelector('.style-collapse-header')?.classList.add('vcp-harness-disclosure-row');
+                });
+                mountHarnessDisclosures(form);
+            },
+        },
+        {
+            name: 'agent-name-fields',
+            run: () => form.querySelectorAll('.agent-name-wrapper').forEach(field => {
+                if (field.querySelector('input:not([type="hidden"]), select, textarea')) enhance('Field', field);
+            }),
+        },
+        { name: 'settings-shell', run: () => mountSettingsShell(root) },
+        { name: 'autosave', run: () => mountSettingsAutosave(root, form, scope()) },
+        { name: 'typed-field-owner', run: () => mountTypedFieldOwner(root, form) },
+        { name: 'form-icons', run: () => normalizeFormIcons(root) },
+    ];
+    runSettingsPipeline(steps);
+}
+
+// Single-line text inputs are projected by the real library Input primitive
+// (window.VCPUIUX.mountInput): the native input stays the sole business node
+// while the primitive wrap owns the border/focus surface.  Textareas are
+// deliberately excluded — the primitive wrap is a fixed 32px single-line
+// frame, and the form's bare-control contract already gives textareas their
+// multiline geometry (contract gap reported to thread A).  The typed mounts
+// (home tagline, forum credentials, color pair) own their own controls.
+function mountHarnessInputs(form) {
+    const api = window.VCPUIUX;
+    const scope = ensurePresentationScope();
+    if (!api?.mountInput || !scope) return;
+    const selector = 'input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])';
+    form.querySelectorAll(selector).forEach(control => {
+        if (control.dataset.vcpHarnessInputPrimitive === 'true') return;
+        // Registered non-input projections own their field's chrome (stepper
+        // hosts adopted wholesale, raw controls kept bare for their typed
+        // owner); the field-registry documents each case.
+        const projection = fieldProjection(control.id);
+        if (projection && projection !== 'input') return;
+        if (control.closest('.vcp-uiux-input-wrap')) return;
+        // Compound picker containers (topic-summary model row) own their input
+        // presentation as one pill via the compound-container override CSS; an
+        // Input wrap between container and input would resurrect the boxed
+        // look those rules exist to remove.
+        if (control.closest('.model-input-container')) return;
+        try {
+            const release = api.mountInput(control, {}, scope);
+            if (!release) return;
+            control.dataset.vcpHarnessInputPrimitive = 'true';
+            control.closest('.vcp-uiux-input-wrap')?.classList.add('vcp-harness-input-fill');
+            scope.own(() => { delete control.dataset.vcpHarnessInputPrimitive; }, `harness-input-${control.id || control.name || uniqueSettingsKey()}`, 'ui-presentation');
+        } catch (error) {
+            console.warn('[VCPUI SettingsBridge] Could not mount Harness Input primitive:', error);
+        }
     });
-    form.querySelectorAll('textarea').forEach(textarea => enhance('Textarea', textarea));
-    // The canonical global settings modal is a real Next surface; its Select
-    // controls use the Web Awesome kernel like the other VCPUI controls. Do
-    // not lock them into VCPUI's native fallback while the lazy runtime is
-    // still loading; vcp-main-ui-runtime refreshes this bridge once ready.
-    if (window.VCPWebAwesome?.isLoaded?.('select')) {
-        form.querySelectorAll('select').forEach(select => enhance('Select', select));
+}
+
+function mountHarnessDisclosures(form) {
+    const ownerScope = ensurePresentationScope();
+    if (!ownerScope) return;
+    form.querySelectorAll('.agent-style-collapsible-container').forEach(container => {
+        // disclosureStates stores state records, not raw containers.  Using
+        // Set.has(container) here silently missed the existing record and
+        // re-bound click/keydown listeners on every Settings refresh.
+        if ([...disclosureStates].some(state => state.container === container)) return;
+        const header = container.querySelector('.style-collapse-header');
+        const content = container.querySelector('.agent-style-controls');
+        if (!header || !content) return;
+        const originalHeaderClass = header.className;
+        const originalHeaderAttrs = {
+            role: header.getAttribute('role'),
+            tabindex: header.getAttribute('tabindex'),
+            ariaControls: header.getAttribute('aria-controls'),
+            ariaExpanded: header.getAttribute('aria-expanded'),
+        };
+        const originalContentId = content.id;
+        if (!content.id) content.id = `${container.id || 'settings-disclosure'}-content`;
+        header.classList.add('vcp-harness-disclosure-row');
+        header.setAttribute('role', 'button');
+        header.tabIndex = header.tabIndex >= 0 ? header.tabIndex : 0;
+        header.setAttribute('aria-controls', content.id);
+        const sync = () => header.setAttribute('aria-expanded', String(!container.classList.contains('collapsed')));
+        const toggle = event => {
+            if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            container.classList.toggle('collapsed');
+            sync();
+        };
+        ownerScope.listen(header, 'click', toggle);
+        ownerScope.listen(header, 'keydown', toggle);
+        const observer = window.MutationObserver ? new window.MutationObserver(sync) : null;
+        observer?.observe(container, { attributes: true, attributeFilter: ['class'] });
+        sync();
+        const state = { container, header, observer, cleaned: false, cleanup: () => {
+            if (state.cleaned) return;
+            state.cleaned = true;
+            observer?.disconnect();
+            header.removeAttribute('aria-controls');
+            header.removeAttribute('aria-expanded');
+            if (originalHeaderAttrs.role === null) header.removeAttribute('role');
+            else header.setAttribute('role', originalHeaderAttrs.role);
+            if (originalHeaderAttrs.tabindex === null) header.removeAttribute('tabindex');
+            else header.setAttribute('tabindex', originalHeaderAttrs.tabindex);
+            if (originalHeaderAttrs.ariaControls === null) header.removeAttribute('aria-controls');
+            else header.setAttribute('aria-controls', originalHeaderAttrs.ariaControls);
+            if (originalHeaderAttrs.ariaExpanded === null) header.removeAttribute('aria-expanded');
+            else header.setAttribute('aria-expanded', originalHeaderAttrs.ariaExpanded);
+            header.className = originalHeaderClass;
+            if (originalContentId) content.id = originalContentId;
+            else content.removeAttribute('id');
+            disclosureStates.delete(state);
+        }};
+        disclosureStates.add(state);
+        ownerScope.own(state.cleanup, `harness-disclosure-${container.id || uniqueSettingsKey()}`, 'ui-presentation');
+    });
+}
+
+function flushSettingsAutosave() {
+    // The coordinator is the single flush entry once the presentation has
+    // mounted; the module flushes below only serve the early-bootstrap
+    // window where the pipeline has not claimed the form yet.
+    const coordinator = getSaveCoordinator(document.getElementById('globalSettingsForm'));
+    if (coordinator) {
+        coordinator.flush();
+        return;
     }
-    form.querySelectorAll('input[type="range"]').forEach(range => enhance('Range', range));
-    form.querySelectorAll('label.switch').forEach(control => enhance('Switch', control));
-    form.querySelectorAll('.agent-name-wrapper').forEach(field => {
-        if (field.querySelector('input:not([type="hidden"]), select, textarea')) enhance('Field', field);
-    });
-    const footer = root.querySelector('.global-settings-footer');
-    if (footer) enhance('SettingsActionBar', footer, { form });
-    mountSettingsShell(root);
-    normalizeFormIcons(root);
+    flushLegacyAutosave();
+    flushTypedOwners();
+}
+
+function teardownSettingsAutosave() {
+    teardownLegacyAutosave();
+    teardownTypedOwners();
+    getSaveCoordinator(document.getElementById('globalSettingsForm'))?.dispose();
+}
+
+function teardownHarnessDisclosures() {
+    [...disclosureStates].forEach(state => state.cleanup());
 }
 
 // Replaces the handful of hand-inlined Lucide paths inside the global form
-// with VCPUI icon nodes (rendered by lucide-adapter in next mode). Originals
-// are kept so classic mode and teardown can restore them exactly.
+// with VCPUI icon nodes (rendered by lucide-adapter). Originals are kept for
+// deterministic teardown and business-DOM restoration.
 function normalizeFormIcons(root) {
     if (root.dataset.vcpSettingsIconsNormalized) return;
     const replaced = [];
@@ -141,8 +359,8 @@ function normalizeFormIcons(root) {
         svg.replaceWith(icon);
         // lucide-adapter replaces this temporary span with an SVG. Retaining
         // the span in the restoration record keeps an already-detached node
-        // alive for the whole Next surface lifetime and, across repeated mode
-        // round-trips, makes Chromium report a linear detached-node chain.
+        // alive for the whole surface lifetime and, across repeated round-trips,
+        // makes Chromium report a linear detached-node chain.
         // Restoration only needs the container and upstream SVG.
         replaced.push({ container, original: svg });
     };
@@ -163,283 +381,324 @@ function restoreFormIcons(root) {
     delete root.dataset.vcpSettingsIconsNormalized;
 }
 
-// SettingsShell build: replaces the legacy <ul> category nav with a VCPUI List
-// and pins a VCPUI-enhanced search above it. The original form sections are the
-// content area; switching categories only toggles the `active` class so
-// unsaved values in hidden sections stay in the DOM.
+// SettingsShell build: assemble a live Harness SettingsRoot primitive tree.
+// The original form sections remain the business source of truth; only the
+// shell chrome (nav/header/options) is reconstructed here.
 function mountSettingsShell(root) {
-    if (root.querySelector('.vcp-ui-settings-shell')) return;
-    const layout = root.querySelector('.global-settings-layout');
-    const nav = root.querySelector('.global-settings-nav');
-    const listHost = nav?.querySelector('.settings-nav-list');
-    if (!layout || !nav || !listHost) {
-        mountLegacySearch(root);
+    if (root.querySelector('.vcp-harness-settings-panel')) {
+        reconcileSettingsShell(root);
+        return;
+    }
+    mountTypedSettingsConsumer(root);
+    const shellScope = ensurePresentationScope();
+    const panel = root.querySelector('.vcp-settings-source-panel');
+    const layout = root.querySelector('.vcp-settings-source-layout');
+    const nav = root.querySelector('.vcp-settings-source-nav');
+    const listHost = nav?.querySelector('.vcp-settings-source-list');
+    const content = root.querySelector('.vcp-settings-source-content');
+    const form = root.querySelector('#globalSettingsForm');
+    const title = root.querySelector('.vcp-settings-source-title');
+    const close = root.querySelector('.close-button');
+    if (!panel || !layout || !nav || !content || !form || !title || !close) {
         return;
     }
 
-    const meta = [...listHost.querySelectorAll('.settings-nav-item')].map(item => ({
-        value: item.dataset.section,
-        label: (item.querySelector('span')?.textContent || '').trim() || item.textContent.trim(),
-        icon: GLOBAL_CATEGORY_ICONS[item.dataset.section] || 'circle',
-        selected: item.classList.contains('active'),
-    }));
+    let meta = [];
+    try {
+        const sourceMeta = JSON.parse(nav.dataset.settingsSections || '[]');
+        meta = sourceMeta.map(item => ({ ...item, icon: GLOBAL_CATEGORY_ICONS[item.value] || 'circle', selected: item.value === 'user-identity' }));
+    } catch (error) {
+        console.error('[VCPUI SettingsBridge] Invalid settings section metadata', error);
+        return;
+    }
+    if (!meta.length) return;
     const initial = meta.find(item => item.selected)?.value || meta[0]?.value;
     if (!initial || !document.getElementById(`section-${initial}`)) {
-        mountLegacySearch(root);
         return;
     }
 
+
     const state = {
+        panel,
         layout,
         nav,
-        listHost,
-        // Keep the original Classic nodes alive instead of rebuilding them
-        // from HTML on teardown. Their event listeners are owned by the
-        // Classic settings controller and must survive a Next preview.
-        originalNavNodes: [...listHost.childNodes],
+        content,
+        form,
+        close,
+        listHost: null,
+        originalNavHost: listHost || null,
+        title,
+        header: null,
+        options: null,
+        sectionHost: null,
+        sectionBank: null,
+        sections: new Map(),
+        navList: null,
+        cleanups: [],
         meta,
         active: initial,
         query: '',
-        list: null,
-        listRelease: null,
     };
     shellState.set(root, state);
     shellRoots.add(root);
-    layout.classList.add('vcp-ui-settings-shell');
+    root.classList.add('vcp-harness-settings-root', 'vcp-global-settings-surface');
+    panel.classList.add('vcp-harness-settings-panel');
+    nav.classList.add('vcp-harness-settings-nav');
+    content.classList.add('vcp-harness-settings-content');
+    // Legacy presentation selectors must not participate in the live tree.
+    // The classes are restored only when the bridge is torn down.
+    nav.classList.remove('vcp-settings-source-nav');
+    content.classList.remove('vcp-settings-source-content');
+    panel.classList.remove('vcp-settings-source-panel');
+    title.classList.remove('vcp-settings-source-title');
 
-    const sectionText = (value) => document.getElementById(`section-${value}`)?.textContent.toLowerCase() || '';
-    const visibleItems = () => {
-        const q = state.query.trim().toLowerCase();
-        if (!q) return state.meta;
-        return state.meta.filter(item =>
-            item.label.toLowerCase().includes(q) || sectionText(item.value).includes(q)
-        );
-    };
+    // Harness owns the settings title in the nav rail, not as a second
+    // content heading. Move the canonical node and restore its exact parent
+    // and sibling on teardown.
+    nav.prepend(title);
+    title.classList.add('vcp-harness-settings-nav-title');
+    title.id ||= 'vcpSettingsNavTitle';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', title.id);
+    nav.setAttribute('aria-label', '全局设置');
 
-    const renderList = () => {
-        const items = visibleItems().map(item => ({
-            value: item.value,
-            icon: item.icon,
-            label: item.label,
-            selected: item.value === state.active,
-            onClick: () => activateSection(item.value),
-        }));
-        if (state.list) state.list.update({ items });
-        else {
-            state.list = window.VCPUI.create('List', { items });
-            state.listRelease = ensurePresentationScope()?.own(() => state.list?.destroy(), 'settings-navigation-list', 'ui-registration') || null;
-            state.listHost.replaceChildren(state.list.element);
-            state.list.element.setAttribute('role', 'tablist');
-            state.list.element.setAttribute('aria-label', '全局设置分类');
-            state.list.element.setAttribute('aria-orientation', 'vertical');
-            const onKeyDown = event => {
-                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-                const rows = [...state.list.element.querySelectorAll('.vcp-ui-list-item[role="tab"]')];
-                const current = rows.indexOf(document.activeElement);
-                if (current < 0) return;
-                event.preventDefault();
-                const next = event.key === 'Home' ? 0
-                    : event.key === 'End' ? rows.length - 1
-                        : (current + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
-                const row = rows[next];
-                if (!row) return;
-                activateSection(row.dataset.section);
-                [...state.list.element.querySelectorAll('.vcp-ui-list-item[role="tab"]')]
-                    .find(candidate => candidate.dataset.section === row.dataset.section)?.focus();
-            };
-            if (ensurePresentationScope()) presentationScope.listen(state.list.element, 'keydown', onKeyDown, undefined, 'settings-navigation-keyboard');
-            else state.list.element.addEventListener('keydown', onKeyDown);
+    // Compose the Harness header/options primitives around the existing form;
+    // the form remains the business owner, while the new nodes own chrome.
+    const header = document.createElement('header');
+    header.className = 'vcp-harness-settings-header';
+    header.setAttribute('data-setting-primitive', 'header');
+    const actions = document.createElement('div');
+    actions.className = 'vcp-harness-settings-actions';
+    const options = document.createElement('div');
+    options.className = 'vcp-harness-settings-options';
+    options.setAttribute('data-setting-primitive', 'options');
+    state.header = header;
+    state.options = options;
+    options.append(...[...content.childNodes]);
+    // Harness owns an icon-only 28px close primitive with an accessible text
+    // seat. Replace the legacy text glyph once, while preserving the same
+    // business button and close listener.
+    if (!close.dataset.vcpHarnessClose) {
+        const icon = document.createElement('span');
+        icon.className = 'vcp-ui-icon vcp-harness-settings-close-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = 'x';
+        const hiddenLabel = document.createElement('span');
+        hiddenLabel.className = 'vcp-harness-settings-close-label';
+        hiddenLabel.textContent = close.getAttribute('aria-label') || '关闭';
+        close.replaceChildren(icon, hiddenLabel);
+        close.classList.add('vcp-harness-settings-close');
+        close.dataset.vcpHarnessClose = 'true';
+    }
+    actions.append(close);
+    header.append(actions);
+    content.replaceChildren(header, options);
+
+    // Harness renders only the selected section into Options. Keep the
+    // remaining business fields connected to the same form in a hidden bank
+    // so legacy id/name queries, form serialization and IPC handlers remain
+    // authoritative without leaving inactive settings in the visible tree.
+    const sectionHost = document.createElement('div');
+    sectionHost.className = 'vcp-harness-active-section';
+    sectionHost.dataset.settingPrimitive = 'section';
+    const sectionBank = document.createElement('div');
+    sectionBank.className = 'vcp-harness-section-bank';
+    sectionBank.hidden = true;
+    sectionBank.setAttribute('aria-hidden', 'true');
+    state.sectionHost = sectionHost;
+    state.sectionBank = sectionBank;
+    [...form.children].filter(child => child.matches('.settings-section')).forEach(section => {
+        const value = section.id.replace(/^section-/, '');
+        state.sections.set(value, section);
+        section.classList.remove('active');
+        sectionBank.append(section);
+    });
+    form.prepend(sectionHost, sectionBank);
+    const initialSection = state.sections.get(initial);
+    if (initialSection) {
+        sectionHost.append(initialSection);
+        initialSection.classList.add('active');
+    }
+    const canonicalNav = document.createElement('div');
+    canonicalNav.className = 'vcp-harness-settings-nav-list';
+    canonicalNav.setAttribute('aria-label', '全局设置分类');
+    state.navList = canonicalNav;
+    state.listHost = canonicalNav;
+    listHost?.replaceWith(canonicalNav);
+    nav.replaceChildren(title, canonicalNav);
+    // The legacy grid wrapper no longer owns live layout.  Keep it detached so
+    // business nodes can be restored atomically by teardown.
+    panel.replaceChildren(nav, content);
+
+    const rows = state.meta.map(item => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'vcp-harness-settings-nav-cell';
+        row.dataset.section = item.value;
+        row.dataset.vcpCanonicalNav = 'true';
+        row.id = `vcpSettingsTab-${item.value}`;
+        const icon = document.createElement('span');
+        icon.className = 'vcp-harness-settings-nav-icon vcp-ui-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = item.icon;
+        const copy = document.createElement('span');
+        copy.className = 'vcp-harness-settings-nav-copy';
+        const label = document.createElement('strong');
+        label.textContent = item.label;
+        copy.append(label);
+        row.append(icon, copy);
+        const onClick = () => activateSection(item.value);
+        const onKeydown = event => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const current = rows.indexOf(row);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+            rows[next]?.focus();
+            if (rows[next]) activateSection(rows[next].dataset.section);
+        };
+        if (shellScope) {
+            shellScope.listen(row, 'click', onClick);
+            shellScope.listen(row, 'keydown', onKeydown);
+        } else {
+            row.addEventListener('click', onClick);
+            row.addEventListener('keydown', onKeydown);
         }
-        const rows = [...state.list.element.querySelectorAll('.vcp-ui-list-item')];
+        state.listHost.append(row);
+        return row;
+    });
+    const renderList = () => {
+        state.listHost.setAttribute('aria-label', '全局设置分类');
         rows.forEach(row => {
-            const value = row.dataset.section || row.dataset.value;
+            const value = row.dataset.section;
             const item = state.meta.find(candidate => candidate.value === value);
             if (!item) return;
-            row.dataset.section = item.value;
-            row.setAttribute('role', 'tab');
-            row.id = `vcpSettingsTab-${item.value}`;
-            row.setAttribute('aria-selected', String(item.value === state.active));
-            row.tabIndex = item.value === state.active ? 0 : -1;
-            row.setAttribute('aria-controls', `section-${item.value}`);
+            const selected = item.value === state.active;
+            row.classList.toggle('is-active', selected);
+            row.classList.toggle('active', selected);
+            row.dataset.state = selected ? 'selected' : 'idle';
+            row.tabIndex = selected ? 0 : -1;
         });
         state.meta.forEach(item => {
-            const section = root.querySelector(`#section-${item.value}`);
+            const section = state.sections.get(item.value) || root.querySelector(`#section-${item.value}`);
             if (!section) return;
-            section.setAttribute('role', 'tabpanel');
-            section.setAttribute('aria-labelledby', `vcpSettingsTab-${item.value}`);
-            section.setAttribute('aria-hidden', String(item.value !== state.active));
+            // The active section is derived from the same state as the nav.
+            // Re-assert it on every render so stale classes from a reused
+            // modal or a bootstrap refresh cannot leave the two columns out
+            // of sync.
+            section.classList.toggle('active', item.value === state.active);
+            section.removeAttribute('role');
+            section.removeAttribute('aria-labelledby');
+            section.removeAttribute('aria-hidden');
         });
     };
 
     const activateSection = (value) => {
-        if (value === state.active) return;
-        root.querySelectorAll('.settings-section').forEach(section => {
-            section.classList.remove('active', 'switching-out', 'switching-in');
-        });
-        const target = document.getElementById(`section-${value}`);
-        if (target) target.classList.add('active');
+        if (!state.meta.some(item => item.value === value)) return;
         state.active = value;
-        renderList();
-    };
-
-    const onQuery = (query) => {
-        state.query = query;
-        renderList();
-        if (query.trim()) {
-            const first = visibleItems().find(item => item.value !== state.active) || visibleItems()[0];
-            if (first) activateSection(first.value);
+        const next = state.sections.get(value);
+        if (next && state.sectionHost && next.parentNode !== state.sectionHost) {
+            const current = state.sectionHost.querySelector('.settings-section');
+            if (current) state.sectionBank.append(current);
+            state.sectionHost.append(next);
         }
+        renderList();
     };
-
-    // VCPUI-enhanced search field, pinned to the top of the left rail.
-    const search = document.createElement('div');
-    search.className = 'vcp-ui-settings-search';
-    const searchIcon = document.createElement('span');
-    searchIcon.className = 'vcp-ui-icon';
-    searchIcon.setAttribute('aria-hidden', 'true');
-    searchIcon.textContent = 'search';
-    const searchInput = document.createElement('input');
-    searchInput.type = 'search';
-    searchInput.placeholder = '搜索设置项';
-    searchInput.setAttribute('aria-label', '搜索设置项');
-    search.append(searchIcon, searchInput);
-    enhance('Input', searchInput);
-    nav.prepend(search);
-    injectedNodes.add(search);
-    const onInput = () => onQuery(searchInput.value);
-    if (ensurePresentationScope()) presentationScope.listen(searchInput, 'input', onInput, undefined, 'settings-search-input');
-    else searchInput.addEventListener('input', onInput);
 
     renderList();
 }
 
-// Legacy fallback used only when the modal has no category nav (kept for the
-// contract fixture and defensive coverage): injects the search into the content
-// column and filters `.settings-nav-item` nodes by hiding them.
-function mountLegacySearch(root) {
-    const content = root.querySelector('.global-settings-content');
-    const navItems = [...root.querySelectorAll('.settings-nav-item')];
-    if (!content || content.querySelector('.vcp-ui-settings-search')) return;
-
-    const search = document.createElement('div');
-    search.className = 'vcp-ui-settings-search';
-    const icon = document.createElement('span');
-    icon.className = 'vcp-ui-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = 'search';
-    const input = document.createElement('input');
-    input.type = 'search';
-    input.placeholder = '搜索设置项';
-    input.setAttribute('aria-label', '搜索设置项');
-    search.append(icon, input);
-    content.prepend(search);
-    injectedNodes.add(search);
-
-    const handleInput = () => {
-        const query = input.value.trim().toLowerCase();
-        navItems.forEach(item => {
-            const section = root.querySelector(`#section-${item.dataset.section}`);
-            const hit = !query
-                || (section && section.textContent.toLowerCase().includes(query))
-                || item.textContent.toLowerCase().includes(query);
-            item.hidden = !hit;
-        });
-        if (query) {
-            const firstVisible = navItems.find(item => !item.hidden);
-            if (firstVisible) firstVisible.click();
-        }
-    };
-    if (ensurePresentationScope()) presentationScope.listen(input, 'input', handleInput, undefined, 'legacy-settings-search-input');
-    else input.addEventListener('input', handleInput);
+// Reconcile a previously mounted shell after modal reopen or section-bank
+// churn.  The form remains canonical; this only restores the active section's
+// physical host and presentation markers when an earlier close/reopen turn
+// left a stale active class behind.
+function reconcileSettingsShell(root) {
+    const state = shellState.get(root);
+    if (!state?.sectionHost || !state.sectionBank || !state.form) return;
+    const activeSection = state.sections.get(state.active);
+    if (!activeSection) return;
+    if (activeSection.parentNode !== state.sectionHost) {
+        const current = state.sectionHost.querySelector('.settings-section');
+        if (current && current !== activeSection) state.sectionBank.append(current);
+        state.sectionHost.append(activeSection);
+    }
+    state.sections.forEach((section, value) => {
+        section.classList.toggle('active', value === state.active);
+    });
+    state.listHost?.querySelectorAll?.('[data-section]')?.forEach(row => {
+        const selected = row.dataset.section === state.active;
+        row.classList.toggle('is-active', selected);
+        row.classList.toggle('active', selected);
+        row.dataset.state = selected ? 'selected' : 'idle';
+        row.tabIndex = selected ? 0 : -1;
+    });
 }
 
 function cleanupDisconnectedControllers() {
-    [...controllers].forEach(controller => {
-        if (controller.element.isConnected) return;
-        const release = controllerReleases.get(controller);
-        if (release) void release();
-        else controller.destroy();
-        controllerReleases.delete(controller);
-        controllers.delete(controller);
-    });
+    releaseDisconnectedControllers();
+    cleanupDisconnectedAgentModelPickers();
 }
 
 function refresh() {
     refreshQueued = false;
-    if (destroyed) return;
+    if (isPresentationDestroyed()) return;
     ensurePresentationScope();
     cleanupDisconnectedControllers();
+    mountGlobalSettingsEntryButton();
     const globalSettingsModal = syncGlobalSettingsHost();
-    if (isNextUi()) {
+    mountGlobalSettingsPathAction(globalSettingsModal);
+    if (shouldEnhanceSidebarSettings()) {
         document.querySelectorAll('#agentSettingsForm, #groupSettingsForm').forEach(enhanceForm);
     }
-    if (isGlobalSettingsNextUi()) {
+    if (hasGlobalSettingsSurface()) {
         const form = globalSettingsModal?.querySelector('#globalSettingsForm');
         if (globalSettingsModal && form) enhanceGlobalSettings(globalSettingsModal, form);
     }
 }
 
 function scheduleRefresh() {
-    if (destroyed || refreshQueued) return;
+    if (isPresentationDestroyed() || refreshQueued) return;
     refreshQueued = true;
     queueMicrotask(refresh);
 }
 
 function teardown() {
-    const scope = presentationScope;
-    presentationScope = null;
+    const scope = takePresentationScope();
     // Retract enhanced controller identity synchronously before a rapid
-    // Classic -> Next round-trip can schedule the next refresh.  The Scope
+    // A rapid surface round-trip can schedule another refresh.  The Scope
     // disposal below still owns error isolation and all non-controller
     // resources, but must not leave stale VCPUI proxies visible to the next
     // presentation generation.
-    [...controllers].reverse().forEach(controller => {
-        const release = controllerReleases.get(controller);
-        if (release) {
-            void release().catch(error => {
-                console.error('[VCPUI SettingsBridge] Failed to release controller:', error);
-            });
-        } else controller.destroy();
-    });
+    releaseAllControllers();
     if (scope) {
         void scope.dispose('settings-presentation-teardown').catch(error => {
             console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error);
         });
     }
-    controllers.clear();
-    controllerReleases.clear();
-    injectedNodes.forEach(node => node.remove());
-    injectedNodes.clear();
+    releaseAllAgentModelPickers();
+    teardownSettingsAutosave();
+    teardownHarnessDisclosures();
+    selectProjection.teardown();
     [...shellRoots].forEach(root => {
         const state = shellState.get(root);
         if (!state) return;
-        state.layout.classList.remove('vcp-ui-settings-shell');
-        if (state.listRelease) void state.listRelease();
-        else state.list?.destroy();
-        const activeSection = state.active || root.querySelector('.settings-section.active')?.id?.replace(/^section-/, '');
-        state.originalNavNodes
-            .filter(node => node.nodeType === 1 && node.matches('.settings-nav-item'))
-            .forEach(node => node.classList.toggle('active', node.dataset.section === activeSection));
-        state.meta.forEach(item => {
-            const section = root.querySelector(`#section-${item.value}`);
-            section?.removeAttribute('role');
-            section?.removeAttribute('aria-labelledby');
-            section?.removeAttribute('aria-hidden');
-        });
-        state.listHost.replaceChildren(...state.originalNavNodes);
+        state.cleanups?.forEach(cleanup => cleanup());
+        state.cleanups = [];
+        // The unified Surface is canonical for the renderer lifetime. Teardown
+        // releases listeners/controllers but does not resurrect retired DOM.
         shellState.delete(root);
-        document.dispatchEvent(new CustomEvent('vcp-settings-navigation-restored', {
-            detail: { root }
-        }));
     });
     shellRoots.clear();
     document.querySelectorAll('#globalSettingsModal[data-vcp-settings-icons-normalized]').forEach(restoreFormIcons);
-    document.getElementById('globalSettingsModal')?.classList.remove('vcp-global-settings-next');
+    document.getElementById('globalSettingsModal')?.classList.remove('vcp-global-settings-surface');
     document.documentElement.classList.remove('vcp-global-settings-host');
 }
 
 const handleModalVisibility = event => {
-    if (event.detail?.modalId === 'globalSettingsModal') scheduleRefresh();
+    if (event.detail?.modalId === 'globalSettingsModal') {
+        if (event.detail?.active === false) flushSettingsAutosave();
+        scheduleRefresh();
+    }
 };
 const handleSurfaceUpdated = () => scheduleRefresh();
 if (bridgeScope) bridgeScope.listen(document, 'modal-visibility-changed', handleModalVisibility, undefined, 'settings-modal-visibility');
@@ -455,9 +714,34 @@ scheduleRefresh();
 
 window.VCPUISettingsBridge = Object.freeze({
     refresh: scheduleRefresh,
+    flush: flushSettingsAutosave,
+    flushForum: flushTypedForumFields,
+    addNetworkPathInput(path = '') {
+        if (isPresentationDestroyed()) return false;
+        const root = document.getElementById('globalSettingsModal');
+        return addTypedNetworkPathInput(root, path)
+            || window.uiHelperFunctions?.addNetworkPathInput?.(path)
+            || false;
+    },
+    getTypedService() {
+        return ensureTypedSettingsService();
+    },
+    getRustAssistantService() {
+        ensureTypedSettingsService();
+        return ensureRustAssistantUiService();
+    },
+    getForumConfigService() {
+        ensureTypedSettingsService();
+        return ensureForumConfigUiService();
+    },
+    getAssistantRuntimeService() {
+        ensureTypedSettingsService();
+        return ensureAssistantRuntimeUiService();
+    },
     destroy() {
         if (destroyPromise) return destroyPromise;
-        destroyed = true;
+        markPresentationDestroyed();
+        disposeTypedSettings();
         if (!bridgeScope) {
             document.removeEventListener('modal-visibility-changed', handleModalVisibility);
             document.removeEventListener('modal-ready', handleModalVisibility);
@@ -468,6 +752,7 @@ window.VCPUISettingsBridge = Object.freeze({
         return destroyPromise;
     },
     get enhancedCount() {
-        return controllers.size;
+        return enhancedControllerCount();
     }
 });
+

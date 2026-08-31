@@ -49,7 +49,7 @@
     padding: 0;
 }
 
-body:not(.light-theme) .notification-header-actions > button {
+body[data-vcp-theme="dark"] .notification-header-actions > button {
     color: var(--highlight-text);
 }
 
@@ -59,21 +59,21 @@ body:not(.light-theme) .notification-header-actions > button {
     color: var(--primary-text);
 }
 
-body:not(.light-theme) .notification-header-actions > button:hover {
+body[data-vcp-theme="dark"] .notification-header-actions > button:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
     color: var(--text-on-accent);
 }
 
-body.light-theme .notification-header-actions > button {
+body[data-vcp-theme="light"] .notification-header-actions > button {
     background: transparent;
     border-color: rgba(51, 51, 51, 0.08);
     box-shadow: none;
     color: var(--button-bg);
 }
 
-body.light-theme .notification-header-actions > button:hover {
+body[data-vcp-theme="light"] .notification-header-actions > button:hover {
     background: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     box-shadow: none;
@@ -92,7 +92,7 @@ body.light-theme .notification-header-actions > button:hover {
     color: var(--text-on-accent) !important;
 }
 
-body.light-theme .notification-header-actions > button.active {
+body[data-vcp-theme="light"] .notification-header-actions > button.active {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.78),
@@ -107,7 +107,7 @@ body.light-theme .notification-header-actions > button.active {
     color: var(--button-bg) !important;
 }
 
-body.light-theme .notification-header-actions > button.active svg {
+body[data-vcp-theme="light"] .notification-header-actions > button.active svg {
     stroke: currentColor;
 }
 
@@ -234,7 +234,7 @@ body.light-theme .notification-header-actions > button.active svg {
     flex: 1;
 }
 
-body.light-theme .notes-section {
+body[data-vcp-theme="light"] .notes-section {
     background-color: transparent;
 }
 
@@ -267,8 +267,8 @@ body.light-theme .notes-section {
     min-width: 0;
 }
 
-body:not(.light-theme) .notes-section .capsule-button,
-body:not(.light-theme) .notes-section > button {
+body[data-vcp-theme="dark"] .notes-section .capsule-button,
+body[data-vcp-theme="dark"] .notes-section > button {
     color: var(--accent-bg) !important;
 }
 
@@ -280,9 +280,9 @@ body:not(.light-theme) .notes-section > button {
     color: var(--primary-text) !important;
 }
 
-body:not(.light-theme) .notes-section > button:hover,
-body:not(.light-theme) .app-tray-pinned-apps > button:hover,
-body:not(.light-theme) .app-tray-drawer-item:hover {
+body[data-vcp-theme="dark"] .notes-section > button:hover,
+body[data-vcp-theme="dark"] .app-tray-pinned-apps > button:hover,
+body[data-vcp-theme="dark"] .app-tray-drawer-item:hover {
     color: var(--text-on-accent) !important;
 }
 
@@ -305,16 +305,16 @@ body:not(.light-theme) .app-tray-drawer-item:hover {
  * 并不是 .notes-section 的直接子元素；必须与“更多”按钮共同声明，
  * 才能在浅色主题下继承同一套 currentColor。
  */
-body.light-theme .notes-section > button,
-body.light-theme .app-tray-pinned-apps > button {
+body[data-vcp-theme="light"] .notes-section > button,
+body[data-vcp-theme="light"] .app-tray-pinned-apps > button {
     background-color: var(--highlight-text);
     color: #ffffff !important;
     border: 1px solid var(--highlight-text);
 }
 
-body.light-theme .notes-section > button:hover,
-body.light-theme .app-tray-pinned-apps > button:hover,
-body.light-theme .app-tray-drawer-item:hover {
+body[data-vcp-theme="light"] .notes-section > button:hover,
+body[data-vcp-theme="light"] .app-tray-pinned-apps > button:hover,
+body[data-vcp-theme="light"] .app-tray-drawer-item:hover {
     background-color: var(--secondary-bg);
     color: var(--highlight-text) !important;
     border-color: var(--highlight-text);
@@ -349,7 +349,9 @@ body.light-theme .app-tray-drawer-item:hover {
     opacity: 0;
     visibility: hidden;
     transform: translateY(10px) scale(0.95);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
+                transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
+                background-color var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
 .app-tray-drawer::before {
@@ -475,7 +477,8 @@ body.light-theme .app-tray-drawer-item:hover {
     border-radius: 12px;
     cursor: pointer;
     color: var(--accent-bg) !important;
-    transition: all 0.2s;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     pointer-events: auto !important; /* 确保能点击 */
     position: relative;
     z-index: 2;
@@ -502,7 +505,8 @@ body.light-theme .app-tray-drawer-item:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     pointer-events: auto !important; /* 深度修复：确保能接收点击 */
     position: relative;
     z-index: 5;
@@ -514,7 +518,7 @@ body.light-theme .app-tray-drawer-item:hover {
     transform: rotate(45deg);
 }
 
-body.light-theme .app-tray-drawer {
+body[data-vcp-theme="light"] .app-tray-drawer {
     background: rgba(255, 255, 255, 0.8);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
@@ -634,7 +638,7 @@ body.light-theme .app-tray-drawer {
     overflow-wrap: break-word;
 }
 
-body.light-theme .notification-item {
+body[data-vcp-theme="light"] .notification-item {
     color: #000000;
 }
 
@@ -678,11 +682,11 @@ body.light-theme .notification-item {
     /* animation: vcp-shimmer-bg 5s linear infinite; */
 }
 
-body.dark-theme .floating-toast-notification {
+body[data-vcp-theme="dark"] .floating-toast-notification {
     background-color: rgba(40, 40, 44, 0.85);
 }
 
-body.light-theme .floating-toast-notification {
+body[data-vcp-theme="light"] .floating-toast-notification {
     background-color: rgba(240, 244, 248, 0.85);
     color: var(--primary-text-light);
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -795,7 +799,9 @@ body.light-theme .floating-toast-notification {
     border-radius: 8px;
     margin-bottom: 10px;
     padding: 12px;
-    transition: all 0.2s ease;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 .filter-rule-item.enabled {
@@ -1107,7 +1113,9 @@ body.light-theme .floating-toast-notification {
     cursor: pointer;
     font-size: 0.85em;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: opacity var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
@@ -1502,11 +1510,11 @@ body.light-theme .floating-toast-notification {
     padding: 7px 16px;
 }
 
-body.light-theme .tool-change-audit-diff-line.is-delete {
+body[data-vcp-theme="light"] .tool-change-audit-diff-line.is-delete {
     color: #8f1d2c;
 }
 
-body.light-theme .tool-change-audit-diff-line.is-add {
+body[data-vcp-theme="light"] .tool-change-audit-diff-line.is-add {
     color: #176b35;
 }
 

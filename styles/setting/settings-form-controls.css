@@ -20,10 +20,6 @@
     gap: 10px;
 }
 
-#agentTtsSpeed {
-    flex-grow: 1;
-}
-
 #ttsSpeedValue {
     font-weight: 500;
     color: var(--secondary-text);

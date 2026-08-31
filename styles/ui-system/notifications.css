@@ -277,6 +277,24 @@
         }
     }
 
+    /* At compact window widths the notification rail can retain a desktop
+     * width while its header is laid out against the viewport edge. Keep the
+     * menu inside that header instead of allowing an absolute right anchor to
+     * escape beyond the window. */
+    @media (max-width: 960px) {
+        html .vcp-ui-scope .next-ui-notification-actions {
+            position: static;
+        }
+
+        html .vcp-ui-scope .next-ui-notification-menu {
+            position: fixed;
+            top: calc(var(--vcp-ui-shell-header-height) + var(--vcp-ui-space-2));
+            right: var(--vcp-ui-space-2);
+            width: min(196px, calc(100vw - var(--vcp-ui-space-4)));
+            min-width: 0;
+        }
+    }
+
     html .vcp-ui-scope #vchatAppTray {
         display: flex;
         min-height: calc(var(--vcp-ui-control-md) + var(--vcp-ui-space-4));
