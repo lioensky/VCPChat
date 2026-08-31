@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createUiScope } from '../modules/uiux/runtime/scope.ts';
-import { createUiServiceRegistry } from '../modules/uiux/runtime/service-registry.ts';
+import { createUiScope } from '../modules/uiux/generated/runtime/scope.js';
+import { createUiServiceRegistry } from '../modules/uiux/generated/runtime/service-registry.js';
 
 async function makeScope(label = 'registry-test') {
     const module = await import('../modules/ui-system/lifecycle-scope.js');

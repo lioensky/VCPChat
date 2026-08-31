@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { createRustAssistantUiService } = await import('../modules/uiux/adapters/rust-assistant.ts');
+const { createRustAssistantUiService } = await import('../modules/uiux/generated/adapters/rust-assistant.js');
 
 test('Rust Assistant UI adapter refreshes and saves through capability without durable duplicate state', async () => {
     let state = { useRustAssistant: true, debugMode: false, runtimeThresholds: { minDistance: 0 } };

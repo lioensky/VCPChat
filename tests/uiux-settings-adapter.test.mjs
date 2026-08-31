@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { createSettingsUiService } = await import('../modules/uiux/adapters/settings.ts');
+const { createSettingsUiService } = await import('../modules/uiux/generated/adapters/settings.js');
 
 test('typed SettingsUiService publishes only committed patches and releases external updates', async () => {
     let state = { currentThemeMode: 'light', density: 'comfortable' };

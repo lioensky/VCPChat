@@ -5,8 +5,8 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { LifecycleScope } = require('../modules/ui-system/lifecycle-scope.js');
-const { createUiScope } = await import('../modules/uiux/runtime/scope.ts');
-const { createDomRenderer } = await import('../modules/uiux/runtime/dom-renderer.ts');
+const { createUiScope } = await import('../modules/uiux/generated/runtime/scope.js');
+const { createDomRenderer } = await import('../modules/uiux/generated/runtime/dom-renderer.js');
 
 test('DomRenderer owns mount, text update, keyed insertion and dispose', async () => {
     const dom = new JSDOM('<!doctype html><div id="root"></div>');

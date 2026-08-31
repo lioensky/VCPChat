@@ -5,8 +5,8 @@ import { JSDOM } from 'jsdom';
 
 const require = createRequire(import.meta.url);
 const { LifecycleScope } = require('../modules/ui-system/lifecycle-scope.js');
-const { createUiScope } = await import('../modules/uiux/runtime/scope.ts');
-const { mountThemePresenter } = await import('../modules/uiux/providers/theme.ts');
+const { createUiScope } = await import('../modules/uiux/generated/runtime/scope.js');
+const { mountThemePresenter } = await import('../modules/uiux/generated/providers/theme.js');
 
 function createThemeReadable() {
     let value = Object.freeze({ ready: true, preference: 'light', effective: 'light' });
