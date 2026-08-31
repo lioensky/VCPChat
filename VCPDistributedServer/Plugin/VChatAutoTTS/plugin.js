@@ -53,11 +53,23 @@
     function extractText(element, includeCode) {
         const content = element.querySelector('.md-content');
         if (!content) return '';
+
         const clone = content.cloneNode(true);
-        clone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .tool-bubble, script, style, button, .copy-code-button')
-            .forEach((node) => node.remove());
+        clone.querySelectorAll(
+            '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .tool-bubble, .highlighted-tag, .highlighted-alert-tag, script, style, button, .copy-code-button'
+        ).forEach((node) => node.remove());
+
         if (!includeCode) clone.querySelectorAll('pre, code').forEach((node) => node.remove());
-        return (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+
+        return (clone.innerText || clone.textContent || '')
+            // 防御异常/历史 DOM 中尚未生成气泡的完整协议；不要求协议边界换行。
+            .replace(/<<<\[TOOL_REQUEST\]>>>[\s\S]*?<{2,4}\[END_TOOL_REQUEST\]>{2,4}/gi, '')
+            .replace(/\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/gi, '')
+            .replace(/\[本轮工具调用摘要:\][\s\S]*?\[本轮工具调用摘要结束\]/gi, '')
+            .replace(/<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|ASSISTANT|USER)\]>>>/gi, '')
+            .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     async function speak(element) {

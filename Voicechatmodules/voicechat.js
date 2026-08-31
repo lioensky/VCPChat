@@ -513,6 +513,28 @@ document.addEventListener('DOMContentLoaded', () => {
         streamRuntime.accept(eventData);
     });
     
+    function extractSpeakableTextFallback(contentElement) {
+        if (!contentElement) return '';
+
+        const contentClone = contentElement.cloneNode(true);
+        contentClone.querySelectorAll(
+            '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .highlighted-tag, .highlighted-alert-tag, style, script'
+        ).forEach(el => el.remove());
+
+        return (contentClone.innerText || contentClone.textContent || '')
+            // 最终 DOM 理论上已将完整工具协议转换为气泡；以下规则覆盖异常
+            // 历史 DOM 或边界粘连后仍残留为纯文本的完整协议块。
+            .replace(/<<<\[TOOL_REQUEST\]>>>[\s\S]*?<{2,4}\[END_TOOL_REQUEST\]>{2,4}/gi, '')
+            .replace(/\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/gi, '')
+            .replace(/\[本轮工具调用摘要:\][\s\S]*?\[本轮工具调用摘要结束\]/gi, '')
+            .replace(/<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|ASSISTANT|USER)\]>>>/gi, '')
+            .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/[ \t]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
     // 新增：智能文本提取和TTS触发函数，包含重试机制
     function extractTextAndPlayTTS(messageId, retryCount = 0) {
         const maxRetries = 10;
@@ -526,9 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (contentElement && messageRenderer?.extractSpeakableTextFromContentElement) {
                 textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);
             } else if (contentElement) {
-                const contentClone = contentElement.cloneNode(true);
-                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script').forEach(el => el.remove());
-                textToSpeak = (contentClone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+                textToSpeak = extractSpeakableTextFallback(contentElement);
             } else {
                 textToSpeak = messageElement.textContent || messageElement.innerText;
             }
@@ -563,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (contentElement) {
                             const backupText = messageRenderer?.extractSpeakableTextFromContentElement
                                 ? messageRenderer.extractSpeakableTextFromContentElement(contentElement)
-                                : (contentElement.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+                                : extractSpeakableTextFallback(contentElement);
                             if (backupText.trim().length > 0) {
                                 console.log(`[VoiceChat] 使用备用元素提取到文本长度: ${backupText.trim().length}`);
                                 playTTS(backupText.trim(), messageId);
