@@ -1648,6 +1648,39 @@
                                     <label for="streamAnimationCustomCss">自定义动画 CSS:</label>
                                     <textarea id="streamAnimationCustomCss" name="streamAnimationCustomCss" rows="4"
                                         spellcheck="false" placeholder="opacity: 0;&#10;transform: translateY(12px) scale(0.98);"></textarea>
+                                    <small>填写动画元素进入前的初始状态，无需选择器或花括号。结束状态固定恢复为 opacity: 1、transform: none、filter: none。</small>
+                                    <div class="stream-animation-custom-example">
+                                        <div class="stream-animation-custom-example-heading">
+                                            <strong>定义示例</strong>
+                                            <button type="button" id="fillStreamAnimationCssExample" class="small-button">填入示例</button>
+                                        </div>
+                                        <pre><code>opacity: 0;
+transform: translateY(12px) scale(0.98);
+filter: blur(3px);
+transform-origin: center bottom;</code></pre>
+                                        <small>保存后，每个新内容块会从上述状态过渡到正常状态；动画时长仍由上方滑杆统一控制。</small>
+                                    </div>
+                                </div>
+                                <div class="stream-animation-preview" aria-labelledby="streamAnimationPreviewTitle">
+                                    <div class="stream-animation-preview-toolbar">
+                                        <div>
+                                            <strong id="streamAnimationPreviewTitle">动画预览</strong>
+                                            <small>预览会使用当前未保存的选项</small>
+                                        </div>
+                                        <button type="button" id="replayStreamAnimationPreview" class="small-button">
+                                            <span aria-hidden="true">↻</span>
+                                            重新播放
+                                        </button>
+                                    </div>
+                                    <div class="stream-animation-preview-stage">
+                                        <div id="streamAnimationPreviewElement" class="stream-animation-preview-message">
+                                            <span class="stream-animation-preview-avatar" aria-hidden="true">AI</span>
+                                            <span>
+                                                <strong>流式内容块</strong>
+                                                <small>这是一段新生成的回复内容。</small>
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 

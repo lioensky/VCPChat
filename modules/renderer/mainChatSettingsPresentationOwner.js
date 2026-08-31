@@ -389,7 +389,11 @@ transform-origin: center bottom;`;
     function syncStreamAnimationControls() {
         const preset = normalizeStreamAnimationPreset(document.getElementById('streamAnimationPreset')?.value);
         const duration = normalizeStreamAnimationDuration(document.getElementById('streamAnimationDurationMs')?.value);
-        const customPanel = document.getElementById('streamAnimationCustomPanel');
+        // The flattening renamed the custom-CSS container from upstream's
+        // `streamAnimationCustomPanel` to `streamAnimationCustomRow`; accept
+        // both so this owner stays correct if either markup generation ships.
+        const customPanel = document.getElementById('streamAnimationCustomPanel')
+            || document.getElementById('streamAnimationCustomRow');
         const durationOutput = document.getElementById('streamAnimationDurationValue');
         if (customPanel) customPanel.hidden = preset !== 'custom';
         if (durationOutput) durationOutput.value = `${duration}ms`;
@@ -792,6 +796,10 @@ transform-origin: center bottom;`;
             });
             radio.dataset.boundPresentationModeToggle = 'true';
         });
+        // Stream-animation preview + custom-CSS example controls. Upstream
+        // called this from its settings-hydration block; the three-way merge
+        // kept the definition but dropped the call, leaving the preview inert.
+        bindStreamAnimationControls();
 
 
         // Forum adminUsername/adminPassword are projected by the typed
