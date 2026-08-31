@@ -1,3 +1,7 @@
+/* The settings override layer deliberately out-ranks runtime-injected
+   primitive styles (which enter <head> last), so !important and repeated
+   selectors are the layering mechanism here, not accidents. */
+/* stylelint-disable declaration-no-important, no-duplicate-selectors */
     /* ---- streaming animation settings and live preview ---- */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-settings {
         display: grid;

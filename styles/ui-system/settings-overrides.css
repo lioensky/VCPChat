@@ -1,3 +1,7 @@
+/* The settings override layer deliberately out-ranks runtime-injected
+   primitive styles (which enter <head> last), so !important and repeated
+   selectors are the layering mechanism here, not accidents. */
+/* stylelint-disable declaration-no-important, no-duplicate-selectors */
 
 /* Legacy global-settings CSS is intentionally unlayered. These narrow
    presentation overrides therefore live after the component layer so the
