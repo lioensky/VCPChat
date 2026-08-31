@@ -1,13 +1,13 @@
 import type { UiScope } from '../contracts.js';
-export type HarnessSemanticIconName = 'warning' | 'close' | 'check' | 'chevron-down';
+export type UiuxSemanticIconName = 'warning' | 'close' | 'check' | 'chevron-down';
 export interface SemanticIconProps {
-    readonly name: HarnessSemanticIconName;
+    readonly name: UiuxSemanticIconName;
     readonly size?: 14 | 16 | 18;
 }
 export interface SemanticIconController {
     readonly root: HTMLSpanElement;
-    readonly name: HarnessSemanticIconName;
-    setName(name: HarnessSemanticIconName): void;
+    readonly name: UiuxSemanticIconName;
+    setName(name: UiuxSemanticIconName): void;
     setSize(size: 14 | 16 | 18): void;
     refresh(): void;
     dispose(): void | Promise<void>;

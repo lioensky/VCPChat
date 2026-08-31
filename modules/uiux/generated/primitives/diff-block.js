@@ -3,21 +3,21 @@ const lines = (text) => text === '' ? [] : (text.endsWith('\n') ? text.slice(0, 
 export function mountDiffBlock(host, props, scope) {
     const original = Array.from(host.childNodes);
     const block = document.createElement('div');
-    block.className = 'vcp-harness-diff-block';
+    block.className = 'vcp-uiux-diff-block';
     block.dataset.diff = '';
     const copy = document.createElement('button');
     copy.type = 'button';
-    copy.className = 'vcp-harness-diff-copy';
+    copy.className = 'vcp-uiux-diff-copy';
     copy.textContent = 'Copy';
     const body = document.createElement('div');
-    body.className = 'vcp-harness-diff-body';
+    body.className = 'vcp-uiux-diff-body';
     const footer = document.createElement('div');
-    footer.className = 'vcp-harness-diff-footer';
+    footer.className = 'vcp-uiux-diff-footer';
     let expanded = false;
     const rows = props.diffs.flatMap((diff, index) => [{ kind: index && props.diffs[index - 1].path === diff.path ? 'gap' : 'path', text: index && props.diffs[index - 1].path === diff.path ? '...' : diff.path }, ...((diff.oldText === null ? [] : lines(diff.oldText)).map(text => ({ kind: 'del', text }))), ...lines(diff.newText).map(text => ({ kind: 'add', text }))]);
     const render = () => { body.replaceChildren(); const max = props.maxLines ?? 16; const capped = !expanded && rows.length > max; const shown = capped ? [...rows.slice(0, Math.ceil(max / 2)), { kind: 'expand', text: `... ${rows.length - max} more lines` }, ...rows.slice(rows.length - Math.floor(max / 2))] : rows; for (const row of shown) {
         const node = document.createElement(row.kind === 'expand' ? 'button' : 'div');
-        node.className = `vcp-harness-diff-${row.kind}`;
+        node.className = `vcp-uiux-diff-${row.kind}`;
         node.textContent = row.text;
         if (row.kind === 'expand') {
             node.type = 'button';
@@ -30,6 +30,6 @@ export function mountDiffBlock(host, props, scope) {
     render();
     block.append(copy, body, footer);
     host.replaceChildren(block);
-    const dispose = scope.own(() => host.replaceChildren(...original), 'harness-diff-block', 'ui-primitive');
+    const dispose = scope.own(() => host.replaceChildren(...original), 'uiux-diff-block', 'ui-primitive');
     return { root: block, get expanded() { return expanded; }, setExpanded(value) { expanded = value; render(); }, dispose };
 }

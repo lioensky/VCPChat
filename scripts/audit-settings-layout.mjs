@@ -4,7 +4,7 @@
 // Boots the real app, opens the global settings modal, walks every section
 // and enforces the canonical row contract from
 // docs/global-settings-debt-repayment-plan.md §3.3/§4-阶段3:
-//   1. flat sections: every visible .vcp-harness-general-row is a DIRECT
+//   1. flat sections: every visible .vcp-uiux-general-row is a DIRECT
 //      child of its .settings-section and no row nests inside another row;
 //   2. divider probe: the top-border model is global now -- the first
 //      visible row starts clean and every later visible row carries exactly
@@ -129,7 +129,7 @@ try {
     console.error('[audit] sections:', sectionKeys.join(', '));
     for (const key of sectionKeys) {
         await page.evaluate(sectionKey => {
-            document.querySelector(`.vcp-harness-settings-nav-cell[data-section="${sectionKey}"]`)
+            document.querySelector(`.vcp-uiux-settings-nav-cell[data-section="${sectionKey}"]`)
                 ?.click();
         }, key);
         await page.waitForFunction(sectionKey => document
@@ -138,9 +138,9 @@ try {
 
         const audit = await page.evaluate((sectionKey) => {
             const section = document.querySelector(`#globalSettingsForm #section-${sectionKey}`);
-            const rowOf = node => node?.closest?.('.vcp-harness-general-row') || null;
-            const rows = [...section.querySelectorAll('.vcp-harness-general-row')]
-                .filter(row => !row.parentElement.closest('.vcp-harness-general-row'));
+            const rowOf = node => node?.closest?.('.vcp-uiux-general-row') || null;
+            const rows = [...section.querySelectorAll('.vcp-uiux-general-row')]
+                .filter(row => !row.parentElement.closest('.vcp-uiux-general-row'));
             const visibleRows = rows.filter((row) => {
                 for (let node = row; node && node !== section; node = node.parentElement) {
                     if (getComputedStyle(node).display === 'none') return false;
@@ -156,7 +156,7 @@ try {
             // cannot see these — they were the blind spot behind the partial
             // double hairlines under the two-column stepper row.
             const nestedPrimitiveBorders = [...section.querySelectorAll(
-                '.vcp-harness-general-row .vcp-harness-language-row, .vcp-harness-general-row .vcp-harness-numeric-stepper-row, .vcp-harness-general-row .vcp-harness-font-size-row')]
+                '.vcp-uiux-general-row .vcp-uiux-language-row, .vcp-uiux-general-row .vcp-uiux-numeric-stepper-row, .vcp-uiux-general-row .vcp-uiux-font-size-row')]
                 .map(node => parseFloat(getComputedStyle(node).borderBottomWidth));
             // Adjacent-sibling run: the canonical rows must form one contiguous
             // run among the section's element children (title first is fine).

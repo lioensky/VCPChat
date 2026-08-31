@@ -15,7 +15,7 @@
     /* Allow select to take up available space */
 }
 
-#agentSettingsForm .model-input-container button:not(.vcp-harness-agent-model-picker-trigger),
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger),
 #globalSettingsForm .model-input-container button,
 #groupSettingsForm .model-input-container button {
     /* 新增群组设置按钮样式 */
@@ -40,7 +40,7 @@
     width: 38px;
 }
 
-#agentSettingsForm .model-input-container button:not(.vcp-harness-agent-model-picker-trigger):hover,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger):hover,
 #globalSettingsForm .model-input-container button:hover,
 #groupSettingsForm .model-input-container button:hover {
     /* 新增群组设置按钮悬停样式 */
@@ -48,7 +48,7 @@
     border-color: var(--button-hover-bg);
 }
 
-#agentSettingsForm .model-input-container button:not(.vcp-harness-agent-model-picker-trigger) svg,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger) svg,
 #globalSettingsForm .model-input-container button svg,
 #groupSettingsForm .model-input-container button svg {
     /* 新增群组设置按钮SVG样式 */
@@ -56,7 +56,7 @@
     transition: transform var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsForm .model-input-container button:not(.vcp-harness-agent-model-picker-trigger):active svg,
+#agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger):active svg,
 #globalSettingsForm .model-input-container button:active svg,
 #groupSettingsForm .model-input-container button:active svg {
     /* 新增群组设置按钮激活样式 */
@@ -75,7 +75,7 @@
     /* Make space for the button */
 }
 
-#agentSettingsForm .model-input-container #openModelSelectBtn:not(.vcp-harness-agent-model-picker-trigger),
+#agentSettingsForm .model-input-container #openModelSelectBtn:not(.vcp-uiux-agent-model-picker-trigger),
 #globalSettingsForm .model-input-container #openTopicSummaryModelSelectBtn,
 #groupSettingsForm .model-input-container #openGroupModelSelectBtn {
     position: absolute;
@@ -99,13 +99,13 @@
     color: var(--secondary-text);
 }
 
-#openModelSelectBtn:not(.vcp-harness-agent-model-picker-trigger):hover,
+#openModelSelectBtn:not(.vcp-uiux-agent-model-picker-trigger):hover,
 #openTopicSummaryModelSelectBtn:hover,
 #openGroupModelSelectBtn:hover {
     background-color: var(--accent-bg);
 }
 
-#openModelSelectBtn:not(.vcp-harness-agent-model-picker-trigger) svg,
+#openModelSelectBtn:not(.vcp-uiux-agent-model-picker-trigger) svg,
 #openTopicSummaryModelSelectBtn svg,
 #openGroupModelSelectBtn svg {
     stroke: var(--secondary-text);

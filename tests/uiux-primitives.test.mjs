@@ -12,7 +12,7 @@ const { mountPill } = await import('../modules/uiux/primitives/pill.ts');
 const { mountConnectionBanner } = await import('../modules/uiux/primitives/connection-banner.ts');
 const { mountOnboardingSurface } = await import('../modules/uiux/primitives/onboarding-surface.ts');
 
-test('Harness OnboardingSurface owns body portal and app-root inert lifetime', async () => {
+test('Uiux OnboardingSurface owns body portal and app-root inert lifetime', async () => {
     const dom = new JSDOM('<!doctype html><div id="root"><main><span id="content">step</span></main></div>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -23,11 +23,11 @@ test('Harness OnboardingSurface owns body portal and app-root inert lifetime', a
         assert.equal(controller.open, true); assert.equal(appRoot.inert, true); assert.equal(controller.stage.contains(content), true);
         controller.setOpen(false); assert.equal(appRoot.inert, false); assert.equal(document.querySelector('#root #content'), content);
         controller.setOpen(true); assert.equal(appRoot.inert, true); await scope.dispose('onboarding-complete');
-        assert.equal(appRoot.inert, false); assert.equal(document.querySelector('#root #content'), content); assert.equal(document.querySelector('.vcp-harness-onboarding-overlay'), null);
+        assert.equal(appRoot.inert, false); assert.equal(document.querySelector('#root #content'), content); assert.equal(document.querySelector('.vcp-uiux-onboarding-overlay'), null);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness ConnectionBanner owns reconnecting projection and restores host on dispose', async () => {
+test('Uiux ConnectionBanner owns reconnecting projection and restores host on dispose', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"><span>original</span></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -72,7 +72,7 @@ const { mountRange } = await import('../modules/uiux/primitives/range.ts');
 const { mountToggle } = await import('../modules/uiux/primitives/toggle.ts');
 const { mountColorPair } = await import('../modules/uiux/primitives/color-pair.ts');
 
-test('Harness LanguageRow composes a locale selector and retracts cleanly', async () => {
+test('Uiux LanguageRow composes a locale selector and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"><span>original</span></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -81,7 +81,7 @@ test('Harness LanguageRow composes a locale selector and retracts cleanly', asyn
         const host = document.getElementById('host'); const picked = [];
         const controller = mountLanguageRow(host, { activeId: 'en', options: [{ id: 'en', label: 'English' }, { id: 'zh', label: '中文' }, { id: 'de', label: 'Deutsch', disabled: true }], onSelect: id => picked.push(id) }, scope);
         assert.equal(controller.trigger.textContent, 'English');
-        assert.equal(controller.root.className, 'vcp-harness-language-row');
+        assert.equal(controller.root.className, 'vcp-uiux-language-row');
         assert.equal(controller.trigger.getAttribute('aria-haspopup'), 'menu');
         controller.setOpen(true);
         assert.equal(controller.menu.open, true);
@@ -94,11 +94,11 @@ test('Harness LanguageRow composes a locale selector and retracts cleanly', asyn
         assert.equal(controller.menu.list.querySelectorAll('[role="menuitem"]').length, 1);
         await scope.dispose('language-row-complete');
         assert.equal(host.textContent, 'original');
-        assert.equal(document.querySelector('.vcp-harness-language-row'), null);
+        assert.equal(document.querySelector('.vcp-uiux-language-row'), null);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness LanguageRow serializes concurrent option replacement by generation', async () => {
+test('Uiux LanguageRow serializes concurrent option replacement by generation', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"><span>original</span></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -121,17 +121,17 @@ test('Harness LanguageRow serializes concurrent option replacement by generation
             'the newest options must be the only published menu',
         );
         assert.equal(
-            scope.snapshot().resources.filter(resource => resource.label === 'child:harness-language-row-menu').length,
+            scope.snapshot().resources.filter(resource => resource.label === 'child:uiux-language-row-menu').length,
             1,
             'stale rebuilds must not leak an owned menu scope',
         );
 
         await scope.dispose('language-row-concurrency-complete');
-        assert.equal(diagnostics.find('harness-language-row-menu').length, 0);
+        assert.equal(diagnostics.find('uiux-language-row-menu').length, 0);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness LanguageRow cancels queued rebuilds when disposed', async () => {
+test('Uiux LanguageRow cancels queued rebuilds when disposed', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"><span>original</span></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -148,13 +148,13 @@ test('Harness LanguageRow cancels queued rebuilds when disposed', async () => {
         await Promise.all([pending, disposing]);
 
         assert.equal(host.textContent, 'original');
-        assert.equal(host.querySelector('.vcp-harness-language-row'), null);
-        assert.equal(diagnostics.find('harness-language-row-menu').length, 0);
-        assert.equal(diagnostics.find('harness-language-row').length, 0);
+        assert.equal(host.querySelector('.vcp-uiux-language-row'), null);
+        assert.equal(diagnostics.find('uiux-language-row-menu').length, 0);
+        assert.equal(diagnostics.find('uiux-language-row').length, 0);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker maps provider metadata and retracts its popup owner', async () => {
+test('Uiux AgentModelPicker maps provider metadata and retracts its popup owner', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -179,23 +179,23 @@ test('Harness AgentModelPicker maps provider metadata and retracts its popup own
             onSelect: option => { selected.push(option.id); },
         }, scope);
         assert.equal(controller.trigger.getAttribute('aria-haspopup'), 'menu');
-        assert.ok(controller.trigger.getAttribute('aria-controls')?.startsWith('vcp-harness-agent-model-picker-menu-'));
-        assert.equal(controller.trigger.querySelector('.vcp-harness-agent-model-picker-trigger-label')?.textContent, 'Select model');
-        assert.ok(controller.trigger.querySelector('.vcp-harness-agent-model-picker-trigger-icon'));
-        assert.ok(document.getElementById('vcp-harness-uiux-agent-model-picker'));
+        assert.ok(controller.trigger.getAttribute('aria-controls')?.startsWith('vcp-uiux-agent-model-picker-menu-'));
+        assert.equal(controller.trigger.querySelector('.vcp-uiux-agent-model-picker-trigger-label')?.textContent, 'Select model');
+        assert.ok(controller.trigger.querySelector('.vcp-uiux-agent-model-picker-trigger-icon'));
+        assert.ok(document.getElementById('vcp-uiux-uiux-agent-model-picker'));
         controller.open();
-        assert.equal(controller.root.querySelector('.vcp-harness-popup-select-card')?.getAttribute('aria-busy'), 'true');
+        assert.equal(controller.root.querySelector('.vcp-uiux-popup-select-card')?.getAttribute('aria-busy'), 'true');
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(loads, 1);
         assert.equal(controller.popup.getSnapshot().open, true);
-        assert.equal(controller.root.querySelector('.vcp-harness-popup-select-card')?.getAttribute('aria-busy'), null);
-        assert.equal(controller.root.querySelector('.vcp-harness-popup-select-card')?.getAttribute('role'), 'menu');
-        assert.equal(controller.root.querySelector('.vcp-harness-popup-select-card')?.id, controller.trigger.getAttribute('aria-controls'));
-        assert.equal(controller.root.querySelector('.vcp-harness-agent-model-picker-cell')?.hidden, false);
+        assert.equal(controller.root.querySelector('.vcp-uiux-popup-select-card')?.getAttribute('aria-busy'), null);
+        assert.equal(controller.root.querySelector('.vcp-uiux-popup-select-card')?.getAttribute('role'), 'menu');
+        assert.equal(controller.root.querySelector('.vcp-uiux-popup-select-card')?.id, controller.trigger.getAttribute('aria-controls'));
+        assert.equal(controller.root.querySelector('.vcp-uiux-agent-model-picker-cell')?.hidden, false);
         // Enter on a focused native root row must activate that row's owner
         // (and therefore drill into the model pane), rather than being
         // consumed by PopupSelect's generic option handler.
-        const modelCell = controller.root.querySelector('.vcp-harness-agent-model-picker-cell');
+        const modelCell = controller.root.querySelector('.vcp-uiux-agent-model-picker-cell');
         modelCell.focus();
         const rootEnter = new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
         modelCell.dispatchEvent(rootEnter);
@@ -205,29 +205,29 @@ test('Harness AgentModelPicker maps provider metadata and retracts its popup own
         // not canceled. The Electron capture covers the trusted key path.
         modelCell.click();
         assert.equal(modelCell.hidden, true);
-        assert.equal(controller.root.querySelector('.vcp-harness-popup-select-viewport')?.hidden, false);
+        assert.equal(controller.root.querySelector('.vcp-uiux-popup-select-viewport')?.hidden, false);
         controller.setPane('root');
         controller.setPane('model');
-        assert.equal(controller.root.querySelector('.vcp-harness-agent-model-picker-cell')?.hidden, true);
-        assert.equal(controller.root.querySelector('.vcp-harness-popup-select-search')?.hidden, false);
+        assert.equal(controller.root.querySelector('.vcp-uiux-agent-model-picker-cell')?.hidden, true);
+        assert.equal(controller.root.querySelector('.vcp-uiux-popup-select-search')?.hidden, false);
         controller.setPane('effort');
-        assert.equal(controller.root.querySelector('.vcp-harness-agent-model-picker-effort-list')?.hidden, false);
-        controller.root.querySelector('.vcp-harness-popup-select-card')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        assert.equal(controller.root.querySelector('.vcp-harness-agent-model-picker-effort-list')?.hidden, true);
-        assert.equal(controller.root.querySelector('.vcp-harness-agent-model-picker-cell')?.hidden, false);
+        assert.equal(controller.root.querySelector('.vcp-uiux-agent-model-picker-effort-list')?.hidden, false);
+        controller.root.querySelector('.vcp-uiux-popup-select-card')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        assert.equal(controller.root.querySelector('.vcp-uiux-agent-model-picker-effort-list')?.hidden, true);
+        assert.equal(controller.root.querySelector('.vcp-uiux-agent-model-picker-cell')?.hidden, false);
         controller.setPane('model');
-        controller.root.querySelector('.vcp-harness-popup-select-card')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        controller.root.querySelector('.vcp-uiux-popup-select-card')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         assert.equal(controller.popup.getSnapshot().open, true);
         assert.equal(document.activeElement, modelCell,
             'pane-back Escape must give the visible Model menuitem focus instead of leaving it on a hidden option');
-        controller.root.querySelector('.vcp-harness-popup-select-card')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        controller.root.querySelector('.vcp-uiux-popup-select-card')?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         assert.equal(controller.popup.getSnapshot().open, false);
         assert.equal(document.activeElement, controller.trigger,
             'root Escape must dismiss the popup and restore the canonical trigger focus');
         controller.open();
         await new Promise(resolve => setTimeout(resolve, 0));
         controller.setPane('effort');
-        controller.root.querySelector('.vcp-harness-agent-model-picker-option:last-child')?.click();
+        controller.root.querySelector('.vcp-uiux-agent-model-picker-option:last-child')?.click();
         assert.deepEqual(selected, ['effort:deep']);
         assert.match(controller.popup.getSnapshot().options[0].detail, /OpenAI/);
         assert.match(controller.popup.getSnapshot().options[0].detail, /Favorite/);
@@ -242,11 +242,11 @@ test('Harness AgentModelPicker maps provider metadata and retracts its popup own
             'the post-Escape reopen starts one fresh catalog load before the existing refresh assertion');
         controller.close();
         await controller.dispose();
-        assert.equal(host.querySelector('.vcp-harness-agent-model-picker'), null);
+        assert.equal(host.querySelector('.vcp-uiux-agent-model-picker'), null);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker drops late effort settlements after close and reopen', async () => {
+test('Uiux AgentModelPicker drops late effort settlements after close and reopen', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -263,7 +263,7 @@ test('Harness AgentModelPicker drops late effort settlements after close and reo
         }, scope);
         controller.open();
         controller.setPane('effort');
-        const selected = controller.root.querySelector('.vcp-harness-agent-model-picker-option');
+        const selected = controller.root.querySelector('.vcp-uiux-agent-model-picker-option');
         assert.ok(selected);
         selected.click();
         controller.close();
@@ -271,14 +271,14 @@ test('Harness AgentModelPicker drops late effort settlements after close and reo
         controller.setPane('effort');
         resolveEffort();
         await new Promise(resolve => setTimeout(resolve, 0));
-        assert.equal(controller.root.querySelector('.vcp-harness-agent-model-picker-effort-list')?.hidden, false,
+        assert.equal(controller.root.querySelector('.vcp-uiux-agent-model-picker-effort-list')?.hidden, false,
             'a late effort result must not switch a reopened picker back to root');
         await controller.dispose();
         await scope.dispose('agent-model-picker-late-effort-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker projects loading, load failure and retry through one popup owner', async () => {
+test('Uiux AgentModelPicker projects loading, load failure and retry through one popup owner', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -287,7 +287,7 @@ test('Harness AgentModelPicker projects loading, load failure and retry through 
         const host = document.getElementById('host');
         let calls = 0;
         const controller = mountAgentModelPicker(host, {
-            harnessEquivalent: true,
+            uiuxEquivalent: true,
             searchEnabled: false,
             options: async () => {
                 calls += 1;
@@ -298,14 +298,14 @@ test('Harness AgentModelPicker projects loading, load failure and retry through 
         }, scope);
         controller.open();
         controller.setPane('model');
-        const card = controller.root.querySelector('.vcp-harness-popup-select-card');
+        const card = controller.root.querySelector('.vcp-uiux-popup-select-card');
         assert.equal(card?.getAttribute('aria-busy'), 'true', 'the model pane announces its pending directory load');
-        assert.match(card?.querySelector('.vcp-harness-popup-select-status')?.textContent || '', /Loading options/);
+        assert.match(card?.querySelector('.vcp-uiux-popup-select-status')?.textContent || '', /Loading options/);
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(controller.popup.getSnapshot().status, 'failed');
         assert.equal(card?.getAttribute('aria-busy'), null, 'a failed load must settle busy state');
         assert.match(card?.querySelector('[role="alert"]')?.textContent || '', /catalog unavailable/);
-        card?.querySelector('.vcp-harness-popup-select-retry')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        card?.querySelector('.vcp-uiux-popup-select-retry')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         assert.equal(controller.popup.getSnapshot().status, 'pending', 'Retry reuses the one popup controller, rather than mounting a second owner');
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(calls, 2);
@@ -315,11 +315,11 @@ test('Harness AgentModelPicker projects loading, load failure and retry through 
         assert.equal(card?.querySelectorAll('[role="menuitemradio"]').length, 1);
         await controller.dispose();
         await scope.dispose('agent-model-picker-load-retry-complete');
-        assert.equal(host.querySelector('.vcp-harness-agent-model-picker'), null);
+        assert.equal(host.querySelector('.vcp-uiux-agent-model-picker'), null);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker keeps injected directory actions transient and releases popup-only updates', async () => {
+test('Uiux AgentModelPicker keeps injected directory actions transient and releases popup-only updates', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -359,7 +359,7 @@ test('Harness AgentModelPicker keeps injected directory actions transient and re
         controller.open();
         controller.setPane('model');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const card = controller.root.querySelector('.vcp-harness-popup-select-card');
+        const card = controller.root.querySelector('.vcp-uiux-popup-select-card');
         assert.equal(subscribeCalls, 1, 'models-updated subscribes only after this popup opens');
         assert.equal(card?.querySelectorAll('[data-option-action="favorite"]').length, 1);
         const favorite = card?.querySelector('[data-option-action="favorite"]');
@@ -371,18 +371,18 @@ test('Harness AgentModelPicker keeps injected directory actions transient and re
         assert.deepEqual(selected, [], 'favorite action must never select or write the canonical model input');
         assert.equal(loads, 2, 'successful favorite mutation reloads only the currently-open popup projection');
 
-        card?.querySelector('.vcp-harness-agent-model-picker-directory-refresh')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        card?.querySelector('.vcp-uiux-agent-model-picker-directory-refresh')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(refreshes, 1);
-        assert.equal(card?.querySelector('.vcp-harness-agent-model-picker-directory-refresh')?.disabled, true);
+        assert.equal(card?.querySelector('.vcp-uiux-agent-model-picker-directory-refresh')?.disabled, true);
         const loadsBeforeSuccessfulRefresh = loads;
         pendingRefreshes.shift()?.();
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(loads, loadsBeforeSuccessfulRefresh + 1,
             'a settled refresh reloads the same currently-open popup projection');
-        assert.equal(card?.querySelector('.vcp-harness-agent-model-picker-directory-refresh')?.disabled, false);
+        assert.equal(card?.querySelector('.vcp-uiux-agent-model-picker-directory-refresh')?.disabled, false);
 
-        card?.querySelector('.vcp-harness-agent-model-picker-directory-refresh')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        card?.querySelector('.vcp-uiux-agent-model-picker-directory-refresh')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(refreshes, 2);
         const loadsBeforeClosedRefresh = loads;
@@ -409,7 +409,7 @@ test('Harness AgentModelPicker keeps injected directory actions transient and re
         await scope.dispose('agent-model-picker-directory-capability-complete');
         assert.equal(releaseCalls, 2,
             'a popup-local release is retracted from the parent scope and never disposed a second time');
-        assert.equal(host.querySelector('.vcp-harness-agent-model-picker'), null);
+        assert.equal(host.querySelector('.vcp-uiux-agent-model-picker'), null);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
@@ -439,14 +439,14 @@ test('AgentModelPicker preserves ordered hot/favorite/all groups without selecti
         controller.open();
         controller.setPane('model');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const card = controller.root.querySelector('.vcp-harness-popup-select-card');
-        const groups = [...card.querySelectorAll('.vcp-harness-popup-select-group')];
-        assert.deepEqual(groups.map(group => group.querySelector('.vcp-harness-popup-select-group-title')?.textContent),
+        const card = controller.root.querySelector('.vcp-uiux-popup-select-card');
+        const groups = [...card.querySelectorAll('.vcp-uiux-popup-select-group')];
+        assert.deepEqual(groups.map(group => group.querySelector('.vcp-uiux-popup-select-group-title')?.textContent),
             ['Hot models', 'Favorites', 'All models']);
         assert.deepEqual([...card.querySelectorAll('[data-option-id]')].map(row => row.dataset.optionId),
             ['hot-model', 'favorite-model', 'all-model']);
         controller.popup.setSearch('favorite');
-        assert.ok([...card.querySelectorAll('.vcp-harness-popup-select-group-title')].every(title => title.hidden),
+        assert.ok([...card.querySelectorAll('.vcp-uiux-popup-select-group-title')].every(title => title.hidden),
             'search keeps the ordered rows but retracts group headings like the legacy model modal');
         controller.popup.setSearch('');
         const favorite = card.querySelector('[data-option-id="favorite-model"]')?.parentElement?.querySelector('[data-option-action="favorite"]');
@@ -477,22 +477,22 @@ test('AgentModelPicker reports a failed directory operation through its popup ow
         controller.open();
         controller.setPane('model');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const refresh = controller.root.querySelector('.vcp-harness-agent-model-picker-directory-refresh');
+        const refresh = controller.root.querySelector('.vcp-uiux-agent-model-picker-directory-refresh');
         assert.ok(refresh, 'a directory refresh capability exposes the explicit action');
         refresh.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 0));
-        assert.match(document.querySelector('.vcp-harness-toast[role="alert"]')?.textContent || '', /Could not refresh model list: directory unavailable/);
+        assert.match(document.querySelector('.vcp-uiux-toast[role="alert"]')?.textContent || '', /Could not refresh model list: directory unavailable/);
         assert.equal(controller.popup.getSnapshot().open, true, 'a failed refresh keeps the current model pane available');
         assert.deepEqual(selected, [], 'a failed directory action must not select a model');
         controller.close();
         await new Promise(resolve => setTimeout(resolve, 0));
-        assert.equal(document.querySelector('.vcp-harness-toast'), null, 'closing the picker retracts its owned error feedback');
+        assert.equal(document.querySelector('.vcp-uiux-toast'), null, 'closing the picker retracts its owned error feedback');
         await controller.dispose();
         await scope.dispose('agent-model-picker-directory-error-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker locks its native trigger and routes rejected selections to an owned Toast', async () => {
+test('Uiux AgentModelPicker locks its native trigger and routes rejected selections to an owned Toast', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="locked"></div><div id="candidate"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -502,11 +502,11 @@ test('Harness AgentModelPicker locks its native trigger and routes rejected sele
         let lockedLoads = 0;
         const locked = mountAgentModelPicker(lockedHost, {
             locked: true,
-            harnessEquivalent: true,
+            uiuxEquivalent: true,
             options: async () => { lockedLoads += 1; return []; },
             onSelect: () => {},
         }, scope);
-        assert.equal(locked.trigger.disabled, true, 'Harness locked must be a native disabled trigger');
+        assert.equal(locked.trigger.disabled, true, 'Uiux locked must be a native disabled trigger');
         locked.trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         locked.open();
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -517,7 +517,7 @@ test('Harness AgentModelPicker locks its native trigger and routes rejected sele
 
         const host = document.getElementById('candidate');
         const picker = mountAgentModelPicker(host, {
-            harnessEquivalent: true,
+            uiuxEquivalent: true,
             searchEnabled: false,
             selectedId: 'flash',
             options: async () => [
@@ -529,22 +529,22 @@ test('Harness AgentModelPicker locks its native trigger and routes rejected sele
         picker.open();
         picker.setPane('model');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const card = picker.root.querySelector('.vcp-harness-popup-select-card');
+        const card = picker.root.querySelector('.vcp-uiux-popup-select-card');
         card?.querySelector('[data-option-id="think"]')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 0));
         assert.equal(picker.popup.getSnapshot().open, true, 'a rejected selection must retain the menu owner');
         assert.equal(picker.popup.getSnapshot().status, 'ready');
         assert.equal(picker.popup.getSnapshot().error, null, 'selection rejection must not become a catalog-load error');
         assert.equal(card?.querySelector('[role="alert"]')?.style.display, 'none', 'the in-menu Retry strip is reserved for catalog loads');
-        const toast = document.body.querySelector('.vcp-harness-toast[role="alert"]');
+        const toast = document.body.querySelector('.vcp-uiux-toast[role="alert"]');
         assert.match(toast?.textContent || '', /Model operation failed: selection was rejected/);
         await picker.dispose();
         await scope.dispose('agent-model-picker-locked-selection-error-complete');
-        assert.equal(document.querySelector('.vcp-harness-toast'), null, 'picker disposal retracts its selection-error Toast owner');
+        assert.equal(document.querySelector('.vcp-uiux-toast'), null, 'picker disposal retracts its selection-error Toast owner');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker projects selecting as busy native rows and restores trigger focus', async () => {
+test('Uiux AgentModelPicker projects selecting as busy native rows and restores trigger focus', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -554,7 +554,7 @@ test('Harness AgentModelPicker projects selecting as busy native rows and restor
         let resolveSelection;
         const selection = new Promise(resolve => { resolveSelection = resolve; });
         const controller = mountAgentModelPicker(host, {
-            harnessEquivalent: true,
+            uiuxEquivalent: true,
             searchEnabled: false,
             options: async () => [
                 { id: 'flash', label: 'Flash', provider: 'DeepSeek' },
@@ -565,7 +565,7 @@ test('Harness AgentModelPicker projects selecting as busy native rows and restor
         controller.open();
         controller.setPane('model');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const card = controller.root.querySelector('.vcp-harness-popup-select-card');
+        const card = controller.root.querySelector('.vcp-uiux-popup-select-card');
         const choice = card?.querySelector('[data-option-id="think"]');
         choice?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -573,7 +573,7 @@ test('Harness AgentModelPicker projects selecting as busy native rows and restor
         assert.equal(card?.getAttribute('aria-busy'), 'true');
         const liveChoice = card?.querySelector('[data-option-id="think"]');
         assert.equal(choice?.isConnected, false, 'selecting replaces the prior row owner instead of retaining stale interactive DOM');
-        assert.equal(liveChoice?.disabled, true, 'selecting must lock the live native Harness option row');
+        assert.equal(liveChoice?.disabled, true, 'selecting must lock the live native Uiux option row');
         assert.equal(liveChoice?.getAttribute('aria-disabled'), 'true');
         resolveSelection();
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -584,7 +584,7 @@ test('Harness AgentModelPicker projects selecting as busy native rows and restor
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentModelPicker reports rejected selection through an owner-bound Toast, not the load Retry strip', async () => {
+test('Uiux AgentModelPicker reports rejected selection through an owner-bound Toast, not the load Retry strip', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -592,7 +592,7 @@ test('Harness AgentModelPicker reports rejected selection through an owner-bound
         const scope = createUiScope(new LifecycleScope('agent-model-picker-selection-toast-test'));
         const host = document.getElementById('host');
         const controller = mountAgentModelPicker(host, {
-            harnessEquivalent: true,
+            uiuxEquivalent: true,
             searchEnabled: false,
             options: async () => [{ id: 'unavailable', label: 'Unavailable', provider: 'DeepSeek' }],
             onSelect: async () => { throw new Error('session already contains images'); },
@@ -600,24 +600,24 @@ test('Harness AgentModelPicker reports rejected selection through an owner-bound
         controller.open();
         controller.setPane('model');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const card = controller.root.querySelector('.vcp-harness-popup-select-card');
+        const card = controller.root.querySelector('.vcp-uiux-popup-select-card');
         card?.querySelector('[data-option-id="unavailable"]')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         await new Promise(resolve => setTimeout(resolve, 0));
-        const toast = document.body.querySelector('.vcp-harness-toast');
+        const toast = document.body.querySelector('.vcp-uiux-toast');
         assert.equal(controller.popup.getSnapshot().open, true, 'a rejected selection keeps the model menu open');
         assert.equal(controller.popup.getSnapshot().status, 'ready');
         assert.equal(controller.popup.getSnapshot().error, null, 'selection rejection must not become the catalog-load error state');
-        assert.equal(card?.querySelector('.vcp-harness-popup-select-error')?.style.display, 'none',
+        assert.equal(card?.querySelector('.vcp-uiux-popup-select-error')?.style.display, 'none',
             'the load-error container must remain hidden; a child Retry button is not independently meaningful');
         assert.equal(toast?.getAttribute('role'), 'alert');
         assert.match(toast?.textContent || '', /Model operation failed: session already contains images/);
         await controller.dispose();
         await scope.dispose('agent-model-picker-selection-toast-complete');
-        assert.equal(document.body.querySelector('.vcp-harness-toast'), null, 'picker disposal retracts its selection-error Toast');
+        assert.equal(document.body.querySelector('.vcp-uiux-toast'), null, 'picker disposal retracts its selection-error Toast');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Pill preserves static and native interactive semantics and retracts cleanly', async () => {
+test('Uiux Pill preserves static and native interactive semantics and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><span id="static">Static</span><button id="interactive">Active</button></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -628,8 +628,8 @@ test('Harness Pill preserves static and native interactive semantics and retract
         let clicks = 0;
         mountPill(staticHost, { active: true }, scope);
         mountPill(interactiveHost, { interactive: true, onClick: () => { clicks += 1; } }, scope);
-        assert.equal(staticHost.className, 'vcp-harness-pill pill active');
-        assert.equal(interactiveHost.className, 'vcp-harness-pill pill interactive');
+        assert.equal(staticHost.className, 'vcp-uiux-pill pill active');
+        assert.equal(interactiveHost.className, 'vcp-uiux-pill pill interactive');
         assert.equal(interactiveHost.type, 'button');
         interactiveHost.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         assert.equal(clicks, 1);
@@ -642,7 +642,7 @@ test('Harness Pill preserves static and native interactive semantics and retract
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-test('Harness PopupSelect Candidate keeps command wiring injected, owns focus and retracts its overlay', async () => {
+test('Uiux PopupSelect Candidate keeps command wiring injected, owns focus and retracts its overlay', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div><button id="return-focus">Composer stand-in</button></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -694,12 +694,12 @@ test('Harness PopupSelect Candidate keeps command wiring injected, owns focus an
         assert.equal(focused, 2);
         await view.dispose();
         await scope.dispose('popup-select-complete');
-        assert.equal(document.querySelector('.vcp-harness-popup-select-card'), null);
+        assert.equal(document.querySelector('.vcp-uiux-popup-select-card'), null);
         assert.equal(document.querySelector('[role=dialog]'), null);
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness PopupSelect parity mode can omit the search control without changing option loading', async () => {
+test('Uiux PopupSelect parity mode can omit the search control without changing option loading', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -720,7 +720,7 @@ test('Harness PopupSelect parity mode can omit the search control without changi
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness PopupSelect parity mode preserves provider groups and menuitemradio semantics', async () => {
+test('Uiux PopupSelect parity mode preserves provider groups and menuitemradio semantics', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -741,19 +741,19 @@ test('Harness PopupSelect parity mode preserves provider groups and menuitemradi
         assert.equal(view.card.querySelectorAll('button[role=menuitemradio]').length, 2);
         assert.equal(view.card.querySelectorAll('[role=option]').length, 0);
         assert.equal(view.card.querySelector('button[aria-checked="true"]')?.textContent?.includes('Acme Think'), true);
-        assert.equal(view.card.querySelectorAll('button[role=menuitemradio] .vcp-harness-popup-select-option-check').length, 2,
-            'Harness ModelSelect retains a trailing check slot on both selected and unselected rows');
-        assert.equal(view.card.querySelector('button[aria-checked="false"] .vcp-harness-popup-select-option-check')?.childElementCount, 0,
-            'only the selected Harness row paints the check glyph');
-        const check = view.card.querySelector('button[aria-checked="true"] .vcp-harness-popup-select-option-check > svg');
-        assert.equal(check?.getAttribute('width'), '16', 'ModelSelect parity uses the Harness 16px check SVG, not the generic icon host');
+        assert.equal(view.card.querySelectorAll('button[role=menuitemradio] .vcp-uiux-popup-select-option-check').length, 2,
+            'Uiux ModelSelect retains a trailing check slot on both selected and unselected rows');
+        assert.equal(view.card.querySelector('button[aria-checked="false"] .vcp-uiux-popup-select-option-check')?.childElementCount, 0,
+            'only the selected Uiux row paints the check glyph');
+        const check = view.card.querySelector('button[aria-checked="true"] .vcp-uiux-popup-select-option-check > svg');
+        assert.equal(check?.getAttribute('width'), '16', 'ModelSelect parity uses the Uiux 16px check SVG, not the generic icon host');
         assert.equal(check?.getAttribute('viewBox'), '0 0 16 16');
         await view.dispose();
         await scope.dispose('popup-select-grouped-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness PopupSelect parity skips disabled rows and hands keyboard focus to the active menuitemradio', async () => {
+test('Uiux PopupSelect parity skips disabled rows and hands keyboard focus to the active menuitemradio', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -773,21 +773,21 @@ test('Harness PopupSelect parity skips disabled rows and hands keyboard focus to
         await delay(0);
         const blocked = view.card.querySelector('[data-option-id="blocked"]');
         assert.equal(blocked?.getAttribute('aria-disabled'), 'true');
-        assert.equal(blocked?.disabled, true, 'Harness parity rows expose native disabled state');
+        assert.equal(blocked?.disabled, true, 'Uiux parity rows expose native disabled state');
         await popup.select(0);
         assert.deepEqual(selected, [], 'Enter/controller selection cannot invoke a disabled row');
         view.card.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
         const available = view.card.querySelector('[data-option-id="available"]');
         assert.equal(popup.getSnapshot().active, 1, 'keyboard navigation skips disabled rows');
         assert.equal(document.activeElement, available, 'menuitemradio owns focus after keyboard navigation');
-        const stylesheet = document.getElementById('vcp-harness-uiux-popup-select')?.textContent || '';
-        assert.match(stylesheet, /\.vcp-harness-popup-select-option:focus-visible/, 'Harness parity keeps the source focus-visible material state');
+        const stylesheet = document.getElementById('vcp-uiux-uiux-popup-select')?.textContent || '';
+        assert.match(stylesheet, /\.vcp-uiux-popup-select-option:focus-visible/, 'Uiux parity keeps the source focus-visible material state');
         await view.dispose();
         await scope.dispose('popup-select-keyboard-owner-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness DirectoryBrowser foundation aborts stale listings and retracts on close', async () => {
+test('Uiux DirectoryBrowser foundation aborts stale listings and retracts on close', async () => {
     const dom = new JSDOM('<!doctype html><main></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -906,7 +906,7 @@ test('Harness DirectoryBrowser foundation aborts stale listings and retracts on 
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Toast owns body portal, anchor placement, lifetime and timer cancellation', async () => {
+test('Uiux Toast owns body portal, anchor placement, lifetime and timer cancellation', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="anchor"></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -922,7 +922,7 @@ test('Harness Toast owns body portal, anchor placement, lifetime and timer cance
         assert.equal(toast.root.parentElement, document.body);
         assert.equal(toast.root.getAttribute('role'), 'alert');
         assert.equal(toast.root.textContent, 'Model unavailable');
-        assert.equal(toast.root.querySelector('.vcp-harness-toast-icon')?.getAttribute('aria-hidden'), 'true');
+        assert.equal(toast.root.querySelector('.vcp-uiux-toast-icon')?.getAttribute('aria-hidden'), 'true');
         assert.equal(toast.root.style.left, '300px');
         rect = { left: 200, width: 400 };
         window.dispatchEvent(new dom.window.Event('resize'));
@@ -932,7 +932,7 @@ test('Harness Toast owns body portal, anchor placement, lifetime and timer cance
         await delay(20);
         assert.equal(done, 1);
         await toast.dispose();
-        assert.equal(document.querySelector('.vcp-harness-toast'), null);
+        assert.equal(document.querySelector('.vcp-uiux-toast'), null);
 
         let lateDone = 0;
         const plain = mountToast({ text: 'Plain', onDone: () => { lateDone += 1; } }, scope);
@@ -945,7 +945,7 @@ test('Harness Toast owns body portal, anchor placement, lifetime and timer cance
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness StateDot renders solid halos and the phased ongoing pixel matrix', async () => {
+test('Uiux StateDot renders solid halos and the phased ongoing pixel matrix', async () => {
     const dom = new JSDOM('<!doctype html><main><span id="host"><em id="legacy">legacy</em></span></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -982,7 +982,7 @@ test('Harness StateDot renders solid halos and the phased ongoing pixel matrix',
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness DisclosureRow preserves controlled row-click and leading-button contracts', async () => {
+test('Uiux DisclosureRow preserves controlled row-click and leading-button contracts', async () => {
     const dom = new JSDOM('<!doctype html><main><section id="row"><span id="icon">I</span><span id="summary"> · command</span><div id="body">Result</div></section><section id="button-row"><span id="icon-2">J</span><span id="summary-2"> · phase</span><div id="body-2">Members</div></section></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1014,15 +1014,15 @@ test('Harness DisclosureRow preserves controlled row-click and leading-button co
         assert.equal(rowDisclosure.row.tabIndex, 0);
         assert.equal(rowDisclosure.row.getAttribute('aria-expanded'), 'false');
         assert.equal(rowDisclosure.leading.tagName, 'SPAN');
-        assert.ok(rowDisclosure.leading.querySelector('.vcp-harness-disclosure-icon-idle > #icon'));
-        assert.ok(rowDisclosure.leading.querySelector('.vcp-harness-disclosure-chevron-hover.tool-chevron'));
+        assert.ok(rowDisclosure.leading.querySelector('.vcp-uiux-disclosure-icon-idle > #icon'));
+        assert.ok(rowDisclosure.leading.querySelector('.vcp-uiux-disclosure-chevron-hover.tool-chevron'));
         assert.equal(body.parentNode.nodeType, 11, 'closed body must remain owned but unrendered');
         rowDisclosure.row.click();
         assert.equal(rowToggles, 1);
         assert.equal(rowDisclosure.open, true);
         assert.equal(rowDisclosure.root.dataset.open, 'true');
         assert.equal(rowDisclosure.row.getAttribute('aria-expanded'), 'true');
-        assert.ok(rowDisclosure.leading.querySelector('.vcp-harness-disclosure-chevron.tool-chevron'));
+        assert.ok(rowDisclosure.leading.querySelector('.vcp-uiux-disclosure-chevron.tool-chevron'));
         assert.equal(summary.parentElement, rowDisclosure.row, 'keepContentWhenOpen keeps summary inline');
         assert.equal(body.parentElement, rowDisclosure.root);
         const keyEvent = new dom.window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
@@ -1031,7 +1031,7 @@ test('Harness DisclosureRow preserves controlled row-click and leading-button co
         assert.equal(rowToggles, 2);
         assert.equal(rowDisclosure.open, false);
         rowDisclosure.setTitle('Terminal complete');
-        assert.equal(rowDisclosure.row.querySelector('.vcp-harness-disclosure-title')?.textContent, 'Terminal complete');
+        assert.equal(rowDisclosure.row.querySelector('.vcp-uiux-disclosure-title')?.textContent, 'Terminal complete');
 
         const buttonHost = document.getElementById('button-row');
         const summary2 = document.getElementById('summary-2');
@@ -1067,7 +1067,7 @@ test('Harness DisclosureRow preserves controlled row-click and leading-button co
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness DisclosureRow controller adopts canonical Light DOM and retracts all presentation state', async () => {
+test('Uiux DisclosureRow controller adopts canonical Light DOM and retracts all presentation state', async () => {
     const dom = new JSDOM('<!doctype html><main><section id="section" class="collapsed"><div id="header"><span id="title">Identity</span><span id="summary"> · Ada</span><button id="toggle" type="button">⌄</button></div><div id="content">Form</div></section></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1111,7 +1111,7 @@ test('Harness DisclosureRow controller adopts canonical Light DOM and retracts a
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Tooltip keeps the anchor DOM and owns hover/focus/delay/disabled effects', async () => {
+test('Uiux Tooltip keeps the anchor DOM and owns hover/focus/delay/disabled effects', async () => {
     const dom = new JSDOM('<!doctype html><main><button id="anchor">Details</button><span id="after">After</span></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1136,7 +1136,7 @@ test('Harness Tooltip keeps the anchor DOM and owns hover/focus/delay/disabled e
         assert.equal(labelReads, 1, 'lazy label must resolve only while visible');
         anchor.dispatchEvent(new dom.window.FocusEvent('focus'));
         anchor.dispatchEvent(new dom.window.MouseEvent('mouseleave'));
-        assert.equal(tooltip.open, false, 'Harness mouseleave hides even while focus is still set');
+        assert.equal(tooltip.open, false, 'Uiux mouseleave hides even while focus is still set');
         anchor.dispatchEvent(new dom.window.FocusEvent('blur'));
         anchor.dispatchEvent(new dom.window.FocusEvent('focus'));
         assert.equal(tooltip.open, true, 'keyboard focus is immediate');
@@ -1150,7 +1150,7 @@ test('Harness Tooltip keeps the anchor DOM and owns hover/focus/delay/disabled e
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness HoverCard owns dwell, portal, grace, copy feedback and teardown', async () => {
+test('Uiux HoverCard owns dwell, portal, grace, copy feedback and teardown', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="anchor">Workspace path</div><section id="source"><div id="content">/full/path</div><span id="after">After</span></section></main>', { pretendToBeVisual: true });
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
@@ -1186,7 +1186,7 @@ test('Harness HoverCard owns dwell, portal, grace, copy feedback and teardown', 
         await delay(0);
         assert.deepEqual(writes, ['/full/path']);
         assert.equal(hover.root.querySelector('[role="status"]')?.textContent, 'Copied');
-        assert.equal(hover.card?.querySelector('.vcp-harness-hover-card-copied')?.textContent, 'Copied');
+        assert.equal(hover.card?.querySelector('.vcp-uiux-hover-card-copied')?.textContent, 'Copied');
         hover.card?.dispatchEvent(new dom.window.Event('pointerleave'));
         await delay(210);
         assert.equal(hover.open, false);
@@ -1207,7 +1207,7 @@ test('Harness HoverCard owns dwell, portal, grace, copy feedback and teardown', 
     }
 });
 
-test('Harness Modal portals controlled standard/headless DOM and restores owned nodes', async () => {
+test('Uiux Modal portals controlled standard/headless DOM and restores owned nodes', async () => {
     const dom = new JSDOM('<!doctype html><main><button id="trigger">Open</button><section id="source"><div id="body">Body</div><button id="cancel">Cancel</button><span id="after">After</span></section></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1237,25 +1237,25 @@ test('Harness Modal portals controlled standard/headless DOM and restores owned 
         assert.equal(modal.dialog.getAttribute('aria-label'), 'Create workspace');
         assert.equal(modal.dialog.classList.contains('workspace-dialog'), true);
         assert.equal(modal.dialog.classList.contains('constrained-dialog'), true);
-        assert.equal(modal.root.querySelector('.vcp-harness-modal-content')?.classList.contains('scrolling-content'), true);
-        assert.equal(modal.root.querySelector('.vcp-harness-modal-mask')?.getAttribute('aria-hidden'), 'true');
-        assert.equal(modal.root.querySelector('.vcp-harness-modal-title')?.textContent, 'Create workspace');
-        assert.equal(modal.root.querySelector('.vcp-harness-modal-description')?.textContent, 'Choose a workspace.');
-        assert.equal(body.parentElement.className, 'vcp-harness-modal-body');
-        assert.equal(cancel.parentElement.className, 'vcp-harness-modal-footer');
-        assert.equal(document.activeElement, trigger, 'Harness Modal does not invent focus ownership');
+        assert.equal(modal.root.querySelector('.vcp-uiux-modal-content')?.classList.contains('scrolling-content'), true);
+        assert.equal(modal.root.querySelector('.vcp-uiux-modal-mask')?.getAttribute('aria-hidden'), 'true');
+        assert.equal(modal.root.querySelector('.vcp-uiux-modal-title')?.textContent, 'Create workspace');
+        assert.equal(modal.root.querySelector('.vcp-uiux-modal-description')?.textContent, 'Choose a workspace.');
+        assert.equal(body.parentElement.className, 'vcp-uiux-modal-body');
+        assert.equal(cancel.parentElement.className, 'vcp-uiux-modal-footer');
+        assert.equal(document.activeElement, trigger, 'Uiux Modal does not invent focus ownership');
         document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         assert.equal(modal.open, false);
         assert.equal(closes, 1);
         assert.deepEqual([...document.getElementById('source').children].map(node => node.id), ['body', 'cancel', 'after']);
         modal.setOpen(true);
-        modal.root.querySelector('.vcp-harness-modal-mask').click();
+        modal.root.querySelector('.vcp-uiux-modal-mask').click();
         assert.equal(closes, 2);
         modal.setOpen(true);
-        modal.root.querySelector('.vcp-harness-modal-close').click();
+        modal.root.querySelector('.vcp-uiux-modal-close').click();
         assert.equal(closes, 3);
         await modal.dispose();
-        assert.equal(document.querySelector('.vcp-harness-modal-root'), null);
+        assert.equal(document.querySelector('.vcp-uiux-modal-root'), null);
 
         const headlessBody = document.createElement('article');
         headlessBody.textContent = 'Custom frame';
@@ -1263,8 +1263,8 @@ test('Harness Modal portals controlled standard/headless DOM and restores owned 
         headless = mountModal({ title: 'Custom frame', body: headlessBody, headless: true, onClose: () => headless.setOpen(false) }, scope);
         headless.setOpen(true);
         assert.equal(headless.dialog.firstElementChild, headlessBody);
-        assert.equal(headless.dialog.querySelector('.vcp-harness-modal-header'), null);
-        assert.equal(headless.dialog.querySelector('.vcp-harness-modal-footer'), null);
+        assert.equal(headless.dialog.querySelector('.vcp-uiux-modal-header'), null);
+        assert.equal(headless.dialog.querySelector('.vcp-uiux-modal-footer'), null);
         headless.setOpen(false);
         assert.equal(headlessBody.parentNode, null);
         await headless.dispose();
@@ -1272,7 +1272,7 @@ test('Harness Modal portals controlled standard/headless DOM and restores owned 
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness RiskConfirmation gates confirm behind a controlled acknowledgement and retracts cleanly', async () => {
+test('Uiux RiskConfirmation gates confirm behind a controlled acknowledgement and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><span id="before"></span><span id="after"></span></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1289,8 +1289,8 @@ test('Harness RiskConfirmation gates confirm behind a controlled acknowledgement
         assert.equal(risk.open, false);
         risk.setOpen(true);
         assert.equal(risk.modal.root.parentElement, document.body);
-        assert.equal(risk.modal.dialog.classList.contains('vcp-harness-risk-confirmation'), true);
-        assert.equal(risk.modal.root.querySelector('.vcp-harness-risk-warning-icon')?.getAttribute('aria-hidden'), 'true');
+        assert.equal(risk.modal.dialog.classList.contains('vcp-uiux-risk-confirmation'), true);
+        assert.equal(risk.modal.root.querySelector('.vcp-uiux-risk-warning-icon')?.getAttribute('aria-hidden'), 'true');
         assert.equal(risk.acknowledgement.type, 'checkbox');
         assert.equal(risk.confirmButton.disabled, true);
         assert.equal(document.activeElement, risk.acknowledgement);
@@ -1306,18 +1306,18 @@ test('Harness RiskConfirmation gates confirm behind a controlled acknowledgement
         risk.setOpen(true); risk.setDisabled(true);
         assert.equal(risk.acknowledgement.disabled, true);
         assert.equal(risk.confirmButton.disabled, true);
-        risk.modal.root.querySelector('.vcp-harness-modal-mask').click();
+        risk.modal.root.querySelector('.vcp-uiux-modal-mask').click();
         assert.deepEqual(events, ['ack:true', 'confirm', 'cancel']);
         risk.setOpen(true);
         document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         assert.deepEqual(events, ['ack:true', 'confirm', 'cancel', 'cancel']);
         await risk.dispose();
-        assert.equal(document.querySelector('.vcp-harness-modal-root'), null);
+        assert.equal(document.querySelector('.vcp-uiux-modal-root'), null);
         await scope.dispose('risk-confirmation-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentPresetSeat stages picks over a portal menu and retracts cleanly', async () => {
+test('Uiux AgentPresetSeat stages picks over a portal menu and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><button id="seat" class="legacy-seat">Legacy</button></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1352,20 +1352,20 @@ test('Harness AgentPresetSeat stages picks over a portal menu and retracts clean
         seat.setOpen(true);
         assert.equal(seat.open, true);
         assert.equal(seatButton.getAttribute('aria-expanded'), 'true');
-        const portalList = document.body.querySelector('.vcp-harness-menu-list[role="menu"]');
+        const portalList = document.body.querySelector('.vcp-uiux-menu-list[role="menu"]');
         assert.ok(portalList, 'expected body-portal menu');
-        const labels = [...portalList.querySelectorAll('.vcp-harness-menu-item-label')];
+        const labels = [...portalList.querySelectorAll('.vcp-uiux-menu-item-label')];
         assert.equal(labels.length, 3);
         assert.ok(labels[0].querySelector('.vcp-agent-preset-seat-item-name')?.textContent === 'Standard mode');
         assert.ok(labels[0].querySelector('.vcp-agent-preset-seat-item-desc')?.textContent === 'Full coding agent.');
-        // Harness renders `noDescription` copy when a preset publishes none; the
+        // Uiux renders `noDescription` copy when a preset publishes none; the
         // bare option still falls back to its id for the name.
         assert.ok(labels[2].querySelector('.vcp-agent-preset-seat-item-name')?.textContent === 'bare');
         assert.ok(labels[2].querySelector('.vcp-agent-preset-seat-item-desc')?.textContent === 'No description');
         assert.equal(portalList.querySelector('[data-selected="true"] .vcp-agent-preset-seat-item-name')?.textContent, 'Standard mode');
 
         // Picking reports the pick; Menu.onClose only fires for outside/Escape,
-        // so no 'close' event lands here (Harness contract).
+        // so no 'close' event lands here (Uiux contract).
         portalList.querySelectorAll('[role="menuitem"]')[1].click();
         assert.deepEqual(events, ['minimal']);
         assert.equal(seat.selectedLabel(), 'Minimal mode');
@@ -1376,7 +1376,7 @@ test('Harness AgentPresetSeat stages picks over a portal menu and retracts clean
         seat.setBusy(false);
         assert.equal(seatButton.disabled, false);
 
-        // Error surfaces through the title (Harness: title={state.error ?? t('seatHint')}).
+        // Error surfaces through the title (Uiux: title={state.error ?? t('seatHint')}).
         seat.setError('Could not stage the preset. Try again.');
         assert.equal(seatButton.getAttribute('title'), 'Could not stage the preset. Try again.');
 
@@ -1390,12 +1390,12 @@ test('Harness AgentPresetSeat stages picks over a portal menu and retracts clean
         assert.equal(seatButton.className, 'legacy-seat');
         assert.equal(seatButton.textContent, 'Legacy');
         assert.equal(seatButton.hasAttribute('title'), false);
-        assert.equal(document.body.querySelector('.vcp-harness-menu-list'), null);
+        assert.equal(document.body.querySelector('.vcp-uiux-menu-list'), null);
         await scope.dispose('agent-preset-seat-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness AgentPresetRow composes the 36px PresetMenu pill with the trust suffix and retracts cleanly', async () => {
+test('Uiux AgentPresetRow composes the 36px PresetMenu pill with the trust suffix and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"><span class="legacy-child">legacy</span></div></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1403,7 +1403,7 @@ test('Harness AgentPresetRow composes the 36px PresetMenu pill with the trust su
         const scope = createUiScope(new LifecycleScope('agent-preset-row-test'));
         const host = document.getElementById('host');
         const events = [];
-        // Harness presets: trust==='user' options get `· <userTrust>` appended
+        // Uiux presets: trust==='user' options get `· <userTrust>` appended
         // by PresetMenu; built-in ones render bare.
         const options = [
             { id: 'standard', name: 'Standard mode', trust: 'system' },
@@ -1431,16 +1431,16 @@ test('Harness AgentPresetRow composes the 36px PresetMenu pill with the trust su
         row.setOpen(true);
         assert.equal(row.open, true);
         assert.equal(trigger.getAttribute('aria-expanded'), 'true');
-        const portalList = document.body.querySelector('.vcp-harness-menu-list[role="menu"]');
+        const portalList = document.body.querySelector('.vcp-uiux-menu-list[role="menu"]');
         assert.ok(portalList, 'expected align-end body-portal menu');
-        assert.equal(portalList.classList.contains('vcp-harness-menu-align-end'), true);
-        const labels = [...portalList.querySelectorAll('.vcp-harness-menu-item-label')];
+        assert.equal(portalList.classList.contains('vcp-uiux-menu-align-end'), true);
+        const labels = [...portalList.querySelectorAll('.vcp-uiux-menu-item-label')];
         assert.deepEqual(labels.map(node => node.textContent), [
             'Standard mode',
             'Research draft · Custom',
             'minimal',
         ]);
-        assert.equal(portalList.querySelector('[data-selected="true"] .vcp-harness-menu-item-label')?.textContent, 'Standard mode');
+        assert.equal(portalList.querySelector('[data-selected="true"] .vcp-uiux-menu-item-label')?.textContent, 'Standard mode');
 
         // Picking closes the menu (PresetMenu: onOpenChange(false) then select)
         // and reports the pick to the caller, who owns the projection.
@@ -1476,12 +1476,12 @@ test('Harness AgentPresetRow composes the 36px PresetMenu pill with the trust su
         await row.dispose();
         assert.equal(host.querySelector('.vcp-agent-preset-row'), null);
         assert.ok(host.querySelector('.legacy-child'), 'expected original children restored');
-        assert.equal(document.body.querySelector('.vcp-harness-menu-list'), null);
+        assert.equal(document.body.querySelector('.vcp-uiux-menu-list'), null);
         await scope.dispose('agent-preset-row-complete');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness semantic icon slots preserve one VCP icon owner and retract cleanly', async () => {
+test('Uiux semantic icon slots preserve one VCP icon owner and retract cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><span id="host" class="legacy"><em id="legacy">legacy</em></span></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window; const previousIcons = globalThis.VCPIcons;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1492,14 +1492,14 @@ test('Harness semantic icon slots preserve one VCP icon owner and retract cleanl
         const host = document.getElementById('host');
         const icon = mountSemanticIcon(host, { name: 'warning', size: 18 }, scope);
         assert.equal(icon.root.getAttribute('aria-hidden'), 'true');
-        assert.equal(icon.root.style.getPropertyValue('--vcp-harness-icon-size'), '18px');
+        assert.equal(icon.root.style.getPropertyValue('--vcp-uiux-icon-size'), '18px');
         assert.equal(icon.root.querySelector('.vcp-ui-icon')?.textContent, 'warning');
         assert.equal(refreshed.length, 1);
         icon.setName('chevron-down');
         assert.equal(icon.root.querySelector('.vcp-ui-icon')?.textContent, 'chevron_down');
         icon.setSize(14);
-        assert.equal(icon.root.style.getPropertyValue('--vcp-harness-icon-size'), '14px');
-        assert.throws(() => icon.setName('unknown'), /Unknown Harness semantic icon/);
+        assert.equal(icon.root.style.getPropertyValue('--vcp-uiux-icon-size'), '14px');
+        assert.throws(() => icon.setName('unknown'), /Unknown Uiux semantic icon/);
         await icon.dispose();
         assert.equal(host.className, 'legacy');
         assert.equal(host.firstElementChild.id, 'legacy');
@@ -1511,7 +1511,7 @@ test('Harness semantic icon slots preserve one VCP icon owner and retract cleanl
     }
 });
 
-test('Harness Menu owns open effects, composite entries, portal placement and teardown', async () => {
+test('Uiux Menu owns open effects, composite entries, portal placement and teardown', async () => {
     const dom = new JSDOM('<!doctype html><main><button id="trigger" aria-expanded="legacy">Options</button><button id="outside">Outside</button></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1545,20 +1545,20 @@ test('Harness Menu owns open effects, composite entries, portal placement and te
         assert.equal(menu.list.getAttribute('role'), 'menu');
         assert.equal(menu.list.style.left, '794px');
         assert.equal(menu.list.style.top, '456px');
-        assert.equal(menu.list.querySelector('.vcp-harness-menu-label')?.textContent, 'Group by');
+        assert.equal(menu.list.querySelector('.vcp-uiux-menu-label')?.textContent, 'Group by');
         assert.ok(menu.list.querySelector('[role="separator"]'));
-        assert.ok(menu.list.querySelector('.vcp-harness-menu-footer'));
+        assert.ok(menu.list.querySelector('.vcp-uiux-menu-footer'));
         assert.equal(menu.list.querySelector('[role="menuitem"]:disabled')?.textContent, 'Flat');
-        assert.equal(menu.list.querySelector('.vcp-harness-menu-item-danger')?.textContent, 'Remove');
-        assert.equal(menu.list.querySelectorAll('.vcp-harness-menu-item-check').length, 2);
+        assert.equal(menu.list.querySelector('.vcp-uiux-menu-item-danger')?.textContent, 'Remove');
+        assert.equal(menu.list.querySelectorAll('.vcp-uiux-menu-item-check').length, 2);
         const layout = [...menu.list.querySelectorAll('[role="menuitem"]')].find(item => item.textContent === 'Layout');
         layout.focus();
         assert.equal(layout.getAttribute('aria-expanded'), 'true');
-        assert.equal(menu.list.querySelector('.vcp-harness-submenu[role="menu"]')?.children.length, 2);
-        menu.list.querySelector('.vcp-harness-submenu [role="menuitem"]').click();
+        assert.equal(menu.list.querySelector('.vcp-uiux-submenu[role="menu"]')?.children.length, 2);
+        menu.list.querySelector('.vcp-uiux-submenu [role="menuitem"]').click();
         assert.deepEqual(selected, ['list']);
         menu.setSelected('danger');
-        assert.equal(menu.list.querySelectorAll('.vcp-harness-menu-item-check').length, 1);
+        assert.equal(menu.list.querySelectorAll('.vcp-uiux-menu-item-check').length, 1);
         document.getElementById('outside').dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
         assert.equal(menu.open, false);
         assert.equal(closes, 1);
@@ -1574,7 +1574,7 @@ test('Harness Menu owns open effects, composite entries, portal placement and te
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Menu accepts Node labels matching the ReactNode source contract', async () => {
+test('Uiux Menu accepts Node labels matching the ReactNode source contract', async () => {
     const dom = new JSDOM('<!doctype html><main><button id="trigger">Preset</button></main>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1582,7 +1582,7 @@ test('Harness Menu accepts Node labels matching the ReactNode source contract', 
         const scope = createUiScope(new LifecycleScope('menu-node-label-test'));
         const trigger = document.getElementById('trigger');
         const picked = [];
-        // Harness AgentPresetSeat renders `label` as a span with name over
+        // Uiux AgentPresetSeat renders `label` as a span with name over
         // description; the Menu atom contract is ReactNode, not string-only.
         const seatItem = document.createElement('span');
         seatItem.className = 'vcp-agent-preset-seat-item';
@@ -1598,7 +1598,7 @@ test('Harness Menu accepts Node labels matching the ReactNode source contract', 
             onSelect: id => picked.push(id),
         }, scope);
         menu.setOpen(true);
-        const labelNode = menu.list.querySelector('.vcp-harness-menu-item-label');
+        const labelNode = menu.list.querySelector('.vcp-uiux-menu-item-label');
         assert.ok(labelNode?.querySelector('.vcp-agent-preset-seat-item .vcp-agent-preset-seat-item-name'));
         assert.equal(labelNode.textContent, 'Standard modeFull toolset');
         menu.list.querySelectorAll('[role="menuitem"]')[1].click();
@@ -1608,7 +1608,7 @@ test('Harness Menu accepts Node labels matching the ReactNode source contract', 
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Button preserves native semantics and retracts candidate styling', async () => {
+test('Uiux Button preserves native semantics and retracts candidate styling', async () => {
     const dom = new JSDOM('<!doctype html><button id="action" class="existing">Run</button>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1625,9 +1625,9 @@ test('Harness Button preserves native semantics and retracts candidate styling',
         assert.equal(button.style.getPropertyValue('height'), '28px');
         assert.equal(button.style.getPropertyPriority('height'), 'important');
         assert.equal(button.querySelector(':scope > .icon')?.textContent, '+');
-        const stylesheet = document.getElementById('vcp-harness-uiux-button')?.textContent || '';
-        assert.match(stylesheet, /\.vcp-harness-button\.button:focus-visible\{/,
-            'Harness Button must expose a keyboard focus-visible contract');
+        const stylesheet = document.getElementById('vcp-uiux-uiux-button')?.textContent || '';
+        assert.match(stylesheet, /\.vcp-uiux-button\.button:focus-visible\{/,
+            'Uiux Button must expose a keyboard focus-visible contract');
         await release?.(); await scope.dispose('button-complete');
         assert.equal(button.getAttribute('class'), 'existing');
         assert.equal(button.style.getPropertyValue('display'), '');
@@ -1636,7 +1636,7 @@ test('Harness Button preserves native semantics and retracts candidate styling',
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness-compatible Field and Select keep Light DOM contract and dispose cleanly', async () => {
+test('Uiux-compatible Field and Select keep Light DOM contract and dispose cleanly', async () => {
     const dom = new JSDOM('<!doctype html><form><div id="field"><select id="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div></form>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1648,26 +1648,26 @@ test('Harness-compatible Field and Select keep Light DOM contract and dispose cl
         const select = document.getElementById('density');
         const fieldRelease = mountField(fieldRoot, { label: 'Density', description: 'Controls UI density.', control: select }, scope);
         const selectRelease = mountSelect(select, { label: 'Density' }, scope);
-        assert.equal(fieldRoot.querySelector('.vcp-harness-field-head > .vcp-harness-field-label')?.htmlFor, 'density');
+        assert.equal(fieldRoot.querySelector('.vcp-uiux-field-head > .vcp-uiux-field-label')?.htmlFor, 'density');
         assert.equal(select.getAttribute('aria-describedby'), null);
-        assert.equal(fieldRoot.querySelector('p.vcp-harness-field-description')?.textContent, 'Controls UI density.');
-        assert.equal(fieldRoot.querySelector('.vcp-harness-select-trigger')?.textContent, 'Comfortable');
+        assert.equal(fieldRoot.querySelector('p.vcp-uiux-field-description')?.textContent, 'Controls UI density.');
+        assert.equal(fieldRoot.querySelector('.vcp-uiux-select-trigger')?.textContent, 'Comfortable');
         assert.equal(fieldRoot.querySelector('[role="menu"]'), null);
-        const trigger = fieldRoot.querySelector('.vcp-harness-select-trigger');
+        const trigger = fieldRoot.querySelector('.vcp-uiux-select-trigger');
         trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
         assert.equal(fieldRoot.querySelector('[role="menu"]')?.children.length, 1);
-        assert.equal(fieldRoot.querySelector('[role="menu"] > .vcp-harness-menu-viewport')?.children.length, 2);
-        assert.equal(fieldRoot.querySelector('.vcp-harness-menu-item-wrap > [role="menuitem"]')?.textContent, 'Comfortable');
-        assert.ok(fieldRoot.querySelector('[role="menuitem"][data-selected="true"] .vcp-harness-menu-item-check'));
-        assert.equal(fieldRoot.querySelector('[role="menuitem"]:not([data-selected="true"]) .vcp-harness-menu-item-check'), null);
+        assert.equal(fieldRoot.querySelector('[role="menu"] > .vcp-uiux-menu-viewport')?.children.length, 2);
+        assert.equal(fieldRoot.querySelector('.vcp-uiux-menu-item-wrap > [role="menuitem"]')?.textContent, 'Comfortable');
+        assert.ok(fieldRoot.querySelector('[role="menuitem"][data-selected="true"] .vcp-uiux-menu-item-check'));
+        assert.equal(fieldRoot.querySelector('[role="menuitem"]:not([data-selected="true"]) .vcp-uiux-menu-item-check'), null);
         assert.equal(trigger.getAttribute('aria-expanded'), 'true');
         document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         assert.equal(trigger.getAttribute('aria-expanded'), 'false');
         await selectRelease?.();
         await fieldRelease?.();
         await scope.dispose('test-complete');
-        assert.equal(fieldRoot.querySelector('.vcp-harness-field'), null);
-        assert.equal(document.querySelector('.vcp-harness-select-trigger'), null);
+        assert.equal(fieldRoot.querySelector('.vcp-uiux-field'), null);
+        assert.equal(document.querySelector('.vcp-uiux-select-trigger'), null);
         assert.equal(document.getElementById('density')?.tabIndex, 0);
         assert.equal(select.getAttribute('aria-describedby'), null);
     } finally {
@@ -1677,7 +1677,7 @@ test('Harness-compatible Field and Select keep Light DOM contract and dispose cl
     }
 });
 
-test('Harness Input keeps native control and restores DOM on dispose', async () => {
+test('Uiux Input keeps native control and restores DOM on dispose', async () => {
     const dom = new JSDOM('<!doctype html><label id="field"><span>Tagline</span><input id="tagline" value="Hello"></label>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1702,7 +1702,7 @@ test('Harness Input keeps native control and restores DOM on dispose', async () 
     }
 });
 
-test('Harness Choice decorates native radios and retracts cleanly', async () => {
+test('Uiux Choice decorates native radios and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><div id="choices"><label><input type="radio" name="r" value="a">A</label><label><input type="radio" name="r" value="b">B</label></div>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1718,7 +1718,7 @@ test('Harness Choice decorates native radios and retracts cleanly', async () => 
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Range keeps native value, owns output sync, and restores the exact DOM on teardown', async () => {
+test('Uiux Range keeps native value, owns output sync, and restores the exact DOM on teardown', async () => {
     const dom = new JSDOM('<!doctype html><label id="field"><output id="out"></output><input id="range" type="range" value="32"><span id="after"></span></label>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1733,7 +1733,7 @@ test('Harness Range keeps native value, owns output sync, and restores the exact
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Toggle keeps native checkbox and retires legacy slider', async () => {
+test('Uiux Toggle keeps native checkbox and retires legacy slider', async () => {
     const dom = new JSDOM('<!doctype html><label class="switch" id="toggle"><input type="checkbox"><span class="slider"></span></label>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -1746,7 +1746,7 @@ test('Harness Toggle keeps native checkbox and retires legacy slider', async () 
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness ColorPair owns two-way sync, invalid rollback, callbacks, and DOM restoration', async () => {
+test('Uiux ColorPair owns two-way sync, invalid rollback, callbacks, and DOM restoration', async () => {
     const dom = new JSDOM('<!doctype html><div id="pair"><input id="color" type="color" value="#3d5a80"><input id="text" type="text" value="#3d5a80"></div>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window; globalThis.document = dom.window.document; globalThis.window = dom.window;
     try {
@@ -1771,7 +1771,7 @@ test('Harness ColorPair owns two-way sync, invalid rollback, callbacks, and DOM 
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
 
-test('Harness Select interaction sequence matches keyboard and ownership contract', async () => {
+test('Uiux Select interaction sequence matches keyboard and ownership contract', async () => {
     const dom = new JSDOM('<!doctype html><main><select id="mode" tabindex="3" aria-hidden="false"><option>One</option><option>Two</option><option>Three</option></select><button id="outside">Outside</button></main>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1782,7 +1782,7 @@ test('Harness Select interaction sequence matches keyboard and ownership contrac
         const select = document.getElementById('mode');
         const outside = document.getElementById('outside');
         const release = mountSelect(select, { label: 'Mode', portal: true }, scope);
-        const trigger = document.querySelector('.vcp-harness-select-trigger');
+        const trigger = document.querySelector('.vcp-uiux-select-trigger');
         let anchor = { left: 900, bottom: 800, width: 120 };
         trigger.getBoundingClientRect = () => ({ ...anchor, top: anchor.bottom - 40, right: anchor.left + anchor.width, height: 40, x: anchor.left, y: anchor.bottom - 40, toJSON() {} });
         trigger.focus();
@@ -1817,7 +1817,7 @@ test('Harness Select interaction sequence matches keyboard and ownership contrac
         await scope.dispose('sequence-complete');
         assert.equal(select.getAttribute('tabindex'), '3');
         assert.equal(select.getAttribute('aria-hidden'), 'false');
-        assert.equal(document.querySelector('.vcp-harness-select'), null);
+        assert.equal(document.querySelector('.vcp-uiux-select'), null);
     } finally {
         globalThis.document = previousDocument;
         globalThis.window = previousWindow;
@@ -1825,7 +1825,7 @@ test('Harness Select interaction sequence matches keyboard and ownership contrac
     }
 });
 
-test('Harness Select projects optgroup headings without changing option order', async () => {
+test('Uiux Select projects optgroup headings without changing option order', async () => {
     const dom = new JSDOM('<!doctype html><main><select id="voices"><option value="default">默认</option><optgroup label="预设音色"><option value="preset-a">预设 A</option><option value="preset-b" disabled>预设 B</option></optgroup><optgroup label="克隆音色"><option value="clone-a" selected>克隆 A</option></optgroup></select></main>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1835,11 +1835,11 @@ test('Harness Select projects optgroup headings without changing option order', 
         const scope = createUiScope(new LifecycleScope('select-optgroup-test'));
         const select = document.getElementById('voices');
         const release = mountSelect(select, { label: 'Voice' }, scope);
-        const trigger = document.querySelector('.vcp-harness-select-trigger');
+        const trigger = document.querySelector('.vcp-uiux-select-trigger');
         trigger.click();
 
         const menu = document.querySelector('[role="menu"]');
-        const headings = [...menu.querySelectorAll('.vcp-harness-menu-group-label')];
+        const headings = [...menu.querySelectorAll('.vcp-uiux-menu-group-label')];
         assert.deepEqual(
             headings.map(node => ({ text: node.textContent, role: node.getAttribute('role') })),
             [
@@ -1853,7 +1853,7 @@ test('Harness Select projects optgroup headings without changing option order', 
         assert.equal(items.length, select.options.length, 'headings must not alter native option indexing');
         assert.deepEqual(items.map(item => item.textContent), ['默认', '预设 A', '预设 B', '克隆 A']);
         assert.equal(items[3].getAttribute('data-selected'), 'true');
-        assert.equal(items[3].querySelector('.vcp-harness-menu-item-check') !== null, true);
+        assert.equal(items[3].querySelector('.vcp-uiux-menu-item-check') !== null, true);
         assert.equal(items[2].disabled, true);
 
         items[1].click();
@@ -1863,7 +1863,7 @@ test('Harness Select projects optgroup headings without changing option order', 
 
         await release?.();
         await scope.dispose('select-optgroup-complete');
-        assert.equal(document.querySelector('.vcp-harness-select'), null);
+        assert.equal(document.querySelector('.vcp-uiux-select'), null);
         assert.equal(select.parentElement.tagName, 'MAIN');
     } finally {
         globalThis.document = previousDocument;
@@ -1872,7 +1872,7 @@ test('Harness Select projects optgroup headings without changing option order', 
     }
 });
 
-test('Harness Select external snapshot sync is presentation-only and owner-bound', async () => {
+test('Uiux Select external snapshot sync is presentation-only and owner-bound', async () => {
     const dom = new JSDOM('<!doctype html><select id="density"><option>Comfortable</option><option>Compact</option></select>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1886,13 +1886,13 @@ test('Harness Select external snapshot sync is presentation-only and owner-bound
         const release = mountSelect(select, { label: 'Density' }, scope);
         select.value = 'Compact';
         select.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
-        const trigger = document.querySelector('.vcp-harness-select-trigger');
+        const trigger = document.querySelector('.vcp-uiux-select-trigger');
         assert.equal(trigger.textContent, 'Compact');
         assert.equal(changes, 0);
         await release?.();
         select.value = 'Comfortable';
         select.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
-        assert.equal(document.querySelector('.vcp-harness-select-trigger'), null);
+        assert.equal(document.querySelector('.vcp-uiux-select-trigger'), null);
         assert.equal(changes, 0);
         await scope.dispose('sync-complete');
     } finally {
@@ -1902,7 +1902,7 @@ test('Harness Select external snapshot sync is presentation-only and owner-bound
     }
 });
 
-test('Harness NumericStepperRow external snapshot sync is presentation-only and owner-bound', async () => {
+test('Uiux NumericStepperRow external snapshot sync is presentation-only and owner-bound', async () => {
     const dom = new JSDOM('<!doctype html><div id="row"><input id="size" type="range" min="0" max="100" step="1" value="10"></div>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1914,14 +1914,14 @@ test('Harness NumericStepperRow external snapshot sync is presentation-only and 
         let changes = 0;
         input.addEventListener('change', () => { changes += 1; });
         mountNumericStepperRow(document.getElementById('row'), input, { title: 'Size' }, scope);
-        const value = () => document.querySelector('.vcp-harness-numeric-stepper-row-value')?.textContent;
+        const value = () => document.querySelector('.vcp-uiux-numeric-stepper-row-value')?.textContent;
         assert.equal(value(), '10');
         input.value = '42';
         input.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
         assert.equal(value(), '42');
         assert.equal(changes, 0);
         await scope.dispose('sync-complete');
-        assert.equal(document.querySelector('.vcp-harness-numeric-stepper-row-value'), null);
+        assert.equal(document.querySelector('.vcp-uiux-numeric-stepper-row-value'), null);
         assert.equal(document.getElementById('size')?.parentElement?.id, 'row', 'dispose restores the canonical range input');
     } finally {
         globalThis.document = previousDocument;
@@ -1930,7 +1930,7 @@ test('Harness NumericStepperRow external snapshot sync is presentation-only and 
     }
 });
 
-test('Harness FontSizeRow external snapshot sync is presentation-only and owner-bound', async () => {
+test('Uiux FontSizeRow external snapshot sync is presentation-only and owner-bound', async () => {
     const dom = new JSDOM('<!doctype html><div id="row"><select id="scale"><option value="small">小</option><option value="normal" selected>标准</option><option value="large">大</option></select></div>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1942,14 +1942,14 @@ test('Harness FontSizeRow external snapshot sync is presentation-only and owner-
         let changes = 0;
         select.addEventListener('change', () => { changes += 1; });
         mountFontSizeRow(document.getElementById('row'), select, scope);
-        const value = () => document.querySelector('.vcp-harness-font-size-row-value')?.textContent;
+        const value = () => document.querySelector('.vcp-uiux-font-size-row-value')?.textContent;
         assert.equal(value(), '14');
         select.value = 'large';
         select.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
         assert.equal(value(), '16');
         assert.equal(changes, 0);
         await scope.dispose('sync-complete');
-        assert.equal(document.querySelector('.vcp-harness-font-size-row-value'), null);
+        assert.equal(document.querySelector('.vcp-uiux-font-size-row-value'), null);
         assert.equal(document.getElementById('scale')?.parentElement?.id, 'row', 'dispose restores the canonical select');
     } finally {
         globalThis.document = previousDocument;
@@ -1958,7 +1958,7 @@ test('Harness FontSizeRow external snapshot sync is presentation-only and owner-
     }
 });
 
-test('Harness Range external snapshot sync is presentation-only and owner-bound', async () => {
+test('Uiux Range external snapshot sync is presentation-only and owner-bound', async () => {
     const dom = new JSDOM('<!doctype html><div><input id="speed" type="range" min="0.5" max="2" step="0.1" value="1"><output id="speedValue" for="speed">1</output></div>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -1986,7 +1986,7 @@ test('Harness Range external snapshot sync is presentation-only and owner-bound'
     }
 });
 
-test('Harness ColorPair external snapshot sync is presentation-only and fires the presentation hook', async () => {
+test('Uiux ColorPair external snapshot sync is presentation-only and fires the presentation hook', async () => {
     const dom = new JSDOM('<!doctype html><div><input id="color" type="color" value="#3d5a80"><input id="colorText" type="text" value="#3d5a80"></div>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -2016,7 +2016,7 @@ test('Harness ColorPair external snapshot sync is presentation-only and fires th
     }
 });
 
-test('Harness Choice external snapshot sync re-derives the mirrored value from the checked radio', async () => {
+test('Uiux Choice external snapshot sync re-derives the mirrored value from the checked radio', async () => {
     const dom = new JSDOM('<!doctype html><div id="group"><label><input type="radio" name="mode" value="on" checked>开</label><label><input type="radio" name="mode" value="off">关</label></div>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -2042,7 +2042,7 @@ test('Harness Choice external snapshot sync re-derives the mirrored value from t
     }
 });
 
-test('Harness Input/Field/Select expose stable error, disabled and selected state contracts', async () => {
+test('Uiux Input/Field/Select expose stable error, disabled and selected state contracts', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="field"><select id="mode"><option value="a">Alpha</option><option value="b" selected>Beta</option></select></div><input id="name" disabled></main>');
     const previousDocument = globalThis.document;
     const previousWindow = globalThis.window;
@@ -2056,7 +2056,7 @@ test('Harness Input/Field/Select expose stable error, disabled and selected stat
         const fieldRelease = mountField(fieldRoot, { label: 'Mode', description: 'Choose a mode.', error: 'Mode is unavailable.', control: select }, scope);
         const selectRelease = mountSelect(select, { label: 'Mode' }, scope);
         const inputRelease = mountInput(input, {}, scope);
-        const trigger = fieldRoot.querySelector('.vcp-harness-select-trigger');
+        const trigger = fieldRoot.querySelector('.vcp-uiux-select-trigger');
         assert.equal(select.getAttribute('aria-invalid'), 'true');
         assert.equal(select.getAttribute('aria-describedby'), null);
         assert.equal(trigger.textContent, 'Beta');
@@ -2079,7 +2079,7 @@ test('Harness Input/Field/Select expose stable error, disabled and selected stat
     }
 });
 
-test('Harness DiffBlock stays lab-only, collapses, copies and restores its host', async () => {
+test('Uiux DiffBlock stays lab-only, collapses, copies and restores its host', async () => {
     const dom = new JSDOM('<!doctype html><div id="host"><span>original</span></div>');
     const previousDocument = globalThis.document; const previousWindow = globalThis.window;
     globalThis.document = dom.window.document; globalThis.window = dom.window;
@@ -2088,11 +2088,11 @@ test('Harness DiffBlock stays lab-only, collapses, copies and restores its host'
         const host = document.getElementById('host'); let copied = '';
         const diff = mountDiffBlock(host, { maxLines: 2, copy: value => { copied = value; }, diffs: [{ path: 'a.ts', oldText: 'one\ntwo', newText: 'three\nfour' }] }, scope);
         assert.equal(host.querySelector('[data-diff]'), diff.root);
-        assert.ok(host.querySelector('.vcp-harness-diff-expand'));
-        host.querySelector('.vcp-harness-diff-copy').click();
+        assert.ok(host.querySelector('.vcp-uiux-diff-expand'));
+        host.querySelector('.vcp-uiux-diff-copy').click();
         assert.match(copied, /- one/); assert.match(copied, /\+ three/);
         diff.setExpanded(true);
-        assert.equal(host.querySelector('.vcp-harness-diff-expand'), null);
+        assert.equal(host.querySelector('.vcp-uiux-diff-expand'), null);
         await diff.dispose(); await scope.dispose('done');
         assert.equal(host.textContent, 'original');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }

@@ -12,7 +12,7 @@
 [id="agentSettingsContainer"] input[type="url"]:not(.input),
 [id="agentSettingsContainer"] input[type="password"]:not(.input),
 [id="agentSettingsContainer"] input[type="number"]:not(.input),
-[id="agentSettingsContainer"] select:not(.vcp-harness-select-native) {
+[id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
   width: 100%;
   height: 34px;
   min-height: 34px;
@@ -31,7 +31,7 @@
 }
 
 /* Select dropdown styling */
-[id="agentSettingsContainer"] select:not(.vcp-harness-select-native) {
+[id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
   padding-right: 34px;
   appearance: none;
   -webkit-appearance: none;
@@ -52,7 +52,7 @@ body[data-vcp-theme="light"]
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="url"]:not(.input),
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="password"]:not(.input),
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input),
-body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native) {
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
@@ -74,7 +74,7 @@ body[data-vcp-theme="light"]
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="url"]:not(.input):hover,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="password"]:not(.input):hover,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):hover,
-body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native):hover {
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):hover {
   border-color: color-mix(
     in srgb,
     var(--highlight-text) 72%,
@@ -100,8 +100,8 @@ body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="password"
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="password"]:not(.input):focus-visible,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):focus,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):focus-visible,
-body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native):focus,
-body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native):focus-visible {
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus-visible {
   outline: none;
   border-color: var(--highlight-text);
   box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
@@ -117,7 +117,7 @@ body[data-vcp-theme="dark"]
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="url"]:not(.input),
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="password"]:not(.input),
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="number"]:not(.input),
-body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native) {
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
@@ -138,7 +138,7 @@ body[data-vcp-theme="dark"]
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="url"]:not(.input):hover,
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="password"]:not(.input):hover,
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="number"]:not(.input):hover,
-body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native):hover {
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):hover {
   border-color: color-mix(
     in srgb,
     var(--highlight-text) 68%,
@@ -168,8 +168,8 @@ body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="number"]:n
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   input[type="number"]:not(.input):focus-visible,
-body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native):focus,
-body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-harness-select-native):focus-visible {
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus,
+body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus-visible {
   outline: none;
   border-color: var(--highlight-text);
   box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),

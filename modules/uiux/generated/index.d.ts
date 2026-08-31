@@ -39,7 +39,7 @@ export type { ToastController, ToastProps } from './primitives/toast.js';
 export { mountRiskConfirmation } from './primitives/risk-confirmation.js';
 export type { RiskConfirmationController, RiskConfirmationProps } from './primitives/risk-confirmation.js';
 export { mountSemanticIcon } from './primitives/semantic-icon.js';
-export type { HarnessSemanticIconName, SemanticIconController, SemanticIconProps } from './primitives/semantic-icon.js';
+export type { UiuxSemanticIconName, SemanticIconController, SemanticIconProps } from './primitives/semantic-icon.js';
 export { mountChoice } from './primitives/choice.js';
 export { mountRange } from './primitives/range.js';
 export { mountNumericStepperRow } from './primitives/numeric-stepper-row.js';
@@ -53,7 +53,7 @@ export type { OnboardingSurfaceController, OnboardingSurfaceProps } from './prim
 export { mountDiffBlock } from './primitives/diff-block.js';
 export type { DiffBlockController, DiffBlockProps, DiffHunk } from './primitives/diff-block.js';
 export type { SelectProps } from './primitives/select.js';
-/** Candidate-only Harness command-popup contract; not a stable VCP business API. */
+/** Candidate-only Uiux command-popup contract; not a stable VCP business API. */
 export { createPopupSelectController, filterOptions, mountPopupSelectView } from './primitives/popup-select.js';
 export type { PopupSelectConfirmation, PopupSelectController, PopupSelectDeps, PopupSelectOption, PopupSelectSnapshot, PopupSelectSpec, PopupSelectViewController, PopupSelectViewProps, PopupTokenSegment } from './primitives/popup-select.js';
 /** Candidate-only in-app directory browser; its filesystem capabilities are injected by the caller. */

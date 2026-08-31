@@ -40,5 +40,5 @@ export interface MenuController {
     setSelected(selectedId?: string, selectedIds?: readonly string[]): void;
     dispose(): void | Promise<void>;
 }
-/** Owner-controlled Harness Menu rendered in Light DOM. */
+/** Owner-controlled Uiux Menu rendered in Light DOM. */
 export declare function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope): MenuController;

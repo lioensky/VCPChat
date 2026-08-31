@@ -39,12 +39,12 @@
        spatial/attention-heavy motion from high-frequency surfaces. */
     .vcp-ui-scope :is(.next-ui-account-menu, .next-ui-notification-menu,
         .vcp-ui-modal-overlay, [role='dialog'], [role='tooltip'],
-        .vcp-harness-tooltip-bubble, .vcp-harness-toast,
+        .vcp-uiux-tooltip-bubble, .vcp-uiux-toast,
         .settings-sidebar, .settings-section, .sidebar-panel) {
         transition: none;
     }
 
-    :is(.vcp-harness-tooltip-bubble, .vcp-harness-toast,
+    :is(.vcp-uiux-tooltip-bubble, .vcp-uiux-toast,
         .vcp-ui-skeleton-line, .next-ui-embedded-app-status .vcp-ui-icon,
         .agent-emotion-card::before, .agent-emotion-sweep,
         .flame-pulse, .ask-nova-pulse) {

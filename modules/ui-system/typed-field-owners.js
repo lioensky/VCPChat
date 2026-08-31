@@ -68,7 +68,7 @@ function addTypedNetworkPathInput(root, path = '') {
     if (inputApi?.mountInput && inputScope) {
         try {
             inputApi.mountInput(input, {}, inputScope);
-            input.closest('.vcp-uiux-input-wrap')?.classList.add('vcp-harness-input-fill');
+            input.closest('.vcp-uiux-input-wrap')?.classList.add('vcp-uiux-input-fill');
         } catch (error) {
             console.warn('[VCPUI SettingsBridge] Could not mount network path Input primitive:', error);
         }
@@ -417,7 +417,7 @@ function ensureAssistantRuntimeUiService() {
 // Forum credentials are presentation-only in this phase.  The existing
 // ForumConfigUiService/global submit path remains the command owner until its
 // dirty/autosave seam is migrated; this primitive only establishes the
-// Harness Light-DOM geometry and scope-owned teardown contract.
+// Uiux Light-DOM geometry and scope-owned teardown contract.
 
 function mountTypedForumFieldOwner(root, form) {
     if (!root || !form || form.dataset.vcpTypedForumFieldOwnerMounted === 'true') return;

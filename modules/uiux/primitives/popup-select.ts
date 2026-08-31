@@ -2,7 +2,7 @@ import type { UiScope } from '../contracts.js';
 import { mountRiskConfirmation } from './risk-confirmation.js';
 import { mountSemanticIcon } from './semantic-icon.js';
 
-const STYLE_ID = 'vcp-harness-uiux-popup-select';
+const STYLE_ID = 'vcp-uiux-uiux-popup-select';
 
 /**
  * ModelSelect renders its selected marker as a 16px inline SVG, not through
@@ -13,7 +13,7 @@ const STYLE_ID = 'vcp-harness-uiux-popup-select';
  * Source: packages/client/ui-model-selection/src/client/ModelSelect.tsx
  * (`IconCheckOutline16` inside `.check`).
  */
-function mountHarnessModelSelectCheck(host: HTMLElement) {
+function mountUiuxModelSelectCheck(host: HTMLElement) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', '16');
     svg.setAttribute('height', '16');
@@ -31,10 +31,10 @@ function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = `.vcp-harness-popup-select-card{position:absolute;bottom:calc(100% + 4px);left:0;z-index:100;display:flex;flex-direction:column;padding:4px;min-width:min(220px,100%);max-width:100%;max-height:320px;overflow:hidden;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:12px;background:var(--dsw-specific-menu,#fff);box-shadow:var(--dsw-shadow-lv3,0 0 1px rgba(0,0,0,.2),0 0 4px rgba(0,0,0,.02),0 12px 32px rgba(0,0,0,.08));outline:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-harness-popup-select-viewport{display:flex;flex-direction:column;min-height:0;overflow-y:auto}.vcp-harness-popup-select-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:0;border-radius:8px;cursor:pointer;font-size:13px;color:var(--dsw-alias-label-primary,#0f1115);background:transparent;text-align:left}.vcp-harness-popup-select-row-active{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-harness-popup-select-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-popup-select-detail{font-size:12px;color:var(--dsw-alias-label-tertiary,#737780);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-popup-select-check{display:inline-flex;flex:none;color:var(--dsw-alias-label-primary,#0f1115)}.vcp-harness-popup-select-group{display:flex;flex-direction:column}.vcp-harness-popup-select-group-title{padding:5px 8px 3px;color:var(--dsw-alias-label-tertiary,#81858c);font-size:12px;line-height:18px;font-weight:500}.vcp-harness-popup-select-option{display:flex;align-items:center;gap:8px;width:100%;min-height:38px;padding:6px 8px;border:0;border-radius:10px;outline:none;background:transparent;color:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}.vcp-harness-popup-select-option:hover:not(:disabled),.vcp-harness-popup-select-option:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-harness-popup-select-option-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:0}.vcp-harness-popup-select-option-label{overflow:hidden;color:inherit;font-size:14px;font-weight:500;line-height:20px;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-popup-select-option-detail{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary,#737780);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-popup-select-option-check{display:inline-flex;flex:0 0 18px;align-items:center;justify-content:center;color:var(--dsw-alias-label-primary,#0f1115)}.vcp-harness-popup-select-option:disabled{color:var(--dsw-alias-label-dimmed,#a0a5ad);cursor:default}.vcp-harness-popup-select-status{padding:8px 10px;font-size:13px;color:var(--dsw-alias-label-tertiary,#737780)}.vcp-harness-popup-select-search{margin:2px 2px 4px;padding:6px 8px;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:8px;background:transparent;font-size:13px;color:var(--dsw-alias-label-primary,#0f1115);outline:none}.vcp-harness-popup-select-error{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;color:var(--dsw-alias-state-error-primary,#d92d20)}.vcp-harness-popup-select-error-text{flex:1;overflow:hidden;text-overflow:ellipsis}.vcp-harness-popup-select-retry{padding:2px 8px;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:6px;background:transparent;font-size:12px;color:var(--dsw-alias-label-primary,#0f1115);cursor:pointer}`;
-    // Keep grouped parity geometry aligned with Harness and prevent a
+    style.textContent = `.vcp-uiux-popup-select-card{position:absolute;bottom:calc(100% + 4px);left:0;z-index:100;display:flex;flex-direction:column;padding:4px;min-width:min(220px,100%);max-width:100%;max-height:320px;overflow:hidden;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:12px;background:var(--dsw-specific-menu,#fff);box-shadow:var(--dsw-shadow-lv3,0 0 1px rgba(0,0,0,.2),0 0 4px rgba(0,0,0,.02),0 12px 32px rgba(0,0,0,.08));outline:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-uiux-popup-select-viewport{display:flex;flex-direction:column;min-height:0;overflow-y:auto}.vcp-uiux-popup-select-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:0;border-radius:8px;cursor:pointer;font-size:13px;color:var(--dsw-alias-label-primary,#0f1115);background:transparent;text-align:left}.vcp-uiux-popup-select-row-active{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-popup-select-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-popup-select-detail{font-size:12px;color:var(--dsw-alias-label-tertiary,#737780);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-popup-select-check{display:inline-flex;flex:none;color:var(--dsw-alias-label-primary,#0f1115)}.vcp-uiux-popup-select-group{display:flex;flex-direction:column}.vcp-uiux-popup-select-group-title{padding:5px 8px 3px;color:var(--dsw-alias-label-tertiary,#81858c);font-size:12px;line-height:18px;font-weight:500}.vcp-uiux-popup-select-option{display:flex;align-items:center;gap:8px;width:100%;min-height:38px;padding:6px 8px;border:0;border-radius:10px;outline:none;background:transparent;color:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}.vcp-uiux-popup-select-option:hover:not(:disabled),.vcp-uiux-popup-select-option:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-popup-select-option-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:0}.vcp-uiux-popup-select-option-label{overflow:hidden;color:inherit;font-size:14px;font-weight:500;line-height:20px;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-popup-select-option-detail{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary,#737780);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-popup-select-option-check{display:inline-flex;flex:0 0 18px;align-items:center;justify-content:center;color:var(--dsw-alias-label-primary,#0f1115)}.vcp-uiux-popup-select-option:disabled{color:var(--dsw-alias-label-dimmed,#a0a5ad);cursor:default}.vcp-uiux-popup-select-status{padding:8px 10px;font-size:13px;color:var(--dsw-alias-label-tertiary,#737780)}.vcp-uiux-popup-select-search{margin:2px 2px 4px;padding:6px 8px;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:8px;background:transparent;font-size:13px;color:var(--dsw-alias-label-primary,#0f1115);outline:none}.vcp-uiux-popup-select-error{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;color:var(--dsw-alias-state-error-primary,#d92d20)}.vcp-uiux-popup-select-error-text{flex:1;overflow:hidden;text-overflow:ellipsis}.vcp-uiux-popup-select-retry{padding:2px 8px;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:6px;background:transparent;font-size:12px;color:var(--dsw-alias-label-primary,#0f1115);cursor:pointer}`;
+    // Keep grouped parity geometry aligned with Uiux and prevent a
     // horizontal scrollbar from consuming an extra 8px of menu height.
-    style.textContent += '.vcp-harness-popup-select-viewport{overflow-x:hidden}.vcp-harness-popup-select-group+.vcp-harness-popup-select-group{margin-top:4px}.vcp-harness-popup-select-option-label{font-size:14px;line-height:20px;font-weight:500}.vcp-harness-popup-select-option-check{display:grid;place-items:center;flex:0 0 18px}.vcp-harness-popup-select-card[data-harness-equivalent="true"] .vcp-harness-popup-select-group-title{color:#81858c}.vcp-harness-popup-select-action-row{position:relative;display:flex;align-items:center;width:100%}.vcp-harness-popup-select-action-row .vcp-harness-popup-select-option{padding-right:52px}.vcp-harness-popup-select-action-row .vcp-harness-popup-select-favorite{position:absolute;right:30px;top:50%;transform:translateY(-50%)}';
+    style.textContent += '.vcp-uiux-popup-select-viewport{overflow-x:hidden}.vcp-uiux-popup-select-group+.vcp-uiux-popup-select-group{margin-top:4px}.vcp-uiux-popup-select-option-label{font-size:14px;line-height:20px;font-weight:500}.vcp-uiux-popup-select-option-check{display:grid;place-items:center;flex:0 0 18px}.vcp-uiux-popup-select-card[data-uiux-equivalent="true"] .vcp-uiux-popup-select-group-title{color:#81858c}.vcp-uiux-popup-select-action-row{position:relative;display:flex;align-items:center;width:100%}.vcp-uiux-popup-select-action-row .vcp-uiux-popup-select-option{padding-right:52px}.vcp-uiux-popup-select-action-row .vcp-uiux-popup-select-favorite{position:absolute;right:30px;top:50%;transform:translateY(-50%)}';
     (document.head || document.documentElement).append(style);
 }
 
@@ -295,7 +295,7 @@ export interface PopupSelectViewProps {
     readonly searchAria?: string;
     /** Render the filter control; false is used by ModelSelect-equivalent menus. */
     readonly searchEnabled?: boolean;
-    /** Render provider groups and Harness menuitemradio buttons when enabled. */
+    /** Render provider groups and Uiux menuitemradio buttons when enabled. */
     readonly grouped?: boolean;
     readonly optionRole?: 'option' | 'menuitemradio';
     readonly retryLabel?: string;
@@ -327,7 +327,7 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
     if (!host || !props?.popup || !scope) throw new TypeError('PopupSelectView requires a host, popup controller and scope.');
     ensureStyles();
     const popup = props.popup;
-    const viewScope = scope.child('harness-popup-select-view');
+    const viewScope = scope.child('uiux-popup-select-view');
     const labels = {
         searchPlaceholder: props.searchPlaceholder ?? 'Search…',
         searchAria: props.searchAria ?? 'Filter options',
@@ -344,34 +344,34 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
     const template = (pattern: string, command: string) => pattern.replace('{command}', String(command));
 
     const card = document.createElement('div');
-    card.className = 'vcp-harness-popup-select-card';
+    card.className = 'vcp-uiux-popup-select-card';
     if (grouped) {
         card.style.boxSizing = 'content-box';
-        card.dataset.harnessEquivalent = 'true';
+        card.dataset.uiuxEquivalent = 'true';
     }
     card.setAttribute('role', 'menu');
     card.tabIndex = -1;
     const search = document.createElement('input');
     search.type = 'text';
-    search.className = 'vcp-harness-popup-select-search';
+    search.className = 'vcp-uiux-popup-select-search';
     search.placeholder = labels.searchPlaceholder;
     search.setAttribute('aria-label', labels.searchAria);
     search.hidden = !searchEnabled;
     const error = document.createElement('div');
-    error.className = 'vcp-harness-popup-select-error';
+    error.className = 'vcp-uiux-popup-select-error';
     error.setAttribute('role', 'alert');
     const errorTextSpan = document.createElement('span');
-    errorTextSpan.className = 'vcp-harness-popup-select-error-text';
+    errorTextSpan.className = 'vcp-uiux-popup-select-error-text';
     const retryButton = document.createElement('button');
     retryButton.type = 'button';
-    retryButton.className = 'vcp-harness-popup-select-retry';
+    retryButton.className = 'vcp-uiux-popup-select-retry';
     retryButton.textContent = labels.retry;
     error.append(errorTextSpan, retryButton);
     const status = document.createElement('div');
-    status.className = 'vcp-harness-popup-select-status';
+    status.className = 'vcp-uiux-popup-select-status';
     const listbox = document.createElement('div');
     if (optionRole === 'option') listbox.setAttribute('role', 'listbox');
-    listbox.className = 'vcp-harness-popup-select-viewport';
+    listbox.className = 'vcp-uiux-popup-select-viewport';
     card.append(search, error, status, listbox);
     card.remove(); // Closed renders null until the first open snapshot lands.
 
@@ -428,9 +428,9 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
 
     const renderRows = (s: PopupSelectSnapshot) => {
         const previousRowsScope = rowsScope;
-        const nextRowsScope = viewScope.child('harness-popup-select-rows');
+        const nextRowsScope = viewScope.child('uiux-popup-select-rows');
         rowsScope = nextRowsScope;
-        void previousRowsScope?.dispose('harness-popup-select-rows-rebuilt');
+        void previousRowsScope?.dispose('uiux-popup-select-rows-rebuilt');
         listbox.replaceChildren();
         if (s.status !== 'ready') return;
         if (optionRole === 'option') listbox.setAttribute('aria-label', template(labels.listboxAria, s.command ?? ''));
@@ -450,42 +450,42 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
             if (optionRole === 'menuitemradio') row.setAttribute('aria-checked', String(option.active === true));
             else row.setAttribute('aria-selected', String(index === s.active));
             row.className = optionRole === 'menuitemradio'
-                ? 'vcp-harness-popup-select-option'
+                ? 'vcp-uiux-popup-select-option'
                 : (index === s.active
-                    ? 'vcp-harness-popup-select-row vcp-harness-popup-select-row-active'
-                    : 'vcp-harness-popup-select-row');
-            if (disabled) row.classList.add(optionRole === 'menuitemradio' ? 'vcp-harness-popup-select-option-disabled' : 'vcp-harness-popup-select-row-disabled');
+                    ? 'vcp-uiux-popup-select-row vcp-uiux-popup-select-row-active'
+                    : 'vcp-uiux-popup-select-row');
+            if (disabled) row.classList.add(optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-disabled' : 'vcp-uiux-popup-select-row-disabled');
             const copy = document.createElement('span');
-            copy.className = optionRole === 'menuitemradio' ? 'vcp-harness-popup-select-option-copy' : 'vcp-harness-popup-select-label';
+            copy.className = optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-copy' : 'vcp-uiux-popup-select-label';
             const labelNode = document.createElement('span');
-            labelNode.className = optionRole === 'menuitemradio' ? 'vcp-harness-popup-select-option-label' : '';
+            labelNode.className = optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-label' : '';
             labelNode.textContent = option.label;
             copy.append(labelNode);
             if (option.detail !== undefined) {
                 const detail = document.createElement('span');
-                detail.className = optionRole === 'menuitemradio' ? 'vcp-harness-popup-select-option-detail' : 'vcp-harness-popup-select-detail';
+                detail.className = optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-detail' : 'vcp-uiux-popup-select-detail';
                 detail.textContent = option.detail;
                 copy.append(detail);
             }
             row.append(copy);
-            // Harness ModelSelect keeps the trailing `.check` slot on every
+            // Uiux ModelSelect keeps the trailing `.check` slot on every
             // menuitemradio. The selected row fills it with IconCheckOutline16;
             // unselected rows retain the same 18px flex reservation.
             if (option.active === true || (grouped && optionRole === 'menuitemradio')) {
                 const check = document.createElement('span');
-                check.className = optionRole === 'menuitemradio' ? 'vcp-harness-popup-select-option-check' : 'vcp-harness-popup-select-check';
+                check.className = optionRole === 'menuitemradio' ? 'vcp-uiux-popup-select-option-check' : 'vcp-uiux-popup-select-check';
                 check.setAttribute('aria-hidden', 'true');
                 if (option.active === true && grouped && optionRole === 'menuitemradio') {
-                    mountHarnessModelSelectCheck(check);
+                    mountUiuxModelSelectCheck(check);
                 } else if (option.active === true) {
-                    mountSemanticIcon(check, { name: 'check', size: 16 }, nextRowsScope.child('harness-popup-select-check'));
+                    mountSemanticIcon(check, { name: 'check', size: 16 }, nextRowsScope.child('uiux-popup-select-check'));
                 }
                 row.append(check);
             }
             if (props.onFavoriteToggle !== undefined && option.favorite !== undefined) {
                 const favorite = document.createElement('button');
                 favorite.type = 'button';
-                favorite.className = 'vcp-harness-popup-select-favorite';
+                favorite.className = 'vcp-uiux-popup-select-favorite';
                 favorite.dataset.optionAction = 'favorite';
                 favorite.setAttribute('aria-label', option.favorite ? `Remove ${option.label} from favorites` : `Add ${option.label} to favorites`);
                 favorite.setAttribute('aria-pressed', String(option.favorite));
@@ -497,11 +497,11 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
                     if (!disabled) props.onFavoriteToggle?.(option);
                 });
                 // A favorite is an injected VCP extension, not part of the
-                // Harness row contract. Keep it adjacent to the native model
+                // Uiux row contract. Keep it adjacent to the native model
                 // button rather than nesting a <button> in a <button>, which
                 // is invalid HTML and breaks keyboard/AT semantics.
                 const actionRow = document.createElement('div');
-                actionRow.className = 'vcp-harness-popup-select-action-row';
+                actionRow.className = 'vcp-uiux-popup-select-action-row';
                 nextRowsScope.listen(row, 'click', () => { if (!disabled) void popup.select(index); });
                 nextRowsScope.listen(row, 'mouseenter', () => { if (!disabled) popup.highlight(index); });
                 actionRow.append(row, favorite);
@@ -518,13 +518,13 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
                 let group = groups.get(key);
                 if (!group) {
                     group = document.createElement('section');
-                    group.className = 'vcp-harness-popup-select-group';
+                    group.className = 'vcp-uiux-popup-select-group';
                     group.setAttribute('role', 'group');
                     if (key) {
                         const title = document.createElement('div');
-                        title.className = 'vcp-harness-popup-select-group-title';
+                        title.className = 'vcp-uiux-popup-select-group-title';
                         title.textContent = key;
-                        title.id = `vcp-harness-popup-select-group-title-${groups.size}`;
+                        title.id = `vcp-uiux-popup-select-group-title-${groups.size}`;
                         group.setAttribute('aria-labelledby', title.id);
                         group.append(title);
                     }
@@ -548,7 +548,7 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
         const s = popup.getSnapshot();
         if (!s.open && lastOpen) {
             card.remove(); // Dismiss renders null; the anchor stays mounted.
-            void rowsScope?.dispose('harness-popup-select-rows-closed');
+            void rowsScope?.dispose('uiux-popup-select-rows-closed');
             rowsScope = null;
             listbox.replaceChildren();
         }
@@ -598,7 +598,7 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
         if (s.confirming === null) return;
         const confirmation = s.confirming.confirmation;
         if (confirmation === undefined) return;
-        riskScope = scope.child('harness-popup-select-risk');
+        riskScope = scope.child('uiux-popup-select-risk');
         riskController = mountRiskConfirmation({
             title: confirmation.title,
             description: confirmation.description,
@@ -620,11 +620,11 @@ export function mountPopupSelectView(host: HTMLElement, props: PopupSelectViewPr
 
     const dispose = viewScope.own(async () => {
         unsubscribe();
-        await riskScope?.dispose('harness-popup-select-risk-unmounted');
-        await rowsScope?.dispose('harness-popup-select-rows-unmounted');
+        await riskScope?.dispose('uiux-popup-select-risk-unmounted');
+        await rowsScope?.dispose('uiux-popup-select-rows-unmounted');
         popup.dispose();
         card.remove();
-    }, 'harness-popup-select-view', 'ui-primitive');
+    }, 'uiux-popup-select-view', 'ui-primitive');
 
     sync();
     syncRisk();

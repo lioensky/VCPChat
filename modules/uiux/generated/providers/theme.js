@@ -36,10 +36,10 @@ const SEMANTIC_THEME_TOKENS = Object.freeze({
         '--vcp-ui-theme-accent': 'oklch(0.68 0.16 230)',
         '--vcp-ui-theme-accent-hover': 'oklch(0.60 0.18 230)',
         '--vcp-ui-theme-on-accent': 'oklch(1 0 0)',
-        // Harness aliases are deliberately projected by the same document
+        // Uiux aliases are deliberately projected by the same document
         // token owner. Candidate primitives consume these names directly;
         // without them they each choose an unrelated local fallback and a
-        // source-mounted Harness fixture can lose declarations such as its
+        // source-mounted Uiux fixture can lose declarations such as its
         // transparent elevated-surface border.
         // Source: ui-theme/src/styles/design-platform.css and
         // ui-theme/src/styles/gradient-shadow-text.css.
@@ -75,7 +75,7 @@ const SEMANTIC_THEME_TOKENS = Object.freeze({
         '--dsw-alias-border-l2': 'rgba(0, 0, 0, 0.1)',
         '--dsw-alias-label-primary': 'rgb(15, 17, 21)',
         '--dsw-alias-label-tertiary': 'rgb(129, 133, 140)',
-        // Harness source: ui-theme/src/styles/design-platform.css.
+        // Uiux source: ui-theme/src/styles/design-platform.css.
         // Keep the document-level token canonical so every Candidate Light-DOM
         // consumer inherits the same hover material rather than patching it
         // locally in individual primitives.

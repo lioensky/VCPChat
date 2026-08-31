@@ -1,6 +1,6 @@
 import type { UiDisposer, UiScope } from '../contracts.js';
 
-const STYLE_ID = 'vcp-harness-uiux-toggle';
+const STYLE_ID = 'vcp-uiux-uiux-toggle';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style'); style.id = STYLE_ID;
@@ -17,5 +17,5 @@ export function mountToggle(input: HTMLInputElement, scope: UiScope): UiDisposer
     const previousDisplay = legacySlider?.style.display ?? '';
     if (legacySlider) legacySlider.style.display = 'none';
     parent.insertBefore(wrap, input); wrap.append(input);
-    return scope.own(() => { if (input.parentNode === wrap) parent.insertBefore(input, wrap); if (legacySlider) legacySlider.style.display = previousDisplay; wrap.remove(); }, 'harness-toggle', 'ui-primitive');
+    return scope.own(() => { if (input.parentNode === wrap) parent.insertBefore(input, wrap); if (legacySlider) legacySlider.style.display = previousDisplay; wrap.remove(); }, 'uiux-toggle', 'ui-primitive');
 }

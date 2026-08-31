@@ -84,7 +84,7 @@
        surface.  These legacy fallbacks remain for unadopted controls only;
        applying them inside a typed wrapper creates an inner border/halo in
        addition to the primitive's wrapper contract. */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not(:is(.vcp-uiux-input-wrap > input, .vcp-uiux-color-pair > input, .vcp-uiux-range > input)), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm select:not(.vcp-harness-select-native), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm textarea {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not(:is(.vcp-uiux-input-wrap > input, .vcp-uiux-color-pair > input, .vcp-uiux-range > input)), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm select:not(.vcp-uiux-select-native), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm textarea {
         min-height: var(--vcp-ui-control-md);
         border: 1px solid var(--vcp-ui-control-border);
         border-radius: var(--vcp-ui-radius-sm);
@@ -100,7 +100,7 @@
         line-height: var(--vcp-ui-line-body);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not(:is(.vcp-uiux-input-wrap > input, .vcp-uiux-color-pair > input, .vcp-uiux-range > input)):focus, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm select:not(.vcp-harness-select-native):focus, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm textarea:focus {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not(:is(.vcp-uiux-input-wrap > input, .vcp-uiux-color-pair > input, .vcp-uiux-range > input)):focus, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm select:not(.vcp-uiux-select-native):focus, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm textarea:focus {
         border-color: var(--vcp-ui-control-focus);
         box-shadow: 0 0 0 3px var(--vcp-ui-focus-ring);
         outline: none;
@@ -122,7 +122,7 @@
     /* Generated Button instances own their control geometry and state
        colors. These remain only for Agent controls that have not entered the
        typed Button slice (notably the separate model-picker trigger). */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button:not(.vcp-harness-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .reset-colors-btn:not(.vcp-harness-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .small-button:not(.vcp-harness-button) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button:not(.vcp-uiux-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .reset-colors-btn:not(.vcp-uiux-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .small-button:not(.vcp-uiux-button) {
         min-height: var(--vcp-ui-control-md);
         padding: 0 var(--vcp-ui-space-3);
         border: 1px solid var(--vcp-ui-control-border);
@@ -135,37 +135,37 @@
         font-weight: 600;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
         border-color: var(--vcp-ui-accent);
         color: var(--vcp-ui-on-accent);
         background: var(--vcp-ui-accent);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm #deleteAgentBtn:not(.vcp-harness-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm #deleteGroupBtn {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm #deleteAgentBtn:not(.vcp-uiux-button), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm #deleteGroupBtn {
         border-color: color-mix(in srgb, var(--vcp-ui-danger) 52%, var(--vcp-ui-border));
         color: var(--vcp-ui-danger);
         background: var(--vcp-ui-danger-bg);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button:not(.vcp-harness-button):hover:not(:disabled), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .reset-colors-btn:not(.vcp-harness-button):hover:not(:disabled), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .small-button:not(.vcp-harness-button):hover:not(:disabled) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button:not(.vcp-uiux-button):hover:not(:disabled), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .reset-colors-btn:not(.vcp-uiux-button):hover:not(:disabled), :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .small-button:not(.vcp-uiux-button):hover:not(:disabled) {
         border-color: var(--vcp-ui-control-focus);
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-fill-2);
         box-shadow: none;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover:not(:disabled) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover:not(:disabled) {
         border-color: var(--vcp-ui-accent-hover);
         color: var(--vcp-ui-on-accent);
         background: var(--vcp-ui-accent-hover);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm :is(input, select, textarea, button):focus-visible:not(:is(.vcp-uiux-input-wrap > *, .vcp-uiux-color-pair > *, .vcp-uiux-range > *, .vcp-harness-select > *)) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm :is(input, select, textarea, button):focus-visible:not(:is(.vcp-uiux-input-wrap > *, .vcp-uiux-color-pair > *, .vcp-uiux-range > *, .vcp-uiux-select > *)) {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm :is(input, select, textarea):is(:focus, :focus-visible):not(:is(.vcp-uiux-input-wrap > *, .vcp-uiux-color-pair > *, .vcp-uiux-range > *, .vcp-harness-select > *)) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm :is(input, select, textarea):is(:focus, :focus-visible):not(:is(.vcp-uiux-input-wrap > *, .vcp-uiux-color-pair > *, .vcp-uiux-range > *, .vcp-uiux-select > *)) {
         border-color: var(--vcp-ui-control-focus);
         box-shadow: 0 0 0 var(--vcp-ui-space-1) var(--vcp-ui-focus-ring);
         outline: none;
@@ -177,7 +177,7 @@
         background: var(--vcp-ui-border);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .settings-header-bar .global-settings-btn:not(.vcp-harness-button) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
         min-height: var(--vcp-ui-control-sm);
         height: var(--vcp-ui-control-sm);
         padding: 0 var(--vcp-ui-space-2);
@@ -384,7 +384,7 @@
         flex: 1;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(#agentSettingsContainer, #groupSettingsContainer) .model-input-container > button:not(.vcp-harness-agent-model-picker-trigger) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(#agentSettingsContainer, #groupSettingsContainer) .model-input-container > button:not(.vcp-uiux-agent-model-picker-trigger) {
         width: var(--vcp-ui-control-md);
         min-width: var(--vcp-ui-control-md);
         padding: 0;
@@ -400,7 +400,7 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button) {
         min-width: 0;
         min-height: var(--vcp-ui-control-md);
         padding: 0 var(--vcp-ui-space-1);
@@ -553,7 +553,7 @@
 
     /* ============================================================
        全局设置 SettingsShell
-       全局设置模态框用 Harness SettingsRoot token 重建为
+       全局设置模态框用 Uiux SettingsRoot token 重建为
        「左栏（原生 nav cells）| 内容区（header + options）」。
        所有规则都限定在主页面或显式设置宿主的 .vcp-ui-scope 内。
        ============================================================ */
@@ -656,7 +656,7 @@
        wrap must stay excluded: the wrapper owns the focus border surface,
        and a second outline on the inner input renders as a stray halo.
        .vcp-settings-bare-select gets the full control contract below. */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsForm :is(input, select, textarea, button):focus-visible:not(:is(.vcp-uiux-input-wrap > *, .vcp-harness-select > *, .vcp-settings-bare-select, input[type="color"])) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsForm :is(input, select, textarea, button):focus-visible:not(:is(.vcp-uiux-input-wrap > *, .vcp-uiux-select > *, .vcp-settings-bare-select, input[type="color"])) {
         outline: 2px solid var(--vcp-ui-focus-ring);
         outline-offset: 2px;
     }
@@ -709,7 +709,7 @@
        flex-center their inner control, so the legacy
        `.modal-content input { margin-bottom: 15px }` margin leaks into the
        centering math and lifts the input ~7px out of the wrap — the same
-       "placeholder/text sits high" defect already fixed for harness wraps.
+       "placeholder/text sits high" defect already fixed for uiux wraps.
        Zero it at matching strength. */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsForm :is(.vcp-uiux-input-wrap, .vcp-uiux-color-pair) > :is(input, textarea) {
         margin: 0;
@@ -727,7 +727,7 @@
     }
 
     /* ---- subsections (cards) ---- */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-harness-editor-section {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-uiux-editor-section {
         margin: 0;
         padding: 0;
         border: 0;
@@ -736,24 +736,24 @@
         box-shadow: none;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-harness-editor-section:last-child {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-uiux-editor-section:last-child {
         margin-bottom: 0;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-harness-editor-section-title {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-uiux-editor-section-title {
         color: var(--vcp-ui-text-0);
         font-size: var(--vcp-ui-font-body);
         font-weight: 600;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-harness-editor-section-description {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-uiux-editor-section-description {
         margin: 0;
         color: var(--vcp-ui-text-3);
         font-size: var(--vcp-ui-font-caption);
         line-height: var(--vcp-ui-line-body);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-harness-editor-section[data-editor-density="prominent"] {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-uiux-editor-section[data-editor-density="prominent"] {
         box-shadow: none;
     }
 
@@ -850,7 +850,7 @@
         gap: var(--vcp-ui-space-2);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal :is(.small-button, .reset-colors-btn, #addNetworkPathBtn, #openTopicSummaryModelSelectBtn):not(.vcp-harness-button) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal :is(.small-button, .reset-colors-btn, #addNetworkPathBtn, #openTopicSummaryModelSelectBtn):not(.vcp-uiux-button) {
         min-height: var(--vcp-ui-control-md);
         box-sizing: border-box;
         padding: 0 var(--vcp-ui-space-3);
@@ -864,7 +864,7 @@
         cursor: pointer;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal :is(.small-button, .reset-colors-btn, #addNetworkPathBtn, #openTopicSummaryModelSelectBtn):not(.vcp-harness-button):hover {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal :is(.small-button, .reset-colors-btn, #addNetworkPathBtn, #openTopicSummaryModelSelectBtn):not(.vcp-uiux-button):hover {
         color: var(--vcp-ui-text-0);
         background: var(--vcp-ui-fill-2);
     }
@@ -900,7 +900,7 @@
         box-shadow: none;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.agent-identity-container, .vcp-harness-editor-section, .chat-presentation-mode-option, .scenario-preview-card) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.agent-identity-container, .vcp-uiux-editor-section, .chat-presentation-mode-option, .scenario-preview-card) {
         border: 0;
         background: var(--vcp-ui-fill-0);
         box-shadow: none;
@@ -931,7 +931,7 @@
 
     /* SettingsRoot nav title: 16/24 medium, 12px inset, no duplicate content
        heading in the right column. */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-title {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-title {
         display: block;
         margin: 0;
         padding: 0 12px;
@@ -941,7 +941,7 @@
         line-height: 24px;
     }
 
-    /* DisclosureRow geometry copied from Harness: 16px leading control,
+    /* DisclosureRow geometry copied from Uiux: 16px leading control,
        6px gap, 24px row, 14/24 title. */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container .style-collapse-header {
         display: flex;

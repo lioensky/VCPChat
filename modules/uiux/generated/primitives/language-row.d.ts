@@ -25,5 +25,5 @@ export interface LanguageRowController {
     setOpen(value: boolean): void;
     dispose(): void | Promise<void>;
 }
-/** Candidate-only Light-DOM replication of Harness locale/LanguageRow. */
+/** Candidate-only Light-DOM replication of Uiux locale/LanguageRow. */
 export declare function mountLanguageRow(host: HTMLElement, props: LanguageRowProps, scope: UiScope): LanguageRowController;

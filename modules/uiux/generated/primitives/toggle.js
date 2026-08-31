@@ -1,4 +1,4 @@
-const STYLE_ID = 'vcp-harness-uiux-toggle';
+const STYLE_ID = 'vcp-uiux-uiux-toggle';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
         return;
@@ -24,5 +24,5 @@ export function mountToggle(input, scope) {
     wrap.append(input);
     return scope.own(() => { if (input.parentNode === wrap)
         parent.insertBefore(input, wrap); if (legacySlider)
-        legacySlider.style.display = previousDisplay; wrap.remove(); }, 'harness-toggle', 'ui-primitive');
+        legacySlider.style.display = previousDisplay; wrap.remove(); }, 'uiux-toggle', 'ui-primitive');
 }

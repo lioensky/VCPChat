@@ -37,7 +37,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
     if (form.dataset.vcpAutosaveMounted === 'true') return;
     // The coordinator is claimed by the pipeline's save-coordinator step, so
     // it is present in every mounted presentation. Standalone mounts (the
-    // regression harness, early bootstrap) fall back to a direct listener and
+    // regression uiux, early bootstrap) fall back to a direct listener and
     // a direct submit.
     const coordinator = getSaveCoordinator(form);
     const state = {

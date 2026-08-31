@@ -15,5 +15,5 @@ export interface TooltipController {
     setDisabled(disabled: boolean): void;
     dispose(): void | Promise<void>;
 }
-/** Harness Tooltip attaches to the existing anchor without adding a wrapper. */
+/** Uiux Tooltip attaches to the existing anchor without adding a wrapper. */
 export declare function mountTooltip(anchor: HTMLElement, props: TooltipProps, scope: UiScope): TooltipController;

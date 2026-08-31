@@ -1,4 +1,4 @@
-const STYLE_ID = 'vcp-harness-uiux-choice';
+const STYLE_ID = 'vcp-uiux-uiux-choice';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
         return;
@@ -28,5 +28,5 @@ export function mountChoice(root, scope) {
         }
     });
     sync();
-    return scope.own(() => { root.classList.remove('vcp-uiux-choice'); delete root.dataset.value; labels.forEach(label => label.classList.remove('vcp-uiux-choice-option')); }, 'harness-choice', 'ui-primitive');
+    return scope.own(() => { root.classList.remove('vcp-uiux-choice'); delete root.dataset.value; labels.forEach(label => label.classList.remove('vcp-uiux-choice-option')); }, 'uiux-choice', 'ui-primitive');
 }
