@@ -945,11 +945,46 @@ export const chatManager = (() => {
     
         await displayTopicTimestampBubble(itemId, itemType, topicId);
         if (abortIfStale()) return;
+
+        // 渐进历史渲染从“最新批次”开始，再把旧批次插到顶部。活动流如果等到
+        // 全部旧批次结束后才 reconcile，长历史加载期间会暂时没有呼吸框；若由
+        // 其他流式帧抢先补建 DOM，还可能与批次插入交错，视觉上像被排到旧楼层中。
+        // 在批处理开始前把 renderer-local 活动流快照合并到投影历史尾部，使它从
+        // 第一批起就拥有确定的最后楼层。这里只修改内存/DOM 投影，不写 durable history。
+        const activeStreamSnapshots = streamProjection?.snapshotConversation?.({
+            itemType,
+            itemId,
+            topicId,
+        }) || [];
+        const historyForProjection = Array.isArray(historyResult)
+            ? [...historyResult]
+            : historyResult;
+        if (Array.isArray(historyForProjection)) {
+            for (const snapshot of activeStreamSnapshots) {
+                if (!snapshot?.messageId || historyForProjection.some(message => message?.id === snapshot.messageId)) {
+                    continue;
+                }
+                const accumulatedText = typeof snapshot.accumulatedText === 'string'
+                    ? snapshot.accumulatedText
+                    : '';
+                historyForProjection.push({
+                    ...(snapshot.message || {}),
+                    ...(snapshot.context || {}),
+                    id: snapshot.messageId,
+                    role: snapshot.message?.role || 'assistant',
+                    content: accumulatedText || snapshot.message?.content || '',
+                    isThinking: accumulatedText.trim() === '',
+                    isPendingStream: true,
+                    timestamp: snapshot.message?.timestamp || Date.now(),
+                    streamOperationId: snapshot.streamOperationId || null,
+                });
+            }
+        }
     
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
-        } else if (historyResult && historyResult.length > 0) {
-            currentChatHistoryRef.set(historyResult);
+        } else if (Array.isArray(historyForProjection) && historyForProjection.length > 0) {
+            currentChatHistoryRef.set(historyForProjection);
             notifySendStateChanged();
             if (messageRenderer) {
                 // 使用优化的分批渲染策略
@@ -959,8 +994,8 @@ export const chatManager = (() => {
                     batchDelay: 80      // 批次间延迟 80ms，平衡性能和用户体验
                 };
                 
-                console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
-                await (chatDomRenderer || messageRenderer).renderHistory(historyResult, renderOptions);
+                console.log(`[ChatManager] 开始加载话题历史，共 ${historyForProjection.length} 条消息`);
+                await (chatDomRenderer || messageRenderer).renderHistory(historyForProjection, renderOptions);
                 if (abortIfStale()) return;
                 console.log(`[ChatManager] 话题历史加载完成`);
             }
@@ -1604,9 +1639,12 @@ export const chatManager = (() => {
 
             if (useStreaming) {
                 if (messageRenderer) {
+                    const startOwnedStreamProjection = message => (
+                        renderTarget.startStreaming || messageRenderer.startStreamingMessage
+                    ).call(renderTarget, message, thinkingMessageItem);
                     releaseStreamConsumerRoute = streamConsumerRegistry?.register?.(thinkingMessage.id, {
                         kind: request?.domRenderer ? 'independent-surface' : 'main-chat',
-                        start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),
+                        start: startOwnedStreamProjection,
                         ...(request?.domRenderer ? {
                             append: (messageId, chunk, streamContext) => request.domRenderer.appendStreaming(messageId, chunk, streamContext),
                             projectTerminal: (messageId, finishReason, streamContext, payload) => request.domRenderer.projectStreamTerminal(messageId, finishReason, streamContext, payload),
@@ -1629,6 +1667,20 @@ export const chatManager = (() => {
                             return releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
                         },
                     }));
+
+                    // 在请求交给上游之前发布本地流所有权。过去这里一直等首个
+                    // agent_thinking/start IPC 才初始化 StreamProjection；在这段空窗内切换
+                    // 话题时，渐进历史渲染只能读到已落盘的 user 消息，尚未持久化的 assistant
+                    // 占位既不在活动流快照中，也无法由 reconcileConversation 恢复。
+                    // 提前初始化后，呼吸框、返回会话恢复和发送/中止按钮共享同一运行态真源。
+                    await startOwnedStreamProjection({
+                        ...thinkingMessage,
+                        ...orchestrated.context,
+                        context: orchestrated.context,
+                        content: '',
+                        isThinking: true,
+                    });
+                    notifySendState();
                 }
             }
 

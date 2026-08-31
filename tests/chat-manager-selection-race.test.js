@@ -53,6 +53,7 @@ function createFixture(options = {}) {
     let nextHistorySaveError = null;
     let nextWatcherStartError = null;
     let nextVcpError = null;
+    let nextVcpGate = null;
     let nextSettingsSaveGate = null;
     let historySaveCount = 0;
     const savedSettings = [];
@@ -158,6 +159,12 @@ function createFixture(options = {}) {
         setTopicUnread: async () => ({ success: true }),
         sendToVCP: async (...args) => {
             sentRequests.push(args);
+            const gate = nextVcpGate;
+            if (gate) {
+                nextVcpGate = null;
+                gate.started.resolve();
+                await gate.release.promise;
+            }
             if (nextVcpError) {
                 const error = nextVcpError;
                 nextVcpError = null;
@@ -276,6 +283,11 @@ function createFixture(options = {}) {
         },
         failNextVcpRequest(message = 'controlled VCP failure') {
             nextVcpError = new Error(message);
+        },
+        holdNextVcpRequest() {
+            const gate = { started: deferred(), release: deferred() };
+            nextVcpGate = gate;
+            return gate;
         },
         holdNextSettingsSave() {
             const gate = { started: deferred(), release: deferred() };
@@ -541,6 +553,33 @@ test('an attachment added while the outgoing message is persisting remains in th
     fixture.dom.window.close();
 });
 
+test('stream ownership is published before upstream startup resolves', async () => {
+    const fixture = createFixture();
+    const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selected;
+
+    const vcpGate = fixture.holdNextVcpRequest();
+    fixture.window.document.getElementById('messageInput').value = 'wait for upstream';
+    const sending = fixture.chatManager.handleSendMessage();
+    await vcpGate.started.promise;
+
+    const stateWhileConnecting = fixture.state();
+    const pendingAssistant = stateWhileConnecting.history.find(message => message.role === 'assistant' && message.isThinking);
+    assert.ok(pendingAssistant, 'the source history must own the pending assistant before upstream acknowledgement');
+    assert.ok(
+        fixture.window.document
+            .querySelector(`[data-message-id="${pendingAssistant.id}"]`)
+            ?.classList.contains('streaming'),
+        'the pending assistant must expose active stream styling during upstream startup'
+    );
+
+    vcpGate.release.resolve();
+    await sending;
+    fixture.dom.window.close();
+});
+
 test('failed VCP startup does not rewrite history to remove an unpersisted thinking message', async () => {
     const fixture = createFixture();
     const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
@@ -745,6 +784,55 @@ test('a history-file sync resolving after dispose cannot mutate history or the D
     const state = fixture.state();
     assert.deepEqual(state.history, beforeDispose.history);
     assert.deepEqual(state.visibleMessageIds, beforeDispose.visibleMessageIds);
+    fixture.dom.window.close();
+});
+
+test('history projection keeps an active stream in the newest batch and final floor', async () => {
+    const pendingMessage = {
+        id: 'pending-stream-floor',
+        role: 'assistant',
+        content: '',
+        isThinking: true,
+        timestamp: 100,
+    };
+    const fixture = createFixture({
+        streamProjection: {
+            snapshotConversation: () => [{
+                messageId: pendingMessage.id,
+                message: pendingMessage,
+                context: {
+                    agentId: 'agent-a',
+                    topicId: 'topic-a',
+                    isGroupMessage: false,
+                },
+                accumulatedText: '',
+                streamOperationId: 'pending-operation',
+            }],
+            async reconcileConversation() {
+                return [];
+            },
+        },
+    });
+    fixture.setPersistedHistory('agent-a', 'topic-a', Array.from({ length: 24 }, (_, index) => ({
+        id: `history-floor-${index}`,
+        role: index % 2 === 0 ? 'user' : 'assistant',
+        content: `history ${index}`,
+        timestamp: index + 1,
+    })));
+
+    const selected = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+    await selected;
+
+    const state = fixture.state();
+    assert.equal(state.history.at(-1)?.id, pendingMessage.id);
+    assert.equal(state.visibleMessageIds.at(-1), pendingMessage.id);
+    assert.equal(
+        state.visibleMessageIds.filter(messageId => messageId === pendingMessage.id).length,
+        1,
+        'progressive history projection must not duplicate the active stream floor'
+    );
     fixture.dom.window.close();
 });
 
