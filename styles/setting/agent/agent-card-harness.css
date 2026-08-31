@@ -1,0 +1,75 @@
+/* ========================================
+   Agent Settings Card Shell - VCP Harness Integration
+   ======================================== */
+/* VCP Harness reset overrides - removes card shell decorations for flat layout */
+[id="agentSettingsForm"] > .agent-settings-card-shell,
+[id="agentSettingsContainer"] .agent-identity-container,
+[id="agentSettingsContainer"] .agent-params-collapsible-container,
+[id="agentSettingsContainer"] .strip-regex-container {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+  isolation: auto;
+}
+
+[id="agentSettingsForm"] > .agent-settings-card-shell::before,
+[id="agentSettingsContainer"] .agent-identity-container::before,
+[id="agentSettingsContainer"] .agent-params-collapsible-container::before,
+[id="agentSettingsContainer"] .strip-regex-container::before {
+  display: none;
+}
+
+[id="agentSettingsForm"] > .agent-settings-card-shell:hover,
+[id="agentSettingsContainer"] .agent-identity-container:hover,
+[id="agentSettingsContainer"] .agent-params-collapsible-container:hover,
+[id="agentSettingsContainer"] .strip-regex-container:hover {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+[id="agentSettingsForm"] > .agent-settings-card-shell > label,
+[id="agentSettingsContainer"] .strip-regex-container .form-section-title {
+  margin: 0 0 6px;
+}
+
+[id="agentSettingsContainer"] .agent-identity-container {
+  gap: 12px;
+}
+
+[id="agentSettingsContainer"] .agent-params-collapsible-container {
+  padding-bottom: 2px;
+}
+
+[id="agentSettingsContainer"] .params-header {
+  padding: 8px 0;
+}
+
+[id="agentSettingsContainer"]
+  .agent-params-collapsible-container:not(.collapsed)
+  .params-header {
+  padding-bottom: 6px;
+}
+
+[id="agentSettingsContainer"]
+  .agent-params-collapsible-container.collapsed
+  .params-header {
+  padding-bottom: 8px;
+}
+
+[id="agentSettingsContainer"] .params-content {
+  padding: 0 0 2px;
+  margin-top: 0;
+}
+
+[id="agentSettingsContainer"]
+  .agent-params-collapsible-container.collapsed
+  .params-content {
+  padding: 0;
+}

@@ -29,7 +29,7 @@
     background: transparent;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button) {
     position: relative;
     flex: 0 0 auto;
     min-width: 0;
@@ -52,10 +52,10 @@
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    transition: color 0.2s ease, font-weight 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button::after {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button)::after {
     content: "";
     position: absolute;
     left: 50%;
@@ -65,42 +65,42 @@
     height: 3px;
     border-radius: 999px;
     background-color: color-mix(in srgb, var(--highlight-text) 55%, transparent);
-    transition: width 0.2s ease, background-color 0.2s ease;
+    transition: width var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover {
     color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
     border: none;
     background: transparent;
     box-shadow: none;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover::after {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover::after {
     width: 16px;
     background-color: color-mix(in srgb, var(--highlight-text) 42%, transparent);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active {
     color: var(--highlight-text);
     font-weight: 600;
     border: none;
     background: transparent;
     box-shadow: none;
-    transition: color 0.2s ease, font-weight 0.2s ease;
+    transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button.active::after,
-#agentSettingsContainer .system-prompt-container .prompt-mode-button.active:hover::after {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active::after,
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active:hover::after {
     width: 30px;
     background-color: var(--highlight-text);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button),
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button),
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active {
     border: none;
     background: transparent;
     box-shadow: none;
@@ -108,14 +108,14 @@ body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-
     -webkit-backdrop-filter: none;
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active {
     color: var(--highlight-text);
     font-weight: 600;
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover {
     color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
 }
 
@@ -300,7 +300,7 @@ body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-
     position: relative;
     isolation: isolate;
     min-width: 0;
-    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+    transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsContainer .system-prompt-container .warehouse-btn {
@@ -456,8 +456,8 @@ body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-
     color: var(--highlight-text);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-toggle,
-body.light-theme #agentSettingsContainer .system-prompt-container .preview-container {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .toolbar-toggle,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .preview-container {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
@@ -471,11 +471,11 @@ body.light-theme #agentSettingsContainer .system-prompt-container .preview-conta
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .blocks-container,
-body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-container,
-body.light-theme #agentSettingsContainer .system-prompt-container .preview-text,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
-body.light-theme #agentSettingsContainer .system-prompt-container .hidden-block {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .blocks-container,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .warehouse-container,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .preview-text,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .hidden-block {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
@@ -489,8 +489,8 @@ body.light-theme #agentSettingsContainer .system-prompt-container .hidden-block 
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-btn,
-body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .warehouse-btn,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
@@ -504,8 +504,8 @@ body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse
         inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
@@ -519,8 +519,8 @@ body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse
         0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-toggle,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-container {
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .toolbar-toggle,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .preview-container {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
@@ -534,11 +534,11 @@ body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview
         inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .blocks-container,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-container,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-text,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .hidden-block {
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .blocks-container,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .warehouse-container,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .preview-text,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .hidden-block {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
@@ -552,8 +552,8 @@ body:not(.light-theme) #agentSettingsContainer .system-prompt-container .hidden-
         inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-btn,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .warehouse-btn,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
@@ -567,8 +567,8 @@ body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-war
         inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),

@@ -4,10 +4,37 @@
 export function handleSaveGlobalSettings(e, deps) {
     e.preventDefault();
     const settingsForm = e.currentTarget || document.getElementById('globalSettingsForm');
-    if (settingsForm?.dataset.globalSettingsSaving === 'true') return;
+    if (settingsForm?.dataset.globalSettingsSaving === 'true') {
+        // The legacy autosave state machine unlocks only on a
+        // `vcp-settings-save-result` event. Returning silently here wedged that
+        // machine on 保存中… forever and made the close-time flush drop the
+        // edit. Publish an explicit outcome instead of dropping it.
+        //
+        // This is *not* a terminal failure: the in-flight save still owns the
+        // outcome and will publish its own result. `inflight: true` marks the
+        // event as a merge notice so consumers keep waiting rather than
+        // flipping the status bar to 失败 and immediately re-submitting.
+        settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+            detail: {
+                success: false,
+                error: '已有保存任务进行中，请稍后重试',
+                owner: 'global-settings-concurrent-guard',
+                inflight: true,
+            }
+        }));
+        return;
+    }
     if (settingsForm) settingsForm.dataset.globalSettingsSaving = 'true';
 
-    return saveGlobalSettings(deps, settingsForm).finally(() => {
+    return saveGlobalSettings(deps, settingsForm).catch(error => {
+        // Exceptions (notably the bounded IPC timeout) are terminal outcomes
+        // for the autosave consumer too. Publish the same failure contract as
+        // an explicit `{ success: false }` result before releasing the lock.
+        settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+            detail: { success: false, error: error?.message || String(error) }
+        }));
+        throw error;
+    }).finally(() => {
         if (settingsForm) delete settingsForm.dataset.globalSettingsSaving;
     });
 }
@@ -140,8 +167,7 @@ async function saveGlobalSettings(deps, settingsForm) {
             surfaceSheen: currentSettings.appearanceProfile?.surfaceSheen,
             shellRadius: currentSettings.appearanceProfile?.shellRadius,
             composerRadius: currentSettings.appearanceProfile?.composerRadius,
-            sidebarRadius: document.querySelector('input[name="appearanceSidebarRadiusChoice"]:checked')?.value
-                || document.getElementById('appearanceSidebarRadius')?.value
+            sidebarRadius: document.getElementById('appearanceSidebarRadius')?.value
                 || currentSettings.appearanceProfile?.sidebarRadius,
             cardRadius: currentSettings.appearanceProfile?.cardRadius
         }, 'next') || currentSettings.appearanceProfile,
@@ -270,17 +296,24 @@ async function saveGlobalSettings(deps, settingsForm) {
                 setCroppedFile('user', null);
                 document.getElementById('userAvatarInput').value = '';
             } else {
-                uiHelperFunctions.showToastNotification(`保存用户头像失败: ${avatarSaveResult.error}`, 'error');
+                const error = avatarSaveResult.error || '未知错误';
+                reportSaveResult(false, `保存用户头像失败: ${error}`);
+                uiHelperFunctions.showToastNotification(`保存用户头像失败: ${error}`, 'error');
+                return;
             }
         } catch (readError) {
-            uiHelperFunctions.showToastNotification(`读取用户头像文件失败: ${readError.message}`, 'error');
+            const error = readError?.message || String(readError);
+            reportSaveResult(false, `读取用户头像文件失败: ${error}`);
+            uiHelperFunctions.showToastNotification(`读取用户头像文件失败: ${error}`, 'error');
+            return;
         }
     }
 
     // 保存论坛配置 (forum.config.json)
     const adminUsername = document.getElementById('adminUsername')?.value?.trim() || '';
     const adminPassword = document.getElementById('adminPassword')?.value || '';
-    if (adminUsername || adminPassword) {
+    const forumFieldOwnerMounted = settingsForm?.dataset.vcpTypedForumFieldOwnerMounted === 'true';
+    if ((adminUsername || adminPassword) && !forumFieldOwnerMounted) {
         try {
             const forumConfig = {
                 username: adminUsername,
@@ -288,12 +321,21 @@ async function saveGlobalSettings(deps, settingsForm) {
                 replyUsername: newSettings.userName || '用户',
                 rememberCredentials: true
             };
-            const forumResult = await chatAPI.saveForumConfig(forumConfig);
+            const forumService = window.VCPUISettingsBridge?.getForumConfigService?.();
+            const forumResult = forumService?.save?.execute
+                ? await forumService.save.execute(forumConfig)
+                : await chatAPI.saveForumConfig(forumConfig);
             if (!forumResult?.success) {
-                console.warn('[GlobalSettings] Failed to save forum config:', forumResult?.error);
+                const error = forumResult?.error || '未知错误';
+                reportSaveResult(false, `论坛配置保存失败: ${error}`);
+                uiHelperFunctions.showToastNotification(`论坛配置保存失败: ${error}`, 'error');
+                return;
             }
         } catch (forumErr) {
-            console.warn('[GlobalSettings] Error saving forum config:', forumErr);
+            const error = forumErr?.message || String(forumErr);
+            reportSaveResult(false, `论坛配置保存失败: ${error}`);
+            uiHelperFunctions.showToastNotification(`论坛配置保存失败: ${error}`, 'error');
+            return;
         }
     }
 
@@ -301,12 +343,35 @@ async function saveGlobalSettings(deps, settingsForm) {
     // settles. The underlying IPC call may still finish later, but its late
     // result cannot continue this operation because the bounded await has
     // already rejected and the form lock is released by the outer finally.
-    const result = await awaitWithTimeout(chatAPI.saveSettings(newSettings), deps.saveTimeoutMs);
+    const typedSettingsService = window.VCPUISettingsBridge?.getTypedService?.();
+    const saveOperation = typedSettingsService?.save?.execute
+        ? typedSettingsService.save.execute(newSettings)
+        : chatAPI.saveSettings(newSettings);
+    let result;
+    try {
+        result = await awaitWithTimeout(saveOperation, deps.saveTimeoutMs);
+    } catch (error) {
+        // A bounded UI timeout is a terminal owner transition. Invalidate the
+        // typed command generation so a late IPC result cannot republish the
+        // timed-out patch into SettingsRoot.
+        typedSettingsService?.cancelPendingSaves?.();
+        throw error;
+    }
     if (result?.success) {
         if (chatAPI?.saveRustAssistantConfig) {
-            const rustSaveResult = await chatAPI.saveRustAssistantConfig(rustConfigPatch);
+            const rustService = window.VCPUISettingsBridge?.getRustAssistantService?.();
+            const rustSaveResult = rustService?.save?.execute
+                ? await rustService.save.execute(rustConfigPatch)
+                : await chatAPI.saveRustAssistantConfig(rustConfigPatch);
             if (!rustSaveResult?.success) {
-                uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${rustSaveResult?.error || '未知错误'}`, 'warning');
+                const error = rustSaveResult?.error || '未知错误';
+                reportSaveResult(false, `Rust助手配置保存失败: ${error}`);
+                uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${error}`, 'error');
+                // Global settings are already durable, but the Rust capability
+                // is a separate command boundary. Keep SettingsRoot open so
+                // autosave can expose retry instead of closing on a partial
+                // success.
+                return;
             } else if (rustSaveResult.reconcile?.modeChanged) {
                 const modeLabel = rustSaveResult.reconcile.mode === 'rust' ? 'Rust' : 'Disabled';
                 const restartText = rustSaveResult.reconcile.restarted ? '并已热重启监听器' : '将在下次启用监听器时生效';

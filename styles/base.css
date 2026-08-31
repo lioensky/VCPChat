@@ -29,7 +29,7 @@ body {
     background-image: var(--chat-wallpaper-dark); /* 直接使用主题变量 */
 }
 
-body.light-theme .main-content {
+body[data-vcp-theme="light"] .main-content {
     /* background-image: var(--chat-wallpaper-light); */ /* <-- 移除或注释掉这一行 */
 }
 
@@ -52,9 +52,9 @@ body,
 .chat-input-card,
 .modal-content {
     transition:
-        background-color 180ms ease,
-        color 160ms ease,
-        border-color 180ms ease;
+        background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+        color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 /* 气泡背景与主题字体仍然正常跟随变量；只让明确的语义节点
@@ -67,8 +67,8 @@ body,
     a, blockquote, code
 ) {
     transition:
-        color 160ms ease,
-        border-color 180ms ease;
+        color var(--vcp-motion-duration-standard) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {

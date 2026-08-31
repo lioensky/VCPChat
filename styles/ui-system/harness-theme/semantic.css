@@ -1,0 +1,43 @@
+/* ThemePresenter owns the live values; these declarations provide a no-flash CSS fallback. */
+:root,
+body[data-vcp-theme="light"] {
+    --dsw-alias-bg-layer-1: rgb(255 255 255);
+    --dsw-alias-bg-layer-2: rgb(255 255 255);
+    --dsw-alias-bg-layer-3: rgb(255 255 255);
+    --dsw-alias-bg-module-platform: rgb(245 246 247);
+    --dsw-alias-border-inverted: rgb(0 0 0 / 0);
+    --dsw-alias-border-l2: rgb(0 0 0 / 0.1);
+    --dsw-alias-label-primary: rgb(15 17 21);
+    --dsw-alias-label-tertiary: rgb(129 133 140);
+    --dsw-alias-interactive-bg-hover: rgb(38 49 72 / 0.06);
+    --dsw-specific-menu: rgb(255 255 255);
+}
+
+body[data-vcp-theme="dark"] {
+    --dsw-alias-bg-layer-1: rgb(35 35 36);
+    --dsw-alias-bg-layer-2: rgb(44 44 46);
+    --dsw-alias-bg-layer-3: rgb(53 54 56);
+    --dsw-alias-bg-module-platform: rgb(53 54 56);
+    --dsw-alias-border-inverted: rgb(255 255 255 / 0.06);
+    --dsw-alias-border-l2: rgb(255 255 255 / 0.12);
+    --dsw-alias-label-primary: rgb(249 250 251);
+    --dsw-alias-label-tertiary: rgb(173 178 184);
+    --dsw-alias-interactive-bg-hover: rgb(255 255 255 / 0.08);
+    --dsw-specific-menu: rgb(53 54 56);
+}
+
+/* Legacy theme togglers still publish body.dark-theme before the typed theme
+   presenter receives the corresponding snapshot. Keep the Harness aliases
+   visually coherent during that compatibility window. */
+body.dark-theme {
+    --dsw-alias-bg-layer-1: rgb(35 35 36);
+    --dsw-alias-bg-layer-2: rgb(44 44 46);
+    --dsw-alias-bg-layer-3: rgb(53 54 56);
+    --dsw-alias-bg-module-platform: rgb(53 54 56);
+    --dsw-alias-border-inverted: rgb(255 255 255 / 0.06);
+    --dsw-alias-border-l2: rgb(255 255 255 / 0.12);
+    --dsw-alias-label-primary: rgb(249 250 251);
+    --dsw-alias-label-tertiary: rgb(173 178 184);
+    --dsw-alias-interactive-bg-hover: rgb(255 255 255 / 0.08);
+    --dsw-specific-menu: rgb(53 54 56);
+}

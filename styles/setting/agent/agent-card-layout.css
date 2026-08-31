@@ -1,0 +1,42 @@
+/* ========================================
+   Agent Settings Card - Layout Components
+   ======================================== */
+/* Identity, params, and regex sections layout */
+[id="agentSettingsContainer"] .params-header:hover,
+[id="agentSettingsContainer"] .agent-params-collapsible-container.collapsed:hover,
+[id="agentSettingsContainer"]
+  .agent-params-collapsible-container.collapsed:hover
+  .params-header,
+[id="agentSettingsContainer"] .agent-identity-container .style-collapse-header:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
+[id="agentSettingsContainer"] .strip-regex-row {
+  background: transparent;
+  box-shadow: none;
+}
+
+[id="agentSettingsContainer"] .strip-regex-row,
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  border-color: color-mix(in srgb, var(--border-color) 72%, transparent);
+}
+
+[id="agentSettingsContainer"]
+  .agent-identity-container
+  .agent-style-collapsible-container {
+  margin: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+  background: transparent;
+}
+
+[id="agentSettingsContainer"] .agent-identity-container .style-collapse-header,
+[id="agentSettingsContainer"] .agent-identity-container .agent-style-controls {
+  background: transparent;
+}
+
+[id="agentSettingsContainer"] .strip-regex-container {
+  margin-top: 0;
+}

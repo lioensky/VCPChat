@@ -83,7 +83,7 @@ body {
    Light Theme · Editorial Ink
    暖白纸张 / 炭墨 / 朱砂 / 松石
    ========================================================= */
-body.light-theme {
+body[data-vcp-theme="light"] {
     color-scheme: light;
 
     /* --- Wallpaper Interface --- */
@@ -213,18 +213,18 @@ body.light-theme {
 /* =========================================================
    Light Material Translation · Editorial Cards
    ========================================================= */
-body.light-theme .sidebar {
+body[data-vcp-theme="light"] .sidebar {
     box-shadow: 10px 0 30px rgba(27, 33, 31, 0.055);
 }
 
-body.light-theme .notifications-sidebar {
+body[data-vcp-theme="light"] .notifications-sidebar {
     box-shadow: -10px 0 30px rgba(27, 33, 31, 0.055);
 }
 
 /* The Next shell also owns the light-mode chat-header divider. */
 
 /* Vermilion editorial annotation card. */
-body.light-theme .message-item.user .md-content {
+body[data-vcp-theme="light"] .message-item.user .md-content {
     background: linear-gradient(
         145deg,
         rgba(252, 250, 244, 0.90),
@@ -236,8 +236,8 @@ body.light-theme .message-item.user .md-content {
 }
 
 /* Warm paper assistant card with strong long-reading stability. */
-body.light-theme .message-item.agent .md-content,
-body.light-theme .message-item.assistant .md-content {
+body[data-vcp-theme="light"] .message-item.agent .md-content,
+body[data-vcp-theme="light"] .message-item.assistant .md-content {
     background: linear-gradient(
         180deg,
         rgba(252, 250, 244, 0.88) 0%,
@@ -248,17 +248,17 @@ body.light-theme .message-item.assistant .md-content {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
 }
 
-body.light-theme .tool-bubble {
+body[data-vcp-theme="light"] .tool-bubble {
     box-shadow: 0 6px 18px rgba(27, 33, 31, 0.075);
 }
 
-body.light-theme .header-button,
-body.light-theme .title-bar-button {
+body[data-vcp-theme="light"] .header-button,
+body[data-vcp-theme="light"] .title-bar-button {
     color: #4F5854 !important;
 }
 
-body.light-theme .header-button:hover,
-body.light-theme .title-bar-button:hover {
+body[data-vcp-theme="light"] .header-button:hover,
+body[data-vcp-theme="light"] .title-bar-button:hover {
     color: #B94832 !important;
     background-color: rgba(185, 72, 50, 0.075) !important;
     box-shadow: inset 0 -2px 0 rgba(185, 72, 50, 0.62);
@@ -292,8 +292,8 @@ body.light-theme .title-bar-button:hover {
     }
 }
 
-body.light-theme .message-item.streaming.agent .md-content,
-body.light-theme .message-item.streaming.assistant .md-content {
+body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
+body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
     animation: editorialProofPulse 3.2s ease-in-out infinite;
 }
 
@@ -326,8 +326,8 @@ body.light-theme .message-item.streaming.assistant .md-content {
 @media (prefers-reduced-motion: reduce) {
     .message-item.streaming.agent .md-content,
     .message-item.streaming.assistant .md-content,
-    body.light-theme .message-item.streaming.agent .md-content,
-    body.light-theme .message-item.streaming.assistant .md-content {
+    body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
         animation: none !important;
     }
 

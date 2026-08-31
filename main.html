@@ -42,6 +42,9 @@
     <script src="modules/ui-system/task-handle.js"></script>
     <script src="modules/ui-system/contribution-registry.js"></script>
     <script src="modules/ui-system/state-channel.js"></script>
+    <script src="modules/ui-system/theme-runtime.js"></script>
+    <script src="modules/ui-system/appearance-profile-runtime.js"></script>
+    <script src="modules/ui-system/material-runtime.js"></script>
     <script src="modules/ui-system/settlement.js"></script>
     <script src="modules/services/windowStateService.js"></script>
     <script src="modules/ui-system/surface-controller.js"></script>
@@ -61,7 +64,7 @@
     <script src="vendor/morphdom.min.js"></script>
 </head>
 
-<body data-theme-pending="true">
+<body data-theme-pending="true" data-vcp-theme="light">
     <div id="startupInitializationStatus" class="startup-initialization-status" role="status" aria-live="polite" hidden></div>
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
@@ -289,7 +292,7 @@
                     <ul class="agent-list" id="agentList">
                     <!-- 示例:
                     <li class="active" data-agent-id="xiaoke">
-                        <img src="path/to/xiaoke_avatar.png" alt="小克头像" class="avatar">
+                        <img src="assets/default_avatar.png" alt="小克头像" class="avatar">
                         <span class="agent-name">猫娘小克</span>
                     </li>
                     -->
@@ -380,11 +383,11 @@
                     </div>
                 </div>
             </div>
-            <div class="sidebar-tab-content" id="tabContentSettings" data-settings-presentation="classic" role="tabpanel" aria-hidden="true">
+            <div class="sidebar-tab-content" id="tabContentSettings" data-settings-presentation="unified" role="tabpanel" aria-hidden="true">
                 <!-- 设置内容区 -->
-                <div class="settings-header-bar">
+                <div class="settings-header-bar" hidden>
                     <h2>设置</h2>
-                    <button id="globalSettingsBtn" class="sidebar-button global-settings-btn" type="button">全局设置</button>
+                    <button id="globalSettingsBtn" class="sidebar-button global-settings-btn" type="button" hidden>全局设置</button>
                 </div>
 
                 <div id="agentSettingsContainer" style="display: none;"> <!-- Initially hidden -->
@@ -564,7 +567,7 @@
                                         <input type="text" id="agentModel" name="model"
                                             aria-label="Agent 模型"
                                             placeholder="例如 gemini-2.5-flash-preview-05-20">
-                                        <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
+                                        <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型" aria-label="选择模型">
                                             <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
                                                 viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
                                                 width="14" height="14">
@@ -630,7 +633,7 @@
                         <!-- 语音设置可折叠容器 -->
                         <div class="agent-settings-collapsible-container agent-params-collapsible-container agent-settings-section collapsed" data-section-key="tts">
                             <div class="agent-settings-section-header params-header" id="ttsToggleHeader">
-                                <span class="agent-settings-section-title params-title">语音设置 (本地 SoVITS / 网络 MiMo 预置·自然控制·克隆)</span>
+                                        <span class="agent-settings-section-title params-title">语音设置 (本地 SoVITS / 网络 MiMo 预置·自然控制·克隆)</span>
                                 <div class="agent-settings-section-summary params-summary" id="ttsSummary"></div>
                                 <button type="button" class="agent-settings-toggle-btn params-toggle-btn" id="ttsToggleBtn"
                                     aria-label="展开/折叠语音设置">
@@ -648,7 +651,7 @@
                                             <option value="">不使用语音</option>
                                         </select>
                                         <button type="button" id="refreshTtsModelsBtn" class="small-button"
-                                            title="刷新模型列表">
+                                            title="刷新模型列表" aria-label="刷新模型列表">
                                             <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
                                                 viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
                                                 aria-hidden="true" width="16" height="16">
@@ -690,8 +693,8 @@
                                             step="0.1" value="1.0">
                                         <span id="ttsSpeedValue">1.0</span>
                                     </div>
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                        本地 SoVITS 使用该语速；MiMo 按模型原生节奏合成，可用下方自然语言提示词描述语速。
+                                    <small data-vcp-style="4">
+                                        本地 SoVITS 使用该语速；网络模式按模型原生节奏合成，可用下方自然语言提示词描述语速。
                                     </small>
                                 </div>
 
@@ -720,13 +723,14 @@
                                         Ctrl+Enter 添加，右侧 − 删除；本地 SoVITS 会忽略这些提示词。
                                     </small>
                                 </div>
+
                             </div>
                         </div>
 
                         <div class="form-actions">
-                            <button type="submit">保存Agent设置</button>
+                            <button type="submit" hidden>保存Agent设置</button>
                             <div class="delete-button-container">
-                                <button type="button" id="deleteAgentBtn" class="danger-button">删除此Agent</button>
+                                <button type="button" id="deleteAgentBtn" class="danger-button" hidden>删除此Agent</button>
                             </div>
                         </div>
                     </form>
@@ -943,6 +947,16 @@
                     </button>
                     <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
                         aria-label="通知选项" hidden>
+                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开论坛">
+                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
+                            <span>论坛</span>
+                        </button>
+                        <button id="nextUiNotificationMemo" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="打开记忆">
+                            <span class="vcp-ui-icon" aria-hidden="true">sticky_note_2</span>
+                            <span>记忆</span>
+                        </button>
                         <button id="nextUiNotificationLog" class="next-ui-notification-menu-item"
                             type="button" role="menuitem" title="打开 VCP 日志">
                             <span class="vcp-ui-icon" aria-hidden="true">scroll_text</span>
@@ -1020,15 +1034,15 @@
     <div id="modal-container"></div>
     <template id="globalSettingsModalTemplate">
         <div class="modal vcp-ui-scope" id="globalSettingsModal">
-            <div class="modal-content global-settings-modal-content">
+            <div class="modal-content vcp-settings-source-panel">
                 <button class="close-button" type="button" aria-label="关闭全局设置">×</button>
-                <h2 class="global-settings-title">全局设置</h2>
+                <h2 class="vcp-settings-source-title">全局设置</h2>
 
-                <div class="global-settings-layout">
+                <div class="vcp-settings-source-layout">
                     <!-- 左侧导航菜单 -->
-                    <nav class="global-settings-nav">
-                        <ul class="settings-nav-list">
-                            <li class="settings-nav-item active" data-section="user-identity">
+                    <nav class="vcp-settings-source-nav" data-settings-sections='[{"value":"user-identity","label":"用户身份"},{"value":"server-connection","label":"服务器连接"},{"value":"appearance-settings","label":"界面与外观"},{"value":"render-settings","label":"消息渲染"},{"value":"selection-assistant","label":"划词助手"},{"value":"voice-settings","label":"语音设置"},{"value":"advanced-features","label":"高级功能"},{"value":"quick-actions","label":"快捷操作"}]'>
+                        <template class="vcp-settings-source-list">
+                            <li class="vcp-settings-source-item active" data-section="user-identity">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -1036,7 +1050,7 @@
                                 </svg>
                                 <span>用户身份</span>
                             </li>
-                            <li class="settings-nav-item" data-section="server-connection">
+                            <li class="vcp-settings-source-item" data-section="server-connection">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
@@ -1046,7 +1060,7 @@
                                 </svg>
                                 <span>服务器连接</span>
                             </li>
-                            <li class="settings-nav-item" data-section="appearance-settings">
+                            <li class="vcp-settings-source-item" data-section="appearance-settings">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <circle cx="13.5" cy="6.5" r="2.5"></circle>
@@ -1057,7 +1071,7 @@
                                 </svg>
                                 <span>界面与外观</span>
                             </li>
-                            <li class="settings-nav-item" data-section="render-settings">
+                            <li class="vcp-settings-source-item" data-section="render-settings">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <circle cx="12" cy="12" r="3"></circle>
@@ -1067,7 +1081,7 @@
                                 </svg>
                                 <span>消息渲染</span>
                             </li>
-                            <li class="settings-nav-item" data-section="selection-assistant">
+                            <li class="vcp-settings-source-item" data-section="selection-assistant">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1075,7 +1089,7 @@
                                 </svg>
                                 <span>划词助手</span>
                             </li>
-                            <li class="settings-nav-item" data-section="voice-settings">
+                            <li class="vcp-settings-source-item" data-section="voice-settings">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <path d="M12 19v3"></path>
@@ -1084,7 +1098,7 @@
                                 </svg>
                                 <span>语音设置</span>
                             </li>
-                            <li class="settings-nav-item" data-section="advanced-features">
+                            <li class="vcp-settings-source-item" data-section="advanced-features">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
@@ -1093,143 +1107,152 @@
                                 </svg>
                                 <span>高级功能</span>
                             </li>
-                            <li class="settings-nav-item" data-section="quick-actions">
+                            <li class="vcp-settings-source-item" data-section="quick-actions">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
                                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                                 </svg>
                                 <span>快捷操作</span>
                             </li>
-                        </ul>
+                        </template>
                     </nav>
 
                     <!-- 右侧内容区域 -->
-                    <div class="global-settings-content">
-                        <form id="globalSettingsForm">
+                    <div class="vcp-settings-source-content">
+                        <!-- No `action`/`method` is set, so a native submit would
+                             navigate the renderer and reload the whole app.
+                             `onsubmit` is the last line of defence against the
+                             race described in `bindGlobalSettingsModal()`: if the
+                             template is swapped before the delegated submit
+                             listener is bound, autosave still calls
+                             `requestSubmit()` and would otherwise fall through to
+                             a full page navigation. Inline handlers run before
+                             delegated listeners but do not stop propagation, so
+                             the real save listener still receives the event. -->
+                        <form id="globalSettingsForm" onsubmit="return false">
                             <!-- 用户身份 -->
-                            <div class="settings-section active" id="section-user-identity">
+                            <div class="settings-section active" id="section-user-identity" data-settings-section-key="user-identity">
                                 <h3 class="settings-section-title">用户身份</h3>
-                                <div class="agent-identity-container">
-                                    <div class="agent-identity-main">
-                                        <div class="agent-avatar-wrapper">
-                                            <img id="userAvatarPreview" src="assets/default_user_avatar.png"
-                                                alt="用户头像预览" class="agent-avatar-display" style="display: block;">
-                                            <label for="userAvatarInput" class="avatar-upload-overlay">
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                                    stroke="currentColor" stroke-width="2">
-                                                    <path
-                                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
-                                                    </path>
-                                                    <circle cx="12" cy="13" r="4"></circle>
-                                                </svg>
-                                            </label>
-                                            <input type="file" id="userAvatarInput" name="userAvatar"
-                                                accept="image/png, image/jpeg, image/gif" style="display: none;">
-                                        </div>
-                                        <div class="agent-name-wrapper">
-                                            <label for="userName">用户名:</label>
-                                            <input type="text" id="userName" name="userName" placeholder="您的用户名"
-                                                required>
-                                        </div>
+                                <div class="agent-identity-main" data-vcp-settings-row>
+                                    <div class="agent-avatar-wrapper">
+                                        <img id="userAvatarPreview" src="assets/default_user_avatar.png"
+                                            alt="用户头像预览" class="agent-avatar-display" data-vcp-style="1">
+                                        <label for="userAvatarInput" class="avatar-upload-overlay">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2">
+                                                <path
+                                                    d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                </path>
+                                                <circle cx="12" cy="13" r="4"></circle>
+                                            </svg>
+                                        </label>
+                                        <input type="file" id="userAvatarInput" name="userAvatar"
+                                            accept="image/png, image/jpeg, image/gif" data-vcp-style="2">
                                     </div>
+                                    <div class="agent-name-wrapper">
+                                        <label for="userName">用户名:</label>
+                                        <input type="text" id="userName" name="userName" placeholder="您的用户名"
+                                            required>
+                                    </div>
+                                </div>
 
-                                    <!-- 用户自定义样式设置 - 可折叠 -->
-                                    <div class="agent-style-collapsible-container collapsed">
-                                        <div class="style-collapse-header" id="userStyleCollapseHeader">
-                                            <span class="style-collapse-icon">▶</span>
-                                            <span class="style-collapse-title">自定义样式设置</span>
+                                <!-- 用户自定义样式设置 - 可折叠 -->
+                                <div class="agent-style-collapsible-container collapsed" data-vcp-settings-row>
+                                    <div class="style-collapse-header" id="userStyleCollapseHeader">
+                                        <span class="style-collapse-icon">▶</span>
+                                        <span class="style-collapse-title">自定义样式设置</span>
+                                    </div>
+                                    <div class="agent-style-controls">
+                                        <div class="style-control-item">
+                                            <label for="userAvatarBorderColor">头像外框颜色:</label>
+                                            <div class="color-input-group">
+                                                <input type="color" id="userAvatarBorderColor"
+                                                    name="userAvatarBorderColor" value="#3d5a80">
+                                                <input type="text" id="userAvatarBorderColorText"
+                                                    placeholder="#3d5a80" maxlength="7"
+                                                    aria-label="头像外框颜色十六进制值">
+                                            </div>
                                         </div>
-                                        <div class="agent-style-controls">
-                                            <div class="style-control-item">
-                                                <label for="userAvatarBorderColor">头像外框颜色:</label>
-                                                <div class="color-input-group">
-                                                    <input type="color" id="userAvatarBorderColor"
-                                                        name="userAvatarBorderColor" value="#3d5a80">
-                                                    <input type="text" id="userAvatarBorderColorText"
-                                                        placeholder="#3d5a80" maxlength="7">
-                                                </div>
+                                        <div class="style-control-item">
+                                            <label for="userNameTextColor">名称文字颜色:</label>
+                                            <div class="color-input-group">
+                                                <input type="color" id="userNameTextColor" name="userNameTextColor"
+                                                    value="#ffffff">
+                                                <input type="text" id="userNameTextColorText" placeholder="#ffffff"
+                                                    maxlength="7" aria-label="名称文字颜色十六进制值">
                                             </div>
-                                            <div class="style-control-item">
-                                                <label for="userNameTextColor">名称文字颜色:</label>
-                                                <div class="color-input-group">
-                                                    <input type="color" id="userNameTextColor" name="userNameTextColor"
-                                                        value="#ffffff">
-                                                    <input type="text" id="userNameTextColorText" placeholder="#ffffff"
-                                                        maxlength="7">
-                                                </div>
-                                            </div>
+                                        </div>
 
-                                            <!-- 重置颜色按钮 -->
-                                            <div class="style-control-item full-width">
-                                                <button type="button" id="resetUserAvatarColorsBtn"
-                                                    class="reset-colors-btn">
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                                        stroke="currentColor" stroke-width="2">
-                                                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
-                                                        </path>
-                                                        <path d="M21 3v5h-5"></path>
-                                                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
-                                                        </path>
-                                                        <path d="M3 21v-5h5"></path>
-                                                    </svg>
-                                                    重置为头像默认颜色
-                                                </button>
-                                            </div>
+                                        <!-- 重置颜色按钮 -->
+                                        <div class="style-control-item full-width">
+                                            <button type="button" id="resetUserAvatarColorsBtn"
+                                                class="reset-colors-btn">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
+                                                    </path>
+                                                    <path d="M21 3v5h-5"></path>
+                                                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
+                                                    </path>
+                                                    <path d="M3 21v-5h5"></path>
+                                                </svg>
+                                                重置为头像默认颜色
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
 
                                 <!-- 管理员账号设置 -->
-                                <div class="settings-form-group" style="margin-top: 15px;">
+                                <div class="vcp-settings-row" data-vcp-style="3">
                                     <label for="adminUsername">管理员账号:</label>
                                     <input type="text" id="adminUsername" name="adminUsername" placeholder="论坛管理员账号">
                                 </div>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label for="adminPassword">管理员密码:</label>
                                     <input type="password" id="adminPassword" name="adminPassword" placeholder="论坛管理员密码">
                                 </div>
                             </div>
 
                             <!-- 服务器连接 -->
-                            <div class="settings-section" id="section-server-connection">
+                            <div class="settings-section" id="section-server-connection" data-settings-section-key="server-connection">
                                 <h3 class="settings-section-title">服务器连接</h3>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label for="vcpServerUrl">VCP 服务器 URL:</label>
                                     <input type="url" id="vcpServerUrl" name="vcpServerUrl"
                                         placeholder="将自动补全 /v1/chat/completions" required>
                                 </div>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label for="vcpApiKey">VCP API Key:</label>
                                     <input type="password" id="vcpApiKey" name="vcpApiKey">
                                 </div>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label for="vcpLogUrl">VCP WebSocket服务器 URL:</label>
                                     <input type="url" id="vcpLogUrl" name="vcpLogUrl">
                                 </div>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label for="fileKey">VCP文件/图床密码:</label>
                                     <input type="password" id="fileKey" name="fileKey" placeholder="用于拼接表情包图片地址">
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                    <small data-vcp-style="4">
                                         用于访问VCP返回的文件/图片地址，将拼接为 [`/pw=密码/images或files/分类/文件名`]。
                                     </small>
                                 </div>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
                                     <input type="password" id="vcpLogKey" name="vcpLogKey">
                                 </div>
-                                <div class="settings-form-group">
+                                <div class="vcp-settings-row">
                                     <label>网络笔记路径:</label>
                                     <div id="networkNotesPathsContainer"
-                                        style="display: flex; flex-direction: column; gap: 8px;">
+                                        data-vcp-style="5">
                                         <!-- Path inputs will be dynamically added here -->
                                     </div>
                                     <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button"
-                                        style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
+                                        data-vcp-style="6">添加路径</button>
                                 </div>
                             </div>
 
                             <!-- 界面与外观 -->
-                            <div class="settings-section" id="section-appearance-settings">
+                            <div class="settings-section" id="section-appearance-settings" data-settings-section-key="appearance-settings">
                                 <h3 class="settings-section-title">界面与外观</h3>
                                 <div class="appearance-workbench-card" id="appearanceSettingsWorkbenchCard">
                                     <div class="appearance-workbench-preview" data-appearance-summary-preview aria-hidden="true">
@@ -1265,7 +1288,7 @@
                                         <span>打开工作台</span>
                                     </button>
                                 </div>
-                                <div class="appearance-home-visual-setting">
+                                <div class="appearance-home-visual-setting" data-vcp-settings-row>
                                     <span class="appearance-home-visual-copy">
                                         <strong>主页视觉文字</strong>
                                         <small>在空会话中显示 VCPCHAT 标识与寄语</small>
@@ -1275,8 +1298,7 @@
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
-                                <div class="appearance-home-tagline-setting">
-                                    <div class="appearance-home-visual-setting">
+                                    <div class="appearance-home-visual-setting" data-vcp-settings-row>
                                         <span class="appearance-home-visual-copy">
                                             <strong>首页寄语</strong>
                                             <small>显示在 VCPCHAT 视觉文字下方</small>
@@ -1286,76 +1308,45 @@
                                             <span class="slider round"></span>
                                         </label>
                                     </div>
-                                    <label class="settings-form-group" for="homeVisualTagline">
+                                    <label class="vcp-settings-row" for="homeVisualTagline">
                                         <span>寄语内容</span>
                                         <input type="text" id="homeVisualTagline" name="homeVisualTagline" maxlength="120"
                                             value="语义级打穿 AI、UI/UX、APP 与人类想象力的边界">
                                     </label>
-                                </div>
-                                <div class="settings-subsection settings-subsection-new appearance-settings-section">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">外观系统</div>
-                                        <p class="settings-subsection-description">密度、字体、圆角与材质可以独立组合。</p>
-                                    </div>
-                                    <div class="appearance-settings-grid">
-                                        <label class="settings-form-group" for="appearanceDensity">
-                                            <span>界面密度</span>
-                                            <select id="appearanceDensity" name="appearanceDensity">
+                                        <div id="appearanceDensityRow" data-vcp-settings-row><select id="appearanceDensity" name="appearanceDensity" hidden>
                                                 <option value="compact">紧凑</option>
                                                 <option value="comfortable">舒适</option>
                                                 <option value="relaxed">宽松</option>
-                                            </select>
-                                        </label>
-                                        <label class="settings-form-group" for="appearanceRadius">
-                                            <span>圆角</span>
-                                            <select id="appearanceRadius" name="appearanceRadius">
+                                            </select></div>
+                                        <div id="appearanceRadiusRow" data-vcp-settings-row><select id="appearanceRadius" name="appearanceRadius" hidden>
                                                 <option value="square">直角 · 0px</option>
                                                 <option value="small">小圆角 · 6px 基准</option>
                                                 <option value="medium">中圆角 · 10px 基准</option>
                                                 <option value="round">大圆角 · 14px 基准</option>
                                                 <option value="custom">自定义</option>
-                                            </select>
-                                        </label>
-                                        <label class="settings-form-group" for="appearanceTypography">
-                                            <span>界面字体</span>
-                                            <select id="appearanceTypography" name="appearanceTypography">
+                                            </select></div>
+                                        <div id="appearanceTypographyRow" data-vcp-settings-row><select id="appearanceTypography" name="appearanceTypography" hidden>
                                                 <option value="system">系统字体</option>
                                                 <option value="humanist">VChat 人文无衬线</option>
                                                 <option value="serif">衬线字体</option>
-                                            </select>
-                                        </label>
-                                        <label class="settings-form-group" for="appearanceFontScale">
-                                            <span>字号</span>
-                                            <select id="appearanceFontScale" name="appearanceFontScale">
+                                            </select></div>
+                                        <div id="appearanceFontScaleRow" data-vcp-settings-row>
+                                            <select id="appearanceFontScale" name="appearanceFontScale" hidden>
                                                 <option value="small">较小</option>
                                                 <option value="normal">标准</option>
                                                 <option value="large">较大</option>
                                             </select>
-                                        </label>
-                                        <label class="settings-form-group" for="appearanceContentWidth">
-                                            <span>内容宽度</span>
-                                            <select id="appearanceContentWidth" name="appearanceContentWidth">
+                                        </div>
+                                        <div id="appearanceContentWidthRow" data-vcp-settings-row><select id="appearanceContentWidth" name="appearanceContentWidth" hidden>
                                                 <option value="full">铺满</option>
                                                 <option value="centered">居中阅读</option>
-                                            </select>
-                                        </label>
-                                        <label class="settings-form-group" for="appearanceSurface">
-                                            <span>导航材质</span>
-                                            <select id="appearanceSurface" name="appearanceSurface">
+                                            </select></div>
+                                        <div id="appearanceSurfaceRow" data-vcp-settings-row><select id="appearanceSurface" name="appearanceSurface" hidden>
                                                 <option value="translucent">跟随主题</option>
                                                 <option value="solid">纯色</option>
                                                 <option value="custom">自定义磨砂</option>
-                                            </select>
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="settings-subsection appearance-sidebar-geometry-section">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">侧栏列表尺寸</div>
-                                        <p class="settings-subsection-description">统一控制助手、话题、创建入口与账户菜单的尺寸。</p>
-                                    </div>
-                                    <div class="appearance-sidebar-geometry-controls">
-                                        <label class="settings-form-group appearance-geometry-control" for="appearanceSidebarRowHeight">
+                                            </select></div>
+                                        <label class="vcp-settings-row appearance-geometry-control" for="appearanceSidebarRowHeight">
                                             <span class="appearance-range-heading">
                                                 <span>列表项高度</span>
                                                 <output id="appearanceSidebarRowHeightValue" for="appearanceSidebarRowHeight">46px</output>
@@ -1363,7 +1354,7 @@
                                             <input type="range" id="appearanceSidebarRowHeight" name="appearanceSidebarRowHeight"
                                                 min="38" max="64" step="1" value="46">
                                         </label>
-                                        <label class="settings-form-group appearance-geometry-control" for="appearanceSidebarAvatarSize">
+                                        <label class="vcp-settings-row appearance-geometry-control" for="appearanceSidebarAvatarSize">
                                             <span class="appearance-range-heading">
                                                 <span>头像大小</span>
                                                 <output id="appearanceSidebarAvatarSizeValue" for="appearanceSidebarAvatarSize">32px</output>
@@ -1371,38 +1362,28 @@
                                             <input type="range" id="appearanceSidebarAvatarSize" name="appearanceSidebarAvatarSize"
                                                 min="20" max="52" step="1" value="32">
                                         </label>
-                                        <div class="settings-form-group appearance-geometry-control appearance-radius-choice-control">
-                                            <span>列表项圆角</span>
-                                            <div class="appearance-radius-choice-grid" role="radiogroup" aria-label="列表项圆角">
-                                                <label><input id="appearanceSidebarRadiusChoice-tuned" type="radio" name="appearanceSidebarRadiusChoice" value="tuned"><span>原设计<small>10px</small></span></label>
-                                                <label><input id="appearanceSidebarRadiusChoice-follow" type="radio" name="appearanceSidebarRadiusChoice" value="follow"><span>跟随全局<small>自动</small></span></label>
-                                                <label><input id="appearanceSidebarRadiusChoice-square" type="radio" name="appearanceSidebarRadiusChoice" value="square"><span>直角<small>0px</small></span></label>
-                                                <label><input id="appearanceSidebarRadiusChoice-small" type="radio" name="appearanceSidebarRadiusChoice" value="small"><span>小圆角<small>6px</small></span></label>
-                                                <label><input id="appearanceSidebarRadiusChoice-medium" type="radio" name="appearanceSidebarRadiusChoice" value="medium"><span>中圆角<small>10px</small></span></label>
-                                                <label><input id="appearanceSidebarRadiusChoice-round" type="radio" name="appearanceSidebarRadiusChoice" value="round"><span>大圆角<small>14px</small></span></label>
-                                                <label><input id="appearanceSidebarRadiusChoice-custom" type="radio" name="appearanceSidebarRadiusChoice" value="custom"><span>自定义<small>使用下方数值</small></span></label>
-                                            </div>
-                                            <input type="hidden" id="appearanceSidebarRadius" name="appearanceSidebarRadius" value="tuned">
+                                        <div class="appearance-radius-language-host" id="appearanceSidebarRadiusLanguageRow" data-vcp-settings-row>
+                                            <select id="appearanceSidebarRadius" name="appearanceSidebarRadius" aria-label="列表项圆角" hidden>
+                                                <option value="tuned">原设计 · 10px</option>
+                                                <option value="follow">跟随全局 · 自动</option>
+                                                <option value="square">直角 · 0px</option>
+                                                <option value="small">小圆角 · 6px</option>
+                                                <option value="medium">中圆角 · 10px</option>
+                                                <option value="round">大圆角 · 14px</option>
+                                                <option value="custom">自定义 · 使用下方数值</option>
+                                            </select>
                                         </div>
-                                        <label class="settings-form-group appearance-geometry-control" for="appearanceCustomRadius">
+                                        <label class="vcp-settings-row appearance-geometry-control" for="appearanceCustomRadius">
                                             <span class="appearance-range-heading">
                                                 <span>自定义圆角值</span>
                                                 <output id="appearanceCustomRadiusValue" for="appearanceCustomRadius">10px</output>
                                             </span>
                                             <input type="range" id="appearanceCustomRadius" name="appearanceCustomRadius"
                                                 min="0" max="32" step="1" value="10">
-                                        </label>
-                                    </div>
                                     <small class="appearance-geometry-helper">头像最大值会随当前列表项高度自动限制，避免超出圆角边界。</small>
-                                </div>
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">聊天字体与气泡</div>
-                                        <p class="settings-subsection-description">调整聊天正文、代码、场景字体和 Agent 气泡外观。</p>
-                                    </div>
-                                    <div class="settings-form-group" id="chatFontSettingsGroup" style="margin-top: 18px;">
-                                        <label for="chatFontPreset">聊天字体</label>
-                                        <select id="chatFontPreset" name="chatFontPreset">
+                                        </label>
+                                    <div class="vcp-settings-row" id="chatFontSettingsGroup" data-vcp-style="7">
+                                        <div id="chatFontPresetRow"><select id="chatFontPreset" name="chatFontPreset" hidden>
                                             <option value="system">系统默认</option>
                                             <option value="segoe">Segoe UI</option>
                                             <option value="ubuntu">Ubuntu</option>
@@ -1411,18 +1392,18 @@
                                             <option value="source-han">Source Han Sans SC</option>
                                             <option value="serif">衬线体</option>
                                             <option value="custom">自定义</option>
-                                        </select>
-                                        <div id="chatFontCustomRow" style="display: none; margin-top: 8px;">
+                                        </select></div>
+                                        <div id="chatFontCustomRow" data-vcp-style="8">
                                             <input type="text" id="chatFontCustom" name="chatFontCustom"
-                                                placeholder='例如: "LXGW WenKai", "Microsoft YaHei", sans-serif'>
-                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                placeholder='例如: "LXGW WenKai", "Microsoft YaHei", sans-serif'
+                                                aria-label="聊天字体自定义值">
+                                            <small data-vcp-style="4">
                                                 支持输入完整的 CSS `font-family` 值，保存后会立即应用到聊天正文。
                                             </small>
                                         </div>
                                     </div>
-                                    <div class="settings-form-group" id="chatCodeFontSettingsGroup" style="margin-top: 15px;">
-                                        <label for="chatCodeFontPreset">代码字体</label>
-                                        <select id="chatCodeFontPreset" name="chatCodeFontPreset">
+                                    <div class="vcp-settings-row" id="chatCodeFontSettingsGroup" data-vcp-style="3">
+                                        <div id="chatCodeFontPresetRow"><select id="chatCodeFontPreset" name="chatCodeFontPreset" hidden>
                                             <option value="cascadia">Cascadia Code</option>
                                             <option value="fira">Fira Code</option>
                                             <option value="consolas">Consolas</option>
@@ -1430,16 +1411,17 @@
                                             <option value="jetbrains">JetBrains Mono</option>
                                             <option value="monaspace">Monaspace</option>
                                             <option value="custom">自定义</option>
-                                        </select>
-                                        <div id="chatCodeFontCustomRow" style="display: none; margin-top: 8px;">
+                                        </select></div>
+                                        <div id="chatCodeFontCustomRow" data-vcp-style="8">
                                             <input type="text" id="chatCodeFontCustom" name="chatCodeFontCustom"
-                                                placeholder='例如: "Maple Mono", "JetBrains Mono", monospace'>
-                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                placeholder='例如: "Maple Mono", "JetBrains Mono", monospace'
+                                                aria-label="代码字体自定义值">
+                                            <small data-vcp-style="4">
                                                 会应用到聊天代码块、行内代码，以及工具/思维链中的代码样式。
                                             </small>
                                         </div>
                                     </div>
-                                    <div class="settings-form-group" style="margin-top: 18px;">
+                                    <div class="vcp-settings-row" data-vcp-style="7">
                                         <label>场景预览</label>
                                         <div class="scenario-preview-grid" id="fontScenarioPreviewGrid">
                                             <div class="scenario-preview-card">
@@ -1459,8 +1441,7 @@
                                                     晚风穿过窗边，纸页轻轻翻动，像一段被放慢的心事。
                                                 </div>
                                                 <div class="scenario-preview-controls">
-                                                    <label for="chatDiaryFontPreset">场景字体</label>
-                                                    <select id="chatDiaryFontPreset" name="chatDiaryFontPreset">
+                                                    <div id="chatDiaryFontPresetRow"><select id="chatDiaryFontPreset" name="chatDiaryFontPreset" hidden>
                                                         <option value="serif">衬线体</option>
                                                         <option value="system">系统默认</option>
                                                         <option value="segoe">Segoe UI</option>
@@ -1469,10 +1450,11 @@
                                                         <option value="pingfang">PingFang SC</option>
                                                         <option value="source-han">Source Han Sans SC</option>
                                                         <option value="custom">自定义</option>
-                                                    </select>
-                                                    <div id="chatDiaryFontCustomRow" style="display: none; margin-top: 8px;">
+                                                    </select></div>
+                                                    <div id="chatDiaryFontCustomRow" data-vcp-style="8">
                                                         <input type="text" id="chatDiaryFontCustom" name="chatDiaryFontCustom"
-                                                            placeholder='例如: "Noto Serif SC", Georgia, serif'>
+                                                            placeholder='例如: "Noto Serif SC", Georgia, serif'
+                                                            aria-label="日记字体自定义值">
                                                     </div>
                                                 </div>
                                             </div>
@@ -1484,8 +1466,7 @@
                                                     result: 已完成内容整理与渲染。
                                                 </div>
                                                 <div class="scenario-preview-controls">
-                                                    <label for="chatToolFontPreset">场景字体</label>
-                                                    <select id="chatToolFontPreset" name="chatToolFontPreset">
+                                                    <div id="chatToolFontPresetRow"><select id="chatToolFontPreset" name="chatToolFontPreset" hidden>
                                                         <option value="system">系统默认</option>
                                                         <option value="segoe">Segoe UI</option>
                                                         <option value="ubuntu">Ubuntu</option>
@@ -1499,26 +1480,21 @@
                                                         <option value="monaspace">Monaspace</option>
                                                         <option value="serif">衬线体</option>
                                                         <option value="custom">自定义</option>
-                                                    </select>
-                                                    <div id="chatToolFontCustomRow" style="display: none; margin-top: 8px;">
+                                                    </select></div>
+                                                    <div id="chatToolFontCustomRow" data-vcp-style="8">
                                                         <input type="text" id="chatToolFontCustom" name="chatToolFontCustom"
-                                                            placeholder='例如: "Segoe UI", "Microsoft YaHei", sans-serif'>
+                                                            placeholder='例如: "Segoe UI", "Microsoft YaHei", sans-serif'
+                                                            aria-label="工具字体自定义值">
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        <small style="color: var(--text-secondary); margin-top: 8px; display: block;">
+                                        <small data-vcp-style="9">
                                             当前规则预览：正文和代码沿用上方设置；日记和工具卡片可以在各自场景卡片里单独自定义。
                                         </small>
                                     </div>
-                                </div>
-                                <div class="settings-subsection settings-subsection-new">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">消息呈现与内容宽度</div>
-                                        <p class="settings-subsection-description">切换消息外壳的视觉方式；统一磨砂和沉浸文本模式按聊天区域两侧边距自适应。</p>
-                                    </div>
-                                    <fieldset class="form-group chat-presentation-mode-selector" style="margin: 0 0 18px; padding: 0; border: 0;">
-                                        <legend style="display: block; margin-bottom: 8px;">消息呈现模式</legend>
+                                    <fieldset class="form-group chat-presentation-mode-selector" data-vcp-style="10">
+                                        <legend data-vcp-style="11">消息呈现模式</legend>
                                         <div class="chat-presentation-mode-options">
                                             <label for="chatPresentationModeBubble" class="chat-presentation-mode-option">
                                                 <input type="radio" id="chatPresentationModeBubble" name="chatPresentationMode"
@@ -1546,32 +1522,30 @@
                                             </label>
                                         </div>
                                     </fieldset>
-                                    <div class="form-group" style="margin-bottom: 15px;">
-                                        <label style="display: block; margin-bottom: 8px;">内容宽度</label>
-                                        <div class="form-group-inline" style="gap: 18px; align-items: center; flex-wrap: wrap;">
+                                    <div class="form-group" data-vcp-style="12">
+                                        <label data-vcp-style="11">内容宽度</label>
+                                        <div class="vcp-settings-control-row" data-vcp-style="13">
                                             <label for="chatLayoutModeNormal"
-                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                                data-vcp-style="14">
                                                 <input type="radio" id="chatLayoutModeNormal" name="chatLayoutMode"
                                                     value="normal" checked>
                                                 <span>标准模式</span>
                                             </label>
                                             <label for="chatLayoutModeWide"
-                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                                data-vcp-style="14">
                                                 <input type="radio" id="chatLayoutModeWide" name="chatLayoutMode"
                                                     value="wide">
                                                 <span>宽屏模式</span>
                                             </label>
                                         </div>
-                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        <small data-vcp-style="4">
                                             气泡模式下控制气泡宽度；其他模式的外层宽度由聊天区域两侧边距自动决定。
                                         </small>
                                     </div>
-                                    <div id="userChatBubbleSettings" class="settings-dependent-panel">
-                                        <div class="form-group-inline"
-                                            style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                        <div class="vcp-settings-control-row" data-vcp-style="15" data-visible-when="chatPresentationModeBubble">
                                             <div>
                                                 <label for="enableUserChatBubbleUi">以聊天气泡形式显示对话内容</label>
-                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                <small data-vcp-style="4">
                                                     仅作用于用户消息。关闭后，用户消息会改为靠左的文档流样式。
                                                 </small>
                                             </div>
@@ -1581,11 +1555,10 @@
                                                 <span class="slider round"></span>
                                             </label>
                                         </div>
-                                        <div id="userChatBubbleMetaSettings" class="form-group-inline"
-                                            style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                        <div id="userChatBubbleMetaSettings" class="vcp-settings-control-row" data-vcp-style="15" data-visible-when="chatPresentationModeBubble && enableUserChatBubbleUi">
                                             <div>
                                                 <label for="showUserMetaInChatBubbleUi">在气泡模式下显示用户头像和名字</label>
-                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                <small data-vcp-style="4">
                                                     关闭后，用户消息保留右侧气泡样式，但隐藏头像、名字和时间。
                                                 </small>
                                             </div>
@@ -1595,426 +1568,312 @@
                                                 <span class="slider round"></span>
                                             </label>
                                         </div>
-                                        <div id="chatBubbleWidthSettings" class="settings-nested-panel" style="display: none;">
-                                            <div id="wideChatLayoutSettings" class="form-group" style="margin-bottom: 0;">
-                                                <label style="display: block; margin-bottom: 8px;">宽屏模式自定义宽度（%）</label>
-                                                <div class="form-group-inline" style="align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+                                                <div class="vcp-settings-control-row" data-vcp-style="17" data-visible-when="chatPresentationModeBubble && chatLayoutModeWide">
+                                                    <label data-vcp-style="11">宽屏模式自定义宽度（%）</label>
                                                     <div>
                                                         <label for="chatBubbleMaxWidthWideDefault"
-                                                            style="display: block; margin-bottom: 4px;">普通聊天</label>
+                                                            data-vcp-style="18">普通聊天</label>
                                                         <input type="number" id="chatBubbleMaxWidthWideDefault"
                                                             name="chatBubbleMaxWidthWideDefault" min="50" max="98" step="1"
-                                                            value="92" style="width: 80px;">
+                                                            value="92" data-vcp-style="19">
                                                     </div>
                                                     <div>
                                                         <label for="chatBubbleMaxWidthWideNotifications"
-                                                            style="display: block; margin-bottom: 4px;">通知侧栏打开</label>
+                                                            data-vcp-style="18">通知侧栏打开</label>
                                                         <input type="number" id="chatBubbleMaxWidthWideNotifications"
                                                             name="chatBubbleMaxWidthWideNotifications" min="50" max="98" step="1"
-                                                            value="96" style="width: 80px;">
+                                                            value="96" data-vcp-style="19">
                                                     </div>
                                                     <div>
                                                         <label for="chatBubbleMaxWidthWideNarrow"
-                                                            style="display: block; margin-bottom: 4px;">窄窗口/小屏</label>
+                                                            data-vcp-style="18">窄窗口/小屏</label>
                                                         <input type="number" id="chatBubbleMaxWidthWideNarrow"
                                                             name="chatBubbleMaxWidthWideNarrow" min="50" max="98" step="1"
-                                                            value="92" style="width: 80px;">
+                                                            value="92" data-vcp-style="19">
                                                     </div>
-                                                </div>
-                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                <small data-vcp-style="4">
                                                     可设置范围为 50% - 98%。标准模式沿用系统默认宽度，这里只调整气泡模式的宽屏布局。
                                                 </small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                                </div>
                             </div>
 
                             <!-- 消息渲染 -->
-                            <div class="settings-section" id="section-render-settings">
+                            <div class="settings-section" id="section-render-settings" data-settings-section-key="render-settings">
                                 <h3 class="settings-section-title">消息渲染</h3>
-                                <div class="settings-subsection settings-subsection-new">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">流式输出</div>
-                                        <p class="settings-subsection-description">控制增量消息的缓冲大小与刷新节奏，不影响界面外观。</p>
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="15">
+                                    <div>
+                                        <label for="enableSmoothStreaming">开启高级流式渲染</label>
+                                        <small data-vcp-style="4">
+                                            对增量文本进行缓冲，使输出节奏更加平滑。
+                                        </small>
                                     </div>
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                        <div>
-                                            <label for="enableSmoothStreaming">开启高级流式渲染</label>
-                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                                对增量文本进行缓冲，使输出节奏更加平滑。
-                                            </small>
-                                        </div>
-                                        <label class="switch">
-                                            <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
-                                            <span class="slider round"></span>
-                                        </label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group settings-inline-number-row">
+                                    <div>
+                                        <label for="minChunkBufferSize"
+                                            data-vcp-style="18">最小渲染 Chunk 字数（≥1）</label>
+                                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
+                                            value="16" data-vcp-style="19">
                                     </div>
-                                    <div class="settings-inline-number-row">
-                                        <div>
-                                            <label for="minChunkBufferSize"
-                                                style="display: block; margin-bottom: 4px;">最小渲染 Chunk 字数（≥1）</label>
-                                            <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
-                                                value="16" style="width: 80px;">
-                                        </div>
-                                        <div>
-                                            <label for="smoothStreamIntervalMs"
-                                                style="display: block; margin-bottom: 4px;">最小刷新间隔（ms，≥1）</label>
-                                            <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
-                                                min="1" value="100" style="width: 80px;">
-                                        </div>
+                                    <div>
+                                        <label for="smoothStreamIntervalMs"
+                                            data-vcp-style="18">最小刷新间隔（ms，≥1）</label>
+                                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
+                                            min="1" value="100" data-vcp-style="19">
                                     </div>
                                 </div>
-
-                                <div class="settings-subsection stream-animation-settings">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">流式内容动效</div>
-                                        <p class="settings-subsection-description">为新出现的段落、列表、代码块等内容选择进入动画。系统启用“减少动态效果”时会自动停用。</p>
+                                <div class="vcp-settings-row" id="streamAnimationSettingsRow">
+                                    <select id="streamAnimationPreset" name="streamAnimationPreset" hidden>
+                                        <option value="slide-left">右侧滑入（经典）</option>
+                                        <option value="fade">纯淡入</option>
+                                        <option value="rise">柔和上浮</option>
+                                        <option value="scale">轻微缩放</option>
+                                        <option value="none">关闭动画</option>
+                                        <option value="custom">自定义 CSS</option>
+                                    </select>
+                                </div>
+                                <div class="vcp-settings-row" id="streamAnimationDurationRow">
+                                    <div class="slider-container">
+                                        <input type="range" id="streamAnimationDurationMs" name="streamAnimationDurationMs"
+                                            min="100" max="2000" step="50" value="500">
+                                        <output id="streamAnimationDurationValue" for="streamAnimationDurationMs">500ms</output>
                                     </div>
-
-                                    <div class="stream-animation-control-grid">
-                                        <label class="settings-form-group" for="streamAnimationPreset">
-                                            <span>动画预设</span>
-                                            <select id="streamAnimationPreset" name="streamAnimationPreset">
-                                                <option value="slide-left">右侧滑入（经典）</option>
-                                                <option value="fade">纯淡入</option>
-                                                <option value="rise">柔和上浮</option>
-                                                <option value="scale">轻微缩放</option>
-                                                <option value="none">关闭动画</option>
-                                                <option value="custom">自定义 CSS</option>
-                                            </select>
-                                        </label>
-
-                                        <label class="settings-form-group stream-animation-duration-control" for="streamAnimationDurationMs">
-                                            <span class="stream-animation-range-heading">
-                                                <span>动画时长</span>
-                                                <output id="streamAnimationDurationValue" for="streamAnimationDurationMs">500ms</output>
-                                            </span>
-                                            <input type="range" id="streamAnimationDurationMs" name="streamAnimationDurationMs"
-                                                min="100" max="2000" step="50" value="500">
-                                            <small>统一微调所有预设的播放速度；数值越小，动画越快。</small>
-                                        </label>
-                                    </div>
-
-                                    <div id="streamAnimationCustomPanel" class="settings-nested-panel stream-animation-custom-panel" hidden>
-                                        <label class="settings-form-group" for="streamAnimationCustomCss">
-                                            <span>自定义动画 CSS 声明</span>
-                                            <textarea id="streamAnimationCustomCss" name="streamAnimationCustomCss" rows="5"
-                                                spellcheck="false"
-                                                placeholder="例如：&#10;opacity: 0;&#10;transform: translateY(12px) scale(0.98);&#10;filter: blur(3px);"></textarea>
-                                            <small>填写动画元素进入前的初始状态，无需选择器或花括号。结束状态固定恢复为 opacity: 1、transform: none、filter: none。</small>
-                                        </label>
-                                        <div class="stream-animation-custom-example">
-                                            <div class="stream-animation-custom-example-heading">
-                                                <strong>定义示例</strong>
-                                                <button type="button" id="fillStreamAnimationCssExample" class="small-button">填入示例</button>
-                                            </div>
-                                            <pre><code>opacity: 0;
-transform: translateY(12px) scale(0.98);
-filter: blur(3px);
-transform-origin: center bottom;</code></pre>
-                                            <small>保存后，每个新内容块会从上述状态过渡到正常状态；动画时长仍由上方滑杆统一控制。</small>
-                                        </div>
-                                    </div>
-
-                                    <div class="stream-animation-preview" aria-labelledby="streamAnimationPreviewTitle">
-                                        <div class="stream-animation-preview-toolbar">
-                                            <div>
-                                                <strong id="streamAnimationPreviewTitle">动画预览</strong>
-                                                <small>预览会使用当前未保存的选项</small>
-                                            </div>
-                                            <button type="button" id="replayStreamAnimationPreview" class="small-button">
-                                                <span aria-hidden="true">↻</span>
-                                                重新播放
-                                            </button>
-                                        </div>
-                                        <div class="stream-animation-preview-stage">
-                                            <div id="streamAnimationPreviewElement" class="stream-animation-preview-message">
-                                                <span class="stream-animation-preview-avatar" aria-hidden="true">AI</span>
-                                                <span>
-                                                    <strong>流式内容块</strong>
-                                                    <small>这是一段新生成的回复内容。</small>
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                </div>
+                                <div class="vcp-settings-row" id="streamAnimationCustomRow" hidden>
+                                    <label for="streamAnimationCustomCss">自定义动画 CSS:</label>
+                                    <textarea id="streamAnimationCustomCss" name="streamAnimationCustomCss" rows="4"
+                                        spellcheck="false" placeholder="opacity: 0;&#10;transform: translateY(12px) scale(0.98);"></textarea>
                                 </div>
                             </div>
 
                             <!-- 划词助手 -->
-                            <div class="settings-section" id="section-selection-assistant">
+                            <div class="settings-section" id="section-selection-assistant" data-settings-section-key="selection-assistant">
                                 <h3 class="settings-section-title">划词助手</h3>
-                                <div class="settings-form-group" id="assistantAgentContainer">
-                                    <label for="assistantAgent">划词助手 Agent:</label>
-                                    <select id="assistantAgent" name="assistantAgent">
+                                <div class="vcp-settings-row" id="assistantAgentContainer">
+                                    <select id="assistantAgent" name="assistantAgent" hidden>
                                         <option value="">请选择一个Agent</option>
                                         <!-- Agent list will be populated by JS -->
                                     </select>
                                 </div>
 
-                                <div id="rustAssistantConfigContainer"
-                                    style="margin-top: 15px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
-                                    <h4 style="margin: 0 0 10px 0;">Rust 划词助手配置</h4>
-
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="23">
+                                    <label for="rustDebugMode">调试模式（输出诊断）</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="rustDebugMode" name="rustDebugMode">
+                                        <span class="slider round"></span>
+                                    </label>
                                     <div id="rustDebugPanel"
-                                        style="display: none; margin-bottom: 10px; padding: 8px; border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.08));">
+                                        data-vcp-style="22" data-visible-when="rustDebugMode">
                                         <div><strong>当前生效实现:</strong> <span id="assistantRuntimeMode">未知</span></div>
                                         <div><strong>监听状态:</strong> <span id="assistantRuntimeActive">未知</span></div>
                                         <div><strong>期望实现:</strong> <span id="assistantRuntimeDesiredMode">未知</span>
                                         </div>
                                         <div><strong>最近诊断:</strong> <span id="assistantRuntimeDebugReason">无</span>
                                         </div>
-                                        <div><strong>Rust事件转发数:</strong> <span
-                                                id="assistantRuntimeForwardedCount">0</span></div>
+                                        <div><strong>Rust事件转发数:</strong> <span id="assistantRuntimeForwardedCount">0</span></div>
                                         <div><strong>Rust监听活跃(sidecar):</strong> <span
-                                                id="assistantRuntimeSidecarActive">未知</span></div>
+                                            id="assistantRuntimeSidecarActive">未知</span></div>
                                         <div><strong>Rust进程状态:</strong> <span
-                                                id="assistantRuntimeProcessAlive">未知</span></div>
-                                        <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span>
-                                        </div>
+                                            id="assistantRuntimeProcessAlive">未知</span></div>
+                                        <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span></div>
                                         <div><strong>自动回退次数:</strong> <span
-                                                id="assistantRuntimeAutoFallbackCount">0</span></div>
+                                            id="assistantRuntimeAutoFallbackCount">0</span></div>
                                         <div><strong>最近自动回退原因:</strong> <span
-                                                id="assistantRuntimeAutoFallbackReason">无</span></div>
-                                        <div><strong>主进程收到选区数:</strong> <span
-                                                id="assistantRuntimeReceivedCount">0</span></div>
-                                        <div><strong>弹窗尝试次数:</strong> <span
-                                                id="assistantRuntimeShowAttemptCount">0</span></div>
+                                            id="assistantRuntimeAutoFallbackReason">无</span></div>
+                                        <div><strong>主进程收到选区数:</strong> <span id="assistantRuntimeReceivedCount">0</span></div>
+                                        <div><strong>弹窗尝试次数:</strong> <span id="assistantRuntimeShowAttemptCount">0</span></div>
                                         <div><strong>最近弹窗错误:</strong> <span id="assistantRuntimeShowError">无</span>
                                         </div>
                                     </div>
+                                </div>
 
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                        <label for="rustDebugMode">调试模式（输出诊断）</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="rustDebugMode" name="rustDebugMode">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="23">
+                                    <label for="rustUseAssistant">启用 Rust 划词助手</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="rustUseAssistant" name="rustUseAssistant">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
 
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                        <label for="rustUseAssistant">启用 Rust 划词助手</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="rustUseAssistant" name="rustUseAssistant">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="23" data-visible-when="rustUseAssistant">
+                                    <label for="rustEnableCustomThresholds">启用自定义阈值</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="rustEnableCustomThresholds"
+                                            name="rustEnableCustomThresholds">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
 
-                                    <div id="rustGuardRulesContainer"
-                                        style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
-                                        <!-- 自定义阈值部分 -->
-                                        <div class="form-group-inline"
-                                            style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <label for="rustEnableCustomThresholds">启用自定义阈值</label>
-                                            <label class="switch">
-                                                <input type="checkbox" id="rustEnableCustomThresholds"
-                                                    name="rustEnableCustomThresholds">
-                                                <span class="slider round"></span>
-                                            </label>
-                                        </div>
+                                <div class="form-group" data-vcp-style="26" data-visible-when="rustUseAssistant && rustEnableCustomThresholds">
+                                    <label for="rustMinEventIntervalMs">最小事件间隔 (ms):</label>
+                                    <input type="number" id="rustMinEventIntervalMs"
+                                        name="rustMinEventIntervalMs" min="0" value="80"
+                                        data-vcp-style="27">
+                                    <small
+                                        data-vcp-style="28">选区事件的最小时间间隔，防止重复触发</small>
+                                </div>
 
-                                        <div id="rustCustomThresholdsPanel"
-                                            style="display: none; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.05));">
-                                            <div class="form-group" style="margin-bottom: 8px;">
-                                                <label for="rustMinEventIntervalMs">最小事件间隔 (ms):</label>
-                                                <input type="number" id="rustMinEventIntervalMs"
-                                                    name="rustMinEventIntervalMs" min="0" value="80"
-                                                    style="width: 100px;">
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">选区事件的最小时间间隔，防止重复触发</small>
-                                            </div>
+                                <div class="form-group" data-vcp-style="26" data-visible-when="rustUseAssistant && rustEnableCustomThresholds">
+                                    <label for="rustMinDistance">最小位移距离 (px):</label>
+                                    <input type="number" id="rustMinDistance" name="rustMinDistance" min="0"
+                                        value="0" data-vcp-style="27">
+                                    <small
+                                        data-vcp-style="28">鼠标释放点距离按下点的最小像素数（0
+                                        = 禁用此检查）</small>
+                                </div>
 
-                                            <div class="form-group" style="margin-bottom: 8px;">
-                                                <label for="rustMinDistance">最小位移距离 (px):</label>
-                                                <input type="number" id="rustMinDistance" name="rustMinDistance" min="0"
-                                                    value="0" style="width: 100px;">
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">鼠标释放点距离按下点的最小像素数（0
-                                                    = 禁用此检查）</small>
-                                            </div>
+                                <div class="form-group" data-vcp-style="26" data-visible-when="rustUseAssistant && rustEnableCustomThresholds">
+                                    <label for="rustScreenshotSuspendMs">截图暂停时长 (ms):</label>
+                                    <input type="number" id="rustScreenshotSuspendMs"
+                                        name="rustScreenshotSuspendMs" min="0" value="3000"
+                                        data-vcp-style="27">
+                                    <small
+                                        data-vcp-style="28">检测到截图软件后，暂停的时长</small>
+                                </div>
 
-                                            <div class="form-group" style="margin-bottom: 8px;">
-                                                <label for="rustScreenshotSuspendMs">截图暂停时长 (ms):</label>
-                                                <input type="number" id="rustScreenshotSuspendMs"
-                                                    name="rustScreenshotSuspendMs" min="0" value="3000"
-                                                    style="width: 100px;">
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到截图软件后，暂停的时长</small>
-                                            </div>
+                                <div class="form-group" data-vcp-style="26" data-visible-when="rustUseAssistant && rustEnableCustomThresholds">
+                                    <label for="rustClipboardConflictSuspendMs">剪贴板冲突暂停 (ms):</label>
+                                    <input type="number" id="rustClipboardConflictSuspendMs"
+                                        name="rustClipboardConflictSuspendMs" min="0" value="1000"
+                                        data-vcp-style="27">
+                                    <small
+                                        data-vcp-style="28">检测到剪贴板冲突后，暂停的时长</small>
+                                </div>
 
-                                            <div class="form-group" style="margin-bottom: 8px;">
-                                                <label for="rustClipboardConflictSuspendMs">剪贴板冲突暂停 (ms):</label>
-                                                <input type="number" id="rustClipboardConflictSuspendMs"
-                                                    name="rustClipboardConflictSuspendMs" min="0" value="1000"
-                                                    style="width: 100px;">
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到剪贴板冲突后，暂停的时长</small>
-                                            </div>
+                                <div class="form-group" data-vcp-style="16" data-visible-when="rustUseAssistant && rustEnableCustomThresholds">
+                                    <label for="rustClipboardCheckIntervalMs">剪贴板检查间隔 (ms):</label>
+                                    <input type="number" id="rustClipboardCheckIntervalMs"
+                                        name="rustClipboardCheckIntervalMs" min="50" value="500"
+                                        data-vcp-style="27">
+                                    <small
+                                        data-vcp-style="28">后台剪贴板监控的检查间隔（最小50ms）</small>
+                                </div>
 
-                                            <div class="form-group" style="margin-bottom: 0;">
-                                                <label for="rustClipboardCheckIntervalMs">剪贴板检查间隔 (ms):</label>
-                                                <input type="number" id="rustClipboardCheckIntervalMs"
-                                                    name="rustClipboardCheckIntervalMs" min="50" value="500"
-                                                    style="width: 100px;">
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">后台剪贴板监控的检查间隔（最小50ms）</small>
-                                            </div>
-                                        </div>
+                                <div class="form-group" id="rustRuleModeRow" data-vcp-style="29" data-visible-when="rustUseAssistant">
+                                    <select id="rustRuleMode" name="rustRuleMode" hidden
+                                        data-vcp-style="30">
+                                        <option value="none">不使用规则</option>
+                                        <option value="whitelist">白名单模式（只在匹配的应用中启用）</option>
+                                        <option value="blacklist">黑名单模式（在非匹配的应用中启用）</option>
+                                    </select>
+                                    <small
+                                        data-vcp-style="4">
+                                        提示：白名单和黑名单不能同时使用，选择一种模式
+                                    </small>
+                                </div>
 
-                                        <!-- 规则模式选择部分 -->
-                                        <div class="form-group" style="margin-bottom: 10px;">
-                                            <label for="rustRuleMode">规则模式:</label>
-                                            <select id="rustRuleMode" name="rustRuleMode"
-                                                style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px;">
-                                                <option value="none">不使用规则</option>
-                                                <option value="whitelist">白名单模式（只在匹配的应用中启用）</option>
-                                                <option value="blacklist">黑名单模式（在非匹配的应用中启用）</option>
-                                            </select>
-                                            <small
-                                                style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                                提示：白名单和黑名单不能同时使用，选择一种模式
-                                            </small>
-                                        </div>
+                                <div class="form-group" data-vcp-style="16" data-visible-when="rustUseAssistant && rustRuleMode=whitelist">
+                                    <label for="rustWhitelistKeywords">白名单关键词（每行一个）</label>
+                                    <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords"
+                                        rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
+                                    <small
+                                        data-vcp-style="4">
+                                        只在包含这些关键词的窗口中启用划词助手
+                                    </small>
+                                </div>
 
-                                        <div id="rustWhitelistPanel" style="display: none; margin-bottom: 10px;">
-                                            <div class="form-group" style="margin-bottom: 0;">
-                                                <label for="rustWhitelistKeywords">白名单关键词（每行一个）</label>
-                                                <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords"
-                                                    rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                                    只在包含这些关键词的窗口中启用划词助手
-                                                </small>
-                                            </div>
-                                        </div>
+                                <div class="form-group" data-vcp-style="16" data-visible-when="rustUseAssistant && rustRuleMode=blacklist">
+                                    <label for="rustBlacklistKeywords">黑名单关键词（每行一个）</label>
+                                    <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords"
+                                        rows="4"
+                                        placeholder="例如：password&#10;credential&#10;secret"></textarea>
+                                    <small
+                                        data-vcp-style="4">
+                                        在包含这些关键词的窗口中禁用划词助手
+                                    </small>
+                                </div>
 
-                                        <div id="rustBlacklistPanel" style="display: none; margin-bottom: 10px;">
-                                            <div class="form-group" style="margin-bottom: 0;">
-                                                <label for="rustBlacklistKeywords">黑名单关键词（每行一个）</label>
-                                                <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords"
-                                                    rows="4"
-                                                    placeholder="例如：password&#10;credential&#10;secret"></textarea>
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                                    在包含这些关键词的窗口中禁用划词助手
-                                                </small>
-                                            </div>
-                                        </div>
-
-                                        <div id="rustScreenshotAppsPanel" style="margin-bottom: 0;">
-                                            <div class="form-group" style="margin-bottom: 0;">
-                                                <label for="rustScreenshotApps">截图软件关键词（每行一个）</label>
-                                                <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3"
-                                                    placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
-                                                <small
-                                                    style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                                    检测到这些窗口时，暂停导词助手以避免冲突
-                                                </small>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div class="form-group" data-vcp-style="16" data-visible-when="rustUseAssistant">
+                                    <label for="rustScreenshotApps">截图软件关键词（每行一个）</label>
+                                    <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3"
+                                        placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
+                                    <small
+                                        data-vcp-style="4">
+                                        检测到这些窗口时，暂停导词助手以避免冲突
+                                    </small>
                                 </div>
                             </div>
-
                             <!-- 语音设置 -->
-                            <div class="settings-section" id="section-voice-settings">
+                            <div class="settings-section" id="section-voice-settings" data-settings-section-key="voice-settings">
                                 <h3 class="settings-section-title">语音设置</h3>
 
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">全局语音模式</div>
-                                        <p class="settings-subsection-description">为后续语音聊天、STT 与 TTS 能力扩展预留统一配置入口。</p>
-                                    </div>
 
-                                    <div class="form-group" style="margin-bottom: 18px;">
-                                        <label style="display: block; margin-bottom: 8px;">语音工作模式</label>
-                                        <div class="form-group-inline" style="gap: 18px; align-items: center; flex-wrap: wrap;">
-                                            <label for="voiceModeLocal"
-                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
-                                                <input type="radio" id="voiceModeLocal" name="voiceMode" value="local" checked>
-                                                <span>本地推理模式</span>
-                                            </label>
-                                            <label for="voiceModeNetwork"
-                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
-                                                <input type="radio" id="voiceModeNetwork" name="voiceMode" value="network">
-                                                <span>网络 MiMo TTS 模式</span>
-                                            </label>
-                                        </div>
-                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            该选项为全局语音管线预留主开关，当前主要作用于语音聊天体系配置分流。
-                                        </small>
+                                <div class="form-group" data-vcp-style="32">
+                                    <label data-vcp-style="11">语音工作模式</label>
+                                    <div class="vcp-settings-control-row" data-vcp-style="13">
+                                        <label for="voiceModeLocal"
+                                            data-vcp-style="14">
+                                            <input type="radio" id="voiceModeLocal" name="voiceMode" value="local" checked>
+                                            <span>本地推理模式</span>
+                                        </label>
+                                        <label for="voiceModeNetwork"
+                                            data-vcp-style="14">
+                                            <input type="radio" id="voiceModeNetwork" name="voiceMode" value="network">
+                                            <span>网络 MiMo TTS 模式</span>
+                                        </label>
                                     </div>
-
-                                    <div class="settings-form-group">
-                                        <label for="voiceInputMode">语音输入模式:</label>
-                                        <select id="voiceInputMode" name="voiceInputMode">
-                                            <option value="windows_voice_typing">Windows 语音键入（Win+H）</option>
-                                            <option value="right_alt_hold">输入法语音（模拟长按右 Alt）</option>
-                                        </select>
-                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            两种模式均使用同一快捷键启停。右 Alt 模式会在听写期间由程序持续模拟按住右 Alt，无需手动长按快捷键。
-                                        </small>
-                                    </div>
-
-                                    <div class="settings-form-group">
-                                        <label for="voiceInputShortcut">语音输入快捷键:</label>
-                                        <input type="text" id="voiceInputShortcut" name="voiceInputShortcut"
-                                            value="F7"
-                                            placeholder="当前支持 F1 - F24">
-                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            当前支持 F1 - F24 单键。按一次开始听写，再按一次停止并发送；停止后会等待输入法完成文字上屏和静默防抖，请勿连续快速触发。
-                                        </small>
-                                    </div>
+                                    <small data-vcp-style="4">
+                                        该选项为全局语音管线预留主开关，当前主要作用于语音聊天体系配置分流。
+                                    </small>
                                 </div>
 
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">网络 MiMo TTS</div>
-                                        <p class="settings-subsection-description">直接连接 DMXAPI 或小米官方 MiMo 2.5 TTS，支持 SSE 流式音频播放。</p>
-                                    </div>
-
-                                    <div class="settings-form-group">
-                                        <label for="voiceNetworkProviderUrl">MiMo API URL:</label>
-                                        <input type="url" id="voiceNetworkProviderUrl" name="voiceNetworkProviderUrl"
-                                            placeholder="https://www.dmxapi.cn/v1 或 https://api.xiaomimimo.com/v1">
-                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            可填写到 /v1，也可填写完整的 /v1/chat/completions；程序会自动补全。
-                                        </small>
-                                    </div>
-                                    <div class="settings-form-group">
-                                        <label for="voiceNetworkProviderKey">MiMo API Key:</label>
-                                        <input type="password" id="voiceNetworkProviderKey" name="voiceNetworkProviderKey"
-                                            placeholder="填写与 URL 属于同一平台的 API Key">
-                                    </div>
+                                <div class="vcp-settings-row" id="voiceInputModeRow">
+                                    <select id="voiceInputMode" name="voiceInputMode" hidden>
+                                        <option value="windows_voice_typing">Windows 语音键入（Win+H）</option>
+                                        <option value="right_alt_hold">输入法语音（按住右 Alt）</option>
+                                    </select>
                                 </div>
 
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">本地推理模式</div>
-                                        <p class="settings-subsection-description">当语音模式为“本地推理模式”时，优先使用本地 SoVITS；下方填写本地推理服务配置。</p>
-                                    </div>
+                                <div class="vcp-settings-row">
+                                    <label for="voiceInputShortcut">语音输入快捷键:</label>
+                                    <input type="text" id="voiceInputShortcut" name="voiceInputShortcut"
+                                        value="F7" placeholder="当前支持 F1 - F24">
+                                    <small data-vcp-style="4">
+                                        全局按住说话键。当前支持 F1 - F24 单键；按下开始听写，松开结束听写。
+                                    </small>
+                                </div>
 
-                                    <div class="settings-form-group">
-                                        <label for="voiceLocalSovitsUrl">本地 SoVITS URL:</label>
-                                        <input type="url" id="voiceLocalSovitsUrl" name="voiceLocalSovitsUrl"
-                                            placeholder="例如: http://127.0.0.1:9880">
-                                    </div>
-                                    <div class="settings-form-group">
-                                        <label for="voiceLocalSovitsKey">本地 SoVITS Key:</label>
-                                        <input type="password" id="voiceLocalSovitsKey" name="voiceLocalSovitsKey"
-                                            placeholder="如无可留空">
-                                    </div>
+
+                                <div class="vcp-settings-row">
+                                    <label for="voiceNetworkProviderUrl">MiMo API URL:</label>
+                                    <input type="url" id="voiceNetworkProviderUrl" name="voiceNetworkProviderUrl"
+                                        placeholder="https://www.dmxapi.cn/v1 或 https://api.xiaomimimo.com/v1">
+                                    <small data-vcp-style="4">
+                                        可填写到 /v1，也可填写完整的 /v1/chat/completions；程序会自动补全。
+                                    </small>
+                                </div>
+                                <div class="vcp-settings-row">
+                                    <label for="voiceNetworkProviderKey">MiMo API Key:</label>
+                                    <input type="password" id="voiceNetworkProviderKey" name="voiceNetworkProviderKey"
+                                        placeholder="填写与 URL 属于同一平台的 API Key">
+                                </div>
+
+
+                                <div class="vcp-settings-row">
+                                    <label for="voiceLocalSovitsUrl">本地 SoVITS URL:</label>
+                                    <input type="url" id="voiceLocalSovitsUrl" name="voiceLocalSovitsUrl"
+                                        placeholder="例如: http://127.0.0.1:9880">
+                                </div>
+                                <div class="vcp-settings-row">
+                                    <label for="voiceLocalSovitsKey">本地 SoVITS Key:</label>
+                                    <input type="password" id="voiceLocalSovitsKey" name="voiceLocalSovitsKey"
+                                        placeholder="如无可留空">
                                 </div>
                             </div>
 
                             <!-- 高级功能 -->
-                            <div class="settings-section" id="section-advanced-features">
+                            <div class="settings-section" id="section-advanced-features" data-settings-section-key="advanced-features">
                                 <h3 class="settings-section-title">高级功能</h3>
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="33">
                                     <label for="enableDistributedServer">启用VCP分布式服务器</label>
                                     <label class="switch">
                                         <input type="checkbox" id="enableDistributedServer"
@@ -2023,8 +1882,8 @@ transform-origin: center bottom;</code></pre>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="33">
                                     <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
                                     <label class="switch">
                                         <input type="checkbox" id="enableVcpToolInjection"
@@ -2033,8 +1892,8 @@ transform-origin: center bottom;</code></pre>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="33">
                                     <label for="enableThoughtChainInjection"
                                         title="开启后，AI 的元思考内容（Thought Chain）将保留在上下文中，否则将被自动清理。">元思考注入 AI 上下文</label>
                                     <label class="switch">
@@ -2044,8 +1903,8 @@ transform-origin: center bottom;</code></pre>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="33">
                                     <label for="enableAiMessageButtons"
                                         title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
                                     <label class="switch">
@@ -2055,8 +1914,8 @@ transform-origin: center bottom;</code></pre>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="15">
                                     <label for="enableContextSanitizer"
                                         title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
                                     <label class="switch">
@@ -2067,17 +1926,17 @@ transform-origin: center bottom;</code></pre>
                                 </div>
 
                                 <div class="form-group" id="contextSanitizerDepthContainer"
-                                    style="display: none; margin-bottom: 20px;">
+                                    data-vcp-style="34" data-visible-when="enableContextSanitizer">
                                     <label for="contextSanitizerDepth">净化初始深度:</label>
                                     <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0"
-                                        value="2" style="width: 80px;">
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        value="2" data-vcp-style="19">
+                                    <small data-vcp-style="4">
                                         例如: 设置为2，则从倒数第3条AI消息开始净化。设置为0，则净化所有AI消息。
                                     </small>
                                 </div>
 
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="35">
                                     <label for="agentMusicControl">启用Agent音乐控制</label>
                                     <label class="switch">
                                         <input type="checkbox" id="agentMusicControl" name="agentMusicControl">
@@ -2085,9 +1944,9 @@ transform-origin: center bottom;</code></pre>
                                     </label>
                                 </div>
 
-                                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+                                <hr data-vcp-style="36">
 
-                                <div class="settings-form-group" id="topicSummaryModelContainer">
+                                <div class="vcp-settings-row" id="topicSummaryModelContainer">
                                     <label for="topicSummaryModel">话题总结模型:</label>
                                     <div class="model-input-container">
                                         <input type="text" id="topicSummaryModel" name="topicSummaryModel"
@@ -2102,37 +1961,37 @@ transform-origin: center bottom;</code></pre>
                                             </svg>
                                         </button>
                                     </div>
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                    <small data-vcp-style="4">
                                         用于自动生成话题摘要的模型
                                     </small>
                                 </div>
                             </div>
 
                             <!-- 快捷操作 -->
-                            <div class="settings-section" id="section-quick-actions">
+                            <div class="settings-section" id="section-quick-actions" data-settings-section-key="quick-actions">
                                 <h3 class="settings-section-title">快捷操作</h3>
-                                <div class="settings-form-group" style="margin-bottom: 20px;">
+                                <div class="vcp-settings-row" data-vcp-style="37">
                                     <label for="continueWritingPrompt">中键续写默认提示词:</label>
                                     <textarea id="continueWritingPrompt" name="continueWritingPrompt"
                                         placeholder="默认: 请继续" rows="1"
-                                        style="min-height: 38px; max-height: 200px; resize: none; field-sizing: content;"
+                                        data-vcp-style="38"
                                         spellcheck="false">请继续</textarea>
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                    <small data-vcp-style="4">
                                         提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
                                     </small>
                                 </div>
 
-                                <div class="settings-form-group" style="margin-bottom: 20px;">
+                                <div class="vcp-settings-row" data-vcp-style="37">
                                     <label for="flowlockContinueDelay">心流锁续写延迟 (秒):</label>
                                     <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1"
-                                        max="300" step="1" value="5" style="width: 80px;">
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        max="300" step="1" value="5" data-vcp-style="19">
+                                    <small data-vcp-style="4">
                                         提示：AI完成一次续写后，等待指定秒数再开始下一次续写。
                                     </small>
                                 </div>
 
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="vcp-settings-control-row"
+                                    data-vcp-style="15">
                                     <label for="enableMiddleClickQuickAction">启用在聊天气泡中的中键快捷功能</label>
                                     <label class="switch">
                                         <input type="checkbox" id="enableMiddleClickQuickAction"
@@ -2142,9 +2001,8 @@ transform-origin: center bottom;</code></pre>
                                 </div>
 
                                 <div class="form-group" id="middleClickQuickActionContainer"
-                                    style="display: none; margin-bottom: 20px;">
-                                    <label for="middleClickQuickAction" style="color: var(--highlight-text);">中键快速执行功能:</label>
-                                    <select id="middleClickQuickAction" name="middleClickQuickAction">
+                                    data-vcp-style="34" data-visible-when="enableMiddleClickQuickAction">
+                                    <select id="middleClickQuickAction" name="middleClickQuickAction" hidden>
                                         <option value="">请选择要快速执行的功能</option>
                                         <option value="edit">编辑消息</option>
                                         <option value="copy">复制文本</option>
@@ -2155,57 +2013,51 @@ transform-origin: center bottom;</code></pre>
                                         <option value="regenerate">重新回复</option>
                                         <option value="delete">删除消息</option>
                                     </select>
-                                    <small style="color: var(--text-on-accent); margin-top: 5px; display: block;">
+                                    <small data-vcp-style="40">
                                         提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能
                                     </small>
                                 </div>
 
-                                <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
-                                <div class="form-group" id="regenerateConfirmationContainer"
-                                    style="display: none; margin-bottom: 15px;">
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center;">
-                                        <label for="enableRegenerateConfirmation"
-                                            title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="enableRegenerateConfirmation"
-                                                name="enableRegenerateConfirmation">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
+                                <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示；
+                                     扁平化为条件行，可见性由 data-visible-when 投影 -->
+                                <div class="vcp-settings-control-row" id="regenerateConfirmationContainer"
+                                    data-vcp-style="15"
+                                    data-visible-when="enableMiddleClickQuickAction && middleClickQuickAction=regenerate">
+                                    <label for="enableRegenerateConfirmation"
+                                        title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableRegenerateConfirmation"
+                                            name="enableRegenerateConfirmation">
+                                        <span class="slider round"></span>
+                                    </label>
                                 </div>
 
-                                <div class="form-group" id="middleClickAdvancedContainer"
-                                    style="display: none; margin-bottom: 20px;">
-                                    <div class="form-group-inline"
-                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                        <label for="enableMiddleClickAdvanced">启用高级中键快捷环选择</label>
-                                        <label class="switch">
-                                            <input type="checkbox" id="enableMiddleClickAdvanced"
-                                                name="enableMiddleClickAdvanced">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
+                                <div class="vcp-settings-control-row" id="middleClickAdvancedToggleRow"
+                                    data-vcp-style="15"
+                                    data-visible-when="enableMiddleClickQuickAction">
+                                    <label for="enableMiddleClickAdvanced">启用高级中键快捷环选择</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableMiddleClickAdvanced"
+                                            name="enableMiddleClickAdvanced">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
 
-                                    <div class="form-group" id="middleClickAdvancedSettings"
-                                        style="display: none; margin-bottom: 15px;">
-                                        <label for="middleClickAdvancedDelay">快捷环出现延迟 (毫秒):</label>
-                                        <input type="number" id="middleClickAdvancedDelay"
-                                            name="middleClickAdvancedDelay" min="1000" max="5000" step="100"
-                                            value="1000" style="width: 100px;">
-                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现快捷环选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
-                                        </small>
-                                    </div>
+                                <div class="form-group" id="middleClickAdvancedSettings"
+                                    data-vcp-style="41"
+                                    data-visible-when="enableMiddleClickQuickAction && enableMiddleClickAdvanced">
+                                    <label for="middleClickAdvancedDelay">快捷环出现延迟 (毫秒):</label>
+                                    <input type="number" id="middleClickAdvancedDelay"
+                                        name="middleClickAdvancedDelay" min="1000" max="5000" step="100"
+                                        value="1000" data-vcp-style="27">
+                                    <small data-vcp-style="4">
+                                        提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现快捷环选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
+                                    </small>
                                 </div>
                             </div>
                         </form>
                     </div>
 
-                    <!-- 保存按钮区域 -->
-                    <div class="global-settings-footer">
-                        <button type="submit" form="globalSettingsForm">保存全局设置</button>
-                    </div>
                 </div>
             </div>
         </div>

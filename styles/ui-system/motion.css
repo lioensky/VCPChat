@@ -1,0 +1,58 @@
+@layer vcp-ui.base {
+    /* Shared state vocabulary. Components opt in with data-state/data-motion;
+       business code remains responsible only for setting the attributes. */
+    [data-motion='enter'] {
+        animation: vcp-motion-enter var(--vcp-motion-duration-standard)
+            var(--vcp-motion-ease-standard) both;
+    }
+
+    [data-motion='exit'] {
+        animation: vcp-motion-exit var(--vcp-motion-duration-standard)
+            var(--vcp-motion-ease-standard) both;
+    }
+
+    [data-dragging], [data-dragging='true'] {
+        transition: none;
+    }
+
+    @keyframes vcp-motion-enter {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes vcp-motion-exit {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-motion='enter'], [data-motion='exit'] {
+        animation: none;
+    }
+
+    [data-motion='exit'] {
+        opacity: 0;
+    }
+
+    /* Component contracts: preserve instant state feedback while removing
+       spatial/attention-heavy motion from high-frequency surfaces. */
+    .vcp-ui-scope :is(.next-ui-account-menu, .next-ui-notification-menu,
+        .vcp-ui-modal-overlay, [role='dialog'], [role='tooltip'],
+        .vcp-harness-tooltip-bubble, .vcp-harness-toast,
+        .settings-sidebar, .settings-section, .sidebar-panel) {
+        transition: none;
+    }
+
+    :is(.vcp-harness-tooltip-bubble, .vcp-harness-toast,
+        .vcp-ui-skeleton-line, .next-ui-embedded-app-status .vcp-ui-icon,
+        .agent-emotion-card::before, .agent-emotion-sweep,
+        .flame-pulse, .ask-nova-pulse) {
+        animation: none;
+    }
+
+    :is(.sidebar, .agent-emotion-card, .agent-name::after,
+        .settings-sidebar, .settings-section, .vcp-ui-async-boundary) {
+        transition: none;
+    }
+}

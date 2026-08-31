@@ -128,7 +128,7 @@
     outline: 2px solid color-mix(in srgb, var(--highlight-text) 66%, transparent);
     outline-offset: 1px;
 }
-body.light-theme .chat-presentation-quick-switcher {
+body[data-vcp-theme="light"] .chat-presentation-quick-switcher {
     background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.76), transparent 46%),
         color-mix(in srgb, var(--secondary-bg) 95%, var(--panel-bg-light));
@@ -309,18 +309,18 @@ body.light-theme .chat-presentation-quick-switcher {
     );
 }
 
-body.light-theme .sidebar-button {
+body[data-vcp-theme="light"] .sidebar-button {
     color: #ffffff; 
     border: 1px solid var(--button-bg);
 }
 
-body.light-theme .sidebar-button:hover {
+body[data-vcp-theme="light"] .sidebar-button:hover {
     color: #ffffff;
     border-color: var(--button-hover-bg);
 }
 
-body.light-theme .sidebar-actions .create-agent-btn,
-body.light-theme .sidebar-actions .create-group-btn {
+body[data-vcp-theme="light"] .sidebar-actions .create-agent-btn,
+body[data-vcp-theme="light"] .sidebar-actions .create-group-btn {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
@@ -336,16 +336,16 @@ body.light-theme .sidebar-actions .create-group-btn {
     color: var(--highlight-text);
 }
 
-body.light-theme .sidebar-actions .create-agent-btn:hover,
-body.light-theme .sidebar-actions .create-group-btn:hover {
+body[data-vcp-theme="light"] .sidebar-actions .create-agent-btn:hover,
+body[data-vcp-theme="light"] .sidebar-actions .create-group-btn:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
     color: var(--text-on-accent);
 }
 
-body:not(.light-theme) .sidebar-actions .create-agent-btn,
-body:not(.light-theme) .sidebar-actions .create-group-btn {
+body[data-vcp-theme="dark"] .sidebar-actions .create-agent-btn,
+body[data-vcp-theme="dark"] .sidebar-actions .create-group-btn {
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -361,13 +361,13 @@ body:not(.light-theme) .sidebar-actions .create-group-btn {
     color: var(--highlight-text);
 }
 
-body:not(.light-theme) .sidebar-actions .create-agent-btn::after,
-body:not(.light-theme) .sidebar-actions .create-group-btn::after {
+body[data-vcp-theme="dark"] .sidebar-actions .create-agent-btn::after,
+body[data-vcp-theme="dark"] .sidebar-actions .create-group-btn::after {
     display: none;
 }
 
-body:not(.light-theme) .sidebar-actions .create-agent-btn:hover,
-body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
+body[data-vcp-theme="dark"] .sidebar-actions .create-agent-btn:hover,
+body[data-vcp-theme="dark"] .sidebar-actions .create-group-btn:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
@@ -402,7 +402,7 @@ body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
     box-sizing: border-box; 
 }
 
-body:not(.light-theme) .chat-actions .header-button {
+body[data-vcp-theme="dark"] .chat-actions .header-button {
     color: var(--highlight-text);
 }
 
@@ -471,7 +471,7 @@ body:not(.light-theme) .chat-actions .header-button {
     color: var(--primary-text);
 }
 
-body:not(.light-theme) .chat-actions .header-button:hover {
+body[data-vcp-theme="dark"] .chat-actions .header-button:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
@@ -502,25 +502,25 @@ button#devButton.header-button:hover {
     color: var(--primary-text); 
 }
 
-body.light-theme button#devButton.header-button {
+body[data-vcp-theme="light"] button#devButton.header-button {
     background-color: var(--button-bg);
     color: #ffffff; 
     border: 1px solid var(--button-bg); 
 }
 
-body.light-theme button#devButton.header-button:hover {
+body[data-vcp-theme="light"] button#devButton.header-button:hover {
     background-color: var(--button-hover-bg);
     color: #ffffff; 
     border-color: var(--button-hover-bg); 
 }
 
-body.light-theme .chat-actions .header-button {
+body[data-vcp-theme="light"] .chat-actions .header-button {
     background: transparent;
     border-color: rgba(51, 51, 51, 0.08);
     box-shadow: none;
     color: var(--button-bg);
 }
-body.light-theme .chat-actions .header-button:hover {
+body[data-vcp-theme="light"] .chat-actions .header-button:hover {
     background: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     box-shadow: none;
@@ -684,12 +684,12 @@ body.light-theme .chat-actions .header-button:hover {
     background-color: var(--button-hover-bg);
 }
 
-body.light-theme .button-primary {
+body[data-vcp-theme="light"] .button-primary {
     background-color: var(--user-bubble-bg-light);
     color: #ffffff;
 }
 
-body.light-theme .button-primary:hover {
+body[data-vcp-theme="light"] .button-primary:hover {
     background-color: var(--button-hover-bg);
 }
 
@@ -708,15 +708,15 @@ body.light-theme .button-primary:hover {
     background-color: var(--button-hover-bg); /* Same as primary */
 }
 
-body.light-theme .button-secondary {
+body[data-vcp-theme="light"] .button-secondary {
     background-color: var(--user-bubble-bg-light); /* Same as primary */
     color: #ffffff; /* Same as primary */
 }
 
-body.light-theme .button-secondary:hover {
+body[data-vcp-theme="light"] .button-secondary:hover {
     background-color: var(--button-hover-bg);
 }
-body.light-theme .modal-content button[type="submit"] {
+body[data-vcp-theme="light"] .modal-content button[type="submit"] {
     color: #ffffff;
 }
 
@@ -727,7 +727,7 @@ body.light-theme .modal-content button[type="submit"] {
 .modal-content .danger-button:hover {
     background-color: var(--danger-hover-bg);
 }
-body.light-theme .modal-content .danger-button {
+body[data-vcp-theme="light"] .modal-content .danger-button {
     color: #ffffff;
 }
 .form-actions {
@@ -821,7 +821,7 @@ body.light-theme .modal-content .danger-button {
 }
 
 /* 亮色主题下的右键菜单 */
-body.light-theme .context-menu {
+body[data-vcp-theme="light"] .context-menu {
     background-color: rgba(255, 255, 255, 0.75);
     border: 1px solid rgba(0, 0, 0, 0.1);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15),
@@ -972,8 +972,8 @@ input:checked + .slider:before {
     stroke: var(--text-on-accent);
 }
 
-body:not(.light-theme) #toggleAssistantBtn.active,
-body:not(.light-theme) #toggleSidebarModeBtn.active {
+body[data-vcp-theme="dark"] #toggleAssistantBtn.active,
+body[data-vcp-theme="dark"] #toggleSidebarModeBtn.active {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     box-shadow: none;
@@ -981,8 +981,8 @@ body:not(.light-theme) #toggleSidebarModeBtn.active {
     -webkit-backdrop-filter: none;
 }
 
-body.light-theme #toggleAssistantBtn.active,
-body.light-theme #toggleSidebarModeBtn.active {
+body[data-vcp-theme="light"] #toggleAssistantBtn.active,
+body[data-vcp-theme="light"] #toggleSidebarModeBtn.active {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.78),
@@ -997,8 +997,8 @@ body.light-theme #toggleSidebarModeBtn.active {
     color: var(--button-bg);
 }
 
-body.light-theme #toggleAssistantBtn.active svg,
-body.light-theme #toggleSidebarModeBtn.active svg {
+body[data-vcp-theme="light"] #toggleAssistantBtn.active svg,
+body[data-vcp-theme="light"] #toggleSidebarModeBtn.active svg {
     stroke: currentColor;
 }
 
@@ -1145,7 +1145,9 @@ aside.sidebar .sidebar-tab-content h2 {
     border: 1px solid var(--border-color);
     font-weight: bold;
     text-align: center;
-    transition: all 0.1s ease;
+    transition: transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                box-shadow var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 .grid-cell:hover {
@@ -1166,28 +1168,28 @@ aside.sidebar .sidebar-tab-content h2 {
 }
 
 /* Light theme adjustments for middle click grid */
-body.light-theme .middle-click-grid {
+body[data-vcp-theme="light"] .middle-click-grid {
     background-color: #ffffff;
     border-color: #cccccc;
 }
 
-body.light-theme .grid-cell {
+body[data-vcp-theme="light"] .grid-cell {
     border-color: #dddddd;
     background-color: #f8f9fa;
     color: #333333;
 }
 
-body.light-theme .grid-cell:hover {
+body[data-vcp-theme="light"] .grid-cell:hover {
     background-color: #007bff;
     color: white;
 }
 
-body.light-theme .grid-cell[data-function="none"] {
+body[data-vcp-theme="light"] .grid-cell[data-function="none"] {
     background-color: #6c757d !important;
     color: white !important;
 }
 
-body.light-theme .grid-cell[data-function="none"]:hover {
+body[data-vcp-theme="light"] .grid-cell[data-function="none"]:hover {
     background-color: #5a6268 !important;
     color: white !important;
 }
@@ -1617,7 +1619,9 @@ body.light-theme .grid-cell[data-function="none"]:hover {
     border-radius: 6px;
     font-size: 14px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
 }
 
 .confirm-dialog-cancel {
@@ -1648,15 +1652,15 @@ body.light-theme .grid-cell[data-function="none"]:hover {
 }
 
 /* Light theme for confirm dialog */
-body.light-theme .confirm-dialog {
+body[data-vcp-theme="light"] .confirm-dialog {
     background-color: #ffffff;
     border-color: rgba(0, 0, 0, 0.1);
 }
 
-body.light-theme .confirm-dialog-title {
+body[data-vcp-theme="light"] .confirm-dialog-title {
     color: #333333;
 }
 
-body.light-theme .confirm-dialog-message {
+body[data-vcp-theme="light"] .confirm-dialog-message {
     color: #666666;
 }

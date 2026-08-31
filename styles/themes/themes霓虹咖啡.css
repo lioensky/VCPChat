@@ -85,7 +85,7 @@ body {
  * Warm, nurturing, and gently energizing
  * =================================================================
  */
-body.light-theme {
+body[data-vcp-theme="light"] {
     /* Wallpaper and background properties */
     background-image: var(--chat-wallpaper-light);
     background-size: cover;
@@ -147,3 +147,42 @@ body.light-theme {
     --panel-bg: var(--panel-bg-light);
 }
 
+/* Fine official-theme scrollbar. */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+    border-radius: 8px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) !important;
+}
+
+/* Keyboard focus remains visible in both modes. */
+:focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
+    outline: 2px solid var(--highlight-text);
+    outline-offset: 2px;
+}
+
+/* Respect users who prefer low-motion interfaces. */
+@media (prefers-reduced-motion: reduce) {
+    .message-item.streaming.agent .md-content,
+    .message-item.streaming.assistant .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
+    body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
+        animation: none !important;
+    }
+
+    .header-button,
+    .title-bar-button {
+        transition: none !important;
+    }
+}
