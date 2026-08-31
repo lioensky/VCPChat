@@ -168,6 +168,7 @@ struct SharedState {
     right_alt_held: AtomicBool,
     original_window_handle: AtomicU64,
     target_window_handle: AtomicU64,
+    simulated_input_lock: Mutex<()>,
     alt_pressed_at: Mutex<Option<Instant>>,
 }
 
@@ -183,6 +184,7 @@ impl Default for SharedState {
             right_alt_held: AtomicBool::new(false),
             original_window_handle: AtomicU64::new(0),
             target_window_handle: AtomicU64::new(0),
+            simulated_input_lock: Mutex::new(()),
             alt_pressed_at: Mutex::new(None),
         }
     }
@@ -194,6 +196,10 @@ impl SharedState {
     }
 
     fn release_all(&self) {
+        let _input_guard = self
+            .simulated_input_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         platform::release_simulated_keys_best_effort();
         self.right_alt_held.store(false, Ordering::SeqCst);
         self.awaiting_focus.store(false, Ordering::SeqCst);
@@ -201,6 +207,39 @@ impl SharedState {
             .alt_pressed_at
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+
+    fn start_right_alt_if_ready(&self) -> Result<bool, String> {
+        if !matches!(self.mode(), Some(InputMode::RightAltHold))
+            || self.hotkey_pressed.load(Ordering::SeqCst)
+            || self.awaiting_focus.load(Ordering::SeqCst)
+            || self.target_window_handle.load(Ordering::SeqCst) == 0
+        {
+            return Ok(false);
+        }
+
+        let _input_guard = self
+            .simulated_input_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        // Recheck after taking the transition lock. FocusReady and the hook
+        // thread may both observe the first physical F-key release.
+        if self.hotkey_pressed.load(Ordering::SeqCst)
+            || self.awaiting_focus.load(Ordering::SeqCst)
+            || self.target_window_handle.load(Ordering::SeqCst) == 0
+            || self.right_alt_held.load(Ordering::SeqCst)
+        {
+            return Ok(false);
+        }
+
+        platform::set_right_alt(true)?;
+        self.right_alt_held.store(true, Ordering::SeqCst);
+        *self
+            .alt_pressed_at
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
+        Ok(true)
     }
 
     fn restore_focus(&self) -> Result<Option<u64>, String> {
@@ -272,15 +311,28 @@ fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
                     let vk = CONFIGURED_HOTKEY_VK.load(Ordering::SeqCst);
                     state.hotkey_pressed.store(true, Ordering::SeqCst);
 
-                    if matches!(state.mode(), Some(InputMode::WindowsVoiceTyping))
-                        && state
-                            .windows_voice_session_active
-                            .load(Ordering::SeqCst)
-                    {
-                        // Win+H itself was only tapped and fully released when
-                        // the session started. A second shortcut press asks the
-                        // application to finish it using the harmless stop key.
-                        let target = state.target_window_handle.load(Ordering::SeqCst);
+                    let windows_session_active =
+                        matches!(state.mode(), Some(InputMode::WindowsVoiceTyping))
+                            && state.windows_voice_session_active.load(Ordering::SeqCst);
+                    let right_alt_session_active =
+                        matches!(state.mode(), Some(InputMode::RightAltHold))
+                            && state.right_alt_held.load(Ordering::SeqCst);
+
+                    if windows_session_active || right_alt_session_active {
+                        // Both modes use the same tap-to-toggle interaction.
+                        // Win+H is already released; Right Alt must be released
+                        // before notifying JS so its normal stop/settle/send
+                        // pipeline observes a finished input method session.
+                        //
+                        // Clear the Right Alt target on the second key-down.
+                        // Otherwise that same physical key's subsequent key-up
+                        // would satisfy start_right_alt_if_ready and re-arm it.
+                        let target = if right_alt_session_active {
+                            state.release_all();
+                            state.target_window_handle.swap(0, Ordering::SeqCst)
+                        } else {
+                            state.target_window_handle.load(Ordering::SeqCst)
+                        };
                         emit_unsolicited(
                             "hotkey_up",
                             state.mode(),
@@ -312,26 +364,23 @@ fn start_hotkey_monitor(state: Arc<SharedState>) -> thread::JoinHandle<()> {
                     }
                 }
                 Ok(false) => {
-                    let vk = CONFIGURED_HOTKEY_VK.load(Ordering::SeqCst);
                     state.hotkey_pressed.store(false, Ordering::SeqCst);
 
-                    if !matches!(state.mode(), Some(InputMode::WindowsVoiceTyping)) {
-                        // Hold mode ends on the physical shortcut release.
-                        state.release_all();
-                        let target = state.target_window_handle.load(Ordering::SeqCst);
-                        let target_window_handle = if target == 0 {
-                            None
-                        } else {
-                            Some(target.to_string())
-                        };
-                        emit_unsolicited(
-                            "hotkey_up",
-                            state.mode(),
-                            json!({
-                                "virtualKey": vk,
-                                "targetWindowHandle": target_window_handle
-                            }),
-                        );
+                    if matches!(state.mode(), Some(InputMode::RightAltHold)) {
+                        // Do not hold the physical F-key while injecting Right
+                        // Alt: the IME rejects Right Alt when another physical
+                        // key is still down. The first F-key release arms the
+                        // latched Right Alt session. A second F-key press ends
+                        // it in the key-down branch above.
+                        if let Err(error) = state.start_right_alt_if_ready() {
+                            state.release_all();
+                            emit_error(None, error);
+                            emit_unsolicited(
+                                "hotkey_up",
+                                state.mode(),
+                                json!({ "trigger": "right_alt_start_failed" }),
+                            );
+                        }
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -425,12 +474,7 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
         } => {
             let result = parse_window_handle(&target_window_handle).and_then(|target| {
                 let awaiting_focus = state.awaiting_focus.load(Ordering::SeqCst);
-                let physical_hotkey_required =
-                    matches!(state.mode(), Some(InputMode::RightAltHold));
-                if !awaiting_focus
-                    || (physical_hotkey_required
-                        && !state.hotkey_pressed.load(Ordering::SeqCst))
-                {
+                if !awaiting_focus {
                     return Err(
                         "focus_ready rejected without an active voice input request".to_string()
                     );
@@ -448,17 +492,14 @@ fn process_command(command: Command, state: &Arc<SharedState>) -> bool {
                             .store(true, Ordering::SeqCst);
                     }
                     Some(InputMode::RightAltHold) => {
-                        platform::set_right_alt(true)?;
-                        state.right_alt_held.store(true, Ordering::SeqCst);
-                        *state
-                            .alt_pressed_at
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                            Some(Instant::now());
+                        // Right Alt starts only after both prerequisites are
+                        // true: Chromium/TSF focus is ready and the first
+                        // physical F-key has been released.
                     }
                     None => return Err("voice input mode is not configured".to_string()),
                 }
                 state.awaiting_focus.store(false, Ordering::SeqCst);
+                state.start_right_alt_if_ready()?;
                 Ok(target)
             });
             match result {
@@ -608,7 +649,7 @@ mod platform {
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_LWIN, VK_RMENU,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, VIRTUAL_KEY, VK_LWIN,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetForegroundWindow, IsWindow, PeekMessageW,
@@ -618,6 +659,9 @@ mod platform {
     };
 
     const VK_H: VIRTUAL_KEY = VIRTUAL_KEY(0x48);
+    // Physical Right Alt is the extended E0 38 scan code. Some IMEs ignore a
+    // VK_RMENU-only injection but accept the corresponding keyboard scan code.
+    const RIGHT_ALT_SCAN_CODE: u16 = 0x38;
     // F24 does not insert or edit text and still counts as a normal key press,
     // so Windows voice typing can finish recognition without another Win+H.
     const VK_VOICE_TYPING_STOP: VIRTUAL_KEY = VIRTUAL_KEY(0x87);
@@ -747,6 +791,21 @@ mod platform {
         }
     }
 
+    fn keyboard_scan_code_input(scan_code: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(0),
+                    wScan: scan_code,
+                    dwFlags: KEYEVENTF_SCANCODE | flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
     fn send_inputs(inputs: &[INPUT]) -> Result<(), String> {
         let sent = unsafe { SendInput(inputs, size_of::<INPUT>() as i32) };
         if sent == inputs.len() as u32 {
@@ -813,7 +872,7 @@ mod platform {
             } else {
                 KEYEVENTF_KEYUP
             };
-        send_inputs(&[keyboard_input(VK_RMENU, flags)])
+        send_inputs(&[keyboard_scan_code_input(RIGHT_ALT_SCAN_CODE, flags)])
     }
 
     pub fn release_simulated_keys_best_effort() {
@@ -823,7 +882,10 @@ mod platform {
                     keyboard_input(VK_H, KEYEVENTF_KEYUP),
                     keyboard_input(VK_LWIN, KEYEVENTF_KEYUP),
                     keyboard_input(VK_VOICE_TYPING_STOP, KEYEVENTF_KEYUP),
-                    keyboard_input(VK_RMENU, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP),
+                    keyboard_scan_code_input(
+                        RIGHT_ALT_SCAN_CODE,
+                        KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+                    ),
                 ],
                 size_of::<INPUT>() as i32,
             )
