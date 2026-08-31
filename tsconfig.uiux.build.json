@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.uiux.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "modules/uiux/generated",
+    "rootDir": "modules/uiux",
+    "module": "ES2022"
+  }
+}

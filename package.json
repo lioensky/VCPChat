@@ -25,6 +25,8 @@
     "start:desktop": "electron . --desktop-only",
     "start:rag-observer": "electron . --rag-observer-only",
     "build": "node rust_chat_data_service/build-runtime.js && node rust_voice_input_engine/build-runtime.js",
+    "build:uiux": "tsc --project tsconfig.uiux.build.json --pretty false",
+    "check:uiux": "tsc --project tsconfig.uiux.json --pretty false",
     "lint:ui-system": "stylelint \"styles/ui-system/**/*.css\" --config stylelint.ui-system.config.cjs",
     "guard:design-subtraction": "node scripts/check-design-system-boundary.mjs",
     "guard:classic-parity": "node scripts/check-classic-parity.mjs",
