@@ -361,8 +361,11 @@
 
     /**
      * Scrolls the chat Surface to the bottom when bottom-follow is active.
-     * Calls in one paint frame are coalesced. `force` bypasses the current
-     * geometry check, while `expectedGeneration` still protects user intent.
+     * Calls in one paint frame are normally coalesced. `force` bypasses the
+     * current geometry check, while `expectedGeneration` still protects user
+     * intent. `immediate` is reserved for callers already executing inside an
+     * animation frame: it commits the post-mutation scroll position before
+     * that frame is painted instead of introducing one extra visible frame.
      */
     uiHelperFunctions.scrollToBottom = function(options = {}) {
         const container = getChatScrollContainer();
@@ -370,6 +373,7 @@
 
         const state = getChatScrollState(container);
         const force = options?.force === true;
+        const immediate = options?.immediate === true;
         const expectedGeneration = Number.isInteger(options?.expectedGeneration)
             ? options.expectedGeneration
             : null;
@@ -383,10 +387,8 @@
 
         state.followBottom = true;
         state.requestedGeneration = expectedGeneration ?? state.generation;
-        if (state.frameId) return true;
 
-        state.frameId = requestAnimationFrame(() => {
-            state.frameId = 0;
+        const commitScroll = () => {
             const requestedGeneration = state.requestedGeneration;
             state.requestedGeneration = null;
             if (
@@ -405,6 +407,25 @@
                     state.followBottom = isChatNearBottom(container);
                 }
             });
+        };
+
+        if (immediate) {
+            // A deferred request from an earlier mutation is now superseded by
+            // this frame's newer geometry. Commit synchronously so Chromium
+            // cannot paint the grown stream tail at the old scroll position.
+            if (state.frameId) {
+                cancelAnimationFrame(state.frameId);
+                state.frameId = 0;
+            }
+            commitScroll();
+            return true;
+        }
+
+        if (state.frameId) return true;
+
+        state.frameId = requestAnimationFrame(() => {
+            state.frameId = 0;
+            commitScroll();
         });
         return true;
     };

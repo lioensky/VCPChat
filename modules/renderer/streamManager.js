@@ -1870,6 +1870,7 @@ function processAndRenderSmoothChunk(messageId) {
     if (isForCurrentView && scrollFollowSnapshot?.followBottom) {
         refs.uiHelper.scrollToBottom({
             force: true,
+            immediate: true,
             expectedGeneration: scrollFollowSnapshot.generation
         });
     }
