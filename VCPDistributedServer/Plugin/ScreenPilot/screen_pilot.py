@@ -521,6 +521,22 @@ def capture_window_smart(hwnd):
             _last_capture_info["fallback"] = True
             return _capture_window_gdi(hwnd)
 
+    if known_strategy == "gdi":
+        # 已验证该进程可由 GDI 正常捕获，直接截图，不再导入 NumPy、
+        # 创建整帧像素数组或重复执行黑屏检测。
+        debug_log(f"智能截图: 已学习 {process_name} 可直接使用 GDI，跳过黑屏检测")
+        _last_capture_info["method"] = "gdi"
+        _last_capture_info["learned"] = True
+        try:
+            return _capture_window_gdi(hwnd)
+        except Exception as e:
+            # 已学习策略也可能因窗口状态变化而临时失效；此时仅对本次请求
+            # fallback，不覆盖持久化策略，避免一次瞬态故障污染后续截图。
+            debug_log(f"已记忆的 GDI 截图异常: {e}，本次尝试 DXGI")
+            _last_capture_info["method"] = "dxgi"
+            _last_capture_info["fallback"] = True
+            return capture_dxgi_region(hwnd)
+
     # 未知策略：先尝试 GDI
     debug_log(f"智能截图: 尝试 GDI 截图...")
     try:
@@ -571,12 +587,30 @@ def capture_fullscreen():
     return pyautogui.screenshot()
 
 
-def image_to_base64(img, fmt="PNG"):
-    """将 PIL Image 转为 base64 Data URI"""
+def image_to_base64(img, fmt="PNG", quality=85):
+    """将 PIL Image 编码为 base64 Data URI。JPEG 用于降低实时截图传输开销。"""
+    normalized_fmt = str(fmt or "PNG").strip().upper()
+    if normalized_fmt in ("JPG", "JPEG"):
+        normalized_fmt = "JPEG"
+        # JPEG 不支持带 Alpha 的图像；屏幕截图通常已经是 RGB，
+        # 此转换同时兼容未来可能传入的 RGBA/P 模式图像。
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        save_options = {
+            "format": "JPEG",
+            "quality": max(1, min(100, int(quality))),
+            "optimize": False,
+            "progressive": False,
+        }
+        mime = "image/jpeg"
+    else:
+        normalized_fmt = "PNG"
+        save_options = {"format": "PNG"}
+        mime = "image/png"
+
     buf = io.BytesIO()
-    img.save(buf, format=fmt)
+    img.save(buf, **save_options)
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    mime = "image/png" if fmt.upper() == "PNG" else "image/jpeg"
     return f"data:{mime};base64,{b64}"
 
 
@@ -594,6 +628,19 @@ def cmd_screen_capture(args):
     save = str(a.get("save", "false")).lower() in ("true", "1", "yes")
     do_ocr = str(a.get("ocr", "false")).lower() in ("true", "1", "yes")
     filename = a.get("filename")
+
+    # 实时视觉上下文默认使用 JPEG：游戏画面的 PNG 通常较大，JPEG 能显著
+    # 减少 Python 编码、Base64/JSON 序列化和局域网 WebSocket 传输开销。
+    # 调用方仍可通过 format=png 获取无损图像。
+    output_format = str(
+        a.get("format") or a.get("imageformat") or a.get("image_format") or "jpeg"
+    ).strip().lower()
+    if output_format not in ("png", "jpg", "jpeg"):
+        output_format = "jpeg"
+    try:
+        jpeg_quality = max(1, min(100, int(a.get("quality") or a.get("jpegquality") or 85)))
+    except (TypeError, ValueError):
+        jpeg_quality = 85
 
     captured_title = None
     img = None
@@ -629,11 +676,13 @@ def cmd_screen_capture(args):
         captured_title = "全屏截图"
 
     width, height = img.size
-    data_uri = image_to_base64(img)
+    encoded_format = "PNG" if output_format == "png" else "JPEG"
+    data_uri = image_to_base64(img, fmt=encoded_format, quality=jpeg_quality)
 
     text_parts = [
         f"截图成功: {captured_title}",
         f"分辨率: {width} × {height} 像素",
+        f"传输格式: {encoded_format}" + (f"（质量 {jpeg_quality}）" if encoded_format == "JPEG" else ""),
     ]
 
     # 报告截图方法
@@ -641,7 +690,9 @@ def cmd_screen_capture(args):
     if ci["method"] == "dxgi" and ci["learned"]:
         text_parts.append(f"📌 截图方式: DXGI（已记忆进程 {ci['process_name']} 需要此方式）")
     elif ci["method"] == "dxgi" and ci["fallback"]:
-        text_parts.append(f"⚡ 截图方式: DXGI fallback（GDI 黑屏，已自动学习并记忆进程 {ci['process_name']}）")
+        text_parts.append(f"⚡ 截图方式: DXGI fallback（GDI 不可用，本次自动切换）")
+    elif ci["method"] == "gdi" and ci["learned"]:
+        text_parts.append(f"📌 截图方式: GDI（已记忆并跳过黑屏检测）")
     elif ci["method"] == "gdi":
         text_parts.append(f"截图方式: GDI (PrintWindow)")
 
