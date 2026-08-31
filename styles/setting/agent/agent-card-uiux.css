@@ -1,7 +1,7 @@
 /* ========================================
-   Agent Settings Card Shell - VCP Harness Integration
+   Agent Settings Card Shell - VCP UI Integration
    ======================================== */
-/* VCP Harness reset overrides - removes card shell decorations for flat layout */
+/* VCP UI reset overrides - removes card shell decorations for flat layout */
 [id="agentSettingsForm"] > .agent-settings-card-shell,
 [id="agentSettingsContainer"] .agent-identity-container,
 [id="agentSettingsContainer"] .agent-params-collapsible-container,
