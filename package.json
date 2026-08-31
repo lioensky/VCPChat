@@ -27,6 +27,7 @@
     "build": "node rust_chat_data_service/build-runtime.js && node rust_voice_input_engine/build-runtime.js",
     "build:uiux": "tsc --project tsconfig.uiux.build.json --pretty false",
     "check:uiux": "tsc --project tsconfig.uiux.json --pretty false",
+    "check:uiux:artifacts": "npm run build:uiux && node scripts/check-uiux-artifacts.mjs",
     "test:uiux": "node --test tests/uiux-theme-presenter.test.mjs tests/uiux-settings-adapter.test.mjs tests/uiux-primitives.test.mjs tests/uiux-dom-renderer.test.mjs tests/uiux-service-registry.test.mjs tests/uiux-rust-assistant-adapter.test.mjs tests/uiux-forum-config-adapter.test.mjs tests/uiux-assistant-runtime-adapter.test.mjs tests/uiux-settings-css-parts.test.mjs tests/uiux-settings-bridge-modules.test.mjs",
     "check:settings-ownership": "node scripts/check-global-settings-section-ownership.mjs",
     "audit:settings-layout": "node scripts/audit-settings-layout.mjs --shots",
