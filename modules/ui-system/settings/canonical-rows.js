@@ -3,7 +3,7 @@
 // and typography belong to the canonical wrapper.
 import { sectionKeyForRow, sectionKeyForTitle } from './section-ownership.js';
 function removeLegacySubsectionHeadings(form) {
-    form.querySelectorAll('.vcp-harness-editor-section-heading').forEach(heading => {
+    form.querySelectorAll('.vcp-uiux-editor-section-heading').forEach(heading => {
         const section = heading.closest('.settings-section');
         // The section h3 is the single canonical heading.  Subsection cards
         // must not introduce a second title/description stack.
@@ -28,7 +28,7 @@ function mountCanonicalSettingsRows(form) {
         ':scope [data-vcp-settings-row], :scope [data-vcp-settings-control-row], :scope .vcp-settings-row, :scope .vcp-settings-control-row, :scope .settings-form-group, :scope .form-group-inline, :scope > .form-group, :scope .form-group'
     );
     candidates.forEach(row => {
-        if (!(row instanceof HTMLElement) || row.closest('.vcp-harness-general-item')) return;
+        if (!(row instanceof HTMLElement) || row.closest('.vcp-uiux-general-item')) return;
         if (!row.querySelector('input, select, textarea, button, [role="switch"]')) return;
         const keyNode = row.querySelector('[name], [id]');
         const key = keyNode?.getAttribute('name') || keyNode?.id || '';
@@ -37,7 +37,7 @@ function mountCanonicalSettingsRows(form) {
             'settings-form-group', 'form-group-inline', 'vcp-settings-row', 'vcp-settings-control-row',
             'form-group'
         ].includes(className));
-        item.className = ['vcp-harness-general-item', 'vcp-harness-general-row', ...preservedClasses].join(' ');
+        item.className = ['vcp-uiux-general-item', 'vcp-uiux-general-row', ...preservedClasses].join(' ');
         for (const attribute of row.attributes) {
             if (attribute.name === 'class' || attribute.name === 'style') continue;
             item.setAttribute(attribute.name, attribute.value);
@@ -50,7 +50,7 @@ function mountCanonicalSettingsRows(form) {
         const appearanceOwner = row.closest('.appearance-settings-section, .appearance-sidebar-geometry-section, .appearance-home-tagline-setting, [data-settings-section-key="appearance-settings"]');
         if (appearanceOwner) {
             item.dataset.settingPrimitive = 'appearance-row';
-            item.classList.add('vcp-harness-appearance-row');
+            item.classList.add('vcp-uiux-appearance-row');
         }
         if (key) item.dataset.settingKey = key;
         item.dataset.canonicalRow = 'true';
@@ -63,9 +63,9 @@ function mountCanonicalSettingsRows(form) {
 }
 
 function composeCanonicalRowSlots(row) {
-    if (!row || row.matches('label, fieldset') || row.querySelector(':scope > .vcp-harness-row-copy')) return;
+    if (!row || row.matches('label, fieldset') || row.querySelector(':scope > .vcp-uiux-row-copy')) return;
     const children = [...row.children];
-    const controls = children.filter(node => node.matches('input, select, textarea, button, .switch, .model-input-container, .vcp-harness-select, .vcp-uiux-input-wrap'));
+    const controls = children.filter(node => node.matches('input, select, textarea, button, .switch, .model-input-container, .vcp-uiux-select, .vcp-uiux-input-wrap'));
     // A control that also matches the title selectors (label.switch) must not
     // be copied into the copy slot: append would move it, then the trailing
     // controls pass would move it back out, leaving an empty copy beside the
@@ -74,7 +74,7 @@ function composeCanonicalRowSlots(row) {
     const helpers = children.filter(node => node.matches('small, p'));
     if (!controls.length || !titles.length) return;
     const copy = document.createElement('div');
-    copy.className = 'vcp-harness-row-copy';
+    copy.className = 'vcp-uiux-row-copy';
     copy.dataset.settingPrimitive = 'row-copy';
     [...titles, ...helpers].forEach(node => copy.append(node));
     const remaining = children.filter(node => !copy.contains(node) && !controls.includes(node));

@@ -97,7 +97,7 @@ export interface PopupSelectViewProps {
     readonly searchAria?: string;
     /** Render the filter control; false is used by ModelSelect-equivalent menus. */
     readonly searchEnabled?: boolean;
-    /** Render provider groups and Harness menuitemradio buttons when enabled. */
+    /** Render provider groups and Uiux menuitemradio buttons when enabled. */
     readonly grouped?: boolean;
     readonly optionRole?: 'option' | 'menuitemradio';
     readonly retryLabel?: string;

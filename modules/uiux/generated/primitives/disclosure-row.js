@@ -1,10 +1,10 @@
-const STYLE_ID = 'vcp-harness-uiux-disclosure-row';
+const STYLE_ID = 'vcp-uiux-uiux-disclosure-row';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
         return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = `.vcp-harness-disclosure-root{display:flex;flex-direction:column;width:100%;min-width:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-harness-disclosure-row{position:relative;overflow:hidden;display:flex;align-items:center;height:24px;min-width:0}.vcp-harness-disclosure-row[data-expandable]{cursor:pointer}.vcp-harness-disclosure-leading{position:relative;flex:none;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;margin-right:6px;padding:0;border:0;background:none;color:var(--dsw-alias-label-tertiary,#737780)}button.vcp-harness-disclosure-leading{cursor:pointer}.vcp-harness-disclosure-icon-idle{display:inline-flex;opacity:1;transition:opacity 100ms ease}.vcp-harness-disclosure-chevron-hover{position:absolute;inset:0;margin:auto;opacity:0;transition:opacity 100ms ease}.vcp-harness-disclosure-row:hover .vcp-harness-disclosure-icon-idle{opacity:0}.vcp-harness-disclosure-row:hover .vcp-harness-disclosure-chevron-hover{opacity:1}.vcp-harness-disclosure-title{flex:none;font-size:14px;line-height:24px;color:var(--dsw-alias-label-secondary,#50545b)}.vcp-harness-disclosure-chevron,.vcp-harness-disclosure-chevron-hover{width:14px;height:14px}`;
+    style.textContent = `.vcp-uiux-disclosure-root{display:flex;flex-direction:column;width:100%;min-width:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-uiux-disclosure-row{position:relative;overflow:hidden;display:flex;align-items:center;height:24px;min-width:0}.vcp-uiux-disclosure-row[data-expandable]{cursor:pointer}.vcp-uiux-disclosure-leading{position:relative;flex:none;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;margin-right:6px;padding:0;border:0;background:none;color:var(--dsw-alias-label-tertiary,#737780)}button.vcp-uiux-disclosure-leading{cursor:pointer}.vcp-uiux-disclosure-icon-idle{display:inline-flex;opacity:1;transition:opacity 100ms ease}.vcp-uiux-disclosure-chevron-hover{position:absolute;inset:0;margin:auto;opacity:0;transition:opacity 100ms ease}.vcp-uiux-disclosure-row:hover .vcp-uiux-disclosure-icon-idle{opacity:0}.vcp-uiux-disclosure-row:hover .vcp-uiux-disclosure-chevron-hover{opacity:1}.vcp-uiux-disclosure-title{flex:none;font-size:14px;line-height:24px;color:var(--dsw-alias-label-secondary,#50545b)}.vcp-uiux-disclosure-chevron,.vcp-uiux-disclosure-chevron-hover{width:14px;height:14px}`;
     (document.head || document.documentElement).append(style);
 }
 function nodes(value) {
@@ -18,18 +18,18 @@ function addClasses(element, value) {
 }
 function chevron(extraClass, hover = false) {
     const icon = document.createElement('span');
-    icon.className = `vcp-ui-icon ${hover ? 'vcp-harness-disclosure-chevron-hover' : 'vcp-harness-disclosure-chevron'}`;
+    icon.className = `vcp-ui-icon ${hover ? 'vcp-uiux-disclosure-chevron-hover' : 'vcp-uiux-disclosure-chevron'}`;
     addClasses(icon, extraClass);
     icon.setAttribute('aria-hidden', 'true');
     icon.textContent = 'chevron_down';
     return icon;
 }
-/** Controlled Harness DisclosureRow with reversible Light-DOM ownership. */
+/** Controlled Uiux DisclosureRow with reversible Light-DOM ownership. */
 export function mountDisclosureRow(host, props, scope) {
     if (!host || !props?.icon || typeof props.title !== 'string' || !props.onToggle || !scope)
         throw new TypeError('DisclosureRow requires a host, icon, title, onToggle and scope.');
     ensureStyles();
-    const disclosureScope = scope.child('harness-disclosure-row');
+    const disclosureScope = scope.child('uiux-disclosure-row');
     const originalNodes = Array.from(host.childNodes);
     const icon = props.icon;
     const collapsedNodes = nodes(props.collapsedContent);
@@ -38,14 +38,14 @@ export function mountDisclosureRow(host, props, scope) {
     const originalPositions = movableNodes.map(node => ({ node, parent: node.parentNode, next: node.nextSibling }));
     const parked = document.createDocumentFragment();
     const root = document.createElement('div');
-    root.className = 'vcp-harness-disclosure-root';
+    root.className = 'vcp-uiux-disclosure-root';
     addClasses(root, props.className);
     const row = document.createElement('div');
-    row.className = 'vcp-harness-disclosure-row';
+    row.className = 'vcp-uiux-disclosure-row';
     addClasses(row, props.rowClassName);
     row.dataset.disclosureRow = '';
     const title = document.createElement('span');
-    title.className = 'vcp-harness-disclosure-title';
+    title.className = 'vcp-uiux-disclosure-title';
     addClasses(title, props.titleClassName);
     title.textContent = props.title;
     root.append(row);
@@ -60,7 +60,7 @@ export function mountDisclosureRow(host, props, scope) {
         leading.remove();
         const interactiveLeading = expandable && !rowExpands();
         leading = document.createElement(interactiveLeading ? 'button' : 'span');
-        leading.className = 'vcp-harness-disclosure-leading';
+        leading.className = 'vcp-uiux-disclosure-leading';
         addClasses(leading, props.leadingClassName);
         if (leading.tagName === 'BUTTON') {
             leading.type = 'button';
@@ -71,7 +71,7 @@ export function mountDisclosureRow(host, props, scope) {
         }
         else if (props.previewChevron ?? expandable) {
             const idle = document.createElement('span');
-            idle.className = 'vcp-harness-disclosure-icon-idle';
+            idle.className = 'vcp-uiux-disclosure-icon-idle';
             idle.append(icon);
             leading.append(idle, chevron(props.chevronClassName, true));
         }
@@ -153,8 +153,8 @@ export function mountDisclosureRow(host, props, scope) {
     disclosureScope.own(async () => {
         restoreNodes();
         host.replaceChildren(...originalNodes);
-    }, 'harness-disclosure-row', 'ui-primitive');
-    const dispose = () => disclosureScope.dispose('harness-disclosure-row-unmounted');
+    }, 'uiux-disclosure-row', 'ui-primitive');
+    const dispose = () => disclosureScope.dispose('uiux-disclosure-row-unmounted');
     return {
         root,
         row,
@@ -177,7 +177,7 @@ export function mountDisclosureRowController(host, props, scope) {
         throw new TypeError('DisclosureRowController requires a host, content, onToggle and scope.');
     }
     ensureStyles();
-    const disclosureScope = scope.child('harness-disclosure-row-controller');
+    const disclosureScope = scope.child('uiux-disclosure-row-controller');
     const trackedAttributes = ['class', 'role', 'tabindex', 'aria-controls', 'aria-expanded'];
     const originals = new Map(trackedAttributes.map(name => [name, host.getAttribute(name)]));
     const toggle = props.toggle || null;
@@ -187,7 +187,7 @@ export function mountDisclosureRowController(host, props, scope) {
     let expandable = Boolean(props.expandable);
     if (!props.content.id)
         props.content.id = `${host.id || 'disclosure'}-content`;
-    host.classList.add('vcp-harness-disclosure-row');
+    host.classList.add('vcp-uiux-disclosure-row');
     addClasses(host, props.className);
     host.dataset.disclosureRow = '';
     const render = () => {
@@ -272,8 +272,8 @@ export function mountDisclosureRowController(host, props, scope) {
             else
                 toggle.setAttribute('aria-expanded', toggleExpanded);
         }
-    }, 'harness-disclosure-row-controller', 'ui-primitive');
-    const dispose = () => disclosureScope.dispose('harness-disclosure-row-controller-unmounted');
+    }, 'uiux-disclosure-row-controller', 'ui-primitive');
+    const dispose = () => disclosureScope.dispose('uiux-disclosure-row-controller-unmounted');
     return {
         host,
         get open() { return open; },

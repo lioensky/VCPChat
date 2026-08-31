@@ -12,5 +12,5 @@ export interface ToastController {
     readonly active: boolean;
     dispose(): void | Promise<void>;
 }
-/** One owner-controlled Harness transient banner rendered through a body portal. */
+/** One owner-controlled Uiux transient banner rendered through a body portal. */
 export declare function mountToast(props: ToastProps, scope: UiScope): ToastController;

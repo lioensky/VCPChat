@@ -1,6 +1,6 @@
 import type { UiDisposer, UiScope } from '../contracts.js';
 
-const STYLE_ID = 'vcp-harness-uiux-input';
+const STYLE_ID = 'vcp-uiux-uiux-input';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
@@ -11,7 +11,7 @@ function ensureStyles() {
 
 export interface InputProps { readonly placeholder?: string; readonly icon?: Node; }
 
-/** Harness Input contract: native input remains the authoritative control. */
+/** Uiux Input contract: native input remains the authoritative control. */
 export function mountInput(input: HTMLInputElement, props: InputProps = {}, scope: UiScope): UiDisposer {
     if (!input || !scope) throw new TypeError('Input requires input and scope.');
     ensureStyles();
@@ -73,5 +73,5 @@ export function mountInput(input: HTMLInputElement, props: InputProps = {}, scop
             if (value) input.style.setProperty(property, value, priority);
             else input.style.removeProperty(property);
         }
-    }, 'harness-input', 'ui-primitive');
+    }, 'uiux-input', 'ui-primitive');
 }

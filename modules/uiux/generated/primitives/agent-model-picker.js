@@ -1,18 +1,18 @@
 import { createPopupSelectController, mountPopupSelectView } from './popup-select.js';
 import { mountSemanticIcon } from './semantic-icon.js';
 import { mountToast } from './toast.js';
-const STYLE_ID = 'vcp-harness-uiux-agent-model-picker';
+const STYLE_ID = 'vcp-uiux-uiux-agent-model-picker';
 let pickerSequence = 0;
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
         return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = `.vcp-harness-agent-model-picker{position:relative;min-width:0;display:inline-flex}.vcp-harness-agent-model-picker-trigger{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:220px;height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;color:var(--dsw-alias-label-secondary,var(--vcp-color-text,#737780));font-family:inherit;font-size:13px;line-height:20px;font-weight:500;cursor:pointer}.vcp-harness-agent-model-picker-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-harness-agent-model-picker-trigger:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-alias-border-l3,var(--vcp-color-brand,#1677ff))}.vcp-harness-agent-model-picker-trigger:disabled{color:var(--dsw-alias-label-dimmed,#a0a5ad);cursor:default}.vcp-harness-agent-model-picker-trigger-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-agent-model-picker-trigger-icon{flex:none;transition:transform 120ms ease}.vcp-harness-agent-model-picker-trigger[aria-expanded="true"] .vcp-harness-agent-model-picker-trigger-icon{transform:rotate(180deg)}.vcp-harness-agent-model-picker .vcp-harness-popup-select-card{right:0;left:auto;bottom:calc(100% + 8px);top:auto;width:min(240px,calc(100vw - 32px));max-width:min(240px,calc(100vw - 32px));box-sizing:border-box;max-height:min(360px,calc(100vh - 96px));border-radius:12px}.vcp-harness-agent-model-picker-cell{display:flex;align-items:center;gap:8px;width:100%;height:40px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary,#0f1115);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}.vcp-harness-agent-model-picker-cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-harness-agent-model-picker-cell-label{flex:1;min-width:0}.vcp-harness-agent-model-picker-cell-value{color:var(--dsw-alias-label-tertiary,#737780);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-agent-model-picker .vcp-harness-popup-select-row{min-height:38px;padding:6px 8px;border-radius:10px}.vcp-harness-agent-model-picker .vcp-harness-popup-select-row-disabled{color:var(--dsw-alias-label-dimmed,#a0a5ad);cursor:default}.vcp-harness-agent-model-picker .vcp-harness-popup-select-row-disabled:hover{background:transparent}.vcp-harness-agent-model-picker-directory-actions{display:flex;justify-content:flex-end;padding:2px 2px 4px}.vcp-harness-agent-model-picker-directory-actions[hidden]{display:none}.vcp-harness-agent-model-picker-directory-refresh{border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,var(--vcp-color-text,#737780));font:inherit;font-size:12px;line-height:18px;cursor:pointer}.vcp-harness-agent-model-picker-directory-refresh:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-harness-agent-model-picker-directory-refresh:disabled{cursor:default;opacity:.65}.vcp-harness-popup-select-favorite{flex:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary,#737780);font-size:16px;line-height:18px;cursor:pointer}.vcp-harness-popup-select-favorite[aria-pressed="true"]{color:var(--dsw-alias-state-warn-label,#c68610)}.vcp-harness-popup-select-favorite:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}`;
+    style.textContent = `.vcp-uiux-agent-model-picker{position:relative;min-width:0;display:inline-flex}.vcp-uiux-agent-model-picker-trigger{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:220px;height:28px;padding:0 4px 0 8px;border:0;border-radius:24px;background:transparent;color:var(--dsw-alias-label-secondary,var(--vcp-color-text,#737780));font-family:inherit;font-size:13px;line-height:20px;font-weight:500;cursor:pointer}.vcp-uiux-agent-model-picker-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-agent-model-picker-trigger:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-alias-border-l3,var(--vcp-color-brand,#1677ff))}.vcp-uiux-agent-model-picker-trigger:disabled{color:var(--dsw-alias-label-dimmed,#a0a5ad);cursor:default}.vcp-uiux-agent-model-picker-trigger-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-agent-model-picker-trigger-icon{flex:none;transition:transform 120ms ease}.vcp-uiux-agent-model-picker-trigger[aria-expanded="true"] .vcp-uiux-agent-model-picker-trigger-icon{transform:rotate(180deg)}.vcp-uiux-agent-model-picker .vcp-uiux-popup-select-card{right:0;left:auto;bottom:calc(100% + 8px);top:auto;width:min(240px,calc(100vw - 32px));max-width:min(240px,calc(100vw - 32px));box-sizing:border-box;max-height:min(360px,calc(100vh - 96px));border-radius:12px}.vcp-uiux-agent-model-picker-cell{display:flex;align-items:center;gap:8px;width:100%;height:40px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary,#0f1115);font-family:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}.vcp-uiux-agent-model-picker-cell:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-agent-model-picker-cell-label{flex:1;min-width:0}.vcp-uiux-agent-model-picker-cell-value{color:var(--dsw-alias-label-tertiary,#737780);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-agent-model-picker .vcp-uiux-popup-select-row{min-height:38px;padding:6px 8px;border-radius:10px}.vcp-uiux-agent-model-picker .vcp-uiux-popup-select-row-disabled{color:var(--dsw-alias-label-dimmed,#a0a5ad);cursor:default}.vcp-uiux-agent-model-picker .vcp-uiux-popup-select-row-disabled:hover{background:transparent}.vcp-uiux-agent-model-picker-directory-actions{display:flex;justify-content:flex-end;padding:2px 2px 4px}.vcp-uiux-agent-model-picker-directory-actions[hidden]{display:none}.vcp-uiux-agent-model-picker-directory-refresh{border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,var(--vcp-color-text,#737780));font:inherit;font-size:12px;line-height:18px;cursor:pointer}.vcp-uiux-agent-model-picker-directory-refresh:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-agent-model-picker-directory-refresh:disabled{cursor:default;opacity:.65}.vcp-uiux-popup-select-favorite{flex:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary,#737780);font-size:16px;line-height:18px;cursor:pointer}.vcp-uiux-popup-select-favorite[aria-pressed="true"]{color:var(--dsw-alias-state-warn-label,#c68610)}.vcp-uiux-popup-select-favorite:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}`;
     (document.head || document.documentElement).append(style);
 }
 /**
- * Candidate-only Agent model picker. It mirrors Harness model-selection
+ * Candidate-only Agent model picker. It mirrors Uiux model-selection
  * interaction while keeping model discovery and persistence injected.
  * `agentModel` remains a separate canonical native input in production.
  */
@@ -20,9 +20,9 @@ export function mountAgentModelPicker(host, props, scope) {
     if (!host || !props?.options || !props?.onSelect || !scope)
         throw new TypeError('AgentModelPicker requires host, options, onSelect and scope.');
     ensureStyles();
-    const pickerScope = scope.child('harness-agent-model-picker');
+    const pickerScope = scope.child('uiux-agent-model-picker');
     const root = document.createElement('span');
-    root.className = 'vcp-harness-agent-model-picker';
+    root.className = 'vcp-uiux-agent-model-picker';
     const trigger = props.trigger ?? document.createElement('button');
     const originalTriggerClass = trigger.getAttribute('class');
     const originalTriggerType = trigger.getAttribute('type');
@@ -36,7 +36,7 @@ export function mountAgentModelPicker(host, props, scope) {
     const originalTriggerMarkup = trigger.innerHTML;
     if (!props.trigger)
         trigger.type = 'button';
-    trigger.classList.add('vcp-harness-agent-model-picker-trigger');
+    trigger.classList.add('vcp-uiux-agent-model-picker-trigger');
     trigger.replaceChildren();
     trigger.setAttribute('aria-haspopup', 'menu');
     trigger.setAttribute('aria-expanded', 'false');
@@ -44,11 +44,11 @@ export function mountAgentModelPicker(host, props, scope) {
     if (props.locked === true)
         trigger.disabled = true;
     const triggerLabel = document.createElement('span');
-    triggerLabel.className = 'vcp-harness-agent-model-picker-trigger-label';
+    triggerLabel.className = 'vcp-uiux-agent-model-picker-trigger-label';
     triggerLabel.textContent = 'Select model';
     trigger.append(triggerLabel);
     const triggerIcon = document.createElement('span');
-    triggerIcon.className = 'vcp-harness-agent-model-picker-trigger-icon';
+    triggerIcon.className = 'vcp-uiux-agent-model-picker-trigger-icon';
     mountSemanticIcon(triggerIcon, { name: 'chevron-down', size: 14 }, pickerScope);
     trigger.append(triggerIcon);
     if (!props.trigger)
@@ -79,7 +79,7 @@ export function mountAgentModelPicker(host, props, scope) {
         if (!pickerScope.active)
             return;
         dismissActiveToast('agent-model-picker-selection-toast-replaced');
-        const toastScope = pickerScope.child('harness-agent-model-picker-selection-toast');
+        const toastScope = pickerScope.child('uiux-agent-model-picker-selection-toast');
         const generation = ++toastGeneration;
         const icon = document.createElement('span');
         mountSemanticIcon(icon, { name: 'warning', size: 16 }, toastScope);
@@ -110,7 +110,7 @@ export function mountAgentModelPicker(host, props, scope) {
         return options.map(option => ({
             id: option.id,
             label: option.label,
-            detail: props.harnessEquivalent === true
+            detail: props.uiuxEquivalent === true
                 ? undefined
                 : [option.provider, option.favorite ? 'Favorite' : undefined].filter(Boolean).join(' · ') || undefined,
             group: option.group ?? option.provider,
@@ -181,13 +181,13 @@ export function mountAgentModelPicker(host, props, scope) {
                 triggerLabel.textContent = selected.label;
             }
             catch (error) {
-                selectionFailure = props.harnessEquivalent === true;
-                if (props.harnessEquivalent === true)
+                selectionFailure = props.uiuxEquivalent === true;
+                if (props.uiuxEquivalent === true)
                     showOwnedToast(selectionErrorText(error));
                 throw error;
             }
         },
-        // Only Harness parity selection failures are consumed as a Toast;
+        // Only Uiux parity selection failures are consumed as a Toast;
         // catalog load failures still own the in-menu Retry strip.  The
         // boolean is set by the selected owner's command above, so neither
         // the DOM nor a second durable store becomes an error authority.
@@ -207,8 +207,8 @@ export function mountAgentModelPicker(host, props, scope) {
         overlayAria: `${props.label ?? 'Model'} picker`,
         searchAria: 'Search models',
         searchEnabled: props.searchEnabled,
-        grouped: props.harnessEquivalent === true || props.grouped === true,
-        optionRole: props.harnessEquivalent === true ? 'menuitemradio' : 'option',
+        grouped: props.uiuxEquivalent === true || props.grouped === true,
+        optionRole: props.uiuxEquivalent === true ? 'menuitemradio' : 'option',
         onEscape: () => {
             if (pane === 'root')
                 return false;
@@ -216,7 +216,7 @@ export function mountAgentModelPicker(host, props, scope) {
             syncPane();
             // A pane transition hides the focused option tree. Move focus to
             // the now-visible root cell so the next Tab/Enter sequence starts
-            // from the same native menuitem contract as Harness.
+            // from the same native menuitem contract as Uiux.
             paneCell?.focus();
             return true;
         },
@@ -232,29 +232,29 @@ export function mountAgentModelPicker(host, props, scope) {
             });
         } : undefined,
     }, pickerScope);
-    const menuId = `vcp-harness-agent-model-picker-menu-${++pickerSequence}`;
+    const menuId = `vcp-uiux-agent-model-picker-menu-${++pickerSequence}`;
     view.card.id = menuId;
     trigger.setAttribute('aria-controls', menuId);
     paneCell = document.createElement('button');
     paneCell.type = 'button';
-    paneCell.className = 'vcp-harness-agent-model-picker-cell';
+    paneCell.className = 'vcp-uiux-agent-model-picker-cell';
     paneCell.setAttribute('role', 'menuitem');
-    paneCell.innerHTML = '<span class="vcp-harness-agent-model-picker-cell-label">Model</span><span class="vcp-harness-agent-model-picker-cell-value"></span><span aria-hidden="true">›</span>';
+    paneCell.innerHTML = '<span class="vcp-uiux-agent-model-picker-cell-label">Model</span><span class="vcp-uiux-agent-model-picker-cell-value"></span><span aria-hidden="true">›</span>';
     pickerScope.listen(paneCell, 'click', () => { pane = 'model'; syncPane(); });
     const effortCell = document.createElement('button');
     effortCell.type = 'button';
-    effortCell.className = 'vcp-harness-agent-model-picker-cell';
+    effortCell.className = 'vcp-uiux-agent-model-picker-cell';
     effortCell.setAttribute('role', 'menuitem');
-    effortCell.innerHTML = '<span class="vcp-harness-agent-model-picker-cell-label">Effort</span><span class="vcp-harness-agent-model-picker-cell-value"></span><span aria-hidden="true">›</span>';
+    effortCell.innerHTML = '<span class="vcp-uiux-agent-model-picker-cell-label">Effort</span><span class="vcp-uiux-agent-model-picker-cell-value"></span><span aria-hidden="true">›</span>';
     pickerScope.listen(effortCell, 'click', () => { pane = 'effort'; syncPane(); });
     const effortList = document.createElement('div');
-    effortList.className = 'vcp-harness-agent-model-picker-effort-list';
+    effortList.className = 'vcp-uiux-agent-model-picker-effort-list';
     effortList.setAttribute('role', 'group');
     const directoryActions = document.createElement('div');
-    directoryActions.className = 'vcp-harness-agent-model-picker-directory-actions';
+    directoryActions.className = 'vcp-uiux-agent-model-picker-directory-actions';
     const refreshDirectory = document.createElement('button');
     refreshDirectory.type = 'button';
-    refreshDirectory.className = 'vcp-harness-agent-model-picker-directory-refresh';
+    refreshDirectory.className = 'vcp-uiux-agent-model-picker-directory-refresh';
     refreshDirectory.textContent = 'Refresh models';
     refreshDirectory.hidden = props.directory?.refresh === undefined;
     directoryActions.append(refreshDirectory);
@@ -281,18 +281,18 @@ export function mountAgentModelPicker(host, props, scope) {
         for (const option of props.efforts ?? []) {
             const row = document.createElement('button');
             row.type = 'button';
-            row.className = 'vcp-harness-agent-model-picker-option';
+            row.className = 'vcp-uiux-agent-model-picker-option';
             row.setAttribute('role', 'menuitemradio');
             row.setAttribute('aria-checked', String(option.id === selectedEffort));
             const copy = document.createElement('span');
-            copy.className = 'vcp-harness-agent-model-picker-option-copy';
+            copy.className = 'vcp-uiux-agent-model-picker-option-copy';
             const label = document.createElement('span');
-            label.className = 'vcp-harness-agent-model-picker-option-label';
+            label.className = 'vcp-uiux-agent-model-picker-option-label';
             label.textContent = option.label;
             copy.append(label);
             if (option.description) {
                 const description = document.createElement('span');
-                description.className = 'vcp-harness-agent-model-picker-option-description';
+                description.className = 'vcp-uiux-agent-model-picker-option-description';
                 description.textContent = option.description;
                 copy.append(description);
             }
@@ -344,15 +344,15 @@ export function mountAgentModelPicker(host, props, scope) {
             element.hidden = !visible;
             element.style.display = visible ? '' : 'none';
         };
-        paneCell.querySelector('.vcp-harness-agent-model-picker-cell-value').textContent = triggerLabel.textContent || 'Select model';
+        paneCell.querySelector('.vcp-uiux-agent-model-picker-cell-value').textContent = triggerLabel.textContent || 'Select model';
         setVisibility(paneCell, open && pane === 'root');
         setVisibility(effortCell, open && pane === 'root' && Boolean(props.efforts?.length));
-        effortCell.querySelector('.vcp-harness-agent-model-picker-cell-value').textContent = selectedEffort ?? 'Provider default';
+        effortCell.querySelector('.vcp-uiux-agent-model-picker-cell-value').textContent = selectedEffort ?? 'Provider default';
         setVisibility(effortList, open && pane === 'effort');
         setVisibility(view.search, pane === 'model' && props.searchEnabled !== false);
-        const viewport = view.card.querySelector('.vcp-harness-popup-select-viewport');
-        const status = view.card.querySelector('.vcp-harness-popup-select-status');
-        const error = view.card.querySelector('.vcp-harness-popup-select-error');
+        const viewport = view.card.querySelector('.vcp-uiux-popup-select-viewport');
+        const status = view.card.querySelector('.vcp-uiux-popup-select-status');
+        const error = view.card.querySelector('.vcp-uiux-popup-select-error');
         if (viewport)
             setVisibility(viewport, open && pane === 'model');
         if (status) {
@@ -368,7 +368,7 @@ export function mountAgentModelPicker(host, props, scope) {
             error.style.display = open && pane === 'model' && popup.getSnapshot().error !== null ? '' : 'none';
         }
         const filtering = popup.getSnapshot().search.trim() !== '';
-        view.card.querySelectorAll('.vcp-harness-popup-select-group-title').forEach(title => {
+        view.card.querySelectorAll('.vcp-uiux-popup-select-group-title').forEach(title => {
             title.hidden = filtering;
             title.setAttribute('aria-hidden', String(filtering));
         });
@@ -507,7 +507,7 @@ export function mountAgentModelPicker(host, props, scope) {
             popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
         },
         // Closing from the trigger/picker surface must return focus to the
-        // trigger, matching the Harness menu focus contract.
+        // trigger, matching the Uiux menu focus contract.
         close: () => { invalidateEffortSelection(); popup.dismiss({ focusComposer: true }); },
         refresh: () => {
             if (trigger.disabled)

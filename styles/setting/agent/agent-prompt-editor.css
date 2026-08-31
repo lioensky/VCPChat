@@ -25,7 +25,7 @@
   flex-wrap: wrap;
 }
 
-[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-button:not(.vcp-harness-button) {
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button) {
   flex: 1 1 0;
   min-width: 0;
   min-height: 34px;
@@ -42,7 +42,7 @@
 
 [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button):last-child {
+  .prompt-mode-button:not(.vcp-uiux-button):last-child {
   border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -179,7 +179,7 @@
 body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button),
+  .prompt-mode-button:not(.vcp-uiux-button),
 body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .system-prompt-container
@@ -238,7 +238,7 @@ body[data-vcp-theme="light"]
 body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button):hover,
+  .prompt-mode-button:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .system-prompt-container
@@ -289,7 +289,7 @@ body[data-vcp-theme="light"]
 body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button).active {
+  .prompt-mode-button:not(.vcp-uiux-button).active {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--highlight-text) 92%, rgba(255, 255, 255, 0.18)),
@@ -309,7 +309,7 @@ body[data-vcp-theme="light"]
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button),
+  .prompt-mode-button:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .system-prompt-container
@@ -375,7 +375,7 @@ body[data-vcp-theme="dark"]
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button):hover,
+  .prompt-mode-button:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .system-prompt-container
@@ -426,7 +426,7 @@ body[data-vcp-theme="dark"]
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .system-prompt-container
-  .prompt-mode-button:not(.vcp-harness-button).active {
+  .prompt-mode-button:not(.vcp-uiux-button).active {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--highlight-text) 86%, rgba(255, 255, 255, 0.14)),
@@ -521,7 +521,7 @@ body[data-vcp-theme="dark"]
     0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
-/* VCP Harness overrides for transparent mode */
+/* VCP Uiux overrides for transparent mode */
 [id="agentSettingsContainer"] .system-prompt-container .blocks-container,
 [id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
 [id="agentSettingsContainer"] .system-prompt-container .preview-text {

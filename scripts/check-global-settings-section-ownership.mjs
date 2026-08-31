@@ -16,7 +16,7 @@ for (const section of sections) assert.ok(doc.includes(`| \`${section}\` |`), `o
 assert.match(bridge, /function enhanceGlobalSettings\(root, form\)/, 'bridge must retain one global section entry point during migration');
 assert.match(`${bridge}\n${identity}`, /(?:function mountTypedAvatarColorPair|export function mountIdentityColorPairs)\(/, 'identity owner must remain explicit');
 assert.match(`${bridge}\n${choices}`, /(?:function mountTypedGlobalChoiceGroups|export function mountChoiceControls)\(/, 'choice owner must remain explicit');
-assert.match(bridge, /function mountHarnessInputs\(/, 'input owner must remain explicit');
+assert.match(bridge, /function mountUiuxInputs\(/, 'input owner must remain explicit');
 assert.match(rows, /sectionKeyForRow\(row\)/, 'canonical rows must publish section ownership metadata');
 assert.match(rows, /section\.dataset\.settingsSectionKey/, 'canonical section roots must honor the stamped section key attribute');
 assert.match(rows, /sectionKeyForTitle\(/, 'canonical section roots must keep the title map as fallback');

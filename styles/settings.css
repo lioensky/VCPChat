@@ -16,7 +16,7 @@
 
 /* Agent 卡片外壳 - 拆分后的模块 */
 @import url('./setting/agent/agent-card-base.css');
-@import url('./setting/agent/agent-card-harness.css');
+@import url('./setting/agent/agent-card-uiux.css');
 @import url('./setting/agent/agent-card-layout.css');
 @import url('./setting/agent/agent-card-controls.css');
 @import url('./setting/agent/agent-prompt-editor.css');

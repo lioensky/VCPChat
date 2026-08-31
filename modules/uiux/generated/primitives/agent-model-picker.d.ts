@@ -27,13 +27,13 @@ export interface AgentModelDirectoryCapability {
 }
 export interface AgentModelPickerProps {
     readonly label?: string;
-    /** Harness ModelSelect disables the native trigger while its owner is locked. */
+    /** Uiux ModelSelect disables the native trigger while its owner is locked. */
     readonly locked?: boolean;
     /** Reuse an existing surface trigger while keeping its identity intact. */
     readonly trigger?: HTMLButtonElement;
     readonly options: (signal: AbortSignal) => Promise<readonly AgentModelOption[]>;
     readonly directory?: AgentModelDirectoryCapability;
-    /** `false` rejects the selection; Harness parity keeps the menu open and shows a Toast. */
+    /** `false` rejects the selection; Uiux parity keeps the menu open and shows a Toast. */
     readonly onSelect: (option: AgentModelOption) => void | boolean | Promise<void | boolean>;
     readonly efforts?: readonly AgentModelEffortOption[];
     readonly onEffortSelect?: (option: AgentModelEffortOption) => void | Promise<void>;
@@ -43,8 +43,8 @@ export interface AgentModelPickerProps {
     readonly searchEnabled?: boolean;
     /** Render explicit ordered groups for the production directory projection. */
     readonly grouped?: boolean;
-    /** Opt into Harness provider-grouped menuitemradio DOM for equivalence fixtures. */
-    readonly harnessEquivalent?: boolean;
+    /** Opt into Uiux provider-grouped menuitemradio DOM for equivalence fixtures. */
+    readonly uiuxEquivalent?: boolean;
     readonly open?: boolean;
 }
 export interface AgentModelPickerController {
@@ -59,7 +59,7 @@ export interface AgentModelPickerController {
     dispose(): UiDisposer | Promise<void>;
 }
 /**
- * Candidate-only Agent model picker. It mirrors Harness model-selection
+ * Candidate-only Agent model picker. It mirrors Uiux model-selection
  * interaction while keeping model discovery and persistence injected.
  * `agentModel` remains a separate canonical native input in production.
  */

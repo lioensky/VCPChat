@@ -49,7 +49,7 @@ export interface DisclosureRowAdoptionController {
     setExpandable(expandable: boolean): void;
     dispose(): void | Promise<void>;
 }
-/** Controlled Harness DisclosureRow with reversible Light-DOM ownership. */
+/** Controlled Uiux DisclosureRow with reversible Light-DOM ownership. */
 export declare function mountDisclosureRow(host: HTMLElement, props: DisclosureRowProps, scope: UiScope): DisclosureRowController;
 /**
  * Adopt an existing Light-DOM disclosure header without replacing its child

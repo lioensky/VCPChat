@@ -29,7 +29,7 @@
     background: transparent;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button) {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button) {
     position: relative;
     flex: 0 0 auto;
     min-width: 0;
@@ -55,7 +55,7 @@
     transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button)::after {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button)::after {
     content: "";
     position: absolute;
     left: 50%;
@@ -68,19 +68,19 @@
     transition: width var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover {
     color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
     border: none;
     background: transparent;
     box-shadow: none;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover::after {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover::after {
     width: 16px;
     background-color: color-mix(in srgb, var(--highlight-text) 42%, transparent);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
     color: var(--highlight-text);
     font-weight: 600;
     border: none;
@@ -89,18 +89,18 @@
     transition: color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), font-weight var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active::after,
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active:hover::after {
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active::after,
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active:hover::after {
     width: 30px;
     background-color: var(--highlight-text);
 }
 
-body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button),
-body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover,
-body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active,
-body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button),
-body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover,
-body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button),
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button),
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
     border: none;
     background: transparent;
     box-shadow: none;
@@ -108,14 +108,14 @@ body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .pr
     -webkit-backdrop-filter: none;
 }
 
-body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active,
-body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button).active {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button).active {
     color: var(--highlight-text);
     font-weight: 600;
 }
 
-body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover,
-body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-harness-button):hover {
+body[data-vcp-theme="light"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsContainer .system-prompt-container .prompt-mode-button:not(.vcp-uiux-button):hover {
     color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
 }
 

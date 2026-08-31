@@ -1,11 +1,11 @@
 // field-registry — the single descriptor table for settings fields that
 // adapters special-case by id.  Before this registry the same knowledge lived as
 // string comparisons scattered across the bridge and the settings modules
-// (an exclusion list in mountHarnessInputs, STEPPER_FIELDS here, skip ids in
-// mountHarnessSwitches).  Adapters consult the table instead of hardcoding
+// (an exclusion list in mountUiuxInputs, STEPPER_FIELDS here, skip ids in
+// mountUiuxSwitches).  Adapters consult the table instead of hardcoding
 // ids; ownership of each field stays with its dedicated mount function.
 //
-// 阶段 4 裁剪版 schema（对齐 harness §2.3；不引入 schemastery/cordis）：
+// 阶段 4 裁剪版 schema（对齐 uiux §2.3；不引入 schemastery/cordis）：
 //   domain      — 归属分区 key（阶段 1 的 section-key 解耦）；
 //   type        — 业务类型：number | text | secret | toggle | shortcut；
 //   projection  — 呈现 chrome 归属，见下方 projection 注释块；
@@ -28,7 +28,7 @@
 //               on; a generic Input wrap would draw a second frame around it.
 //   'toggle'  — a typed toggle adapter owns the switch; the generic switch pass
 //               must leave it alone.
-//   'input'   — the generic Harness Input primitive may wrap it (default for
+//   'input'   — the generic Uiux Input primitive may wrap it (default for
 //               fields absent from the table).
 const DEFAULT_HOME_TAGLINE = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
 

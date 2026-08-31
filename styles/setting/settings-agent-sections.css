@@ -493,7 +493,7 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     margin-bottom: 8px;
 }
 
-/* Narrow-sidebar fixes and flat Harness-style controls. */
+/* Narrow-sidebar fixes and flat Uiux-style controls. */
 #tabContentSettings.active,
 #agentSettingsContainer,
 #agentSettingsForm {

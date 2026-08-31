@@ -11,5 +11,5 @@ export interface OnboardingSurfaceController {
     setOpen(value: boolean): void;
     dispose(): void | Promise<void>;
 }
-/** Harness first-run takeover: body portal plus exact app-root inert ownership. */
+/** Uiux first-run takeover: body portal plus exact app-root inert ownership. */
 export declare function mountOnboardingSurface(props: OnboardingSurfaceProps, scope: UiScope): OnboardingSurfaceController;

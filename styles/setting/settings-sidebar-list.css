@@ -56,7 +56,7 @@
     color: var(--secondary-text);
 }
 
-.settings-header-bar .global-settings-btn:not(.vcp-harness-button) {
+.settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
     position: relative;
     isolation: isolate;
     flex: 0 0 auto;
@@ -85,29 +85,29 @@
     transition: background-color var(--vcp-motion-duration-normal), border-color var(--vcp-motion-duration-normal), box-shadow var(--vcp-motion-duration-normal), color var(--vcp-motion-duration-normal);
 }
 
-.settings-header-bar .global-settings-btn:not(.vcp-harness-button):hover {
+.settings-header-bar .global-settings-btn:not(.vcp-uiux-button):hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
 }
 
-body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-harness-button) {
+body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
     background: transparent;
     border-color: rgba(51, 51, 51, 0.08);
     color: var(--button-bg);
 }
 
-body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-harness-button) {
+body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
     color: var(--highlight-text);
 }
 
-body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-harness-button):hover {
+body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: var(--text-on-accent);
 }
 
-body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-harness-button):hover {
+body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button):hover {
     background:
         linear-gradient(
             180deg,
@@ -146,14 +146,14 @@ body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-
         justify-content: center;
     }
 
-    .settings-header-bar .global-settings-btn:not(.vcp-harness-button) {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
         max-width: 28px;
         padding: 0;
         font-size: 0;
         color: transparent;
     }
 
-    .settings-header-bar .global-settings-btn:not(.vcp-harness-button)::before {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         content: "全";
         font-size: 13px;
         font-weight: 600;
@@ -163,26 +163,26 @@ body[data-vcp-theme="light"] .settings-header-bar .global-settings-btn:not(.vcp-
 }
 
 @container sidebar (max-width: 205px) {
-    body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-harness-button)::before {
+    body[data-vcp-theme="dark"] .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         color: var(--highlight-text);
     }
 }
 
 @container sidebar (max-width: 205px) {
-    .settings-header-bar .global-settings-btn:not(.vcp-harness-button)::before {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         content: "\5168";
     }
 }
 
 @container sidebar (max-width: 205px) {
-    .settings-header-bar .global-settings-btn:not(.vcp-harness-button) {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button) {
         max-width: none;
         padding: 0 12px;
         font-size: 0.9em;
         color: inherit;
     }
 
-    .settings-header-bar .global-settings-btn:not(.vcp-harness-button)::before {
+    .settings-header-bar .global-settings-btn:not(.vcp-uiux-button)::before {
         content: none;
     }
 }

@@ -20,5 +20,5 @@ export interface ModalController {
     setOpen(open: boolean): void;
     dispose(): void | Promise<void>;
 }
-/** Controlled Harness Modal rendered as a body portal in Light DOM. */
+/** Controlled Uiux Modal rendered as a body portal in Light DOM. */
 export declare function mountModal(props: ModalProps, scope: UiScope): ModalController;

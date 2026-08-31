@@ -4,5 +4,5 @@ export interface FontSizeRowController {
     setValue(value: string): void;
     dispose(): void | Promise<void>;
 }
-/** Harness FontSizeRow presentation over the existing canonical select. */
+/** Uiux FontSizeRow presentation over the existing canonical select. */
 export declare function mountFontSizeRow(host: HTMLElement, select: HTMLSelectElement, scope: UiScope): FontSizeRowController;

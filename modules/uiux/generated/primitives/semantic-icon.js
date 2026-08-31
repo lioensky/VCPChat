@@ -1,10 +1,10 @@
-const STYLE_ID = 'vcp-harness-uiux-semantic-icon';
+const STYLE_ID = 'vcp-uiux-uiux-semantic-icon';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
         return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = `.vcp-harness-icon-slot{display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--vcp-harness-icon-size,16px);height:var(--vcp-harness-icon-size,16px);color:currentColor;line-height:0}.vcp-harness-icon-slot>.vcp-ui-icon{width:100%;height:100%;color:currentColor}`;
+    style.textContent = `.vcp-uiux-icon-slot{display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--vcp-uiux-icon-size,16px);height:var(--vcp-uiux-icon-size,16px);color:currentColor;line-height:0}.vcp-uiux-icon-slot>.vcp-ui-icon{width:100%;height:100%;color:currentColor}`;
     (document.head || document.documentElement).append(style);
 }
 const VCP_NAMES = {
@@ -18,7 +18,7 @@ export function mountSemanticIcon(host, props, scope) {
     const originalNodes = Array.from(host.childNodes);
     const originalClass = host.getAttribute('class');
     const root = document.createElement('span');
-    root.className = 'vcp-harness-icon-slot';
+    root.className = 'vcp-uiux-icon-slot';
     root.setAttribute('aria-hidden', 'true');
     let name = props.name;
     let size = props.size ?? 16;
@@ -35,11 +35,11 @@ export function mountSemanticIcon(host, props, scope) {
     };
     const render = () => {
         root.replaceChildren(createGlyph());
-        root.style.setProperty('--vcp-harness-icon-size', `${size}px`);
+        root.style.setProperty('--vcp-uiux-icon-size', `${size}px`);
         refresh();
     };
     host.replaceChildren(root);
-    host.classList.add('vcp-harness-icon-host');
+    host.classList.add('vcp-uiux-icon-host');
     render();
     const dispose = scope.own(() => {
         host.replaceChildren(...originalNodes);
@@ -47,12 +47,12 @@ export function mountSemanticIcon(host, props, scope) {
             host.removeAttribute('class');
         else
             host.setAttribute('class', originalClass);
-    }, 'harness-semantic-icon', 'ui-primitive');
+    }, 'uiux-semantic-icon', 'ui-primitive');
     return {
         root,
         get name() { return name; },
         setName(value) { if (!VCP_NAMES[value])
-            throw new TypeError(`Unknown Harness semantic icon: ${value}`); name = value; render(); },
+            throw new TypeError(`Unknown Uiux semantic icon: ${value}`); name = value; render(); },
         setSize(value) { if (![14, 16, 18].includes(value))
             throw new TypeError('SemanticIcon size must be 14, 16 or 18.'); size = value; render(); },
         refresh,

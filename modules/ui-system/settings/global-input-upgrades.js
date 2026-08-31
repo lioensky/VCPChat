@@ -27,7 +27,7 @@ export function mountVoiceShortcutInput(form, api, scope) {
     // double frame. Converge on that wrap instead of stacking another one.
     const existingWrap = input.closest('.vcp-uiux-input-wrap');
     if (existingWrap) {
-        existingWrap.classList.add('vcp-harness-input-fill');
+        existingWrap.classList.add('vcp-uiux-input-fill');
         return;
     }
     api.mountInput(input, {}, scope);

@@ -40,7 +40,7 @@ export declare const AGENT_PRESET_ROW_DEFAULT_DESCRIPTION = "Applies to sessions
 export declare const AGENT_PRESET_ROW_LOADING_LABEL = "Loading presets\u2026";
 export declare const AGENT_PRESET_ROW_USER_TRUST_LABEL = "Custom";
 /**
- * Candidate replication of the Harness settings preference row: title over
+ * Candidate replication of the Uiux settings preference row: title over
  * description plus the shared PresetMenu pill (36px, align-end portal,
  * `· <userTrust>` suffix for locally authored presets). Caller-owned
  * snapshot projection; no durable business state.

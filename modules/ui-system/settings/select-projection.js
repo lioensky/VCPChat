@@ -55,13 +55,13 @@ export function createSelectProjection({ ensurePresentationScope }) {
     }
 
     function mountSelectKeyboardGlue(select, cleanups, scope) {
-        const trigger = select.parentElement?.querySelector(':scope > .vcp-harness-select-trigger');
+        const trigger = select.parentElement?.querySelector(':scope > .vcp-uiux-select-trigger');
         if (!trigger) return;
         const openMenuItems = () => {
             const menuId = trigger.getAttribute('aria-controls');
             const menu = menuId ? document.getElementById(menuId) : null;
             if (!menu || menu.hidden) return null;
-            return [...menu.querySelectorAll('.vcp-harness-menu-item:not(:disabled)')];
+            return [...menu.querySelectorAll('.vcp-uiux-menu-item:not(:disabled)')];
         };
         const focusSelectedItem = () => {
             const items = openMenuItems();
@@ -116,7 +116,7 @@ export function createSelectProjection({ ensurePresentationScope }) {
         const onDocumentKey = event => {
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
             const target = event.target;
-            if (!(target instanceof Element) || !target.classList.contains('vcp-harness-menu-item')) return;
+            if (!(target instanceof Element) || !target.classList.contains('vcp-uiux-menu-item')) return;
             const items = openMenuItems();
             if (!items?.length) return;
             const current = items.indexOf(target);
@@ -142,7 +142,7 @@ export function createSelectProjection({ ensurePresentationScope }) {
         });
     }
 
-    function mountHarnessSelects(form) {
+    function mountUiuxSelects(form) {
         const previousObserver = selectObserverStates.get(form);
         // A repeated refresh disconnects the live observer before remounting.
         // Drop the registry entry too so the arming block below always builds a
@@ -162,7 +162,7 @@ export function createSelectProjection({ ensurePresentationScope }) {
             // Typed primitives mount first and mark their native business node.
             if (select.dataset.vcpTypedPrimitiveMounted === 'true') return;
             if (select.multiple || select.disabled) return;
-            if (select.closest('.vcp-harness-select')) return;
+            if (select.closest('.vcp-uiux-select')) return;
             if (select.options.length <= 1) {
                 // A select with no real choices yet (e.g. #assistantAgent before
                 // the agent list populates) stays a bare native control; tag it
@@ -239,14 +239,14 @@ export function createSelectProjection({ ensurePresentationScope }) {
                     // (programmatic value/selected writes) re-sync the live
                     // projection through the primitive's vcp-uiux-sync hook.
                     if (mutations.some(record => record.type === 'childList')) {
-                        teardownHarnessSelects({ preserveForm: form });
+                        teardownUiuxSelects({ preserveForm: form });
                         // LifecycleScope releases settle their dispose in a
                         // microtask: the old projection must have fully restored
                         // the business DOM before the remount runs, otherwise the
                         // deferred disposer strips the freshly inserted wraps.
                         // The handle is tracked so a teardown landing between the
                         // two ticks cannot leave an orphan mount behind.
-                        scheduleScopeContinuation(scope, 'select-projection-remount', () => mountHarnessSelects(form));
+                        scheduleScopeContinuation(scope, 'select-projection-remount', () => mountUiuxSelects(form));
                         // Keep the guard raised through the MutationObserver
                         // delivery from the fresh primitive insertion, then
                         // release it as a separately scope-owned turn.
@@ -272,7 +272,7 @@ export function createSelectProjection({ ensurePresentationScope }) {
         }
     }
 
-    function teardownHarnessSelects({ preserveForm = null } = {}) {
+    function teardownUiuxSelects({ preserveForm = null } = {}) {
         [...selectObserverStates.values()].forEach(state => {
             releaseObserverState(state, { preserveRebuilding: state.form === preserveForm });
             void state.release?.();
@@ -286,5 +286,5 @@ export function createSelectProjection({ ensurePresentationScope }) {
         });
     }
 
-    return { mount: mountHarnessSelects, teardown: teardownHarnessSelects };
+    return { mount: mountUiuxSelects, teardown: teardownUiuxSelects };
 }

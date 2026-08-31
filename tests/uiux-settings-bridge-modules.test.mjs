@@ -92,13 +92,13 @@ test('single-concern modules import cleanly and expose their contract', async ()
     const shared = await import(pathToFileURL(bridgeShared).href);
     for (const name of [
         'bridgeScope', 'ensurePresentationScope', 'isPresentationDestroyed', 'markPresentationDestroyed',
-        'enhance', 'uniqueSettingsKey', 'selectProjection', 'mountHarnessSwitches',
+        'enhance', 'uniqueSettingsKey', 'selectProjection', 'mountUiuxSwitches',
         'releaseDisconnectedControllers', 'releaseAllControllers',
     ]) {
         assert.ok(name in shared, `bridge-shared must export ${name}`);
     }
     assert.equal(typeof shared.ensurePresentationScope, 'function');
-    assert.equal(typeof shared.mountHarnessSwitches, 'function');
+    assert.equal(typeof shared.mountUiuxSwitches, 'function');
     const agent = await import(pathToFileURL(agentBridge).href);
     assert.deepEqual(Object.keys(agent).sort(), [
         'cleanupDisconnectedAgentModelPickers', 'enhanceForm',
@@ -150,13 +150,13 @@ test('Agent ModelPicker directory stays an injected short-lived capability', asy
 test('each extracted function has exactly one home (entry or module, never both)', () => {
     const entry = read(bridgeEntry);
     const functions = [
-        'mountSelectKeyboardGlue', 'mountHarnessSelects', 'teardownHarnessSelects',
+        'mountSelectKeyboardGlue', 'mountUiuxSelects', 'teardownUiuxSelects',
         'removeLegacySubsectionHeadings', 'mountCanonicalSettingsRows', 'composeCanonicalRowSlots',
         'mountSettingsAutosave', 'flushLegacyAutosave', 'teardownLegacyAutosave',
         // 2026-08-31 domain split homes.
         'enhanceForm', 'mountTypedModelPicker', 'mountTypedSettingsConsumer', 'mountTypedFieldOwner',
         'mountTypedForumFieldOwner', 'addTypedNetworkPathInput', 'ensureTypedSettingsService',
-        'mountHarnessSwitches', 'mountHarnessInputs', 'mountHarnessDisclosures',
+        'mountUiuxSwitches', 'mountUiuxInputs', 'mountUiuxDisclosures',
         'enhance', 'uniqueSettingsKey', 'mountSettingsShell', 'flushTypedOwners',
     ];
     const moduleSource = [
@@ -302,7 +302,7 @@ test('global network-path add action uses the generated Button owner', () => {
     assert.match(owner, /#addNetworkPathBtn/);
     assert.match(owner, /api\.mountButton\(button, \{ variant: 'outline', size: 'sm' \}, scope\)/);
     assert.match(owner, /delete button\.dataset\.vcpTypedNetworkPathAction/);
-    assert.match(shellCss, /#openTopicSummaryModelSelectBtn\)\:not\(\.vcp-harness-button\)/,
+    assert.match(shellCss, /#openTopicSummaryModelSelectBtn\)\:not\(\.vcp-uiux-button\)/,
         'legacy Settings action CSS must exclude generated Buttons');
 });
 
@@ -364,7 +364,7 @@ test('Agent TTS Voice Select keeps business option loading while one typed proje
 
     assert.match(enhanceForm, /selectProjection\.mount\(form\)/,
         'Agent TTS Voice Select must mount through the shared generated Select projection');
-    assert.match(enhanceForm, /if \(!select\.closest\('\.vcp-harness-select'\)\) enhance\('Select'/,
+    assert.match(enhanceForm, /if \(!select\.closest\('\.vcp-uiux-select'\)\) enhance\('Select'/,
         'legacy VCPUI Select enhancement must not mount inside a typed Select wrapper');
     assert.match(selectProjection, /select\.dataset\.vcpTypedPrimitiveMounted === 'true'/,
         'a native node already owned by the generated primitive must not receive a second projection');
@@ -382,9 +382,9 @@ test('Agent TTS Voice Select keeps business option loading while one typed proje
         'the refresh command remains on the native TTS model path');
     assert.doesNotMatch(manager, /agentTtsVoice(?:Primary|Secondary)Select\.addEventListener\(/,
         'SettingsManager must not register a competing TTS Select presentation listener');
-    assert.ok(agentCss.includes('[id="agentSettingsContainer"] select:not(.vcp-harness-select-native)'), 'legacy Select CSS must exclude the typed native node');
-    assert.ok(/body(?:\.light-theme|\[data-vcp-theme="light"\]) \[id="agentSettingsContainer"\] select:not\(\.vcp-harness-select-native\)/.test(agentCss), 'light Select CSS must exclude the typed native node');
-    assert.ok(/body(?::not\(\.light-theme\)|\[data-vcp-theme="dark"\]) \[id="agentSettingsContainer"\] select:not\(\.vcp-harness-select-native\)/.test(agentCss), 'dark Select CSS must exclude the typed native node');
+    assert.ok(agentCss.includes('[id="agentSettingsContainer"] select:not(.vcp-uiux-select-native)'), 'legacy Select CSS must exclude the typed native node');
+    assert.ok(/body(?:\.light-theme|\[data-vcp-theme="light"\]) \[id="agentSettingsContainer"\] select:not\(\.vcp-uiux-select-native\)/.test(agentCss), 'light Select CSS must exclude the typed native node');
+    assert.ok(/body(?::not\(\.light-theme\)|\[data-vcp-theme="dark"\]) \[id="agentSettingsContainer"\] select:not\(\.vcp-uiux-select-native\)/.test(agentCss), 'dark Select CSS must exclude the typed native node');
 });
 
 test('上游 MiMo 导演提示词保留 canonical 数组并由 SettingsManager 管理生命周期', () => {
@@ -414,7 +414,7 @@ test('Agent shell CSS leaves typed primitive inner controls to their own present
         '.vcp-uiux-input-wrap > input',
         '.vcp-uiux-color-pair > input',
         '.vcp-uiux-range > input',
-        '.vcp-harness-select-native',
+        '.vcp-uiux-select-native',
     ]) {
         assert.ok(shellCss.includes(selector), `legacy Agent shell selectors must exclude typed primitive internals: ${selector}`);
     }
@@ -422,7 +422,7 @@ test('Agent shell CSS leaves typed primitive inner controls to their own present
         'the ownership boundary must remain explicit rather than relying on cascade order');
     assert.match(legacyControlsCss, /input\[type="text"\][\s\S]*?:not\(\.input\):not\(:is\(\.vcp-uiux-color-pair > input\)\)/,
         'the still-loaded Agent control fallback must exclude generated Input and ColorPair inner nodes');
-    assert.match(legacyControlsCss, /select:not\(\.vcp-harness-select-native\)/,
+    assert.match(legacyControlsCss, /select:not\(\.vcp-uiux-select-native\)/,
         'the still-loaded Agent control fallback must not style a typed Select native node');
     assert.match(paramsCss, /\.params-content input\[type="number"\]:not\(\.input\)/,
         'the parameter-sheet numeric fallback must exclude generated Input nodes');
@@ -470,7 +470,7 @@ test('global typed primitive mounts keep one lifecycle registration per primitiv
     const choices = read(path.join(settingsDir, 'choice-controls.js'));
     const forum = read(path.join(settingsDir, 'forum-controls.js'));
     const globalTypedOwners = entry.slice(
-        entry.indexOf('function mountHarnessInputs'),
+        entry.indexOf('function mountUiuxInputs'),
         entry.indexOf('// R2-02C:'),
     ) + '\n' + appearance + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + choices + '\n' + forum;
     // Each generated primitive calls scope.own() internally.  The bridge can
@@ -501,7 +501,7 @@ test('typed settings external updates use the bridge scope', () => {
 
 test('legacy disclosure fast teardown is explicitly idempotent', () => {
     const entry = read(bridgeEntry);
-    const helper = entry.slice(entry.indexOf('function mountHarnessDisclosures'), entry.indexOf('function flushSettingsAutosave'));
+    const helper = entry.slice(entry.indexOf('function mountUiuxDisclosures'), entry.indexOf('function flushSettingsAutosave'));
     assert.match(helper, /cleaned:\s*false/);
     assert.match(helper, /if \(state\.cleaned\) return;/);
     assert.match(helper, /state\.cleaned = true;/);
@@ -562,7 +562,7 @@ test('Select option rebuild turns are owned and retract cleanly with the present
                 mounts += 1;
                 const parent = select.parentNode;
                 const wrap = dom.window.document.createElement('span');
-                wrap.className = 'vcp-harness-select';
+                wrap.className = 'vcp-uiux-select';
                 parent.insertBefore(wrap, select);
                 wrap.append(select);
                 return selectScope.own(() => {
@@ -591,7 +591,7 @@ test('Select option rebuild turns are owned and retract cleanly with the present
 
         await scope.dispose();
         await new Promise(resolve => setTimeout(resolve, 10));
-        assert.equal(form.querySelectorAll('.vcp-harness-select').length, 0, 'scope disposal restores the canonical select DOM');
+        assert.equal(form.querySelectorAll('.vcp-uiux-select').length, 0, 'scope disposal restores the canonical select DOM');
         assert.equal(records.size, 0, 'observer and deferred turns are retracted from the owner');
     } finally {
         Object.entries(previous).forEach(([key, value]) => {
@@ -640,9 +640,9 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     const fn = entry.slice(entry.indexOf('function enhanceGlobalSettings(root, form)'), entry.indexOf('runSettingsPipeline(steps);'));
     assert.match(entry, /import \{ runSettingsPipeline \} from '\.\/settings\/pipeline\.js';/,
         'the entry executes the shared declarative pipeline runner');
-    for (const name of ['canonical-rows', 'harness-inputs', 'appearance-rows',
+    for (const name of ['canonical-rows', 'uiux-inputs', 'appearance-rows',
         'global-pill-steppers', 'select-projection', 'global-typed-primitives', 'topic-summary-picker',
-        'forum-field-owner', 'legacy-range-pass', 'harness-switches', 'harness-disclosures',
+        'forum-field-owner', 'legacy-range-pass', 'uiux-switches', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
         assert.match(fn, new RegExp(`name: '${name}'`), `mount step ${name} must stay declared`);
     }
@@ -651,7 +651,7 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
         'pill/stepper projections must declare precedence over the select projection and the legacy Range pass');
     assert.match(fn, /name: 'appearance-rows',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
         'appearance projections must declare precedence over the catch-all select projection');
-    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['harness-inputs'/,
+    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['uiux-inputs'/,
         'row-consuming passes must declare their dependence on canonical rows');
 });
 
@@ -723,7 +723,7 @@ test('settings 域的 dataset marker 全部登记在统一注册表中', async (
     // Business/control attributes are not idempotency markers and stay out.
     for (const name of ['vcpTypedPrimitiveMounted', 'vcpTypedGlobalSettingsEntry', 'vcpTypedNetworkPathAction',
         'vcpSettingsRow', 'vcpCanonicalRowsMounted', 'vcpSelectRebuilding',
-        'vcpHarnessToggleMounted', 'vcpAutosaveState', 'vcpSettingsDirty', 'vcpTypedAgentModel']) {
+        'vcpUiuxToggleMounted', 'vcpAutosaveState', 'vcpSettingsDirty', 'vcpTypedAgentModel']) {
         assert.ok(registry.isRegisteredSettingsMarker(name), `known marker ${name} must be registered`);
     }
     assert.equal(registry.isRegisteredSettingsMarker('vcpTotallyUnknownMarker'), false);
@@ -785,14 +785,14 @@ test('quick-actions 扁平化：依赖容器退场，条件行直接挂在分区
     assert.match(html, /id="middleClickAdvancedSettings"[^>]*data-visible-when="enableMiddleClickQuickAction && enableMiddleClickAdvanced"/s);
     // The flattened sections own the top-border divider model in CSS.
     const overrides = read(path.join(root, 'styles', 'ui-system', 'settings-overrides.css'));
-    assert.match(overrides, /\.vcp-ui-scope#globalSettingsModal \.vcp-harness-general-row \+ \.vcp-harness-general-row \{\s*\n\s*border-top: 1px solid/,
+    assert.match(overrides, /\.vcp-ui-scope#globalSettingsModal \.vcp-uiux-general-row \+ \.vcp-uiux-general-row \{\s*\n\s*border-top: 1px solid/,
         'the unified settings surface draws its hairlines from the adjacent-sibling top border');
-    assert.ok(!overrides.includes('vcp-harness-row-tail'),
+    assert.ok(!overrides.includes('vcp-uiux-row-tail'),
         'the JS tail marker CSS is retired with the globalized top-border model');
     // Nested row primitives self-inject a bottom hairline; inside a canonical
     // row it must yield to the row boundary (two-column stepper rows leak
     // partial double hairlines otherwise).
-    assert.match(overrides, /\.vcp-harness-general-row :is\(\.vcp-harness-language-row, \.vcp-harness-numeric-stepper-row, \.vcp-harness-font-size-row\) \{\s*\n\s*border-bottom: 0;/,
+    assert.match(overrides, /\.vcp-uiux-general-row :is\(\.vcp-uiux-language-row, \.vcp-uiux-numeric-stepper-row, \.vcp-uiux-font-size-row\) \{\s*\n\s*border-bottom: 0;/,
         'nested row primitives opt out of their self-drawn hairline inside canonical rows');
 });
 
@@ -835,7 +835,7 @@ test('appearance-settings 扁平化：四个 editor-section 与依赖面板退�
     assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'appearance section bounds');
     const section = html.slice(sectionStart, sectionEnd);
     // 包裹结构整体退场：editor-section、依赖面板、网格与几何容器不再承载行。
-    for (const retired of ['vcp-harness-editor-section', 'userChatBubbleSettings', 'chatBubbleWidthSettings',
+    for (const retired of ['vcp-uiux-editor-section', 'userChatBubbleSettings', 'chatBubbleWidthSettings',
         'wideChatLayoutSettings', 'appearance-settings-grid', 'appearance-sidebar-geometry-controls',
         'appearance-home-tagline-setting', 'settings-dependent-panel', 'settings-nested-panel']) {
         assert.ok(!section.includes(retired), `${retired} must retire with the flattened appearance section`);
@@ -905,7 +905,7 @@ test('render-settings 扁平化：editor-section 包裹退场，行直接挂在�
     const sectionEnd = html.indexOf('id="section-selection-assistant"');
     assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'render-settings section bounds');
     const section = html.slice(sectionStart, sectionEnd);
-    assert.ok(!section.includes('vcp-harness-editor-section'), 'the editor-section wrapper must retire');
+    assert.ok(!section.includes('vcp-uiux-editor-section'), 'the editor-section wrapper must retire');
     for (const id of ['minChunkBufferSize', 'streamAnimationSettingsRow', 'streamAnimationDurationRow', 'streamAnimationCustomRow']) {
         assert.ok(section.includes(`id="${id}"`), `flattened render row ${id} must remain`);
     }
