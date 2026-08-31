@@ -1,4 +1,4 @@
-// Global settings LanguageRow projection — the DeepSeek-style pill selector
+// Global settings LanguageRow projection — the design-system-style pill selector
 // rows for the remaining global selects.  The native select stays the sole
 // business node (hidden inside its row); the pill mirrors it like the
 // appearance-area adapters: user-driven `change` and host-driven snapshot
