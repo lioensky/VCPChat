@@ -3753,7 +3753,13 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     // Highlighting is now part of processRenderedContent
 
     if (appendToDom) {
-        mainRendererReferences.uiHelper.scrollToBottom();
+        // 主动发送用户消息代表一次明确的“回到底部继续对话”意图。
+        // 强制请求仍受滚动代际保护：若用户在下一帧执行前立即上滚，
+        // uiHelper 会取消该请求，不会把用户重新拉回底部。
+        const shouldReengageBottomFollow = message.role === 'user' && !isInitialLoad;
+        mainRendererReferences.uiHelper.scrollToBottom({
+            force: shouldReengageBottomFollow
+        });
     }
     return messageItem;
 }
