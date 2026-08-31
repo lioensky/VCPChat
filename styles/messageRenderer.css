@@ -1,5 +1,22 @@
 /* Enhanced Rendering Styles for Message Renderer */
 
+/*
+ * 墓碑冻结的同步 CSS 屏障。
+ * visibilityOptimizer 仍会暂停 Web Animations 实例并保存精确时间线；这里负责覆盖：
+ * 1. 应用自身的 @keyframes（例如工具气泡背景、边框、齿轮与工具名流光）；
+ * 2. 消息级 scoped CSS 创建的动画；
+ * 3. 无法作为 DOM 节点单独扫描的 ::before / ::after 动画；
+ * 4. 消息已冻结后才由 class/style 变化启动的动画。
+ */
+.message-item.vcp-paused,
+.message-item.vcp-paused *,
+.message-item.vcp-paused::before,
+.message-item.vcp-paused::after,
+.message-item.vcp-paused *::before,
+.message-item.vcp-paused *::after {
+    animation-play-state: paused !important;
+}
+
 /* Keyframes for animations */
 @keyframes vcp-bubble-background-flow-kf {
     0% {
