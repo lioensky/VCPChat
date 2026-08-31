@@ -722,7 +722,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
     currentChatHistoryArray.push(regenerationThinkingMessage);
     mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-    ownerWindow.updateSendButtonState?.();
+
+    // 重新回复的思考占位已经同时进入 DOM 与 history，此时即可投影中止按钮。
+    // 旧路径调用 window.updateSendButtonState，但发送状态现由 MainChatSendOwner
+    // 通过显式 messageCommands 能力持有，不再暴露同名窗口全局函数。
+    mainRefs.messageCommands?.updateSendButtonState?.();
 
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id);
