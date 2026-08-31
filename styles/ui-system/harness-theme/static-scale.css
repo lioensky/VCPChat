@@ -1,0 +1,6 @@
+/* DeepSeek Harness-compatible static scale. Components should consume aliases. */
+:root {
+    --dsw-static-neutral-0: rgb(255 255 255);
+    --dsw-static-neutral-950: rgb(15 17 21);
+    --dsw-static-blue-500: rgb(38 125 255);
+}

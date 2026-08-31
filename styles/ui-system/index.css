@@ -1,7 +1,10 @@
 @layer vcp-ui.tokens, vcp-ui.base, vcp-ui.components, vcp-ui.utilities, vcp-ui.showcase;
 
 @import url('./fonts.css');
+@import url('./harness-theme/static-scale.css');
+@import url('./harness-theme/semantic.css');
 @import url('./tokens.css');
+@import url('./motion.css');
 @import url('./components.css');
 @import url('./shell.css');
 @import url('./chat-input.css');

@@ -1,0 +1,546 @@
+/* ========================================
+   Agent Settings - System Prompt Editor
+   ======================================== */
+/* Container and layout */
+[id="agentSettingsContainer"] .agent-settings-prompt-shell {
+  padding-bottom: 0;
+  gap: 6px;
+}
+
+[id="agentSettingsContainer"] .agent-settings-prompt-shell .system-prompt-container {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* Mode selector buttons */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-selector {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 0;
+  border-bottom: none;
+  background: transparent;
+  flex-wrap: wrap;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-button:not(.vcp-harness-button) {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--agent-settings-pill-radius);
+  background: transparent;
+  color: var(--secondary-text);
+  font-size: 0.9em;
+  font-weight: 500;
+  line-height: 1;
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button):last-child {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-mode-button-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Content container */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-content-container {
+  padding: 10px 12px 12px;
+  background: transparent;
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-content-container.original-mode {
+  padding-bottom: 0;
+}
+
+/* Textarea and inputs */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-textarea,
+[id="agentSettingsContainer"] .system-prompt-container .preset-path-input,
+[id="agentSettingsContainer"] .system-prompt-container .preset-select,
+[id="agentSettingsContainer"] .system-prompt-container .block-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
+  transition: background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-textarea,
+[id="agentSettingsContainer"] .system-prompt-container .block-content-input,
+[id="agentSettingsContainer"] .system-prompt-container .variant-content-input {
+  border-radius: 14px;
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-content-container
+  > .prompt-textarea {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-content-container.original-mode
+  > .prompt-textarea {
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-textarea {
+  min-height: 76px;
+  padding: 10px 12px;
+}
+
+/* Modular and preset containers */
+[id="agentSettingsContainer"] .system-prompt-container .modular-prompt-container,
+[id="agentSettingsContainer"] .system-prompt-container .preset-prompt-container {
+  gap: 2px;
+  padding: 0;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .modular-toolbar {
+  padding: 0;
+  border-bottom: none;
+  gap: 8px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .toolbar-controls-group,
+[id="agentSettingsContainer"] .system-prompt-container .path-input-container {
+  gap: 8px;
+}
+
+/* Toolbar buttons */
+[id="agentSettingsContainer"] .system-prompt-container .toolbar-btn,
+[id="agentSettingsContainer"] .system-prompt-container .preset-browse-btn,
+[id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn,
+[id="agentSettingsContainer"] .system-prompt-container .add-variant-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--agent-settings-pill-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
+  font-size: 0.88em;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .preset-refresh-btn {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+/* Blocks, warehouse, and preview containers */
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container {
+  min-height: 82px;
+  padding: 10px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  padding: 12px 13px;
+}
+
+/* Prompt blocks */
+[id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block {
+  border-radius: 14px;
+  border-width: 1px;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-block.newline-block {
+  border-radius: 999px;
+}
+
+/* Light theme styles */
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button),
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .toolbar-btn,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-browse-btn,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-refresh-btn,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .add-variant-btn,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .blocks-container,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .warehouse-container,
+body[data-vcp-theme="light"] [id="agentSettingsContainer"] .system-prompt-container .preview-text,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-block.text-block {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+    color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+  );
+  border-color: rgba(51, 51, 51, 0.08);
+  backdrop-filter: blur(12px) saturate(138%);
+  -webkit-backdrop-filter: blur(12px) saturate(138%);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18), inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .toolbar-btn:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-browse-btn:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-refresh-btn:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .add-variant-btn:hover,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-block.text-block:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 72%,
+    rgba(51, 51, 51, 0.12)
+  );
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button).active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--highlight-text) 92%, rgba(255, 255, 255, 0.18)),
+    color-mix(in srgb, var(--highlight-text) 80%, rgba(255, 255, 255, 0.08))
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 90%,
+    rgba(51, 51, 51, 0.16)
+  );
+  color: var(--text-on-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 30%, transparent);
+}
+
+/* Dark theme styles */
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button),
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .toolbar-btn,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-browse-btn,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-refresh-btn,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .add-variant-btn,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .blocks-container,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .warehouse-container,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preview-text,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-block.text-block {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+    color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px) saturate(124%);
+  -webkit-backdrop-filter: blur(10px) saturate(124%);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .toolbar-btn:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-browse-btn:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-refresh-btn:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .add-variant-btn:hover,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-block.text-block:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 68%,
+    rgba(255, 255, 255, 0.12)
+  );
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-mode-button:not(.vcp-harness-button).active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--highlight-text) 86%, rgba(255, 255, 255, 0.14)),
+    color-mix(in srgb, var(--highlight-text) 74%, rgba(255, 255, 255, 0.05))
+  );
+  border-color: var(--highlight-text);
+  color: var(--text-on-accent);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 32%, transparent);
+}
+
+/* Focus states - Light theme */
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus-visible,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus-visible,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus-visible,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus,
+body[data-vcp-theme="light"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus-visible {
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+/* Focus states - Dark theme */
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .prompt-textarea:focus-visible,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-path-input:focus-visible,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .preset-select:focus-visible,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus,
+body[data-vcp-theme="dark"]
+  [id="agentSettingsContainer"]
+  .system-prompt-container
+  .block-name-input:focus-visible {
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+/* VCP Harness overrides for transparent mode */
+[id="agentSettingsContainer"] .system-prompt-container .blocks-container,
+[id="agentSettingsContainer"] .system-prompt-container .warehouse-container,
+[id="agentSettingsContainer"] .system-prompt-container .preview-text {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .prompt-block.text-block {
+  box-shadow: none;
+}
+
+[id="agentSettingsContainer"] .system-prompt-container .modular-toolbar,
+[id="agentSettingsContainer"] .system-prompt-container .preset-path-section,
+[id="agentSettingsContainer"] .system-prompt-container .preset-selector-section,
+[id="agentSettingsContainer"] .system-prompt-container .preset-editor-section {
+  background: transparent;
+  box-shadow: none;
+}
