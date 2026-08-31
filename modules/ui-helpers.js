@@ -403,7 +403,17 @@
             container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
             requestAnimationFrame(() => {
                 state.programmatic = false;
-                if (container.isConnected) {
+                if (
+                    container.isConnected
+                    && !state.frameId
+                    && state.requestedGeneration === null
+                ) {
+                    // 本次滚动提交后、收尾帧执行前，新的消息可能已经挂载并申请了
+                    // 下一次滚动（典型顺序：用户气泡 -> 持久化等待 -> agent 思考气泡）。
+                    // 此时当前几何只是两个滚动提交之间的中间态；若据此关闭跟随，
+                    // 新请求会在 commitScroll() 中被错误取消，最终停在用户气泡底部。
+                    // 有更新请求待提交时保留其已声明的 followBottom 意图，由更新
+                    // 请求自己的收尾帧在最终几何上重新测量。
                     state.followBottom = isChatNearBottom(container);
                 }
             });

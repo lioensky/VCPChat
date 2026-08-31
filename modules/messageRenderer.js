@@ -3754,11 +3754,19 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
     if (appendToDom) {
         // 主动发送用户消息代表一次明确的“回到底部继续对话”意图。
-        // 强制请求仍受滚动代际保护：若用户在下一帧执行前立即上滚，
-        // uiHelper 会取消该请求，不会把用户重新拉回底部。
-        const shouldReengageBottomFollow = message.role === 'user' && !isInitialLoad;
+        // 同一发送事务稍后创建的 agent 占位气泡也必须继承该意图；它可能在
+        // 持久化/未读 IPC 之后才挂载，不能依赖用户气泡滚动留下的瞬时几何状态。
+        // expectedGeneration 仍保证用户在此期间主动上滚时可以取消整次跟随。
+        const shouldReengageBottomFollow = (
+            (message.role === 'user' && !isInitialLoad)
+            || renderContext.reengageBottomFollow === true
+        );
+        const expectedGeneration = Number.isInteger(renderContext.expectedScrollGeneration)
+            ? renderContext.expectedScrollGeneration
+            : undefined;
         mainRendererReferences.uiHelper.scrollToBottom({
-            force: shouldReengageBottomFollow
+            force: shouldReengageBottomFollow,
+            expectedGeneration
         });
     }
     return messageItem;

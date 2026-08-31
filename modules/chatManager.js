@@ -1413,6 +1413,13 @@ export const chatManager = (() => {
         if (renderTarget) {
             userMessageItem = await renderTarget.renderMessage(userMessage);
         }
+        // 发送动作的“跟随到底部”意图必须覆盖随后异步创建的 agent 占位气泡。
+        // 持久化、未读清理等 IPC 可能跨越多个动画帧；仅在用户气泡阶段滚动，
+        // 会让迟到的 scroll 事件或中间几何在占位气泡挂载前关闭跟随。
+        // 记录当前代际后交给占位渲染：期间若用户主动上滚，代际变化会使请求失效。
+        const sendScrollFollowSnapshot = !request?.conversation && isSendContextCurrent()
+            ? uiHelper.captureChatScrollFollow?.()
+            : null;
         if (!isSendContextCurrent()) {
             // renderMessage targets the shared chat container. If selection
             // changed while it awaited, retract the stale DOM projection;
@@ -1503,7 +1510,18 @@ export const chatManager = (() => {
             ? new Promise(resolve => { settleOwnedStreamOperation = resolve; })
             : null;
         if (renderTarget && isSendContextCurrent()) {
-            thinkingMessageItem = await renderTarget.renderMessage(thinkingMessage);
+            thinkingMessageItem = await renderTarget.renderMessage(
+                thinkingMessage,
+                false,
+                true,
+                null,
+                sendScrollFollowSnapshot
+                    ? {
+                        reengageBottomFollow: true,
+                        expectedScrollGeneration: sendScrollFollowSnapshot.generation
+                    }
+                    : {}
+            );
             if (!isSendContextCurrent()) {
                 thinkingMessageItem?.remove?.();
                 thinkingMessageItem = null;
