@@ -27,7 +27,7 @@ body[data-vcp-theme="dark"] {
 }
 
 /* Legacy theme togglers still publish body.dark-theme before the typed theme
-   presenter receives the corresponding snapshot. Keep the Harness aliases
+   presenter receives the corresponding snapshot. Keep the theme aliases
    visually coherent during that compatibility window. */
 body.dark-theme {
     --dsw-alias-bg-layer-1: rgb(35 35 36);
