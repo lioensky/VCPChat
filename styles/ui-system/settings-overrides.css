@@ -175,10 +175,14 @@
     position: relative;
     z-index: 1;
     display: flex;
-    width: 800px;
-    height: min(800px, calc(100vh - 48px));
+    /* Mirror the canonical geometry owned by settings-primitives.css
+       (upstream Classic settings modal footprint). This selector wins the
+       cascade over it (extra .vcp-global-settings-surface class), so the two
+       must agree. */
+    width: min(900px, 90vw);
+    height: 80vh;
     max-width: calc(100vw - 48px);
-    min-height: 0;
+    min-height: 600px;
     padding: 0;
     overflow: hidden;
     border: 0;
