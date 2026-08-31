@@ -1,6 +1,6 @@
 import type { UiDisposer, UiScope } from '../contracts.js';
 
-const STYLE_ID = 'vcp-harness-uiux-choice';
+const STYLE_ID = 'vcp-uiux-uiux-choice';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style'); style.id = STYLE_ID;
@@ -24,5 +24,5 @@ export function mountChoice(root: HTMLElement, scope: UiScope): UiDisposer {
         if (input) { scope.listen(input, 'change', sync); scope.listen(input, 'vcp-uiux-sync', sync); }
     });
     sync();
-    return scope.own(() => { root.classList.remove('vcp-uiux-choice'); delete root.dataset.value; labels.forEach(label => label.classList.remove('vcp-uiux-choice-option')); }, 'harness-choice', 'ui-primitive');
+    return scope.own(() => { root.classList.remove('vcp-uiux-choice'); delete root.dataset.value; labels.forEach(label => label.classList.remove('vcp-uiux-choice-option')); }, 'uiux-choice', 'ui-primitive');
 }

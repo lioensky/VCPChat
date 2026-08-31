@@ -20,10 +20,10 @@ const MARKERS = Object.freeze({
     settingsSectionKey: { owner: 'settings/section-ownership.js + main.html', cleanup: 'persistent' },
     visibleWhen: { owner: 'settings/dependent-rows.js + main.html', cleanup: 'persistent' },
 
-    // harness primitives — one re-entrancy marker per projection family
-    vcpHarnessInputPrimitive: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
-    vcpHarnessToggleMounted: { owner: 'settings/bridge-shared.js', cleanup: 'manual-retract' },
-    vcpHarnessClose: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
+    // uiux primitives — one re-entrancy marker per projection family
+    vcpUiuxInputPrimitive: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
+    vcpUiuxToggleMounted: { owner: 'settings/bridge-shared.js', cleanup: 'manual-retract' },
+    vcpUiuxClose: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
     settingPrimitive: { owner: 'settings-bridge.js + agent-settings-bridge.js + settings/canonical-rows.js', cleanup: 'manual-retract' },
     vcpSelectRebuilding: { owner: 'settings/select-projection.js', cleanup: 'scope-owned' },
     vcpTypedPrimitiveMounted: { owner: 'all generated-primitive mount sites', cleanup: 'scope-owned' },

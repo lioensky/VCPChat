@@ -14,5 +14,5 @@ export interface StateDotController {
     setSize(size: number): void;
     dispose(): void | Promise<void>;
 }
-/** Harness state marker; visual-only and deliberately aria-hidden. */
+/** Uiux state marker; visual-only and deliberately aria-hidden. */
 export declare function mountStateDot(host: HTMLElement, props: StateDotProps, scope: UiScope): StateDotController;

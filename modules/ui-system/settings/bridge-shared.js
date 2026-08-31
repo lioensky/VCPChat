@@ -68,7 +68,7 @@ function enhance(name, element, options = {}) {
 // visual toggles keep their own mounts, and the legacy VCPUI native-kernel
 // switch stays as the degraded presentation when the primitive runtime or
 // the presentation scope is unavailable.
-function mountHarnessSwitches(form) {
+function mountUiuxSwitches(form) {
     if (!form) return;
     const api = window.VCPUIUX;
     const scope = ensurePresentationScope();
@@ -77,7 +77,7 @@ function mountHarnessSwitches(form) {
         // mounts; the registry, not a hardcoded id list, decides the skip.
         if ([...control.querySelectorAll('[id]')].some(node => fieldProjection(node.id) === 'toggle')) return;
         const input = control.querySelector('input[type="checkbox"]');
-        if (!input || input.dataset.vcpHarnessToggleMounted === 'true') return;
+        if (!input || input.dataset.vcpUiuxToggleMounted === 'true') return;
         if (!api?.mountToggle || !scope) {
             enhance('Switch', control);
             return;
@@ -85,10 +85,10 @@ function mountHarnessSwitches(form) {
         try {
             const release = api.mountToggle(input, scope);
             if (!release) return;
-            input.dataset.vcpHarnessToggleMounted = 'true';
-            scope.own(() => { delete input.dataset.vcpHarnessToggleMounted; }, `harness-toggle-${input.id || control.querySelector('input[name]')?.name || uniqueSettingsKey()}`, 'ui-presentation');
+            input.dataset.vcpUiuxToggleMounted = 'true';
+            scope.own(() => { delete input.dataset.vcpUiuxToggleMounted; }, `uiux-toggle-${input.id || control.querySelector('input[name]')?.name || uniqueSettingsKey()}`, 'ui-presentation');
         } catch (error) {
-            console.warn('[VCPUI SettingsBridge] Could not mount Harness Toggle primitive:', error);
+            console.warn('[VCPUI SettingsBridge] Could not mount Uiux Toggle primitive:', error);
         }
     });
 }
@@ -133,7 +133,7 @@ export {
     enhance,
     uniqueSettingsKey,
     selectProjection,
-    mountHarnessSwitches,
+    mountUiuxSwitches,
     releaseDisconnectedControllers,
     releaseAllControllers,
 };

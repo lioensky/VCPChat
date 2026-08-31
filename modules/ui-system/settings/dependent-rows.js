@@ -28,7 +28,7 @@ export function evaluateVisibleWhen(root, expression) {
 export function syncDependentRows(root) {
     if (!root) return;
     root.querySelectorAll('[data-visible-when]').forEach(row => {
-        // '' restores the row's CSS-driven display (the harness row grid);
+        // '' restores the row's CSS-driven display (the uiux row grid);
         // only the hidden state is forced inline.
         row.style.display = evaluateVisibleWhen(root, row.dataset.visibleWhen) ? '' : 'none';
     });

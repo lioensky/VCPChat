@@ -1,7 +1,7 @@
 /* Live SettingsRoot primitives.  The modal itself is the root marker; only
    its canonical panel/nav/content descendants own geometry. */
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-panel {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel {
     display: flex;
     width: 800px;
     height: min(800px, calc(100vh - 48px));
@@ -14,7 +14,7 @@
     align-items: stretch;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-panel > .vcp-harness-settings-nav {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel > .vcp-uiux-settings-nav {
     flex: 0 0 188px;
     width: 188px;
     max-height: none;
@@ -26,7 +26,7 @@
     min-height: 100%;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-panel > .vcp-harness-settings-content {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-panel > .vcp-uiux-settings-content {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -35,7 +35,7 @@
     background: transparent;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-cell {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -52,23 +52,23 @@
     cursor: pointer;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-list {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-width: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-cell:hover {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell:hover {
     background: var(--vcp-ui-fill-1);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-cell.is-active {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell.is-active {
     background: var(--vcp-ui-selection-bg);
     color: var(--vcp-ui-text-0);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-icon {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-icon {
     display: inline-flex;
     width: 16px;
     height: 16px;
@@ -77,7 +77,7 @@
     flex: none;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-header {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-header {
     display: flex;
     flex: none;
     align-items: flex-start;
@@ -87,14 +87,14 @@
     box-sizing: border-box;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-actions {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-actions {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-left: auto;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-close {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-close {
     position: static;
     display: inline-flex;
     width: 28px;
@@ -109,7 +109,7 @@
     font-size: var(--vcp-ui-font-suppress);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-options {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-options {
     flex: 1;
     min-height: 0;
     padding: 0 24px 24px;

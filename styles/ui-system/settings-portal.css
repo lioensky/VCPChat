@@ -14,6 +14,6 @@
 
 /* LanguageRow portals are appended to body and must paint above the Settings
    overlay, otherwise a click opens a menu that is visually trapped behind it. */
-:is(html, html.vcp-global-settings-host) > body .vcp-harness-menu-portal {
+:is(html, html.vcp-global-settings-host) > body .vcp-uiux-menu-portal {
     z-index: calc(var(--vcp-ui-z-overlay) + 20) !important;
 }

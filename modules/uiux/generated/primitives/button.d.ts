@@ -7,5 +7,5 @@ export interface ButtonProps {
     readonly icon?: Node;
     readonly disabled?: boolean;
 }
-/** Harness Button contract applied to a native button in Light DOM. */
+/** Uiux Button contract applied to a native button in Light DOM. */
 export declare function mountButton(button: HTMLButtonElement, props: ButtonProps | undefined, scope: UiScope): UiDisposer;

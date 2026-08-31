@@ -15,5 +15,5 @@ export interface HoverCardController {
     setDisabled(disabled: boolean): void;
     dispose(): void | Promise<void>;
 }
-/** Delayed, reachable Harness preview card rendered through a body portal. */
+/** Delayed, reachable Uiux preview card rendered through a body portal. */
 export declare function mountHoverCard(anchor: HTMLElement, props: HoverCardProps, scope: UiScope): HoverCardController;

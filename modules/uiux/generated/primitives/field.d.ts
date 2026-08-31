@@ -5,5 +5,5 @@ export interface FieldProps {
     readonly error?: string;
     readonly control: HTMLElement;
 }
-/** Harness Field contract rendered in Light DOM; no business state or IPC. */
+/** Uiux Field contract rendered in Light DOM; no business state or IPC. */
 export declare function mountField(root: HTMLElement, props: FieldProps, scope: UiScope): UiDisposer;

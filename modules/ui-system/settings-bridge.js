@@ -7,11 +7,11 @@
 // projection/shared passes), agent-settings-bridge.js (Agent/Group sidebar
 // forms) and typed-field-owners.js (typed settings seam) — and compose here.
 //
-// Global settings: the modal is rebuilt into one Harness SettingsRoot-style
+// Global settings: the modal is rebuilt into one Uiux SettingsRoot-style
 // layout — native nav cells in the left rail, a header/options content column,
 // the original form as the business source, and autosave status in the header.
 
-import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, mountHarnessSwitches, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
+import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, mountUiuxSwitches, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
 import { mountSettingsAutosave, flushLegacyAutosave, teardownLegacyAutosave } from './settings/autosave.js';
 import { claimSaveCoordinator, getSaveCoordinator } from './settings/save-coordinator.js';
 import { mountCanonicalSettingsRows, removeLegacySubsectionHeadings } from './settings/canonical-rows.js';
@@ -137,19 +137,19 @@ function enhanceGlobalSettings(root, form) {
         { name: 'save-coordinator', run: () => claimSaveCoordinator(form) },
         {
             name: 'canonical-rows',
-            before: ['harness-inputs', 'appearance-rows', 'global-pill-steppers',
-                'global-typed-primitives', 'legacy-range-pass', 'harness-switches',
-                'harness-disclosures', 'agent-name-fields'],
+            before: ['uiux-inputs', 'appearance-rows', 'global-pill-steppers',
+                'global-typed-primitives', 'legacy-range-pass', 'uiux-switches',
+                'uiux-disclosures', 'agent-name-fields'],
             run: () => mountCanonicalSettingsRows(form),
         },
         {
-            name: 'harness-inputs',
+            name: 'uiux-inputs',
             // The legacy VCPUI native-kernel Input/Textarea class enhancement
             // is retired here: the Input primitive owns single-line input
             // presentation, textareas keep the bare-control contract. Short
             // enumerations remain native/segmented controls; long ones get a
-            // Harness-style popover while the native select stays canonical.
-            run: () => mountHarnessInputs(form),
+            // Uiux-style popover while the native select stays canonical.
+            run: () => mountUiuxInputs(form),
         },
         {
             name: 'appearance-rows',
@@ -198,15 +198,15 @@ function enhanceGlobalSettings(root, form) {
             name: 'legacy-range-pass',
             run: () => form.querySelectorAll('input[type="range"]').forEach(range => { if (!['appearanceSidebarAvatarSize', 'appearanceSidebarRowHeight', 'appearanceCustomRadius', 'streamAnimationDurationMs'].includes(range.id)) enhance('Range', range); }),
         },
-        { name: 'harness-switches', run: () => mountHarnessSwitches(form) },
+        { name: 'uiux-switches', run: () => mountUiuxSwitches(form) },
         {
-            name: 'harness-disclosures',
+            name: 'uiux-disclosures',
             run: () => {
                 form.querySelectorAll('.agent-style-collapsible-container').forEach(disclosure => {
                     disclosure.dataset.settingPrimitive = 'disclosure';
-                    disclosure.querySelector('.style-collapse-header')?.classList.add('vcp-harness-disclosure-row');
+                    disclosure.querySelector('.style-collapse-header')?.classList.add('vcp-uiux-disclosure-row');
                 });
-                mountHarnessDisclosures(form);
+                mountUiuxDisclosures(form);
             },
         },
         {
@@ -230,13 +230,13 @@ function enhanceGlobalSettings(root, form) {
 // frame, and the form's bare-control contract already gives textareas their
 // multiline geometry (contract gap reported to thread A).  The typed mounts
 // (home tagline, forum credentials, color pair) own their own controls.
-function mountHarnessInputs(form) {
+function mountUiuxInputs(form) {
     const api = window.VCPUIUX;
     const scope = ensurePresentationScope();
     if (!api?.mountInput || !scope) return;
     const selector = 'input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])';
     form.querySelectorAll(selector).forEach(control => {
-        if (control.dataset.vcpHarnessInputPrimitive === 'true') return;
+        if (control.dataset.vcpUiuxInputPrimitive === 'true') return;
         // Registered non-input projections own their field's chrome (stepper
         // hosts adopted wholesale, raw controls kept bare for their typed
         // owner); the field-registry documents each case.
@@ -251,16 +251,16 @@ function mountHarnessInputs(form) {
         try {
             const release = api.mountInput(control, {}, scope);
             if (!release) return;
-            control.dataset.vcpHarnessInputPrimitive = 'true';
-            control.closest('.vcp-uiux-input-wrap')?.classList.add('vcp-harness-input-fill');
-            scope.own(() => { delete control.dataset.vcpHarnessInputPrimitive; }, `harness-input-${control.id || control.name || uniqueSettingsKey()}`, 'ui-presentation');
+            control.dataset.vcpUiuxInputPrimitive = 'true';
+            control.closest('.vcp-uiux-input-wrap')?.classList.add('vcp-uiux-input-fill');
+            scope.own(() => { delete control.dataset.vcpUiuxInputPrimitive; }, `uiux-input-${control.id || control.name || uniqueSettingsKey()}`, 'ui-presentation');
         } catch (error) {
-            console.warn('[VCPUI SettingsBridge] Could not mount Harness Input primitive:', error);
+            console.warn('[VCPUI SettingsBridge] Could not mount Uiux Input primitive:', error);
         }
     });
 }
 
-function mountHarnessDisclosures(form) {
+function mountUiuxDisclosures(form) {
     const ownerScope = ensurePresentationScope();
     if (!ownerScope) return;
     form.querySelectorAll('.agent-style-collapsible-container').forEach(container => {
@@ -280,7 +280,7 @@ function mountHarnessDisclosures(form) {
         };
         const originalContentId = content.id;
         if (!content.id) content.id = `${container.id || 'settings-disclosure'}-content`;
-        header.classList.add('vcp-harness-disclosure-row');
+        header.classList.add('vcp-uiux-disclosure-row');
         header.setAttribute('role', 'button');
         header.tabIndex = header.tabIndex >= 0 ? header.tabIndex : 0;
         header.setAttribute('aria-controls', content.id);
@@ -316,7 +316,7 @@ function mountHarnessDisclosures(form) {
             disclosureStates.delete(state);
         }};
         disclosureStates.add(state);
-        ownerScope.own(state.cleanup, `harness-disclosure-${container.id || uniqueSettingsKey()}`, 'ui-presentation');
+        ownerScope.own(state.cleanup, `uiux-disclosure-${container.id || uniqueSettingsKey()}`, 'ui-presentation');
     });
 }
 
@@ -339,7 +339,7 @@ function teardownSettingsAutosave() {
     getSaveCoordinator(document.getElementById('globalSettingsForm'))?.dispose();
 }
 
-function teardownHarnessDisclosures() {
+function teardownUiuxDisclosures() {
     [...disclosureStates].forEach(state => state.cleanup());
 }
 
@@ -381,11 +381,11 @@ function restoreFormIcons(root) {
     delete root.dataset.vcpSettingsIconsNormalized;
 }
 
-// SettingsShell build: assemble a live Harness SettingsRoot primitive tree.
+// SettingsShell build: assemble a live Uiux SettingsRoot primitive tree.
 // The original form sections remain the business source of truth; only the
 // shell chrome (nav/header/options) is reconstructed here.
 function mountSettingsShell(root) {
-    if (root.querySelector('.vcp-harness-settings-panel')) {
+    if (root.querySelector('.vcp-uiux-settings-panel')) {
         reconcileSettingsShell(root);
         return;
     }
@@ -441,10 +441,10 @@ function mountSettingsShell(root) {
     };
     shellState.set(root, state);
     shellRoots.add(root);
-    root.classList.add('vcp-harness-settings-root', 'vcp-global-settings-surface');
-    panel.classList.add('vcp-harness-settings-panel');
-    nav.classList.add('vcp-harness-settings-nav');
-    content.classList.add('vcp-harness-settings-content');
+    root.classList.add('vcp-uiux-settings-root', 'vcp-global-settings-surface');
+    panel.classList.add('vcp-uiux-settings-panel');
+    nav.classList.add('vcp-uiux-settings-nav');
+    content.classList.add('vcp-uiux-settings-content');
     // Legacy presentation selectors must not participate in the live tree.
     // The classes are restored only when the bridge is torn down.
     nav.classList.remove('vcp-settings-source-nav');
@@ -452,58 +452,58 @@ function mountSettingsShell(root) {
     panel.classList.remove('vcp-settings-source-panel');
     title.classList.remove('vcp-settings-source-title');
 
-    // Harness owns the settings title in the nav rail, not as a second
+    // Uiux owns the settings title in the nav rail, not as a second
     // content heading. Move the canonical node and restore its exact parent
     // and sibling on teardown.
     nav.prepend(title);
-    title.classList.add('vcp-harness-settings-nav-title');
+    title.classList.add('vcp-uiux-settings-nav-title');
     title.id ||= 'vcpSettingsNavTitle';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('aria-labelledby', title.id);
     nav.setAttribute('aria-label', '全局设置');
 
-    // Compose the Harness header/options primitives around the existing form;
+    // Compose the Uiux header/options primitives around the existing form;
     // the form remains the business owner, while the new nodes own chrome.
     const header = document.createElement('header');
-    header.className = 'vcp-harness-settings-header';
+    header.className = 'vcp-uiux-settings-header';
     header.setAttribute('data-setting-primitive', 'header');
     const actions = document.createElement('div');
-    actions.className = 'vcp-harness-settings-actions';
+    actions.className = 'vcp-uiux-settings-actions';
     const options = document.createElement('div');
-    options.className = 'vcp-harness-settings-options';
+    options.className = 'vcp-uiux-settings-options';
     options.setAttribute('data-setting-primitive', 'options');
     state.header = header;
     state.options = options;
     options.append(...[...content.childNodes]);
-    // Harness owns an icon-only 28px close primitive with an accessible text
+    // Uiux owns an icon-only 28px close primitive with an accessible text
     // seat. Replace the legacy text glyph once, while preserving the same
     // business button and close listener.
-    if (!close.dataset.vcpHarnessClose) {
+    if (!close.dataset.vcpUiuxClose) {
         const icon = document.createElement('span');
-        icon.className = 'vcp-ui-icon vcp-harness-settings-close-icon';
+        icon.className = 'vcp-ui-icon vcp-uiux-settings-close-icon';
         icon.setAttribute('aria-hidden', 'true');
         icon.textContent = 'x';
         const hiddenLabel = document.createElement('span');
-        hiddenLabel.className = 'vcp-harness-settings-close-label';
+        hiddenLabel.className = 'vcp-uiux-settings-close-label';
         hiddenLabel.textContent = close.getAttribute('aria-label') || '关闭';
         close.replaceChildren(icon, hiddenLabel);
-        close.classList.add('vcp-harness-settings-close');
-        close.dataset.vcpHarnessClose = 'true';
+        close.classList.add('vcp-uiux-settings-close');
+        close.dataset.vcpUiuxClose = 'true';
     }
     actions.append(close);
     header.append(actions);
     content.replaceChildren(header, options);
 
-    // Harness renders only the selected section into Options. Keep the
+    // Uiux renders only the selected section into Options. Keep the
     // remaining business fields connected to the same form in a hidden bank
     // so legacy id/name queries, form serialization and IPC handlers remain
     // authoritative without leaving inactive settings in the visible tree.
     const sectionHost = document.createElement('div');
-    sectionHost.className = 'vcp-harness-active-section';
+    sectionHost.className = 'vcp-uiux-active-section';
     sectionHost.dataset.settingPrimitive = 'section';
     const sectionBank = document.createElement('div');
-    sectionBank.className = 'vcp-harness-section-bank';
+    sectionBank.className = 'vcp-uiux-section-bank';
     sectionBank.hidden = true;
     sectionBank.setAttribute('aria-hidden', 'true');
     state.sectionHost = sectionHost;
@@ -521,7 +521,7 @@ function mountSettingsShell(root) {
         initialSection.classList.add('active');
     }
     const canonicalNav = document.createElement('div');
-    canonicalNav.className = 'vcp-harness-settings-nav-list';
+    canonicalNav.className = 'vcp-uiux-settings-nav-list';
     canonicalNav.setAttribute('aria-label', '全局设置分类');
     state.navList = canonicalNav;
     state.listHost = canonicalNav;
@@ -534,16 +534,16 @@ function mountSettingsShell(root) {
     const rows = state.meta.map(item => {
         const row = document.createElement('button');
         row.type = 'button';
-        row.className = 'vcp-harness-settings-nav-cell';
+        row.className = 'vcp-uiux-settings-nav-cell';
         row.dataset.section = item.value;
         row.dataset.vcpCanonicalNav = 'true';
         row.id = `vcpSettingsTab-${item.value}`;
         const icon = document.createElement('span');
-        icon.className = 'vcp-harness-settings-nav-icon vcp-ui-icon';
+        icon.className = 'vcp-uiux-settings-nav-icon vcp-ui-icon';
         icon.setAttribute('aria-hidden', 'true');
         icon.textContent = item.icon;
         const copy = document.createElement('span');
-        copy.className = 'vcp-harness-settings-nav-copy';
+        copy.className = 'vcp-uiux-settings-nav-copy';
         const label = document.createElement('strong');
         label.textContent = item.label;
         copy.append(label);
@@ -677,7 +677,7 @@ function teardown() {
     }
     releaseAllAgentModelPickers();
     teardownSettingsAutosave();
-    teardownHarnessDisclosures();
+    teardownUiuxDisclosures();
     selectProjection.teardown();
     [...shellRoots].forEach(root => {
         const state = shellState.get(root);

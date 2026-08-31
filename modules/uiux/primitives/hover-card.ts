@@ -1,13 +1,13 @@
 import type { UiDisposer, UiScope } from '../contracts.js';
 
-const STYLE_ID = 'vcp-harness-uiux-hover-card';
+const STYLE_ID = 'vcp-uiux-uiux-hover-card';
 const POINTER_GRACE_MS = 200;
 
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = `.vcp-harness-hover-card-root{position:relative;display:block}.vcp-harness-hover-card{--dsw-hovercard-bg:#2c2c2e;position:fixed;z-index:100;box-sizing:border-box;width:244px;padding:12px 16px;border-radius:12px;background:var(--dsw-hovercard-bg);box-shadow:var(--dsw-shadow-lv3,0 0 1px rgba(0,0,0,.2),0 0 4px rgba(0,0,0,.02),0 12px 32px rgba(0,0,0,.08));font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif;color:#fff}.vcp-harness-hover-card-copyable{cursor:pointer}.vcp-harness-hover-card-copyable:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#2678ff);outline-offset:2px}.vcp-harness-hover-card-feedback{display:flex;align-items:center;justify-content:center}.vcp-harness-hover-card-copied{color:#fff;font-size:14px;line-height:20px;text-align:center}.vcp-harness-hover-card-status{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}`;
+    style.textContent = `.vcp-uiux-hover-card-root{position:relative;display:block}.vcp-uiux-hover-card{--dsw-hovercard-bg:#2c2c2e;position:fixed;z-index:100;box-sizing:border-box;width:244px;padding:12px 16px;border-radius:12px;background:var(--dsw-hovercard-bg);box-shadow:var(--dsw-shadow-lv3,0 0 1px rgba(0,0,0,.2),0 0 4px rgba(0,0,0,.02),0 12px 32px rgba(0,0,0,.08));font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif;color:#fff}.vcp-uiux-hover-card-copyable{cursor:pointer}.vcp-uiux-hover-card-copyable:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#2678ff);outline-offset:2px}.vcp-uiux-hover-card-feedback{display:flex;align-items:center;justify-content:center}.vcp-uiux-hover-card-copied{color:#fff;font-size:14px;line-height:20px;text-align:center}.vcp-uiux-hover-card-status{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}`;
     (document.head || document.documentElement).append(style);
 }
 
@@ -49,15 +49,15 @@ async function writeClipboard(text: string): Promise<boolean> {
     try { return exec('copy'); } catch { return false; } finally { textarea.remove(); }
 }
 
-/** Delayed, reachable Harness preview card rendered through a body portal. */
+/** Delayed, reachable Uiux preview card rendered through a body portal. */
 export function mountHoverCard(anchor: HTMLElement, props: HoverCardProps, scope: UiScope): HoverCardController {
     if (!anchor?.parentNode || !props?.content || !scope) throw new TypeError('HoverCard requires a connected anchor, content and scope.');
     ensureStyles();
-    const hoverScope = scope.child('harness-hover-card');
+    const hoverScope = scope.child('uiux-hover-card');
     const parent = anchor.parentNode;
     const next = anchor.nextSibling;
     const root = document.createElement('span');
-    root.className = 'vcp-harness-hover-card-root';
+    root.className = 'vcp-uiux-hover-card-root';
     parent.insertBefore(root, anchor);
     root.append(anchor);
     const contentNodes = nodes(props.content);
@@ -93,9 +93,9 @@ export function mountHoverCard(anchor: HTMLElement, props: HoverCardProps, scope
         copyTimer = null;
         copied = false;
         copyHeight = null;
-        card?.classList.remove('vcp-harness-hover-card-feedback');
+        card?.classList.remove('vcp-uiux-hover-card-feedback');
         if (card) card.style.minHeight = '';
-        card?.querySelector('.vcp-harness-hover-card-copied')?.remove();
+        card?.querySelector('.vcp-uiux-hover-card-copied')?.remove();
         if (restoreIntoCard && card) card.append(...contentNodes);
         status && (status.textContent = '');
     };
@@ -134,11 +134,11 @@ export function mountHoverCard(anchor: HTMLElement, props: HoverCardProps, scope
         copyHeight = card.offsetHeight || null;
         contentNodes.forEach(node => parked.append(node));
         const feedback = document.createElement('span');
-        feedback.className = 'vcp-harness-hover-card-copied';
+        feedback.className = 'vcp-uiux-hover-card-copied';
         feedback.setAttribute('aria-hidden', 'true');
         feedback.textContent = copiedLabel;
         card.append(feedback);
-        card.classList.add('vcp-harness-hover-card-feedback');
+        card.classList.add('vcp-uiux-hover-card-feedback');
         if (copyHeight !== null) card.style.minHeight = `${copyHeight}px`;
         copied = true;
         if (status) status.textContent = copiedLabel;
@@ -147,15 +147,15 @@ export function mountHoverCard(anchor: HTMLElement, props: HoverCardProps, scope
     const open = () => {
         if (disabled || card) return;
         card = document.createElement('div');
-        card.className = 'vcp-harness-hover-card';
+        card.className = 'vcp-uiux-hover-card';
         card.append(...contentNodes);
         if (props.copyText !== undefined) {
-            card.classList.add('vcp-harness-hover-card-copyable');
+            card.classList.add('vcp-uiux-hover-card-copyable');
             card.setAttribute('role', 'button');
             card.tabIndex = 0;
             card.setAttribute('aria-label', `${copyLabel}: ${props.copyText}`);
             status = document.createElement('span');
-            status.className = 'vcp-harness-hover-card-status';
+            status.className = 'vcp-uiux-hover-card-status';
             status.setAttribute('role', 'status');
             root.append(status);
         }
@@ -210,12 +210,12 @@ export function mountHoverCard(anchor: HTMLElement, props: HoverCardProps, scope
         disabled = true;
         close();
         if (copyTimer !== null) clearTimeout(copyTimer);
-        await hoverScope.dispose('harness-hover-card-unmounted');
+        await hoverScope.dispose('uiux-hover-card-unmounted');
         if (next?.parentNode === parent) parent.insertBefore(anchor, next);
         else parent.append(anchor);
         root.remove();
         restoreContent();
-    }, 'harness-hover-card', 'ui-primitive');
+    }, 'uiux-hover-card', 'ui-primitive');
     return {
         root,
         get card() { return card; },

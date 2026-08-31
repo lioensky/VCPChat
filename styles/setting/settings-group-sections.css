@@ -755,7 +755,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
 }
 
 
-#agentSettingsForm .form-actions button:not(.vcp-harness-button),
+#agentSettingsForm .form-actions button:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button {
     position: relative;
     isolation: isolate;
@@ -788,12 +788,12 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
         transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button),
+#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button[type="submit"] {
     color: var(--highlight-text);
 }
 
-#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover,
+#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 #groupSettingsForm .form-actions button[type="submit"]:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
@@ -803,7 +803,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     box-shadow: none;
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button),
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"] {
     background: linear-gradient(
         180deg,
@@ -819,14 +819,14 @@ body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submi
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"]:hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: #ffffff;
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button),
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"] {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
@@ -842,7 +842,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"]:hover {
     background: var(--highlight-text);
     background-image: none;
@@ -854,16 +854,16 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit
     filter: none;
 }
 
-#agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button),
+#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions .danger-button,
-#agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-harness-button),
+#agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions #deleteGroupBtn {
     color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
 }
 
-#agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button):hover,
+#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
 #groupSettingsForm .form-actions .danger-button:hover,
-#agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-harness-button):hover,
+#agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
 #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     background: var(--danger-color);
     border-color: var(--danger-color);
@@ -873,9 +873,9 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit
     box-shadow: none;
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button),
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button,
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-harness-button),
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn {
     background: linear-gradient(
         180deg,
@@ -892,18 +892,18 @@ body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn {
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button:hover,
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-harness-button):hover,
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     background: var(--danger-color);
     border-color: var(--danger-color);
     color: #ffffff;
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button),
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button,
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-harness-button),
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
@@ -920,9 +920,9 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn {
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button:hover,
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-harness-button):hover,
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button):hover,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     background: var(--danger-color);
     border-color: var(--danger-color);

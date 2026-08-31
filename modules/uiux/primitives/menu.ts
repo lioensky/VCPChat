@@ -1,6 +1,6 @@
 import type { UiDisposer, UiScope } from '../contracts.js';
 
-const STYLE_ID = 'vcp-harness-uiux-menu';
+const STYLE_ID = 'vcp-uiux-uiux-menu';
 const VIEWPORT_MARGIN = 12;
 const POINTER_GRACE_MS = 120;
 
@@ -8,7 +8,7 @@ function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = `.vcp-harness-menu-root{position:relative;display:inline-flex}.vcp-harness-menu-list,.vcp-harness-submenu{box-sizing:border-box;display:flex;flex-direction:column;gap:0;padding:4px;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:12px;background:var(--dsw-specific-menu,#fff);box-shadow:var(--dsw-shadow-lv3,0 0 1px rgba(0,0,0,.2),0 0 4px rgba(0,0,0,.02),0 12px 32px rgba(0,0,0,.08));font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-harness-menu-list{position:absolute;top:calc(100% + 4px);left:0;z-index:100;min-width:218px;max-width:360px}.vcp-harness-menu-list.vcp-harness-menu-portal{position:fixed;top:auto;left:auto;z-index:1100}.vcp-harness-menu-list.vcp-harness-menu-side-top{top:auto;bottom:calc(100% + 4px)}.vcp-harness-menu-list.vcp-harness-menu-align-end{right:0;left:auto}.vcp-harness-menu-list.vcp-harness-menu-scrollable{max-height:calc(100vh - 24px)}.vcp-harness-menu-viewport{display:flex;flex-direction:column;min-height:0}.vcp-harness-menu-scrollable>.vcp-harness-menu-viewport{overflow-y:auto}.vcp-harness-menu-footer{display:flex;flex:none;flex-direction:column;margin-top:4px;padding-top:4px;border-top:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))}.vcp-harness-menu-item-wrap{position:relative}.vcp-harness-menu-item{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:8px 10px;border:0;border-radius:10px;background:transparent;cursor:pointer;font:inherit;font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary,#0f1115);text-align:left}.vcp-harness-menu-item:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-harness-menu-item:focus-visible{outline:none}.vcp-harness-menu-item:disabled{opacity:.4;cursor:not-allowed}.vcp-harness-menu-item-icon,.vcp-harness-menu-item-check{display:inline-flex;flex:none;width:16px;height:16px;align-items:center;justify-content:center}.vcp-harness-menu-item-icon{color:var(--dsw-alias-label-tertiary,#737780)}.vcp-harness-menu-item-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-harness-menu-item-check{color:var(--dsw-alias-label-primary,#0f1115)}.vcp-harness-menu-item-danger{color:var(--dsw-alias-state-error-primary,#d92d20)}.vcp-harness-menu-item-danger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger,rgba(217,45,32,.08))}.vcp-harness-menu-label{padding:8px 10px;font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary,#737780)}.vcp-harness-menu-separator{height:1px;margin:4px 2px;background:var(--dsw-alias-border-l1,rgba(0,0,0,.06))}.vcp-harness-submenu{position:absolute;right:auto;bottom:-4px;left:calc(100% + 10px);z-index:101;min-width:163px}.vcp-harness-submenu::before{position:absolute;top:0;bottom:0;left:-10px;width:10px;content:''}.vcp-harness-menu-dense .vcp-harness-menu-item{min-height:34px;padding-block:5px}.vcp-harness-menu-dense .vcp-harness-menu-label{padding-block:4px}.vcp-harness-menu-compact,.vcp-harness-menu-compact .vcp-harness-submenu{min-width:164px;padding:2px;border-radius:7px}.vcp-harness-menu-compact .vcp-harness-menu-item{min-height:26px;gap:6px;padding:3px 7px;border-radius:5px;font-size:12px;line-height:18px}.vcp-harness-menu-compact .vcp-harness-menu-item-icon{width:14px;height:14px}.vcp-harness-menu-compact .vcp-harness-menu-separator{margin:2px}.vcp-harness-menu-compact .vcp-harness-menu-label{padding:4px 7px;font-size:11px;line-height:16px}`;
+    style.textContent = `.vcp-uiux-menu-root{position:relative;display:inline-flex}.vcp-uiux-menu-list,.vcp-uiux-submenu{box-sizing:border-box;display:flex;flex-direction:column;gap:0;padding:4px;border:1px solid var(--dsw-alias-border-inverted,transparent);border-radius:12px;background:var(--dsw-specific-menu,#fff);box-shadow:var(--dsw-shadow-lv3,0 0 1px rgba(0,0,0,.2),0 0 4px rgba(0,0,0,.02),0 12px 32px rgba(0,0,0,.08));font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-uiux-menu-list{position:absolute;top:calc(100% + 4px);left:0;z-index:100;min-width:218px;max-width:360px}.vcp-uiux-menu-list.vcp-uiux-menu-portal{position:fixed;top:auto;left:auto;z-index:1100}.vcp-uiux-menu-list.vcp-uiux-menu-side-top{top:auto;bottom:calc(100% + 4px)}.vcp-uiux-menu-list.vcp-uiux-menu-align-end{right:0;left:auto}.vcp-uiux-menu-list.vcp-uiux-menu-scrollable{max-height:calc(100vh - 24px)}.vcp-uiux-menu-viewport{display:flex;flex-direction:column;min-height:0}.vcp-uiux-menu-scrollable>.vcp-uiux-menu-viewport{overflow-y:auto}.vcp-uiux-menu-footer{display:flex;flex:none;flex-direction:column;margin-top:4px;padding-top:4px;border-top:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))}.vcp-uiux-menu-item-wrap{position:relative}.vcp-uiux-menu-item{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:8px 10px;border:0;border-radius:10px;background:transparent;cursor:pointer;font:inherit;font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary,#0f1115);text-align:left}.vcp-uiux-menu-item:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-menu-item:focus-visible{outline:none}.vcp-uiux-menu-item:disabled{opacity:.4;cursor:not-allowed}.vcp-uiux-menu-item-icon,.vcp-uiux-menu-item-check{display:inline-flex;flex:none;width:16px;height:16px;align-items:center;justify-content:center}.vcp-uiux-menu-item-icon{color:var(--dsw-alias-label-tertiary,#737780)}.vcp-uiux-menu-item-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vcp-uiux-menu-item-check{color:var(--dsw-alias-label-primary,#0f1115)}.vcp-uiux-menu-item-danger{color:var(--dsw-alias-state-error-primary,#d92d20)}.vcp-uiux-menu-item-danger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger,rgba(217,45,32,.08))}.vcp-uiux-menu-label{padding:8px 10px;font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary,#737780)}.vcp-uiux-menu-separator{height:1px;margin:4px 2px;background:var(--dsw-alias-border-l1,rgba(0,0,0,.06))}.vcp-uiux-submenu{position:absolute;right:auto;bottom:-4px;left:calc(100% + 10px);z-index:101;min-width:163px}.vcp-uiux-submenu::before{position:absolute;top:0;bottom:0;left:-10px;width:10px;content:''}.vcp-uiux-menu-dense .vcp-uiux-menu-item{min-height:34px;padding-block:5px}.vcp-uiux-menu-dense .vcp-uiux-menu-label{padding-block:4px}.vcp-uiux-menu-compact,.vcp-uiux-menu-compact .vcp-uiux-submenu{min-width:164px;padding:2px;border-radius:7px}.vcp-uiux-menu-compact .vcp-uiux-menu-item{min-height:26px;gap:6px;padding:3px 7px;border-radius:5px;font-size:12px;line-height:18px}.vcp-uiux-menu-compact .vcp-uiux-menu-item-icon{width:14px;height:14px}.vcp-uiux-menu-compact .vcp-uiux-menu-separator{margin:2px}.vcp-uiux-menu-compact .vcp-uiux-menu-label{padding:4px 7px;font-size:11px;line-height:16px}`;
     (document.head || document.documentElement).append(style);
 }
 
@@ -60,7 +60,7 @@ function isLabel(entry: MenuEntry): entry is MenuLabel {
 
 function createCheck() {
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    marker.classList.add('vcp-harness-menu-item-check');
+    marker.classList.add('vcp-uiux-menu-item-check');
     marker.setAttribute('width', '16');
     marker.setAttribute('height', '16');
     marker.setAttribute('viewBox', '0 0 16 16');
@@ -71,29 +71,29 @@ function createCheck() {
     return marker;
 }
 
-/** Owner-controlled Harness Menu rendered in Light DOM. */
+/** Owner-controlled Uiux Menu rendered in Light DOM. */
 export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope): MenuController {
     if (!anchor?.parentNode || !props?.items || !scope) throw new TypeError('Menu requires a connected anchor, items and scope.');
     ensureStyles();
-    const menuScope = scope.child('harness-menu');
+    const menuScope = scope.child('uiux-menu');
     const parent = anchor.parentNode;
     const originalHasPopup = anchor.getAttribute('aria-haspopup');
     const originalExpanded = anchor.getAttribute('aria-expanded');
     const root = document.createElement('span');
-    root.className = 'vcp-harness-menu-root';
+    root.className = 'vcp-uiux-menu-root';
     const list = document.createElement('div');
-    list.className = 'vcp-harness-menu-list';
+    list.className = 'vcp-uiux-menu-list';
     list.setAttribute('role', 'menu');
     const viewport = document.createElement('div');
-    viewport.className = 'vcp-harness-menu-viewport';
+    viewport.className = 'vcp-uiux-menu-viewport';
     viewport.setAttribute('role', 'presentation');
     list.append(viewport);
-    if (props.portal) list.classList.add('vcp-harness-menu-portal');
-    if (props.align === 'end') list.classList.add('vcp-harness-menu-align-end');
-    if (props.side === 'top') list.classList.add('vcp-harness-menu-side-top');
-    if (props.dense) list.classList.add('vcp-harness-menu-dense');
-    if (props.compact) list.classList.add('vcp-harness-menu-compact');
-    if (!props.items.some(entry => !isSeparator(entry) && !isLabel(entry) && Boolean(entry.submenu?.length))) list.classList.add('vcp-harness-menu-scrollable');
+    if (props.portal) list.classList.add('vcp-uiux-menu-portal');
+    if (props.align === 'end') list.classList.add('vcp-uiux-menu-align-end');
+    if (props.side === 'top') list.classList.add('vcp-uiux-menu-side-top');
+    if (props.dense) list.classList.add('vcp-uiux-menu-dense');
+    if (props.compact) list.classList.add('vcp-uiux-menu-compact');
+    if (!props.items.some(entry => !isSeparator(entry) && !isLabel(entry) && Boolean(entry.submenu?.length))) list.classList.add('vcp-uiux-menu-scrollable');
     parent.insertBefore(root, anchor);
     root.append(anchor);
     anchor.setAttribute('aria-haspopup', 'menu');
@@ -111,9 +111,9 @@ export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope)
     const syncSelected = () => {
         selectedNodes.forEach((button, id) => {
             const selected = isSelected(id);
-            button.classList.toggle('vcp-harness-menu-item-selected', selected);
+            button.classList.toggle('vcp-uiux-menu-item-selected', selected);
             button.dataset.selected = String(selected);
-            const check = button.querySelector('.vcp-harness-menu-item-check');
+            const check = button.querySelector('.vcp-uiux-menu-item-check');
             if (selected && !check) button.append(createCheck());
             if (!selected) check?.remove();
         });
@@ -129,21 +129,21 @@ export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope)
     };
     const renderItem = (entry: MenuItem, target: HTMLElement, nested = false) => {
         const wrap = document.createElement('div');
-        wrap.className = 'vcp-harness-menu-item-wrap';
+        wrap.className = 'vcp-uiux-menu-item-wrap';
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'vcp-harness-menu-item';
+        button.className = 'vcp-uiux-menu-item';
         button.setAttribute('role', 'menuitem');
         button.disabled = Boolean(entry.disabled);
-        if (entry.danger) button.classList.add('vcp-harness-menu-item-danger');
+        if (entry.danger) button.classList.add('vcp-uiux-menu-item-danger');
         if (entry.icon) {
             const icon = document.createElement('span');
-            icon.className = 'vcp-harness-menu-item-icon';
+            icon.className = 'vcp-uiux-menu-item-icon';
             icon.append(entry.icon.cloneNode ? entry.icon.cloneNode(true) : entry.icon);
             button.append(icon);
         }
         const label = document.createElement('span');
-        label.className = 'vcp-harness-menu-item-label';
+        label.className = 'vcp-uiux-menu-item-label';
         if (typeof entry.label === 'string') label.textContent = entry.label;
         else label.append(entry.label.cloneNode ? entry.label.cloneNode(true) : entry.label);
         button.append(label);
@@ -158,8 +158,8 @@ export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope)
             if (openSubmenus.has(entry.id)) return;
             closeSubmenus(entry.id);
             const submenu = document.createElement('div');
-            submenu.className = 'vcp-harness-submenu';
-            if (props.compact) submenu.classList.add('vcp-harness-menu-compact');
+            submenu.className = 'vcp-uiux-submenu';
+            if (props.compact) submenu.classList.add('vcp-uiux-menu-compact');
             submenu.setAttribute('role', 'menu');
             entry.submenu.forEach(item => renderItem(item, submenu, true));
             wrap.append(submenu);
@@ -187,12 +187,12 @@ export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope)
         entries.forEach(entry => {
             if (isSeparator(entry)) {
                 const separator = document.createElement('div');
-                separator.className = 'vcp-harness-menu-separator';
+                separator.className = 'vcp-uiux-menu-separator';
                 separator.setAttribute('role', 'separator');
                 target.append(separator);
             } else if (isLabel(entry)) {
                 const label = document.createElement('div');
-                label.className = 'vcp-harness-menu-label';
+                label.className = 'vcp-uiux-menu-label';
                 label.setAttribute('role', 'presentation');
                 label.textContent = entry.text;
                 target.append(label);
@@ -202,7 +202,7 @@ export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope)
     renderEntries(props.items, viewport);
     if (props.footer?.length) {
         const footer = document.createElement('div');
-        footer.className = 'vcp-harness-menu-footer';
+        footer.className = 'vcp-uiux-menu-footer';
         footer.setAttribute('role', 'presentation');
         renderEntries(props.footer, footer);
         list.append(footer);
@@ -274,14 +274,14 @@ export function mountMenu(anchor: HTMLElement, props: MenuProps, scope: UiScope)
     const dispose = scope.own(async () => {
         close(false);
         releaseOpenEffects();
-        await menuScope.dispose('harness-menu-unmounted');
+        await menuScope.dispose('uiux-menu-unmounted');
         if (originalHasPopup === null) anchor.removeAttribute('aria-haspopup'); else anchor.setAttribute('aria-haspopup', originalHasPopup);
         if (originalExpanded === null) anchor.removeAttribute('aria-expanded'); else anchor.setAttribute('aria-expanded', originalExpanded);
         if (root.parentNode) root.replaceWith(anchor);
         else if (anchor.parentNode === root) root.removeChild(anchor);
         selectedNodes.clear();
         openSubmenus.clear();
-    }, 'harness-menu', 'ui-primitive');
+    }, 'uiux-menu', 'ui-primitive');
     const controller: MenuController = {
         root,
         list,

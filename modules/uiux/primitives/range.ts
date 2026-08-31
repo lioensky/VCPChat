@@ -1,6 +1,6 @@
 import type { UiDisposer, UiScope } from '../contracts.js';
 
-const STYLE_ID = 'vcp-harness-uiux-range';
+const STYLE_ID = 'vcp-uiux-uiux-range';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style'); style.id = STYLE_ID;
@@ -16,7 +16,7 @@ function ensureStyles() {
 // require an <output> element and force a business-DOM rewrite.
 export interface RangeProps { readonly output?: HTMLElement | null; readonly format?: (value: string) => string; }
 
-/** Harness range contract over a native range and optional output. */
+/** Uiux range contract over a native range and optional output. */
 export function mountRange(input: HTMLInputElement, props: RangeProps = {}, scope: UiScope): UiDisposer {
     if (!input || input.type !== 'range' || !scope) throw new TypeError('Range requires native range input and scope.');
     ensureStyles();
@@ -42,5 +42,5 @@ export function mountRange(input: HTMLInputElement, props: RangeProps = {}, scop
             else if (outputParent) outputParent.append(output);
         }
         wrap.remove();
-    }, 'harness-range', 'ui-primitive');
+    }, 'uiux-range', 'ui-primitive');
 }

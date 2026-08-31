@@ -1,7 +1,7 @@
 
 /* Legacy global-settings CSS is intentionally unlayered. These narrow
    presentation overrides therefore live after the component layer so the
-   Harness disclosure and segmented contracts win without touching Classic. */
+   Uiux disclosure and segmented contracts win without touching Classic. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container .style-collapse-header {
     display: flex;
     align-items: center;
@@ -19,7 +19,7 @@
    a business anchor only; geometry, spacing and typography belong to this
    wrapper.  This prevents legacy form-group rules from creating a second
    layout system inside the unified settings surface. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-item {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
     align-items: center;
@@ -32,7 +32,7 @@
     box-shadow: none;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
     align-items: center;
@@ -45,8 +45,8 @@
     box-shadow: none;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > label:first-child,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > span:first-child {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > label:first-child,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > span:first-child {
     min-width: 0;
     color: var(--vcp-ui-text-1);
     font-size: var(--vcp-ui-font-body);
@@ -54,16 +54,16 @@
     line-height: 22px;
 }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > :is(input, select, textarea, .vcp-uiux-input-wrap, .vcp-harness-select, .model-input-container, .switch) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > :is(input, select, textarea, .vcp-uiux-input-wrap, .vcp-uiux-select, .model-input-container, .switch) {
     min-width: 0;
     justify-self: stretch;
 }
 
 /* Input.module.css contract: settings inputs use the same 32px/r8/14-22
-   primitive as Harness, with focus owned by the wrapper rather than a glow.
+   primitive as Uiux, with focus owned by the wrapper rather than a glow.
    Textareas stay bare controls (the Input primitive wrap is a fixed 32px
    single-line frame) and keep their own multiline contract above. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
     min-height: 32px;
     height: 32px;
     border-radius: 8px;
@@ -71,26 +71,26 @@
     line-height: 22px;
 }
 
-/* Bridge-mounted Harness Input primitive (window.VCPUIUX.mountInput): the
+/* Bridge-mounted Uiux Input primitive (window.VCPUIUX.mountInput): the
    generated wrap is inline-flex and content-sized, but settings rows expect
    the wrap to fill the control slot the way the retired local wrapper did.
    Layered declarations here do not compete with the primitive's unlayered
    stylesheet (no overlapping properties), so the primitive keeps owning the
    border/focus surface while the row layout owns the slot width. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-input-wrap.vcp-harness-input-fill {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-input-wrap.vcp-uiux-input-fill {
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-row-copy {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy {
     display: flex;
     min-width: 0;
     flex-direction: column;
     gap: 4px;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-row-copy > :is(label, span, strong) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy > :is(label, span, strong) {
     margin: 0;
     color: var(--vcp-ui-text-1);
     font-size: var(--vcp-ui-font-body);
@@ -98,7 +98,7 @@
     line-height: 22px;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-row-copy > :is(small, p) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy > :is(small, p) {
     margin: 0;
     color: var(--vcp-ui-text-2);
     font-size: var(--vcp-ui-font-caption);
@@ -108,7 +108,7 @@
 
 /* AppearanceRow.module.css contract: feature-owned rows use a vertical
    14/22 title + 12/18 helper stack, 16px block padding and one hairline. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-appearance-row {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -120,22 +120,22 @@
     border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-appearance-row > .vcp-harness-row-copy {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-appearance-row > .vcp-uiux-row-copy {
     gap: 4px;
 }
 
 @media (max-width: 620px) {
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-item {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-item {
         grid-template-columns: minmax(0, 1fr);
         gap: 8px;
     }
 }
 
-/* Harness SettingsRoot source-equivalent live tree.  These selectors are
+/* Uiux SettingsRoot source-equivalent live tree.  These selectors are
    intentionally keyed to the canonical primitive markers created by
    settings-bridge.js; legacy grid selectors cannot participate once the
    surface is mounted. */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-panel {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-panel {
     position: relative;
     z-index: 1;
     display: flex;
@@ -157,7 +157,7 @@
         line-height: 22px;
     }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav {
     flex: 0 0 188px;
     display: flex;
     flex-direction: column;
@@ -173,7 +173,7 @@
         background: transparent;
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-disclosure-row {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-disclosure-row {
         min-height: 24px;
         border-top: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
         border-bottom: 0;
@@ -187,7 +187,7 @@
         padding-top: 8px;
     }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-title {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-title {
     display: block;
     flex: none;
     margin: 0;
@@ -198,13 +198,13 @@
     line-height: 24px;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav-title,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-settings-nav {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-title,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav {
     border-bottom: 0 !important;
     border-right: 0 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-list {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -213,7 +213,7 @@
     padding: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell {
     display: flex;
     align-items: center;
     flex: none;
@@ -236,30 +236,30 @@
     cursor: pointer;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell:hover {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell:hover {
     background: var(--vcp-ui-fill-0);
 }
 
 /* The bridge marks the selected nav cell with .is-active (see
    settings-bridge mountSettingsShell), not .active — sections use .active. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell.is-active,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell[data-state="selected"] {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell.is-active,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell[data-state="selected"] {
     background: var(--vcp-ui-fill-2);
     font-weight: 500;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell.active:hover,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell[data-state="selected"]:hover {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell.active:hover,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell[data-state="selected"]:hover {
     background: var(--vcp-ui-fill-2);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-cell:focus-visible {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell:focus-visible {
     box-shadow: inset 0 0 0 2px var(--vcp-ui-accent);
     outline: 2px solid transparent;
     outline-offset: -2px;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-icon {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-icon {
     display: inline-flex;
     flex: 0 0 16px;
     width: 16px;
@@ -269,7 +269,7 @@
     color: currentColor;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-copy {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-copy {
     min-width: 0;
     overflow: hidden;
     color: inherit;
@@ -277,14 +277,14 @@
     white-space: nowrap;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-nav-copy strong {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-copy strong {
     color: inherit;
     font-size: var(--vcp-ui-font-body);
     font-weight: 400;
     line-height: 22px;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-content {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-content {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -297,7 +297,7 @@
     background: var(--vcp-ui-bg-1);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-header {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-header {
     display: flex;
     flex: none;
     align-items: flex-start;
@@ -308,7 +308,7 @@
     padding: 20px 14px 8px 10px;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-actions {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -317,7 +317,7 @@
     margin-left: auto;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-close {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-close {
     position: static;
     display: inline-flex;
     flex: 0 0 28px;
@@ -334,31 +334,31 @@
     background: transparent;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-close:hover {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-close:hover {
     background: var(--vcp-ui-fill-1);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-options {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-options {
     flex: 1;
     min-height: 0;
     padding: 0 24px 24px;
     overflow-y: auto;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-options > form {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-options > form {
     min-width: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-active-section {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-active-section {
     display: block;
     min-width: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-section-bank[hidden] {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-section-bank[hidden] {
     display: none;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-harness-settings-close-label {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-close-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -372,7 +372,7 @@
 }
 
 /* Final unified-surface ownership pass.  These selectors intentionally sit
-   after the legacy global-modal stylesheet: the Harness surface uses space
+   after the legacy global-modal stylesheet: the Uiux surface uses space
    and typography for hierarchy, not nested cards or divider rails. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section {
     display: none;
@@ -506,7 +506,7 @@
     pointer-events: none;
 }
 
-/* Model picker is a compound control, but visually it is one Harness
+/* Model picker is a compound control, but visually it is one Uiux
    trigger. Keep the text input and menu command intact while removing the
    nested field/button borders that produced the double-box screenshot. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container {
@@ -581,7 +581,7 @@
     line-height: 18px;
 }
 
-/* Sidebar section headers use the same Harness disclosure row. The upstream
+/* Sidebar section headers use the same Uiux disclosure row. The upstream
    hover pseudo-element is the source of the large full-width capsule visible
    in the screenshot; remove it only from the Next settings presentation. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope #tabContentSettings #agentSettingsContainer .agent-settings-section-header::before,
@@ -599,7 +599,7 @@
 }
 
 /* No subsection/card surface survives on the unified SettingsRoot. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-editor-section {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-editor-section {
     margin: 0;
     padding: 0;
     border: 0;
@@ -611,7 +611,7 @@
 /* The converged SettingsRoot is a flat surface: no title hairline and no
    vertical rail divider.  Keep this at the surface layer so legacy
    .modal-content/.settings grid rules cannot reintroduce either line. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface :is(.vcp-harness-settings-panel, .vcp-harness-settings-nav, .vcp-harness-settings-content, .vcp-harness-settings-nav-title) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface :is(.vcp-uiux-settings-panel, .vcp-uiux-settings-nav, .vcp-uiux-settings-content, .vcp-uiux-settings-nav-title) {
     border-top: 0 !important;
     border-bottom: 0 !important;
     border-left: 0 !important;
@@ -648,7 +648,7 @@
     margin-top: 0 !important;
 }
 
-/* The sidebar-radius setting reuses the existing Harness LanguageRow
+/* The sidebar-radius setting reuses the existing Uiux LanguageRow
    primitive. Keep its presentation local to Global Settings. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-choice-control {
     display: grid !important;
@@ -662,19 +662,19 @@
     min-width: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-harness-language-row {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-uiux-language-row {
     padding: 16px 0 !important;
     border-bottom: 0 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-harness-language-row-title {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-uiux-language-row-title {
     font-size: var(--vcp-ui-font-body) !important;
     font-weight: 600 !important;
     line-height: var(--vcp-ui-line-body) !important;
     color: var(--vcp-ui-text-0) !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-harness-language-row-description {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-uiux-language-row-description {
     margin-top: 2px;
     color: var(--vcp-ui-text-3);
     font-size: var(--vcp-ui-font-caption);
@@ -697,8 +697,8 @@
     min-width: 0 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-choice-control .vcp-harness-select,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-choice-control .vcp-harness-select-trigger {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-choice-control .vcp-uiux-select,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-choice-control .vcp-uiux-select-trigger {
     width: min(100%, 328px) !important;
     min-width: 0 !important;
 }
@@ -714,7 +714,7 @@
 }
 
 /* Restored row rhythm for ordinary Global Settings fields. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -724,23 +724,23 @@
     padding: 16px 0 !important;
     border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1)) !important;
 }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field > .vcp-harness-field-head {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field > .vcp-uiux-field-head {
     display: block !important;
     min-width: 0 !important;
     padding-right: 48px !important;
 }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field > .vcp-harness-field-label,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field > label.vcp-harness-field-label {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field > .vcp-uiux-field-label,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field > label.vcp-uiux-field-label {
     min-width: 0 !important;
 }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field > :is(.vcp-harness-select, .vcp-uiux-input-wrap, input, select, textarea, .vcp-uiux-range, .vcp-uiux-toggle) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field > :is(.vcp-uiux-select, .vcp-uiux-input-wrap, input, select, textarea, .vcp-uiux-range, .vcp-uiux-toggle) {
     grid-column: 2 !important;
     grid-row: 1 / span 2 !important;
     min-width: 132px !important;
     max-width: min(100%, 320px) !important;
 }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field > .vcp-harness-field-description,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-field > .vcp-harness-field-error {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field > .vcp-uiux-field-description,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-field > .vcp-uiux-field-error {
     grid-column: 1 !important;
     grid-row: 2 !important;
     min-width: 0 !important;
@@ -750,7 +750,7 @@
 /* Stepper rows own their row presentation (copy + capsule). The native
    input stays the canonical business node but is visually concealed — the
    capsule value and hover arrows are the only presented surface. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-numeric-stepper-row > input {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-numeric-stepper-row > input {
     position: absolute !important;
     width: 1px !important;
     height: 1px !important;
@@ -763,22 +763,22 @@
 
 /* The author row grid must not defeat the UA [hidden] presentation (the
    custom-CSS row of the stream animation section relies on [hidden]). */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-item[hidden],
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row[hidden] {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-item[hidden],
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row[hidden] {
     display: none !important;
 }
 
 /* Label-less rows host a self-titled primitive (LanguageRow pill, stepper in
    its slider container). Let that primitive own the full row instead of
    collapsing into the 260px copy column. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row:not(:has(> .vcp-harness-row-copy)) > .vcp-harness-language-row,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row:not(:has(> .vcp-harness-row-copy)) > .slider-container {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:not(:has(> .vcp-uiux-row-copy)) > .vcp-uiux-language-row,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:not(:has(> .vcp-uiux-row-copy)) > .slider-container {
     grid-column: 1 / -1;
 }
 
 /* The legacy slider container is a flex row and would shrink the stepper to
    its content; the stepper owns the full row width instead. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > .slider-container > .vcp-harness-numeric-stepper-row {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > .slider-container > .vcp-uiux-numeric-stepper-row {
     flex: 1 1 auto;
 }
 
@@ -796,10 +796,10 @@
    first row starts clean, and the visually-last row cannot grow a stray
    bottom hairline. The bottom-border model and its opt-out exceptions, along
    with the JS tail marker, are retired with it. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row {
     border-bottom: 0;
 }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row + .vcp-harness-general-row {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row + .vcp-uiux-general-row {
     border-top: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1));
 }
 /* Self-contained row primitives inject their own bottom hairline for their
@@ -807,13 +807,13 @@
    divider: a two-column stepper row would otherwise leak two partial
    hairlines under its columns (regression guard for the top-border
    globalization — this opt-out is NOT part of the retired model). */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row :is(.vcp-harness-language-row, .vcp-harness-numeric-stepper-row, .vcp-harness-font-size-row) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row :is(.vcp-uiux-language-row, .vcp-uiux-numeric-stepper-row, .vcp-uiux-font-size-row) {
     border-bottom: 0;
 }
 /* The switch is a fixed-size control: stretching is a no-op and the default
    left alignment parks it at the control column's left edge — visually the
    middle of the row. Anchored to the column's end like every other control. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > .switch {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > .switch {
     justify-self: end;
 }
 
@@ -837,7 +837,7 @@
 /* Label-less rows keep helper notes as direct small children (no copy slot to
    tuck them into); grid auto-placement would float them above the row's
    primitive. Park them as full-width footnotes under the row content. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > small {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > small {
     order: 9;
     grid-column: 1 / -1;
 }
@@ -846,6 +846,6 @@
    left in the title column the primitive squeezes to ~260px and the selector
    lands mid-row beside the text. The font group's hosts span the full row so
    the primitive lays out like every other pill row. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-harness-general-row > :is(#chatFontPresetRow, #chatFontCustomRow, #chatCodeFontPresetRow, #chatCodeFontCustomRow) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > :is(#chatFontPresetRow, #chatFontCustomRow, #chatCodeFontPresetRow, #chatCodeFontCustomRow) {
     grid-column: 1 / -1;
 }

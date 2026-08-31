@@ -1,4 +1,4 @@
-const STYLE_ID = 'vcp-harness-uiux-input';
+const STYLE_ID = 'vcp-uiux-uiux-input';
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
         return;
@@ -7,7 +7,7 @@ function ensureStyles() {
     style.textContent = `.vcp-uiux-input-wrap{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2,var(--vcp-color-border,#c8ccd4));border-radius:8px;background:var(--dsw-alias-bg-layer-1,var(--vcp-color-surface,#fff))}.vcp-uiux-input-wrap:focus-within{border-color:var(--dsw-alias-brand-primary,var(--vcp-color-brand,#1677ff))}.vcp-uiux-input-wrap>.input{box-sizing:border-box!important;flex:1;min-width:0;height:22px!important;min-height:0!important;max-height:none!important;border:0!important;border-radius:0!important;outline:0;padding:0 10px!important;background:transparent;font-size:14px;line-height:22px!important;color:var(--dsw-alias-label-primary,var(--vcp-color-text,#1f2329))}.vcp-uiux-input-wrap>.icon{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#8a8f98)}.vcp-uiux-input-wrap>.input::placeholder{color:var(--dsw-alias-label-dimmed,#a0a5ad)}`;
     (document.head || document.documentElement).append(style);
 }
-/** Harness Input contract: native input remains the authoritative control. */
+/** Uiux Input contract: native input remains the authoritative control. */
 export function mountInput(input, props = {}, scope) {
     if (!input || !scope)
         throw new TypeError('Input requires input and scope.');
@@ -76,5 +76,5 @@ export function mountInput(input, props = {}, scope) {
             else
                 input.style.removeProperty(property);
         }
-    }, 'harness-input', 'ui-primitive');
+    }, 'uiux-input', 'ui-primitive');
 }

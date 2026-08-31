@@ -261,7 +261,7 @@
 
 
 /* 确保两个按钮宽度一致 */
-#agentSettingsForm .form-actions button:not(.vcp-harness-button) {
+#agentSettingsForm .form-actions button:not(.vcp-uiux-button) {
     width: 100%;
     /* 两个按钮都占满容器宽度 */
     box-sizing: border-box;

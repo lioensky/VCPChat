@@ -33,7 +33,7 @@ export interface AgentPresetSeatController {
     dispose(): void | Promise<void>;
 }
 /**
- * Candidate replication of the Harness hero chip: a seat button carrying the
+ * Candidate replication of the Uiux hero chip: a seat button carrying the
  * staged preset over a body-portal Menu. Caller-owned open/busy/error state,
  * no durable business state.
  */

@@ -28,7 +28,7 @@ function createCoordinator(form) {
         // owner never registered, the result is dropped rather than falling
         // through to the default client — a typed owner's outcome must never
         // resolve the legacy machine just because its registration is
-        // missing (standalone harnesses, teardown ordering).
+        // missing (standalone uiuxes, teardown ordering).
         if (owner) {
             clients.get(owner)?.onResult?.(detail);
             return;

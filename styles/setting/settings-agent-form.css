@@ -47,7 +47,7 @@
 #agentSettingsForm :not(.vcp-uiux-color-pair) > input[type="number"]:not(.input),
 #agentSettingsForm :not(.vcp-uiux-color-pair) > input[type="file"],
 #agentSettingsForm textarea,
-#agentSettingsForm select:not(.vcp-harness-select-native) {
+#agentSettingsForm select:not(.vcp-uiux-select-native) {
     width: 100%;
     box-sizing: border-box;
     padding: 9px 10px;
@@ -72,7 +72,7 @@
 /* 被上面合并的样式取代 */
 
 
-#agentSettingsForm .form-actions button:not(.vcp-harness-button) {
+#agentSettingsForm .form-actions button:not(.vcp-uiux-button) {
     position: relative;
     isolation: isolate;
     overflow: hidden;
@@ -99,11 +99,11 @@
         transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
-#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button) {
+#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
     color: var(--highlight-text);
 }
 
-#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover {
+#agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: var(--text-on-accent);
@@ -112,17 +112,17 @@
     box-shadow: none;
 }
 
-#agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button) {
+#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
     color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
 }
 
-#agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button):hover {
+#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
     background: var(--danger-color);
     border-color: var(--danger-color);
     color: #ffffff;
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button) {
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
@@ -137,7 +137,7 @@ body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submi
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover {
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: #ffffff;
@@ -146,7 +146,7 @@ body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submi
     box-shadow: none;
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button) {
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
     background: linear-gradient(
         180deg,
         color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
@@ -162,13 +162,13 @@ body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not
         inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button):hover {
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
     background: var(--danger-color);
     border-color: var(--danger-color);
     color: #ffffff;
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button) {
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -183,7 +183,7 @@ body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-harness-button):hover {
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
     background: var(--highlight-text);
     border-color: var(--highlight-text);
     color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
@@ -192,7 +192,7 @@ body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit
     box-shadow: none;
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button) {
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
     border-color: rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
@@ -208,7 +208,7 @@ body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(
         inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-harness-button):hover {
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
     background: var(--danger-color);
     border-color: var(--danger-color);
     color: #ffffff;

@@ -1,7 +1,7 @@
 import type { UiScope } from '../contracts.js';
 import { mountMenu, type MenuController } from './menu.js';
 
-const STYLE_ID = 'vcp-harness-uiux-agent-preset-row';
+const STYLE_ID = 'vcp-uiux-uiux-agent-preset-row';
 
 function ensureStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
@@ -55,7 +55,7 @@ export const AGENT_PRESET_ROW_LOADING_LABEL = 'Loading presets…';
 export const AGENT_PRESET_ROW_USER_TRUST_LABEL = 'Custom';
 
 /**
- * Candidate replication of the Harness settings preference row: title over
+ * Candidate replication of the Uiux settings preference row: title over
  * description plus the shared PresetMenu pill (36px, align-end portal,
  * `· <userTrust>` suffix for locally authored presets). Caller-owned
  * snapshot projection; no durable business state.
@@ -65,7 +65,7 @@ export function mountAgentPresetRow(host: HTMLElement, props: AgentPresetRowProp
         throw new TypeError('AgentPresetRow requires a host, options, onSelect and scope.');
     }
     ensureStyles();
-    const rowScope = scope.child('harness-agent-preset-row');
+    const rowScope = scope.child('uiux-agent-preset-row');
     const titleText = props.title ?? AGENT_PRESET_ROW_DEFAULT_TITLE;
     const descriptionLabel = props.descriptionLabel ?? AGENT_PRESET_ROW_DEFAULT_DESCRIPTION;
     const loadingLabel = props.loadingLabel ?? AGENT_PRESET_ROW_LOADING_LABEL;
@@ -106,7 +106,7 @@ export function mountAgentPresetRow(host: HTMLElement, props: AgentPresetRowProp
     let writable = props.writable ?? true;
     let error = props.error ?? null;
     let menuController: MenuController | null = null;
-    let rosterScope = scope.child('harness-agent-preset-row-roster');
+    let rosterScope = scope.child('uiux-agent-preset-row-roster');
 
     const displayOf = (option: AgentPresetRowOption) => option.name ?? option.id;
     const itemLabels = () => currentOptions.map(option => (
@@ -127,7 +127,7 @@ export function mountAgentPresetRow(host: HTMLElement, props: AgentPresetRowProp
     };
 
     const sync = () => {
-        // Harness: the id is addressing, not a label; an empty value means the
+        // Uiux: the id is addressing, not a label; an empty value means the
         // roster is still loading and surfaces the loading copy instead.
         const chosen = currentOptions.find(option => option.id === currentValue);
         labelText.textContent = currentValue === '' ? loadingLabel : (chosen?.name ?? currentValue);
@@ -142,10 +142,10 @@ export function mountAgentPresetRow(host: HTMLElement, props: AgentPresetRowProp
 
     rowScope.listen(trigger, 'click', () => menuController?.setOpen(!menuController.open));
     const dispose = scope.own(async () => {
-        await rowScope.dispose('harness-agent-preset-row-unmounted');
+        await rowScope.dispose('uiux-agent-preset-row-unmounted');
         row.remove();
         host.replaceChildren(...originalChildren);
-    }, 'harness-agent-preset-row', 'ui-primitive');
+    }, 'uiux-agent-preset-row', 'ui-primitive');
 
     const controller: AgentPresetRowController = {
         root: row,
@@ -158,8 +158,8 @@ export function mountAgentPresetRow(host: HTMLElement, props: AgentPresetRowProp
         },
         async setOptions(next) {
             currentOptions = [...next];
-            await rosterScope.dispose('harness-agent-preset-row-roster-rebuilt');
-            rosterScope = scope.child('harness-agent-preset-row-roster');
+            await rosterScope.dispose('uiux-agent-preset-row-roster-rebuilt');
+            rosterScope = scope.child('uiux-agent-preset-row-roster');
             menuController = null;
             buildRoster();
             sync();

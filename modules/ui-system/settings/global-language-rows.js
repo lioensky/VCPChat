@@ -25,7 +25,7 @@ export function mountGlobalLanguageRows(form, api, scope) {
         // Resolve the host by its stable row id: the canonical-row pass has
         // already replaced the legacy .vcp-settings-row/.form-group classes by
         // the time this adapter runs, but it preserves element ids.
-        const host = (hostId && form.querySelector(`#${hostId}`)) || select?.closest('.vcp-harness-general-item, .vcp-settings-row, .form-group');
+        const host = (hostId && form.querySelector(`#${hostId}`)) || select?.closest('.vcp-uiux-general-item, .vcp-settings-row, .form-group');
         if (!select || !host || select.dataset.vcpTypedPrimitiveMounted === 'true') return;
         // Mark both the business node (the select projection skips marked
         // selects) and the host row (re-entrancy guard for this adapter).

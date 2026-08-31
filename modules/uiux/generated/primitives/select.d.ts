@@ -4,7 +4,7 @@ export interface SelectProps {
     readonly portal?: boolean;
 }
 /**
- * Harness-compatible Select shell over an existing native select. The native
+ * Uiux-compatible Select shell over an existing native select. The native
  * element remains the business/serialization source; the Light-DOM trigger
  * and menu are disposable presentation nodes.
  */

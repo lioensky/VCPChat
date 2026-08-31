@@ -3,7 +3,7 @@
 // this module only layers the VCPUI presentation (typed Input/Range/Choice/
 // ColorPair/Button mounts, the production model picker and the section
 // disclosure fallback) on top of the canonical sidebar shell.
-import { ensurePresentationScope, enhance, mountHarnessSwitches, selectProjection } from './settings/bridge-shared.js';
+import { ensurePresentationScope, enhance, mountUiuxSwitches, selectProjection } from './settings/bridge-shared.js';
 import { mountAgentSectionDisclosures } from './settings/agent-disclosures.js';
 import { createAgentModelPickerDirectory } from './settings/agent-model-picker-directory.js';
 
@@ -42,15 +42,15 @@ function enhanceForm(form) {
     });
     form.querySelectorAll('textarea').forEach(textarea => enhance('Textarea', textarea));
     form.querySelectorAll('select').forEach(select => {
-        if (!select.closest('.vcp-harness-select')) enhance('Select', select, { kernel: 'native' });
+        if (!select.closest('.vcp-uiux-select')) enhance('Select', select, { kernel: 'native' });
     });
     form.querySelectorAll('input[type="range"]').forEach(range => {
         if (!range.closest('.vcp-uiux-range')) enhance('Range', range);
     });
-    mountHarnessSwitches(form);
+    mountUiuxSwitches(form);
     form.querySelectorAll('.agent-style-collapsible-container').forEach(disclosure => {
         disclosure.dataset.settingPrimitive = 'disclosure';
-        disclosure.querySelector('.style-collapse-header')?.classList.add('vcp-harness-disclosure-row');
+        disclosure.querySelector('.style-collapse-header')?.classList.add('vcp-uiux-disclosure-row');
     });
     form.querySelectorAll('.agent-name-wrapper, .group-name-wrapper, .group-settings-field-shell, .style-control-item, .params-content > div:not(.form-group-inline)').forEach(field => {
         if (field.querySelector('input:not([type="hidden"]), select, textarea')) enhance('Field', field);
@@ -149,7 +149,7 @@ function mountTypedAgentButtons(form) {
     });
 }
 
-// The Agent model picker is the first production consumer of the Harness
+// The Agent model picker is the first production consumer of the Uiux
 // model-selection candidate.  The native #agentModel input remains the sole
 // business/persistence node; this bridge only supplies model discovery and
 // writes the same input/change events that the retired modal callback used.
@@ -287,7 +287,7 @@ function mountTypedAgentPromptModeButtons(form) {
 }
 
 // The agent editor keeps the native input as its canonical form/business node;
-// only the visual wrapper is owned by the typed Harness candidate. This is a
+// only the visual wrapper is owned by the typed Uiux candidate. This is a
 // narrow migration slice and deliberately excludes chat-side assistant
 // switching and the remaining agent fields.
 function mountTypedAgentIdentityInput(form) {
@@ -314,7 +314,7 @@ function mountTypedAgentModelInput(form) {
 
 // Temperature remains a native number input because min/max/step and the
 // settings manager's numeric parsing are part of the canonical business
-// contract. Only its presentation is upgraded to the typed Harness Input.
+// contract. Only its presentation is upgraded to the typed Uiux Input.
 function mountTypedAgentTemperatureInput(form) {
     mountTypedAgentInput(form, {
         id: 'agentTemperature',
