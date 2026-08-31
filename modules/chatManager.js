@@ -1413,13 +1413,6 @@ export const chatManager = (() => {
         if (renderTarget) {
             userMessageItem = await renderTarget.renderMessage(userMessage);
         }
-        // 发送动作的“跟随到底部”意图必须覆盖随后异步创建的 agent 占位气泡。
-        // 持久化、未读清理等 IPC 可能跨越多个动画帧；仅在用户气泡阶段滚动，
-        // 会让迟到的 scroll 事件或中间几何在占位气泡挂载前关闭跟随。
-        // 记录当前代际后交给占位渲染：期间若用户主动上滚，代际变化会使请求失效。
-        const sendScrollFollowSnapshot = !request?.conversation && isSendContextCurrent()
-            ? uiHelper.captureChatScrollFollow?.()
-            : null;
         if (!isSendContextCurrent()) {
             // renderMessage targets the shared chat container. If selection
             // changed while it awaited, retract the stale DOM projection;
@@ -1510,21 +1503,29 @@ export const chatManager = (() => {
             ? new Promise(resolve => { settleOwnedStreamOperation = resolve; })
             : null;
         if (renderTarget && isSendContextCurrent()) {
-            thinkingMessageItem = await renderTarget.renderMessage(
-                thinkingMessage,
-                false,
-                true,
-                null,
-                sendScrollFollowSnapshot
-                    ? {
-                        reengageBottomFollow: true,
-                        expectedScrollGeneration: sendScrollFollowSnapshot.generation
-                    }
-                    : {}
-            );
+            thinkingMessageItem = await renderTarget.renderMessage(thinkingMessage);
             if (!isSendContextCurrent()) {
                 thinkingMessageItem?.remove?.();
                 thinkingMessageItem = null;
+            } else if (thinkingMessageItem && !request?.conversation) {
+                // 不再走通用 scrollToBottom 状态机：agent 气泡自身已经在同一轮
+                // renderMessage 中排过一次滚动，紧接着再调用会被 frameId 合并，
+                // 无法保证按这个新气泡完成布局后的 scrollHeight 再提交。
+                // 从气泡反查实际滚动容器，下一布局帧直接滚到它的真实底部。
+                const scrollContainer = thinkingMessageItem.closest('.chat-messages-container');
+                const ownerWindow = thinkingMessageItem.ownerDocument?.defaultView;
+                ownerWindow?.requestAnimationFrame?.(() => {
+                    if (
+                        thinkingMessageItem.isConnected
+                        && scrollContainer?.isConnected
+                        && isSendContextCurrent()
+                    ) {
+                        scrollContainer.scrollTop = Math.max(
+                            0,
+                            scrollContainer.scrollHeight - scrollContainer.clientHeight
+                        );
+                    }
+                });
             }
         }
         if (isSendContextCurrent()) {
