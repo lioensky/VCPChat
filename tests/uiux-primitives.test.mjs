@@ -5,12 +5,12 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { LifecycleScope, diagnostics } = require('../modules/ui-system/lifecycle-scope.js');
-const { createUiScope } = await import('../modules/uiux/runtime/scope.ts');
-const { mountField } = await import('../modules/uiux/primitives/field.ts');
-const { mountButton } = await import('../modules/uiux/primitives/button.ts');
-const { mountPill } = await import('../modules/uiux/primitives/pill.ts');
-const { mountConnectionBanner } = await import('../modules/uiux/primitives/connection-banner.ts');
-const { mountOnboardingSurface } = await import('../modules/uiux/primitives/onboarding-surface.ts');
+const { createUiScope } = await import('../modules/uiux/generated/runtime/scope.js');
+const { mountField } = await import('../modules/uiux/generated/primitives/field.js');
+const { mountButton } = await import('../modules/uiux/generated/primitives/button.js');
+const { mountPill } = await import('../modules/uiux/generated/primitives/pill.js');
+const { mountConnectionBanner } = await import('../modules/uiux/generated/primitives/connection-banner.js');
+const { mountOnboardingSurface } = await import('../modules/uiux/generated/primitives/onboarding-surface.js');
 
 test('Uiux OnboardingSurface owns body portal and app-root inert lifetime', async () => {
     const dom = new JSDOM('<!doctype html><div id="root"><main><span id="content">step</span></main></div>');
@@ -45,18 +45,18 @@ test('Uiux ConnectionBanner owns reconnecting projection and restores host on di
         assert.equal(host.textContent, 'original');
     } finally { globalThis.document = previousDocument; globalThis.window = previousWindow; dom.window.close(); }
 });
-const { mountSelect } = await import('../modules/uiux/primitives/select.ts');
-const { mountNumericStepperRow } = await import('../modules/uiux/primitives/numeric-stepper-row.ts');
-const { mountFontSizeRow } = await import('../modules/uiux/primitives/font-size-row.ts');
-const { mountInput } = await import('../modules/uiux/primitives/input.ts');
-const { mountDiffBlock } = await import('../modules/uiux/primitives/diff-block.ts');
-const { mountMenu } = await import('../modules/uiux/primitives/menu.ts');
-const { mountModal } = await import('../modules/uiux/primitives/modal.ts');
-const { mountTooltip } = await import('../modules/uiux/primitives/tooltip.ts');
-const { mountHoverCard } = await import('../modules/uiux/primitives/hover-card.ts');
-const { mountDisclosureRow, mountDisclosureRowController } = await import('../modules/uiux/primitives/disclosure-row.ts');
-const { mountStateDot } = await import('../modules/uiux/primitives/state-dot.ts');
-const { mountToast, TOAST_HOLD_MS, TOAST_FADE_MS } = await import('../modules/uiux/primitives/toast.ts');
+const { mountSelect } = await import('../modules/uiux/generated/primitives/select.js');
+const { mountNumericStepperRow } = await import('../modules/uiux/generated/primitives/numeric-stepper-row.js');
+const { mountFontSizeRow } = await import('../modules/uiux/generated/primitives/font-size-row.js');
+const { mountInput } = await import('../modules/uiux/generated/primitives/input.js');
+const { mountDiffBlock } = await import('../modules/uiux/generated/primitives/diff-block.js');
+const { mountMenu } = await import('../modules/uiux/generated/primitives/menu.js');
+const { mountModal } = await import('../modules/uiux/generated/primitives/modal.js');
+const { mountTooltip } = await import('../modules/uiux/generated/primitives/tooltip.js');
+const { mountHoverCard } = await import('../modules/uiux/generated/primitives/hover-card.js');
+const { mountDisclosureRow, mountDisclosureRowController } = await import('../modules/uiux/generated/primitives/disclosure-row.js');
+const { mountStateDot } = await import('../modules/uiux/generated/primitives/state-dot.js');
+const { mountToast, TOAST_HOLD_MS, TOAST_FADE_MS } = await import('../modules/uiux/generated/primitives/toast.js');
 // RiskConfirmation is the first composed primitive; source-plane Node cannot
 // resolve its emitted .js sibling imports, so exercise its checked-in artifact.
 const { mountRiskConfirmation } = await import('../modules/uiux/generated/primitives/risk-confirmation.js');
@@ -66,11 +66,11 @@ const { mountLanguageRow } = await import('../modules/uiux/generated/primitives/
 const { mountAgentModelPicker } = await import('../modules/uiux/generated/primitives/agent-model-picker.js');
 const { createPopupSelectController, mountPopupSelectView } = await import('../modules/uiux/generated/primitives/popup-select.js');
 const { mountDirectoryBrowser } = await import('../modules/uiux/generated/primitives/directory-browser.js');
-const { mountSemanticIcon } = await import('../modules/uiux/primitives/semantic-icon.ts');
-const { mountChoice } = await import('../modules/uiux/primitives/choice.ts');
-const { mountRange } = await import('../modules/uiux/primitives/range.ts');
-const { mountToggle } = await import('../modules/uiux/primitives/toggle.ts');
-const { mountColorPair } = await import('../modules/uiux/primitives/color-pair.ts');
+const { mountSemanticIcon } = await import('../modules/uiux/generated/primitives/semantic-icon.js');
+const { mountChoice } = await import('../modules/uiux/generated/primitives/choice.js');
+const { mountRange } = await import('../modules/uiux/generated/primitives/range.js');
+const { mountToggle } = await import('../modules/uiux/generated/primitives/toggle.js');
+const { mountColorPair } = await import('../modules/uiux/generated/primitives/color-pair.js');
 
 test('Uiux LanguageRow composes a locale selector and retracts cleanly', async () => {
     const dom = new JSDOM('<!doctype html><main><div id="host"><span>original</span></div></main>');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { createForumConfigUiService } = await import('../modules/uiux/adapters/forum-config.ts');
+const { createForumConfigUiService } = await import('../modules/uiux/generated/adapters/forum-config.js');
 
 test('Forum config UI adapter refreshes and publishes only successful saves', async () => {
     let state = { username: 'admin', password: 'secret' };

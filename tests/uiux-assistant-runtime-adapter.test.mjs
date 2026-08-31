@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { createAssistantRuntimeUiService } = await import('../modules/uiux/adapters/assistant-runtime.ts');
+const { createAssistantRuntimeUiService } = await import('../modules/uiux/generated/adapters/assistant-runtime.js');
 
 test('Assistant runtime UI adapter refreshes diagnostics and isolates late results', async () => {
     let resolveRefresh;
