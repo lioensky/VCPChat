@@ -103,7 +103,18 @@ try {
     console.error('[audit] connected; finding page...');
     let page = null;
     while (Date.now() < deadline) {
-        page = (await browser.pages()).find(candidate => candidate.url().includes('main.html')) || null;
+        // `page.url()` throws ("Requesting main frame too early") while the
+        // target's main frame is still attaching. A throw here escapes the
+        // `find` callback and the whole retry loop, so the probe crashed
+        // instead of retrying. Treat "frame not ready" as "not this page yet"
+        // so the loop below can actually wait the window out.
+        page = (await browser.pages()).find(candidate => {
+            try {
+                return candidate.url().includes('main.html');
+            } catch {
+                return false;
+            }
+        }) || null;
         if (page) break;
         await sleep(100);
     }
