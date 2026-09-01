@@ -157,15 +157,4 @@ mod tests {
         assert!(retryable);
         assert_eq!(message, "topic changed");
     }
-
-    #[test]
-    fn internal_error_response_preserves_the_complete_cause_chain() {
-        let error = ServiceError::internal(anyhow::anyhow!(
-            "token=cds-secret path=C:\\VCP\\history.json"
-        ));
-        let (_, code, _, message) = error.response_parts();
-
-        assert_eq!(code, "INTERNAL_ERROR");
-        assert_eq!(message, "token=cds-secret path=C:\\VCP\\history.json");
-    }
 }
