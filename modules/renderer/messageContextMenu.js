@@ -678,6 +678,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     const globalSettingsVal = mainRefs.globalSettingsRef.get();
     let streamingRequested = false;
     let streamContext = null;
+    let regenerationThinkingItem = null;
 
     if (!currentSelectedItemVal.id || currentSelectedItemVal.type !== 'agent' || !currentTopicIdVal || !originalAssistantMessage || originalAssistantMessage.role !== 'assistant') {
         uiHelper.showToastNotification("只能为 Agent 的回复进行重新生成。", "warning");
@@ -719,7 +720,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
     };
 
-    contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
+    regenerationThinkingItem = await contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
     currentChatHistoryArray.push(regenerationThinkingMessage);
     mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
 
@@ -1020,6 +1021,20 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         };
         streamingRequested = modelConfigForVCP.stream;
         streamContext = context;
+
+        // 与正常单聊发送保持同一运行态契约：流式请求必须在交给上游前建立
+        // StreamProjection 所有权。它会给占位同时添加 streaming + thinking，
+        // 从而启用循环省略号和外层流光边框；首个 IPC start/thinking 事件再次
+        // 初始化时会由 StreamProjection 的幂等检查直接复用当前气泡。
+        if (streamingRequested && typeof contextMenuDependencies.startStreamingMessage === 'function') {
+            await contextMenuDependencies.startStreamingMessage({
+                ...regenerationThinkingMessage,
+                ...context,
+                context,
+                content: '',
+                isThinking: true
+            }, regenerationThinkingItem);
+        }
         
         const vcpResult = await electronAPI.sendToVCP(
             globalSettingsVal.vcpServerUrl,
