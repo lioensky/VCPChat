@@ -289,6 +289,28 @@ try {
     assert.equal(contentWidthGeometry.optionRadius, '12px', `content-width choice uses compact 12px radius: ${JSON.stringify(contentWidthGeometry)}`);
     assert.equal(contentWidthGeometry.optionBorder, '0px', `content-width choice has no resting border: ${JSON.stringify(contentWidthGeometry)}`);
     assert.equal(contentWidthGeometry.optionFontSize, '12px', `content-width choice uses compact 12px text: ${JSON.stringify(contentWidthGeometry)}`);
+    await page.evaluate(() => document.querySelector('#chatLayoutModeWide')?.closest('label')?.click());
+    await sleep(250);
+    const wideChoiceHealth = await page.evaluate(() => ({
+        checked: document.getElementById('chatLayoutModeWide')?.checked || false,
+        bodyChildren: document.body?.children.length || 0,
+        modalPresent: Boolean(document.getElementById('globalSettingsModal')),
+        settingsPanelPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')),
+        rendererReady: document.documentElement.dataset.vcpRendererReady,
+    }));
+    assert.equal(wideChoiceHealth.checked, true, `wide choice is selected: ${JSON.stringify(wideChoiceHealth)}`);
+    assert.ok(wideChoiceHealth.bodyChildren > 0 && wideChoiceHealth.modalPresent && wideChoiceHealth.settingsPanelPresent && wideChoiceHealth.rendererReady === 'true', `switching content width must keep the renderer alive: ${JSON.stringify(wideChoiceHealth)}`);
+    await sleep(1500);
+    const wideChoiceSettledHealth = await page.evaluate(() => ({
+        checked: document.getElementById('chatLayoutModeWide')?.checked || false,
+        modalActive: document.getElementById('globalSettingsModal')?.classList.contains('active') || false,
+        bodyChildren: document.body?.children.length || 0,
+        settingsPanelPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')),
+        rendererReady: document.documentElement.dataset.vcpRendererReady,
+    }));
+    assert.ok(wideChoiceSettledHealth.bodyChildren > 0 && wideChoiceSettledHealth.settingsPanelPresent && wideChoiceSettledHealth.rendererReady === 'true', `content-width save settlement must keep the renderer alive: ${JSON.stringify(wideChoiceSettledHealth)}`);
+    await page.evaluate(() => document.querySelector('#chatLayoutModeNormal')?.closest('label')?.click());
+    await sleep(120);
     console.log('  [PASS] content-width choice stays on the right');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });

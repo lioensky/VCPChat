@@ -393,7 +393,13 @@ async function saveGlobalSettings(deps, settingsForm) {
                 applyChatBubbleLayoutSettings(committedSettings);
             }
             if (typeof applyChatPresentationMode === 'function') {
-                await applyChatPresentationMode(newSettings.chatPresentationMode, {
+                // Typed settings controls may save a partial patch (for
+                // example, the content-width choice only sends
+                // enableWideChatLayout). Re-applying an undefined
+                // presentation mode here would normalize to bubble and can
+                // race the just-committed layout projection. Always use the
+                // merged authoritative snapshot for this second pass.
+                await applyChatPresentationMode(committedSettings.chatPresentationMode, {
                     persist: false,
                     preserveScroll: true,
                     source: 'global-settings'
