@@ -168,6 +168,10 @@ function mountGlobalSettingsPathAction(root) {
     const api = window.VCPUIUX;
     const scope = ensurePresentationScope();
     if (!button || !api?.mountButton || !scope || button.dataset.vcpTypedNetworkPathAction === 'true') return;
+    // The add action renders as a full-width dashed affordance inside its
+    // card; the generated Button's inline styles (fixed height and radius)
+    // would fight that presentation, so this row keeps its own styling.
+    if (button.classList.contains('vcp-settings-card-add-row')) return;
     try {
         api.mountButton(button, { variant: 'outline', size: 'sm' }, scope);
         button.dataset.vcpTypedNetworkPathAction = 'true';
