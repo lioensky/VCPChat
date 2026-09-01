@@ -600,6 +600,7 @@ export function setupEventListeners(deps) {
                     // The picker change happened before the crop result
                     // existed, so explicitly schedule the real settings save
                     // after the cropped File is installed.
+                    if (input.form) input.form.dataset.vcpKeepOpenAfterAvatarSave = 'true';
                     input.dispatchEvent(new Event('input', { bubbles: true }));
                     const userAvatarPreview = document.getElementById('userAvatarPreview');
                     if (userAvatarPreview) {
