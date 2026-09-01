@@ -238,6 +238,14 @@ clickNav(1);
 // 搜索能定位命中分类
 const visibleLabels = [...document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-copy strong')].map(node => node.textContent);
 assert.equal(visibleLabels.length, 8, 'unified navigation retains all categories');
+const searchInput = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-input');
+const searchButton = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-button');
+searchButton.click();
+searchInput.value = '服务器';
+searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+assert.equal(document.querySelector('#vcpSettingsTab-server-connection')?.hidden, false, 'settings search keeps matching category visible');
+assert.equal(document.querySelector('#vcpSettingsTab-user-identity')?.hidden, true, 'settings search hides non-matching category');
+assert.equal(activeSectionId(), 'section-server-connection', 'settings search activates first matching category');
 
 // ---- save helper ----
 async function submitForm() {
