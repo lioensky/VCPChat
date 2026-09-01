@@ -913,3 +913,106 @@ test('render-settings 扁平化：editor-section 包裹退场，行直接挂在�
     // one contiguous canonical row run (adjacency + divider probes).
     assert.match(section, /class="form-group settings-inline-number-row"/);
 });
+
+test('settings 挂载管线：步骤失败必须带步名记录并向调用方抛出', async () => {
+    const pipeline = await import(pathToFileURL(path.join(settingsDir, 'pipeline.js')).href);
+    const errors = [];
+    const originalError = console.error;
+    console.error = (...args) => errors.push(args);
+    try {
+        assert.throws(
+            () => pipeline.runSettingsPipeline([
+                { name: 'first', run: () => {} },
+                { name: 'boom', run: () => { throw new Error('simulated step failure'); } },
+                { name: 'never', run: () => assert.fail('later steps must not run') },
+            ]),
+            /simulated step failure/,
+            'the step failure must propagate to the caller boundary',
+        );
+    } finally {
+        console.error = originalError;
+    }
+    assert.ok(
+        errors.some(args => typeof args[0] === 'string' && args[0].includes('"boom"')),
+        'the log must attribute the failure to the exact step name',
+    );
+    assert.doesNotThrow(() => pipeline.resolvePipelineOrder([{ name: 'solo', run: () => {} }]));
+});
+
+test('统一 surface 投影失败必须关闭 CSS 门并恢复 legacy 类钩子', async () => {
+    const mainHtml = fs.readFileSync(path.join(root, 'main.html'), 'utf8');
+    const source = new JSDOM(mainHtml, { url: 'https://vcpchat.local/' });
+    const dom = new JSDOM('<!doctype html><html><body><div id="modal-container"></div></body></html>', {
+        url: 'https://vcpchat.local/',
+    });
+    const template = source.window.document.getElementById('globalSettingsModalTemplate');
+    dom.window.document.getElementById('modal-container')
+        .appendChild(dom.window.document.importNode(template.content, true));
+
+    const previousGlobals = {};
+    for (const name of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Element', 'Node']) {
+        previousGlobals[name] = globalThis[name];
+    }
+    Object.assign(globalThis, {
+        window: dom.window,
+        document: dom.window.document,
+        CustomEvent: dom.window.CustomEvent,
+        Event: dom.window.Event,
+        HTMLElement: dom.window.HTMLElement,
+        Element: dom.window.Element,
+        Node: dom.window.Node,
+    });
+    dom.window.chatAPI = {
+        async saveSettings() { return { success: true }; },
+        async saveRustAssistantConfig() { return { success: true }; },
+        connectVCPLog() {},
+        disconnectVCPLog() {},
+    };
+
+    const bridgeErrors = [];
+    const originalError = console.error;
+    console.error = (...args) => bridgeErrors.push(args);
+    try {
+        // Force a mid-shell-surgery failure: the canonical nav replaceWith is
+        // the first destructive move of the shell step.
+        const listHost = dom.window.document.querySelector('.vcp-settings-source-list');
+        assert.ok(listHost, 'the legacy nav list host must exist before the shell mounts');
+        listHost.replaceWith = () => { throw new Error('simulated shell surgery failure'); };
+
+        await import(`${pathToFileURL(bridgeEntry).href}?settings-fallback-test=1`);
+        const modal = dom.window.document.getElementById('globalSettingsModal');
+        modal.classList.add('active');
+        dom.window.document.dispatchEvent(new dom.window.CustomEvent('modal-visibility-changed', {
+            detail: { modalId: 'globalSettingsModal', active: true },
+        }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        assert.equal(
+            dom.window.document.documentElement.classList.contains('vcp-global-settings-host'),
+            false,
+            'the new-layer CSS gate must close when the projection fails',
+        );
+        assert.equal(modal.classList.contains('vcp-global-settings-surface'), false,
+            'the surface alias must come off with the gate');
+        for (const [selector, legacyClass] of [
+            ['.vcp-uiux-settings-panel', 'vcp-settings-source-panel'],
+            ['.vcp-uiux-settings-nav', 'vcp-settings-source-nav'],
+            ['.vcp-uiux-settings-content', 'vcp-settings-source-content'],
+            ['.vcp-uiux-settings-nav-title', 'vcp-settings-source-title'],
+        ]) {
+            const node = modal.querySelector(selector);
+            assert.ok(node && node.classList.contains(legacyClass),
+                `${legacyClass} must be restored so the classic layer can match the node`);
+        }
+        assert.ok(
+            bridgeErrors.some(args => typeof args[0] === 'string' && args[0].includes('projection failed')),
+            'the fallback must log the projection failure',
+        );
+    } finally {
+        console.error = originalError;
+        for (const name of Object.keys(previousGlobals)) {
+            if (previousGlobals[name] === undefined) delete globalThis[name];
+            else globalThis[name] = previousGlobals[name];
+        }
+    }
+});
