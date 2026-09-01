@@ -97,10 +97,16 @@ try {
     await page.evaluate(bytes => {
         const file = new File([new Uint8Array(bytes)], 'avatar-probe.png', { type: 'image/png' });
         window.uiHelperFunctions.setCroppedFile('user', file);
+        const form = document.getElementById('globalSettingsForm');
+        if (form) form.dataset.vcpKeepOpenAfterAvatarSave = 'true';
         document.getElementById('userAvatarInput')?.dispatchEvent(new Event('input', { bubbles: true }));
     }, avatarBytes);
     try {
-        await waitFor('avatar save completion', () => page.evaluate(() => !document.getElementById('globalSettingsModal')?.classList.contains('active')));
+        await waitFor('avatar save completion', () => page.evaluate(() => {
+            const form = document.getElementById('globalSettingsForm');
+            return document.getElementById('globalSettingsModal')?.classList.contains('active')
+                && form?.dataset.vcpAutosaveState === 'saved';
+        }));
     } catch (error) {
         const diagnostics = await page.evaluate(errors => ({
             state: document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState,
@@ -112,8 +118,11 @@ try {
     }
     const savedFile = await fs.stat(path.join(appData, 'UserData', 'user_avatar.png'));
     assert.ok(savedFile.size > 100, `saved avatar file is non-empty (${savedFile.size} bytes)`);
-    console.log('[avatar-probe] crop result triggered autosave and wrote avatar file');
+    assert.equal(await page.evaluate(() => document.getElementById('globalSettingsModal')?.classList.contains('active')), true,
+        'avatar autosave must keep the settings modal open');
+    console.log('[avatar-probe] crop result triggered autosave, wrote avatar file, and kept modal open');
 
+    await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 45_000 });
     await waitFor('renderer ready after reload', () => page.evaluate(() => document.documentElement.dataset.vcpRendererReady === 'true'));
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
