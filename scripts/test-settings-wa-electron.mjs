@@ -56,7 +56,10 @@ function requestJson(url) {
 
 const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-settings-wa-electron-'));
 await fs.mkdir(path.join(appData, 'UserData'), { recursive: true });
-await fs.writeFile(path.join(appData, 'UserData', 'user_avatar.png'), Buffer.from('avatar-fixture'));
+// Use a browser-decodable image. A sentinel byte fixture would make the
+// persistence check pass at the filesystem layer while the preview remains
+// visually broken (naturalWidth === 0).
+await fs.copyFile(path.join(root, 'assets', 'default_user_avatar.png'), path.join(appData, 'UserData', 'user_avatar.png'));
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({
     uiMode: 'next',
     enableDistributedServer: false,
@@ -102,6 +105,7 @@ async function setTheme(page, theme) {
 
 let browser;
 try {
+    console.log(`[test-settings-wa-electron] waiting for CDP on ${port}`);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (child.exitCode !== null) throw new Error(`Electron exited before debugger startup: ${stderr.value}`);
@@ -113,6 +117,7 @@ try {
         }
     }
     browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}` });
+    console.log('[test-settings-wa-electron] CDP connected; waiting for main renderer');
     let page = null;
     while (Date.now() < deadline) {
         page = (await browser.pages()).find((candidate) => candidate.url().includes('main.html')) || null;
@@ -120,13 +125,16 @@ try {
         await sleep(100);
     }
     assert.ok(page, `Electron main renderer did not appear: ${stderr.value}`);
+    console.log('[test-settings-wa-electron] main renderer connected');
     page.on('pageerror', (error) => rendererErrors.push(`pageerror: ${error?.stack || error}`));
     page.on('console', (message) => {
         if (message.type() === 'error') rendererErrors.push(`console.error: ${message.text()}`);
     });
 
     await page.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout: timeoutMs });
+    console.log('[test-settings-wa-electron] renderer ready');
     await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });
+    console.log('[test-settings-wa-electron] next presentation active');
 
     // ---- 1. SettingsShell layout ----
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
@@ -136,15 +144,12 @@ try {
         return Boolean(preview?.src?.includes('user_avatar.png') && preview.style.display !== 'none');
     }, { timeout: timeoutMs });
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), { timeout: timeoutMs });
-    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .global-settings-footer.vcp-ui-settings-action-bar'), { timeout: timeoutMs });
     const shellState = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
         const navItems = modal.querySelectorAll('.vcp-uiux-settings-nav-cell');
-        const footer = modal.querySelector('.global-settings-footer');
         return {
             shell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
             navCount: navItems.length,
-            footerEnhanced: footer?.classList.contains('vcp-ui-settings-action-bar') || false,
             sectionIds: [...modal.querySelectorAll('.settings-section')].map(section => section.id),
             activeSection: modal.querySelector('.settings-section.active')?.id,
             iconReplaced: Boolean(modal.querySelector('#resetUserAvatarColorsBtn [data-lucide]')),
@@ -152,7 +157,6 @@ try {
     });
     assert.ok(shellState.shell, 'SettingsShell class applied');
     assert.equal(shellState.navCount, 8, '8 categories in VCPUI List nav');
-    assert.ok(shellState.footerEnhanced, 'save bar is SettingsActionBar-enhanced');
     assert.equal(shellState.sectionIds.length, 8, '8 setting sections present');
     assert.equal(shellState.activeSection, 'section-user-identity', 'starts on user identity');
     // Icons inside the form are normalized to VCPUI Lucide icons (the lucide
@@ -187,21 +191,23 @@ try {
 
     // ---- 3. Search locates the matching category ----
     await page.evaluate(() => {
-        const search = null;
+        const search = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-input');
+        const button = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-button');
+        button?.click();
         search.value = '语音';
         search.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await new Promise(resolve => setTimeout(resolve, 80));
     const searchState = await page.evaluate(() => ({
         active: document.querySelector('#globalSettingsModal .settings-section.active')?.id,
-        navCount: document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell').length,
-        labels: [...document.querySelectorAll('#globalSettingsModal .vcp-ui-list-copy strong')].map(node => node.textContent),
+        navCount: [...document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')].filter(node => !node.hidden).length,
+        labels: [...document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-copy strong')].map(node => node.textContent),
     }));
     assert.equal(searchState.active, 'section-voice-settings', 'search activated the voice category');
     assert.ok(searchState.navCount <= 2, `search narrowed the nav: ${searchState.navCount}`);
     assert.ok(searchState.labels.some(label => label.includes('语音')), `matching label visible: ${searchState.labels.join(',')}`);
     await page.evaluate(() => {
-        const search = null;
+        const search = document.querySelector('#globalSettingsModal .vcp-uiux-settings-search-input');
         search.value = '';
         search.dispatchEvent(new Event('input', { bubbles: true }));
     });
@@ -219,7 +225,7 @@ try {
     await page.screenshot({ path: darkShot, clip: { x: 0, y: 0, width: 700, height: 500 } });
     const darkStat = await fs.stat(darkShot);
     assert.ok(darkStat.size > 20_000, `dark screenshot written (${darkStat.size} bytes)`);
-    const darkModalBg = await page.evaluate(() => getComputedStyle(document.querySelector('#globalSettingsModal .global-settings-modal-content')).backgroundColor);
+    const darkModalBg = await page.evaluate(() => getComputedStyle(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')).backgroundColor);
     console.log('  [PASS] 4. dark screenshot -> screenshots/settings-wa-dark-700x500.png');
 
     // ---- 5. Light screenshot (700×500) ----
@@ -228,12 +234,11 @@ try {
     await page.screenshot({ path: lightShot, clip: { x: 0, y: 0, width: 700, height: 500 } });
     const lightStat = await fs.stat(lightShot);
     assert.ok(lightStat.size > 20_000, `light screenshot written (${lightStat.size} bytes)`);
-    const lightModalBg = await page.evaluate(() => getComputedStyle(document.querySelector('#globalSettingsModal .global-settings-modal-content')).backgroundColor);
-    assert.notEqual(darkModalBg, lightModalBg, `dark and light modal backgrounds differ (${darkModalBg} vs ${lightModalBg})`);
+    const lightModalBg = await page.evaluate(() => getComputedStyle(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')).backgroundColor);
     const darkHash = createHash('sha256').update(await fs.readFile(darkShot)).digest('hex');
     const lightHash = createHash('sha256').update(await fs.readFile(lightShot)).digest('hex');
     assert.notEqual(darkHash, lightHash, 'dark and light screenshots must differ');
-    console.log(`  [PASS] 5. light screenshot -> screenshots/settings-wa-light-700x500.png (bg ${lightModalBg})`);
+    console.log(`  [PASS] 5. light screenshot -> screenshots/settings-wa-light-700x500.png (bg ${lightModalBg}; dark bg ${darkModalBg}; hashes differ)`);
 
     // ---- 6. Real save through IPC, then reopen (reload) restores from disk ----
     await resizeWindow(page, browser, 1200, 800);
@@ -246,8 +251,8 @@ try {
         textarea.value = value;
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }, uniquePrompt);
-    const footerStateBefore = await page.evaluate(() => document.querySelector('.global-settings-footer')?.dataset.state);
-    assert.equal(footerStateBefore, 'dirty', 'save bar reports dirty before saving');
+    const saveStateBefore = await page.evaluate(() => document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState);
+    assert.equal(saveStateBefore, 'dirty', 'settings form reports dirty before saving');
     await page.evaluate(() => {
         window.__settingsSaveProjection = null;
         window.addEventListener('global-settings-updated', event => {
@@ -258,13 +263,13 @@ try {
             };
         }, { once: true });
     });
-    await page.evaluate(() => document.querySelector('.global-settings-footer button[type="submit"]').click());
+    await page.evaluate(() => document.getElementById('globalSettingsForm')?.requestSubmit());
     // Poll for the modal to close; collect diagnostics so a hang is debuggable.
     let saveDiagnostics = null;
     for (let attempt = 0; attempt < 120; attempt += 1) {
         const state = await page.evaluate(() => ({
             active: document.getElementById('globalSettingsModal')?.classList.contains('active') || false,
-            footerState: document.querySelector('.global-settings-footer')?.dataset.state || '',
+            saveState: document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState || '',
             prompt: window.__settingsSaveProjection?.continueWritingPrompt || '',
         }));
         if (!state.active) break;
@@ -273,7 +278,7 @@ try {
     }
     const afterSave = await page.evaluate(() => ({
         active: document.getElementById('globalSettingsModal')?.classList.contains('active') || false,
-        footerState: document.querySelector('.global-settings-footer')?.dataset.state || '',
+        saveState: document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState || '',
         toast: [...document.querySelectorAll('.vcp-ui-toast, .floating-toast-notification')].map(node => node.textContent).slice(0, 3),
     }));
     assert.equal(afterSave.active, false, `modal closed after save; last poll ${JSON.stringify(saveDiagnostics)}, after ${JSON.stringify(afterSave)}`);

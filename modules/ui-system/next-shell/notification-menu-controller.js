@@ -149,6 +149,14 @@
 
         handleKeydown(event) {
             if (!this.mounted) return;
+            if (event.key === 'ContextMenu' && event.target === this.elements.filter) {
+                event.preventDefault();
+                void this.runAction(
+                    () => this.commands()?.openNotificationFilterSettings?.(),
+                    { restoreFocus: false },
+                );
+                return;
+            }
             if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
             const menuItems = [...this.elements.menu.querySelectorAll('[role^="menuitem"]')];
             const currentIndex = menuItems.indexOf(this.document.activeElement);

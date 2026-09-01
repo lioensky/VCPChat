@@ -33,6 +33,8 @@ const MARKERS = Object.freeze({
     vcpTypedGlobalSettingsEntry: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
     vcpTypedNetworkPathAction: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
     vcpSettingsFocusBound: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
+    vcpIdentityNameBound: { owner: 'settings-bridge.js identity-name editor', cleanup: 'scope-owned' },
+    vcpIdentityNameEditing: { owner: 'settings-bridge.js identity-name editor', cleanup: 'scope-owned' },
 
     // typed-field-owners.js — typed settings seam
     vcpTypedFieldOwner: { owner: 'typed-field-owners.js + settings/autosave.js', cleanup: 'manual-retract' },
