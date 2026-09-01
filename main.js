@@ -1421,7 +1421,8 @@ if (!gotTheLock) {
             startSelectionListener: assistantHandlers.startSelectionListener,
             getMusicState: musicHandlers.getMusicState,
             fileWatcher, // 注入文件监控器
-            agentConfigManager
+            agentConfigManager,
+            settingsManager: appSettingsManager
         });
 
         // A renderer claims a lease before beginning asynchronous selection.

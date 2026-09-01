@@ -5,6 +5,10 @@ const path = require('path');
 const crypto = require('crypto');
 const contextSanitizer = require('../contextSanitizer');
 const { SenderTaskRegistry } = require('../services/senderTaskRegistry');
+const {
+    resolveRememberedAttachmentDirectory,
+    rememberAttachmentDirectory
+} = require('../services/attachmentDialogState');
 
 function stableStringify(value) {
     if (value === null || typeof value !== 'object') {
@@ -167,7 +171,16 @@ function sanitizeFlowlockRequest(request) {
 }
 
 function initialize(mainWindow, context) {
-    const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher, agentConfigManager } = context;
+    const {
+        AGENT_DIR,
+        USER_DATA_DIR,
+        APP_DATA_ROOT_IN_PROJECT,
+        NOTES_AGENT_ID,
+        getMusicState,
+        fileWatcher,
+        agentConfigManager,
+        settingsManager
+    } = context;
 
     // Ensure the watcher is in a clean state on initialization
     if (fileWatcher) {
@@ -701,17 +714,37 @@ function initialize(mainWindow, context) {
             console.log('[Main] Temporarily stopped selection listener for file dialog.');
         }
 
-        const result = await dialog.showOpenDialog(mainWindow, {
-            title: '选择要发送的文件',
-            properties: ['openFile', 'multiSelections']
-        });
+        let defaultPath = null;
+        try {
+            defaultPath = await resolveRememberedAttachmentDirectory(settingsManager);
+        } catch (error) {
+            console.warn('[Main - select-files-to-send] Failed to read remembered attachment directory:', error.message);
+        }
 
-        if (listenerWasActive) {
-            context.startSelectionListener();
-            console.log('[Main] Restarted selection listener after file dialog.');
+        let result;
+        try {
+            const ownerWindow = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+            result = await dialog.showOpenDialog(ownerWindow, {
+                title: '选择要发送的文件',
+                properties: ['openFile', 'multiSelections'],
+                ...(defaultPath ? { defaultPath } : {})
+            });
+        } finally {
+            if (listenerWasActive) {
+                context.startSelectionListener();
+                console.log('[Main] Restarted selection listener after file dialog.');
+            }
         }
 
         if (!result.canceled && result.filePaths.length > 0) {
+            try {
+                await rememberAttachmentDirectory(settingsManager, result.filePaths[0]);
+            } catch (error) {
+                // Directory memory is a convenience feature; selected attachments
+                // must remain usable when settings persistence is temporarily unavailable.
+                console.warn('[Main - select-files-to-send] Failed to remember attachment directory:', error.message);
+            }
+
             const storedFilesInfo = [];
             for (const filePath of result.filePaths) {
                 try {

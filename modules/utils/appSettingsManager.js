@@ -55,6 +55,15 @@ class SettingsValidator {
             validated.voiceInputShortcut = validated.voiceInputShortcut.trim().toUpperCase();
         }
 
+        if (
+            validated.lastAttachmentDirectory !== null
+            && typeof validated.lastAttachmentDirectory !== 'string'
+        ) {
+            validated.lastAttachmentDirectory = null;
+            hasIssues = true;
+            console.log('Fixed invalid lastAttachmentDirectory');
+        }
+
         if ('speechRecognizerBrowserPath' in validated) {
             delete validated.speechRecognizerBrowserPath;
             hasIssues = true;
@@ -281,6 +290,7 @@ class SettingsManager extends EventEmitter {
             lastOpenItemId: null,
             lastOpenItemType: null,
             lastOpenTopicId: null,
+            lastAttachmentDirectory: null,
             combinedItemOrder: [],
             agentOrder: []
         };
