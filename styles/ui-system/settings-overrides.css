@@ -526,15 +526,28 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container:not(.collapsed) {
     grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
+    grid-row: 1 / span 2;
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr) 180px;
+    grid-template-rows: minmax(68px, auto) auto;
+    align-self: stretch;
+    justify-self: stretch;
+    width: auto;
 }
 
 /* The expanded disclosure owns a full-width controls row, but its trigger is
    still the same trailing capsule as the collapsed summary. Keep the trigger
    on the card's right edge while the color controls expand underneath it. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container:not(.collapsed) .style-collapse-header {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
     margin-left: auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container:not(.collapsed) .agent-style-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-dependent-panel {

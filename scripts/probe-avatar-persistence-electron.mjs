@@ -90,7 +90,9 @@ try {
         const capsuleRect = capsule?.getBoundingClientRect();
         return {
             cardRight: cardRect?.right,
+            cardTop: cardRect?.top,
             capsuleRight: capsuleRect?.right,
+            capsuleTop: capsuleRect?.top,
             rightInset: cardRect && capsuleRect ? cardRect.right - capsuleRect.right : null,
             capsuleWidth: capsuleRect?.width,
         };
@@ -106,10 +108,15 @@ try {
         const capsule = card?.querySelector('.agent-style-collapsible-container .style-collapse-header');
         const cardRect = card?.getBoundingClientRect();
         const capsuleRect = capsule?.getBoundingClientRect();
-        return { rightInset: cardRect && capsuleRect ? cardRect.right - capsuleRect.right : null };
+        return {
+            rightInset: cardRect && capsuleRect ? cardRect.right - capsuleRect.right : null,
+            topDelta: cardRect && capsuleRect ? capsuleRect.top - cardRect.top : null,
+        };
     });
     assert.ok(Number.isFinite(expandedGeometry.rightInset) && expandedGeometry.rightInset <= 24,
         `expanded custom style capsule must keep its right alignment (inset ${expandedGeometry.rightInset}px)`);
+    assert.ok(Number.isFinite(expandedGeometry.topDelta) && Math.abs(expandedGeometry.topDelta - (geometry.capsuleTop - geometry.cardTop)) <= 1,
+        `expanded custom style capsule must keep its vertical position (delta ${expandedGeometry.topDelta}px)`);
     console.log('[avatar-probe] expanded custom style capsule keeps the same right edge', JSON.stringify(expandedGeometry));
     await page.evaluate(() => document.getElementById('userStyleCollapseHeader')?.click());
 
