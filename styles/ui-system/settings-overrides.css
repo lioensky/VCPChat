@@ -454,10 +454,10 @@
     align-items: center;
     gap: 0 8px;
     margin: 0 0 18px;
-    padding: 10px 14px;
+    padding: 10px 14px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 14px;
-    background: var(--vcp-ui-fill-0);
+    background: #fff;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 52px minmax(0, 1fr); align-items: center; align-self: center; height: 56px; min-height: 56px; gap: 8px; min-width: 0; }
@@ -618,7 +618,7 @@
     padding: 0 6px;
     border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
     border-radius: 8px;
-    background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+    background: #fff;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair:focus-within {
