@@ -86,8 +86,9 @@ try {
     const geometry = await page.evaluate(() => {
         const card = document.querySelector('.vcp-uiux-user-profile-card');
         const capsule = card?.querySelector('.agent-style-collapsible-container');
+        const header = capsule?.querySelector('.style-collapse-header');
         const cardRect = card?.getBoundingClientRect();
-        const capsuleRect = capsule?.getBoundingClientRect();
+        const capsuleRect = header?.getBoundingClientRect();
         return {
             cardRight: cardRect?.right,
             cardTop: cardRect?.top,
