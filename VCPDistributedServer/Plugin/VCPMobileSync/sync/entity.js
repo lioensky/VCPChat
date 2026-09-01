@@ -1654,11 +1654,27 @@ async function uploadAvatar({
   }
 
   const hash = computeBinaryHash(data);
+  const avatarStats = await fs.stat(avatarPath);
+  if (!avatarStats.isFile() || avatarStats.size !== data.length) {
+    await fs.unlink(avatarPath).catch(() => {});
+    throw Object.assign(
+      new Error("Avatar changed before its physical source metadata was committed"),
+      { code: "SYNC_SNAPSHOT_STALE" },
+    );
+  }
   try {
     if (centralSync) {
       await centralSync.commitAvatar(type, safeId, hash);
     } else {
-      const indexed = upsertAvatarIndex(safeId, type, avatarPath, hash);
+      const indexed = upsertAvatarIndex(
+        safeId,
+        type,
+        avatarPath,
+        hash,
+        Date.now(),
+        avatarStats.mtimeMs,
+        avatarStats.size,
+      );
       if (indexed?.changes !== 1) {
         throw new Error(`Avatar ${type}/${safeId} is deleted`);
       }

@@ -121,11 +121,27 @@ function createAvatarIndexTable(database) {
       owner_type TEXT NOT NULL,
       file_path TEXT NOT NULL,
       hash TEXT NOT NULL,
+      mtime_ms REAL NOT NULL DEFAULT 0,
+      file_size INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL,
       deleted_at INTEGER DEFAULT NULL,
       PRIMARY KEY (owner_id, owner_type)
     )
   `);
+  const columns = new Set(
+    database.prepare("PRAGMA table_info(avatar_index)").all()
+      .map((column) => column.name),
+  );
+  if (!columns.has("mtime_ms")) {
+    database.exec(
+      "ALTER TABLE avatar_index ADD COLUMN mtime_ms REAL NOT NULL DEFAULT 0",
+    );
+  }
+  if (!columns.has("file_size")) {
+    database.exec(
+      "ALTER TABLE avatar_index ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0",
+    );
+  }
 }
 
 /**
@@ -318,6 +334,8 @@ function upsertAttachmentIndex(hash, filePath) {
  * @param {string} filePath - 文件路径
  * @param {string} hash - 哈希值
  * @param {number} updatedAt - 更新时间戳
+ * @param {number} mtimeMs - 物理文件修改时间
+ * @param {number} fileSize - 物理文件字节数
  */
 function upsertAvatarIndex(
   ownerId,
@@ -325,30 +343,53 @@ function upsertAvatarIndex(
   filePath,
   hash,
   updatedAt = Date.now(),
+  mtimeMs = 0,
+  fileSize = 0,
 ) {
   const database = db;
   if (!database) return;
 
   return database.prepare(
     `
-    INSERT INTO avatar_index (owner_id, owner_type, file_path, hash, updated_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO avatar_index (
+      owner_id, owner_type, file_path, hash, mtime_ms, file_size, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(owner_id, owner_type) DO UPDATE SET 
       file_path = excluded.file_path,
       hash = excluded.hash,
+      mtime_ms = excluded.mtime_ms,
+      file_size = excluded.file_size,
       updated_at = CASE WHEN avatar_index.hash <> excluded.hash THEN excluded.updated_at ELSE avatar_index.updated_at END
     WHERE avatar_index.deleted_at IS NULL
   `,
-  ).run(ownerId, ownerType, filePath, hash, updatedAt);
+  ).run(ownerId, ownerType, filePath, hash, mtimeMs, fileSize, updatedAt);
 }
 
 function getAvatarIndex(ownerId, ownerType) {
   const database = db;
   if (!database) return null;
   return database.prepare(
-    `SELECT owner_id, owner_type, file_path, hash, updated_at, deleted_at
+    `SELECT owner_id, owner_type, file_path, hash, mtime_ms, file_size,
+            updated_at, deleted_at
      FROM avatar_index WHERE owner_id = ? AND owner_type = ?`,
   ).get(ownerId, ownerType) || null;
+}
+
+function isAvatarSourceCurrent(state, { filePath, fileSize, mtimeMs }) {
+  return Boolean(
+    state &&
+    state.deleted_at == null &&
+    Number.isFinite(state.file_size) &&
+    state.file_size >= 0 &&
+    Number.isFinite(state.mtime_ms) &&
+    state.mtime_ms > 0 &&
+    typeof state.hash === "string" &&
+    LOWERCASE_SHA256_PATTERN.test(state.hash) &&
+    pathIdentity(state.file_path) === pathIdentity(filePath) &&
+    state.file_size === fileSize &&
+    state.mtime_ms === mtimeMs
+  );
 }
 
 /**
@@ -592,6 +633,8 @@ function softDeleteAvatarIndex(
        (owner_id, owner_type, file_path, hash, updated_at, deleted_at)
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(owner_id, owner_type) DO UPDATE SET
+       mtime_ms = 0,
+       file_size = 0,
        file_path = CASE
          WHEN avatar_index.file_path = '' THEN excluded.file_path
          ELSE avatar_index.file_path
@@ -735,6 +778,7 @@ module.exports = {
   upsertAttachmentIndex,
   upsertAvatarIndex,
   getAvatarIndex,
+  isAvatarSourceCurrent,
   getOwnerState,
   getTopicState,
   getHistorySourceState,

@@ -3,6 +3,7 @@
  */
 
 const fs = require("fs").promises;
+const crypto = require("crypto");
 const path = require("path");
 const {
   initDb,
@@ -13,6 +14,7 @@ const {
   upsertTopicState,
   upsertAttachmentIndex,
   upsertAvatarIndex,
+  isAvatarSourceCurrent,
   softDeleteAvatarIndex,
   getHistorySourceState,
   isHistorySourceCurrent,
@@ -73,6 +75,45 @@ const {
 
 let chokidar = null;
 const AVATAR_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+
+async function hashFileStreaming(filePath) {
+  const file = await fs.open(filePath, "r");
+  const hasher = crypto.createHash("sha256");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let total = 0;
+  try {
+    for (;;) {
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      hasher.update(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+  } finally {
+    await file.close();
+  }
+  return { hash: hasher.digest("hex"), bytesRead: total };
+}
+
+async function hashStableAvatarFile(filePath, initialStats) {
+  let before = initialStats;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { hash, bytesRead } = await hashFileStreaming(filePath);
+    const after = await fs.stat(filePath);
+    if (
+      after.isFile() &&
+      before.mtimeMs === after.mtimeMs &&
+      before.size === after.size &&
+      bytesRead === after.size
+    ) {
+      return { hash, stats: after };
+    }
+    before = after;
+  }
+  throw Object.assign(
+    new Error(`Avatar did not become stable: ${filePath}`),
+    { code: "SYNC_SNAPSHOT_STALE" },
+  );
+}
 // Legacy config 损坏只影响当前进程中的该 Owner：保留最后一次提交索引，
 // 但本轮 Manifest 不对其做 Pull/Push/Delete，避免旧状态冒充有效物理配置。
 const unhealthyLegacyOwners = new Set();
@@ -545,12 +586,49 @@ async function reconcileAvatarFiles(appDataPath, updatedAt = Date.now()) {
   if (!database) throw new Error("Avatar database not initialized");
 
   const physicalAvatars = new Set();
+  const indexedAvatars = new Map(
+    database.prepare(
+      `SELECT owner_id, owner_type, file_path, hash, mtime_ms, file_size,
+              updated_at, deleted_at
+       FROM avatar_index`,
+    ).all().map((row) => [`${row.owner_type}\0${row.owner_id}`, row]),
+  );
   let indexedCount = 0;
+  let hashedCount = 0;
+  let skippedCount = 0;
   const indexFile = async (ownerType, ownerId, filePath) => {
-    const hash = computeBinaryHash(await fs.readFile(filePath));
-    upsertAvatarIndex(ownerId, ownerType, filePath, hash, updatedAt);
-    physicalAvatars.add(`${ownerType}\0${ownerId}`);
+    const key = `${ownerType}\0${ownerId}`;
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) {
+      throw Object.assign(new Error(`Avatar is not a regular file: ${filePath}`), {
+        code: "EINVAL",
+      });
+    }
+    physicalAvatars.add(key);
     indexedCount += 1;
+    const previous = indexedAvatars.get(key);
+    if (
+      previous?.deleted_at != null ||
+      isAvatarSourceCurrent(previous, {
+        filePath,
+        fileSize: stats.size,
+        mtimeMs: stats.mtimeMs,
+      })
+    ) {
+      skippedCount += 1;
+      return;
+    }
+    const stable = await hashStableAvatarFile(filePath, stats);
+    upsertAvatarIndex(
+      ownerId,
+      ownerType,
+      filePath,
+      stable.hash,
+      updatedAt,
+      stable.stats.mtimeMs,
+      stable.stats.size,
+    );
+    hashedCount += 1;
   };
 
   const userAvatarPath = path.join(appDataPath, "UserData", "user_avatar.png");
@@ -600,7 +678,7 @@ async function reconcileAvatarFiles(appDataPath, updatedAt = Date.now()) {
     ).changes;
   }
 
-  return { indexedCount, tombstonedCount };
+  return { indexedCount, hashedCount, skippedCount, tombstonedCount };
 }
 
 async function refreshLegacyCommitView(appDataPath, physicalOwners = null) {

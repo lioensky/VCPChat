@@ -188,6 +188,83 @@ function insertEntity(db, {
   }
 }
 
+test("Legacy Avatar 元数据迁移与快路共享同一持久状态", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-avatar-source-"));
+  const filename = path.join(directory, "sync_state_v2.db");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const oldDatabase = new DatabaseSync(filename);
+  oldDatabase.exec(`
+    CREATE TABLE avatar_index (
+      owner_id TEXT NOT NULL,
+      owner_type TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deleted_at INTEGER DEFAULT NULL,
+      PRIMARY KEY (owner_id, owner_type)
+    );
+    INSERT INTO avatar_index VALUES(
+      'agent-a', 'agent', '/avatars/avatar.png', '${"a".repeat(64)}', 100, NULL
+    );
+  `);
+  oldDatabase.close();
+
+  const { database } = loadSqliteModules();
+  const db = database.initDb(filename);
+  t.after(() => db.close());
+  assert.deepEqual(
+    db.prepare("PRAGMA table_info(avatar_index)").all()
+      .filter((column) => ["mtime_ms", "file_size"].includes(column.name))
+      .map((column) => column.name),
+    ["mtime_ms", "file_size"],
+  );
+  assert.deepEqual(
+    { ...database.getAvatarIndex("agent-a", "agent") },
+    {
+      owner_id: "agent-a",
+      owner_type: "agent",
+      file_path: "/avatars/avatar.png",
+      hash: "a".repeat(64),
+      mtime_ms: 0,
+      file_size: 0,
+      updated_at: 100,
+      deleted_at: null,
+    },
+  );
+
+  database.upsertAvatarIndex(
+    "agent-a",
+    "agent",
+    "/avatars/avatar.png",
+    "a".repeat(64),
+    200,
+    1234.5,
+    42,
+  );
+  const current = database.getAvatarIndex("agent-a", "agent");
+  assert.equal(current.updated_at, 100, "source refresh must not advance sync time");
+  assert.equal(database.isAvatarSourceCurrent(current, {
+    filePath: "/avatars/avatar.png",
+    fileSize: 42,
+    mtimeMs: 1234.5,
+  }), true);
+  assert.equal(database.isAvatarSourceCurrent(current, {
+    filePath: "/avatars/avatar.jpg",
+    fileSize: 42,
+    mtimeMs: 1234.5,
+  }), false);
+
+  database.softDeleteAvatarIndex("agent-a", "agent", 300);
+  const deleted = database.getAvatarIndex("agent-a", "agent");
+  assert.equal(deleted.mtime_ms, 0);
+  assert.equal(deleted.file_size, 0);
+  assert.equal(database.isAvatarSourceCurrent(deleted, {
+    filePath: "/avatars/avatar.png",
+    fileSize: 42,
+    mtimeMs: 1234.5,
+  }), false);
+});
+
 test("legacy Topic manifest SQL 按完整 targeted Owner 身份取数", () => {
   const { database, manifest } = loadSqliteModules();
   const db = database.initDb(":memory:");

@@ -198,7 +198,7 @@ graph TD
 | `topics` | `(owner_type, owner_id, topic_id)`；Topic DTO Hash、消息内容根、时间与墓碑 |
 | `messages` | `(owner_type, owner_id, topic_id, msg_id)`；消息指纹、LWW 时间与墓碑 |
 | `attachment_index` | `hash`；只保存本机已有 Attachment 的物理路径 |
-| `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、时间与墓碑 |
+| `avatar_index` | `(owner_id, owner_type)`；Avatar 字节 Hash、路径、`mtime_ms`/size 快路证据、同步时间与墓碑 |
 | `history_source_state` | `(owner_type, owner_id, topic_id)`；mtime、size、原始文件 SHA-256、路径与索引版本快路径 |
 
 CDS 与 Legacy 都直接从规范消息保存附件元数据，不再维护同步专用附件关系表；附件二进制不跨端同步。

@@ -13,7 +13,7 @@ use crate::{
         AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedMessage, OwnerKey, OwnerRecord,
         OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
-    storage::{now_ms, Database, IngestCommit, OwnerHashMode, SearchUpdate},
+    storage::{now_ms, AvatarSourceState, Database, IngestCommit, OwnerHashMode, SearchUpdate},
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
     sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
@@ -35,6 +35,8 @@ pub struct ReconcileStats {
     pub owners_deleted: usize,
     pub avatars_seen: usize,
     pub avatars_deleted: usize,
+    pub avatars_hashed: usize,
+    pub avatars_skipped: usize,
     pub topics_seen: usize,
     pub files_checked: usize,
     pub files_skipped: usize,
@@ -49,6 +51,27 @@ pub struct ReconcileStats {
 struct OwnerCandidate {
     key: OwnerKey,
     config_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AvatarFileVersion {
+    mtime_ms: f64,
+    file_size: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AvatarReconcileOutcome {
+    Missing,
+    Hashed,
+    Skipped,
+}
+
+#[derive(Debug, Default)]
+struct AvatarReconcileStats {
+    seen: usize,
+    deleted: usize,
+    hashed: usize,
+    skipped: usize,
 }
 
 #[derive(Clone)]
@@ -92,9 +115,11 @@ impl Reconciler {
         }
 
         stats.owners_deleted = self.database.reconcile_missing_owners(&active_owner_keys)?;
-        let (avatars_seen, avatars_deleted) = self.reconcile_avatars(&live_owner_keys)?;
-        stats.avatars_seen = avatars_seen;
-        stats.avatars_deleted = avatars_deleted;
+        let avatar_stats = self.reconcile_avatars(&live_owner_keys)?;
+        stats.avatars_seen = avatar_stats.seen;
+        stats.avatars_deleted = avatar_stats.deleted;
+        stats.avatars_hashed = avatar_stats.hashed;
+        stats.avatars_skipped = avatar_stats.skipped;
 
         self.database.set_last_reconcile_at(now_ms())?;
         stats.duration_ms = now_ms() - started;
@@ -215,11 +240,16 @@ impl Reconciler {
         let path = self
             .physical_avatar_path(key)
             .with_context(|| format!("avatar file is missing for {}", key.wire_id()))?;
-        let hash = sha256_hex(
-            &fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?,
-        );
+        let (hash, version) = stable_avatar_hash(&path, None)?;
         anyhow::ensure!(
-            self.database.upsert_avatar(key, &path, &hash, now_ms())?,
+            self.database.upsert_avatar(
+                key,
+                &path,
+                &hash,
+                version.mtime_ms,
+                version.file_size,
+                now_ms(),
+            )?,
             "avatar is tombstoned"
         );
         self.database
@@ -227,18 +257,28 @@ impl Reconciler {
             .context("committed avatar state is missing")
     }
 
-    fn reconcile_avatars(&self, live_owners: &HashSet<OwnerKey>) -> Result<(usize, usize)> {
+    fn reconcile_avatars(&self, live_owners: &HashSet<OwnerKey>) -> Result<AvatarReconcileStats> {
         let detected_at = now_ms();
         let mut active = HashSet::new();
-        let mut seen = 0;
+        let sources = self.database.avatar_source_states()?;
+        let mut stats = AvatarReconcileStats::default();
 
         let user_key = AvatarKey {
             owner_type: AvatarOwnerType::User,
             owner_id: "user_avatar".to_string(),
         };
-        if self.commit_physical_avatar(&user_key, detected_at)? {
-            active.insert(user_key);
-            seen += 1;
+        match self.commit_physical_avatar(&user_key, sources.get(&user_key), detected_at)? {
+            AvatarReconcileOutcome::Missing => {}
+            AvatarReconcileOutcome::Hashed => {
+                active.insert(user_key);
+                stats.seen += 1;
+                stats.hashed += 1;
+            }
+            AvatarReconcileOutcome::Skipped => {
+                active.insert(user_key);
+                stats.seen += 1;
+                stats.skipped += 1;
+            }
         }
 
         for owner in live_owners {
@@ -249,28 +289,54 @@ impl Reconciler {
                 },
                 owner_id: owner.owner_id.clone(),
             };
-            if self.commit_physical_avatar(&key, detected_at)? {
-                active.insert(key);
-                seen += 1;
+            match self.commit_physical_avatar(&key, sources.get(&key), detected_at)? {
+                AvatarReconcileOutcome::Missing => {}
+                AvatarReconcileOutcome::Hashed => {
+                    active.insert(key);
+                    stats.seen += 1;
+                    stats.hashed += 1;
+                }
+                AvatarReconcileOutcome::Skipped => {
+                    active.insert(key);
+                    stats.seen += 1;
+                    stats.skipped += 1;
+                }
             }
         }
 
-        let deleted = self
+        stats.deleted = self
             .database
             .reconcile_missing_avatars(&active, detected_at)?;
-        Ok((seen, deleted))
+        Ok(stats)
     }
 
-    fn commit_physical_avatar(&self, key: &AvatarKey, detected_at: i64) -> Result<bool> {
+    fn commit_physical_avatar(
+        &self,
+        key: &AvatarKey,
+        previous: Option<&AvatarSourceState>,
+        detected_at: i64,
+    ) -> Result<AvatarReconcileOutcome> {
         let Some(path) = self.physical_avatar_path(key) else {
-            return Ok(false);
+            return Ok(AvatarReconcileOutcome::Missing);
         };
-        let bytes =
-            fs::read(&path).with_context(|| format!("failed to read avatar {}", path.display()))?;
-        let hash = sha256_hex(&bytes);
-        self.database
-            .upsert_avatar(key, &path, &hash, detected_at)?;
-        Ok(true)
+        if previous.is_some_and(|state| state.deleted_at.is_some()) {
+            return Ok(AvatarReconcileOutcome::Skipped);
+        }
+        let version = avatar_file_version(&path)
+            .with_context(|| format!("failed to stat avatar {}", path.display()))?;
+        if previous.is_some_and(|state| avatar_source_is_current(state, &path, version)) {
+            return Ok(AvatarReconcileOutcome::Skipped);
+        }
+        let (hash, version) = stable_avatar_hash(&path, Some(version))?;
+        self.database.upsert_avatar(
+            key,
+            &path,
+            &hash,
+            version.mtime_ms,
+            version.file_size,
+            detected_at,
+        )?;
+        Ok(AvatarReconcileOutcome::Hashed)
     }
 
     fn physical_avatar_path(&self, key: &AvatarKey) -> Option<std::path::PathBuf> {
@@ -1143,6 +1209,63 @@ fn sha256_file(path: &Path) -> std::io::Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+fn avatar_file_version(path: &Path) -> std::io::Result<AvatarFileVersion> {
+    let metadata = fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            "avatar source is not a regular file",
+        ));
+    }
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs_f64() * 1_000.0)
+        .unwrap_or(0.0);
+    let file_size = metadata.len().min(i64::MAX as u64) as i64;
+    Ok(AvatarFileVersion {
+        mtime_ms,
+        file_size,
+    })
+}
+
+fn avatar_source_is_current(
+    state: &AvatarSourceState,
+    path: &Path,
+    version: AvatarFileVersion,
+) -> bool {
+    state.deleted_at.is_none()
+        && state.file_path == path
+        && state.mtime_ms > 0.0
+        && state.mtime_ms == version.mtime_ms
+        && state.file_size == version.file_size
+        && is_internal_sha256(Some(&state.hash))
+}
+
+fn stable_avatar_hash(
+    path: &Path,
+    initial: Option<AvatarFileVersion>,
+) -> Result<(String, AvatarFileVersion)> {
+    let mut before = initial;
+    for _ in 0..3 {
+        let version = match before.take() {
+            Some(version) => version,
+            None => avatar_file_version(path)
+                .with_context(|| format!("failed to stat avatar {}", path.display()))?,
+        };
+        let hash = sha256_file(path)
+            .with_context(|| format!("failed to hash avatar {}", path.display()))?;
+        let after = avatar_file_version(path)
+            .with_context(|| format!("failed to restat avatar {}", path.display()))?;
+        if version == after {
+            return Ok((hash, after));
+        }
+        before = Some(after);
+    }
+    anyhow::bail!("avatar did not become stable: {}", path.display())
+}
+
 fn is_internal_sha256(value: Option<&str>) -> bool {
     value.is_some_and(|hash| {
         hash.len() == 64
@@ -1285,12 +1408,12 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        normalize_history, parse_owner_config, sha256_hex, topic_timestamp_from_id,
-        write_history_atomic, Reconciler, SnapshotStale,
+        avatar_file_version, normalize_history, parse_owner_config, sha256_hex,
+        topic_timestamp_from_id, write_history_atomic, Reconciler, SnapshotStale,
     };
     use crate::{
         config::{Cli, ServiceConfig},
-        domain::{OwnerType, TopicKey},
+        domain::{AvatarKey, AvatarOwnerType, OwnerType, TopicKey},
         error::ServiceError,
         identity::{IdentityResolver, OwnerResolution, OwnerSelector},
         search::{MessageSearchRequest, SearchIndex},
@@ -1407,6 +1530,90 @@ mod tests {
             serde_json::to_vec_pretty(&history).expect("serialize history"),
         )
         .expect("write history");
+    }
+
+    #[tokio::test]
+    async fn avatar_full_reconcile_uses_metadata_but_explicit_commit_rehashes() {
+        let (_temp, config, database, reconciler) = fixture();
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            "agent-avatar",
+            "Avatar Agent",
+            &[],
+        );
+        let avatar_path = config.agents_dir.join("agent-avatar/avatar.png");
+        fs::write(&avatar_path, b"avatar-old").expect("write initial avatar");
+
+        let first = reconciler
+            .reconcile()
+            .await
+            .expect("first avatar reconcile");
+        assert_eq!(
+            (
+                first.avatars_seen,
+                first.avatars_hashed,
+                first.avatars_skipped
+            ),
+            (1, 1, 0)
+        );
+        let key = AvatarKey {
+            owner_type: AvatarOwnerType::Agent,
+            owner_id: "agent-avatar".to_string(),
+        };
+        let initial = database
+            .avatar_state(&key)
+            .expect("read initial avatar state")
+            .expect("initial avatar state");
+
+        let unchanged = reconciler
+            .reconcile()
+            .await
+            .expect("unchanged avatar reconcile");
+        assert_eq!(
+            (
+                unchanged.avatars_seen,
+                unchanged.avatars_hashed,
+                unchanged.avatars_skipped
+            ),
+            (1, 0, 1),
+        );
+
+        let moved_path = config.agents_dir.join("agent-avatar/avatar.jpg");
+        fs::rename(&avatar_path, &moved_path).expect("change avatar extension");
+        let moved = reconciler
+            .reconcile()
+            .await
+            .expect("moved avatar reconcile");
+        assert_eq!((moved.avatars_hashed, moved.avatars_skipped), (1, 0));
+        let moved_state = database
+            .avatar_state(&key)
+            .expect("read moved avatar state")
+            .expect("moved avatar state");
+        assert_eq!(moved_state.file_path, moved_path);
+        assert_eq!(moved_state.updated_at, initial.updated_at);
+
+        fs::write(&moved_path, b"avatar-new").expect("replace avatar bytes");
+        let version = avatar_file_version(&moved_path).expect("read replacement version");
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE avatars SET mtime_ms=?3, file_size=?4
+                     WHERE owner_type=?1 AND owner_id=?2",
+                    rusqlite::params![
+                        key.owner_type.as_str(),
+                        key.owner_id,
+                        version.mtime_ms,
+                        version.file_size,
+                    ],
+                )
+                .expect("poison cached source evidence");
+        }
+        let committed = reconciler
+            .commit_avatar(&key)
+            .expect("explicit commit must force hash");
+        assert_eq!(committed.hash, sha256_hex(b"avatar-new"));
     }
 
     #[test]

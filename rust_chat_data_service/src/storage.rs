@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS avatars (
     owner_id TEXT NOT NULL,
     file_path TEXT NOT NULL,
     hash TEXT NOT NULL,
+    mtime_ms REAL NOT NULL DEFAULT 0,
+    file_size INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL,
     deleted_at INTEGER,
     PRIMARY KEY (owner_type, owner_id)
@@ -207,6 +209,15 @@ pub struct SourceMetadata {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AvatarSourceState {
+    pub file_path: PathBuf,
+    pub hash: String,
+    pub mtime_ms: f64,
+    pub file_size: i64,
+    pub deleted_at: Option<i64>,
+}
+
 impl SourceMetadata {
     pub fn matches_topic(&self, key: &TopicKey) -> bool {
         self.owner_type == key.owner_type.as_str()
@@ -339,6 +350,7 @@ impl Database {
             transaction.execute_batch(COLLAPSE_V1_TOMBSTONES)?;
         }
         migrate_sync_hash_contract(&transaction)?;
+        ensure_avatar_source_metadata(&transaction)?;
         transaction.execute(
             "INSERT INTO service_meta(key, value) VALUES('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -553,16 +565,21 @@ impl Database {
         key: &AvatarKey,
         file_path: &Path,
         hash: &str,
+        mtime_ms: f64,
+        file_size: i64,
         updated_at: i64,
     ) -> Result<bool> {
         let connection = self.connection.lock();
         let changed = connection.execute(
             "INSERT INTO avatars(
-                owner_type, owner_id, file_path, hash, updated_at, deleted_at
-             ) VALUES(?1, ?2, ?3, ?4, ?5, NULL)
+                owner_type, owner_id, file_path, hash, mtime_ms, file_size,
+                updated_at, deleted_at
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
              ON CONFLICT(owner_type, owner_id) DO UPDATE SET
                 file_path=excluded.file_path,
                 hash=excluded.hash,
+                mtime_ms=excluded.mtime_ms,
+                file_size=excluded.file_size,
                 updated_at=CASE
                     WHEN avatars.hash IS excluded.hash THEN avatars.updated_at
                     ELSE excluded.updated_at
@@ -573,10 +590,36 @@ impl Database {
                 key.owner_id,
                 file_path.to_string_lossy(),
                 hash,
+                mtime_ms,
+                file_size,
                 updated_at,
             ],
         )?;
         Ok(changed == 1)
+    }
+
+    pub fn avatar_source_states(&self) -> Result<HashMap<AvatarKey, AvatarSourceState>> {
+        let connection = self.connection.lock();
+        let mut statement = connection.prepare(
+            "SELECT owner_type, owner_id, file_path, hash, mtime_ms, file_size, deleted_at
+             FROM avatars",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                AvatarKey {
+                    owner_type: parse_avatar_owner_type(row.get::<_, String>(0)?),
+                    owner_id: row.get(1)?,
+                },
+                AvatarSourceState {
+                    file_path: PathBuf::from(row.get::<_, String>(2)?),
+                    hash: row.get(3)?,
+                    mtime_ms: row.get(4)?,
+                    file_size: row.get(5)?,
+                    deleted_at: row.get(6)?,
+                },
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
     }
 
     pub fn avatar_state(&self, key: &AvatarKey) -> Result<Option<AvatarRecord>> {
@@ -2093,6 +2136,19 @@ fn table_has_column(transaction: &Transaction<'_>, table: &str, column: &str) ->
     Ok(columns.iter().any(|name| name == column))
 }
 
+fn ensure_avatar_source_metadata(transaction: &Transaction<'_>) -> Result<()> {
+    if !table_has_column(transaction, "avatars", "mtime_ms")? {
+        transaction
+            .execute_batch("ALTER TABLE avatars ADD COLUMN mtime_ms REAL NOT NULL DEFAULT 0;")?;
+    }
+    if !table_has_column(transaction, "avatars", "file_size")? {
+        transaction.execute_batch(
+            "ALTER TABLE avatars ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+    Ok(())
+}
+
 fn owner_is_tombstoned(transaction: &Transaction<'_>, key: &OwnerKey) -> Result<bool> {
     transaction
         .query_row(
@@ -2160,6 +2216,8 @@ fn mark_avatar_deleted(
             owner_type, owner_id, file_path, hash, updated_at, deleted_at
          ) VALUES(?1, ?2, '', ?3, ?4, ?4)
          ON CONFLICT(owner_type, owner_id) DO UPDATE SET
+            mtime_ms=0,
+            file_size=0,
             updated_at=CASE
                 WHEN avatars.deleted_at IS NULL THEN excluded.deleted_at
                 ELSE MIN(avatars.updated_at, excluded.deleted_at)
@@ -2766,6 +2824,48 @@ mod tests {
             )
             .expect("query collapsed state");
         assert_eq!(state, (90, 80, 70, "3".to_string(), 0));
+    }
+
+    #[test]
+    fn pre_metadata_avatar_rows_gain_rebuildable_source_state_without_schema_bump() {
+        let directory = tempfile::tempdir().expect("create temp database directory");
+        let path = directory.path().join("chat.sqlite3");
+        {
+            let connection = Connection::open(&path).expect("open legacy avatar database");
+            connection
+                .execute_batch(
+                    "CREATE TABLE avatars (
+                        owner_type TEXT NOT NULL,
+                        owner_id TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        hash TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        deleted_at INTEGER,
+                        PRIMARY KEY (owner_type, owner_id)
+                     );
+                     CREATE TABLE service_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                     INSERT INTO service_meta VALUES('schema_version', '3');
+                     INSERT INTO avatars VALUES(
+                        'agent', 'agent-a', 'avatar.png',
+                        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                        7, NULL
+                     );",
+                )
+                .expect("seed legacy avatar schema");
+        }
+
+        let database = Database::open(&path).expect("upgrade avatar source metadata");
+        let connection = database.connection.lock();
+        let state: (f64, i64, i64, String) = connection
+            .query_row(
+                "SELECT mtime_ms, file_size, updated_at,
+                        (SELECT value FROM service_meta WHERE key='schema_version')
+                 FROM avatars WHERE owner_type='agent' AND owner_id='agent-a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("query migrated avatar row");
+        assert_eq!(state, (0.0, 0, 7, "3".to_string()));
     }
 
     #[test]

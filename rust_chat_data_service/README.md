@@ -11,7 +11,7 @@ VCP-CDS 是 VCPChat 的中央聊天数据服务。第一阶段建立旁路镜像
 - DeepMemo 通过中央搜索接口工作。
 - `MobileSyncUseCentralIndex=True` 时，VCPMobileSync 的 Manifest、Topic/Message Diff、
   Message Pull/Push 与消息 Tombstone 由 VCP-CDS 提供。
-- 中央同步模式不打开或写入 `sync_state_v2.db`，也不启动 Legacy 历史扫描和 watcher；插件只保留进程内配置/附件兼容视图，Avatar 状态由 CDS 数据库持久化，头像字节仍由插件读写物理文件。
+- 中央同步模式不打开或写入 `sync_state_v2.db`，也不启动 Legacy 历史扫描和 watcher；插件只保留进程内配置/附件兼容视图，Avatar 状态由 CDS 数据库持久化，头像字节仍由插件读写物理文件。全量 reconcile 以持久化的路径、`mtime_ms` 与 size 跳过未变化头像，显式 commit 与 watcher 事件仍强制校验 SHA-256。
 - 关闭 `MobileSyncUseCentralIndex` 可恢复旧同步索引链路；旧数据库文件不会自动删除。
 - 普通桌面聊天保存仍先写 `history.json`，由直接通知或 `notify` 摄取。
 - VCP-CDS 的 Mobile Push 属于同步数据面：它会把 Mobile wire DTO 投影为 VCPChat 原生消息后写回 `history.json`，但不会参与模型调用、提示词、渲染或普通聊天保存。
