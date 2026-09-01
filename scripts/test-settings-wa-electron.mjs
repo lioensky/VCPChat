@@ -201,6 +201,43 @@ try {
     assert.equal(await page.evaluate(() => document.querySelectorAll('#globalSettingsModal > #chatFontSettingsGroup, #globalSettingsModal #chatFontSettingsGroup').length), 0, 'chat font control has no separate legacy row');
     assert.equal(await page.evaluate(() => document.querySelectorAll('#globalSettingsModal > #chatCodeFontSettingsGroup, #globalSettingsModal #chatCodeFontSettingsGroup').length), 0, 'code font control has no separate legacy row');
     console.log('  [PASS] scenario preview uses a 2x2 card grid');
+
+    // Chat presentation modes follow the DSH appearance-cube contract:
+    // three equal cards, icon-over-label, selected state on the whole card,
+    // and native radios retained as the business field underneath.
+    const presentationModes = await page.evaluate(() => {
+        const root = document.querySelector('#globalSettingsModal .chat-presentation-mode-selector');
+        const grid = root?.querySelector('.chat-presentation-mode-options');
+        const cards = [...(root?.querySelectorAll('.chat-presentation-mode-option') || [])];
+        const rects = cards.map(card => card.getBoundingClientRect());
+        return {
+            count: cards.length,
+            columns: grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 0,
+            equalWidths: rects.length === 3 && rects.every(rect => Math.abs(rect.width - rects[0].width) <= 2),
+            sameRow: rects.length === 3 && rects.every(rect => Math.abs(rect.top - rects[0].top) <= 2),
+            iconCount: cards.filter(card => card.querySelector('.chat-presentation-mode-icon')).length,
+            selectedValue: root?.querySelector('input[type="radio"]:checked')?.value || '',
+            descriptionsVisuallyHidden: cards.every(card => {
+                const small = card.querySelector('small');
+                if (!small) return false;
+                const style = getComputedStyle(small);
+                return style.position === 'absolute' && style.width === '1px' && style.height === '1px';
+            }),
+        };
+    });
+    assert.equal(presentationModes.count, 3, 'three chat presentation mode cards are present');
+    assert.equal(presentationModes.columns, 3, `presentation mode cards use three columns: ${presentationModes.columns}`);
+    assert.equal(presentationModes.equalWidths, true, 'presentation mode cards have equal widths');
+    assert.equal(presentationModes.sameRow, true, 'presentation mode cards share one row');
+    assert.equal(presentationModes.iconCount, 3, 'presentation mode cards expose one icon each');
+    assert.equal(presentationModes.selectedValue, 'bubble', 'bubble mode starts selected');
+    assert.equal(presentationModes.descriptionsVisuallyHidden, true, 'presentation mode descriptions do not alter card geometry');
+    await page.evaluate(() => document.querySelector('#chatPresentationModePanel')?.closest('label')?.click());
+    assert.equal(await page.evaluate(() => document.querySelector('#chatPresentationModePanel')?.checked), true, 'clicking a presentation card selects its native radio');
+    await page.evaluate(() => document.querySelector('#chatPresentationModeBubble')?.closest('label')?.click());
+    assert.equal(await page.evaluate(() => document.querySelector('#chatPresentationModeBubble')?.checked), true, 'presentation card selection can switch back without rebuilding the form');
+    await sleep(120);
+    console.log('  [PASS] presentation modes use DSH-style three-card selector');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });
 
@@ -258,6 +295,10 @@ try {
     await setTheme(page, 'dark');
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), { timeout: timeoutMs });
+    await page.evaluate(() => {
+        document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[2]?.click();
+        document.querySelector('#globalSettingsModal .chat-presentation-mode-selector')?.scrollIntoView({ block: 'center' });
+    });
     await new Promise(resolve => setTimeout(resolve, 250));
     await page.screenshot({ path: darkShot, clip: { x: 0, y: 0, width: 700, height: 500 } });
     const darkStat = await fs.stat(darkShot);
@@ -267,6 +308,7 @@ try {
 
     // ---- 5. Light screenshot (700×500) ----
     await setTheme(page, 'light');
+    await page.evaluate(() => document.querySelector('#globalSettingsModal .chat-presentation-mode-selector')?.scrollIntoView({ block: 'center' }));
     await new Promise(resolve => setTimeout(resolve, 250));
     await page.screenshot({ path: lightShot, clip: { x: 0, y: 0, width: 700, height: 500 } });
     const lightStat = await fs.stat(lightShot);
