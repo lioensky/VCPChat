@@ -238,6 +238,24 @@ try {
     assert.equal(await page.evaluate(() => document.querySelector('#chatPresentationModeBubble')?.checked), true, 'presentation card selection can switch back without rebuilding the form');
     await sleep(120);
     console.log('  [PASS] presentation modes use DSH-style three-card selector');
+
+    const bubbleOptionRows = await page.evaluate(() => ['enableUserChatBubbleUi', 'showUserMetaInChatBubbleUi'].map(id => {
+        const input = document.getElementById(id);
+        const row = input?.closest('.vcp-uiux-general-row');
+        const copy = row?.querySelector('.vcp-uiux-row-copy') || row?.children[0];
+        const toggle = input?.closest('.switch');
+        if (!row || !copy || !toggle) return null;
+        const rowRect = row.getBoundingClientRect();
+        const copyRect = copy.getBoundingClientRect();
+        const toggleRect = toggle.getBoundingClientRect();
+        return { rowRight: rowRect.right, copyTop: copyRect.top, copyBottom: copyRect.bottom, toggleLeft: toggleRect.left, toggleRight: toggleRect.right, toggleTop: toggleRect.top, toggleBottom: toggleRect.bottom };
+    }).filter(Boolean));
+    assert.equal(bubbleOptionRows.length, 2, 'bubble option switch rows are present');
+    bubbleOptionRows.forEach((geometry, index) => {
+        assert.ok(geometry.toggleRight >= geometry.rowRight - 4, `bubble option switch ${index + 1} is right aligned: ${JSON.stringify(geometry)}`);
+        assert.ok(geometry.toggleTop < geometry.copyBottom && geometry.toggleBottom > geometry.copyTop, `bubble option switch ${index + 1} shares the copy row: ${JSON.stringify(geometry)}`);
+    });
+    console.log('  [PASS] bubble option switches stay on the right');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });
 
