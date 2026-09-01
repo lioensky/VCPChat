@@ -14,7 +14,7 @@
 import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, mountUiuxSwitches, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
 import { mountSettingsAutosave, flushLegacyAutosave, teardownLegacyAutosave } from './settings/autosave.js';
 import { claimSaveCoordinator, getSaveCoordinator } from './settings/save-coordinator.js';
-import { mountCanonicalSettingsRows, removeLegacySubsectionHeadings } from './settings/canonical-rows.js';
+import { mountCanonicalSettingsRows } from './settings/canonical-rows.js';
 import { runSettingsPipeline } from './settings/pipeline.js';
 import { syncRenderSettingsVisibility } from './settings/render-visibility.js';
 import { mountAppearanceSelects, mountAppearanceLanguageRows, mountChatFontRows, mountAppearanceRadiusLanguageRow, mountAppearanceFontSizeRow } from './settings/appearance-controls.js';

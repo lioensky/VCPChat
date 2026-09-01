@@ -16,6 +16,7 @@ function sectionKeyForSection(section) {
     // attribute is authoritative so renaming the visible title cannot silently
     // re-key the section.  The Chinese-title map stays as a fallback for DOM
     // built without the attribute (test fixtures, partial templates).
+    // （M4：sectionKeyForTitle 独立导出已退役——分区壳永远带戳。）
     const key = section?.dataset?.settingsSectionKey;
     if (key) return key;
     const title = section?.querySelector?.(':scope > .settings-section-title')?.textContent?.trim();

@@ -18,8 +18,7 @@ assert.match(`${bridge}\n${identity}`, /(?:function mountTypedAvatarColorPair|ex
 assert.match(`${bridge}\n${choices}`, /(?:function mountTypedGlobalChoiceGroups|export function mountChoiceControls)\(/, 'choice owner must remain explicit');
 assert.match(bridge, /function mountUiuxInputs\(/, 'input owner must remain explicit');
 assert.match(rows, /sectionKeyForRow\(row\)/, 'canonical rows must publish section ownership metadata');
-assert.match(rows, /section\.dataset\.settingsSectionKey/, 'canonical section roots must honor the stamped section key attribute');
-assert.match(rows, /sectionKeyForTitle\(/, 'canonical section roots must keep the title map as fallback');
+assert.match(ownership, /section\?\.dataset\?\.settingsSectionKey/, 'section ownership must honor the stamped section key attribute');
 assert.match(advancedVisibility, /export function syncAdvancedSettingsVisibility\(form\)/, 'advanced helper must expose one section projection contract');
 assert.match(rustVisibility, /export function syncRustAssistantVisibility\(form\)/, 'Rust helper must expose one section projection contract');
 assert.match(`${bridge}\n${typedOwners}`, /syncAdvancedSettingsVisibility\(form\)/, 'the bridge composition must invoke the advanced section helper');
@@ -57,7 +56,20 @@ const controlProbeAllowlist = new Map([
     ['userUseThemeColorsInChat', 'absent upstream as well; pre-existing optional control'],
     ['stripRegexListContainer', 'absent upstream as well; pre-existing optional container'],
 ]);
-const htmlIds = new Set([...mainHtml.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]));
+// M4 起设置分区没有静态标记：JS 绑定的 id 必须存在于 main.html（模态壳、
+// 导航与非设置域）或 schema 编译产物之中。
+const { JSDOM } = await import('jsdom');
+const schemaDoc = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' }).window.document;
+const { schemaSurfaceSections } = await import('../modules/settings/schema-surface.js');
+const { renderSchemaSection } = await import('../modules/settings/render/field-renderer.js');
+const schemaSurfaceHost = schemaDoc.createElement('div');
+for (const sectionDescriptor of schemaSurfaceSections()) {
+    schemaSurfaceHost.append(...renderSchemaSection(sectionDescriptor, schemaDoc));
+}
+const htmlIds = new Set([
+    ...[...mainHtml.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]),
+    ...[...schemaSurfaceHost.innerHTML.matchAll(/id="([A-Za-z][A-Za-z0-9_-]*)"/g)].map(match => match[1]),
+]);
 const missingControls = [];
 for (const relativePath of controlProbeFiles) {
     const source = fs.readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');

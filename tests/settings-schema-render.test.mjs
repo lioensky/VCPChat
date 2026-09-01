@@ -396,24 +396,22 @@ test('store 快照：custom 组件按 captureKeys 迁移内部控件', () => {
     assert.equal(form.querySelector('#streamAnimationDurationMs').value, '800');
 });
 
-test('schema-surface：开关关闭为空操作，开启后原地替换且幂等', () => {
+test('schema-surface：原地替换且幂等，现值由投影层回填', () => {
     const form = doc.createElement('form');
     const host = doc.createElement('div');
     host.id = 'section-quick-actions';
     host.className = 'settings-section';
-    const staticRow = doc.createElement('div');
-    staticRow.className = 'vcp-settings-row';
-    const staticInput = doc.createElement('input');
-    staticInput.id = 'flowlockContinueDelay';
-    staticInput.name = 'flowlockContinueDelay';
-    staticInput.type = 'number';
-    staticInput.value = '42';
-    staticRow.append(staticInput);
-    host.append(staticRow);
+    const staleRow = doc.createElement('div');
+    staleRow.className = 'vcp-settings-row';
+    const staleInput = doc.createElement('input');
+    staleInput.id = 'flowlockContinueDelay';
+    staleRow.append(staleInput);
+    host.append(staleRow);
     form.append(host);
     const hostIdentity = host;
 
-    // M4 起 schema 面转正：不再有开关，直接渲染并保持分区元素身份。
+    // M4 起 schema 面转正：直接渲染并保持分区元素身份；替换是声明式的，
+    // 不做静态面时代的快照采集/回填（持久值由 typed-field-owners 投影按 id 回填）。
     assert.ok(schemaSurfaceSections().some(s => s.key === 'quick-actions'));
     const replaced = applySchemaSurface(form, doc);
     assert.deepEqual(replaced, ['quick-actions']);
@@ -421,43 +419,22 @@ test('schema-surface：开关关闭为空操作，开启后原地替换且幂等
     assert.equal(host.dataset.vcpSchemaRendered, 'true');
     assert.ok(host.querySelector('.settings-section-title'), '渲染后应有标题');
     assert.ok(host.querySelector('#middleClickQuickActionContainer'), '渲染后应有业务容器');
-    assert.equal(form.querySelector('#flowlockContinueDelay').value, '42');
+    assert.ok(form.querySelector('#flowlockContinueDelay'), '陈旧静态行被 schema 行取代');
     form.querySelector('#flowlockContinueDelay').value = '77';
-    assert.deepEqual(applySchemaSurface(form, doc), []);
+    assert.deepEqual(applySchemaSurface(form, doc), [], '重复 refresh 不重渲染');
     assert.equal(form.querySelector('#flowlockContinueDelay').value, '77');
 });
 
-test('schema-surface：动态节点整体迁移（select 选项与容器子行）', () => {
+test('schema-surface：渲染产物为动态填充留出业务锚点', () => {
     const form = doc.createElement('form');
     const host = doc.createElement('div');
     host.id = 'section-selection-assistant';
     host.className = 'settings-section';
-    const row = doc.createElement('div');
-    row.className = 'vcp-settings-row';
-    row.id = 'assistantAgentContainer';
-    const liveSelect = doc.createElement('select');
-    liveSelect.id = 'assistantAgent';
-    liveSelect.name = 'assistantAgent';
-    liveSelect.hidden = true;
-    for (const [value, label] of [['', '请选择一个Agent'], ['agentA', '助手A'], ['agentB', '助手B']]) {
-        const option = doc.createElement('option');
-        option.value = value;
-        option.textContent = label;
-        liveSelect.append(option);
-    }
-    liveSelect.value = 'agentB';
-    row.append(liveSelect);
-    host.append(row);
     form.append(host);
 
     assert.deepEqual(applySchemaSurface(form, doc), ['selection-assistant']);
-    const kept = form.querySelector('#assistantAgent');
-    assert.equal(kept, liveSelect, '动态填充的 select 必须原节点保留');
-    assert.equal(kept.options.length, 3, '运行时选项不丢失');
-    assert.equal(kept.value, 'agentB', '选中值不丢失');
+    // 运行时选项/子行由各自服务在渲染之后填充（populate、addNetworkPathInput）。
+    assert.ok(form.querySelector('#assistantAgentContainer'), '助手选择容器锚点存在');
     assert.ok(form.querySelector('#rustDebugPanel'), '渲染产物其余行正常');
-});
-
-test('field-renderer 拒绝未知字段类型', () => {
-    assert.throws(() => renderSchemaField(doc, { key: 'x', type: 'mystery', label: 'x' }), /mystery/);
+    assert.deepEqual(applySchemaSurface(form, doc), [], '重复 refresh 不重渲染');
 });

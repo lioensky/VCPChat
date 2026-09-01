@@ -1,6 +1,5 @@
 // schema/server-connection — "服务器连接" 分区（M1）。
 // 两张可折叠卡片（VCP 连接 / 网络笔记）；网络笔记的路径容器是运行时
-// 动态填充的业务锚点，按 adoptNodeIds 整体保留节点。
 import { section, card, text, button, custom } from './kernel.js';
 
 // 网络笔记路径容器：子行由 typed-field-owners 动态追加，渲染器只出壳。
@@ -54,5 +53,4 @@ export const serverConnectionSection = section('server-connection', '服务器�
         ],
     }),
 ], {
-    adoptNodeIds: ['networkNotesPathsContainer'],
 });

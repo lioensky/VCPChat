@@ -37,7 +37,7 @@ test('single-concern modules import cleanly and expose their contract', async ()
     autosave.teardownLegacyAutosave();
 
     const rows = await import(pathToFileURL(path.join(settingsDir, 'canonical-rows.js')).href);
-    assert.deepEqual(Object.keys(rows).sort(), ['mountCanonicalSettingsRows', 'removeLegacySubsectionHeadings']);
+    assert.deepEqual(Object.keys(rows).sort(), ['mountCanonicalSettingsRows']);
 
     const fields = await import(pathToFileURL(path.join(settingsDir, 'field-registry.js')).href);
     assert.deepEqual(
@@ -151,7 +151,7 @@ test('each extracted function has exactly one home (entry or module, never both)
     const entry = read(bridgeEntry);
     const functions = [
         'mountSelectKeyboardGlue', 'mountUiuxSelects', 'teardownUiuxSelects',
-        'removeLegacySubsectionHeadings', 'mountCanonicalSettingsRows', 'composeCanonicalRowSlots',
+        'mountCanonicalSettingsRows', 'composeCanonicalRowSlots',
         'mountSettingsAutosave', 'flushLegacyAutosave', 'teardownLegacyAutosave',
         // 2026-08-31 domain split homes.
         'enhanceForm', 'mountTypedModelPicker', 'mountTypedSettingsConsumer', 'mountTypedFieldOwner',
