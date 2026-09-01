@@ -145,7 +145,7 @@ CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名�
 
 `SERVICE_BUSY` 会先在插件内部做有界退避；若最终仍需跨端上报，`retry=manual`，因为此时内部自动重试已经耗尽。
 
-消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。`contentHash` 在 Pull/Push 中都是必填的小写 SHA-256：接收端直接用于消息索引；Desktop Push 会在写物理 `history.json` 前剥离该派生字段，避免普通编辑路径留下陈旧缓存。`isThinking` 只属于运行时渲染状态，不进入持久消息 DTO。
+Legacy 物理历史在 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。CDS Pull 已输出完整 wire DTO，Central Adapter 直接转发其 `contentHash + updatedAt`，不再次 canonicalize 或重算。`contentHash` 在 Pull/Push 中都是必填的小写 SHA-256：接收端直接用于消息索引；Desktop Push 会在写物理 `history.json` 前剥离该派生字段，避免普通编辑路径留下陈旧缓存。
 
 Owner、Topic、Message 与 Avatar 的外层协议都携带完整复合身份。协议 1.5 不通过 `LIKE`、目录前缀、拼接 Avatar ID 或同名 Topic 猜身份。
 

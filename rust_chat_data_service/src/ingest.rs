@@ -981,36 +981,49 @@ fn parse_owner_config_with_topic_versions(
         .unwrap_or(&owner_id)
         .to_string();
 
-    let topics = object
+    let topic_values = object
         .get("topics")
-        .and_then(Value::as_array)
-        .map(|topics| {
-            topics
-                .iter()
-                .enumerate()
-                .filter_map(|(ordinal, value)| {
-                    let topic = value.as_object()?;
-                    let topic_id = string_value(topic.get("id"))?;
-                    let key = TopicKey {
-                        owner_type,
-                        owner_id: owner_id.clone(),
-                        topic_id: topic_id.clone(),
-                    };
-                    Some(TopicDefinition {
-                        config_hash: topic_versions
-                            .get(&topic_id)
-                            .map(|version| version.config_hash.clone())
-                            .unwrap_or_else(|| mobile_topic_config_hash(&key, value)),
-                        topic_id,
-                        display_name: string_value(topic.get("name")),
-                        created_at: integer_value(topic.get("createdAt")),
-                        ordinal: ordinal as i64,
-                        metadata: value.clone(),
-                    })
-                })
-                .collect::<Vec<_>>()
+        .context("owner config requires topics")?
+        .as_array()
+        .context("owner config topics must be an array")?;
+    let mut seen_topic_ids = HashSet::with_capacity(topic_values.len());
+    let topics = topic_values
+        .iter()
+        .enumerate()
+        .map(|(ordinal, value)| -> Result<TopicDefinition> {
+            let topic = value.as_object().with_context(|| {
+                format!("owner config Topic at ordinal {ordinal} must be an object")
+            })?;
+            let topic_id = topic
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|topic_id| !topic_id.is_empty())
+                .map(str::to_string)
+                .with_context(|| {
+                    format!("owner config Topic at ordinal {ordinal} requires a string id")
+                })?;
+            anyhow::ensure!(
+                seen_topic_ids.insert(topic_id.clone()),
+                "owner config contains duplicate Topic {topic_id}"
+            );
+            let key = TopicKey {
+                owner_type,
+                owner_id: owner_id.clone(),
+                topic_id: topic_id.clone(),
+            };
+            Ok(TopicDefinition {
+                config_hash: topic_versions
+                    .get(&topic_id)
+                    .map(|version| version.config_hash.clone())
+                    .unwrap_or_else(|| mobile_topic_config_hash(&key, value)),
+                topic_id,
+                display_name: string_value(topic.get("name")),
+                created_at: integer_value(topic.get("createdAt")),
+                ordinal: ordinal as i64,
+                metadata: value.clone(),
+            })
         })
-        .unwrap_or_default();
+        .collect::<Result<Vec<_>>>()?;
 
     let source_config_hash = sha256_hex(&bytes);
     Ok(OwnerRecord {

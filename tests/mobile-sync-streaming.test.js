@@ -23,9 +23,6 @@ const {
 const {
   ChatDataServiceClient,
 } = require("../modules/services/chatDataService/client");
-const {
-  computeMessageFingerprint,
-} = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/hash");
 
 function createClientAdapter(client) {
   return createCentralSyncAdapter({ chatDataService: { client } });
@@ -81,96 +78,6 @@ function assertWriterListenersClean(response) {
   assert.equal(response.listenerCount("close"), 0);
   assert.equal(response.listenerCount("error"), 0);
 }
-
-test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
-  const response = new FakeResponse({ blockFirstWrite: true });
-  let advancedBeforeDrain = null;
-  const hash = "a".repeat(64);
-  const client = {
-    async *requestNdjson(method, route, body, options) {
-      assert.equal(method, "POST");
-      assert.equal(route, "/v3/sync/messages/pull");
-      assert.deepEqual(body, {
-        topics: [
-          { topicId: "topic-a", ownerType: "agent", ownerId: "agent-a", messageIds: [] },
-          { topicId: "topic-b", ownerType: "group", ownerId: "group-b", messageIds: [] },
-        ],
-      });
-      assert.ok(options.signal instanceof AbortSignal);
-      yield {
-        kind: "topic",
-        topicId: "topic-a",
-        ownerType: "agent",
-        ownerId: "agent-a",
-        ok: true,
-        messages: [
-          {
-            id: "m-a",
-            role: "user",
-            content: "hello",
-            timestamp: "1",
-            attachments: [
-              {
-                type: "text/plain",
-                name: "legacy.txt",
-                size: 5,
-                _fileManagerData: {
-                  hash: hash.toUpperCase(),
-                  internalPath: "desktop-internal-path-must-not-cross-wire",
-                },
-              },
-            ],
-          },
-        ],
-      };
-      advancedBeforeDrain = response.blocked;
-      yield {
-        kind: "topic",
-        topicId: "topic-b",
-        ownerType: "group",
-        ownerId: "group-b",
-        ok: true,
-        messages: [],
-      };
-    },
-  };
-  const adapter = createClientAdapter(client);
-
-  await adapter.pullMessagesStreamRaw(
-    [
-      {
-        topicId: "topic-a",
-        ownerType: "agent",
-        ownerId: "agent-a",
-        messageIds: [],
-      },
-      {
-        topicId: "topic-b",
-        ownerType: "group",
-        ownerId: "group-b",
-        messageIds: [],
-      },
-    ],
-    response,
-  );
-
-  assert.equal(advancedBeforeDrain, false);
-  assert.equal(response.ended, true);
-  const frames = response.frames();
-  assert.equal(frames.length, 2);
-  assert.equal(frames[0].kind, "topic");
-  assert.equal(frames[0].ok, true);
-  assert.equal(frames[0].messages[0].attachments[0].hash, hash);
-  assert.equal(frames[0].messages[0].attachments[0]._fileManagerData, undefined);
-  assert.equal(
-    frames[0].messages[0].contentHash,
-    computeMessageFingerprint(frames[0].messages[0]),
-  );
-  assert.deepEqual(
-    [frames[0].ownerType, frames[0].ownerId, frames[1].ownerType, frames[1].ownerId],
-    ["agent", "agent-a", "group", "group-b"],
-  );
-});
 
 test("中央 pull 在 Mobile 断开时取消真实 CDS client 流", { timeout: 1_000 }, async (t) => {
   const originalFetch = global.fetch;

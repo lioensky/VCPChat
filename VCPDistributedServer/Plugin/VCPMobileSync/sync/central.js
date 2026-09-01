@@ -3,7 +3,7 @@
 const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
-const { SyncProtocolError, canonicalizeTopicFrame } = require("./canonical");
+const { SyncProtocolError } = require("./canonical");
 const {
   requireCompoundTopicStates,
   requireMessageDiffStates,
@@ -825,27 +825,18 @@ class CentralSyncAdapter {
           [topicId],
         );
       }
-      const canonical = canonicalizeTopicFrame(rawFrame);
-      if (canonical.topicIdRewrites > 0) {
-        getLogger().logInfo(
-          "central",
-          `topicId 归一化：${topicId} 有 ${canonical.topicIdRewrites} 条消息重写为 frame topic（${canonical.topicIdRewriteSamples.join("; ")}）`,
-          "warn",
-        );
-      }
       await writer.write({
         kind: "topic",
         topicId,
-        ownerType: canonical.frame.ownerType,
-        ownerId: canonical.frame.ownerId,
+        ownerType: rawFrame.ownerType,
+        ownerId: rawFrame.ownerId,
         ok: true,
-        messages: canonical.frame.messages,
-        ...(canonical.frame.legacyAttachmentWarnings === undefined
+        messages: rawFrame.messages,
+        ...(rawFrame.legacyAttachmentWarnings === undefined
           ? {}
           : {
-              legacyAttachmentWarnings:
-                canonical.frame.legacyAttachmentWarnings,
-              warningSamples: canonical.frame.warningSamples,
+              legacyAttachmentWarnings: rawFrame.legacyAttachmentWarnings,
+              warningSamples: rawFrame.warningSamples,
             }),
       });
     }

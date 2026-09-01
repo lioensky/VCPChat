@@ -309,11 +309,15 @@ function normalizeRemoteManifestItem(item, manifestType, index) {
       item.configHash,
       `Manifest item ${index} configHash`,
     ),
-    contentHash: requireHash(
-      item.contentHash,
-      `Manifest item ${index} contentHash`,
-      { allowEmpty: true },
-    ),
+    ...(manifestType === "owner"
+      ? {
+          contentHash: requireHash(
+            item.contentHash,
+            `Manifest item ${index} contentHash`,
+            { allowEmpty: true },
+          ),
+        }
+      : {}),
     updatedAt: requireTimestamp(
       item.updatedAt,
       `Manifest item ${index} updatedAt`,
