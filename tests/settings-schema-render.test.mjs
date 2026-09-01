@@ -9,6 +9,7 @@ import { renderSettingsSection } from '../modules/settings/schema/render-setting
 import { selectionAssistantSection } from '../modules/settings/schema/selection-assistant.js';
 import { voiceSettingsSection } from '../modules/settings/schema/voice-settings.js';
 import { advancedFeaturesSection } from '../modules/settings/schema/advanced-features.js';
+import { appearanceSettingsSection } from '../modules/settings/schema/appearance-settings.js';
 import { renderSchemaSection, renderSchemaField } from '../modules/settings/render/field-renderer.js';
 import { captureSectionValues, restoreSectionValues, readControlById } from '../modules/settings/store.js';
 import { applySchemaSurface, isSchemaSurfaceEnabled, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
@@ -32,9 +33,9 @@ function renderIntoForm(sectionDescriptor) {
     return { form, host };
 }
 
-test('七分区全部登记且 schema 编译无异常', () => {
+test('八分区全部登记且 schema 编译无异常', () => {
     const keys = schemaSurfaceSections().map(s => s.key);
-    assert.deepEqual(keys, ['user-identity', 'server-connection', 'render-settings',
+    assert.deepEqual(keys, ['user-identity', 'server-connection', 'appearance-settings', 'render-settings',
         'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']);
     for (const sectionDescriptor of schemaSurfaceSections()) {
         const nodes = renderSchemaSection(sectionDescriptor, doc);
@@ -249,6 +250,105 @@ test('advanced-features：依赖行、分隔线与模型复合控件', () => {
     host.replaceChildren(...renderSchemaSection(advancedFeaturesSection, doc));
     restoreSectionValues(form, snapshot);
     assert.equal(form.querySelector('#topicSummaryModel').value, 'gpt-x');
+});
+
+test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关', () => {
+    const { form } = renderIntoForm(appearanceSettingsSection);
+    // 裸 select 行：容器 id + data-vcp-settings-row + hidden select（语言行 passes 的宿主锚点）
+    for (const key of ['appearanceDensity', 'appearanceRadius', 'appearanceTypography',
+        'appearanceFontScale', 'appearanceContentWidth', 'appearanceSurface']) {
+        const row = form.querySelector(`#${key}Row`);
+        assert.ok(row, `missing #${key}Row`);
+        assert.equal(row.getAttribute('data-vcp-settings-row'), '');
+        const selectNode = row.querySelector(`#${key}`);
+        assert.ok(selectNode?.hidden, `#${key} 应为 hidden select`);
+        assert.ok(selectNode.options.length >= 2, `#${key} 应保留全部选项`);
+    }
+    const radiusRow = form.querySelector('#appearanceSidebarRadiusLanguageRow');
+    assert.equal(radiusRow.className, 'appearance-radius-language-host');
+    assert.equal(radiusRow.querySelector('#appearanceSidebarRadius').getAttribute('aria-label'), '列表项圆角');
+    // 几何滑杆：label 整行 + heading 内嵌 output + min/max/step
+    const heightRow = form.querySelector('label[for="appearanceSidebarRowHeight"]');
+    assert.ok(heightRow.classList.contains('appearance-geometry-control'));
+    const heightOutput = heightRow.querySelector('#appearanceSidebarRowHeightValue');
+    assert.equal(heightOutput.getAttribute('for'), 'appearanceSidebarRowHeight');
+    assert.equal(heightOutput.textContent, '46px');
+    const heightInput = heightRow.querySelector('#appearanceSidebarRowHeight');
+    assert.equal(heightInput.min, '38');
+    assert.equal(heightInput.max, '64');
+    const radiusHelper = form.querySelector('label[for="appearanceCustomRadius"] small.appearance-geometry-helper');
+    assert.ok(radiusHelper, '自定义圆角行应带 geometry helper 提示');
+    // 主页视觉开关行：appearance-home-visual-setting 结构
+    const brandRow = form.querySelector('#showHomeVisualBrand').closest('.appearance-home-visual-setting');
+    assert.equal(brandRow.getAttribute('data-vcp-settings-row'), '');
+    assert.equal(brandRow.querySelector('.appearance-home-visual-copy strong').textContent, '主页视觉文字');
+    assert.equal(brandRow.querySelector('label.switch').getAttribute('aria-label'), '显示主页视觉文字');
+    assert.equal(form.querySelector('#showHomeVisualTagline').checked, true);
+    // 寄语内容：整行 label + span 标题 + maxlength
+    const taglineRow = form.querySelector('label.vcp-settings-row[for="homeVisualTagline"]');
+    assert.equal(taglineRow.querySelector(':scope > span').textContent, '寄语内容');
+    assert.equal(taglineRow.querySelector('#homeVisualTagline').getAttribute('maxlength'), '120');
+});
+
+test('appearance-settings：场景字体预览与呈现模式组件', () => {
+    const { form } = renderIntoForm(appearanceSettingsSection);
+    // 工作台卡：appearance-studio 的摘要锚点与工作台按钮
+    const workbench = form.querySelector('#appearanceSettingsWorkbenchCard');
+    assert.ok(workbench.querySelector('[data-appearance-summary-preview]'));
+    assert.ok(workbench.querySelector('[data-appearance-summary-density]'));
+    assert.ok(workbench.querySelector('[data-appearance-summary-radius]'));
+    assert.ok(workbench.querySelector('[data-appearance-summary-presentation]'));
+    assert.ok(workbench.querySelector('#openAppearanceStudioFromSettings svg'));
+    // 场景预览：四卡 + 8 个字体控件的宿主 id
+    const grid = form.querySelector('#fontScenarioPreviewGrid');
+    assert.equal(grid.querySelectorAll('.scenario-preview-card').length, 4);
+    for (const id of ['chatFontPresetRow', 'chatFontCustomRow', 'chatCodeFontPresetRow', 'chatCodeFontCustomRow',
+        'chatDiaryFontPresetRow', 'chatDiaryFontCustomRow', 'chatToolFontPresetRow', 'chatToolFontCustomRow']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    assert.equal(form.querySelector('#chatFontPreset').options.length, 8);
+    assert.equal(form.querySelector('#chatToolFontPreset').options.length, 13);
+    assert.equal(form.querySelector('#scenarioPreviewCode').textContent.includes('const sum'), true);
+    // 呈现模式：fieldset 三张 radio 卡，气泡默认选中
+    const bubble = form.querySelector('#chatPresentationModeBubble');
+    assert.equal(bubble.closest('fieldset').className, 'form-group chat-presentation-mode-selector');
+    assert.equal(bubble.value, 'bubble');
+    assert.equal(bubble.checked, true);
+    assert.equal(form.querySelector('#chatPresentationModePanel').checked, false);
+    assert.equal(bubble.closest('fieldset').getAttribute('data-vcp-style'), '10');
+});
+
+test('appearance-settings：内容宽度单选组、气泡依赖行与宽屏数字组', () => {
+    const { form, host } = renderIntoForm(appearanceSettingsSection);
+    const widthRow = form.querySelector('#chatLayoutModeNormal').closest('.form-group');
+    assert.equal(widthRow.getAttribute('data-vcp-style'), '12');
+    assert.equal(widthRow.querySelector(':scope > .vcp-settings-control-row').getAttribute('data-vcp-style'), '13');
+    assert.equal(widthRow.querySelector('label').getAttribute('data-vcp-style'), '11');
+    assert.equal(form.querySelector('#chatLayoutModeNormal').checked, true);
+    // 气泡依赖行：visible-when 子句与 hintInsideWrapper 结构
+    const bubbleRow = form.querySelector('#enableUserChatBubbleUi').closest('.vcp-settings-control-row');
+    assert.equal(bubbleRow.getAttribute('data-visible-when'), 'chatPresentationModeBubble');
+    assert.ok(bubbleRow.querySelector(':scope > div > small'));
+    const metaRow = form.querySelector('#userChatBubbleMetaSettings');
+    assert.equal(metaRow.getAttribute('data-visible-when'), 'chatPresentationModeBubble && enableUserChatBubbleUi');
+    // 宽屏数字组：三组 label+number，依赖两子句
+    const wideRow = form.querySelector('#chatBubbleMaxWidthWideDefault').closest('.vcp-settings-control-row');
+    assert.equal(wideRow.getAttribute('data-visible-when'), 'chatPresentationModeBubble && chatLayoutModeWide');
+    assert.equal(wideRow.getAttribute('data-vcp-style'), '17');
+    assert.equal(wideRow.querySelector(':scope > label').textContent, '宽屏模式自定义宽度（%）');
+    assert.equal(form.querySelector('#chatBubbleMaxWidthWideDefault').value, '92');
+    assert.equal(form.querySelector('#chatBubbleMaxWidthWideNotifications').value, '96');
+    assert.equal(form.querySelector('#chatBubbleMaxWidthWideNarrow').value, '92');
+    // 呈现模式与字体控件参与快照迁移
+    form.querySelector('#chatPresentationModePanel').checked = true;
+    form.querySelector('#chatFontCustom').value = '"LXGW WenKai", sans-serif';
+    form.querySelector('#chatBubbleMaxWidthWideDefault').value = '80';
+    const snapshot = captureSectionValues(form, appearanceSettingsSection);
+    host.replaceChildren(...renderSchemaSection(appearanceSettingsSection, doc));
+    restoreSectionValues(form, snapshot);
+    assert.equal(form.querySelector('#chatPresentationModePanel').checked, true);
+    assert.equal(form.querySelector('#chatFontCustom').value, '"LXGW WenKai", sans-serif');
+    assert.equal(form.querySelector('#chatBubbleMaxWidthWideDefault').value, '80');
 });
 
 test('canonical-rows 对编译产物投影出与静态标记一致的 canonical 行', () => {

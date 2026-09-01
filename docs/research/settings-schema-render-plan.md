@@ -109,3 +109,13 @@ dsw 语义 CSS（单层级联）
 
 - schema/advanced-features：五枚开关（33×4/15/35 历史样式与 title 提示保留）、净化深度依赖行（容器 id 锚点 + data-visible-when）、hr 分隔线（36）与话题总结模型复合控件（model-input-container，mountTypedTopicSummaryModelPicker 接管，内部输入经 captureKeys 快照迁移）。
 - 测试 15 例全绿；全套不回退；实例探针扩到七分区：37/37（控件状态映射、style/类名集合逐项一致 + 既有行为断言）；分区像素差异 0。
+
+## 十一、M3 施工记录（已完成：界面与外观分区——全部八个分区收齐）
+
+- schema/appearance-settings：工作台入口卡（appearance-studio 摘要锚点 + 打开按钮）、主页视觉开关 ×2（appearance-home-visual-setting 结构）、寄语内容（整行 label + span 标题 + maxlength）、七枚裸 select 行（密度/圆角/字体/字号/内容宽度/页面材质/列表项圆角，`#<key>Row` 宿主 + data-vcp-settings-row + hidden select，语言行/字号行 passes 原样接管）、几何滑杆 ×3（label 整行 + heading 内嵌 output + helper，appearance-ranges 挂 stepper）、场景字体预览（四卡 + 8 个字体控件，captureKeys 快照迁移）、消息呈现模式 fieldset（三张 radio 卡，captureKeys）、内容宽度单选组（rowStyle 12）、气泡依赖开关 ×2（hintInsideWrapper + visible-when）、宽屏数字组（新 numberCells 布局：行标题 + 三组 label+number + 行尾提示，双依赖子句）。
+- 渲染器新增四种历史形态：switch 的 homeVisual 变体、select 的 bareRow 变体（rowClass/ariaLabel）、range 的 geometry 变体（buildRangeInput 抽取复用）、numberCells 布局；buildSwitchControl 支持 checked/ariaLabel，buildInputBase 支持 maxlength。
+- 专属组件入 render/widgets.js：buildAppearanceWorkbenchCard（工作台 SVG 按钮逐字对齐）、buildFontScenarioPreviewRow（四场景卡选项表）、buildChatPresentationModeFieldset。
+- canonical-rows 语义确认：裸 select 行凭 data-vcp-settings-row 进候选；label/fieldset 行跳过槽位组合；分区元素 data-settings-section-key=appearance-settings 使投影行获得 appearance-row 原语标记，与静态面一致。
+- 测试 18 例全绿；全套 371/373（仅剩 2 条基线既有失败）。
+- 实例探针扩到八分区：44/44——控件状态映射、style/类名集合逐分区与静态面一致；新增行为断言（外观原语收编 7 项、呈现模式/内容宽度依赖投影、工作台摘要与场景预览渲染）；探针时序教训：依赖行 radio 变更后须等防抖自动保存落盘再取静态面基线。
+- 像素对比：八分区全部 0.0000%（含 2292px 高的外观分区）。
