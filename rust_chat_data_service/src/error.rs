@@ -20,6 +20,9 @@ pub enum ServiceError {
     #[error("ambiguous identity: {0}")]
     Ambiguous(String),
 
+    #[error("sync snapshot is stale: {0}")]
+    SnapshotStale(String),
+
     #[error("search is unavailable: {0}")]
     SearchUnavailable(String),
 
@@ -68,6 +71,12 @@ impl ServiceError {
                 StatusCode::CONFLICT,
                 "AMBIGUOUS_IDENTITY",
                 false,
+                message.clone(),
+            ),
+            Self::SnapshotStale(message) => (
+                StatusCode::CONFLICT,
+                "SYNC_SNAPSHOT_STALE",
+                true,
                 message.clone(),
             ),
             Self::SearchUnavailable(message) => (
@@ -132,3 +141,20 @@ impl From<tantivy::TantivyError> for ServiceError {
 }
 
 pub type ServiceResult<T> = Result<T, ServiceError>;
+
+#[cfg(test)]
+mod tests {
+    use super::ServiceError;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn snapshot_stale_is_a_retryable_sync_conflict() {
+        let error = ServiceError::SnapshotStale("topic changed".to_string());
+        let (status, code, retryable, message) = error.response_parts();
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(code, "SYNC_SNAPSHOT_STALE");
+        assert!(retryable);
+        assert_eq!(message, "topic changed");
+    }
+}

@@ -36,7 +36,7 @@ use crate::{
     },
     error::{ServiceError, ServiceResult},
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
-    ingest::{ReconcileStats, Reconciler},
+    ingest::{ReconcileStats, Reconciler, SnapshotStale},
     search::{MemorySearchRequest, MessageSearchRequest, SearchIndex},
     storage::{now_ms, Database},
     sync::{
@@ -518,7 +518,13 @@ async fn sync_topic_diff(
 ) -> ServiceResult<Json<TopicDiffResponse>> {
     sync::topic_diff(state.reconciler.database(), request)
         .map(Json)
-        .map_err(ServiceError::internal)
+        .map_err(|error| {
+            if let Some(stale) = error.downcast_ref::<SnapshotStale>() {
+                ServiceError::SnapshotStale(stale.to_string())
+            } else {
+                ServiceError::internal(error)
+            }
+        })
 }
 
 async fn sync_message_diff(

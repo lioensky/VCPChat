@@ -1130,8 +1130,13 @@ pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<Topi
             .get(&requested_key)
             .filter(|local| local.deleted_at.is_none())
         else {
-            changed_topics.push(requested_key);
-            continue;
+            return Err(SnapshotStale(format!(
+                "topic {}/{}/{} disappeared or became tombstoned after metadata synchronization",
+                requested_key.owner_type.as_str(),
+                requested_key.owner_id,
+                requested_key.topic_id,
+            ))
+            .into());
         };
         ensure_topic_manifest_row_healthy(local).with_context(|| {
             format!(
@@ -1141,7 +1146,16 @@ pub fn topic_diff(database: &Database, request: TopicDiffRequest) -> Result<Topi
                 requested_key.topic_id
             )
         })?;
-        if local.config_hash != state.config_hash || local.content_hash != state.content_hash {
+        if local.config_hash != state.config_hash {
+            return Err(SnapshotStale(format!(
+                "topic {}/{}/{} config changed after metadata synchronization",
+                requested_key.owner_type.as_str(),
+                requested_key.owner_id,
+                requested_key.topic_id,
+            ))
+            .into());
+        }
+        if local.content_hash != state.content_hash {
             changed_topics.push(requested_key);
         }
     }
@@ -2526,7 +2540,7 @@ mod tests {
     use crate::{
         config::{Cli, ServiceConfig},
         domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
-        ingest::{sha256_hex, Reconciler},
+        ingest::{sha256_hex, Reconciler, SnapshotStale},
         storage::Database,
         sync_wire::{
             aggregate_hash, canonicalize_message, message_fingerprint, stored_message_fingerprint,
@@ -3166,6 +3180,118 @@ mod tests {
         )
         .expect_err("malformed topic hash must fail");
         assert!(malformed.to_string().contains("invalid hash"));
+    }
+
+    #[tokio::test]
+    async fn topic_hash_diff_rejects_post_manifest_config_and_lifecycle_drift() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            br#"[{"id":"m1","role":"user","content":"one","timestamp":1}]"#,
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile");
+
+        let key = TopicKey {
+            owner_type: OwnerType::Agent,
+            owner_id: "agent-a".to_string(),
+            topic_id: "topic-a".to_string(),
+        };
+        let baseline = topic_manifest(&database, &key).expect("load committed topic state");
+        let different_content = if baseline.content_hash == "d".repeat(64) {
+            "e".repeat(64)
+        } else {
+            "d".repeat(64)
+        };
+
+        let content_only = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
+                    topic_id: key.topic_id.clone(),
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                    config_hash: baseline.config_hash.clone(),
+                    content_hash: different_content,
+                }],
+            },
+        )
+        .expect("content-only drift should enter message diff");
+        assert_eq!(content_only.changed_topics, vec![key.clone()]);
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE topics SET config_hash=?1 WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a'",
+                    ["b".repeat(64)],
+                )
+                .expect("inject committed config drift");
+        }
+        let config_error = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
+                    topic_id: key.topic_id.clone(),
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                    config_hash: baseline.config_hash.clone(),
+                    content_hash: baseline.content_hash.clone(),
+                }],
+            },
+        )
+        .expect_err("config drift must invalidate the Phase 2 snapshot");
+        assert!(config_error.downcast_ref::<SnapshotStale>().is_some());
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "UPDATE topics SET config_hash=?1, deleted_at=42 WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a'",
+                    [&baseline.config_hash],
+                )
+                .expect("inject committed tombstone drift");
+        }
+        let tombstone_error = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
+                    topic_id: key.topic_id.clone(),
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                    config_hash: baseline.config_hash.clone(),
+                    content_hash: baseline.content_hash.clone(),
+                }],
+            },
+        )
+        .expect_err("tombstone drift must invalidate the Phase 2 snapshot");
+        assert!(tombstone_error.downcast_ref::<SnapshotStale>().is_some());
+
+        {
+            let connection = database.connection.lock();
+            connection
+                .execute(
+                    "DELETE FROM topics WHERE owner_type='agent' AND owner_id='agent-a' AND topic_id='topic-a'",
+                    [],
+                )
+                .expect("inject committed topic disappearance");
+        }
+        let missing_error = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
+                    topic_id: key.topic_id.clone(),
+                    owner_type: key.owner_type,
+                    owner_id: key.owner_id.clone(),
+                    config_hash: baseline.config_hash,
+                    content_hash: baseline.content_hash,
+                }],
+            },
+        )
+        .expect_err("missing topic must invalidate the Phase 2 snapshot");
+        assert!(missing_error.downcast_ref::<SnapshotStale>().is_some());
     }
 
     #[tokio::test]

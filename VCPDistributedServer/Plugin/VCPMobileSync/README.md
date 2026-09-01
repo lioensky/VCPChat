@@ -169,8 +169,9 @@ graph TD
 * **`configHash` (配置指纹)**：对应智能体、群组或话题的自身元数据属性哈希（如名称、系统提示词、采样参数等）。
 * **`contentHash` (内容指纹 - Merkle Root)**：子话题下所有历史消息指纹进行排序后级联拼接求得的聚合哈希值。
 * **双通道差分**：
-  * **快速路径 (Fast-Path)**：如果两端的话题聚合哈希（Merkle Root）完全一致，说明历史消息 100% 对齐，**直接跳过**，不产生任何 I/O 开销与日志噪音。
-  * **详细路径 (Detailed-Path)**：如果聚合哈希不一致，Mobile 通过 `SYNC_MESSAGE_DIFF_REQUEST` 发送显式 live/墓碑状态，Desktop 返回 `pullMessageIds/pushTopic/deleteMessages`。
+  * **快速路径 (Fast-Path)**：如果两端 Topic 的 `configHash` 与 `contentHash` 都一致，**直接跳过**，不产生消息明细 I/O 与日志噪音。
+  * **详细路径 (Detailed-Path)**：只有 `configHash` 一致而 `contentHash` 不一致时，Mobile 才通过 `SYNC_MESSAGE_DIFF_REQUEST` 发送显式 live/墓碑状态，Desktop 返回 `pullMessageIds/pushTopic/deleteMessages`。
+  * **快照漂移**：Phase 2 已完成后若 Topic 配置再次变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`；Mobile 复用完整 attempt 重试，而不是把配置分歧误送入只处理消息的 Phase 3。
 
 ### Phase 3: 极速 NDJSON 流式吞吐 (Stream Ingestion)
 对于数以万计的历史聊天记录比对和拉取，由于传统 JSON 会一次性将全量数据缓冲加载到物理内存中，在移动端和 Electron 插件进程中极易诱发 OOM（内存溢出崩溃）。

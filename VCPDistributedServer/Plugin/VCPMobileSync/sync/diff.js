@@ -7,6 +7,7 @@ const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { assertHistoryTopicHealthy } = require("./message");
 const {
+  createSyncError,
   normalizeSyncError,
   withSyncErrorContext,
 } = require("../error-contract");
@@ -98,20 +99,32 @@ function handleSyncTopicDiff(payload, database = getDb()) {
       );
 
       if (!topicRow) {
-        changedTopics.push({
-          topicId,
-          ownerType: state.ownerType,
-          ownerId: state.ownerId,
-        });
-        continue;
+        throw createSyncError(
+          "SYNC_SNAPSHOT_STALE",
+          `Topic ${state.ownerType}/${state.ownerId}/${topicId} disappeared or became tombstoned after metadata synchronization`,
+          {
+            stage: "topic_validation",
+            failedTopicIds: [topicId],
+          },
+        );
       }
 
       const localConfig = topicRow.config_hash || "";
       const remoteConfig = state.configHash || "";
+      if (localConfig !== remoteConfig) {
+        throw createSyncError(
+          "SYNC_SNAPSHOT_STALE",
+          `Topic ${state.ownerType}/${state.ownerId}/${topicId} config changed after metadata synchronization`,
+          {
+            stage: "topic_validation",
+            failedTopicIds: [topicId],
+          },
+        );
+      }
+
       const localContent = topicRow.content_hash || "";
       const remoteContent = state.contentHash || "";
-
-      if (localConfig === remoteConfig && localContent === remoteContent) {
+      if (localContent === remoteContent) {
         matchCount++;
       } else {
         changedTopics.push({
