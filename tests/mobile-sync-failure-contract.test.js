@@ -112,7 +112,7 @@ function fakeManifestDatabase({ owners = [], topics = [], avatars = [], messages
       if (sql.includes("FROM owners")) {
         return { all: () => owners };
       }
-      if (sql.includes("FROM topics")) {
+      if (sql.includes("FROM topics") || sql.includes("JOIN topics")) {
         return { all: () => topics };
       }
       if (sql.includes("FROM messages")) {
@@ -402,56 +402,37 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
   );
 });
 
-test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () => {
+test("Topic manifest 用单条 SQL 绑定完整 targetedOwners", () => {
   const hash = "a".repeat(64);
-  const database = fakeManifestDatabase({
-    topics: [
-      {
-        topic_id: "topic-a",
-        owner_type: "agent",
-        owner_id: "agent-a",
-        config_hash: hash,
-        content_hash: "",
-        updated_at: 1,
-        deleted_at: null,
-      },
-      {
-        topic_id: "topic-b",
-        owner_type: "agent",
-        owner_id: "agent-aa",
-        config_hash: hash,
-        content_hash: "",
-        updated_at: 1,
-        deleted_at: null,
-      },
-    ],
-  });
-
-  assert.deepEqual(
-    getLocalManifest("topic", agentOwners("agent-a"), database).map((item) => item.topicId),
-    ["topic-a"],
-  );
-  const result = handleSyncManifest(
-    {
-      manifestType: "topic",
-      targetedOwners: agentOwners("agent-a"),
-      items: [{
-        topicId: "topic-a",
-        configHash: hash,
-        contentHash: "",
-        updatedAt: 1,
-        ownerType: "agent",
-        ownerId: "agent-a",
-      }],
+  const targetedOwners = agentOwners("agent-a", "agent-b");
+  let prepareCount = 0;
+  const database = {
+    prepare(sql) {
+      prepareCount += 1;
+      assert.match(sql, /FROM json_each\(\?\)/);
+      assert.match(sql, /t\.owner_type = r\.owner_type/);
+      assert.match(sql, /t\.owner_id = r\.owner_id/);
+      return {
+        all(serializedOwners) {
+          assert.deepEqual(JSON.parse(serializedOwners), targetedOwners);
+          return [{
+            topic_id: "topic-a",
+            owner_type: "agent",
+            owner_id: "agent-a",
+            config_hash: hash,
+            content_hash: "",
+            updated_at: 1,
+            deleted_at: null,
+          }];
+        },
+      };
     },
-    database,
-  );
-  assert.deepEqual(result.results, []);
+  };
 
   const splitOwners = handleSyncManifest(
     {
       manifestType: "topic",
-      targetedOwners: agentOwners("agent-a", "agent-b"),
+      targetedOwners,
       items: [{
         topicId: "topic-a",
         configHash: hash,
@@ -467,6 +448,39 @@ test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () =
     { topicId: "topic-a", action: "PUSH", ownerType: "agent", ownerId: "agent-b" },
     { topicId: "topic-a", action: "PULL", ownerType: "agent", ownerId: "agent-a" },
   ]);
+  assert.equal(prepareCount, 1);
+});
+
+test("TopicDiff 对整批 Topic 只 prepare 一次查询", () => {
+  const hash = "a".repeat(64);
+  let prepareCount = 0;
+  let getCount = 0;
+  const database = {
+    prepare(sql) {
+      prepareCount += 1;
+      assert.match(sql, /owner_type = \? AND owner_id = \? AND topic_id = \?/);
+      return {
+        get() {
+          getCount += 1;
+          return { config_hash: hash, content_hash: hash };
+        },
+      };
+    },
+  };
+  const topics = ["topic-a", "topic-b"].map((topicId) => ({
+    topicId,
+    ownerType: "agent",
+    ownerId: "agent-a",
+    configHash: hash,
+    contentHash: hash,
+  }));
+
+  assert.deepEqual(handleSyncTopicDiff({ topics }, database), {
+    type: "SYNC_TOPIC_DIFF_RESULT",
+    changedTopics: [],
+  });
+  assert.equal(prepareCount, 1);
+  assert.equal(getCount, 2);
 });
 
 test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", () => {

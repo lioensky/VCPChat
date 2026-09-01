@@ -182,15 +182,27 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
     });
   }
 
-  const rows = db.prepare(
-    `SELECT owner_type, owner_id, topic_id, config_hash, content_hash,
-            updated_at, deleted_at
-     FROM topics`,
-  ).all();
-  const filteredRows = ownerFilter
-    ? rows.filter((row) => ownerFilter.has(`${row.owner_type}\0${row.owner_id}`))
-    : rows;
-  return filteredRows.map((row) => {
+  const rows = ownerFilter
+    ? db.prepare(
+      `WITH requested AS (
+         SELECT json_extract(value, '$.ownerType') AS owner_type,
+                json_extract(value, '$.ownerId') AS owner_id
+         FROM json_each(?)
+       )
+       SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+              t.updated_at, t.deleted_at
+       FROM requested AS r
+       JOIN topics AS t
+         ON t.owner_type = r.owner_type
+        AND t.owner_id = r.owner_id
+       ORDER BY t.owner_type, t.owner_id, t.topic_id`,
+    ).all(JSON.stringify(targetedOwners))
+    : db.prepare(
+      `SELECT owner_type, owner_id, topic_id, config_hash, content_hash,
+              updated_at, deleted_at
+       FROM topics`,
+    ).all();
+  return rows.map((row) => {
     const topicId = requireNonEmptyString(row.topic_id, "Topic manifest topicId");
     const ownerType = requireNonEmptyString(
       row.owner_type,

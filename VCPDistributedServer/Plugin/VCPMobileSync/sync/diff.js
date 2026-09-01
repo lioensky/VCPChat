@@ -76,6 +76,7 @@ function handleSyncTopicDiff(payload, database = getDb()) {
 
   const changedTopics = [];
   let matchCount = 0;
+  let topicHashStatement = null;
 
   for (const state of topicStates) {
     const topicId = state.topicId;
@@ -85,13 +86,16 @@ function handleSyncTopicDiff(payload, database = getDb()) {
         ownerType: state.ownerType,
         ownerId: state.ownerId,
       });
-      const topicRow = db
-        .prepare(
-          `SELECT config_hash, content_hash FROM topics
-           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
-             AND deleted_at IS NULL`,
-        )
-        .get(state.ownerType, state.ownerId, topicId);
+      topicHashStatement ??= db.prepare(
+        `SELECT config_hash, content_hash FROM topics
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
+           AND deleted_at IS NULL`,
+      );
+      const topicRow = topicHashStatement.get(
+        state.ownerType,
+        state.ownerId,
+        topicId,
+      );
 
       if (!topicRow) {
         changedTopics.push({
