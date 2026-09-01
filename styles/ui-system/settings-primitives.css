@@ -21,6 +21,9 @@
     width: 188px;
     max-height: none;
     overflow-y: auto;
+    /* Chained wheel scroll must stop here: the panel is an overflow:hidden
+       chrome box and must never inherit scroll from its scrollers. */
+    overscroll-behavior: contain;
     padding: 22px 12px 0;
     background: transparent;
     align-self: stretch;
@@ -211,4 +214,8 @@
     min-height: 0;
     padding: 0 24px 24px;
     overflow-y: auto;
+    /* The only legitimate scroller in the settings surface. Containment
+       keeps end-of-list wheel chaining from scrolling the overflow:hidden
+       panel (the settings white-out). */
+    overscroll-behavior: contain;
 }

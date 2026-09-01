@@ -591,6 +591,16 @@ function mountSettingsShell(root) {
     panel.classList.add('vcp-uiux-settings-panel');
     nav.classList.add('vcp-uiux-settings-nav');
     content.classList.add('vcp-uiux-settings-content');
+    // The panel is overflow:hidden chrome and must never scroll. If anything
+    // gives it a scrollTop anyway — wheel chaining, a stray focus() or
+    // scrollIntoView() — the whole surface is displaced out of view, which
+    // presents as the settings page white-out. Snap it back; the class check
+    // retires the guard once teardown restores the legacy presentation.
+    panel.addEventListener('scroll', () => {
+        if (!panel.classList.contains('vcp-uiux-settings-panel')) return;
+        if (panel.scrollTop !== 0) panel.scrollTop = 0;
+        if (panel.scrollLeft !== 0) panel.scrollLeft = 0;
+    });
     // Legacy presentation selectors must not participate in the live tree.
     // The classes are restored only when the bridge is torn down.
     nav.classList.remove('vcp-settings-source-nav');
