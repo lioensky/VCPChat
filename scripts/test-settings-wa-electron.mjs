@@ -130,16 +130,14 @@ try {
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsForm'), { timeout: timeoutMs });
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .global-settings-footer.vcp-ui-settings-action-bar'), { timeout: timeoutMs });
     const shellState = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
         const navItems = modal.querySelectorAll('.vcp-uiux-settings-nav-cell');
-        const search = null;
         const footer = modal.querySelector('.global-settings-footer');
         return {
             shell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
             navCount: navItems.length,
-            searchInNav: false,
-            searchEnhanced: search?.classList.contains('vcp-ui-native-input') || false,
             footerEnhanced: footer?.classList.contains('vcp-ui-settings-action-bar') || false,
             sectionIds: [...modal.querySelectorAll('.settings-section')].map(section => section.id),
             activeSection: modal.querySelector('.settings-section.active')?.id,
@@ -148,8 +146,6 @@ try {
     });
     assert.ok(shellState.shell, 'SettingsShell class applied');
     assert.equal(shellState.navCount, 8, '8 categories in VCPUI List nav');
-    assert.ok(shellState.searchInNav, 'search field pinned in the left rail');
-    assert.ok(shellState.searchEnhanced, 'search input is VCPUI-enhanced');
     assert.ok(shellState.footerEnhanced, 'save bar is SettingsActionBar-enhanced');
     assert.equal(shellState.sectionIds.length, 8, '8 setting sections present');
     assert.equal(shellState.activeSection, 'section-user-identity', 'starts on user identity');
@@ -159,7 +155,7 @@ try {
         const btn = document.getElementById('resetUserAvatarColorsBtn');
         return Boolean(btn?.querySelector('[data-vcp-icon]') || btn?.querySelector('span.vcp-ui-icon'));
     }, { timeout: timeoutMs });
-    console.log('  [PASS] 1. SettingsShell layout (nav list, search, save bar, sections, icons)');
+    console.log('  [PASS] 1. SettingsShell layout (nav list, save bar, sections, icons)');
 
     // ---- 2. Category switching keeps unsaved values ----
     await page.evaluate(() => {
