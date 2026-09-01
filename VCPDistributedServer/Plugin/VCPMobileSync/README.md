@@ -165,7 +165,7 @@ graph TD
 ```
 
 ### Phase 1: 轻量级索引扫描 (Reconcile)
-中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3` 中的 Owner、Topic、Message 与 Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在 ACK 前刷新所选模式的提交视图；中央模式下 Owner/Topic 的物理写入也会在对应 HTTP 请求返回前提交到 CDS，因此空的 `PHASE_COMPLETED` 不再重复全量扫描。Phase 1 先发送 `manifestType=owner`，再发送独立的 `manifestType=avatar`；两者都携带完整身份，但 Hash、墓碑和传输语义互不混合。
+中央模式由 VCP-CDS reconcile 维护 `chat_data.sqlite3` 中的 Owner、Topic、Message 与 Avatar 状态；Legacy 模式扫描 `Agents`、`AgentGroups` 与 `UserData`，按白名单 DTO 建立 `sync_state_v2.db`。每次 `owner_metadata PHASE_START` 都会在同连接 `messageChain` 放行后续 Manifest handler 前刷新所选模式的提交视图；普通阶段 marker 不返回 ACK。中央模式下 Owner/Topic 的物理写入也会在对应 HTTP 请求返回前提交到 CDS，因此空的 `PHASE_COMPLETED` 不再重复全量扫描。Phase 1 先发送 `manifestType=owner`，再发送独立的 `manifestType=avatar`；两者都携带完整身份，但 Hash、墓碑和传输语义互不混合。
 
 ### Phase 2: 双哈希差分比对 (Double-Hash Merkle Diff)
 在比对阶段，插件放弃了传统的全量拉取策略，采用 **双哈希（`configHash` 与 `contentHash`）比对机制**：

@@ -10,9 +10,10 @@ const versionFixture = require(
   "../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/version_handshake_contract.json"
 );
 const {
-  createPhaseAck,
+  createFinalPhaseAck,
   negotiateVersionCheck,
   parseJsonWithoutDuplicateKeys,
+  validateSyncRequestFrame,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
 
 test("VCPMobileSync Wire 1.5 握手使用唯一结构化版本合同", () => {
@@ -154,7 +155,7 @@ test("最终阶段 ACK 原样回显会话、attempt 与 nonce", () => {
     nonce: "final-ack-nonce",
   };
 
-  assert.deepEqual(createPhaseAck(payload, { echoFinalIdentity: true }), {
+  assert.deepEqual(createFinalPhaseAck(payload), {
     type: "PHASE_ACK",
     phase: "messages",
     sessionId: 17,
@@ -165,17 +166,23 @@ test("最终阶段 ACK 原样回显会话、attempt 与 nonce", () => {
 
 test("最终身份字段缺失时 fail closed", () => {
   assert.throws(
-    () => createPhaseAck(
-      { type: "PHASE_COMPLETED", phase: "messages", sessionId: 0 },
-      { echoFinalIdentity: true },
-    ),
+    () => createFinalPhaseAck({
+      type: "PHASE_COMPLETED",
+      phase: "messages",
+      sessionId: 0,
+    }),
     /requires sessionId, attemptId and nonce/,
   );
 });
 
-test("普通阶段 ACK 保持既有 phase-only 协议", () => {
-  assert.deepEqual(createPhaseAck({ type: "PHASE_START", phase: "topic_metadata" }), {
-    type: "PHASE_ACK",
-    phase: "topic_metadata",
-  });
+test("阶段 marker 拒绝未知 phase", () => {
+  for (const payload of [
+    { type: "PHASE_START", phase: "unknown" },
+    { type: "PHASE_COMPLETED", phase: "unknown" },
+  ]) {
+    assert.throws(
+      () => validateSyncRequestFrame(payload),
+      (error) => error.code === "PROTOCOL_INVALID" && /phase must be/.test(error.message),
+    );
+  }
 });

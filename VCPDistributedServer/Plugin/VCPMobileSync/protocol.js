@@ -1,6 +1,5 @@
 "use strict";
 
-const FINAL_ACK_IDENTITY_FIELDS = ["sessionId", "attemptId", "nonce"];
 const WIRE_PROTOCOL_VERSION = "1.5";
 const BACKEND_MODES = new Set(["legacy", "cds"]);
 const SYNC_PHASES = new Set(["owner_metadata", "topic_metadata", "messages"]);
@@ -133,10 +132,19 @@ function requireExactKeys(payload, fields, label, code = "PROTOCOL_INVALID") {
   }
 }
 
+function requireSyncPhase(phase) {
+  if (!SYNC_PHASES.has(phase)) {
+    const error = new Error("phase must be owner_metadata, topic_metadata or messages");
+    error.code = "PROTOCOL_INVALID";
+    throw error;
+  }
+}
+
 function validateSyncRequestFrame(payload) {
   switch (payload.type) {
     case "PHASE_START":
       requireExactKeys(payload, ["type", "phase"], payload.type);
+      requireSyncPhase(payload.phase);
       break;
     case "PHASE_COMPLETED":
       requireExactKeys(
@@ -146,6 +154,7 @@ function validateSyncRequestFrame(payload) {
           : ["type", "phase"],
         payload.type,
       );
+      requireSyncPhase(payload.phase);
       break;
     case "SYNC_MANIFEST_REQUEST":
       if (!["owner", "topic", "avatar"].includes(payload.manifestType)) {
@@ -317,51 +326,39 @@ function negotiateVersionCheck(payload, { desktopPluginVersion, backendMode }) {
 }
 
 /**
- * 构造阶段确认帧。
+ * 构造最终阶段确认帧。
  *
  * 最终 messages 阶段必须原样回显移动端提供的会话身份；字段缺失时不伪造
  * 默认值，让移动端的精确 ACK 门禁保持 fail-closed。
  */
-function createPhaseAck(payload, { echoFinalIdentity = false } = {}) {
+function createFinalPhaseAck(payload) {
   const source = payload && typeof payload === "object" ? payload : {};
-  if (!SYNC_PHASES.has(source.phase)) {
-    const error = new Error("phase must be owner_metadata, topic_metadata or messages");
+  if (
+    source.phase !== "messages" ||
+    !Number.isSafeInteger(source.sessionId) ||
+    !Number.isSafeInteger(source.attemptId) ||
+    typeof source.nonce !== "string" ||
+    source.nonce.length === 0
+  ) {
+    const error = new Error(
+      "messages PHASE_COMPLETED requires sessionId, attemptId and nonce",
+    );
     error.code = "PROTOCOL_INVALID";
     throw error;
   }
-  const ack = {
+
+  return {
     type: "PHASE_ACK",
     phase: source.phase,
+    sessionId: source.sessionId,
+    attemptId: source.attemptId,
+    nonce: source.nonce,
   };
-
-  if (echoFinalIdentity) {
-    if (source.phase === "messages") {
-      if (
-        !Number.isSafeInteger(source.sessionId) ||
-        !Number.isSafeInteger(source.attemptId) ||
-        typeof source.nonce !== "string" ||
-        source.nonce.length === 0
-      ) {
-        const error = new Error(
-          "messages PHASE_COMPLETED requires sessionId, attemptId and nonce",
-        );
-        error.code = "PROTOCOL_INVALID";
-        throw error;
-      }
-    }
-    for (const field of FINAL_ACK_IDENTITY_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(source, field)) {
-        ack[field] = source[field];
-      }
-    }
-  }
-
-  return ack;
 }
 
 module.exports = {
   WIRE_PROTOCOL_VERSION,
-  createPhaseAck,
+  createFinalPhaseAck,
   negotiateVersionCheck,
   parseJsonWithoutDuplicateKeys,
   validateSyncRequestFrame,

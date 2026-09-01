@@ -55,7 +55,7 @@ const {
 const { getLogger, resetLogger } = require("./core/logger");
 const {
   WIRE_PROTOCOL_VERSION,
-  createPhaseAck,
+  createFinalPhaseAck,
   negotiateVersionCheck,
 } = require("./protocol");
 const { createSyncError, withSyncErrorContext } = require("./error-contract");
@@ -276,13 +276,12 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             : handleSyncMessageDiff(payload);
         }
         case "PHASE_START": {
-          const ack = createPhaseAck(payload);
-          const phase = ack.phase;
+          const phase = payload.phase;
           logger.startPhase(phase, 0);
 
           // Mobile 会在首批 Owner Manifest 前发送 owner_metadata PHASE_START。
-          // WebSocket 的单一 messageChain 会让后续帧等待此处完成，因此在 ACK
-          // 前刷新 CDS，后续 Manifest 只能读取已经观察到桌面业务写入的提交视图。
+          // WebSocket 的单一 messageChain 会让后续帧等待此 handler 完成，因此先
+          // 刷新 CDS，后续 Manifest 只能读取已经观察到桌面业务写入的提交视图。
           if (centralSync && phase === "owner_metadata") {
             try {
               await centralSync.reconcile();
@@ -310,13 +309,18 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
             }
           }
 
-          return ack;
+          return null;
         }
         case "PHASE_COMPLETED": {
-          const ack = createPhaseAck(payload, { echoFinalIdentity: true });
-          const phase = ack.phase;
-          logger.completePhase(phase);
-          return ack;
+          const phase = payload.phase;
+          const finalAck = phase === "messages"
+            ? createFinalPhaseAck(payload)
+            : null;
+          const completed = logger.completePhase(phase);
+          if (phase === "messages" && completed === null) {
+            logger.logInfo("messages", "Messages skipped: no changed topics");
+          }
+          return finalAck;
         }
         case "VERSION_CHECK": {
           const manifest = require("./plugin-manifest.json");

@@ -58,16 +58,12 @@ const MESSAGE_PATH = path.join(
 );
 
 const silentLogger = {
-  completePhase() {},
+  completePhase() { return null; },
   endSession() {},
   logInfo() {},
   logOperation() {},
   startPhase() {},
   startSession() {},
-};
-const fakeLoggerModule = {
-  getLogger: () => silentLogger,
-  resetLogger: () => silentLogger,
 };
 
 function TestDatabase(filename) {
@@ -86,7 +82,7 @@ function TestDatabase(filename) {
   return database;
 }
 
-function loadSqliteModules({ captureOnMessage = null } = {}) {
+function loadSqliteModules({ captureOnMessage = null, logger = silentLogger } = {}) {
   const modulePaths = [
     DB_PATH,
     DIFF_PATH,
@@ -109,7 +105,10 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
       request === "./core/logger" ||
       request === "../core/logger"
     ) {
-      return fakeLoggerModule;
+      return {
+        getLogger: () => logger,
+        resetLogger: () => logger,
+      };
     }
     if (request === "./transport/websocket") {
       return {
@@ -1394,7 +1393,7 @@ test("legacy watcher 与全量扫描共用 DTO 默认值", async (t) => {
   );
 });
 
-test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
+test("中央 Owner Phase handler 完成前刷新 CDS 提交视图", async (t) => {
   let onMessage = null;
   let reconcileCalls = 0;
   let releasePhaseReconcile;
@@ -1439,7 +1438,7 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
   const db = database.getDb();
   t.after(() => db.close());
 
-  const phaseAckPromise = onMessage({
+  const phaseHandlerPromise = onMessage({
     type: "PHASE_START",
     phase: "owner_metadata",
   });
@@ -1447,31 +1446,110 @@ test("中央 Owner Phase 在 ACK 前刷新 CDS 提交视图", async (t) => {
   assert.equal(reconcileCalls, 1);
   assert.equal(
     await Promise.race([
-      phaseAckPromise.then(() => "settled"),
+      phaseHandlerPromise.then(() => "settled"),
       new Promise((resolve) => setImmediate(() => resolve("pending"))),
     ]),
     "pending",
-    "reconcile 完成前不得返回 Phase ACK",
+    "reconcile 完成前不得结束 Owner Phase handler",
   );
 
   releasePhaseReconcile();
-  assert.deepEqual(await phaseAckPromise, {
-    type: "PHASE_ACK",
-    phase: "owner_metadata",
-  });
-  assert.deepEqual(
-    await onMessage({ type: "PHASE_START", phase: "topic_metadata" }),
-    { type: "PHASE_ACK", phase: "topic_metadata" },
-  );
-  assert.deepEqual(
-    await onMessage({ type: "PHASE_COMPLETED", phase: "owner_metadata" }),
-    { type: "PHASE_ACK", phase: "owner_metadata" },
-  );
-  assert.deepEqual(
-    await onMessage({ type: "PHASE_COMPLETED", phase: "topic_metadata" }),
-    { type: "PHASE_ACK", phase: "topic_metadata" },
-  );
+  assert.equal(await phaseHandlerPromise, null);
+  await onMessage({ type: "PHASE_START", phase: "topic_metadata" });
+  await onMessage({ type: "PHASE_COMPLETED", phase: "owner_metadata" });
+  await onMessage({ type: "PHASE_COMPLETED", phase: "topic_metadata" });
   assert.equal(reconcileCalls, 1, "后续 Phase 不应重复 reconcile");
+});
+
+test("Desktop 仅为未启动的 Messages 阶段记录 skipped", async (t) => {
+  let onMessage = null;
+  let messagesStarted = false;
+  let messagesCompleted = 0;
+  const infoLogs = [];
+  const logger = {
+    ...silentLogger,
+    startPhase(phase) {
+      if (phase === "messages") messagesStarted = true;
+    },
+    completePhase(phase) {
+      if (phase !== "messages" || !messagesStarted) return null;
+      messagesStarted = false;
+      messagesCompleted += 1;
+      return { phase, duration: 0 };
+    },
+    logInfo(phase, message) {
+      infoLogs.push({ phase, message });
+    },
+  };
+  const { database, index } = loadSqliteModules({
+    logger,
+    captureOnMessage(handler) {
+      onMessage = handler;
+    },
+  });
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-message-phase-"));
+  const projectBasePath = path.join(directory, "VCPDistributedServer");
+  fs.mkdirSync(projectBasePath, { recursive: true });
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  await index.registerRoutes(
+    { use() {} },
+    {
+      MobileSyncToken: "message-phase-test-token",
+      MobileSyncPort: "15977",
+      MobileSyncUseCentralIndex: true,
+    },
+    projectBasePath,
+    {
+      chatDataService: {
+        client: {},
+        mobileSyncUseCentralIndex: true,
+      },
+    },
+  );
+
+  assert.equal(typeof onMessage, "function");
+  const db = database.getDb();
+  t.after(() => db.close());
+
+  assert.deepEqual(
+    await onMessage({
+      type: "PHASE_COMPLETED",
+      phase: "messages",
+      sessionId: 7,
+      attemptId: 1,
+      nonce: "skipped-message-phase",
+    }),
+    {
+      type: "PHASE_ACK",
+      phase: "messages",
+      sessionId: 7,
+      attemptId: 1,
+      nonce: "skipped-message-phase",
+    },
+  );
+  assert.deepEqual(
+    infoLogs.filter((entry) => entry.message === "Messages skipped: no changed topics"),
+    [{ phase: "messages", message: "Messages skipped: no changed topics" }],
+  );
+
+  infoLogs.length = 0;
+  assert.equal(
+    await onMessage({ type: "PHASE_START", phase: "messages" }),
+    null,
+  );
+  await onMessage({
+    type: "PHASE_COMPLETED",
+    phase: "messages",
+    sessionId: 7,
+    attemptId: 2,
+    nonce: "completed-message-phase",
+  });
+  assert.equal(messagesCompleted, 1);
+  assert.equal(
+    infoLogs.some((entry) => entry.message === "Messages skipped: no changed topics"),
+    false,
+  );
 });
 
 test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", async (t) => {
