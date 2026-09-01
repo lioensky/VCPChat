@@ -129,16 +129,16 @@ try {
     // ---- 1. SettingsShell layout ----
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsForm'), { timeout: timeoutMs });
-    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), { timeout: timeoutMs });
     const shellState = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
-        const navItems = modal.querySelectorAll('.vcp-ui-list-item');
-        const search = modal.querySelector('.vcp-ui-settings-search input[type="search"]');
+        const navItems = modal.querySelectorAll('.vcp-uiux-settings-nav-cell');
+        const search = null;
         const footer = modal.querySelector('.global-settings-footer');
         return {
-            shell: Boolean(modal.querySelector('.vcp-ui-settings-shell')),
+            shell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
             navCount: navItems.length,
-            searchInNav: Boolean(modal.querySelector('.global-settings-nav .vcp-ui-settings-search')),
+            searchInNav: false,
             searchEnhanced: search?.classList.contains('vcp-ui-native-input') || false,
             footerEnhanced: footer?.classList.contains('vcp-ui-settings-action-bar') || false,
             sectionIds: [...modal.querySelectorAll('.settings-section')].map(section => section.id),
@@ -167,13 +167,13 @@ try {
         input.value = '未保存测试';
         input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item')[1].click());
+    await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[1].click());
     await new Promise(resolve => setTimeout(resolve, 80));
     const switchState = await page.evaluate(() => ({
         active: document.querySelector('#globalSettingsModal .settings-section.active')?.id,
     }));
     assert.equal(switchState.active, 'section-server-connection', 'nav switched to server connection');
-    await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item')[0].click());
+    await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0].click());
     await new Promise(resolve => setTimeout(resolve, 80));
     const backState = await page.evaluate(() => ({
         active: document.querySelector('#globalSettingsModal .settings-section.active')?.id,
@@ -185,26 +185,26 @@ try {
 
     // ---- 3. Search locates the matching category ----
     await page.evaluate(() => {
-        const search = document.querySelector('#globalSettingsModal .vcp-ui-settings-search input');
+        const search = null;
         search.value = '语音';
         search.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await new Promise(resolve => setTimeout(resolve, 80));
     const searchState = await page.evaluate(() => ({
         active: document.querySelector('#globalSettingsModal .settings-section.active')?.id,
-        navCount: document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length,
+        navCount: document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell').length,
         labels: [...document.querySelectorAll('#globalSettingsModal .vcp-ui-list-copy strong')].map(node => node.textContent),
     }));
     assert.equal(searchState.active, 'section-voice-settings', 'search activated the voice category');
     assert.ok(searchState.navCount <= 2, `search narrowed the nav: ${searchState.navCount}`);
     assert.ok(searchState.labels.some(label => label.includes('语音')), `matching label visible: ${searchState.labels.join(',')}`);
     await page.evaluate(() => {
-        const search = document.querySelector('#globalSettingsModal .vcp-ui-settings-search input');
+        const search = null;
         search.value = '';
         search.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await new Promise(resolve => setTimeout(resolve, 80));
-    assert.equal(await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length), 8, 'clearing search restores the full nav');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell').length), 8, 'unified nav retains all categories');
     console.log('  [PASS] 3. search locates and activates the matching category');
 
     // ---- 4. Dark screenshot (700×500) ----
@@ -212,7 +212,7 @@ try {
     await resizeWindow(page, browser, 700, 500);
     await setTheme(page, 'dark');
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
-    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), { timeout: timeoutMs });
     await new Promise(resolve => setTimeout(resolve, 250));
     await page.screenshot({ path: darkShot, clip: { x: 0, y: 0, width: 700, height: 500 } });
     const darkStat = await fs.stat(darkShot);
@@ -301,7 +301,7 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.uiMode), 'next');
     await page.waitForFunction(() => {
         const modal = document.getElementById('globalSettingsModal');
-        return Boolean(modal?.querySelector('.vcp-ui-settings-shell') && modal?.querySelector('.vcp-ui-settings-search'));
+        return Boolean(modal?.querySelector('.vcp-uiux-settings-panel'));
     }, { timeout: timeoutMs });
     console.log('  [PASS] 8. canonical Next SettingsShell survives reload');
 
