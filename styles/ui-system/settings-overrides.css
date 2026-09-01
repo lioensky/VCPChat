@@ -450,15 +450,22 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 76px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0 16px;
-    margin: 0 0 20px;
-    padding: 16px;
+    gap: 0 14px;
+    margin: 0 0 18px;
+    padding: 14px 16px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
-    border-radius: 12px;
+    border-radius: 14px;
     background: var(--vcp-ui-fill-0);
 }
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: contents; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper { grid-column: 1; grid-row: 1; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 68px; height: 68px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper { grid-column: 2; grid-row: 1; align-self: center; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input { max-width: 280px; }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
     grid-column: 2;
@@ -477,6 +484,12 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
     grid-column: 1 / -1;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container:not(.collapsed) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-dependent-panel {
