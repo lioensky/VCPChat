@@ -27,6 +27,7 @@ import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
 import { mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
 import { fieldProjection } from './settings/field-registry.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
+import { applySchemaSurface } from '../settings/schema-surface.js';
 import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
 import { addTypedNetworkPathInput, ensureTypedSettingsService, ensureRustAssistantUiService, ensureForumConfigUiService, ensureAssistantRuntimeUiService, mountTypedSettingsConsumer, mountTypedForumFieldOwner, mountTypedFieldOwner, flushTypedOwners, flushTypedForumFields, teardownTypedOwners, disposeTypedSettings } from './typed-field-owners.js';
 
@@ -200,6 +201,9 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
 // Global settings modal: control enhancement, autosave status, and the
 // source-equivalent SettingsRoot shell.
 function enhanceGlobalSettings(root, form) {
+    // schema 渲染面（exp/settings-schema）：在整条投影管线之前把已迁移分区
+    // 替换为 schema 编译产物，管线随后按原样投影；开关关闭时此调用为空操作。
+    applySchemaSurface(form);
     // The mount sequence is declared, not positional: every implicit "this
     // pass must own its nodes before X sees them" constraint is an explicit
     // `before` edge, and runSettingsPipeline resolves the same historical

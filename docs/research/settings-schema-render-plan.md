@@ -82,3 +82,14 @@ dsw 语义 CSS（单层级联）
 3. `modules/settings/store.js`：接管 save-coordinator 客户端注册，patch 语义与 typed-field-owners 现状一致。
 4. 开关挂载：`VCPCHAT_SETTINGS_SCHEMA=1` 时全局设置弹窗渲染 schema surface，否则走现桥。
 5. 像素对比脚本（CDP 截图新旧 surface 同分区）入 `scripts/`。
+
+## 八、M0 施工记录（已完成）
+
+- 内核落地：`modules/settings/schema/kernel.js`（section/textarea/number/switchField/select 描述原语，`when` 依赖子句）+ `schema/quick-actions.js`（快捷操作 8 字段逐字对齐静态标记）。
+- 渲染器：`modules/settings/render/field-renderer.js`，编译产物与 main.html 静态标记结构同构（行类名、`data-vcp-style`、`data-visible-when`、全部业务锚点 id/name 保留），投影管线原样工作。
+- store：`modules/settings/store.js` 值访问门面（switch→checked，其余→value）+ 分区现值快照。
+- 切换面：`modules/settings/schema-surface.js`；开关为 `localStorage['vcpchat-settings-schema']='1'`（渲染进程无 env，计划中的 `VCPCHAT_SETTINGS_SCHEMA` 落地为 localStorage）。挂载点在 `enhanceGlobalSettings` 进入管线之前，替换分区子节点、保持分区元素身份，`vcpSchemaRendered` 幂等标记（已登记 marker-registry）。
+- 测试：`tests/settings-schema-render.test.mjs` 6 例（锚点/同构/canonical 投影/现值迁移/切换幂等/类型防错）全绿；全套 359/361，仅剩两条基线既有失败。
+- 实例验证（临时 appdata + CDP）：22/22 通过——锚点齐全、依赖可见性行为（主开关/选择值/保险行）、自动保存 dirty→saved→磁盘落盘、开关关闭零干扰、重复 refresh 幂等。
+- 像素对比：`scripts/compare-settings-schema-pixels.mjs` 入库；同交互序列下 schema 面与静态面分区截图差异 0.0000%。
+- 已知存量怪癖（非本迁移引入，记录备查）：`middleClickQuickAction` 走 typed 通用 pairs 静默回填，不派发 `vcp-uiux-sync`，静态面 select 胶囊在纯快照恢复后标签可能滞留占位文案；M1 迁移该字段时一并收敛。

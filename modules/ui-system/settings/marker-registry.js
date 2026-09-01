@@ -19,6 +19,8 @@ const MARKERS = Object.freeze({
     settingsSections: { owner: 'settings-bridge.js', cleanup: 'persistent' },
     settingsSectionKey: { owner: 'settings/section-ownership.js + main.html', cleanup: 'persistent' },
     visibleWhen: { owner: 'settings/dependent-rows.js + main.html', cleanup: 'persistent' },
+    // schema-surface.js — schema 渲染面的分区级幂等标记（exp/settings-schema）
+    vcpSchemaRendered: { owner: 'settings/schema-surface.js', cleanup: 'persistent' },
 
     // uiux primitives — one re-entrancy marker per projection family
     vcpUiuxInputPrimitive: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
