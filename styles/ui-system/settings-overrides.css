@@ -984,6 +984,60 @@
     }
 }
 
+/* DSH compact choice contract (Pill): the generated Choice primitive keeps
+   the radio semantics, while this surface owns the visual 24px chip geometry. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) .vcp-uiux-choice {
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    min-height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) .vcp-uiux-choice-option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    height: 24px;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 12px;
+    color: var(--vcp-ui-text-2);
+    background: var(--vcp-ui-fill-1);
+    font-size: 12px;
+    line-height: 18px;
+    cursor: pointer;
+    transition: background-color var(--vcp-ui-transition-fast, 120ms ease), color var(--vcp-ui-transition-fast, 120ms ease), box-shadow var(--vcp-ui-transition-fast, 120ms ease);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) .vcp-uiux-choice-option:hover {
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-fill-2);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) .vcp-uiux-choice-option:has(input:checked) {
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-selection-bg);
+    box-shadow: inset 0 0 0 1px var(--vcp-ui-border-strong);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) .vcp-uiux-choice-option:has(input:checked):hover {
+    background: var(--vcp-ui-selection-hover);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) .vcp-uiux-choice-option:focus-within {
+    outline: 2px solid color-mix(in srgb, var(--vcp-ui-accent) 34%, transparent);
+    outline-offset: 2px;
+}
+
 /* Model picker is a compound control, but visually it is one Uiux
    trigger. Keep the text input and menu command intact while removing the
    nested field/button borders that produced the double-box screenshot. */

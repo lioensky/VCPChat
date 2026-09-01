@@ -266,11 +266,29 @@ try {
         const rowRect = row.getBoundingClientRect();
         const copyRect = copy.getBoundingClientRect();
         const choiceRect = choice.getBoundingClientRect();
-        return { rowRight: rowRect.right, copyTop: copyRect.top, copyBottom: copyRect.bottom, choiceLeft: choiceRect.left, choiceRight: choiceRect.right, choiceTop: choiceRect.top, choiceBottom: choiceRect.bottom };
+        const option = choice.querySelector('.vcp-uiux-choice-option');
+        const optionStyle = option ? getComputedStyle(option) : null;
+        return {
+            rowRight: rowRect.right,
+            copyTop: copyRect.top,
+            copyBottom: copyRect.bottom,
+            choiceLeft: choiceRect.left,
+            choiceRight: choiceRect.right,
+            choiceTop: choiceRect.top,
+            choiceBottom: choiceRect.bottom,
+            optionHeight: optionStyle?.height || '',
+            optionRadius: optionStyle?.borderRadius || '',
+            optionBorder: optionStyle?.borderWidth || '',
+            optionFontSize: optionStyle?.fontSize || '',
+        };
     });
     assert.ok(contentWidthGeometry, 'content-width choice row is present');
     assert.ok(contentWidthGeometry.choiceRight >= contentWidthGeometry.rowRight - 4, `content-width choice is right aligned: ${JSON.stringify(contentWidthGeometry)}`);
     assert.ok(contentWidthGeometry.choiceTop < contentWidthGeometry.copyBottom && contentWidthGeometry.choiceBottom > contentWidthGeometry.copyTop, `content-width choice shares the title row: ${JSON.stringify(contentWidthGeometry)}`);
+    assert.equal(contentWidthGeometry.optionHeight, '24px', `content-width choice uses compact 24px pills: ${JSON.stringify(contentWidthGeometry)}`);
+    assert.equal(contentWidthGeometry.optionRadius, '12px', `content-width choice uses compact 12px radius: ${JSON.stringify(contentWidthGeometry)}`);
+    assert.equal(contentWidthGeometry.optionBorder, '0px', `content-width choice has no resting border: ${JSON.stringify(contentWidthGeometry)}`);
+    assert.equal(contentWidthGeometry.optionFontSize, '12px', `content-width choice uses compact 12px text: ${JSON.stringify(contentWidthGeometry)}`);
     console.log('  [PASS] content-width choice stays on the right');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });
