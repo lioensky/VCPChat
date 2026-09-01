@@ -545,6 +545,25 @@ function mountSettingsShell(root) {
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('aria-labelledby', title.id);
     nav.setAttribute('aria-label', '全局设置');
+    const search = document.createElement('div');
+    search.className = 'vcp-uiux-settings-search';
+    const searchButton = document.createElement('button');
+    searchButton.type = 'button';
+    searchButton.className = 'vcp-uiux-settings-search-button';
+    searchButton.setAttribute('aria-label', '搜索设置');
+    searchButton.title = '搜索设置';
+    const searchIcon = document.createElement('span');
+    searchIcon.className = 'vcp-ui-icon';
+    searchIcon.textContent = 'search';
+    searchIcon.setAttribute('aria-hidden', 'true');
+    searchButton.append(searchIcon);
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'vcp-uiux-settings-search-input';
+    searchInput.placeholder = '搜索设置';
+    searchInput.setAttribute('aria-label', '搜索设置');
+    searchInput.hidden = true;
+    search.append(searchButton, searchInput);
 
     // Compose the Uiux header/options primitives around the existing form;
     // the form remains the business owner, while the new nodes own chrome.
@@ -610,6 +629,7 @@ function mountSettingsShell(root) {
     state.listHost = canonicalNav;
     listHost?.replaceWith(canonicalNav);
     nav.replaceChildren(title, canonicalNav);
+    nav.prepend(search);
     // The legacy grid wrapper no longer owns live layout.  Keep it detached so
     // business nodes can be restored atomically by teardown.
     panel.replaceChildren(nav, content);
@@ -656,6 +676,8 @@ function mountSettingsShell(root) {
             const value = row.dataset.section;
             const item = state.meta.find(candidate => candidate.value === value);
             if (!item) return;
+            const section = state.sections.get(value);
+            row.hidden = Boolean(state.query && !`${item.label} ${section?.textContent || ''}`.toLocaleLowerCase().includes(state.query));
             const selected = item.value === state.active;
             row.classList.toggle('is-active', selected);
             row.classList.toggle('active', selected);
@@ -675,6 +697,10 @@ function mountSettingsShell(root) {
             section.removeAttribute('aria-hidden');
         });
     };
+    const closeSearch = () => { state.query = ''; search.classList.remove('is-open'); searchInput.value = ''; searchInput.hidden = true; searchButton.hidden = false; renderList(); };
+    shellScope?.listen(searchButton, 'click', () => { search.classList.add('is-open'); searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); });
+    shellScope?.listen(searchInput, 'input', () => { state.query = searchInput.value.trim().toLocaleLowerCase(); renderList(); });
+    shellScope?.listen(searchInput, 'keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); searchButton.focus(); } });
 
     const activateSection = (value) => {
         if (!state.meta.some(item => item.value === value)) return;
