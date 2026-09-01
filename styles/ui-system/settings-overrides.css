@@ -450,7 +450,7 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: 76px minmax(180px, 1fr) auto;
+    grid-template-columns: 76px minmax(0, 1fr) max-content;
     align-items: center;
     gap: 0 14px;
     margin: 0 0 18px;
@@ -482,6 +482,15 @@
     background: transparent;
     align-self: center;
     justify-self: end;
+}
+
+/* DisclosureRow's shared settings rule uses width:100% so ordinary rows can
+   fill their host.  The collapsed identity action is a compact trailing
+   control instead; constrain its track to the capsule's intrinsic width so it
+   cannot push the action into the middle of the profile card. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container.collapsed {
+    width: max-content;
+    max-width: 180px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) > #userName {
