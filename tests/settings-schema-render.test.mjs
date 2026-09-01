@@ -12,7 +12,7 @@ import { advancedFeaturesSection } from '../modules/settings/schema/advanced-fea
 import { appearanceSettingsSection } from '../modules/settings/schema/appearance-settings.js';
 import { renderSchemaSection, renderSchemaField } from '../modules/settings/render/field-renderer.js';
 import { captureSectionValues, restoreSectionValues, readControlById } from '../modules/settings/store.js';
-import { applySchemaSurface, isSchemaSurfaceEnabled, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
+import { applySchemaSurface, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
 import { mountCanonicalSettingsRows } from '../modules/ui-system/settings/canonical-rows.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' });
@@ -413,11 +413,7 @@ test('schema-surface：开关关闭为空操作，开启后原地替换且幂等
     form.append(host);
     const hostIdentity = host;
 
-    dom.window.localStorage.removeItem('vcpchat-settings-schema');
-    assert.equal(isSchemaSurfaceEnabled(), false);
-    assert.deepEqual(applySchemaSurface(form, doc), []);
-
-    dom.window.localStorage.setItem('vcpchat-settings-schema', '1');
+    // M4 起 schema 面转正：不再有开关，直接渲染并保持分区元素身份。
     assert.ok(schemaSurfaceSections().some(s => s.key === 'quick-actions'));
     const replaced = applySchemaSurface(form, doc);
     assert.deepEqual(replaced, ['quick-actions']);
@@ -454,7 +450,6 @@ test('schema-surface：动态节点整体迁移（select 选项与容器子行�
     host.append(row);
     form.append(host);
 
-    dom.window.localStorage.setItem('vcpchat-settings-schema', '1');
     assert.deepEqual(applySchemaSurface(form, doc), ['selection-assistant']);
     const kept = form.querySelector('#assistantAgent');
     assert.equal(kept, liveSelect, '动态填充的 select 必须原节点保留');

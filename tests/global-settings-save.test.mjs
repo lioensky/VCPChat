@@ -61,6 +61,11 @@ test('global settings saves the server URL once with canonical presentation', as
         applyChatBubbleLayoutSettings() {},
     };
     const form = dom.window.document.getElementById('globalSettingsForm');
+    // M4：静态设置标记退役，保存链测试先按运行时同一路径把分区渲染出来。
+    const { applySchemaSurface } = await import(
+        `${pathToFileURL(path.join(root, 'modules/settings/schema-surface.js')).href}?save-regression=${Date.now()}`
+    );
+    applySchemaSurface(form, dom.window.document);
     dom.window.document.getElementById('vcpServerUrl').value = 'http://localhost:6005';
 
     try {
