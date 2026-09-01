@@ -564,6 +564,9 @@ function mountSettingsShell(root) {
     searchInput.setAttribute('aria-label', '搜索设置');
     searchInput.hidden = true;
     search.append(searchButton, searchInput);
+    const titleRow = document.createElement('div');
+    titleRow.className = 'vcp-uiux-settings-title-row';
+    titleRow.append(title, search);
 
     // Compose the Uiux header/options primitives around the existing form;
     // the form remains the business owner, while the new nodes own chrome.
@@ -628,8 +631,7 @@ function mountSettingsShell(root) {
     state.navList = canonicalNav;
     state.listHost = canonicalNav;
     listHost?.replaceWith(canonicalNav);
-    nav.replaceChildren(title, canonicalNav);
-    nav.prepend(search);
+    nav.replaceChildren(titleRow, canonicalNav);
     // The legacy grid wrapper no longer owns live layout.  Keep it detached so
     // business nodes can be restored atomically by teardown.
     panel.replaceChildren(nav, content);

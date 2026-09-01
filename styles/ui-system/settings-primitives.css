@@ -64,8 +64,19 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search {
     display: flex;
     align-items: center;
+    flex: 0 0 auto;
+    min-width: 28px;
+    min-height: 28px;
+    margin: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-title-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
     min-height: 32px;
-    margin: 0 4px 10px;
+    margin: 0 0 10px;
+    padding: 0 4px 0 0;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button {
