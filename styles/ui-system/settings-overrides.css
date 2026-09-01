@@ -69,6 +69,66 @@
     width: 100%;
 }
 
+/* Network notes path list: one stacked row whose container lists path inputs
+   (each with a compact remove action) and whose add action stays a slim
+   button instead of stretching across the row grid. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked #networkNotesPathsContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    grid-column: 1;
+    width: 100%;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked #networkNotesPathsContainer .network-path-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked #networkNotesPathsContainer .vcp-uiux-input-wrap,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked #networkNotesPathsContainer > input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked #networkNotesPathsContainer .network-path-input-group > button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: var(--vcp-ui-control-md, 32px);
+    padding: 0 var(--vcp-ui-space-3, 12px);
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    border-radius: var(--vcp-ui-radius-sm, 8px);
+    color: #b3402f;
+    background: transparent;
+    box-shadow: none;
+    font-family: var(--vcp-ui-font-family, inherit);
+    font-size: var(--vcp-ui-font-helper, 12px);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked #networkNotesPathsContainer .network-path-input-group > button:hover {
+    border-color: #b3402f;
+    background: rgba(179, 64, 47, 0.06);
+    color: #b3402f;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked > button {
+    grid-column: 1;
+    justify-self: start;
+    width: auto;
+    min-width: 96px;
+}
+
 /* Settings card: groups related rows behind a titled frame (e.g. the
    server-connection VCP fields). The wrapper is presentation-only — the
    canonical row projection and form serialization are untouched. */
