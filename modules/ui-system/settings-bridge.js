@@ -62,7 +62,56 @@ function syncGlobalSettingsHost() {
     // Keep the historical marker as a non-branching compatibility alias for
     // automation/tests; all styling is owned by the unified surface marker.
     modal?.classList.add('vcp-global-settings-surface');
+    if (modal) {
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        if (!modal.hasAttribute('tabindex')) modal.setAttribute('tabindex', '-1');
+    }
     return modal;
+}
+
+function ensureSettingsAccessibility(modal) {
+    if (!modal) return;
+    modal.querySelectorAll('button, input:not([type="hidden"]), select, textarea').forEach(control => {
+        if (control.getAttribute('aria-hidden') === 'true') return;
+        if (control.labels?.length || control.closest('label') || control.getAttribute('aria-label') || control.getAttribute('aria-labelledby') || control.getAttribute('title')) return;
+        const text = control.textContent?.replace(/\s+/g, ' ').trim();
+        if (text) {
+            control.setAttribute('aria-label', text);
+            return;
+        }
+        const previous = control.parentElement?.querySelector('label');
+        if (previous?.textContent?.trim()) {
+            control.setAttribute('aria-label', previous.textContent.replace(/\s+/g, ' ').trim());
+            return;
+        }
+        const section = control.closest('.settings-section');
+        const sectionTitle = section?.querySelector('.settings-section-title')?.textContent?.trim();
+        if (sectionTitle) control.setAttribute('aria-label', sectionTitle);
+    });
+}
+
+function focusSettingsModal(modal) {
+    if (!modal?.classList.contains('active')) return;
+    const target = modal.querySelector('.vcp-uiux-settings-nav-cell, input:not([type="hidden"]), select, textarea, button') || modal;
+    requestAnimationFrame(() => target.focus({ preventScroll: true }));
+}
+
+function trapSettingsFocus(event) {
+    const modal = event.currentTarget;
+    if (event.key !== 'Tab' || !modal.classList.contains('active')) return;
+    const focusables = [...modal.querySelectorAll('button, input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])')]
+        .filter(node => !node.disabled && node.getAttribute('aria-hidden') !== 'true' && node.offsetParent !== null);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
 }
 
 // Fail-closed fallback for the unified surface: when the projection pipeline
@@ -244,6 +293,16 @@ function enhanceGlobalSettings(root, form) {
         { name: 'form-icons', run: () => normalizeFormIcons(root) },
     ];
     runSettingsPipeline(steps);
+    ensureSettingsAccessibility(root);
+    if (root.dataset.vcpSettingsFocusBound !== 'true') {
+        root.addEventListener('keydown', trapSettingsFocus);
+        root.dataset.vcpSettingsFocusBound = 'true';
+        ensurePresentationScope()?.own(() => {
+            root.removeEventListener('keydown', trapSettingsFocus);
+            delete root.dataset.vcpSettingsFocusBound;
+        }, 'settings-focus-trap', 'ui-presentation');
+    }
+    focusSettingsModal(root);
 }
 
 // Single-line text inputs are projected by the real library Input primitive
@@ -784,4 +843,3 @@ window.VCPUISettingsBridge = Object.freeze({
         return enhancedControllerCount();
     }
 });
-
