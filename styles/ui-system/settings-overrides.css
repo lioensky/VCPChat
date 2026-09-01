@@ -581,7 +581,109 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
     grid-column: 1 / -1;
     grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content;
+    align-items: end;
+    gap: 10px;
+    padding: 8px 14px 0;
     pointer-events: auto;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container.collapsed .agent-style-controls {
+    padding: 0 14px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item {
+    min-width: 0;
+    gap: 4px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item.full-width {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: end;
+}
+
+/* Keep the two identity color fields on the same Harness input surface as
+   the rest of SettingsShell. ColorPair still owns the native color control;
+   this wrapper owns the shared border, fill and compact geometry. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 0 6px;
+    border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
+    border-radius: 8px;
+    background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair:focus-within {
+    border-color: var(--vcp-ui-control-focus, var(--vcp-ui-border-strong));
+    box-shadow: 0 0 0 3px var(--vcp-ui-focus-ring);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair > input[type="color"] {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    padding: 1px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair > input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    height: 22px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--vcp-ui-text-0);
+    font-family: var(--vcp-ui-font-family);
+    font-size: var(--vcp-ui-font-body);
+    line-height: 22px;
+    outline: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card #resetUserAvatarColorsBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 150px;
+    max-width: 150px;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
+    border-radius: 8px;
+    background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+    color: var(--vcp-ui-text-1);
+    font-size: var(--vcp-ui-font-caption);
+    white-space: nowrap;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card #resetUserAvatarColorsBtn:hover {
+    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border));
+    background: var(--vcp-ui-control-bg-hover, var(--vcp-ui-fill-1));
+}
+
+@media (max-width: 520px) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item.full-width {
+        grid-column: 1;
+        grid-row: auto;
+    }
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-dependent-panel {
