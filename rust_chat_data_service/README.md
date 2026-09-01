@@ -230,7 +230,9 @@ SQLite 中的同步 Hash 使用与公开 Wire 相同的分层语义：`messages.
 Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
 `history_sources.source_hash`；只有全文检索可见的消息集合、正文或发言者变化才推进
 `content_revision`，Tantivy 通过 `content_revision/indexed_revision` 追赶 SQLite。普通追加
-只补入新消息文档；存在编辑或删除时回退为整 Topic 重写。
+只补入新消息文档；存在编辑或删除时回退为整 Topic 重写。消息 Push 要求每条
+canonical DTO 携带小写 64 位 `contentHash`，该值直接写入 `messages.message_hash`；
+写入物理 `history.json` 前会剥离该派生字段。
 
 ## 协议与失败语义
 

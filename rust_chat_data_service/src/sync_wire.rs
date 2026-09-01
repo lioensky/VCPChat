@@ -237,7 +237,6 @@ pub fn canonicalize_message(
     }
 
     for (key, expected) in [
-        ("isThinking", "boolean"),
         ("agentId", "string"),
         ("groupId", "string"),
         ("topicId", "string"),
@@ -247,8 +246,10 @@ pub fn canonicalize_message(
             Some(override_value) if key == "topicId" => override_value.clone(),
             _ => object.get(key).cloned().unwrap_or(Value::Null),
         };
-        let valid = value.is_null()
-            || (expected == "boolean" && value.is_boolean())
+        if value.is_null() {
+            continue;
+        }
+        let valid = (expected == "boolean" && value.is_boolean())
             || (expected == "string" && value.is_string());
         anyhow::ensure!(valid, "Message {message_id} {key} must be a {expected}");
         canonical.insert(key.to_string(), value);
@@ -410,7 +411,7 @@ mod tests {
             let input = &fixture["input"];
             let topic_id = input["topicId"].as_str().expect("topic id");
             let mut warnings = WireWarnings::default();
-            let messages = input["messages"]
+            let mut messages = input["messages"]
                 .as_array()
                 .expect("messages")
                 .iter()
@@ -423,6 +424,15 @@ mod tests {
                 .map(message_fingerprint)
                 .collect::<anyhow::Result<Vec<_>>>()
                 .expect("content hashes");
+            for (message, hash) in messages.iter_mut().zip(&hashes) {
+                message
+                    .as_object_mut()
+                    .expect("canonical message object")
+                    .insert(
+                        "contentHash".to_string(),
+                        serde_json::Value::String(hash.clone()),
+                    );
+            }
             assert_eq!(
                 serde_json::to_value(messages).expect("messages JSON"),
                 fixture["expected"]["canonicalMessages"]

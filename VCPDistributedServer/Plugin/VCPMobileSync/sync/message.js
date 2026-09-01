@@ -402,7 +402,6 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           );
         }
         message.updatedAt = indexed.updated_at;
-        delete message.contentHash;
       }
       await writer.write({
         kind: "topic",
@@ -531,9 +530,13 @@ async function doPushSingleTopic(
       msgMap.delete(tombstone.msgId);
     }
 
-    const finalHistory = Array.from(msgMap.values()).sort(
-      (a, b) => (a.timestamp || 0) - (b.timestamp || 0),
-    );
+    const finalHistory = Array.from(msgMap.values())
+      .map((message) => {
+        const physicalMessage = { ...message };
+        delete physicalMessage.contentHash;
+        return physicalMessage;
+      })
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
     const committed = await writeHistoryAtomic(
       historyPath,
@@ -568,11 +571,12 @@ async function doPushSingleTopic(
       identity,
       "batch_push",
       committed.unchanged
-        ? undefined
+        ? { messageHashes: projected.messageHashes }
         : {
             history: committed.history,
             sourceStats: committed.sourceStats,
             sourceHash: committed.sourceHash,
+            messageHashes: projected.messageHashes,
           },
     );
 
@@ -854,6 +858,7 @@ async function ingestHistoryToDb(
     history: suppliedHistory,
     sourceStats: suppliedStats,
     sourceHash: suppliedSourceHash,
+    messageHashes: suppliedMessageHashes,
   } = {},
 ) {
   const db = getDb();
@@ -872,15 +877,18 @@ async function ingestHistoryToDb(
     let sourceHash = suppliedSourceHash;
     if (history === undefined) {
       sourceStats = await fs.stat(filePath);
-      if (!isHistoryTopicUnhealthy({ topicId, ownerType, ownerId }) &&
+      if (
+        suppliedMessageHashes === undefined &&
+        !isHistoryTopicUnhealthy({ topicId, ownerType, ownerId }) &&
         isHistorySourceCurrent({
-        ownerType,
-        ownerId,
-        topicId,
-        filePath,
-        fileSize: sourceStats.size,
-        mtimeMs: sourceStats.mtimeMs,
-        })) {
+          ownerType,
+          ownerId,
+          topicId,
+          filePath,
+          fileSize: sourceStats.size,
+          mtimeMs: sourceStats.mtimeMs,
+        })
+      ) {
         return { messageCount: 0, warningCount: 0, changed: false };
       }
       const snapshot = await readHistoryStrict(filePath);
@@ -923,7 +931,11 @@ async function ingestHistoryToDb(
     }
     const previousSource = getHistorySourceState({ ownerType, ownerId, topicId });
     const sourceWasUnhealthy = isHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
-    if (previousSource?.source_hash === sourceHash && !sourceWasUnhealthy) {
+    if (
+      previousSource?.source_hash === sourceHash &&
+      !sourceWasUnhealthy &&
+      suppliedMessageHashes === undefined
+    ) {
       upsertHistorySourceState({
         ownerType,
         ownerId,
@@ -978,7 +990,9 @@ async function ingestHistoryToDb(
            AND deleted_at IS NULL`,
       );
       for (const m of validMessages) {
-        const hash = m.contentHash;
+        const hash = suppliedMessageHashes?.has(m.id)
+          ? suppliedMessageHashes.get(m.id)
+          : m.contentHash;
         const previous = existingById.get(m.id);
         if (previous?.deleted_at !== null && previous?.deleted_at !== undefined) {
           continue;

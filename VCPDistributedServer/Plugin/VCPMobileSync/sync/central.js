@@ -818,9 +818,7 @@ class CentralSyncAdapter {
           [topicId],
         );
       }
-      const canonical = canonicalizeTopicFrame(rawFrame, {
-        includeContentHash: false,
-      });
+      const canonical = canonicalizeTopicFrame(rawFrame);
       if (canonical.topicIdRewrites > 0) {
         getLogger().logInfo(
           "central",
@@ -990,7 +988,10 @@ class CentralSyncAdapter {
             topicId,
             ownerType: frame.ownerType,
             ownerId: frame.ownerId,
-            messages: projected.messages,
+            messages: projected.messages.map((message) => ({
+              ...message,
+              contentHash: projected.messageHashes.get(message.id),
+            })),
             deletedMessages: frame.deletedMessages,
           },
         );

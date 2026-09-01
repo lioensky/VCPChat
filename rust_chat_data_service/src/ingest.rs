@@ -1144,7 +1144,7 @@ async fn read_stable_file(path: &Path, initial: (i64, i64)) -> Result<(Vec<u8>, 
     }
 }
 
-fn source_file_version(path: &Path) -> std::io::Result<(i64, i64)> {
+pub(crate) fn source_file_version(path: &Path) -> std::io::Result<(i64, i64)> {
     let metadata = fs::metadata(path)?;
     if !metadata.is_file() {
         return Ok((0, 0));

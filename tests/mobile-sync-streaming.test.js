@@ -23,6 +23,9 @@ const {
 const {
   ChatDataServiceClient,
 } = require("../modules/services/chatDataService/client");
+const {
+  computeMessageFingerprint,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/hash");
 
 function createClientAdapter(client) {
   return createCentralSyncAdapter({ chatDataService: { client } });
@@ -159,7 +162,10 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
   assert.equal(frames[0].ok, true);
   assert.equal(frames[0].messages[0].attachments[0].hash, hash);
   assert.equal(frames[0].messages[0].attachments[0]._fileManagerData, undefined);
-  assert.equal(frames[0].messages[0].contentHash, undefined);
+  assert.equal(
+    frames[0].messages[0].contentHash,
+    computeMessageFingerprint(frames[0].messages[0]),
+  );
   assert.deepEqual(
     [frames[0].ownerType, frames[0].ownerId, frames[1].ownerType, frames[1].ownerId],
     ["agent", "agent-a", "group", "group-b"],
@@ -362,6 +368,7 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
           content: "mobile",
           timestamp: 2,
           updatedAt: 3,
+          contentHash: "c".repeat(64),
           attachments: [
             {
               type: "text/plain",
@@ -392,6 +399,7 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
   assert.equal(pushedTopic.ownerType, "agent");
   assert.equal(pushedTopic.ownerId, "agent-a");
   assert.equal(pushedTopic.messages[0].updatedAt, 3);
+  assert.equal(pushedTopic.messages[0].contentHash, "c".repeat(64));
   const desktopAttachment = pushedTopic.messages[0].attachments[0];
   assert.equal(desktopAttachment.hash, undefined);
   assert.equal(desktopAttachment._fileManagerData.hash, hash);

@@ -13,7 +13,8 @@ use serde_json::{Map, Value};
 use crate::{
     domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
     ingest::{
-        normalize_history_values, sha256_hex, write_history_atomic, Reconciler, SnapshotStale,
+        normalize_history_values, sha256_hex, source_file_version, write_history_atomic,
+        Reconciler, SnapshotStale,
     },
     storage::{Database, IngestCommit, OwnerHashMode},
     sync_wire::{canonicalize_message, WireWarnings},
@@ -1432,7 +1433,7 @@ fn encode_pull_topic_frame_into(
     output.write_all(b",\"ok\":true,\"messages\":[")?;
 
     let mut statement = transaction.prepare(
-        "SELECT msg_id, metadata_json, updated_at FROM messages
+        "SELECT msg_id, metadata_json, message_hash, updated_at FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
            AND (?4 IS NULL OR msg_id IN (SELECT value FROM json_each(?4)))
          ORDER BY ordinal ASC",
@@ -1448,7 +1449,9 @@ fn encode_pull_topic_frame_into(
     while let Some(row) = rows.next()? {
         let stored_id = row.get::<_, String>(0)?;
         let raw = row.get::<_, String>(1)?;
-        let updated_at = row.get::<_, i64>(2)?;
+        let content_hash = canonical_wire_hash(&row.get::<_, String>(2)?)
+            .context("stored message contentHash is invalid")?;
+        let updated_at = row.get::<_, i64>(3)?;
         let value =
             serde_json::from_str::<Value>(&raw).context("stored message JSON is invalid")?;
         drop(raw);
@@ -1477,6 +1480,10 @@ fn encode_pull_topic_frame_into(
             .as_object_mut()
             .context("canonical message must be an object")?
             .insert("updatedAt".to_string(), Value::from(updated_at));
+        canonical
+            .as_object_mut()
+            .context("canonical message must be an object")?
+            .insert("contentHash".to_string(), Value::String(content_hash));
         if !first {
             output.write_all(b",")?;
         }
@@ -1728,7 +1735,7 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
         topic_id,
         owner_type,
         owner_id,
-        messages,
+        mut messages,
         deleted_messages,
     } = topic;
     anyhow::ensure!(
@@ -1749,15 +1756,20 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
         explicit_tombstones.push((tombstone.msg_id.clone(), tombstone.deleted_at));
     }
     let mut live_ids = HashSet::new();
-    for message in &messages {
+    let mut message_hashes = HashMap::with_capacity(messages.len());
+    for message in &mut messages {
         let id = message
             .get("id")
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
-            .context("pushed message id is required")?;
-        anyhow::ensure!(live_ids.insert(id), "duplicate pushed message id {id}");
+            .context("pushed message id is required")?
+            .to_string();
         anyhow::ensure!(
-            !deleted.contains(id),
+            live_ids.insert(id.clone()),
+            "duplicate pushed message id {id}"
+        );
+        anyhow::ensure!(
+            !deleted.contains(id.as_str()),
             "message {id} is both live and deleted"
         );
         let updated_at = message
@@ -1768,6 +1780,17 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
             (0..=9_007_199_254_740_991).contains(&updated_at),
             "pushed message {id} updatedAt must be a non-negative safe integer"
         );
+        let content_hash = message
+            .get("contentHash")
+            .and_then(Value::as_str)
+            .and_then(canonical_wire_hash)
+            .with_context(|| {
+                format!("pushed message {id} contentHash must be a lowercase 64-character SHA-256")
+            })?;
+        message
+            .as_object_mut()
+            .context("pushed message must be an object")?
+            .remove("contentHash");
         let mut warnings = WireWarnings::default();
         canonicalize_message(message.clone(), &topic_id, &mut warnings)
             .with_context(|| format!("pushed message {id} is invalid"))?;
@@ -1775,6 +1798,7 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
             warnings.count == 0,
             "pushed message {id} contains an invalid attachment"
         );
+        message_hashes.insert(id, content_hash);
     }
     let key = resolve_topic(
         reconciler.database(),
@@ -1788,8 +1812,7 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
     let persisted_tombstones = snapshot.tombstone_ids;
     if let Some(stale_live) = live_ids
         .iter()
-        .copied()
-        .find(|message_id| persisted_tombstones.contains(*message_id))
+        .find(|message_id| persisted_tombstones.contains(message_id.as_str()))
     {
         return Err(SnapshotStale(format!(
             "pushed live message {stale_live} is already tombstoned; rerun message diff"
@@ -1834,31 +1857,49 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
         }
     }
     drop(positions);
+    for message in &mut current {
+        if let Some(object) = message.as_object_mut() {
+            object.remove("contentHash");
+        }
+    }
 
     let history_bytes = serde_json::to_vec_pretty(&current)?;
-    let normalized = normalize_history_values(current, key.owner_type, &key.topic_id)
+    let mut normalized = normalize_history_values(current, key.owner_type, &key.topic_id)
         .context("projected history is not ingestible")?;
+    for message in &mut normalized {
+        if let Some(content_hash) = message_hashes.remove(&message.msg_id) {
+            message.message_hash = content_hash;
+        }
+    }
+    anyhow::ensure!(
+        message_hashes.is_empty(),
+        "pushed message hashes do not match the projected history"
+    );
     let committed =
         write_history_atomic(&history_path, &history_bytes, Some(&expected_source_hash))?;
     drop(history_bytes);
-    let mut commit = if let Some(committed) = committed {
-        reconciler.database().ingest_topic(
-            &TopicSource {
-                key: key.clone(),
-                source_path: history_path.clone(),
-            },
-            &normalized,
+    let (mtime_ns, file_size, source_hash) = if let Some(committed) = committed {
+        (
             committed.mtime_ns,
             committed.file_size,
-            &committed.source_hash,
-            OwnerHashMode::Immediate,
-        )?
+            committed.source_hash,
+        )
     } else {
-        reconciler
-            .ingest_path(&history_path, "mobile_sync")
-            .await?
-            .context("projected history path was not accepted by CDS")?
+        let (mtime_ns, file_size) = source_file_version(&history_path)
+            .context("unchanged projected history metadata is unavailable")?;
+        (mtime_ns, file_size, expected_source_hash)
     };
+    let mut commit = reconciler.database().ingest_topic(
+        &TopicSource {
+            key: key.clone(),
+            source_path: history_path.clone(),
+        },
+        &normalized,
+        mtime_ns,
+        file_size,
+        &source_hash,
+        OwnerHashMode::Immediate,
+    )?;
     if reconciler
         .database()
         .apply_explicit_message_tombstones(&key, &explicit_tombstones)?
@@ -3332,6 +3373,21 @@ mod tests {
         assert_eq!(frame.legacy_attachment_warnings, 1);
         assert_eq!(frame.messages.len(), 2);
         assert_eq!(frame.messages[0]["updatedAt"], 77);
+        assert_eq!(
+            frame.messages[0]["contentHash"],
+            load_message_states(
+                &database,
+                &TopicKey {
+                    owner_type: OwnerType::Agent,
+                    owner_id: "agent-a".to_string(),
+                    topic_id: "topic-a".to_string(),
+                },
+            )
+            .expect("message states for pull hashes")[0]
+                .message_hash
+                .clone()
+                .expect("live message hash")
+        );
         assert_eq!(frame.messages[0]["attachments"][0]["hash"], "a".repeat(64));
         assert!(frame.messages[0]["attachments"][0]
             .get("_fileManagerData")
@@ -3372,6 +3428,7 @@ mod tests {
                         "content":"mobile edit",
                         "timestamp":1,
                         "updatedAt":78,
+                        "contentHash":"c".repeat(64),
                         "avatarUrl":"file:///G:/VCPChat/avatar.png",
                         "attachments":[{
                             "type":"text/plain",
@@ -3391,6 +3448,7 @@ mod tests {
                         "content":"projected native",
                         "timestamp":3,
                         "updatedAt":4,
+                        "contentHash":"d".repeat(64),
                         "attachments":[{
                             "type":"text/plain",
                             "src":"file:///actual/app-data/attachment.txt",
@@ -3414,6 +3472,9 @@ mod tests {
         assert_eq!(persisted.len(), 3);
         assert_eq!(persisted[0]["content"], "mobile edit");
         assert_eq!(persisted[0]["updatedAt"], 78);
+        assert!(persisted
+            .iter()
+            .all(|message| message.get("contentHash").is_none()));
         assert_eq!(persisted[0]["avatarUrl"], "file:///G:/VCPChat/avatar.png");
         assert_eq!(persisted[0]["avatarColor"], "#desktop-local-only");
         assert_eq!(persisted[0]["model"], "desktop-model");
@@ -3457,6 +3518,12 @@ mod tests {
                 .as_deref()
                 .is_some_and(|hash| hash.len() == 64)
         }));
+        let hashes = states
+            .iter()
+            .map(|message| (message.msg_id.as_str(), message.message_hash.as_deref()))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(hashes["m1"], Some("c".repeat(64).as_str()));
+        assert_eq!(hashes["m3"], Some("d".repeat(64).as_str()));
     }
 
     #[tokio::test]
@@ -3634,7 +3701,8 @@ mod tests {
                     "role": "user",
                     "content": "stale",
                     "timestamp": 1,
-                    "updatedAt": 101
+                    "updatedAt": 101,
+                    "contentHash": "e".repeat(64)
                 })],
                 deleted_messages: Vec::new(),
             },

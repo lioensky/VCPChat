@@ -636,6 +636,27 @@ test("Legacy 摄取会从物理 history 清除已持久化的消息墓碑", asyn
       ).get("agent", ownerId, topicId, "message-deleted").deleted_at,
       42,
     );
+    const wireHash = "f".repeat(64);
+    await message.ingestHistoryToDb(
+      historyPath,
+      { ownerType: "agent", ownerId, topicId },
+      "batch_push",
+      { messageHashes: new Map([["message-live", wireHash]]) },
+    );
+    assert.equal(
+      db.prepare(
+        `SELECT message_hash FROM messages
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ? AND msg_id = ?`,
+      ).get("agent", ownerId, topicId, "message-live").message_hash,
+      wireHash,
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        JSON.parse(fs.readFileSync(historyPath, "utf8"))[0],
+        "contentHash",
+      ),
+      false,
+    );
   } finally {
     db.close();
   }
