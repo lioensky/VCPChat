@@ -15,6 +15,7 @@ const themeHandlers = require('./themeHandlers');
 function initialize(paths) {
     const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager } = paths;
     const APP_DATA_DIR = path.dirname(SETTINGS_FILE);
+    const LEGACY_USER_AVATAR_FILE = path.join(APP_DATA_DIR, 'user_avatar.png');
     const WEBINDEX_MODEL_FILE = path.join(APP_DATA_DIR, 'webindexmodel.json');
     const TRANSLATOR_SETTING_FILE = path.join(APP_DATA_DIR, 'translatorsetting.json');
 
@@ -99,8 +100,11 @@ function initialize(paths) {
             const settings = await settingsManager.readSettings();
             
             // Check for user avatar
-            if (await fs.pathExists(USER_AVATAR_FILE)) {
-                settings.userAvatarUrl = `file://${USER_AVATAR_FILE}?t=${Date.now()}`;
+            const avatarFile = await fs.pathExists(USER_AVATAR_FILE)
+                ? USER_AVATAR_FILE
+                : (await fs.pathExists(LEGACY_USER_AVATAR_FILE) ? LEGACY_USER_AVATAR_FILE : null);
+            if (avatarFile) {
+                settings.userAvatarUrl = `file://${avatarFile}?t=${Date.now()}`;
             } else {
                 settings.userAvatarUrl = null; // Or a default path
             }

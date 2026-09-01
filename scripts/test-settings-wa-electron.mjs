@@ -55,6 +55,8 @@ function requestJson(url) {
 }
 
 const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-settings-wa-electron-'));
+await fs.mkdir(path.join(appData, 'UserData'), { recursive: true });
+await fs.writeFile(path.join(appData, 'UserData', 'user_avatar.png'), Buffer.from('avatar-fixture'));
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({
     uiMode: 'next',
     enableDistributedServer: false,
@@ -129,6 +131,10 @@ try {
     // ---- 1. SettingsShell layout ----
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsForm'), { timeout: timeoutMs });
+    await page.waitForFunction(() => {
+        const preview = document.getElementById('userAvatarPreview');
+        return Boolean(preview?.src?.includes('user_avatar.png') && preview.style.display !== 'none');
+    }, { timeout: timeoutMs });
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel'), { timeout: timeoutMs });
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .global-settings-footer.vcp-ui-settings-action-bar'), { timeout: timeoutMs });
     const shellState = await page.evaluate(() => {
