@@ -64,9 +64,9 @@ function requireCompoundTopicStates(payload) {
  * 处理 SYNC_TOPIC_DIFF_REQUEST
  * @param {object} payload - { topics: [{topicId,ownerType,ownerId,configHash,contentHash}] }
  */
-function handleSyncTopicDiff(payload, database = getDb()) {
+function handleSyncTopicDiff(payload) {
   const topicStates = requireCompoundTopicStates(payload);
-  const db = database;
+  const db = getDb();
   const logger = getLogger();
   if (!db) {
     logger.logOperation("topic_metadata", "topic_diff", "global", "error", "database not initialized");

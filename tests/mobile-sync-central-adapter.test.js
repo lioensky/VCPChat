@@ -6,6 +6,9 @@ const { test } = require("node:test");
 const {
   createCentralSyncAdapter: createAdapter,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/central");
+const {
+  createSyncErrorFrame,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/error-contract");
 function createClient(overrides = {}) {
   return {
     reconcile: async () => ({ stats: {} }),
@@ -221,6 +224,39 @@ test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic"
     ownerType: "agent",
     ownerId: "agent_1",
   }]);
+});
+
+test("中央 TopicDiff 将 CDS stale 保真为公开重试错误", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      request: async () => {
+        throw Object.assign(new Error("topic snapshot changed"), {
+          code: "SYNC_SNAPSHOT_STALE",
+          status: 409,
+          retryable: true,
+        });
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleTopicDiff({ topics: [] }),
+    (error) => {
+      assert.deepEqual(createSyncErrorFrame(error), {
+        type: "SYNC_ERROR",
+        error: {
+          code: "SYNC_SNAPSHOT_STALE",
+          origin: "desktop_cds",
+          stage: "topic_validation",
+          kind: "data",
+          retry: "manual",
+          message: "topic snapshot changed",
+          failedTopicIds: [],
+        },
+      });
+      return true;
+    },
+  );
 });
 
 test("中央启动门禁可在 SERVICE_BUSY 时持续等待既有 reconcile", async () => {

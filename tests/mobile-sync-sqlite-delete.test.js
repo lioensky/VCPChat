@@ -17,6 +17,14 @@ const DB_PATH = path.join(
   "core",
   "db.js",
 );
+const DIFF_PATH = path.join(
+  ROOT,
+  "VCPDistributedServer",
+  "Plugin",
+  "VCPMobileSync",
+  "sync",
+  "diff.js",
+);
 const ENTITY_PATH = path.join(
   ROOT,
   "VCPDistributedServer",
@@ -81,6 +89,7 @@ function TestDatabase(filename) {
 function loadSqliteModules({ captureOnMessage = null } = {}) {
   const modulePaths = [
     DB_PATH,
+    DIFF_PATH,
     ENTITY_PATH,
     INDEX_PATH,
     MANIFEST_PATH,
@@ -122,7 +131,8 @@ function loadSqliteModules({ captureOnMessage = null } = {}) {
     const index = captureOnMessage ? require(INDEX_PATH) : null;
     const manifest = require(MANIFEST_PATH);
     const message = require(MESSAGE_PATH);
-    return { database, entity, index, manifest, message };
+    const diff = require(DIFF_PATH);
+    return { database, diff, entity, index, manifest, message };
   } finally {
     Module._load = originalLoad;
     for (const modulePath of modulePaths) {
@@ -193,6 +203,144 @@ function entityRow(db, id, type, ownerType = null, ownerId = null) {
   }
   return db.prepare("SELECT * FROM topics WHERE topic_id = ?").get(id);
 }
+
+function topicDiffState(topicId, configHash, contentHash) {
+  return {
+    topicId,
+    ownerType: "agent",
+    ownerId: "owner-a",
+    configHash,
+    contentHash,
+  };
+}
+
+function assertTopicSnapshotStale(run, topicId) {
+  assert.throws(run, (error) => {
+    assert.equal(error.code, "SYNC_SNAPSHOT_STALE");
+    assert.equal(error.origin, "desktop_plugin");
+    assert.equal(error.stage, "topic_validation");
+    assert.equal(error.kind, "data");
+    assert.equal(error.retry, "manual");
+    assert.deepEqual(error.failedTopicIds, [topicId]);
+    return true;
+  });
+}
+
+test("Legacy TopicDiff 未初始化数据库时 fail closed", () => {
+  const { diff } = loadSqliteModules();
+  const hash = "a".repeat(64);
+
+  assert.throws(
+    () => diff.handleSyncTopicDiff({
+      topics: [topicDiffState("topic-uninitialized", hash, hash)],
+    }),
+    (error) => error.code === "SYNC_DB_UNAVAILABLE",
+  );
+});
+
+test("Legacy Phase 2.5 只将 content 漂移送入消息阶段", () => {
+  const { database, diff, message } = loadSqliteModules();
+  const db = database.initDb(":memory:");
+  const configA = "a".repeat(64);
+  const configB = "b".repeat(64);
+  const contentC = "c".repeat(64);
+  const contentD = "d".repeat(64);
+  const stableTopic = "topic-stable";
+  const contentTopic = "topic-content";
+  const staleTopic = "topic-stale";
+
+  try {
+    for (const topicId of [stableTopic, contentTopic, staleTopic]) {
+      insertEntity(db, { id: topicId, type: "topic" });
+    }
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentC, stableTopic);
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentD, contentTopic);
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentC, staleTopic);
+
+    assert.deepEqual(
+      diff.handleSyncTopicDiff({
+        topics: [topicDiffState(stableTopic, configA, contentC)],
+      }),
+      { type: "SYNC_TOPIC_DIFF_RESULT", changedTopics: [] },
+    );
+    assert.deepEqual(
+      diff.handleSyncTopicDiff({
+        topics: [topicDiffState(contentTopic, configA, contentC)],
+      }),
+      {
+        type: "SYNC_TOPIC_DIFF_RESULT",
+        changedTopics: [{
+          topicId: contentTopic,
+          ownerType: "agent",
+          ownerId: "owner-a",
+        }],
+      },
+    );
+
+    db.prepare(
+      "UPDATE topics SET config_hash = ? WHERE topic_id = ?",
+    ).run(configB, staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [
+          topicDiffState(contentTopic, configA, contentC),
+          topicDiffState(staleTopic, configA, contentC),
+        ],
+      }),
+      staleTopic,
+    );
+
+    db.prepare(
+      "UPDATE topics SET content_hash = ? WHERE topic_id = ?",
+    ).run(contentD, staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [topicDiffState(staleTopic, configA, contentC)],
+      }),
+      staleTopic,
+    );
+
+    db.prepare(
+      "UPDATE topics SET config_hash = ?, content_hash = ?, deleted_at = ? WHERE topic_id = ?",
+    ).run(configA, contentC, 42, staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [topicDiffState(staleTopic, configA, contentC)],
+      }),
+      staleTopic,
+    );
+
+    db.prepare("DELETE FROM topics WHERE topic_id = ?").run(staleTopic);
+    assertTopicSnapshotStale(
+      () => diff.handleSyncTopicDiff({
+        topics: [topicDiffState(staleTopic, configA, contentC)],
+      }),
+      staleTopic,
+    );
+
+    const unhealthyIdentity = topicDiffState(stableTopic, configA, contentC);
+    message.markHistoryTopicUnhealthy(unhealthyIdentity, new Error("invalid JSON"));
+    try {
+      assert.throws(
+        () => diff.handleSyncTopicDiff({ topics: [unhealthyIdentity] }),
+        (error) =>
+          error.code === "HISTORY_SOURCE_INVALID" &&
+          error.stage === "topic_validation" &&
+          error.failedTopicIds[0] === stableTopic,
+      );
+    } finally {
+      message.clearHistoryTopicUnhealthy(unhealthyIdentity);
+    }
+  } finally {
+    db.close();
+  }
+});
 
 test("Legacy 普通 Owner/Topic upsert 不会清除墓碑", () => {
   const { database } = loadSqliteModules();

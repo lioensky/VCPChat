@@ -77,8 +77,6 @@ const {
   readHistoryStrict,
   writeHistoryAtomic,
   resolveMessageUpdatedAt,
-  markHistoryTopicUnhealthy,
-  clearHistoryTopicUnhealthy,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
 const {
   getLocalManifest,
@@ -338,28 +336,6 @@ test("Phase 2.5 topic hash 对错误类型 fail closed", () => {
   );
 });
 
-test("issue #20: 未初始化数据库不会伪装成无变化 topic", () => {
-  const hash = "a".repeat(64);
-  assert.throws(
-    () =>
-      handleSyncTopicDiff(
-        {
-          topics: [
-            {
-              topicId: "topic-issue-20",
-              ownerType: "agent",
-              ownerId: "agent-issue-20",
-              configHash: hash,
-              contentHash: hash,
-            },
-          ],
-        },
-        null,
-      ),
-    (error) => error.code === "SYNC_DB_UNAVAILABLE",
-  );
-});
-
 test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-issue-20-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -449,38 +425,6 @@ test("Topic manifest 用单条 SQL 绑定完整 targetedOwners", () => {
     { topicId: "topic-a", action: "PULL", ownerType: "agent", ownerId: "agent-a" },
   ]);
   assert.equal(prepareCount, 1);
-});
-
-test("TopicDiff 对整批 Topic 只 prepare 一次查询", () => {
-  const hash = "a".repeat(64);
-  let prepareCount = 0;
-  let getCount = 0;
-  const database = {
-    prepare(sql) {
-      prepareCount += 1;
-      assert.match(sql, /owner_type = \? AND owner_id = \? AND topic_id = \?/);
-      return {
-        get() {
-          getCount += 1;
-          return { config_hash: hash, content_hash: hash };
-        },
-      };
-    },
-  };
-  const topics = ["topic-a", "topic-b"].map((topicId) => ({
-    topicId,
-    ownerType: "agent",
-    ownerId: "agent-a",
-    configHash: hash,
-    contentHash: hash,
-  }));
-
-  assert.deepEqual(handleSyncTopicDiff({ topics }, database), {
-    type: "SYNC_TOPIC_DIFF_RESULT",
-    changedTopics: [],
-  });
-  assert.equal(prepareCount, 1);
-  assert.equal(getCount, 2);
 });
 
 test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", () => {
@@ -674,35 +618,6 @@ test("Manifest 错型、重复身份和 deletedAt=0 均按硬切契约处理", (
     }, database),
     /unexpected or missing fields/,
   );
-});
-
-test("损坏 history 的已提交索引不能走 topic hash 快速成功", () => {
-  const topicId = "topic-unhealthy";
-  const identity = {
-    topicId,
-    ownerType: "agent",
-    ownerId: "agent-a",
-  };
-  markHistoryTopicUnhealthy(identity, new Error("invalid JSON"));
-  try {
-    assert.throws(
-      () => handleSyncTopicDiff(
-        {
-          topics: [{
-            topicId,
-            ownerType: "agent",
-            ownerId: "agent-a",
-            configHash: "a".repeat(64),
-            contentHash: "",
-          }],
-        },
-        fakeDiffDatabase({ topics: { [topicId]: { content_hash: "" } } }),
-      ),
-      (error) => error.code === "HISTORY_SOURCE_INVALID",
-    );
-  } finally {
-    clearHistoryTopicUnhealthy(identity);
-  }
 });
 
 test("幂等失败重放保留原 HTTP 状态", () => {
