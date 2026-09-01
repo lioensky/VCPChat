@@ -83,6 +83,22 @@ try {
         return Boolean(preview && preview.src.includes('user_avatar.png') && preview.style.display !== 'none' && preview.complete && preview.naturalWidth > 0);
     }));
     console.log('[avatar-probe] first open preview decoded');
+    const geometry = await page.evaluate(() => {
+        const card = document.querySelector('.vcp-uiux-user-profile-card');
+        const capsule = card?.querySelector('.agent-style-collapsible-container');
+        const cardRect = card?.getBoundingClientRect();
+        const capsuleRect = capsule?.getBoundingClientRect();
+        return {
+            cardRight: cardRect?.right,
+            capsuleRight: capsuleRect?.right,
+            rightInset: cardRect && capsuleRect ? cardRect.right - capsuleRect.right : null,
+            capsuleWidth: capsuleRect?.width,
+        };
+    });
+    assert.ok(Number.isFinite(geometry.rightInset) && geometry.rightInset <= 24,
+        `custom style capsule must be right aligned (inset ${geometry.rightInset}px)`);
+    assert.ok(geometry.capsuleWidth <= 200, `custom style capsule remains compact (${geometry.capsuleWidth}px)`);
+    console.log('[avatar-probe] custom style capsule geometry is right-aligned', JSON.stringify(geometry));
 
     // Mirror the production cropper callback: install the cropped File, then
     // emit the synthetic input that schedules the form autosave. This catches
