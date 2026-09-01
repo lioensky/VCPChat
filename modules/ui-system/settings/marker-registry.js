@@ -32,6 +32,7 @@ const MARKERS = Object.freeze({
     // settings-bridge.js — generated Buttons on the global surface
     vcpTypedGlobalSettingsEntry: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
     vcpTypedNetworkPathAction: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
+    vcpSettingsFocusBound: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
 
     // typed-field-owners.js — typed settings seam
     vcpTypedFieldOwner: { owner: 'typed-field-owners.js + settings/autosave.js', cleanup: 'manual-retract' },
