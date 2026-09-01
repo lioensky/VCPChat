@@ -465,6 +465,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 68px; height: 68px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper { grid-column: 2; grid-row: 1; align-self: center; min-width: 0; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > label { display: none; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input { max-width: 280px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input { width: 100%; margin-left: 0; box-sizing: border-box; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input[hidden] { display: none !important; }
@@ -490,11 +491,24 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) .vcp-uiux-input-wrap { display: none !important; }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header {
-    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 180px;
+    min-height: 40px;
+    box-sizing: border-box;
+    padding: 8px 12px 8px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 999px;
     white-space: nowrap;
-    max-width: 190px;
+    max-width: 180px;
+    color: var(--vcp-ui-text-1);
+    background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header:hover {
+    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border));
+    background: var(--vcp-ui-control-bg-hover, var(--vcp-ui-fill-1));
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
