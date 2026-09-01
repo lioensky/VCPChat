@@ -188,6 +188,87 @@ function insertEntity(db, {
   }
 }
 
+test("legacy Topic manifest SQL 按完整 targeted Owner 身份取数", () => {
+  const { database, manifest } = loadSqliteModules();
+  const db = database.initDb(":memory:");
+  try {
+    insertEntity(db, { id: "shared", type: "agent" });
+    insertEntity(db, {
+      id: "topic-agent-live",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "shared",
+    });
+    insertEntity(db, {
+      id: "topic-agent-deleted",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "shared",
+    });
+    db.prepare(
+      `UPDATE topics SET deleted_at = 9
+       WHERE owner_type = 'agent' AND owner_id = 'shared'
+         AND topic_id = 'topic-agent-deleted'`,
+    ).run();
+
+    insertEntity(db, { id: "shared", type: "group" });
+    insertEntity(db, {
+      id: "topic-group",
+      type: "group_topic",
+      ownerType: "group",
+      ownerId: "shared",
+    });
+    insertEntity(db, {
+      id: "topic-other",
+      type: "agent_topic",
+      ownerType: "agent",
+      ownerId: "other",
+    });
+
+    const agentResult = manifest.handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: [{ ownerType: "agent", ownerId: "shared" }],
+      items: [],
+    }, db);
+    assert.deepEqual(agentResult.results, [
+      {
+        ownerType: "agent",
+        ownerId: "shared",
+        topicId: "topic-agent-deleted",
+        action: "PULL_DELETE",
+        deletedAt: 9,
+      },
+      {
+        ownerType: "agent",
+        ownerId: "shared",
+        topicId: "topic-agent-live",
+        action: "PULL",
+      },
+    ]);
+
+    const groupResult = manifest.handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: [{ ownerType: "group", ownerId: "shared" }],
+      items: [],
+    }, db);
+    assert.deepEqual(groupResult.results, [{
+      ownerType: "group",
+      ownerId: "shared",
+      topicId: "topic-group",
+      action: "PULL",
+    }]);
+
+    const emptyResult = manifest.handleSyncManifest({
+      manifestType: "topic",
+      targetedOwners: [],
+      items: [],
+    }, db);
+    assert.deepEqual(emptyResult.results, []);
+  } finally {
+    db.close();
+  }
+});
+
 function entityRow(db, id, type, ownerType = null, ownerId = null) {
   const isTopic = ["topic", "agent_topic", "group_topic"].includes(type);
   if (!isTopic) {

@@ -16,7 +16,7 @@ use crate::{
         normalize_history_values, sha256_hex, write_history_atomic, Reconciler, SnapshotStale,
     },
     storage::{Database, IngestCommit, OwnerHashMode},
-    sync_wire::{canonicalize_message, unhealthy_topic_sentinel_hash, WireWarnings},
+    sync_wire::{canonicalize_message, WireWarnings},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,11 +145,17 @@ struct ManifestSnapshot {
 struct TopicManifestRow {
     config_hash: String,
     content_hash: String,
-    updated_at: i64,
     deleted_at: Option<i64>,
     source_path: String,
     source_status: Option<String>,
     source_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct TopicMetadataManifestRow {
+    config_hash: String,
+    updated_at: i64,
+    deleted_at: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -880,7 +886,8 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
         }
 
         let config_changed = local.config_hash != remote.config_hash;
-        let content_changed = local.content_hash != remote.content_hash;
+        let owner_content_changed =
+            manifest_type == ManifestType::Owner && local.content_hash != remote.content_hash;
         if config_changed {
             actions.push(ManifestDecision {
                 identity: local_identity,
@@ -890,9 +897,9 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
                     ManifestActionKind::Pull
                 },
                 deleted_at: None,
-                content_hash_mismatch: content_changed,
+                content_hash_mismatch: owner_content_changed,
             });
-        } else if content_changed && manifest_type == ManifestType::Owner {
+        } else if owner_content_changed {
             actions.push(ManifestDecision {
                 identity: local_identity,
                 action: ManifestActionKind::Skip,
@@ -1868,7 +1875,10 @@ fn local_manifest(
 ) -> Result<Vec<ManifestItem>> {
     match manifest_type {
         ManifestType::Owner => owner_manifest(database),
-        ManifestType::Topic => topic_manifests(database, targeted_owners),
+        ManifestType::Topic => topic_manifests(
+            database,
+            targeted_owners.context("topic manifest requires targeted owners")?,
+        ),
         ManifestType::Avatar => avatar_manifest(database),
     }
 }
@@ -1960,58 +1970,28 @@ fn owner_manifest(database: &Database) -> Result<Vec<ManifestItem>> {
         .collect()
 }
 
-fn topic_manifests(
-    database: &Database,
-    targeted_owners: Option<&[OwnerKey]>,
-) -> Result<Vec<ManifestItem>> {
-    if targeted_owners.is_some_and(|owners| owners.is_empty()) {
+fn topic_manifests(database: &Database, targeted_owners: &[OwnerKey]) -> Result<Vec<ManifestItem>> {
+    if targeted_owners.is_empty() {
         return Ok(Vec::new());
     }
-    let rows = match targeted_owners {
-        Some(owners) => load_topic_manifest_rows_for_owners(database, owners)?,
-        None => load_topic_manifest_rows(database)?,
-    };
-    rows.into_iter()
-        .map(|(key, row)| topic_manifest_from_row(&key, &row))
-        .collect()
-}
-
-#[cfg(test)]
-fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
-    let row = load_topic_manifest_row(database, key)?;
-    topic_manifest_from_row(key, &row)
-}
-
-fn topic_manifest_from_row(key: &TopicKey, row: &TopicManifestRow) -> Result<ManifestItem> {
-    if row.deleted_at.is_some() {
-        return Ok(ManifestItem {
-            identity: ManifestIdentity::Topic(key.clone()),
-            config_hash: String::new(),
-            content_hash: String::new(),
-            updated_at: row.updated_at,
-            deleted_at: row.deleted_at,
-        });
-    }
-    let content_hash = match ensure_topic_manifest_row_healthy(row) {
-        Ok(()) => row.content_hash.clone(),
-        Err(error) => {
-            tracing::warn!(
-                owner_type = %key.owner_type.as_str(),
-                owner_id = %key.owner_id,
-                topic_id = %key.topic_id,
-                error = %format!("{error:#}"),
-                "topic manifest content hash degraded"
-            );
-            unhealthy_topic_sentinel_hash(key)
-        }
-    };
-    Ok(ManifestItem {
-        identity: ManifestIdentity::Topic(key.clone()),
-        config_hash: row.config_hash.clone(),
-        content_hash,
-        updated_at: row.updated_at,
-        deleted_at: row.deleted_at,
-    })
+    let rows = load_topic_metadata_manifest_rows_for_owners(database, targeted_owners)?;
+    Ok(rows
+        .into_iter()
+        .map(|(key, row)| {
+            let deleted_at = row.deleted_at;
+            ManifestItem {
+                identity: ManifestIdentity::Topic(key),
+                config_hash: if deleted_at.is_some() {
+                    String::new()
+                } else {
+                    row.config_hash
+                },
+                content_hash: String::new(),
+                updated_at: row.updated_at,
+                deleted_at,
+            }
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -2019,7 +1999,7 @@ fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicM
     let connection = database.connection.lock();
     connection
         .query_row(
-            "SELECT t.config_hash, t.content_hash, t.updated_at, t.deleted_at,
+            "SELECT t.config_hash, t.content_hash, t.deleted_at,
                 t.source_path, hs.status, hs.last_error
          FROM topics t
          LEFT JOIN history_sources hs
@@ -2033,11 +2013,10 @@ fn load_topic_manifest_row(database: &Database, key: &TopicKey) -> Result<TopicM
                 Ok(TopicManifestRow {
                     config_hash: row.get(0)?,
                     content_hash: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    updated_at: row.get(2)?,
-                    deleted_at: row.get(3)?,
-                    source_path: row.get(4)?,
-                    source_status: row.get(5)?,
-                    source_error: row.get(6)?,
+                    deleted_at: row.get(2)?,
+                    source_path: row.get(3)?,
+                    source_status: row.get(4)?,
+                    source_error: row.get(5)?,
                 })
             },
         )
@@ -2061,38 +2040,18 @@ fn topic_manifest_row_from_sql(
         TopicManifestRow {
             config_hash: row.get(3)?,
             content_hash: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-            updated_at: row.get(5)?,
-            deleted_at: row.get(6)?,
-            source_path: row.get(7)?,
-            source_status: row.get(8)?,
-            source_error: row.get(9)?,
+            deleted_at: row.get(5)?,
+            source_path: row.get(6)?,
+            source_status: row.get(7)?,
+            source_error: row.get(8)?,
         },
     ))
 }
 
-fn load_topic_manifest_rows(database: &Database) -> Result<Vec<(TopicKey, TopicManifestRow)>> {
-    let connection = database.connection.lock();
-    let mut statement = connection.prepare(
-        "SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
-                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
-         FROM topics t
-         LEFT JOIN history_sources hs
-           ON hs.source_path=t.source_path
-          AND hs.owner_type=t.owner_type
-          AND hs.owner_id=t.owner_id
-          AND hs.topic_id=t.topic_id
-         ORDER BY t.owner_type, t.owner_id, t.topic_id",
-    )?;
-    let rows = statement
-        .query_map([], topic_manifest_row_from_sql)?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
-}
-
-fn load_topic_manifest_rows_for_owners(
+fn load_topic_metadata_manifest_rows_for_owners(
     database: &Database,
     owners: &[OwnerKey],
-) -> Result<Vec<(TopicKey, TopicManifestRow)>> {
+) -> Result<Vec<(TopicKey, TopicMetadataManifestRow)>> {
     if owners.is_empty() {
         return Ok(Vec::new());
     }
@@ -2104,20 +2063,33 @@ fn load_topic_manifest_rows_for_owners(
                     json_extract(value, '$.ownerId') AS owner_id
              FROM json_each(?1)
          )
-         SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
-                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
+         SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash,
+                t.updated_at, t.deleted_at
          FROM requested r
          JOIN topics t
            ON t.owner_type=r.owner_type AND t.owner_id=r.owner_id
-         LEFT JOIN history_sources hs
-           ON hs.source_path=t.source_path
-          AND hs.owner_type=t.owner_type
-          AND hs.owner_id=t.owner_id
-          AND hs.topic_id=t.topic_id
          ORDER BY t.owner_type, t.owner_id, t.topic_id",
     )?;
     let rows = statement
-        .query_map([selectors], topic_manifest_row_from_sql)?
+        .query_map([selectors], |row| {
+            let raw_owner_type: String = row.get(0)?;
+            Ok((
+                TopicKey {
+                    owner_type: if raw_owner_type == "group" {
+                        OwnerType::Group
+                    } else {
+                        OwnerType::Agent
+                    },
+                    owner_id: row.get(1)?,
+                    topic_id: row.get(2)?,
+                },
+                TopicMetadataManifestRow {
+                    config_hash: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    deleted_at: row.get(5)?,
+                },
+            ))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
 }
@@ -2139,7 +2111,7 @@ fn load_topic_manifest_rows_for_topics(
              FROM json_each(?1)
          )
          SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
-                t.updated_at, t.deleted_at, t.source_path, hs.status, hs.last_error
+                t.deleted_at, t.source_path, hs.status, hs.last_error
          FROM requested r
          JOIN topics t
            ON t.owner_type=r.owner_type
@@ -2527,11 +2499,10 @@ mod tests {
     };
 
     use super::{
-        avatar_manifest, encode_pull_topic_frame, ensure_topic_manifest_row_healthy,
-        load_message_states, load_topic_manifest_row, manifest, message_diff,
-        mobile_owner_config_hash_from_value, owner_content_hash, owner_manifest, pull_entities,
-        pull_topic_messages, push_topic_messages, stable_stringify, topic_diff, topic_manifest,
-        topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
+        avatar_manifest, encode_pull_topic_frame, load_message_states, load_topic_manifest_row,
+        manifest, message_diff, mobile_owner_config_hash_from_value, owner_content_hash,
+        owner_manifest, pull_entities, pull_topic_messages, push_topic_messages, stable_stringify,
+        topic_diff, topic_manifests, AvatarManifestState, EntitiesPullRequest, EntityPullItem,
         ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
         MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
         MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
@@ -3199,7 +3170,8 @@ mod tests {
             owner_id: "agent-a".to_string(),
             topic_id: "topic-a".to_string(),
         };
-        let baseline = topic_manifest(&database, &key).expect("load committed topic state");
+        let baseline =
+            load_topic_manifest_row(&database, &key).expect("load committed topic state");
         let different_content = if baseline.content_hash == "d".repeat(64) {
             "e".repeat(64)
         } else {
@@ -3807,13 +3779,22 @@ mod tests {
             owner_id: "agent-a".to_string(),
             topic_id: shared_topic_id.to_string(),
         };
-        let row = load_topic_manifest_row(&database, &primary_key)
-            .expect("load mismatched source manifest row");
-        assert_eq!(row.source_status, None);
-        assert!(ensure_topic_manifest_row_healthy(&row)
-            .expect_err("mismatched ready source must be unhealthy")
-            .to_string()
-            .contains("exists but has not been ingested"));
+        let baseline =
+            load_topic_manifest_row(&database, &primary_key).expect("load committed topic state");
+        let error = topic_diff(
+            &database,
+            TopicDiffRequest {
+                topics: vec![TopicDiffState {
+                    topic_id: primary_key.topic_id.clone(),
+                    owner_type: primary_key.owner_type,
+                    owner_id: primary_key.owner_id.clone(),
+                    config_hash: baseline.config_hash,
+                    content_hash: baseline.content_hash,
+                }],
+            },
+        )
+        .expect_err("mismatched ready source must fail topic validation");
+        assert!(format!("{error:#}").contains("exists but has not been ingested"));
 
         let stats = reconciler
             .reconcile()
@@ -3873,8 +3854,7 @@ mod tests {
         assert_eq!(identity.owner_id, "group-a");
     }
 
-    /// 已删 topic 被短路（不再触碰 metadata/健康检查/content hash），
-    /// 且 manifest diff 能产出 DELETE 删除信号；存活 topic 输出不变。
+    /// 已删 Topic 只携带身份和删除时间，并在 Manifest 中产出删除信号。
     #[tokio::test]
     async fn tombstoned_topic_is_short_circuited_and_emits_delete() {
         let (_temp, config, database, reconciler) = sync_fixture();
@@ -3902,7 +3882,8 @@ mod tests {
                 .expect("insert tombstoned topic");
         }
 
-        let items = topic_manifests(&database, None).expect("manifest with tombstone");
+        let owners = [owner_key(OwnerType::Agent, "agent-a")];
+        let items = topic_manifests(&database, &owners).expect("manifest with tombstone");
         let tombstone = items
             .iter()
             .find(|item| manifest_item_id(item) == "topic-deleted")
@@ -3910,13 +3891,6 @@ mod tests {
         assert_eq!(tombstone.deleted_at, Some(123));
         assert!(tombstone.config_hash.is_empty());
         assert!(tombstone.content_hash.is_empty());
-        let alive = items
-            .iter()
-            .find(|item| manifest_item_id(item) == "topic-a")
-            .expect("alive entry");
-        assert_eq!(alive.content_hash.len(), 64);
-        assert_eq!(alive.deleted_at, None);
-
         // 端到端：Desktop 独有的墓碑条目让 Mobile 直接落 DELETE。
         let response = manifest(
             &database,
@@ -3982,14 +3956,11 @@ mod tests {
         .expect("write agent-b default history");
         reconciler.reconcile().await.expect("reconcile");
 
-        let items = topic_manifests(
-            &database,
-            Some(&[
-                owner_key(OwnerType::Agent, "agent-a"),
-                owner_key(OwnerType::Agent, "agent-b"),
-            ]),
-        )
-        .expect("topic manifests");
+        let owners = [
+            owner_key(OwnerType::Agent, "agent-a"),
+            owner_key(OwnerType::Agent, "agent-b"),
+        ];
+        let items = topic_manifests(&database, &owners).expect("topic manifests");
         let default_owners = items
             .iter()
             .filter(|item| manifest_item_id(item) == "default")
@@ -4093,7 +4064,7 @@ mod tests {
         .expect("write agent config");
 
         reconciler.reconcile().await.expect("reconcile");
-        let topic_a = topic_manifest(
+        let topic_a = load_topic_manifest_row(
             &database,
             &TopicKey {
                 owner_type: OwnerType::Agent,
@@ -4102,7 +4073,7 @@ mod tests {
             },
         )
         .expect("topic-a manifest");
-        let topic_b = topic_manifest(
+        let topic_b = load_topic_manifest_row(
             &database,
             &TopicKey {
                 owner_type: OwnerType::Agent,
@@ -4111,7 +4082,7 @@ mod tests {
             },
         )
         .expect("topic-b manifest");
-        let default_topic = topic_manifest(
+        let default_topic = load_topic_manifest_row(
             &database,
             &TopicKey {
                 owner_type: OwnerType::Agent,
@@ -4327,173 +4298,6 @@ mod tests {
         assert!(load_message_states(&database, &key).is_err());
     }
 
-    /// 活 topic 的 source 不健康时，topic_manifests 不再整批 500，
-    /// 降级为哨兵条目；比对逻辑据此产出 PULL（ts 仲裁稳态偏向），健康 topic
-    /// 输出逐字节不变。
-    #[tokio::test]
-    async fn unhealthy_live_topic_degrades_to_sentinel_and_pulls() {
-        let (_temp, config, database, reconciler) = sync_fixture();
-        // 第二个健康 topic 作为"零变化"对照。
-        fs::write(
-            config
-                .user_data_dir
-                .join("agent-a/topics/topic-a/history.json"),
-            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
-        )
-        .expect("write topic-a history");
-        fs::create_dir_all(config.user_data_dir.join("agent-a/topics/topic-b"))
-            .expect("create topic-b dir");
-        fs::write(
-            config
-                .user_data_dir
-                .join("agent-a/topics/topic-b/history.json"),
-            br#"[{"id":"m2","role":"user","content":"b","timestamp":2}]"#,
-        )
-        .expect("write topic-b history");
-        fs::write(
-            config.app_data.join("Agents/agent-a/config.json"),
-            serde_json::to_vec(&json!({
-                "name": "Agent A",
-                "topics": [
-                    {"id":"topic-a","name":"Topic A","createdAt":1},
-                    {"id":"topic-b","name":"Topic B","createdAt":2}
-                ]
-            }))
-            .expect("serialize config"),
-        )
-        .expect("write config");
-        reconciler.reconcile().await.expect("reconcile");
-
-        // 基线：毒化前健康 topic 的配置与内容指纹。
-        let baseline = topic_manifests(&database, None).expect("baseline manifest");
-        let baseline_a_config = baseline
-            .iter()
-            .find(|item| manifest_item_id(item) == "topic-a")
-            .map(|item| item.config_hash.clone())
-            .expect("baseline topic-a");
-        let baseline_b = baseline
-            .iter()
-            .find(|item| manifest_item_id(item) == "topic-b")
-            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
-            .expect("baseline topic-b");
-
-        // 毒化 topic-a 的 source（对齐 S5 的 invalid 毒态）。
-        mark_test_source_invalid(
-            &database,
-            &config,
-            TopicKey {
-                owner_type: OwnerType::Agent,
-                owner_id: "agent-a".to_string(),
-                topic_id: "topic-a".to_string(),
-            },
-        );
-
-        // 整批不再失败；topic-a 保留配置提交 Hash，仅内容降级为确定性哨兵。
-        let items = topic_manifests(&database, None).expect("manifest must not 500");
-        let degraded_a = items
-            .iter()
-            .find(|item| manifest_item_id(item) == "topic-a")
-            .expect("degraded topic-a entry");
-        let sentinel = sha256_hex(b"vcp-unhealthy-topic:agent:agent-a:topic-a");
-        assert_eq!(degraded_a.config_hash, baseline_a_config);
-        assert_eq!(degraded_a.content_hash, sentinel);
-        assert_eq!(degraded_a.deleted_at, None);
-        // 健康 topic 逐字节不变。
-        let after_b = items
-            .iter()
-            .find(|item| manifest_item_id(item) == "topic-b")
-            .map(|item| (item.config_hash.clone(), item.content_hash.clone()))
-            .expect("topic-b after degradation");
-        assert_eq!(after_b, baseline_b);
-
-        // 端到端：remote 存活且 ts 旧 → 哨兵 config_hash 迫使出 PULL。
-        let response = manifest(
-            &database,
-            ManifestRequest::Topic {
-                items: vec![TopicManifestState::Live(super::TopicManifestLive {
-                    owner_type: OwnerType::Agent,
-                    owner_id: "agent-a".to_string(),
-                    topic_id: "topic-a".to_string(),
-                    config_hash: "a".repeat(64),
-                    content_hash: "b".repeat(64),
-                    updated_at: 1,
-                })],
-                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
-            },
-        )
-        .expect("manifest diff with unhealthy topic");
-        let results = manifest_results(&response);
-        let action = results
-            .iter()
-            .find(|action| action["topicId"] == "topic-a")
-            .expect("topic-a action");
-        assert_eq!(action["action"], "PULL");
-        assert_eq!(action["ownerType"], "agent");
-        assert_eq!(action["ownerId"], "agent-a");
-    }
-
-    /// 降级 topic 遇 Mobile 墓碑仍出 PUSH_DELETE（删除语义不被
-    /// 哨兵吞掉）；手机没有该 topic 时尾部循环出 PULL（进入 per-topic 隔离管线）。
-    #[tokio::test]
-    async fn unhealthy_topic_delete_precedence_and_tail_pull() {
-        let (_temp, config, database, reconciler) = sync_fixture();
-        fs::write(
-            config
-                .user_data_dir
-                .join("agent-a/topics/topic-a/history.json"),
-            br#"[{"id":"m1","role":"user","content":"a","timestamp":1}]"#,
-        )
-        .expect("write history");
-        reconciler.reconcile().await.expect("reconcile");
-        mark_test_source_invalid(
-            &database,
-            &config,
-            TopicKey {
-                owner_type: OwnerType::Agent,
-                owner_id: "agent-a".to_string(),
-                topic_id: "topic-a".to_string(),
-            },
-        );
-
-        // Mobile 已删 → PUSH_DELETE 优先于降级，随后由 Mobile NotifyDelete Desktop。
-        let response = manifest(
-            &database,
-            ManifestRequest::Topic {
-                items: vec![TopicManifestState::Deleted(super::TopicManifestDeleted {
-                    owner_type: OwnerType::Agent,
-                    owner_id: "agent-a".to_string(),
-                    topic_id: "topic-a".to_string(),
-                    deleted_at: 7,
-                })],
-                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
-            },
-        )
-        .expect("manifest with remote tombstone");
-        let results = manifest_results(&response);
-        let action = results
-            .iter()
-            .find(|action| action["topicId"] == "topic-a")
-            .expect("push delete action");
-        assert_eq!(action["action"], "PUSH_DELETE");
-        assert_eq!(action["deletedAt"], 7);
-
-        // remote 不含该 topic → 尾部循环对降级条目出 PULL。
-        let response = manifest(
-            &database,
-            ManifestRequest::Topic {
-                items: Vec::new(),
-                targeted_owners: vec![owner_key(OwnerType::Agent, "agent-a")],
-            },
-        )
-        .expect("manifest with empty remote");
-        let results = manifest_results(&response);
-        let action = results
-            .iter()
-            .find(|action| action["topicId"] == "topic-a")
-            .expect("tail action");
-        assert_eq!(action["action"], "PULL");
-    }
-
     /// owner_content_hash 聚合内单 topic 失败降级为哨兵——
     /// owner manifest 不再整批 500；毒化经既有 content-only 分支转译为
     /// SKIP+contentHashMismatch；兄弟 owner 逐字节不变。
@@ -4579,7 +4383,7 @@ mod tests {
             .iter()
             .find(|item| manifest_item_id(item) == "agent-a")
             .expect("agent-a entry");
-        let healthy_b = topic_manifest(
+        let healthy_b = load_topic_manifest_row(
             &database,
             &TopicKey {
                 owner_type: OwnerType::Agent,
@@ -4588,7 +4392,7 @@ mod tests {
             },
         )
         .expect("topic-b manifest");
-        let degraded_a = topic_manifest(
+        let degraded_a = load_topic_manifest_row(
             &database,
             &TopicKey {
                 owner_type: OwnerType::Agent,

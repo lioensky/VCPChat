@@ -60,7 +60,10 @@ function requireTargetedOwners(manifestType, targetedOwners) {
   if (new Set(owners).size !== owners.length) {
     throw syncContractError("targetedOwners contains a duplicate owner identity");
   }
-  return new Set(owners);
+  return {
+    identities: new Set(owners),
+    selectors: targetedOwners,
+  };
 }
 
 function topicIdentity(item) {
@@ -94,10 +97,11 @@ function requireExactKeys(value, allowed, label) {
 /**
  * 获取本地清单
  * @param {string} manifestType - 清单类型 (owner/topic/avatar)
- * @param {object[]} targetedOwners - 仅针对特定所有者的复合身份列表
+ * @param {{identities: Set<string>, selectors: object[]}|null} targetedOwnerScope
+ *   已在请求边界验证的 Topic Owner 范围
  * @returns {object[]} 本地实体列表
  */
-function getLocalManifest(manifestType, targetedOwners = null, database = null) {
+function getLocalManifest(manifestType, targetedOwnerScope = null, database = null) {
   const db = database || getDb();
   if (!db) {
     throw syncContractError("Database not initialized", "SYNC_DB_UNAVAILABLE");
@@ -105,8 +109,6 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
   if (!["owner", "topic", "avatar"].includes(manifestType)) {
     throw syncContractError(`Unsupported manifestType ${manifestType}`);
   }
-  const ownerFilter = requireTargetedOwners(manifestType, targetedOwners);
-
   if (manifestType === "avatar") {
     const rows = db
       .prepare(
@@ -182,26 +184,23 @@ function getLocalManifest(manifestType, targetedOwners = null, database = null) 
     });
   }
 
-  const rows = ownerFilter
-    ? db.prepare(
-      `WITH requested AS (
-         SELECT json_extract(value, '$.ownerType') AS owner_type,
-                json_extract(value, '$.ownerId') AS owner_id
-         FROM json_each(?)
-       )
-       SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
-              t.updated_at, t.deleted_at
-       FROM requested AS r
-       JOIN topics AS t
-         ON t.owner_type = r.owner_type
-        AND t.owner_id = r.owner_id
-       ORDER BY t.owner_type, t.owner_id, t.topic_id`,
-    ).all(JSON.stringify(targetedOwners))
-    : db.prepare(
-      `SELECT owner_type, owner_id, topic_id, config_hash, content_hash,
-              updated_at, deleted_at
-       FROM topics`,
-    ).all();
+  if (!targetedOwnerScope) {
+    throw syncContractError("Topic manifest requires targetedOwners");
+  }
+  const rows = db.prepare(
+    `WITH requested AS (
+       SELECT json_extract(value, '$.ownerType') AS owner_type,
+              json_extract(value, '$.ownerId') AS owner_id
+       FROM json_each(?)
+     )
+     SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+            t.updated_at, t.deleted_at
+     FROM requested AS r
+     JOIN topics AS t
+       ON t.owner_type = r.owner_type
+      AND t.owner_id = r.owner_id
+     ORDER BY t.owner_type, t.owner_id, t.topic_id`,
+  ).all(JSON.stringify(targetedOwnerScope.selectors));
   return rows.map((row) => {
     const topicId = requireNonEmptyString(row.topic_id, "Topic manifest topicId");
     const ownerType = requireNonEmptyString(
@@ -349,8 +348,8 @@ function validateSyncManifestRequest(payload) {
   if (!Array.isArray(remoteItems)) {
     throw syncContractError("SYNC_MANIFEST_REQUEST.items must be an array");
   }
-  const ownerFilter = requireTargetedOwners(manifestType, targetedOwners);
-  if (manifestType === "topic" && ownerFilter === null) {
+  const targetedOwnerScope = requireTargetedOwners(manifestType, targetedOwners);
+  if (manifestType === "topic" && targetedOwnerScope === null) {
     throw syncContractError("Topic manifest requires targetedOwners");
   }
   const normalizedRemoteItems = remoteItems.map((item, index) =>
@@ -358,7 +357,7 @@ function validateSyncManifestRequest(payload) {
   );
   if (manifestType === "topic") {
     for (const item of normalizedRemoteItems) {
-      if (!ownerFilter.has(`${item.ownerType}\0${item.ownerId}`)) {
+      if (!targetedOwnerScope.identities.has(`${item.ownerType}\0${item.ownerId}`)) {
         throw syncContractError(
           `Topic manifest ${item.topicId} has an unexpected owner`,
         );
@@ -378,6 +377,7 @@ function validateSyncManifestRequest(payload) {
   return {
     manifestType,
     targetedOwners,
+    targetedOwnerScope,
     normalizedRemoteItems,
     remoteByKey,
   };
@@ -386,19 +386,18 @@ function validateSyncManifestRequest(payload) {
 function handleSyncManifest(payload, database = null) {
   const {
     manifestType,
-    targetedOwners,
+    targetedOwnerScope,
     normalizedRemoteItems,
     remoteByKey,
   } = validateSyncManifestRequest(payload);
   const logger = getLogger();
   const phase = (manifestType === "topic") ? "topic_metadata" : "owner_metadata";
 
-  const localItems = getLocalManifest(manifestType, targetedOwners, database);
+  const localItems = getLocalManifest(manifestType, targetedOwnerScope, database);
   const localByKey = new Map(
     localItems.map((item) => [manifestIdentity(item, manifestType), item]),
   );
   const results = [];
-  const processedKeys = new Set();
 
   for (const remote of normalizedRemoteItems) {
     const identity = manifestIdentity(remote, manifestType);
@@ -413,20 +412,17 @@ function handleSyncManifest(payload, database = null) {
           deletedAt: remoteDeletedAt,
         });
       }
-      processedKeys.add(identity);
     } else if (!local) {
       results.push({
         ...actionIdentity(remote, manifestType),
         action: "PUSH",
       });
-      processedKeys.add(identity);
     } else if (local.deletedAt !== undefined) {
       results.push({
         ...actionIdentity(local, manifestType),
         action: "PULL_DELETE",
         deletedAt: local.deletedAt,
       });
-      processedKeys.add(identity);
     } else {
       // V2: 双哈希比对
       const remoteStateHash = manifestType === "avatar" ? remote.binaryHash : remote.configHash;
@@ -465,16 +461,12 @@ function handleSyncManifest(payload, database = null) {
         }
       }
       
-      processedKeys.add(identity);
     }
   }
 
   for (const local of localItems) {
     const identity = manifestIdentity(local, manifestType);
-    if (
-      !processedKeys.has(identity) &&
-      !remoteByKey.has(identity)
-    ) {
+    if (!remoteByKey.has(identity)) {
       if (local.deletedAt !== undefined) {
         results.push({
           ...actionIdentity(local, manifestType),

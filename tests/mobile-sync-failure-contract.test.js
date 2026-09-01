@@ -79,7 +79,6 @@ const {
   resolveMessageUpdatedAt,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
 const {
-  getLocalManifest,
   handleSyncManifest,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest");
 const {
@@ -378,55 +377,6 @@ test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async
   );
 });
 
-test("Topic manifest 用单条 SQL 绑定完整 targetedOwners", () => {
-  const hash = "a".repeat(64);
-  const targetedOwners = agentOwners("agent-a", "agent-b");
-  let prepareCount = 0;
-  const database = {
-    prepare(sql) {
-      prepareCount += 1;
-      assert.match(sql, /FROM json_each\(\?\)/);
-      assert.match(sql, /t\.owner_type = r\.owner_type/);
-      assert.match(sql, /t\.owner_id = r\.owner_id/);
-      return {
-        all(serializedOwners) {
-          assert.deepEqual(JSON.parse(serializedOwners), targetedOwners);
-          return [{
-            topic_id: "topic-a",
-            owner_type: "agent",
-            owner_id: "agent-a",
-            config_hash: hash,
-            content_hash: "",
-            updated_at: 1,
-            deleted_at: null,
-          }];
-        },
-      };
-    },
-  };
-
-  const splitOwners = handleSyncManifest(
-    {
-      manifestType: "topic",
-      targetedOwners,
-      items: [{
-        topicId: "topic-a",
-        configHash: hash,
-        contentHash: "",
-        updatedAt: 1,
-        ownerType: "agent",
-        ownerId: "agent-b",
-      }],
-    },
-    database,
-  );
-  assert.deepEqual(splitOwners.results, [
-    { topicId: "topic-a", action: "PUSH", ownerType: "agent", ownerId: "agent-b" },
-    { topicId: "topic-a", action: "PULL", ownerType: "agent", ownerId: "agent-a" },
-  ]);
-  assert.equal(prepareCount, 1);
-});
-
 test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", () => {
   const hash = "a".repeat(64);
   const database = fakeManifestDatabase({
@@ -452,10 +402,6 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
     ],
   });
 
-  assert.deepEqual(
-    getLocalManifest("topic", null, database).map((item) => item.topicId),
-    ["default", "topic-live"],
-  );
   assert.deepEqual(
     handleSyncMessageDiff({
       topics: compoundTopics({
