@@ -324,8 +324,9 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       if (payload.type === "VERSION_CHECK") {
         return {
           type: "VERSION_ACK",
-          pluginVersion: "1.4.0",
-          protocolVersion: "1.4",
+          pluginVersion: "1.5.0",
+          protocolVersion: "1.5",
+          backendMode: "legacy",
         };
       }
       throw Object.assign(new Error("owner identity conflict"), {
@@ -345,8 +346,8 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
 
   socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
-    mobileVersion: "1.1.4",
-    protocolVersion: "1.4",
+    mobileVersion: "1.1.6",
+    protocolVersion: "1.5",
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
 
@@ -363,6 +364,46 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       kind: "data",
       retry: "manual",
       message: "owner identity conflict",
+      failedTopicIds: [],
+    },
+  });
+});
+
+test("diagnostic WebSocket returns a CDS startup error before VERSION_ACK", async (t) => {
+  const server = await startWsServer({
+    port: 0,
+    syncToken: "diagnostic-token",
+    onMessage: async () => {
+      throw createSyncError("CDS_BINARY_NOT_FOUND", "CDS binary is missing", {
+        origin: "desktop_cds",
+        stage: "startup",
+      });
+    },
+  });
+  t.after(async () => stopWsServer());
+  const socket = new FakeWebSocket();
+  const nextFrame = createWsFrameReader(socket);
+  t.after(() => socket.terminate());
+  server.emit("connection", socket, {
+    url: "/ws-sync?token=diagnostic-token",
+    headers: { host: "127.0.0.1" },
+    socket: { remoteAddress: "127.0.0.1" },
+  });
+
+  socket.emit("message", JSON.stringify({
+    type: "VERSION_CHECK",
+    mobileVersion: "1.1.6",
+    protocolVersion: "1.5",
+  }));
+  assert.deepEqual(await nextFrame("SYNC_ERROR"), {
+    type: "SYNC_ERROR",
+    error: {
+      code: "CDS_BINARY_NOT_FOUND",
+      origin: "desktop_cds",
+      stage: "startup",
+      kind: "configuration",
+      retry: "after_user_action",
+      message: "CDS binary is missing",
       failedTopicIds: [],
     },
   });

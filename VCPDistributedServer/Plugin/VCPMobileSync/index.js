@@ -52,7 +52,7 @@ const {
 } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
 const { createPhaseAck, createVersionAck } = require("./protocol");
-const { withSyncErrorContext } = require("./error-contract");
+const { createSyncError, withSyncErrorContext } = require("./error-contract");
 const { acquireLock } = require("./utils/lock");
 const {
   AGENT_SYNC_FIELDS,
@@ -77,6 +77,21 @@ try {
   chokidar = require("chokidar");
 } catch {}
 
+function normalizeCdsStartupFailure(error) {
+  const code = {
+    BINARY_NOT_FOUND: "CDS_BINARY_NOT_FOUND",
+    PROTOCOL_MISMATCH: "CDS_PROTOCOL_MISMATCH",
+    SCHEMA_MISMATCH: "CDS_SCHEMA_MISMATCH",
+  }[error?.code] || (error ? "CDS_STARTUP_FAILED" : "CDS_UNAVAILABLE");
+  const message = typeof error?.message === "string" && error.message.trim()
+    ? error.message
+    : "VCP-CDS is unavailable";
+  return createSyncError(code, message, {
+    origin: "desktop_cds",
+    stage: "startup",
+  });
+}
+
 /**
  * 注册插件
  */
@@ -92,54 +107,77 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     pluginConfig,
     services.chatDataService,
   );
-
-  // 中央模式存在两个配置入口：Electron 全局 settings.json 与插件 config.env。
-  // 若只有插件配置启用，主进程会把 CDS 当作普通 shadow service 后台启动，
-  // 此时插件初始化可能早于 READY。由真正请求中央数据面的插件显式等待 Facade，
-  // 避免因 client 暂时为空而永久漏注册 HTTP Router 与 WebSocket 端口。
-  if (
-    centralRequested &&
-    !services.chatDataService?.client &&
-    typeof services.chatDataService?.startShadowMode === "function"
-  ) {
-    await services.chatDataService.startShadowMode();
-  }
-
-  const centralSync = centralRequested
-    ? createCentralSyncAdapter({
-        chatDataService: services.chatDataService ?? { client: null },
-        appDataPath,
-      })
-    : null;
-
+  const backendMode = centralRequested ? "cds" : "legacy";
   const logger = resetLogger();
   logger.startSession("system");
+  let centralSync = null;
+  let backendFailure = null;
 
-  // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
-  // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
-  if (centralSync) {
-    centralSync.requireClient();
-    const physicalOwners = await scanPhysicalTopicTree(appDataPath);
-    await repairTopicProjectionsFromDisk(
-      appDataPath,
-      physicalOwners,
-      (request) => centralSync.loadTopicRecoveryStates(request),
-    );
-    initDb(":memory:");
-    // CDS 在 READY 后自行完成启动 reconcile。MobileSync 的真实一致性门禁
-    // 位于 owner_metadata PHASE_START；这里不再紧跟着重复扫描同一份 AppData。
-    centralSync.logEnabled();
-    await reconcileCompatibilityAssets(appDataPath, physicalOwners);
+  if (centralRequested) {
+    let shadowFailure = null;
+    // 中央模式存在两个配置入口：Electron 全局 settings.json 与插件 config.env。
+    // 若只有插件配置启用，插件显式等待同一个 shadow start promise。
+    if (
+      !services.chatDataService?.client &&
+      typeof services.chatDataService?.startShadowMode === "function"
+    ) {
+      try {
+        await services.chatDataService.startShadowMode();
+      } catch (error) {
+        shadowFailure = error;
+      }
+    }
+
+    if (!services.chatDataService?.client) {
+      backendFailure = normalizeCdsStartupFailure(
+        shadowFailure || services.chatDataService?.lastStartError,
+      );
+    } else {
+      centralSync = createCentralSyncAdapter({
+        chatDataService: services.chatDataService ?? { client: null },
+        appDataPath,
+      });
+      try {
+        // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
+        // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
+        centralSync.requireClient();
+        const physicalOwners = await scanPhysicalTopicTree(appDataPath);
+        await repairTopicProjectionsFromDisk(
+          appDataPath,
+          physicalOwners,
+          (request) => centralSync.loadTopicRecoveryStates(request),
+        );
+        initDb(":memory:");
+        // CDS 在 READY 后自行完成启动 reconcile。MobileSync 的真实一致性门禁
+        // 位于 owner_metadata PHASE_START；这里不再紧跟着重复扫描同一份 AppData。
+        centralSync.logEnabled();
+        await reconcileCompatibilityAssets(appDataPath, physicalOwners);
+      } catch (error) {
+        backendFailure = withSyncErrorContext(error, {
+          code: "CDS_STARTUP_FAILED",
+          origin: "desktop_cds",
+          stage: "startup",
+        });
+      }
+    }
   } else {
-    // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
-    const dbPath = path.join(__dirname, "sync_state_v2.db");
-    initDb(dbPath);
-    const physicalOwners = await scanPhysicalTopicTree(appDataPath);
-    await repairTopicProjectionsFromDisk(appDataPath, physicalOwners);
-    await reconcileLocalFiles(appDataPath, physicalOwners);
+    try {
+      // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
+      const dbPath = path.join(__dirname, "sync_state_v2.db");
+      initDb(dbPath);
+      const physicalOwners = await scanPhysicalTopicTree(appDataPath);
+      await repairTopicProjectionsFromDisk(appDataPath, physicalOwners);
+      await reconcileLocalFiles(appDataPath, physicalOwners);
+    } catch (error) {
+      backendFailure = withSyncErrorContext(error, {
+        code: "SYNC_DB_UNAVAILABLE",
+        origin: "desktop_plugin",
+        stage: "startup",
+      });
+    }
   }
 
-  // 启动 WebSocket（仅在索引完成后开放，防止手机端提前连接）
+  // 后端成功时仍只在索引准备完成后开放；后端失败时仅开放诊断控制面。
   await startWsServer({
     port: wsPort,
     syncToken,
@@ -238,7 +276,9 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         case "VERSION_CHECK": {
           const manifest = require("./plugin-manifest.json");
           logger.logOperation("websocket", "version_check", "mobile", "info", `mobileVersion=${payload.mobileVersion}, pluginVersion=${manifest.version}`);
-          return createVersionAck(payload, manifest.version);
+          const ack = createVersionAck(payload, manifest.version, backendMode);
+          if (backendFailure) throw backendFailure;
+          return ack;
         }
         case "SYNC_ENTITY_DELETE": {
           const {
@@ -406,6 +446,17 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
       }
     },
   });
+
+  if (backendFailure) {
+    logger.logOperation(
+      "startup",
+      "backend_unavailable",
+      backendMode,
+      "error",
+      `code=${backendFailure.code}; diagnostic WebSocket only`,
+    );
+    return;
+  }
 
   // HTTP/NDJSON 传输层保持兼容，消息数据面由所选后端提供。
   registerHttpRoutes(app, { syncToken, appDataPath, centralSync });

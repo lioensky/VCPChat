@@ -12,18 +12,40 @@ const {
 const {
   ChatDataServiceLifecycle,
 } = require("../modules/services/chatDataService/lifecycle");
+const {
+  ChatDataServiceFacade,
+} = require("../modules/services/chatDataService");
 
 // 测试环境下 better-sqlite3 原生绑定不可用（Electron ABI），在 index.js
 // 加载前 stub initDb；本测试只验证 CDS 启动门禁，不触碰本地持久化索引。
 const entityDatabase = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/db");
 entityDatabase.initDb = () => null;
 
+let diagnosticOnMessage = null;
+const websocketTransport = require(
+  "../VCPDistributedServer/Plugin/VCPMobileSync/transport/websocket"
+);
+websocketTransport.startWsServer = async ({ onMessage }) => {
+  diagnosticOnMessage = onMessage;
+  return {};
+};
+const loggerModule = require(
+  "../VCPDistributedServer/Plugin/VCPMobileSync/core/logger"
+);
+const fakeSyncLogger = {
+  startSession() {},
+  endSession() {},
+  logOperation() {},
+  logInfo() {},
+  startPhase() {},
+  completePhase() {},
+};
+loggerModule.getLogger = () => fakeSyncLogger;
+loggerModule.resetLogger = () => fakeSyncLogger;
+
 const {
   registerRoutes,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/index");
-const {
-  getLogger,
-} = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/logger");
 
 test("批量上传在父 Owner 未进入提交视图时返回实体缺失", async () => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-gap-d-"));
@@ -111,7 +133,17 @@ test("可重试或未分类的 CDS 启动失败不会熔断", () => {
   assert.equal(lifecycle.circuitOpen, false);
 });
 
-test("CDS 缺席时注册失败且不会挂载 MobileSync 路由", async (t) => {
+test("Facade 保留 spawn 前的 CDS 启动根因", async () => {
+  const facade = new ChatDataServiceFacade({
+    appDataPath: "/tmp/vcp-facade",
+    binaryPath: "/nonexistent/vcp-cds",
+    logger: { error() {}, log() {}, info() {}, warn() {} },
+  });
+  assert.equal(await facade.startShadowMode(), null);
+  assert.equal(facade.lastStartError?.code, "BINARY_NOT_FOUND");
+});
+
+test("CDS 缺席时只开放诊断 WebSocket并返回稳定错误", async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-f7-"));
   const projectBasePath = path.join(tmp, "VCPDistributedServer");
   fs.mkdirSync(path.join(tmp, "AppData", "UserData", "attachments"), { recursive: true });
@@ -121,20 +153,48 @@ test("CDS 缺席时注册失败且不会挂载 MobileSync 路由", async (t) => 
   const fakeApp = { use: (...args) => mounts.push(args) };
 
   t.after(() => {
-    try {
-      getLogger().endSession();
-    } catch {}
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  await assert.rejects(
-    registerRoutes(
+  for (const [rawCode, publicCode] of [
+    ["BINARY_NOT_FOUND", "CDS_BINARY_NOT_FOUND"],
+    ["PROTOCOL_MISMATCH", "CDS_PROTOCOL_MISMATCH"],
+    ["SCHEMA_MISMATCH", "CDS_SCHEMA_MISMATCH"],
+    ["EARLY_EXIT", "CDS_STARTUP_FAILED"],
+    [null, "CDS_UNAVAILABLE"],
+  ]) {
+    const lastStartError = rawCode
+      ? Object.assign(new Error(`CDS startup failed: ${rawCode}`), {
+          code: rawCode,
+        })
+      : null;
+    await registerRoutes(
       fakeApp,
       { MobileSyncToken: "closed-gate-token", MobileSyncPort: "16987" },
       projectBasePath,
-      { chatDataService: { client: null } },
-    ),
-    (error) => error.code === "CDS_UNAVAILABLE",
+      { chatDataService: { client: null, lastStartError } },
+    );
+    assert.equal(mounts.length, 0);
+    assert.equal(typeof diagnosticOnMessage, "function");
+    await assert.rejects(
+      diagnosticOnMessage({
+        type: "VERSION_CHECK",
+        mobileVersion: "1.1.6",
+        protocolVersion: "1.5",
+      }),
+      (error) =>
+        error.code === publicCode &&
+        error.origin === "desktop_cds" &&
+        error.stage === "startup",
+    );
+  }
+
+  await assert.rejects(
+    diagnosticOnMessage({
+      type: "VERSION_CHECK",
+      mobileVersion: "1.1.6",
+      protocolVersion: "1.4",
+    }),
+    (error) => error.code === "PROTOCOL_MISMATCH",
   );
-  assert.equal(mounts.length, 0);
 });

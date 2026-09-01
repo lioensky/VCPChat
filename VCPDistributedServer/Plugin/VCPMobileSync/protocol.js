@@ -1,7 +1,8 @@
 "use strict";
 
 const FINAL_ACK_IDENTITY_FIELDS = ["sessionId", "attemptId", "nonce"];
-const WIRE_PROTOCOL_VERSION = "1.4";
+const WIRE_PROTOCOL_VERSION = "1.5";
+const BACKEND_MODES = new Set(["legacy", "cds"]);
 const SYNC_PHASES = new Set(["owner_metadata", "topic_metadata", "messages"]);
 
 function parseJsonWithoutDuplicateKeys(text) {
@@ -218,7 +219,7 @@ function validateSyncRequestFrame(payload) {
   return payload;
 }
 
-function createVersionAck(payload, pluginVersion) {
+function createVersionAck(payload, pluginVersion, backendMode) {
   if (!payload || payload.type !== "VERSION_CHECK") {
     const error = new Error("expected VERSION_CHECK");
     error.code = "VERSION_CHECK_INVALID";
@@ -237,10 +238,16 @@ function createVersionAck(payload, pluginVersion) {
     throw error;
   }
   requireNonEmptyString(pluginVersion, "pluginVersion");
+  if (!BACKEND_MODES.has(backendMode)) {
+    const error = new Error("backendMode must be legacy or cds");
+    error.code = "PROTOCOL_INVALID";
+    throw error;
+  }
   return {
     type: "VERSION_ACK",
     pluginVersion,
     protocolVersion: WIRE_PROTOCOL_VERSION,
+    backendMode,
   };
 }
 

@@ -36,6 +36,10 @@ class ChatDataServiceFacade {
         return this.lifecycle.isReady;
     }
 
+    get lastStartError() {
+        return this.lifecycle.lastStartError;
+    }
+
     async withClient(operation, fallback = null) {
         const client = this.client;
         if (!client) return fallback;

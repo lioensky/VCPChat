@@ -47,21 +47,27 @@ class ChatDataServiceLifecycle extends EventEmitter {
         if (this.client) return this.client;
         if (this.startPromise) return this.startPromise;
         if (this.circuitOpen) {
-            throw new ChatDataServiceError('VCP-CDS restart circuit is open.', {
+            const error = new ChatDataServiceError('VCP-CDS restart circuit is open.', {
                 code: 'CIRCUIT_OPEN',
                 retryable: false
             });
+            if (!this.lastStartError) this.lastStartError = error;
+            throw error;
         }
         if (!this.appDataPath) {
-            throw new ChatDataServiceError('Missing AppData path for VCP-CDS.', {
+            const error = new ChatDataServiceError('Missing AppData path for VCP-CDS.', {
                 code: 'INVALID_CONFIGURATION'
             });
+            this.lastStartError = error;
+            throw error;
         }
         if (!fs.existsSync(this.binaryPath)) {
-            throw new ChatDataServiceError(
+            const error = new ChatDataServiceError(
                 `VCP-CDS binary was not found at ${this.binaryPath}.`,
                 { code: 'BINARY_NOT_FOUND', retryable: false }
             );
+            this.lastStartError = error;
+            throw error;
         }
 
         this.stopping = false;

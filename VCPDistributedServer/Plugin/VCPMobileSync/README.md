@@ -1,6 +1,6 @@
 # VCPMobileSync (VCP 移动端双向增量同步服务插件)
 
-[![Version](https://img.shields.io/badge/Version-1.4.0-blue.svg?style=flat-square)](./plugin-manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.5.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
 [![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.4-orange.svg?style=flat-square)](#协议-14-硬切与兼容边界)
 
@@ -9,7 +9,7 @@
 VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 Legacy/CDS 双模式的三阶段增量同步架构。实体配置、消息正文、墓碑、头像字节以及消息内附件元数据按各自合同传输；附件二进制始终保留在两端本机 CAS，不属于同步数据面。
 
 > [!IMPORTANT]
-> 本版本只修改 MobileSync 插件与 VCP-CDS 同步接口，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步会投影并写入 `history.json`；Wire 1.4 使用完整复合身份、强类型状态和统一 `ok/error` 外壳。
+> 本版本只修改 MobileSync 插件与 VCP-CDS 同步接口，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步会投影并写入 `history.json`；Wire 1.5 使用完整复合身份、强类型状态和统一 `ok/error` 外壳。
 
 ---
 
@@ -99,13 +99,13 @@ pnpm exec electron-rebuild --only better-sqlite3
 
 ---
 
-## 协议 1.4 硬切与兼容边界
+## 协议 1.5 硬切与兼容边界
 
 公开握手固定为：
 
 ```text
-VERSION_CHECK { mobileVersion, protocolVersion: "1.4" }
-VERSION_ACK   { pluginVersion: "1.4.0", protocolVersion: "1.4" }
+VERSION_CHECK { mobileVersion, protocolVersion: "1.5" }
+VERSION_ACK   { pluginVersion: "1.5.0", protocolVersion: "1.5", backendMode: "legacy" | "cds" }
 ```
 
 兼容性只由 `protocolVersion` 精确判断；`pluginVersion` 是诊断信息。旧 Wire 不保留别名或双栈。Phase 3 每个 Topic 的 decision 必须是以下判别联合之一：
@@ -144,7 +144,9 @@ CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名�
 
 消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。
 
-Owner、Topic、Message 与 Avatar 的外层协议都携带完整复合身份。协议 1.4 不通过 `LIKE`、目录前缀、拼接 Avatar ID 或同名 Topic 猜身份。
+Owner、Topic、Message 与 Avatar 的外层协议都携带完整复合身份。协议 1.5 不通过 `LIKE`、目录前缀、拼接 Avatar ID 或同名 Topic 猜身份。
+
+`backendMode` 只声明当前桌面同步后端，不允许 Mobile 据此改变同步算法。CDS 启动失败时插件仍开放带 Token 的 WebSocket 控制面，在 Wire 校验通过后返回 `CDS_BINARY_NOT_FOUND`、`CDS_PROTOCOL_MISMATCH`、`CDS_SCHEMA_MISMATCH`、`CDS_STARTUP_FAILED` 或 `CDS_UNAVAILABLE`；HTTP/NDJSON 数据面保持关闭，且不会自动降级到 Legacy。
 
 ## 🛡️ 三阶段增量同步协议
 
@@ -258,9 +260,10 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面插件 1.4.0 / wire protocol 1.4 / VCP-CDS internal protocol 3 / 配对 VCPMobile
-* **当前版本**：`1.4.0`
+* **适配标准**：VCPChat 桌面插件 1.5.0 / wire protocol 1.5 / VCP-CDS internal protocol 3 / 配对 VCPMobile 1.1.6
+* **当前版本**：`1.5.0`
 * **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
 * **升级要求**：协议版本采用精确匹配，不支持跨版本混跑；桌面和 Mobile 必须成对升级、成对回滚
+* **CDS 版本纪律**：每次部署型 Rust 更新都递增 internal protocol，并同步 Electron lifecycle 的期望值；只有数据库结构变化才递增 schema
 * **架构师 / 作者**：Nova
 * **开源许可**：VCP 闭环生态核心插件
