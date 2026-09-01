@@ -550,6 +550,13 @@
         transition: transform var(--vcp-ui-transition-fast);
     }
 
+    html .vcp-ui-scope svg.next-ui-account-expand-icon,
+    html .vcp-ui-scope svg.next-ui-account-menu-chevron {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 14px;
+    }
+
     html .vcp-ui-scope .next-ui-account-trigger[aria-expanded="true"] .next-ui-account-expand-icon {
         transform: rotate(180deg);
     }

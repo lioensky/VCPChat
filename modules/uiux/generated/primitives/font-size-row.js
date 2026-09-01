@@ -47,8 +47,15 @@ export function mountFontSizeRow(host, select, scope) {
     const stepper = document.createElement('div');
     stepper.className = 'vcp-uiux-font-size-row-stepper';
     stepper.tabIndex = -1;
-    const value = document.createElement('span');
-    value.className = 'vcp-uiux-font-size-row-value';
+    const value = document.createElement('input');
+    value.type = 'number';
+    value.className = 'vcp-uiux-font-size-row-value vcp-uiux-numeric-stepper-row-input';
+    value.style.cssText = 'width:42px;min-width:42px;height:24px;padding:0;border:0;outline:0;background:transparent;color:inherit;text-align:center;font:inherit;appearance:textfield;-webkit-appearance:none;';
+    value.min = '13';
+    value.max = '16';
+    value.step = '1';
+    value.setAttribute('aria-label', '字号（13、14 或 16px）');
+    value.dataset.vcpAppearanceDraftControl = 'true';
     const unit = document.createElement('span');
     unit.className = 'vcp-uiux-font-size-row-unit';
     unit.textContent = 'px';
@@ -72,7 +79,17 @@ export function mountFontSizeRow(host, select, scope) {
     // autosave can continue to query and update it during the row lifetime.
     row.append(text, control, select);
     host.replaceChildren(row);
-    const sync = () => { const px = SCALE_TO_PX[select.value] ?? 14; value.textContent = String(px); up.disabled = px >= 16; down.disabled = px <= 13; };
+    const sync = () => { const px = SCALE_TO_PX[select.value] ?? 14; value.value = String(px); up.disabled = px >= 16; down.disabled = px <= 13; };
+    const applyEditorValue = () => {
+        const px = Math.max(13, Math.min(16, Number(value.value) || 14));
+        const nearest = SCALE_ORDER.reduce((best, candidate) => Math.abs(SCALE_TO_PX[candidate] - px) < Math.abs(SCALE_TO_PX[best] - px) ? candidate : best, 'normal');
+        value.value = String(SCALE_TO_PX[nearest]);
+        if (select.value !== nearest) {
+            select.value = nearest;
+            select.dispatchEvent(new select.ownerDocument.defaultView.Event('change', { bubbles: true }));
+        }
+        sync();
+    };
     const change = (delta) => {
         const current = Math.max(0, SCALE_ORDER.indexOf(select.value));
         const next = SCALE_ORDER[Math.max(0, Math.min(SCALE_ORDER.length - 1, current + delta))];
@@ -86,9 +103,17 @@ export function mountFontSizeRow(host, select, scope) {
     // replay) into the px readout, matching the Select primitive contract.
     scope.listen(select, 'change', sync);
     scope.listen(select, 'vcp-uiux-sync', sync);
+    select.dataset.vcpAppearanceDraftControl = 'true';
+    scope.listen(value, 'change', applyEditorValue);
+    scope.listen(value, 'blur', applyEditorValue);
     scope.listen(up, 'click', () => change(1));
     scope.listen(down, 'click', () => change(-1));
     sync();
-    const dispose = scope.own(() => { row.remove(); host.replaceChildren(...originalChildren); }, 'uiux-font-size-row', 'ui-primitive');
+    const dispose = scope.own(() => {
+        row.remove();
+        host.replaceChildren(...originalChildren);
+        delete value.dataset.vcpAppearanceDraftControl;
+        delete select.dataset.vcpAppearanceDraftControl;
+    }, 'uiux-font-size-row', 'ui-primitive');
     return { root: row, setValue(next) { select.value = next; sync(); }, dispose };
 }

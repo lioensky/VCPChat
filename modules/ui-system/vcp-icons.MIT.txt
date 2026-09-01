@@ -1,0 +1,9 @@
+DeepSeek Harness UI primitives icon glyphs
+
+The SVG path data in vcp-icons.js is derived from
+@deepseek-ai/dsh-client-ui-primitives in the DeepSeek Harness repository.
+Copyright (c) 2026 DeepSeek
+
+Licensed under the MIT License. The copyright notice and this permission
+notice apply to the derived glyph data and must be retained in copies or
+substantial portions of the software.

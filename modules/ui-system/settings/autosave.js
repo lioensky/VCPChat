@@ -115,6 +115,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         // autosave chain and both owners fight over one status bar.
         if (event.target.dataset.vcpTypedFieldOwner === 'true') return;
         if (event.target.dataset.vcpTypedForumFieldOwner === 'true') return;
+        if (event.target.dataset.vcpAppearanceDraftControl === 'true') return;
         schedule();
     };
     // Results arrive through the coordinator's routing (阶段 4): this client
