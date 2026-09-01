@@ -450,47 +450,47 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: 60px minmax(0, 1fr) max-content;
+    grid-template-columns: 52px minmax(0, 1fr) max-content;
     align-items: center;
-    gap: 0 10px;
+    gap: 0 8px;
     margin: 0 0 18px;
-    padding: 14px 16px;
+    padding: 10px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 14px;
     background: var(--vcp-ui-fill-0);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 60px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper { grid-column: 1; grid-row: 1; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 56px; height: 56px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 48px; height: 48px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper {
     grid-column: 2;
     grid-row: 1;
     display: grid;
     grid-template-columns: max-content 26px 26px;
-    grid-template-rows: 32px;
+    grid-template-rows: 28px;
     align-items: center;
     align-self: center;
     column-gap: 4px;
     width: fit-content;
     max-width: 100%;
     min-width: 0;
-    min-height: 32px;
+    min-height: 28px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > label { display: none; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input {
     width: 100% !important;
-    min-height: 32px !important;
-    height: 32px !important;
+    min-height: 28px !important;
+    height: 28px !important;
     margin: 0;
     box-sizing: border-box;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > .vcp-uiux-input-wrap {
     grid-column: 1;
     grid-row: 1;
-    width: 168px !important;
-    max-width: 168px;
+    width: 150px !important;
+    max-width: 150px;
     justify-self: start;
     align-self: center;
 }
@@ -502,15 +502,15 @@
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input[hidden] { display: none !important; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-display { display: contents; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 18px; font-weight: 600; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 16px; font-weight: 600; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-value { grid-column: 1; grid-row: 1; align-self: center; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; color: var(--vcp-ui-text-2); background: transparent; cursor: pointer; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel) { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; color: var(--vcp-ui-text-2); background: transparent; cursor: pointer; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel):hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel {
     grid-row: 1;
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
     align-self: center;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit { grid-column: 2; }
@@ -518,7 +518,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel[hidden] { display: none !important; }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper.is-editing {
-    grid-template-columns: 168px 26px 26px;
+    grid-template-columns: 150px 24px 24px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
@@ -529,8 +529,8 @@
     grid-column: 1 / -1;
     grid-row: 1 / span 2;
     display: grid;
-    grid-template-columns: 60px minmax(0, 1fr) 180px;
-    grid-template-rows: minmax(68px, auto) auto;
+    grid-template-columns: 52px minmax(0, 1fr) 180px;
+    grid-template-rows: minmax(56px, auto) auto;
     margin: 0;
     border: 0;
     background: transparent;
@@ -561,7 +561,7 @@
     align-items: center;
     justify-content: space-between;
     width: 180px;
-    min-height: 40px;
+    min-height: 36px;
     box-sizing: border-box;
     padding: 8px 12px 8px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));

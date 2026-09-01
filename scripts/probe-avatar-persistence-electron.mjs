@@ -107,6 +107,7 @@ try {
         const value = document.querySelector('.vcp-uiux-identity-name-value')?.getBoundingClientRect();
         const edit = document.querySelector('.vcp-uiux-identity-name-edit')?.getBoundingClientRect();
         const card = document.querySelector('.vcp-uiux-user-profile-card')?.getBoundingClientRect();
+        const avatar = document.querySelector('.vcp-uiux-user-profile-card .agent-avatar-display')?.getBoundingClientRect();
         return value && edit ? {
             top: value.top,
             height: value.height,
@@ -114,10 +115,17 @@ try {
             editLeft: edit.left,
             editTop: edit.top,
             cardRight: card?.right,
+            cardHeight: card?.height,
+            avatarWidth: avatar?.width,
+            avatarHeight: avatar?.height,
         } : null;
     });
     assert.ok(nameValueGeometry && nameValueGeometry.editLeft - nameValueGeometry.valueRight <= 12,
         `username edit button must stay beside the name (gap ${nameValueGeometry ? nameValueGeometry.editLeft - nameValueGeometry.valueRight : 'n/a'}px)`);
+    assert.ok(nameValueGeometry && nameValueGeometry.avatarWidth <= 52 && nameValueGeometry.avatarHeight <= 52,
+        `identity avatar stays compact (${nameValueGeometry?.avatarWidth}x${nameValueGeometry?.avatarHeight}px)`);
+    assert.ok(nameValueGeometry && nameValueGeometry.cardHeight <= 100,
+        `identity card stays vertically compact (${nameValueGeometry?.cardHeight}px)`);
     const originalName = await page.$eval('#userName', input => input.value);
     await page.click('.vcp-uiux-identity-name-edit');
     await waitFor('username editor', () => page.evaluate(() => {
@@ -142,7 +150,7 @@ try {
             inputBottom: input.bottom,
         } : null;
     });
-    assert.ok(nameInputGeometry && nameInputGeometry.width <= 240,
+    assert.ok(nameInputGeometry && nameInputGeometry.width <= 220,
         `username editor remains compact (${nameInputGeometry?.width}px)`);
     assert.ok(nameValueGeometry && nameInputGeometry
         && Math.abs(nameInputGeometry.top - nameValueGeometry.top) <= 4,
