@@ -11,6 +11,7 @@ const {
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/canonical");
 const {
   computeAggregatedHash,
+  computeDtoHash,
   computeMessageLeafHash,
   computeMessageFingerprint,
   computeTopicLeafHash,
@@ -18,6 +19,10 @@ const {
 const {
   projectMobileTopic,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/projection");
+const {
+  AGENT_TOPIC_SYNC_FIELDS,
+  GROUP_TOPIC_SYNC_FIELDS,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/dto/topic.dto");
 
 const FIXTURE_PATH = path.join(
   __dirname,
@@ -27,6 +32,15 @@ const FIXTURE_PATH = path.join(
   "VCPMobileSync",
   "fixtures",
   "message_canonical_contract.json",
+);
+const TOPIC_FIXTURE_PATH = path.join(
+  __dirname,
+  "..",
+  "VCPDistributedServer",
+  "Plugin",
+  "VCPMobileSync",
+  "fixtures",
+  "topic_canonical_contract.json",
 );
 test("canonicalizer 符合共享消息投影与指纹合同", () => {
   const bundle = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
@@ -99,6 +113,20 @@ test("Mobile Push 要求每条消息携带规范 contentHash", async () => {
         appDataPath: "unused",
       }),
       /contentHash must be a lowercase 64-character SHA-256/,
+    );
+  }
+});
+
+test("Topic DTO 字节与 configHash 符合共享合同", () => {
+  const bundle = JSON.parse(fs.readFileSync(TOPIC_FIXTURE_PATH, "utf8"));
+  for (const fixture of bundle.cases) {
+    const fields = fixture.ownerType === "agent"
+      ? AGENT_TOPIC_SYNC_FIELDS
+      : GROUP_TOPIC_SYNC_FIELDS;
+    assert.equal(computeDtoHash(fixture.dto, fields), fixture.dto.configHash);
+    assert.equal(
+      crypto.createHash("sha256").update(JSON.stringify(fixture.dto)).digest("hex"),
+      fixture.dtoSha256,
     );
   }
 });

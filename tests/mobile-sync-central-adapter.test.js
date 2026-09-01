@@ -103,7 +103,10 @@ test("中央实体 Pull 转发复合身份并映射 CDS 私有错误码", async 
       ownerId: "agent_1",
       topicId: "topic_1",
       ok: true,
-      data: { id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false, ownerId: "agent_1" },
+      data: {
+        id: "topic_1", name: "Topic", createdAt: 1, locked: true, unread: false,
+        ownerId: "agent_1", configHash: "a".repeat(64), updatedAt: 2,
+      },
     },
     {
       entityType: "topic",

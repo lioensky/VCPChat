@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
     io::{ErrorKind, Read, Write},
     path::{Path, PathBuf},
@@ -13,7 +13,10 @@ use crate::{
         AvatarKey, AvatarOwnerType, AvatarRecord, NormalizedMessage, OwnerKey, OwnerRecord,
         OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
-    storage::{now_ms, AvatarSourceState, Database, IngestCommit, OwnerHashMode, SearchUpdate},
+    storage::{
+        now_ms, AvatarSourceState, Database, IngestCommit, OwnerHashMode, SearchUpdate,
+        SyncTopicVersion,
+    },
     sync::{mobile_owner_config_hash_from_value, mobile_topic_config_hash},
     sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
 };
@@ -131,11 +134,23 @@ impl Reconciler {
         configured_owner: OwnerRecord,
         stats: &mut ReconcileStats,
     ) -> Result<Option<OwnerKey>> {
+        let no_topic_versions = HashMap::new();
+        self.reconcile_owner_record_with_topic_versions(configured_owner, stats, &no_topic_versions)
+            .await
+    }
+
+    async fn reconcile_owner_record_with_topic_versions(
+        &self,
+        configured_owner: OwnerRecord,
+        stats: &mut ReconcileStats,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<Option<OwnerKey>> {
         let owner = self.effective_owner(configured_owner)?;
-        if !self
-            .database
-            .upsert_owner(&owner, OwnerHashMode::Deferred)?
-        {
+        if !self.database.upsert_owner_with_topic_versions(
+            &owner,
+            OwnerHashMode::Deferred,
+            topic_versions,
+        )? {
             return Ok(None);
         }
         for topic in &owner.topics {
@@ -196,6 +211,27 @@ impl Reconciler {
             Some(owner) => {
                 stats.owners_seen = 1;
                 self.reconcile_owner_record(owner, &mut stats).await?;
+            }
+            None => {
+                stats.owners_deleted = usize::from(self.database.reconcile_missing_owner(key)?);
+            }
+        }
+        stats.duration_ms = now_ms() - started;
+        Ok(stats)
+    }
+
+    pub(crate) async fn reconcile_owner_key_with_topic_versions(
+        &self,
+        key: &OwnerKey,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<ReconcileStats> {
+        let started = now_ms();
+        let mut stats = ReconcileStats::default();
+        match self.configured_owner_for_sync(key, topic_versions)? {
+            Some(owner) => {
+                stats.owners_seen = 1;
+                self.reconcile_owner_record_with_topic_versions(owner, &mut stats, topic_versions)
+                    .await?;
             }
             None => {
                 stats.owners_deleted = usize::from(self.database.reconcile_missing_owner(key)?);
@@ -658,6 +694,28 @@ impl Reconciler {
         self.recovery_owner(key.owner_type, key.owner_id.clone(), config_path)
     }
 
+    fn configured_owner_for_sync(
+        &self,
+        key: &OwnerKey,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<Option<OwnerRecord>> {
+        let directory = match key.owner_type {
+            OwnerType::Agent => &self.config.agents_dir,
+            OwnerType::Group => &self.config.groups_dir,
+        };
+        let config_path = directory.join(&key.owner_id).join("config.json");
+        if !config_path.is_file() {
+            return Ok(None);
+        }
+        parse_owner_config_with_topic_versions(
+            key.owner_type,
+            key.owner_id.clone(),
+            &config_path,
+            topic_versions,
+        )
+        .map(Some)
+    }
+
     fn scan_owner_directory_candidates(
         &self,
         owner_type: OwnerType,
@@ -901,6 +959,15 @@ pub fn parse_owner_config(
     owner_id: String,
     config_path: &Path,
 ) -> Result<OwnerRecord> {
+    parse_owner_config_with_topic_versions(owner_type, owner_id, config_path, &HashMap::new())
+}
+
+fn parse_owner_config_with_topic_versions(
+    owner_type: OwnerType,
+    owner_id: String,
+    config_path: &Path,
+    topic_versions: &HashMap<String, SyncTopicVersion>,
+) -> Result<OwnerRecord> {
     let bytes = fs::read(config_path)
         .with_context(|| format!("failed to read {}", config_path.display()))?;
     let root: Value = serde_json::from_slice(&bytes)
@@ -930,11 +997,14 @@ pub fn parse_owner_config(
                         topic_id: topic_id.clone(),
                     };
                     Some(TopicDefinition {
+                        config_hash: topic_versions
+                            .get(&topic_id)
+                            .map(|version| version.config_hash.clone())
+                            .unwrap_or_else(|| mobile_topic_config_hash(&key, value)),
                         topic_id,
                         display_name: string_value(topic.get("name")),
                         created_at: integer_value(topic.get("createdAt")),
                         ordinal: ordinal as i64,
-                        config_hash: mobile_topic_config_hash(&key, value),
                         metadata: value.clone(),
                     })
                 })

@@ -207,7 +207,7 @@ class CentralSyncAdapter {
     throw new Error("VCP-CDS reconcile retry loop exhausted");
   }
 
-  async reconcileOwners(owners, stage = "owner_metadata") {
+  async reconcileOwners(owners, topicVersions, stage = "owner_metadata") {
     if (!Array.isArray(owners) || owners.length === 0) {
       throw createSyncError(
         "SYNC_REQUEST_INVALID",
@@ -227,11 +227,18 @@ class CentralSyncAdapter {
       }
       seen.add(key);
     }
+    if (!Array.isArray(topicVersions)) {
+      throw createSyncError(
+        "SYNC_REQUEST_INVALID",
+        "Targeted CDS reconcile requires topicVersions array",
+        { origin: "desktop_plugin", stage },
+      );
+    }
     try {
       const response = await this.requestCds(
         "POST",
         "/v3/sync/owners/reconcile",
-        { owners },
+        { owners, topicVersions },
       );
       if (
         !isRecord(response) ||

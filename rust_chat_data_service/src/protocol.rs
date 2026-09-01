@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     convert::Infallible,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -38,7 +38,7 @@ use crate::{
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
     ingest::{ReconcileStats, Reconciler, SnapshotStale},
     search::{MemorySearchRequest, MessageSearchRequest, SearchIndex},
-    storage::{now_ms, Database},
+    storage::{now_ms, Database, SyncTopicVersion},
     sync::{
         self, ManifestRequest, ManifestResponse, MessageDiffRequest, MessageDiffResponse,
         MessagesPullRequest, TopicDiffRequest, TopicDiffResponse,
@@ -244,6 +244,17 @@ struct AvatarStateRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ReconcileOwnersRequest {
     owners: Vec<OwnerKey>,
+    topic_versions: Vec<TopicVersionInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TopicVersionInput {
+    owner_type: OwnerType,
+    owner_id: String,
+    topic_id: String,
+    config_hash: String,
+    updated_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -595,11 +606,58 @@ async fn sync_reconcile_owners(
             ));
         }
     }
+    let owner_scope = seen;
+    let mut versions_by_owner: HashMap<OwnerKey, HashMap<String, SyncTopicVersion>> =
+        HashMap::new();
+    for version in request.topic_versions {
+        let owner = OwnerKey {
+            owner_type: version.owner_type,
+            owner_id: version.owner_id,
+        };
+        if !owner_scope.contains(&(owner.owner_type, owner.owner_id.as_str()))
+            || version.topic_id.is_empty()
+            || !version
+                .topic_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            || version.config_hash.len() != 64
+            || !version
+                .config_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || !(0..=(1_i64 << 53) - 1).contains(&version.updated_at)
+        {
+            return Err(ServiceError::InvalidRequest(
+                "sync topic version requires a scoped identity, canonical configHash and updatedAt"
+                    .to_string(),
+            ));
+        }
+        let versions = versions_by_owner.entry(owner).or_default();
+        if versions
+            .insert(
+                version.topic_id,
+                SyncTopicVersion {
+                    config_hash: version.config_hash,
+                    updated_at: version.updated_at,
+                },
+            )
+            .is_some()
+        {
+            return Err(ServiceError::InvalidRequest(
+                "sync topic versions contain a duplicate topic identity".to_string(),
+            ));
+        }
+    }
 
     let _guard = state.reconcile_lock.lock().await;
     let result = async {
+        let no_topic_versions = HashMap::new();
         for owner in &request.owners {
-            state.reconciler.reconcile_owner_key(owner).await?;
+            let topic_versions = versions_by_owner.get(owner).unwrap_or(&no_topic_versions);
+            state
+                .reconciler
+                .reconcile_owner_key_with_topic_versions(owner, topic_versions)
+                .await?;
         }
         state
             .search

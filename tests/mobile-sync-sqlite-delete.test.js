@@ -861,6 +861,8 @@ test("Topic 上传会补建缺失 history，且更新既有 Topic 不覆盖真�
         ownerType: "agent",
         name,
         createdAt: 1,
+        configHash: "a".repeat(64),
+        updatedAt: 2,
       },
       appDataPath: directory,
     });

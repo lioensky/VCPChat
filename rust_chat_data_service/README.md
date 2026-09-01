@@ -234,6 +234,9 @@ Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
 canonical DTO 携带小写 64 位 `contentHash`，该值直接写入 `messages.message_hash`；
 写入物理 `history.json` 前会剥离该派生字段。
 
+Topic 元数据 Push 的 targeted owner reconcile 会在原始 `topics` upsert 中使用 Wire
+`configHash + updatedAt`；普通 watcher/reconcile 仍从物理 `config.json` 计算配置指纹。
+
 ## 协议与失败语义
 
 - VCPMobileSync public wire 固定为 1.4；CDS Node/Rust 内部握手固定为 protocol 3。

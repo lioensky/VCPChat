@@ -401,8 +401,24 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           )
             ? "topic_metadata"
             : "owner_metadata";
+          const successfulTopicKeys = new Set(
+            results
+              .filter((item) => item.ok && item.entityType === "topic")
+              .map(entityIdentityKey),
+          );
+          const topicVersions = topicItems
+            .filter(({ publicIdentity }) =>
+              successfulTopicKeys.has(entityIdentityKey(publicIdentity)))
+            .map(({ publicIdentity, internal }) => ({
+              ownerType: publicIdentity.ownerType,
+              ownerId: publicIdentity.ownerId,
+              topicId: publicIdentity.topicId,
+              configHash: internal.data.configHash,
+              updatedAt: internal.data.updatedAt,
+            }));
           await centralSync.reconcileOwners(
             [...owners.values()],
+            topicVersions,
             reconcileStage,
           );
         }

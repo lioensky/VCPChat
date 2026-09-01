@@ -434,7 +434,6 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
       items: [{
         topicId: "default",
         configHash: changedHash,
-        contentHash: changedHash,
         updatedAt: 1,
         ownerType: "agent",
         ownerId: "agent-a",

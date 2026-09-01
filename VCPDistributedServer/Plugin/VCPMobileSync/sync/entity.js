@@ -48,7 +48,6 @@ const {
   GROUP_SYNC_FIELDS,
 } = require("../dto/group.dto");
 const {
-  extractTopicDTO,
   extractAgentTopicDTO,
   extractGroupTopicDTO,
   applyAgentTopicDTO,
@@ -58,6 +57,7 @@ const {
 } = require("../dto/topic.dto");
 
 const AVATAR_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_AVATAR_BYTES = 20 * 1024 * 1024;
 const AVATAR_MIME_TYPES = new Set([
   "image/png",
@@ -175,6 +175,12 @@ function entityDtoHash(dto, type, ownerType = null) {
     dto,
     type === "group" ? GROUP_SYNC_FIELDS : AGENT_SYNC_FIELDS,
   );
+}
+
+function hasCanonicalTopicVersion(data) {
+  return SHA256_PATTERN.test(data?.configHash) &&
+    Number.isSafeInteger(data?.updatedAt) &&
+    data.updatedAt >= 0;
 }
 
 function assertEntityDtoMatchesIndex(dto, row, type, id) {
@@ -316,6 +322,19 @@ async function downloadEntities(requests) {
         if (dto) {
           try {
             assertEntityDtoMatchesIndex(dto, row, type, safeId);
+            if (type === "agent_topic" || type === "group_topic") {
+              if (!Number.isSafeInteger(row.updated_at) || row.updated_at < 0) {
+                throw Object.assign(
+                  new Error(`Topic ${row.owner_type}/${row.owner_id}/${safeId} has an invalid updatedAt`),
+                  { code: "SYNC_SNAPSHOT_STALE" },
+                );
+              }
+              dto = {
+                ...dto,
+                configHash: row.config_hash,
+                updatedAt: row.updated_at,
+              };
+            }
             results.push({
               ...entityResultIdentity(req),
               success: true,
@@ -401,6 +420,7 @@ async function uploadEntitiesBatch(
       typeof data !== "object" ||
       Array.isArray(data) ||
       data.ownerId !== ownerId ||
+      !hasCanonicalTopicVersion(data) ||
       (data.ownerType !== undefined && data.ownerType !== ownerType)
     ) {
       results.push(entityFailure(
@@ -536,6 +556,8 @@ async function uploadEntitiesBatch(
               config,
               item.ownerType,
               item.ownerId,
+              item.data.configHash,
+              item.data.updatedAt,
               { refreshOwner: false },
             );
           }
@@ -627,6 +649,7 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
       (type === "agent_topic" && topicOwnerType !== "agent") ||
       (type === "group_topic" && topicOwnerType !== "group") ||
       data.ownerId !== topicOwnerId ||
+      !hasCanonicalTopicVersion(data) ||
       (data.ownerType !== undefined && data.ownerType !== topicOwnerType)
     )
   ) {
@@ -787,6 +810,8 @@ async function uploadEntity({ id, type, ownerType, ownerId, data, appDataPath })
         config,
         topicOwnerType,
         topicOwnerId,
+        data.configHash,
+        data.updatedAt,
       );
     } else {
       const dto = type === "agent" ? extractAgentDTO(config) : extractGroupDTO(config);
@@ -919,24 +944,19 @@ function updateTopicStateFromConfig(
   config,
   ownerType,
   ownerId,
+  configHash,
+  updatedAt,
   { refreshOwner = true } = {},
 ) {
-  const isGroupTopic = ownerType === "group";
   const topicObj = (config.topics || []).find((t) => t.id === id);
 
   if (topicObj) {
-    // V2: 使用 DTO 提取以对齐默认值处理
-    const topicDto = extractTopicDTO(topicObj, ownerId, ownerType);
-    
-    const hash = computeDtoHash(
-      topicDto,
-      isGroupTopic ? GROUP_TOPIC_SYNC_FIELDS : AGENT_TOPIC_SYNC_FIELDS,
-    );
     upsertTopicState({
       ownerType,
       ownerId,
       topicId: id,
-      configHash: hash,
+      configHash,
+      updatedAt,
     });
     if (refreshOwner) {
       refreshOwnerContentHash({ ownerType, ownerId });

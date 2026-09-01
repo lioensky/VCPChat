@@ -267,6 +267,12 @@ pub enum OwnerHashMode {
     Deferred,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct SyncTopicVersion {
+    pub(crate) config_hash: String,
+    pub(crate) updated_at: i64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DatabaseStats {
     pub owners: i64,
@@ -375,6 +381,15 @@ impl Database {
         owner: &OwnerRecord,
         owner_hash_mode: OwnerHashMode,
     ) -> Result<bool> {
+        self.upsert_owner_with_topic_versions(owner, owner_hash_mode, &HashMap::new())
+    }
+
+    pub(crate) fn upsert_owner_with_topic_versions(
+        &self,
+        owner: &OwnerRecord,
+        owner_hash_mode: OwnerHashMode,
+        topic_versions: &HashMap<String, SyncTopicVersion>,
+    ) -> Result<bool> {
         let now = now_ms();
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -411,6 +426,7 @@ impl Database {
             ],
         )?;
         let mut active_topic_ids = HashSet::new();
+        let mut applied_topic_versions = HashSet::new();
         for topic in &owner.topics {
             let key = TopicKey {
                 owner_type: owner.key.owner_type,
@@ -421,6 +437,18 @@ impl Database {
                 continue;
             }
             active_topic_ids.insert(topic.topic_id.as_str());
+            let sync_version = topic_versions.get(&topic.topic_id);
+            let topic_updated_at = sync_version
+                .map(|version| version.updated_at)
+                .unwrap_or(now);
+            let previous_source_hash = if sync_version.is_none() {
+                owner.source_config_hash.as_deref()
+            } else {
+                None
+            };
+            if sync_version.is_some() {
+                applied_topic_versions.insert(topic.topic_id.as_str());
+            }
             let source_path = owner
                 .config_path
                 .parent()
@@ -466,11 +494,15 @@ impl Database {
                     topic.config_hash,
                     topic.metadata.to_string(),
                     source_path.to_string_lossy(),
-                    now,
-                    owner.source_config_hash,
+                    topic_updated_at,
+                    previous_source_hash,
                 ],
             )?;
         }
+        anyhow::ensure!(
+            applied_topic_versions.len() == topic_versions.len(),
+            "sync topic versions contain a topic outside the reconciled owner"
+        );
 
         let mut statement = transaction.prepare(
             "SELECT topic_id FROM topics

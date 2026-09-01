@@ -193,7 +193,7 @@ function getLocalManifest(manifestType, targetedOwnerScope = null, database = nu
               json_extract(value, '$.ownerId') AS owner_id
        FROM json_each(?)
      )
-     SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash, t.content_hash,
+     SELECT t.owner_type, t.owner_id, t.topic_id, t.config_hash,
             t.updated_at, t.deleted_at
      FROM requested AS r
      JOIN topics AS t
@@ -229,11 +229,6 @@ function getLocalManifest(manifestType, targetedOwnerScope = null, database = nu
           configHash: requireHash(
             row.config_hash,
             `Topic ${topicId} configHash`,
-          ),
-          contentHash: requireHash(
-            row.content_hash,
-            `Topic ${topicId} contentHash`,
-            { allowEmpty: true },
           ),
           updatedAt: requireTimestamp(
             row.updated_at,
@@ -305,7 +300,7 @@ function normalizeRemoteManifestItem(item, manifestType, index) {
   }
 
   const liveFields = manifestType === "topic"
-    ? ["ownerType", "ownerId", "topicId", "configHash", "contentHash", "updatedAt"]
+    ? ["ownerType", "ownerId", "topicId", "configHash", "updatedAt"]
     : ["ownerType", "ownerId", "configHash", "contentHash", "updatedAt"];
   requireExactKeys(item, new Set(liveFields), `Manifest item ${index}`);
   return {
@@ -426,9 +421,7 @@ function handleSyncManifest(payload, database = null) {
     } else {
       // V2: 双哈希比对
       const remoteStateHash = manifestType === "avatar" ? remote.binaryHash : remote.configHash;
-      const remoteContent = remote.contentHash;
       const localStateHash = manifestType === "avatar" ? local.binaryHash : local.configHash;
-      const localContent = local.contentHash;
 
       // 1. 比较实体自身指纹（Avatar 为二进制 Hash，其余为 configHash）
       if (localStateHash !== remoteStateHash) {
@@ -446,7 +439,7 @@ function handleSyncManifest(payload, database = null) {
       }
 
       // 2. 比较 Owner 内容根
-      if (manifestType === "owner" && localContent !== remoteContent) {
+      if (manifestType === "owner" && local.contentHash !== remote.contentHash) {
         const existingResult = results.find(
           (result) => manifestIdentity(result, manifestType) === identity,
         );

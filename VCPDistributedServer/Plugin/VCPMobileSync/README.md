@@ -176,6 +176,8 @@ graph TD
   * **详细路径 (Detailed-Path)**：只有 `configHash` 一致而 `contentHash` 不一致时，Mobile 才通过 `SYNC_MESSAGE_DIFF_REQUEST` 发送显式 live/墓碑状态，Desktop 返回 `pullMessageIds/pushTopic/deleteMessages`。
   * **快照漂移**：Phase 2 已完成后若 Topic 配置再次变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`；Mobile 复用完整 attempt 重试，而不是把配置分歧误送入只处理消息的 Phase 3。
 
+Topic Entity DTO 双向携带必填 `configHash + updatedAt`，接收端在原始 Topic 索引提交中直接使用；物理 `config.json` 不保存这两个派生/版本字段。Topic Manifest 只仲裁 `configHash`，消息聚合根由后续 TopicDiff/MessageDiff 处理。
+
 ### Phase 3: 极速 NDJSON 流式吞吐 (Stream Ingestion)
 对于数以万计的历史聊天记录比对和拉取，由于传统 JSON 会一次性将全量数据缓冲加载到物理内存中，在移动端和 Electron 插件进程中极易诱发 OOM（内存溢出崩溃）。
 

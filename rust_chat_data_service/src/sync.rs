@@ -82,7 +82,6 @@ pub struct TopicManifestLive {
     owner_id: String,
     topic_id: String,
     config_hash: String,
-    content_hash: String,
     updated_at: i64,
 }
 
@@ -668,14 +667,10 @@ fn normalize_manifest_request(request: ManifestRequest) -> Result<NormalizedMani
                             is_lower_sha256(&item.config_hash),
                             "topic configHash must be lowercase SHA-256"
                         );
-                        anyhow::ensure!(
-                            item.content_hash.is_empty() || is_lower_sha256(&item.content_hash),
-                            "topic contentHash must be empty or lowercase SHA-256"
-                        );
                         Ok(ManifestItem {
                             identity: ManifestIdentity::Topic(key),
                             config_hash: item.config_hash,
-                            content_hash: item.content_hash,
+                            content_hash: String::new(),
                             updated_at: validate_manifest_time(item.updated_at, "updatedAt")?,
                             deleted_at: None,
                         })
@@ -1079,21 +1074,28 @@ fn pull_entity(database: &Database, item: &EntityPullItem) -> Result<Option<Valu
             let connection = database.connection.lock();
             let row = connection
                 .query_row(
-                    "SELECT metadata_json, deleted_at FROM topics
+                    "SELECT metadata_json, config_hash, updated_at, deleted_at FROM topics
                      WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
                     params![owner_type.as_str(), owner_id, topic_id],
                     |row| {
                         Ok((
                             row.get::<_, Option<String>>(0)?,
-                            row.get::<_, Option<i64>>(1)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, Option<i64>>(3)?,
                         ))
                     },
                 )
                 .optional()?;
             drop(connection);
-            let Some((Some(metadata_json), None)) = row else {
+            let Some((Some(metadata_json), config_hash, updated_at, None)) = row else {
                 return Ok(None);
             };
+            anyhow::ensure!(
+                is_lower_sha256(&config_hash),
+                "stored topic configHash is invalid"
+            );
+            validate_manifest_time(updated_at, "topic updatedAt")?;
             let metadata = serde_json::from_str::<Value>(&metadata_json)
                 .context("topic metadata is invalid")?;
             let key = TopicKey {
@@ -1103,6 +1105,8 @@ fn pull_entity(database: &Database, item: &EntityPullItem) -> Result<Option<Valu
             };
             let mut dto = mobile_topic_sync_dto(&key, &metadata);
             dto.insert("ownerId".to_string(), Value::String(owner_id.clone()));
+            dto.insert("configHash".to_string(), Value::String(config_hash));
+            dto.insert("updatedAt".to_string(), Value::from(updated_at));
             Ok(Some(Value::Object(dto)))
         }
     }
@@ -3037,7 +3041,6 @@ mod tests {
                 owner_id: owner_id.to_string(),
                 topic_id: "topic-a".to_string(),
                 config_hash: hash.clone(),
-                content_hash: String::new(),
                 updated_at,
             })
         };
@@ -4045,8 +4048,7 @@ mod tests {
                     owner_type: OwnerType::Agent,
                     owner_id: "agent-a".to_string(),
                     topic_id: "default".to_string(),
-                    config_hash: hash.clone(),
-                    content_hash: hash,
+                    config_hash: hash,
                     updated_at: 1,
                 })],
                 targeted_owners: vec![

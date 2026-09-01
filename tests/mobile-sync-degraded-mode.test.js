@@ -57,7 +57,12 @@ test("批量上传在父 Owner 未进入提交视图时返回实体缺失", asyn
           type: "agent_topic",
           ownerType: "agent",
           ownerId: "agentMissing1",
-          data: { ownerId: "agentMissing1", name: "孤立话题" },
+          data: {
+            ownerId: "agentMissing1",
+            name: "孤立话题",
+            configHash: "a".repeat(64),
+            updatedAt: 1,
+          },
         },
       ],
       appDataPath,
