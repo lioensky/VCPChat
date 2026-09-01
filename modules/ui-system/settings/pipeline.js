@@ -68,7 +68,14 @@ export function runSettingsPipeline(steps, { onStep } = {}) {
         console.debug('[VCPUI SettingsPipeline] mount order:', order.join(' -> '));
     }
     for (const name of order) {
-        byName.get(name).run();
+        try {
+            byName.get(name).run();
+        } catch (error) {
+            // Surface the failing step by name so the caller's fallback can
+            // attribute the failure and the log names the exact mount stage.
+            console.error(`[VCPUI SettingsPipeline] step "${name}" failed:`, error);
+            throw error;
+        }
         onStep?.(name);
     }
     return order;

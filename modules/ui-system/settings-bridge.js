@@ -65,6 +65,29 @@ function syncGlobalSettingsHost() {
     return modal;
 }
 
+// Fail-closed fallback for the unified surface: when the projection pipeline
+// throws, the new-layer CSS gate must close instead of leaving a
+// half-projected modal styled by unified-surface selectors. The gate marker
+// and the surface alias come off, and the legacy presentation class hooks the
+// shell surgery removed go back on, so the intact classic layer can lay out
+// the still-connected business nodes. Moved chrome nodes cannot be restored
+// atomically (teardown semantics are final for the renderer lifetime), so
+// this fallback guarantees exactly the gate closure plus matchable class
+// hooks — the provable minimum for the failure path.
+function deactivateGlobalSettingsSurface(modal, error) {
+    console.error('[VCPUI SettingsBridge] Unified surface projection failed; the classic presentation takes over:', error);
+    document.documentElement.classList.remove('vcp-global-settings-host');
+    modal.classList.remove('vcp-global-settings-surface');
+    for (const [selector, legacyClass] of [
+        ['.vcp-uiux-settings-panel', 'vcp-settings-source-panel'],
+        ['.vcp-uiux-settings-nav', 'vcp-settings-source-nav'],
+        ['.vcp-uiux-settings-content', 'vcp-settings-source-content'],
+        ['.vcp-uiux-settings-nav-title', 'vcp-settings-source-title'],
+    ]) {
+        modal.querySelector(selector)?.classList.add(legacyClass);
+    }
+}
+
 // The sidebar entry is a routine text action, so it can use the same generated
 // Button contract as the other high-frequency Settings actions.  Its existing
 // click handler stays outside this bridge: this owner changes only the visual
@@ -652,7 +675,13 @@ function refresh() {
     }
     if (hasGlobalSettingsSurface()) {
         const form = globalSettingsModal?.querySelector('#globalSettingsForm');
-        if (globalSettingsModal && form) enhanceGlobalSettings(globalSettingsModal, form);
+        if (globalSettingsModal && form) {
+            try {
+                enhanceGlobalSettings(globalSettingsModal, form);
+            } catch (error) {
+                deactivateGlobalSettingsSurface(globalSettingsModal, error);
+            }
+        }
     }
 }
 
