@@ -1,56 +1,47 @@
 // render/field-renderer — 把 schema 描述符编译为现行呈现标记。
-// M0 迁移契约：编译产物与 main.html 静态标记的结构逐一同构（行类名、
+// 迁移契约：编译产物与 main.html 静态标记的结构逐一同构（行类名、
 // data-vcp-style、data-visible-when、控件业务锚点全部保留），因此
 // canonical-rows 之后的投影管线按原样工作，像素与行为等价由"同一管线
 // 处理同一结构"保证。schema → 呈现标记的映射收敛在这里，分区退役
-// data-vcp-style 时只需要改这一层。
-//
-// 行形态映射（与静态标记一致）：
-//   textarea(stacked) → .vcp-settings-row.vcp-settings-row-stacked [37]，
-//                       textarea [38]，提示 [4]
-//   number（无容器）  → .vcp-settings-row [37]，input [19]，提示 [4]
-//   number（有容器）  → .form-group [41]，input [27]，提示 [4]
-//   switch            → .vcp-settings-control-row [15]
-//   select            → .form-group [34]，select（hidden），提示 [40]
+// data-vcp-style 时只需要改这一层；描述符可用 rowStyle/hintStyle 等
+// 覆盖个别历史样式，默认值即各类型的现行标记。
+import { walkFields } from '../schema/kernel.js';
+import { el } from './shared.js';
 
-function el(doc, tag, className, styleValue) {
-    const node = doc.createElement(tag);
-    if (className) node.className = className;
-    if (styleValue !== undefined) node.setAttribute('data-vcp-style', String(styleValue));
-    return node;
-}
-
-function applyVisibility(row, field) {
+function applyRowAnchors(row, field) {
+    if (field.rowId) row.id = field.rowId;
+    if (field.groupId) row.id = field.groupId;
+    if (field.rowClass) row.classList.add(...String(field.rowClass).split(' '));
+    if (field.rowHidden) row.hidden = true;
     if (Array.isArray(field.when) && field.when.length) {
         row.setAttribute('data-visible-when', field.when.join(' && '));
     }
 }
 
-function buildLabel(doc, field) {
-    const label = doc.createElement('label');
-    label.setAttribute('for', field.key);
+function buildLabel(doc, field, styleValue) {
+    const label = el(doc, 'label', '', styleValue);
+    if (field.type !== 'radioGroup') label.setAttribute('for', field.key);
     if (field.labelTitle) label.setAttribute('title', field.labelTitle);
     label.textContent = field.label;
     return label;
 }
 
-function buildHint(doc, field, styleValue) {
+function buildHint(doc, field, styleValue, force = false) {
     if (!field.hint) return null;
-    const hint = el(doc, 'small', '', styleValue);
+    const hint = el(doc, 'small', '', force ? (styleValue ?? null) : styleValue);
     hint.textContent = field.hint;
     return hint;
 }
 
-function buildNumberInput(doc, field, styleValue) {
+function buildInputBase(doc, field, styleValue) {
     const input = doc.createElement('input');
-    input.type = 'number';
+    input.type = field.inputType;
     input.id = field.key;
-    input.name = field.key;
-    input.setAttribute('data-vcp-style', String(styleValue));
-    if (field.min !== undefined) input.min = String(field.min);
-    if (field.max !== undefined) input.max = String(field.max);
-    if (field.step !== undefined) input.step = String(field.step);
-    if (field.defaultValue !== undefined) input.value = String(field.defaultValue);
+    input.name = field.name || field.key;
+    if (styleValue !== undefined && styleValue !== null) input.setAttribute('data-vcp-style', String(styleValue));
+    if (field.placeholder !== undefined) input.placeholder = field.placeholder;
+    if (field.required) input.required = true;
+    if (field.value !== undefined) input.value = String(field.value);
     return input;
 }
 
@@ -58,7 +49,9 @@ function buildTextarea(doc, field) {
     const node = doc.createElement('textarea');
     node.id = field.key;
     node.name = field.key;
-    node.setAttribute('data-vcp-style', '38');
+    if (field.textareaStyle !== undefined && field.textareaStyle !== null) {
+        node.setAttribute('data-vcp-style', String(field.textareaStyle));
+    }
     if (field.placeholder !== undefined) node.placeholder = field.placeholder;
     if (field.rows !== undefined) node.setAttribute('rows', String(field.rows));
     if (field.spellcheck === false) node.setAttribute('spellcheck', 'false');
@@ -66,7 +59,7 @@ function buildTextarea(doc, field) {
     return node;
 }
 
-function buildSwitch(doc, field) {
+function buildSwitchControl(doc, field) {
     const holder = doc.createElement('label');
     holder.className = 'switch';
     const input = doc.createElement('input');
@@ -76,14 +69,17 @@ function buildSwitch(doc, field) {
     const slider = doc.createElement('span');
     slider.className = 'slider round';
     holder.append(input, slider);
-    return { holder, input };
+    return holder;
 }
 
 function buildSelect(doc, field) {
     const node = doc.createElement('select');
     node.id = field.key;
     node.name = field.key;
-    if (field.hidden) node.hidden = true;
+    if (field.selectStyle !== undefined && field.selectStyle !== null) {
+        node.setAttribute('data-vcp-style', String(field.selectStyle));
+    }
+    if (field.hidden !== false) node.hidden = true;
     for (const option of field.options || []) {
         const optionNode = doc.createElement('option');
         optionNode.value = option.value;
@@ -94,52 +90,216 @@ function buildSelect(doc, field) {
 }
 
 export function renderSchemaField(doc, field) {
-    if (field.type === 'textarea') {
-        const row = el(doc, 'div', 'vcp-settings-row vcp-settings-row-stacked', 37);
-        row.append(buildLabel(doc, field), buildTextarea(doc, field));
-        const hint = buildHint(doc, field, 4);
-        if (hint) row.append(hint);
-        return row;
-    }
-    if (field.type === 'number') {
-        if (field.groupId) {
-            const row = el(doc, 'div', 'form-group', 41);
-            row.id = field.groupId;
-            applyVisibility(row, field);
-            row.append(buildLabel(doc, field), buildNumberInput(doc, field, 27));
-            const hint = buildHint(doc, field, 4);
+    switch (field.type) {
+        case 'textarea': {
+            if (field.groupId || field.grouped) {
+                const row = el(doc, 'div', 'form-group', field.rowStyle ?? 16);
+                applyRowAnchors(row, field);
+                row.append(buildLabel(doc, field, field.labelStyle), buildTextarea(doc, field));
+                const hint = buildHint(doc, field, field.hintStyle ?? 4);
+                if (hint) row.append(hint);
+                return row;
+            }
+            const row = el(doc, 'div', 'vcp-settings-row' + (field.stacked ? ' vcp-settings-row-stacked' : ''), field.rowStyle ?? 37);
+            applyRowAnchors(row, field);
+            row.append(buildLabel(doc, field, field.labelStyle), buildTextarea(doc, field));
+            const hint = buildHint(doc, field, field.hintStyle ?? 4);
             if (hint) row.append(hint);
             return row;
         }
-        const row = el(doc, 'div', 'vcp-settings-row', 37);
-        row.append(buildLabel(doc, field), buildNumberInput(doc, field, 19));
-        const hint = buildHint(doc, field, 4);
-        if (hint) row.append(hint);
-        return row;
+        case 'number': {
+            if (field.groupId || field.grouped) {
+                const row = el(doc, 'div', 'form-group', field.rowStyle ?? 41);
+                applyRowAnchors(row, field);
+                row.append(buildLabel(doc, field, field.labelStyle), buildNumberInput(doc, field, field.controlStyle ?? 27));
+                const hint = buildHint(doc, field, field.hintStyle ?? 4);
+                if (hint) row.append(hint);
+                return row;
+            }
+            const row = el(doc, 'div', 'vcp-settings-row', field.rowStyle ?? 37);
+            applyRowAnchors(row, field);
+            row.append(buildLabel(doc, field, field.labelStyle), buildNumberInput(doc, field, field.controlStyle ?? 19));
+            const hint = buildHint(doc, field, field.hintStyle ?? 4);
+            if (hint) row.append(hint);
+            return row;
+        }
+        case 'text': {
+            const row = el(doc, 'div', 'vcp-settings-row' + (field.stacked ? ' vcp-settings-row-stacked' : ''), field.rowStyle);
+            applyRowAnchors(row, field);
+            row.append(buildLabel(doc, field, field.labelStyle), buildInputBase(doc, field, field.controlStyle));
+            const hint = buildHint(doc, field, field.hintStyle ?? 4);
+            if (hint) row.append(hint);
+            return row;
+        }
+        case 'switch': {
+            const row = el(doc, 'div', 'vcp-settings-control-row', field.rowStyle ?? 15);
+            applyRowAnchors(row, field);
+            if (field.hintInsideWrapper) {
+                // 历史标记：label 与提示同处一个包裹 div（compose 不拆分）。
+                const wrapper = doc.createElement('div');
+                wrapper.append(buildLabel(doc, field, field.labelStyle));
+                const hint = buildHint(doc, field, field.hintStyle ?? 4);
+                if (hint) wrapper.append(hint);
+                row.append(wrapper, buildSwitchControl(doc, field));
+                return row;
+            }
+            row.append(buildLabel(doc, field, field.labelStyle), buildSwitchControl(doc, field));
+            if (field.extra) {
+                for (const node of field.extra(doc)) row.append(node);
+            }
+            return row;
+        }
+        case 'select': {
+            const row = el(doc, 'div', field.groupRowClass || 'form-group', field.rowStyle ?? (field.groupRowClass ? undefined : 34));
+            applyRowAnchors(row, field);
+            row.append(buildSelect(doc, field));
+            const hint = buildHint(doc, field, field.hintStyle ?? 40);
+            if (hint) row.append(hint);
+            return row;
+        }
+        case 'radio': {
+            const holder = el(doc, 'label', '', field.labelStyle ?? 14);
+            holder.setAttribute('for', field.key);
+            const input = doc.createElement('input');
+            input.type = 'radio';
+            input.id = field.key;
+            input.name = field.name;
+            input.value = field.value;
+            if (field.checked) input.checked = true;
+            const span = doc.createElement('span');
+            span.textContent = field.label;
+            holder.append(input, span);
+            return holder;
+        }
+        case 'range': {
+            const row = el(doc, 'div', 'vcp-settings-row', field.rowStyle);
+            applyRowAnchors(row, field);
+            const container = doc.createElement('div');
+            container.className = 'slider-container';
+            const input = doc.createElement('input');
+            input.type = 'range';
+            input.id = field.key;
+            input.name = field.key;
+            if (field.min !== undefined) input.min = String(field.min);
+            if (field.max !== undefined) input.max = String(field.max);
+            if (field.step !== undefined) input.step = String(field.step);
+            if (field.value !== undefined) input.value = String(field.value);
+            container.append(input);
+            const output = doc.createElement('output');
+            output.id = field.outputId;
+            if (field.outputFor) output.setAttribute('for', field.outputFor);
+            output.textContent = field.outputText ?? '';
+            container.append(output);
+            row.append(container);
+            return row;
+        }
+        case 'button': {
+            const node = el(doc, 'button', field.className, field.rowStyle);
+            node.type = 'button';
+            node.id = field.key;
+            node.textContent = field.label;
+            return node;
+        }
+        case 'card': {
+            const cardNode = el(doc, 'div', 'vcp-settings-card');
+            cardNode.dataset.vcpSettingsCard = field.cardKey;
+            const toggle = doc.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'vcp-settings-card-toggle';
+            toggle.setAttribute('aria-expanded', 'true');
+            const bodyId = `${field.key}CardBody`;
+            toggle.setAttribute('aria-controls', bodyId);
+            const heading = doc.createElement('span');
+            heading.className = 'vcp-settings-card-heading';
+            const title = doc.createElement('strong');
+            title.className = 'vcp-settings-card-title';
+            title.textContent = field.title;
+            const description = doc.createElement('small');
+            description.className = 'vcp-settings-card-description';
+            description.textContent = field.description;
+            heading.append(title, description);
+            toggle.append(heading, buildCardChevron(doc));
+            const body = doc.createElement('div');
+            body.className = 'vcp-settings-card-body';
+            body.id = bodyId;
+            for (const child of field.fields) {
+                body.append(child.kind === 'layout' ? renderSchemaLayout(doc, child) : renderSchemaField(doc, child));
+            }
+            cardNode.append(toggle, body);
+            return cardNode;
+        }
+        case 'radioGroup': {
+            const row = el(doc, 'div', 'form-group', field.rowStyle ?? 32);
+            row.dataset.settingKey = field.key;
+            applyRowAnchors(row, field);
+            row.append(buildLabel(doc, { ...field, type: 'radioGroup' }, field.labelStyle ?? 11));
+            const innerRow = el(doc, 'div', 'vcp-settings-control-row', field.innerRowStyle ?? 13);
+            for (const radioField of field.fields) {
+                innerRow.append(renderSchemaField(doc, radioField));
+            }
+            row.append(innerRow);
+            const hint = buildHint(doc, field, field.hintStyle ?? 4);
+            if (hint) row.append(hint);
+            return row;
+        }
+        case 'inlineNumbers': {
+            const row = el(doc, 'div', 'form-group settings-inline-number-row', field.rowStyle);
+            applyRowAnchors(row, field);
+            for (const child of field.fields) {
+                const cell = doc.createElement('div');
+                cell.append(buildLabel(doc, child, child.labelStyle ?? 18), buildNumberInput(doc, child, child.controlStyle ?? 19));
+                row.append(cell);
+            }
+            return row;
+        }
+        case 'custom': {
+            const node = field.build(doc);
+            return node;
+        }
+        default:
+            throw new Error(`field-renderer: 未支持的 schema 字段类型 "${field.type}"（key=${field.key}）`);
     }
-    if (field.type === 'switch') {
-        const row = el(doc, 'div', 'vcp-settings-control-row', 15);
-        if (field.rowId) row.id = field.rowId;
-        applyVisibility(row, field);
-        row.append(buildLabel(doc, field));
-        const { holder } = buildSwitch(doc, field);
-        row.append(holder);
-        return row;
+}
+
+function buildNumberInput(doc, field, styleValue) {
+    const input = doc.createElement('input');
+    input.type = 'number';
+    input.id = field.key;
+    input.name = field.name || field.key;
+    if (styleValue !== undefined && styleValue !== null) input.setAttribute('data-vcp-style', String(styleValue));
+    if (field.min !== undefined) input.min = String(field.min);
+    if (field.max !== undefined) input.max = String(field.max);
+    if (field.step !== undefined) input.step = String(field.step);
+    if (field.defaultValue !== undefined) input.value = String(field.defaultValue);
+    if (field.placeholder !== undefined) input.placeholder = field.placeholder;
+    return input;
+}
+
+function buildCardChevron(doc) {
+    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'vcp-settings-card-chevron');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.6');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M3.5 6l4.5 4.5L12.5 6');
+    svg.append(path);
+    return svg;
+}
+
+function renderSchemaLayout(doc, descriptor) {
+    if (descriptor.type === 'card' || descriptor.type === 'radioGroup' || descriptor.type === 'inlineNumbers') {
+        return renderSchemaField(doc, descriptor);
     }
-    if (field.type === 'select') {
-        const row = el(doc, 'div', 'form-group', 34);
-        if (field.groupId) row.id = field.groupId;
-        applyVisibility(row, field);
-        row.append(buildSelect(doc, field));
-        const hint = buildHint(doc, field, 40);
-        if (hint) row.append(hint);
-        return row;
-    }
-    throw new Error(`field-renderer: 未支持的 schema 字段类型 "${field.type}"（key=${field.key}）`);
+    throw new Error(`field-renderer: 未支持的布局类型 "${descriptor.type}"`);
 }
 
 // 编译整个分区：标题 + 行序列。返回节点数组，由调用方决定挂载方式
-// （M0 原地替换既有分区容器的子节点，保持分区元素身份稳定）。
+// （M0 起原地替换既有分区容器的子节点，保持分区元素身份稳定）。
 export function renderSchemaSection(sectionDescriptor, doc) {
     const nodes = [];
     const title = doc.createElement('h3');
@@ -147,7 +307,12 @@ export function renderSchemaSection(sectionDescriptor, doc) {
     title.textContent = sectionDescriptor.title;
     nodes.push(title);
     for (const field of sectionDescriptor.fields) {
-        nodes.push(renderSchemaField(doc, field));
+        nodes.push(field.kind === 'layout' ? renderSchemaLayout(doc, field) : renderSchemaField(doc, field));
     }
     return nodes;
+}
+
+// 供 schema-surface 做现值快照/回填的字段遍历。
+export function forEachSchemaField(sectionDescriptor, visit) {
+    walkFields(sectionDescriptor, visit);
 }

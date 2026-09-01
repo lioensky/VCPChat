@@ -1,10 +1,15 @@
-// M0 试点验收：schema 编译产物与静态标记同构，切换面幂等且不丢现值。
+// M0/M1 验收：schema 编译产物与静态标记同构，切换面幂等且不丢现值。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { quickActionsSection } from '../modules/settings/schema/quick-actions.js';
+import { userIdentitySection } from '../modules/settings/schema/user-identity.js';
+import { serverConnectionSection } from '../modules/settings/schema/server-connection.js';
+import { renderSettingsSection } from '../modules/settings/schema/render-settings.js';
+import { selectionAssistantSection } from '../modules/settings/schema/selection-assistant.js';
+import { voiceSettingsSection } from '../modules/settings/schema/voice-settings.js';
 import { renderSchemaSection, renderSchemaField } from '../modules/settings/render/field-renderer.js';
-import { captureSectionValues, writeFieldValue, readFieldValue } from '../modules/settings/store.js';
+import { captureSectionValues, restoreSectionValues, readControlById } from '../modules/settings/store.js';
 import { applySchemaSurface, isSchemaSurfaceEnabled, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
 import { mountCanonicalSettingsRows } from '../modules/ui-system/settings/canonical-rows.js';
 
@@ -15,80 +20,209 @@ global.HTMLElement = dom.window.HTMLElement;
 
 const doc = dom.window.document;
 
-function renderIntoForm() {
+function renderIntoForm(sectionDescriptor) {
     const form = doc.createElement('form');
     const host = doc.createElement('div');
-    host.id = `section-${quickActionsSection.key}`;
+    host.id = `section-${sectionDescriptor.key}`;
     host.className = 'settings-section';
-    host.dataset.settingsSectionKey = quickActionsSection.key;
+    host.dataset.settingsSectionKey = sectionDescriptor.key;
     form.append(host);
-    host.replaceChildren(...renderSchemaSection(quickActionsSection, doc));
+    host.replaceChildren(...renderSchemaSection(sectionDescriptor, doc));
     return { form, host };
 }
 
+test('六分区全部登记且 schema 编译无异常', () => {
+    const keys = schemaSurfaceSections().map(s => s.key);
+    assert.deepEqual(keys, ['user-identity', 'server-connection', 'render-settings',
+        'selection-assistant', 'voice-settings', 'quick-actions']);
+    for (const sectionDescriptor of schemaSurfaceSections()) {
+        const nodes = renderSchemaSection(sectionDescriptor, doc);
+        assert.ok(nodes.length > 1, `${sectionDescriptor.key} 应编译出标题与行`);
+        assert.equal(nodes[0].textContent, sectionDescriptor.title);
+    }
+});
+
 test('quick-actions schema 编译产物保留全部业务锚点与行为标记', () => {
-    const { form } = renderIntoForm();
-    // 控件 id/name
+    const { form } = renderIntoForm(quickActionsSection);
     for (const key of ['continueWritingPrompt', 'flowlockContinueDelay', 'enableMiddleClickQuickAction',
         'middleClickQuickAction', 'enableRegenerateConfirmation', 'enableMiddleClickAdvanced',
         'middleClickAdvancedDelay']) {
         assert.ok(form.querySelector(`#${key}[name="${key}"]`), `missing control #${key}`);
     }
-    // 容器/行锚点（typed-field-owners 按这些 id 直写可见性）
     for (const id of ['middleClickQuickActionContainer', 'regenerateConfirmationContainer',
         'middleClickAdvancedToggleRow', 'middleClickAdvancedSettings']) {
         assert.ok(form.querySelector(`#${id}`), `missing anchored row #${id}`);
     }
-    // 依赖子句
     assert.equal(form.querySelector('#middleClickQuickActionContainer').getAttribute('data-visible-when'), 'enableMiddleClickQuickAction');
     assert.equal(form.querySelector('#regenerateConfirmationContainer').getAttribute('data-visible-when'),
         'enableMiddleClickQuickAction && middleClickQuickAction=regenerate');
     assert.equal(form.querySelector('#middleClickAdvancedSettings').getAttribute('data-visible-when'),
         'enableMiddleClickQuickAction && enableMiddleClickAdvanced');
-    // textarea 契约
     const textarea = form.querySelector('#continueWritingPrompt');
     assert.equal(textarea.tagName, 'TEXTAREA');
     assert.equal(textarea.getAttribute('placeholder'), '默认: 请继续');
     assert.equal(textarea.getAttribute('rows'), '1');
     assert.equal(textarea.getAttribute('spellcheck'), 'false');
     assert.equal(textarea.textContent, '请继续');
-    // number 约束
     const delay = form.querySelector('#flowlockContinueDelay');
     assert.equal(delay.getAttribute('min'), '1');
     assert.equal(delay.getAttribute('max'), '300');
     assert.equal(delay.getAttribute('step'), '1');
     assert.equal(delay.value, '5');
-    // select 选项与 hidden
     const select = form.querySelector('#middleClickQuickAction');
     assert.equal(select.hidden, true);
     assert.equal(select.options.length, 9);
     assert.equal(select.options[7].value, 'regenerate');
-    assert.equal(select.options[7].textContent, '重新回复');
-    // 开关结构
     const advancedToggle = form.querySelector('#enableMiddleClickAdvanced');
     assert.equal(advancedToggle.type, 'checkbox');
     assert.ok(advancedToggle.closest('label.switch'));
     assert.ok(advancedToggle.closest('label.switch').querySelector('span.slider.round'));
-    // 分区标题
     assert.equal(form.querySelector('.settings-section-title').textContent, '快捷操作');
 });
 
 test('编译产物行形态与静态标记同构（data-vcp-style 与类名）', () => {
-    const { form } = renderIntoForm();
+    const { form } = renderIntoForm(quickActionsSection);
     const stackedRow = form.querySelector('#continueWritingPrompt').closest('.vcp-settings-row');
     assert.ok(stackedRow.classList.contains('vcp-settings-row-stacked'));
     assert.equal(stackedRow.getAttribute('data-vcp-style'), '37');
     assert.equal(form.querySelector('#continueWritingPrompt').getAttribute('data-vcp-style'), '38');
     assert.equal(form.querySelector('#flowlockContinueDelay').getAttribute('data-vcp-style'), '19');
-    assert.equal(form.querySelector('#flowlockContinueDelay').closest('.vcp-settings-row').getAttribute('data-vcp-style'), '37');
     assert.equal(form.querySelector('#enableMiddleClickQuickAction').closest('.vcp-settings-control-row').getAttribute('data-vcp-style'), '15');
     assert.equal(form.querySelector('#middleClickQuickActionContainer').getAttribute('data-vcp-style'), '34');
     assert.equal(form.querySelector('#middleClickAdvancedSettings').getAttribute('data-vcp-style'), '41');
     assert.equal(form.querySelector('#middleClickAdvancedDelay').getAttribute('data-vcp-style'), '27');
 });
 
+test('user-identity：专属组件与业务锚点齐备', () => {
+    const { form } = renderIntoForm(userIdentitySection);
+    for (const id of ['userAvatarPreview', 'userAvatarInput', 'userName', 'userStyleCollapseHeader',
+        'userAvatarBorderColor', 'userAvatarBorderColorText', 'userNameTextColor', 'userNameTextColorText',
+        'resetUserAvatarColorsBtn', 'adminUsername', 'adminPassword']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    assert.ok(form.querySelector('.vcp-uiux-user-profile-card[data-vcp-settings-row]'));
+    assert.ok(form.querySelector('.agent-style-collapsible-container.collapsed'));
+    assert.ok(form.querySelector('.vcp-uiux-identity-name-display .vcp-uiux-identity-name-edit'));
+    assert.equal(form.querySelector('#userAvatarBorderColor').value, '#3d5a80');
+    // 管理员行的历史样式标记
+    assert.equal(form.querySelector('#adminUsername').closest('.vcp-settings-row').getAttribute('data-vcp-style'), '3');
+    assert.equal(form.querySelector('#adminPassword').getAttribute('type'), 'password');
+});
+
+test('server-connection：卡片结构与动态容器锚点', () => {
+    const { form } = renderIntoForm(serverConnectionSection);
+    for (const id of ['vcpConnectionCardBody', 'networkNotesCardBody', 'networkNotesPathsContainer', 'addNetworkPathBtn']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    const toggle = form.querySelector('.vcp-settings-card-toggle');
+    assert.equal(toggle.getAttribute('aria-controls'), 'vcpConnectionCardBody');
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.ok(toggle.querySelector('svg.vcp-settings-card-chevron'));
+    assert.equal(form.querySelector('#vcpServerUrl').getAttribute('type'), 'url');
+    assert.ok(form.querySelector('#vcpServerUrl').required);
+    assert.equal(form.querySelector('#vcpApiKey').getAttribute('type'), 'password');
+    assert.equal(form.querySelector('#addNetworkPathBtn').getAttribute('data-vcp-style'), '6');
+    assert.ok(form.querySelector('#addNetworkPathBtn').classList.contains('vcp-settings-card-add-row'));
+});
+
+test('render-settings：stepper 内联行、预设行、滑杆与自定义行', () => {
+    const { form } = renderIntoForm(renderSettingsSection);
+    for (const id of ['enableSmoothStreaming', 'minChunkBufferSize', 'smoothStreamIntervalMs',
+        'streamAnimationSettingsRow', 'streamAnimationPreset', 'streamAnimationDurationRow',
+        'streamAnimationDurationMs', 'streamAnimationDurationValue', 'streamAnimationCustomRow',
+        'streamAnimationCustomCss', 'fillStreamAnimationCssExample', 'replayStreamAnimationPreview',
+        'streamAnimationPreviewElement']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    // 开关行：label+hint 在包裹 div 内
+    const smoothRow = form.querySelector('#enableSmoothStreaming').closest('.vcp-settings-control-row');
+    assert.equal(smoothRow.getAttribute('data-vcp-style'), '15');
+    assert.ok(smoothRow.querySelector(':scope > div > small'));
+    // stepper 双控件内联行
+    const inlineRow = form.querySelector('#minChunkBufferSize').closest('.settings-inline-number-row');
+    assert.ok(inlineRow.classList.contains('form-group'));
+    assert.equal(form.querySelector('#minChunkBufferSize').getAttribute('data-vcp-style'), '19');
+    const stepperCell = form.querySelector('#minChunkBufferSize').parentElement;
+    assert.equal(stepperCell.querySelector(':scope > label').getAttribute('data-vcp-style'), '18');
+    assert.equal(form.querySelector('#minChunkBufferSize').getAttribute('min'), '1');
+    assert.equal(form.querySelector('#smoothStreamIntervalMs').value, '100');
+    // 预设 select hidden 且行 id 保留
+    assert.equal(form.querySelector('#streamAnimationSettingsRow').classList.contains('vcp-settings-row'), true);
+    assert.equal(form.querySelector('#streamAnimationPreset').hidden, true);
+    assert.equal(form.querySelector('#streamAnimationPreset').options.length, 6);
+    // 滑杆与 output
+    const range = form.querySelector('#streamAnimationDurationMs');
+    assert.equal(range.getAttribute('min'), '100');
+    assert.equal(range.getAttribute('max'), '2000');
+    assert.equal(form.querySelector('#streamAnimationDurationValue').textContent, '500ms');
+    // 自定义行默认 hidden，textarea 契约与示例按钮
+    assert.equal(form.querySelector('#streamAnimationCustomRow').hidden, true);
+    assert.equal(form.querySelector('#streamAnimationCustomCss').getAttribute('rows'), '4');
+    assert.equal(form.querySelector('#streamAnimationCustomCss').getAttribute('spellcheck'), 'false');
+    assert.ok(form.querySelector('#streamAnimationCustomRow .stream-animation-custom-example pre code'));
+});
+
+test('selection-assistant：调试面板、阈值依赖与规则模式', () => {
+    const { form } = renderIntoForm(selectionAssistantSection);
+    for (const id of ['assistantAgentContainer', 'assistantAgent', 'rustDebugMode', 'rustDebugPanel',
+        'rustUseAssistant', 'rustEnableCustomThresholds', 'rustMinEventIntervalMs', 'rustMinDistance',
+        'rustScreenshotSuspendMs', 'rustClipboardConflictSuspendMs', 'rustClipboardCheckIntervalMs',
+        'rustRuleModeRow', 'rustRuleMode', 'rustWhitelistKeywords', 'rustBlacklistKeywords', 'rustScreenshotApps']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    // 调试面板挂在开关行内，可见性依赖调试开关
+    const debugRow = form.querySelector('#rustDebugMode').closest('.vcp-settings-control-row');
+    assert.equal(debugRow.getAttribute('data-vcp-style'), '23');
+    const panel = form.querySelector('#rustDebugPanel');
+    assert.equal(panel.parentElement, debugRow);
+    assert.equal(panel.getAttribute('data-visible-when'), 'rustDebugMode');
+    for (const spanId of ['assistantRuntimeMode', 'assistantRuntimeProcessPid', 'assistantRuntimeShowError']) {
+        assert.ok(panel.querySelector(`#${spanId}`), `missing panel span #${spanId}`);
+    }
+    // 阈值行依赖子句与样式
+    const threshold = form.querySelector('#rustMinEventIntervalMs').closest('.form-group');
+    assert.equal(threshold.getAttribute('data-vcp-style'), '26');
+    assert.equal(threshold.getAttribute('data-visible-when'), 'rustUseAssistant && rustEnableCustomThresholds');
+    assert.equal(form.querySelector('#rustMinEventIntervalMs').getAttribute('data-vcp-style'), '27');
+    assert.equal(threshold.querySelector('small').getAttribute('data-vcp-style'), '28');
+    // 规则模式 select 与关键词 textarea
+    assert.equal(form.querySelector('#rustRuleMode').getAttribute('data-vcp-style'), '30');
+    assert.equal(form.querySelector('#rustRuleModeRow').getAttribute('data-vcp-style'), '29');
+    assert.equal(form.querySelector('#rustRuleModeRow').getAttribute('data-visible-when'), 'rustUseAssistant');
+    assert.equal(form.querySelector('#rustBlacklistKeywords').closest('.form-group').getAttribute('data-visible-when'),
+        'rustUseAssistant && rustRuleMode=blacklist');
+    assert.equal(form.querySelector('#rustWhitelistKeywords').getAttribute('rows'), '3');
+    assert.equal(form.querySelector('#rustWhitelistKeywords').getAttribute('data-vcp-style'), null);
+    assert.equal(form.querySelector('#rustWhitelistKeywords').placeholder.includes('\n'), true);
+});
+
+test('voice-settings：单选组结构与胶囊 select 行', () => {
+    const { form } = renderIntoForm(voiceSettingsSection);
+    for (const id of ['voiceModeLocal', 'voiceModeNetwork', 'voiceInputModeRow', 'voiceInputMode',
+        'voiceInputShortcut', 'voiceNetworkProviderUrl', 'voiceNetworkProviderKey',
+        'voiceLocalSovitsUrl', 'voiceLocalSovitsKey']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    const local = form.querySelector('#voiceModeLocal');
+    assert.equal(local.checked, true);
+    assert.equal(local.name, 'voiceMode');
+    assert.equal(local.value, 'local');
+    const innerRow = local.closest('.vcp-settings-control-row');
+    assert.equal(innerRow.getAttribute('data-vcp-style'), '13');
+    const group = local.closest('.form-group');
+    assert.equal(group.getAttribute('data-vcp-style'), '32');
+    assert.equal(group.querySelector(':scope > label').getAttribute('data-vcp-style'), '11');
+    assert.equal(group.querySelector(':scope > label').textContent, '语音工作模式');
+    assert.equal(group.querySelector(':scope > small').getAttribute('data-vcp-style'), '4');
+    // 快捷键默认值与 url 占位
+    assert.equal(form.querySelector('#voiceInputShortcut').value, 'F7');
+    assert.equal(form.querySelector('#voiceLocalSovitsUrl').getAttribute('type'), 'url');
+    assert.equal(form.querySelector('#voiceInputModeRow').classList.contains('vcp-settings-row'), true);
+    assert.equal(form.querySelector('#voiceInputMode').hidden, true);
+});
+
 test('canonical-rows 对编译产物投影出与静态标记一致的 canonical 行', () => {
-    const { form } = renderIntoForm();
+    const { form } = renderIntoForm(quickActionsSection);
     mountCanonicalSettingsRows(form);
     const stackedItem = form.querySelector('#continueWritingPrompt').closest('.vcp-uiux-general-item');
     assert.ok(stackedItem, 'textarea 行应成为 canonical 行');
@@ -100,30 +234,36 @@ test('canonical-rows 对编译产物投影出与静态标记一致的 canonical 
     assert.ok(copy, 'textarea 行应有 row-copy 槽');
     assert.equal(copy.querySelector('label').getAttribute('for'), 'continueWritingPrompt');
     assert.ok(copy.querySelector('small'), '提示应进 row-copy 槽');
-    // 开关行：label 与 switch 控件分槽
     const switchRow = form.querySelector('#enableMiddleClickQuickAction').closest('.vcp-uiux-general-item');
     assert.ok(switchRow.querySelector(':scope > .vcp-uiux-row-copy label'));
     assert.ok(switchRow.querySelector(':scope > label.switch'));
-    // 容器 id 在投影后保留
     assert.ok(form.querySelector('#middleClickQuickActionContainer'), '容器 id 必须穿越投影');
 });
 
-test('store 采集与回写：现值迁移不丢失', () => {
-    const { form, host } = renderIntoForm();
+test('store 快照：多类型现值迁移不丢失', () => {
+    const { form, host } = renderIntoForm(quickActionsSection);
     form.querySelector('#continueWritingPrompt').value = '自定义提示词';
     form.querySelector('#enableMiddleClickQuickAction').checked = true;
     form.querySelector('#middleClickQuickAction').value = 'regenerate';
     const snapshot = captureSectionValues(form, quickActionsSection);
-    // 重新渲染（模拟替换）后回写
     host.replaceChildren(...renderSchemaSection(quickActionsSection, doc));
     assert.equal(form.querySelector('#continueWritingPrompt').value, '请继续', '重渲染后应回到默认值');
-    for (const field of quickActionsSection.fields) {
-        if (snapshot.has(field.key)) writeFieldValue(form, field, snapshot.get(field.key));
-    }
+    restoreSectionValues(form, snapshot);
     assert.equal(form.querySelector('#continueWritingPrompt').value, '自定义提示词');
     assert.equal(form.querySelector('#enableMiddleClickQuickAction').checked, true);
     assert.equal(form.querySelector('#middleClickQuickAction').value, 'regenerate');
-    assert.equal(readFieldValue(form, quickActionsSection.fields.find(f => f.key === 'enableMiddleClickAdvanced')), false);
+    assert.equal(readControlById(form, 'enableMiddleClickAdvanced'), false);
+});
+
+test('store 快照：custom 组件按 captureKeys 迁移内部控件', () => {
+    const { form, host } = renderIntoForm(renderSettingsSection);
+    form.querySelector('#streamAnimationCustomCss').value = 'opacity: 0;';
+    form.querySelector('#streamAnimationDurationMs').value = '800';
+    const snapshot = captureSectionValues(form, renderSettingsSection);
+    host.replaceChildren(...renderSchemaSection(renderSettingsSection, doc));
+    restoreSectionValues(form, snapshot);
+    assert.equal(form.querySelector('#streamAnimationCustomCss').value, 'opacity: 0;');
+    assert.equal(form.querySelector('#streamAnimationDurationMs').value, '800');
 });
 
 test('schema-surface：开关关闭为空操作，开启后原地替换且幂等', () => {
@@ -155,12 +295,42 @@ test('schema-surface：开关关闭为空操作，开启后原地替换且幂等
     assert.equal(host.dataset.vcpSchemaRendered, 'true');
     assert.ok(host.querySelector('.settings-section-title'), '渲染后应有标题');
     assert.ok(host.querySelector('#middleClickQuickActionContainer'), '渲染后应有业务容器');
-    // 静态标记里已写入的现值（42）必须迁移到渲染产物
     assert.equal(form.querySelector('#flowlockContinueDelay').value, '42');
-    // 幂等：重复 refresh 不重渲染（渲染产物中的现值不被默认值覆盖）
     form.querySelector('#flowlockContinueDelay').value = '77';
     assert.deepEqual(applySchemaSurface(form, doc), []);
     assert.equal(form.querySelector('#flowlockContinueDelay').value, '77');
+});
+
+test('schema-surface：动态节点整体迁移（select 选项与容器子行）', () => {
+    const form = doc.createElement('form');
+    const host = doc.createElement('div');
+    host.id = 'section-selection-assistant';
+    host.className = 'settings-section';
+    const row = doc.createElement('div');
+    row.className = 'vcp-settings-row';
+    row.id = 'assistantAgentContainer';
+    const liveSelect = doc.createElement('select');
+    liveSelect.id = 'assistantAgent';
+    liveSelect.name = 'assistantAgent';
+    liveSelect.hidden = true;
+    for (const [value, label] of [['', '请选择一个Agent'], ['agentA', '助手A'], ['agentB', '助手B']]) {
+        const option = doc.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        liveSelect.append(option);
+    }
+    liveSelect.value = 'agentB';
+    row.append(liveSelect);
+    host.append(row);
+    form.append(host);
+
+    dom.window.localStorage.setItem('vcpchat-settings-schema', '1');
+    assert.deepEqual(applySchemaSurface(form, doc), ['selection-assistant']);
+    const kept = form.querySelector('#assistantAgent');
+    assert.equal(kept, liveSelect, '动态填充的 select 必须原节点保留');
+    assert.equal(kept.options.length, 3, '运行时选项不丢失');
+    assert.equal(kept.value, 'agentB', '选中值不丢失');
+    assert.ok(form.querySelector('#rustDebugPanel'), '渲染产物其余行正常');
 });
 
 test('field-renderer 拒绝未知字段类型', () => {

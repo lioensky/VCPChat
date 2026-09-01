@@ -12,6 +12,7 @@ export const quickActionsSection = section('quick-actions', '快捷操作', [
         rows: 1,
         spellcheck: false,
         stacked: true,
+        textareaStyle: 38,
         defaultValue: '请继续',
     }),
     number('flowlockContinueDelay', {
