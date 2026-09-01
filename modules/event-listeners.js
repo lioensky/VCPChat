@@ -582,6 +582,14 @@ export function setupEventListeners(deps) {
     document.addEventListener('modal-ready', (e) => {
         if (e.detail?.modalId === 'globalSettingsModal') bindGlobalSettingsModal();
     });
+    window.addEventListener('global-settings-updated', (event) => {
+        const preview = document.getElementById('userAvatarPreview');
+        if (!preview) return;
+        const avatarUrl = String(event.detail?.settings?.userAvatarUrl || '');
+        preview.src = avatarUrl || 'assets/default_user_avatar.png';
+        preview.style.display = 'block';
+        preview.closest('.agent-avatar-wrapper')?.classList.toggle('no-avatar', !avatarUrl);
+    });
 
     function setupUserAvatarListener(input) {
         input.addEventListener('change', (event) => {
