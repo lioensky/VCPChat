@@ -55,7 +55,20 @@ function createCoordinator(form) {
         // The single submission entry. Synchronous submit failures (a form
         // without a submittable control throws) propagate to the caller so
         // each client keeps unwinding its own state machine.
-        submit: () => form.requestSubmit(),
+        submit: () => {
+            // Settings sections are projected into a single form, so native
+            // validation can target a required control in an inactive section
+            // (for example an empty VCP URL) and block unrelated changes such
+            // as an avatar. Business validation belongs to the save handler;
+            // the coordinator only dispatches the submit lifecycle.
+            const previousNoValidate = form.noValidate;
+            form.noValidate = true;
+            try {
+                return form.requestSubmit();
+            } finally {
+                form.noValidate = previousNoValidate;
+            }
+        },
         reportState(mode) {
             if (mode) form.dataset.vcpAutosaveState = mode;
             else delete form.dataset.vcpAutosaveState;

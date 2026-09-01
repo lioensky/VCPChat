@@ -14,6 +14,13 @@ const autosaveStates = new Set();
 // bar presenter already uses so the machine can always unwind.
 const SAVE_FALLBACK_MS = 15000;
 
+function requestSubmitWithoutNativeValidation(form) {
+    const previousNoValidate = form.noValidate;
+    form.noValidate = true;
+    try { return form.requestSubmit(); }
+    finally { form.noValidate = previousNoValidate; }
+}
+
 function clearSaveFallback(state) {
     if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
     state.fallbackTimer = null;
@@ -73,7 +80,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
             // synchronous throw of a form without a submittable control
             // propagates through it unchanged.
             if (coordinator) coordinator.submit();
-            else form.requestSubmit();
+            else requestSubmitWithoutNativeValidation(form);
         } catch {
             // A form without a submittable control throws synchronously; the
             // state machine must unwind or every later save stays wedged on
@@ -98,6 +105,11 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
     state.setStatus = setStatus;
     const onInput = event => {
         if (!event.target?.matches?.('input, select, textarea')) return;
+        // The native file-input change fires before the avatar cropper has
+        // produced the File consumed by handleSaveGlobalSettings. Ignore that
+        // early event; the cropper callback emits a follow-up input event once
+        // the cropped file is available.
+        if (event.type === 'change' && event.target.matches('input[type="file"]')) return;
         // Forum fields carry the same suppression marker as typed settings
         // fields; otherwise typing there also drives this whole-form
         // autosave chain and both owners fight over one status bar.
@@ -181,7 +193,7 @@ function flushState(state) {
     try {
         const coordinator = getSaveCoordinator(state.form);
         if (coordinator) coordinator.submit();
-        else state.form.requestSubmit();
+        else requestSubmitWithoutNativeValidation(state.form);
     } catch {
         clearSaveFallback(state);
         state.saving = false;
