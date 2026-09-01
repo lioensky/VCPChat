@@ -167,6 +167,24 @@ try {
     }, { timeout: timeoutMs });
     console.log('  [PASS] 1. SettingsShell layout (nav list, save bar, sections, icons)');
 
+    // Appearance home-visual switches stay on the far-right control column,
+    // rather than dropping below their title and helper copy.
+    await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[2]?.click());
+    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-appearance-settings', { timeout: timeoutMs });
+    const homeVisualSwitches = await page.evaluate(() => [...document.querySelectorAll('#globalSettingsModal .appearance-home-visual-setting')].map(row => {
+        const copy = row.querySelector('.appearance-home-visual-copy')?.getBoundingClientRect();
+        const toggle = row.querySelector('.switch')?.getBoundingClientRect();
+        return copy && toggle ? { copyTop: copy.top, copyBottom: copy.bottom, toggleTop: toggle.top, toggleBottom: toggle.bottom, rowRight: row.getBoundingClientRect().right, toggleRight: toggle.right } : null;
+    }).filter(Boolean));
+    assert.ok(homeVisualSwitches.length >= 2, 'appearance home visual rows are present');
+    homeVisualSwitches.forEach((geometry, index) => {
+        assert.ok(geometry.toggleRight >= geometry.rowRight - 4, `appearance switch ${index + 1} is right aligned`);
+        assert.ok(geometry.toggleTop < geometry.copyBottom && geometry.toggleBottom > geometry.copyTop, `appearance switch ${index + 1} shares the copy row`);
+    });
+    console.log('  [PASS] appearance home-visual switches stay on the right');
+    await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
+    await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });
+
     // ---- 2. Category switching keeps unsaved values ----
     await page.evaluate(() => {
         const input = document.getElementById('userName');
