@@ -704,6 +704,13 @@ transform-origin: center bottom;`;
             const el = document.getElementById(id);
             if (el) el.checked = !!checked;
         };
+        const avatarPreview = document.getElementById('userAvatarPreview');
+        if (avatarPreview) {
+            const avatarUrl = String(globalSettings.userAvatarUrl || '');
+            avatarPreview.src = avatarUrl || 'assets/default_user_avatar.png';
+            avatarPreview.style.display = 'block';
+            avatarPreview.closest('.agent-avatar-wrapper')?.classList.toggle('no-avatar', !avatarUrl);
+        }
         const syncRustDebugPanelVisibility = () => {
             const rustDebugModeEl = document.getElementById('rustDebugMode');
             const rustDebugPanelEl = document.getElementById('rustDebugPanel');
