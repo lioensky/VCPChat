@@ -468,17 +468,33 @@ function bindIdentityNameEditor(form) {
     const nameInput = form?.querySelector('#userName');
     const nameDisplay = form?.querySelector('.vcp-uiux-identity-name-value');
     const nameEdit = form?.querySelector('.vcp-uiux-identity-name-edit');
+    const nameCancel = form?.querySelector('.vcp-uiux-identity-name-cancel');
     if (!nameInput || !nameDisplay || !nameEdit || nameEdit.dataset.vcpIdentityNameBound === 'true') return;
     const shellScope = ensurePresentationScope();
     const syncName = () => { nameDisplay.textContent = nameInput.value || '用户'; };
+    const setButtonIcon = (button, iconName) => {
+        const current = button?.querySelector('svg[data-vcp-icon], span.vcp-ui-icon');
+        if (!current) return;
+        const icon = document.createElement('span');
+        icon.className = 'vcp-ui-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = iconName;
+        current.replaceWith(icon);
+    };
     const setEditing = editing => {
         nameEdit.dataset.vcpIdentityNameBound = 'true';
         nameEdit.dataset.vcpIdentityNameEditing = String(editing);
+        if (editing) nameEdit.dataset.vcpIdentityNameOriginal = nameInput.value;
+        else delete nameEdit.dataset.vcpIdentityNameOriginal;
         nameEdit.setAttribute('aria-label', editing ? '完成用户名编辑' : '修改用户名');
-        // The icon adapter owns the SVG inside this button. Do not write
-        // textContent here: doing so would remove the rendered SVG paths.
+        nameEdit.setAttribute('data-tooltip', editing ? '完成用户名编辑' : '修改用户名');
+        setButtonIcon(nameEdit, editing ? 'check' : 'edit');
         nameInput.hidden = !editing;
         nameDisplay.hidden = editing;
+        if (nameCancel) {
+            nameCancel.hidden = !editing;
+            nameCancel.setAttribute('data-tooltip', '取消修改用户名');
+        }
         nameInput.closest('.agent-name-wrapper')?.classList.toggle('is-editing', editing);
         if (editing) { nameInput.focus(); nameInput.select(); }
     };
@@ -486,6 +502,13 @@ function bindIdentityNameEditor(form) {
     syncName();
     const listenIdentity = (target, type, handler, label) => shellScope ? shellScope.listen(target, type, handler, undefined, label) : target.addEventListener(type, handler);
     listenIdentity(nameEdit, 'click', () => setEditing(nameEdit.dataset.vcpIdentityNameEditing !== 'true'), 'identity-name-edit');
+    if (nameCancel) {
+        listenIdentity(nameCancel, 'click', () => {
+            nameInput.value = nameEdit.dataset.vcpIdentityNameOriginal || nameInput.value;
+            syncName();
+            setEditing(false);
+        }, 'identity-name-cancel');
+    }
     listenIdentity(nameInput, 'input', syncName, 'identity-name-input');
     listenIdentity(nameInput, 'keydown', event => {
         if (event.key === 'Enter') { event.preventDefault(); setEditing(false); }
@@ -495,6 +518,7 @@ function bindIdentityNameEditor(form) {
     shellScope?.own(() => {
         delete nameEdit.dataset.vcpIdentityNameBound;
         delete nameEdit.dataset.vcpIdentityNameEditing;
+        delete nameEdit.dataset.vcpIdentityNameOriginal;
     }, 'identity-name-editor-markers', 'ui-presentation');
 }
 

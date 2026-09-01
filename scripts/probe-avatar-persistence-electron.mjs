@@ -103,6 +103,10 @@ try {
     assert.ok(geometry.capsuleWidth <= 200, `custom style capsule remains compact (${geometry.capsuleWidth}px)`);
     console.log('[avatar-probe] custom style capsule geometry is right-aligned', JSON.stringify(geometry));
 
+    const nameValueGeometry = await page.evaluate(() => {
+        const value = document.querySelector('.vcp-uiux-identity-name-value')?.getBoundingClientRect();
+        return value ? { top: value.top, height: value.height } : null;
+    });
     await page.click('.vcp-uiux-identity-name-edit');
     await waitFor('username editor', () => page.evaluate(() => {
         const input = document.getElementById('userName');
@@ -110,6 +114,15 @@ try {
         return Boolean(input && !input.hidden && display?.hidden
             && document.activeElement === input);
     }));
+    const nameInputGeometry = await page.evaluate(() => {
+        const input = document.getElementById('userName')?.getBoundingClientRect();
+        return input ? { top: input.top, width: input.width } : null;
+    });
+    assert.ok(nameInputGeometry && nameInputGeometry.width <= 240,
+        `username editor remains compact (${nameInputGeometry?.width}px)`);
+    assert.ok(nameValueGeometry && nameInputGeometry
+        && Math.abs(nameInputGeometry.top - nameValueGeometry.top) <= 4,
+    `username editor stays vertically aligned (value ${nameValueGeometry?.top}px, input ${nameInputGeometry?.top}px)`);
     console.log('[avatar-probe] username edit button receives pointer input and focuses the editor');
     await page.click('.vcp-uiux-identity-name-edit');
 
