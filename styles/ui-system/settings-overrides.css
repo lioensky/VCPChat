@@ -931,6 +931,59 @@
     pointer-events: none;
 }
 
+/* Canonical row projection wraps the title and helper in .vcp-uiux-row-copy;
+   keep the content-width choice in the trailing control column instead of
+   allowing the appearance-row flex stack to place it underneath. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    column-gap: 24px !important;
+    row-gap: 0 !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) > .vcp-uiux-row-copy {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) > label:first-child {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) > .vcp-settings-control-row {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    margin: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) > small {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+
+@media (max-width: 620px) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) {
+        grid-template-columns: minmax(0, 1fr) !important;
+        row-gap: 8px !important;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) > .vcp-settings-control-row {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: start;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(#chatLayoutModeNormal) > small {
+        grid-row: 3;
+    }
+}
+
 /* Model picker is a compound control, but visually it is one Uiux
    trigger. Keep the text input and menu command intact while removing the
    nested field/button borders that produced the double-box screenshot. */
