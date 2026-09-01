@@ -278,13 +278,14 @@ test("unknown stable codes survive while invalid codes use the boundary fallback
     ).code,
     "SYNC_ENTITY_READ_FAILED",
   );
-  const redacted = normalizeSyncError({
+  const complete = normalizeSyncError({
     code: "UPSTREAM_EXTENSION_FAILED",
     message: "Bearer desktop-secret token=second-secret C:\\Users\\Nova\\AppData\\history.json",
   }).message;
-  assert.equal(redacted.includes("desktop-secret"), false);
-  assert.equal(redacted.includes("second-secret"), false);
-  assert.equal(redacted.includes("Nova"), false);
+  assert.equal(
+    complete,
+    "Bearer desktop-secret token=second-secret C:\\Users\\Nova\\AppData\\history.json",
+  );
 });
 
 test("known codes cannot claim a different category or retry policy", () => {
@@ -302,7 +303,7 @@ test("known codes cannot claim a different category or retry policy", () => {
   );
 });
 
-test("string bounds count Unicode code points consistently with Rust", () => {
+test("complete messages and all valid failed topic IDs survive normalization", () => {
   const valid = {
     code: "UPSTREAM_EXTENSION_FAILED",
     origin: "desktop_plugin",
@@ -313,9 +314,17 @@ test("string bounds count Unicode code points consistently with Rust", () => {
     failedTopicIds: ["🙂".repeat(512)],
   };
   assert.deepEqual(parseSyncError(valid), valid);
+  assert.deepEqual(
+    parseSyncError({
+      ...valid,
+      message: "🙂".repeat(4096),
+      failedTopicIds: Array.from({ length: 16 }, (_, index) => `topic-${index}`),
+    }).failedTopicIds,
+    Array.from({ length: 16 }, (_, index) => `topic-${index}`),
+  );
   assert.throws(
-    () => parseSyncError({ ...valid, message: "🙂".repeat(1025) }),
-    /message/,
+    () => parseSyncError({ ...valid, failedTopicIds: ["🙂".repeat(513)] }),
+    /failedTopicIds/,
   );
 });
 

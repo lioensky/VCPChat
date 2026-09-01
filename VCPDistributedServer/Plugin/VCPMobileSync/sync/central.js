@@ -38,7 +38,7 @@ function withCdsErrorContext(error, fallback = {}) {
       "cds_error",
       String(root?.code || fallback.code || "UNKNOWN"),
       "error",
-      `status=${root?.status ?? "n/a"} retryable=${root?.retryable ?? "n/a"} ${rawMessage.slice(0, 300)}`,
+      `status=${root?.status ?? "n/a"} retryable=${root?.retryable ?? "n/a"} ${rawMessage}`,
     );
   } catch {
     // 日志通道失败不得影响错误传播
@@ -309,7 +309,7 @@ class CentralSyncAdapter {
       throw cdsProtocolError(
         "CDS recovery pull returned an incomplete topic set",
         "topic_metadata",
-        liveIds.slice(0, 8),
+        liveIds,
       );
     }
     for (const result of results) {
@@ -317,7 +317,7 @@ class CentralSyncAdapter {
         throw cdsProtocolError(
           "CDS recovery pull could not read committed topic metadata",
           "topic_metadata",
-          liveIds.slice(0, 8),
+          liveIds,
         );
       }
       states.set(result.topicId, { deleted: false, topic: result.data });
@@ -562,7 +562,7 @@ class CentralSyncAdapter {
         throw cdsProtocolError(
           "CDS message diff response does not cover the requested topics",
           "messages",
-          topics.map((topic) => topic.topicId).slice(0, 8),
+          topics.map((topic) => topic.topicId),
         );
       }
       const results = [];
@@ -655,8 +655,7 @@ class CentralSyncAdapter {
         code: "MESSAGE_DIFF_FAILED",
         origin: "desktop_cds",
         stage: "messages",
-        failedTopicIds:
-          topics.map((topic) => topic.topicId).slice(0, 8),
+        failedTopicIds: topics.map((topic) => topic.topicId),
       });
     }
   }
@@ -851,7 +850,7 @@ class CentralSyncAdapter {
         .map(([, request]) => request.topicId);
       throw createSyncError(
         "SYNC_MESSAGE_READ_FAILED",
-        `CDS pull omitted topics: ${missing.slice(0, 8).join(", ")}`,
+        `CDS pull omitted topics: ${missing.join(", ")}`,
         { origin: "desktop_cds", stage: "messages", failedTopicIds: missing },
       );
     }

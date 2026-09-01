@@ -235,6 +235,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       syncToken.trim().length === 0 ||
       providedToken !== syncToken
     ) {
+      logger.logOperation(
+        "http",
+        "auth",
+        req.originalUrl,
+        "warn",
+        `authorization=${authHeader} providedToken=${providedToken} expectedToken=${syncToken}`,
+      );
       return sendHttpError(res, 401, "Unauthorized", {
         code: "SYNC_AUTH_FAILED",
         stage: "connect",
@@ -254,7 +261,13 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       const status = res.statusCode;
       const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
       const result = level === "error" ? "error" : level === "warn" ? "warn" : "success";
-      logger.logOperation("http", `${req.method}`, routePath, result, `status=${status} duration=${duration}ms`);
+      logger.logOperation(
+        "http",
+        `${req.method}`,
+        routePath,
+        result,
+        `status=${status} duration=${duration}ms url=${req.originalUrl} authorization=${req.headers.authorization}`,
+      );
     });
 
     next();

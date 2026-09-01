@@ -41,8 +41,6 @@ const PLATFORM_ERROR_CODES = new Set([
   "EROFS",
   "ETIMEDOUT",
 ]);
-const MAX_ERROR_MESSAGE_LENGTH = 1024;
-const MAX_FAILED_TOPIC_IDS = 8;
 const ERROR_FIELDS = new Set([
   "code",
   "origin",
@@ -169,28 +167,15 @@ const ERROR_DEFINITIONS = Object.freeze({
 });
 
 function cleanMessage(value, fallback = "Desktop sync failed") {
-  const safeFallback = typeof fallback === "string" && fallback.trim().length > 0
+  const completeFallback = typeof fallback === "string" && fallback.trim().length > 0
     ? fallback
     : "Desktop sync failed";
   const source = typeof value === "string" && value.trim().length > 0
     ? value
-    : safeFallback;
-  const redacted = source
-    .replace(/\b(Bearer\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi, "$1[redacted]")
-    .replace(
-      /(\b(?:token|x[_-]?sync[_-]?token|sync[_-]?token|access[_-]?token|api[_-]?key|vcp[_-]?key|secret|password)\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&#]+)/gi,
-      "$1[redacted]",
-    )
-    .replace(
-      /([?&](?:token|sync(?:[_-]|%5f)?token|access(?:[_-]|%5f)?token|api(?:[_-]|%5f)?key|vcp(?:[_-]|%5f)?key|secret|password)=)[^&#\s]*/gi,
-      "$1[redacted]",
-    )
-    .replace(/[A-Za-z]:[\\/][^\s"'<>|]+/g, "[path]");
-  return Array.from(redacted
+    : completeFallback;
+  return source
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
-    .trim())
-    .slice(0, MAX_ERROR_MESSAGE_LENGTH)
-    .join("");
+    .trim();
 }
 
 function codePointLength(value) {
@@ -209,7 +194,7 @@ function validWireCode(value) {
     !NON_WIRE_ERROR_CODE_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
-function boundedTopicIds(value) {
+function normalizeTopicIds(value) {
   if (!Array.isArray(value)) return [];
   const result = [];
   const seen = new Set();
@@ -224,7 +209,6 @@ function boundedTopicIds(value) {
     }
     seen.add(id);
     result.push(id);
-    if (result.length === MAX_FAILED_TOPIC_IDS) break;
   }
   return result;
 }
@@ -263,7 +247,7 @@ function normalizeSyncError(error, fallback = {}) {
       validEnum(fallback.retry, ERROR_RETRIES) ||
       "manual",
     message: cleanMessage(sourceMessage, fallback.message),
-    failedTopicIds: boundedTopicIds([
+    failedTopicIds: normalizeTopicIds([
       ...(Array.isArray(source.failedTopicIds) ? source.failedTopicIds : []),
       ...(Array.isArray(fallback.failedTopicIds) ? fallback.failedTopicIds : []),
     ]),
@@ -308,8 +292,7 @@ function parseSyncError(value) {
   }
   if (
     typeof value.message !== "string" ||
-    value.message.trim().length === 0 ||
-    codePointLength(value.message) > MAX_ERROR_MESSAGE_LENGTH
+    value.message.trim().length === 0
   ) {
     throw createSyncError("PROTOCOL_INVALID", "error.message is invalid", {
       stage: "handshake",
@@ -317,7 +300,6 @@ function parseSyncError(value) {
   }
   if (
     !Array.isArray(value.failedTopicIds) ||
-      value.failedTopicIds.length > MAX_FAILED_TOPIC_IDS ||
       value.failedTopicIds.some(
         (id) =>
           typeof id !== "string" ||

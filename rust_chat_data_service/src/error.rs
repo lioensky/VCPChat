@@ -29,7 +29,7 @@ pub enum ServiceError {
     #[error("service is busy")]
     Busy,
 
-    #[error("internal service error")]
+    #[error("{0:#}")]
     Internal(#[source] anyhow::Error),
 }
 
@@ -91,11 +91,11 @@ impl ServiceError {
                 true,
                 "service is busy".to_string(),
             ),
-            Self::Internal(_) => (
+            Self::Internal(error) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
                 true,
-                "internal service error".to_string(),
+                format!("{error:#}"),
             ),
         }
     }
@@ -156,5 +156,16 @@ mod tests {
         assert_eq!(code, "SYNC_SNAPSHOT_STALE");
         assert!(retryable);
         assert_eq!(message, "topic changed");
+    }
+
+    #[test]
+    fn internal_error_response_preserves_the_complete_cause_chain() {
+        let error = ServiceError::internal(anyhow::anyhow!(
+            "token=cds-secret path=C:\\VCP\\history.json"
+        ));
+        let (_, code, _, message) = error.response_parts();
+
+        assert_eq!(code, "INTERNAL_ERROR");
+        assert_eq!(message, "token=cds-secret path=C:\\VCP\\history.json");
     }
 }

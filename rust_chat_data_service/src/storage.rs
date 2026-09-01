@@ -1052,7 +1052,7 @@ impl Database {
                 source.key.owner_id,
                 source.key.topic_id,
                 now_ms(),
-                truncate_error(error),
+                error,
             ],
         )?;
         if owner_hash_mode == OwnerHashMode::Immediate {
@@ -2037,9 +2037,9 @@ fn migrate_sync_hash_contract(transaction: &Transaction<'_>) -> Result<()> {
             match stored_message_fingerprint(&metadata_json, &key.topic_id) {
                 Ok(hash) => hash,
                 Err(error) => {
-                    invalid_topics.entry(key.clone()).or_insert_with(|| {
-                        truncate_error(&format!("stored message is not syncable: {error:#}"))
-                    });
+                    invalid_topics
+                        .entry(key.clone())
+                        .or_insert_with(|| format!("stored message is not syncable: {error:#}"));
                     String::new()
                 }
             }
@@ -2570,10 +2570,6 @@ fn meta_optional_i64(connection: &Connection, key: &str) -> Result<Option<i64>> 
         )
         .optional()?;
     Ok(value.and_then(|value| value.parse().ok()))
-}
-
-fn truncate_error(error: &str) -> String {
-    error.chars().take(500).collect()
 }
 
 pub fn now_ms() -> i64 {

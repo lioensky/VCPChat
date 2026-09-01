@@ -135,7 +135,7 @@ VERSION_ACK   { versions: [{component:"desktop_plugin",version:"1.5.0"},
 }
 ```
 
-固定外壳分别是 `SYNC_ERROR.error`、HTTP `{error}`、逐项 `ok:false,error`，以及 NDJSON `{kind:"streamError",error}`。对象必须包含全部七个字段，未知字段与字符串错误均拒绝。`message` 是脱敏诊断信息，最终用户中文原因与唯一下一步由 Mobile 按 code 固定映射。
+固定外壳分别是 `SYNC_ERROR.error`、HTTP `{error}`、逐项 `ok:false,error`，以及 NDJSON `{kind:"streamError",error}`。对象必须包含全部七个字段，未知字段与字符串错误均拒绝。`message` 保留完整诊断原文，Mobile 按 code 提供分类、重试语义与补充 guidance，但不得覆盖根因文本。
 
 VCP-CDS internal protocol 3 的逐项错误固定为 `{code,message,retryable}`；Central Adapter 只在公共边界补齐 `origin/stage/kind/retry/failedTopicIds`，不按错误文案猜类型。
 

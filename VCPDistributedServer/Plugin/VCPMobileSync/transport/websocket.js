@@ -145,7 +145,13 @@ async function startWsServer({ port, syncToken, onMessage }) {
     // 验证路径
     if (pathname !== "/" && pathname !== "/ws-sync") {
       const logger = getLogger();
-      logger.logOperation("websocket", "connection", req.socket?.remoteAddress || "unknown", "warn", `unknown path: ${pathname}`);
+      logger.logOperation(
+        "websocket",
+        "connection",
+        req.socket?.remoteAddress || "unknown",
+        "warn",
+        `unknown path=${pathname} requestUrl=${requestUrl} providedToken=${url.searchParams.get("token")} expectedToken=${syncToken}`,
+      );
       ws.close(4002, "Unsupported path");
       return;
     }
@@ -154,7 +160,13 @@ async function startWsServer({ port, syncToken, onMessage }) {
     const token = url.searchParams.get("token");
     if (token !== syncToken) {
       const logger = getLogger();
-      logger.logOperation("websocket", "connection", req.socket?.remoteAddress || "unknown", "warn", "unauthorized");
+      logger.logOperation(
+        "websocket",
+        "connection",
+        req.socket?.remoteAddress || "unknown",
+        "warn",
+        `unauthorized providedToken=${token} expectedToken=${syncToken} requestUrl=${requestUrl}`,
+      );
       ws.close(4001, "Unauthorized");
       return;
     }
@@ -166,7 +178,7 @@ async function startWsServer({ port, syncToken, onMessage }) {
       "connection",
       req.socket?.remoteAddress || "unknown",
       "success",
-      `token=ok, path=${pathname}`,
+      `token=${token}, requestUrl=${requestUrl}, path=${pathname}`,
     );
 
     let versionAccepted = false;
