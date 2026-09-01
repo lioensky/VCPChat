@@ -1277,14 +1277,29 @@
                                     </div>
                                     </div>
                                 </div>
-                                <div class="vcp-settings-row vcp-settings-row-stacked">
-                                    <label>网络笔记路径</label>
-                                    <div id="networkNotesPathsContainer"
-                                        data-vcp-style="5">
-                                        <!-- Path inputs will be dynamically added here -->
+                                <div class="vcp-settings-card" data-vcp-settings-card="network-notes">
+                                    <button type="button" class="vcp-settings-card-toggle" aria-expanded="true"
+                                        aria-controls="networkNotesCardBody">
+                                        <span class="vcp-settings-card-heading">
+                                            <strong class="vcp-settings-card-title">网络笔记</strong>
+                                            <small class="vcp-settings-card-description">网络笔记的存储路径列表，可添加多个位置。</small>
+                                        </span>
+                                        <svg class="vcp-settings-card-chevron" viewBox="0 0 16 16" fill="none"
+                                            stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                                            stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M3.5 6l4.5 4.5L12.5 6"></path>
+                                        </svg>
+                                    </button>
+                                    <div class="vcp-settings-card-body" id="networkNotesCardBody">
+                                        <div class="vcp-settings-row vcp-settings-row-stacked">
+                                            <div id="networkNotesPathsContainer"
+                                                data-vcp-style="5">
+                                                <!-- Path inputs will be dynamically added here -->
+                                            </div>
+                                            <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button"
+                                                data-vcp-style="6">添加路径</button>
+                                        </div>
                                     </div>
-                                    <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button"
-                                        data-vcp-style="6">添加路径</button>
                                 </div>
                             </div>
 
