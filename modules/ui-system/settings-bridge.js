@@ -488,11 +488,11 @@ function mountSettingsShell(root) {
     const nameInput = form.querySelector('#userName');
     const nameDisplay = form.querySelector('.vcp-uiux-identity-name-value');
     const nameEdit = form.querySelector('.vcp-uiux-identity-name-edit');
-    if (nameInput && nameDisplay && nameEdit && !nameEdit.dataset.bound) {
+    if (nameInput && nameDisplay && nameEdit && !nameEdit.dataset.vcpIdentityNameBound) {
         const syncName = () => { nameDisplay.textContent = nameInput.value || '用户'; };
         const setEditing = editing => {
-            nameEdit.dataset.bound = 'true';
-            nameEdit.dataset.editing = String(editing);
+            nameEdit.dataset.vcpIdentityNameBound = 'true';
+            nameEdit.dataset.vcpIdentityNameEditing = String(editing);
             nameEdit.setAttribute('aria-label', editing ? '完成用户名编辑' : '修改用户名');
             nameEdit.querySelector('.vcp-ui-icon').textContent = editing ? 'check' : 'edit';
             nameInput.hidden = !editing;
@@ -503,9 +503,13 @@ function mountSettingsShell(root) {
         nameInput.hidden = true;
         syncName();
         const listenIdentity = (target, type, handler, label) => shellScope ? shellScope.listen(target, type, handler, undefined, label) : target.addEventListener(type, handler);
-        listenIdentity(nameEdit, 'click', () => setEditing(nameEdit.dataset.editing !== 'true'), 'identity-name-edit');
+        listenIdentity(nameEdit, 'click', () => setEditing(nameEdit.dataset.vcpIdentityNameEditing !== 'true'), 'identity-name-edit');
         listenIdentity(nameInput, 'input', syncName, 'identity-name-input');
         listenIdentity(nameInput, 'keydown', event => { if (event.key === 'Enter') { event.preventDefault(); setEditing(false); } if (event.key === 'Escape') { event.preventDefault(); syncName(); setEditing(false); } }, 'identity-name-keys');
+        shellScope?.own(() => {
+            delete nameEdit.dataset.vcpIdentityNameBound;
+            delete nameEdit.dataset.vcpIdentityNameEditing;
+        }, 'identity-name-editor-markers', 'ui-presentation');
     }
 
     let meta = [];
@@ -589,6 +593,10 @@ function mountSettingsShell(root) {
     const titleRow = document.createElement('div');
     titleRow.className = 'vcp-uiux-settings-title-row';
     titleRow.append(title, search);
+    // Keep the title row attached before the first fallible DOM replacement.
+    // If shell surgery fails, the fallback can still find and restore the
+    // title's legacy selector hook in the live modal.
+    nav.prepend(titleRow);
 
     // Compose the Uiux header/options primitives around the existing form;
     // the form remains the business owner, while the new nodes own chrome.

@@ -28,8 +28,11 @@ assert.equal(rendererSource.includes('material-symbols-outlined vcp-ui-icon" ari
 
 const settingsTemplate = document.getElementById('globalSettingsModalTemplate');
 assert.ok(settingsTemplate, 'shared upstream global settings template must remain in main.html');
+// The global settings template is business DOM only; it is always projected
+// into the unified SettingsShell at runtime and is not a switchable Classic
+// presentation. Classic parity remains meaningful for embedded Agent/Group
+// settings templates, which still render in their legacy surface.
 const classicSettingsTemplates = [
-    settingsTemplate,
     document.getElementById('agentSettingsModalTemplate'),
     document.getElementById('groupSettingsModalTemplate'),
 ].filter(Boolean);

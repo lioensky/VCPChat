@@ -31,7 +31,7 @@ export function setupEventListeners(deps) {
         // Modules and helper functions
         uiHelperFunctions, chatManager, messageRenderer, historyMutationAuthority, itemListManager, settingsManager, uiManager, topicListManager,
         getCroppedFile, setCroppedFile, updateAttachmentPreview, filterAgentList,
-        addNetworkPathInput, sendButtonAction, listenerOwner
+        addNetworkPathInput, sendButtonAction, listenerOwner, syncSettingsToUI
     } = deps;
     const addListener = (target, type, handler, options) => listenerOwner?.add(target, type, handler, options) || target?.addEventListener?.(type, handler, options);
     const setOwnedTimeout = (callback, delay) => listenerOwner?.timeout?.(callback, delay) ?? setTimeout(callback, delay);
@@ -559,7 +559,7 @@ export function setupEventListeners(deps) {
         }
         // The modal is cloned after startup; explicitly reapply the loaded
         // settings snapshot so the persisted avatar is restored on every open.
-        Promise.resolve(window.syncGlobalSettingsToUI?.()).catch(error => {
+        Promise.resolve(typeof syncSettingsToUI === 'function' ? syncSettingsToUI() : undefined).catch(error => {
             console.warn('[GlobalSettings] Failed to sync modal snapshot:', error);
         });
     }
