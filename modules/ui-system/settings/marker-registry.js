@@ -53,6 +53,9 @@ const MARKERS = Object.freeze({
     vcpSettingsRevision: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
     vcpSettingsSource: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
     vcpAutosaveState: { owner: 'settings/autosave.js + settingsManager', cleanup: 'business-contract' },
+    // Set by the autosave submit so the save handler keeps the dialog open
+    // after success; consumed (deleted) by global-settings-manager.js.
+    vcpKeepOpenAfterSave: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
     globalSettingsSaving: { owner: 'settings/autosave.js', cleanup: 'business-contract' },
     vcpAutosaveMounted: { owner: 'settings/autosave.js', cleanup: 'manual-retract' },
 

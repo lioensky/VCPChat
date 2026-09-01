@@ -414,9 +414,15 @@ async function saveGlobalSettings(deps, settingsForm) {
         }
         reportSaveResult(true);
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
-        const keepOpenAfterAvatarSave = settingsForm?.dataset.vcpKeepOpenAfterAvatarSave === 'true';
-        if (keepOpenAfterAvatarSave) {
+        // Keep-open contract: avatar saves and autosave-initiated submissions
+        // stay in the dialog — an autosave that slams the modal shut (and
+        // tears the unified surface down mid-edit) is what white-screened the
+        // settings page on every numeric commit.
+        const keepOpenAfterSave = settingsForm?.dataset.vcpKeepOpenAfterAvatarSave === 'true'
+            || settingsForm?.dataset.vcpKeepOpenAfterSave === 'true';
+        if (keepOpenAfterSave) {
             delete settingsForm.dataset.vcpKeepOpenAfterAvatarSave;
+            delete settingsForm.dataset.vcpKeepOpenAfterSave;
         } else {
             uiHelperFunctions.closeModal('globalSettingsModal');
         }

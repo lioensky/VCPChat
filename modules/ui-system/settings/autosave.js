@@ -76,6 +76,13 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         setStatus('保存中…', 'saving');
         armSaveFallback(state);
         try {
+            // Autosave-initiated submissions keep the dialog open: the save
+            // handler closes the modal on success unless this contract marker
+            // is set, and an autosave that tears the surface down mid-edit is
+            // exactly the settings-page white-out regression. The close-time
+            // flush also passes here — the modal is already going away, so
+            // the marker is a no-op there.
+            form.dataset.vcpKeepOpenAfterSave = 'true';
             // The coordinator owns the only form.requestSubmit() path; the
             // synchronous throw of a form without a submittable control
             // propagates through it unchanged.
