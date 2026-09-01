@@ -106,7 +106,9 @@
     min-height: 0;
     padding: 0 var(--vcp-ui-space-3, 12px);
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
-    border-radius: var(--vcp-ui-radius-sm, 8px);
+    /* Match the Input primitive wrap radius (8px); --vcp-ui-radius-sm
+       resolves to 4px in this theme and reads misaligned next to it. */
+    border-radius: 8px;
     color: #b3402f;
     background: transparent;
     box-shadow: none;
@@ -201,7 +203,9 @@
     padding: 0 12px;
     margin: 8px 0 2px;
     border: 1px dashed var(--vcp-ui-border, var(--vcp-ui-border-subtle, rgba(0, 0, 0, 0.18)));
-    border-radius: var(--vcp-ui-radius-md, 10px);
+    /* Same radius as the path input wrap so the add row reads as one more
+       row of the same family. */
+    border-radius: 8px;
     color: var(--vcp-ui-text-3);
     background: transparent;
     font-family: var(--vcp-ui-font-family, inherit);
