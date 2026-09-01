@@ -407,6 +407,9 @@
     min-height: 0;
     padding: 0 24px 24px;
     overflow-y: auto;
+    /* Keep end-of-list wheel chaining out of the overflow:hidden panel;
+       mirrors the canonical rule in settings-primitives.css. */
+    overscroll-behavior: contain;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-options > form {
@@ -416,6 +419,11 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-active-section {
     display: block;
     min-width: 0;
+    /* Containing block for the concealed business nodes inside the section
+       (stepper canonical inputs, visually-hidden section titles are all
+       position:absolute). Without a positioned ancestor they anchor to the
+       panel and inflate the panel's scrollable area into a scroll trap. */
+    position: relative;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-section-bank[hidden] {
