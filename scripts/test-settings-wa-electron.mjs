@@ -196,6 +196,10 @@ try {
     assert.equal(scenarioGrid.count, 4, 'scenario preview exposes four cards');
     assert.equal(scenarioGrid.firstRow, true, 'scenario preview first row is aligned');
     assert.equal(scenarioGrid.secondRow, true, 'scenario preview second row is aligned');
+    assert.equal(await page.evaluate(() => document.querySelector('#fontScenarioPreviewGrid #chatFontPresetRow')?.closest('.scenario-preview-card')?.classList.contains('scenario-preview-card')), true, 'chat font control lives in the body card');
+    assert.equal(await page.evaluate(() => document.querySelector('#fontScenarioPreviewGrid #chatCodeFontPresetRow')?.closest('.scenario-preview-card')?.classList.contains('scenario-preview-card-code')), true, 'code font control lives in the code card');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#globalSettingsModal > #chatFontSettingsGroup, #globalSettingsModal #chatFontSettingsGroup').length), 0, 'chat font control has no separate legacy row');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#globalSettingsModal > #chatCodeFontSettingsGroup, #globalSettingsModal #chatCodeFontSettingsGroup').length), 0, 'code font control has no separate legacy row');
     console.log('  [PASS] scenario preview uses a 2x2 card grid');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });

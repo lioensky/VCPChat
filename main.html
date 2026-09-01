@@ -1391,45 +1391,6 @@
                                                 min="0" max="32" step="1" value="10">
                                     <small class="appearance-geometry-helper">头像最大值会随当前列表项高度自动限制，避免超出圆角边界。</small>
                                         </label>
-                                    <div class="vcp-settings-row" id="chatFontSettingsGroup" data-vcp-style="7">
-                                        <div id="chatFontPresetRow"><select id="chatFontPreset" name="chatFontPreset" hidden>
-                                            <option value="system">系统默认</option>
-                                            <option value="segoe">Segoe UI</option>
-                                            <option value="ubuntu">Ubuntu</option>
-                                            <option value="yahei">Microsoft YaHei</option>
-                                            <option value="pingfang">PingFang SC</option>
-                                            <option value="source-han">Source Han Sans SC</option>
-                                            <option value="serif">衬线体</option>
-                                            <option value="custom">自定义</option>
-                                        </select></div>
-                                        <div id="chatFontCustomRow" data-vcp-style="8">
-                                            <input type="text" id="chatFontCustom" name="chatFontCustom"
-                                                placeholder='例如: "LXGW WenKai", "Microsoft YaHei", sans-serif'
-                                                aria-label="聊天字体自定义值">
-                                            <small data-vcp-style="4">
-                                                支持输入完整的 CSS `font-family` 值，保存后会立即应用到聊天正文。
-                                            </small>
-                                        </div>
-                                    </div>
-                                    <div class="vcp-settings-row" id="chatCodeFontSettingsGroup" data-vcp-style="3">
-                                        <div id="chatCodeFontPresetRow"><select id="chatCodeFontPreset" name="chatCodeFontPreset" hidden>
-                                            <option value="cascadia">Cascadia Code</option>
-                                            <option value="fira">Fira Code</option>
-                                            <option value="consolas">Consolas</option>
-                                            <option value="system">系统默认</option>
-                                            <option value="jetbrains">JetBrains Mono</option>
-                                            <option value="monaspace">Monaspace</option>
-                                            <option value="custom">自定义</option>
-                                        </select></div>
-                                        <div id="chatCodeFontCustomRow" data-vcp-style="8">
-                                            <input type="text" id="chatCodeFontCustom" name="chatCodeFontCustom"
-                                                placeholder='例如: "Maple Mono", "JetBrains Mono", monospace'
-                                                aria-label="代码字体自定义值">
-                                            <small data-vcp-style="4">
-                                                会应用到聊天代码块、行内代码，以及工具/思维链中的代码样式。
-                                            </small>
-                                        </div>
-                                    </div>
                                     <div class="vcp-settings-row" data-vcp-style="7">
                                         <label>场景预览</label>
                                         <div class="scenario-preview-grid" id="fontScenarioPreviewGrid">
@@ -1438,11 +1399,44 @@
                                                 <div class="scenario-preview-body" id="scenarioPreviewBody">
                                                     这是普通聊天正文的显示效果，适合长段阅读与自然对话。
                                                 </div>
+                                                <div class="scenario-preview-controls">
+                                                    <div id="chatFontPresetRow"><select id="chatFontPreset" name="chatFontPreset" hidden>
+                                                        <option value="system">系统默认</option>
+                                                        <option value="segoe">Segoe UI</option>
+                                                        <option value="ubuntu">Ubuntu</option>
+                                                        <option value="yahei">Microsoft YaHei</option>
+                                                        <option value="pingfang">PingFang SC</option>
+                                                        <option value="source-han">Source Han Sans SC</option>
+                                                        <option value="serif">衬线体</option>
+                                                        <option value="custom">自定义</option>
+                                                    </select></div>
+                                                    <div id="chatFontCustomRow" data-vcp-style="8">
+                                                        <input type="text" id="chatFontCustom" name="chatFontCustom"
+                                                            placeholder='例如: "LXGW WenKai", "Microsoft YaHei", sans-serif'
+                                                            aria-label="聊天字体自定义值">
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div class="scenario-preview-card scenario-preview-card-code">
                                                 <div class="scenario-preview-title">代码块</div>
                                                 <pre class="scenario-preview-body scenario-preview-code" id="scenarioPreviewCode">const sum = (a, b) =>
   a + b;</pre>
+                                                <div class="scenario-preview-controls">
+                                                    <div id="chatCodeFontPresetRow"><select id="chatCodeFontPreset" name="chatCodeFontPreset" hidden>
+                                                        <option value="cascadia">Cascadia Code</option>
+                                                        <option value="fira">Fira Code</option>
+                                                        <option value="consolas">Consolas</option>
+                                                        <option value="system">系统默认</option>
+                                                        <option value="jetbrains">JetBrains Mono</option>
+                                                        <option value="monaspace">Monaspace</option>
+                                                        <option value="custom">自定义</option>
+                                                    </select></div>
+                                                    <div id="chatCodeFontCustomRow" data-vcp-style="8">
+                                                        <input type="text" id="chatCodeFontCustom" name="chatCodeFontCustom"
+                                                            placeholder='例如: "Maple Mono", "JetBrains Mono", monospace'
+                                                            aria-label="代码字体自定义值">
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div class="scenario-preview-card scenario-preview-card-diary">
                                                 <div class="scenario-preview-title">日记 / 文学块</div>
@@ -1498,9 +1492,6 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <small data-vcp-style="9">
-                                            当前规则预览：正文和代码沿用上方设置；日记和工具卡片可以在各自场景卡片里单独自定义。
-                                        </small>
                                     </div>
                                     <fieldset class="form-group chat-presentation-mode-selector" data-vcp-style="10">
                                         <legend data-vcp-style="11">消息呈现模式</legend>
