@@ -530,6 +530,13 @@
     width: 100%;
 }
 
+/* The expanded disclosure owns a full-width controls row, but its trigger is
+   still the same trailing capsule as the collapsed summary. Keep the trigger
+   on the card's right edge while the color controls expand underneath it. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-collapsible-container:not(.collapsed) .style-collapse-header {
+    margin-left: auto;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-dependent-panel {
     padding: 0;
 }
