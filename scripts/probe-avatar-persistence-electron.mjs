@@ -105,8 +105,20 @@ try {
 
     const nameValueGeometry = await page.evaluate(() => {
         const value = document.querySelector('.vcp-uiux-identity-name-value')?.getBoundingClientRect();
-        return value ? { top: value.top, height: value.height } : null;
+        const edit = document.querySelector('.vcp-uiux-identity-name-edit')?.getBoundingClientRect();
+        const card = document.querySelector('.vcp-uiux-user-profile-card')?.getBoundingClientRect();
+        return value && edit ? {
+            top: value.top,
+            height: value.height,
+            valueRight: value.right,
+            editLeft: edit.left,
+            editTop: edit.top,
+            cardRight: card?.right,
+        } : null;
     });
+    assert.ok(nameValueGeometry && nameValueGeometry.editLeft - nameValueGeometry.valueRight <= 12,
+        `username edit button must stay beside the name (gap ${nameValueGeometry ? nameValueGeometry.editLeft - nameValueGeometry.valueRight : 'n/a'}px)`);
+    const originalName = await page.$eval('#userName', input => input.value);
     await page.click('.vcp-uiux-identity-name-edit');
     await waitFor('username editor', () => page.evaluate(() => {
         const input = document.getElementById('userName');
@@ -116,13 +128,45 @@ try {
     }));
     const nameInputGeometry = await page.evaluate(() => {
         const input = document.getElementById('userName')?.getBoundingClientRect();
-        return input ? { top: input.top, width: input.width } : null;
+        const check = document.querySelector('.vcp-uiux-identity-name-edit')?.getBoundingClientRect();
+        const cancel = document.querySelector('.vcp-uiux-identity-name-cancel');
+        const cancelRect = cancel?.getBoundingClientRect();
+        return input ? {
+            top: input.top,
+            width: input.width,
+            checkVisible: Boolean(check && check.width > 0 && check.height > 0),
+            cancelHidden: Boolean(cancel?.hidden),
+            cancelVisible: Boolean(cancelRect && cancelRect.width > 0 && cancelRect.height > 0 && getComputedStyle(cancel).display !== 'none'),
+            checkLeft: check?.left,
+            cancelLeft: cancelRect?.left,
+            inputBottom: input.bottom,
+        } : null;
     });
     assert.ok(nameInputGeometry && nameInputGeometry.width <= 240,
         `username editor remains compact (${nameInputGeometry?.width}px)`);
     assert.ok(nameValueGeometry && nameInputGeometry
         && Math.abs(nameInputGeometry.top - nameValueGeometry.top) <= 4,
     `username editor stays vertically aligned (value ${nameValueGeometry?.top}px, input ${nameInputGeometry?.top}px)`);
+    assert.equal(nameInputGeometry?.checkVisible, true, 'username editor must show confirmation check');
+    assert.equal(nameInputGeometry?.cancelHidden, false, 'username editor must unhide cancel control');
+    assert.equal(nameInputGeometry?.cancelVisible, true, 'username editor must show cancel x');
+    assert.ok(Number.isFinite(nameInputGeometry?.cancelLeft)
+        && Number.isFinite(nameInputGeometry?.checkLeft)
+        && nameInputGeometry.cancelLeft > nameInputGeometry.checkLeft,
+    'username editor cancel control must follow the confirmation check');
+    await page.evaluate(() => {
+        const input = document.getElementById('userName');
+        input.value = '临时用户名';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.click('.vcp-uiux-identity-name-cancel');
+    await waitFor('username editor cancel', () => page.evaluate(() => document.getElementById('userName')?.hidden === true));
+    assert.deepEqual(await page.evaluate(() => ({
+        value: document.getElementById('userName')?.value,
+        display: document.querySelector('.vcp-uiux-identity-name-value')?.textContent,
+    })), { value: originalName, display: originalName }, 'cancel restores the original username without saving');
+    await page.click('.vcp-uiux-identity-name-edit');
+    await waitFor('username editor reopen', () => page.evaluate(() => document.getElementById('userName')?.hidden === false));
     console.log('[avatar-probe] username edit button receives pointer input and focuses the editor');
     await page.click('.vcp-uiux-identity-name-edit');
 
