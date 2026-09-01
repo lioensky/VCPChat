@@ -425,13 +425,18 @@
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section-title {
-    margin: 0 0 24px;
+    /* The active section is already named by the left rail. Keep the heading
+       in the accessibility tree, but remove the duplicate visual title and
+       its reserved vertical space from the content column. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
     padding: 0;
+    overflow: hidden;
     border: 0;
-    color: var(--vcp-ui-text-0);
-    font-size: var(--vcp-ui-font-section);
-    font-weight: 500;
-    line-height: 24px;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.settings-dependent-panel, .settings-nested-panel, .chat-presentation-mode-option, .scenario-preview-card, .font-preview-card, .appearance-workbench-card) {
