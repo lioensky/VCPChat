@@ -123,6 +123,12 @@
     display: none;
 }
 
+/* With the body hidden the head's bottom hairline would read as a stray
+   divider floating inside the card. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card.vcp-settings-card-collapsed .vcp-settings-card-toggle {
+    border-bottom: 0;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card.vcp-settings-card-collapsed {
     padding-bottom: 4px;
 }
