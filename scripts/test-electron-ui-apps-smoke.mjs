@@ -1613,7 +1613,7 @@ try {
 
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout: timeoutMs });
-    const classicSettingsNavigation = await page.evaluate(async () => {
+    const unifiedSettingsNavigation = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
         const navItems = [...modal.querySelectorAll('.vcp-uiux-settings-nav-cell')];
         const target = navItems[1];
@@ -1625,34 +1625,30 @@ try {
             nextShell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
         };
     });
-    assert.equal(classicSettingsNavigation.navCount, 8, `Classic settings category count changed: ${JSON.stringify(classicSettingsNavigation)}`);
-    assert.equal(classicSettingsNavigation.activeSection, 'section-server-connection', `Classic settings content did not follow navigation: ${JSON.stringify(classicSettingsNavigation)}`);
-    assert.equal(classicSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(classicSettingsNavigation)}`);
-    const classicAppearanceSettings = await page.evaluate(async () => {
+    assert.equal(unifiedSettingsNavigation.navCount, 8, `Settings category count changed: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    assert.equal(unifiedSettingsNavigation.activeSection, 'section-server-connection', `Settings content did not follow navigation: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    assert.equal(unifiedSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(unifiedSettingsNavigation)}`);
+    const unifiedAppearanceSettings = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
         const appearanceNav = [...modal.querySelectorAll('.vcp-uiux-settings-nav-cell')][2];
         appearanceNav?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         const workbench = modal.querySelector('.appearance-workbench-card');
-        const layoutSelector = modal.querySelector('.appearance-layout-selector');
-        const layoutOption = modal.querySelector('.appearance-layout-option');
         const homeVisual = modal.querySelector('.appearance-home-visual-setting');
         return {
             activeSection: modal.querySelector('.settings-section.active')?.id || '',
             workbenchDisplay: workbench ? getComputedStyle(workbench).display : '',
             workbenchColumns: workbench ? getComputedStyle(workbench).gridTemplateColumns : '',
-            layoutBorder: layoutSelector ? getComputedStyle(layoutSelector).borderTopStyle : '',
-            layoutRadius: layoutOption ? getComputedStyle(layoutOption).borderTopLeftRadius : '',
+            retiredLayoutControls: modal.querySelectorAll('.appearance-layout-selector, .appearance-layout-option').length,
             homeVisualDisplay: homeVisual ? getComputedStyle(homeVisual).display : '',
         };
     });
-    assert.equal(classicAppearanceSettings.activeSection, 'section-appearance-settings', `Classic appearance section did not open: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.workbenchDisplay, 'grid', `Classic appearance workbench fell back to unstyled flow: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.notEqual(classicAppearanceSettings.workbenchColumns, 'none', `Classic appearance workbench columns are missing: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.layoutBorder, '', `retired layout selector remains visible: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.layoutRadius, '', `retired layout option remains visible: ${JSON.stringify(classicAppearanceSettings)}`);
-    assert.equal(classicAppearanceSettings.homeVisualDisplay, 'flex', `Classic home visual controls are not aligned: ${JSON.stringify(classicAppearanceSettings)}`);
-    await capture(page, 'main-settings-classic.png');
+    assert.equal(unifiedAppearanceSettings.activeSection, 'section-appearance-settings', `Appearance section did not open: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.equal(unifiedAppearanceSettings.workbenchDisplay, 'grid', `Appearance workbench fell back to unstyled flow: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.notEqual(unifiedAppearanceSettings.workbenchColumns, 'none', `Appearance workbench columns are missing: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.equal(unifiedAppearanceSettings.retiredLayoutControls, 0, `retired layout controls remain in settings: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    assert.equal(unifiedAppearanceSettings.homeVisualDisplay, 'flex', `Home visual controls are not aligned: ${JSON.stringify(unifiedAppearanceSettings)}`);
+    await capture(page, 'main-settings-unified.png');
     await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
     summary.push({ surface: '主窗口与全局设置', mode: 'canonical', pass: true, lucide: 0, note: '旧 Classic 配置无法拆卸唯一布局，共享输入、通知、壁纸与设置保持可用' });
 
