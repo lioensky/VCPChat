@@ -623,7 +623,13 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair:focus-within {
     border-color: var(--vcp-ui-control-focus, var(--vcp-ui-border-strong));
-    box-shadow: 0 0 0 3px var(--vcp-ui-focus-ring);
+    box-shadow: none;
+    outline: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair:hover {
+    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border));
+    box-shadow: none;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair > input[type="color"] {
@@ -631,7 +637,7 @@
     width: 24px;
     height: 24px;
     padding: 1px;
-    border: 0;
+    border: 0 !important;
     border-radius: 6px;
     background: transparent;
 }
@@ -642,14 +648,14 @@
     width: auto;
     height: 22px;
     padding: 0 6px;
-    border: 0;
-    border-radius: 0;
+    border: 0 !important;
+    border-radius: 0 !important;
     background: transparent;
     color: var(--vcp-ui-text-0);
     font-family: var(--vcp-ui-font-family);
     font-size: var(--vcp-ui-font-body);
     line-height: 22px;
-    outline: none;
+    outline: none !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair > input[type="text"]:is(:focus, :focus-visible) {
