@@ -131,9 +131,11 @@ function createAvatarIndexTable(database) {
 /**
  * 初始化数据库
  * @param {string} dbPath - 数据库文件路径
+ * @param {object} [options]
+ * @param {boolean} [options.includeAvatarIndex=true] - 是否创建 Legacy Avatar 提交视图
  * @returns {object|null} 数据库实例
  */
-function initDb(dbPath) {
+function initDb(dbPath, { includeAvatarIndex = true } = {}) {
   if (!Database) return null;
 
   db = new Database(dbPath);
@@ -172,9 +174,8 @@ function initDb(dbPath) {
     )
   `);
 
-  // 3. Legacy Avatar 提交视图。中央模式的持久状态由 CDS 自己维护；
-  // 此表只会随中央模式的其余兼容目录一起存在于内存中。
-  createAvatarIndexTable(db);
+  // 3. Legacy Avatar 提交视图。中央模式显式跳过该表，Avatar 状态由 CDS 维护。
+  if (includeAvatarIndex) createAvatarIndexTable(db);
 
   const logger = getLogger();
   logger.logInfo("reconcile", "数据库初始化完成。");
@@ -499,12 +500,15 @@ function upsertOwnerTombstone({
   );
 }
 
-function upsertTopicTombstone({
-  ownerType,
-  ownerId,
-  topicId,
-  deletedAt = Date.now(),
-}) {
+function upsertTopicTombstone(
+  {
+    ownerType,
+    ownerId,
+    topicId,
+    deletedAt = Date.now(),
+  },
+  { maintainLegacyOwnerRoot = true } = {},
+) {
   if (!db) return;
   const identity = normalizeTopicIdentity({ ownerType, ownerId, topicId });
   const result = db.prepare(
@@ -529,11 +533,13 @@ function upsertTopicTombstone({
     `DELETE FROM history_source_state
      WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
   ).run(identity.ownerType, identity.ownerId, identity.topicId);
-  const ownerIsLive = db.prepare(
-    `SELECT 1 FROM owners
-     WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
-  ).get(identity.ownerType, identity.ownerId);
-  if (ownerIsLive) refreshOwnerContentHash(identity);
+  if (maintainLegacyOwnerRoot) {
+    const ownerIsLive = db.prepare(
+      `SELECT 1 FROM owners
+       WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL`,
+    ).get(identity.ownerType, identity.ownerId);
+    if (ownerIsLive) refreshOwnerContentHash(identity);
+  }
   return result;
 }
 

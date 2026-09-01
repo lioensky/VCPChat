@@ -138,8 +138,8 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         appDataPath,
       });
       try {
-        // 中央模式不再打开持久化 Legacy 索引。保留一个仅服务于附件、头像和
-        // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
+        // 中央模式不再打开持久化 Legacy 索引。进程内兼容目录只服务于配置
+        // 物理定位、当前进程删除保护和本机附件投影；权威同步状态仍由 CDS 维护。
         centralSync.requireClient();
         const physicalOwners = await scanPhysicalTopicTree(appDataPath);
         await repairTopicProjectionsFromDisk(
@@ -147,7 +147,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
           physicalOwners,
           (request) => centralSync.loadTopicRecoveryStates(request),
         );
-        initDb(":memory:");
+        initDb(":memory:", { includeAvatarIndex: false });
         // CDS 在 READY 后自行完成启动 reconcile。MobileSync 的真实一致性门禁
         // 位于 owner_metadata PHASE_START；这里不再紧跟着重复扫描同一份 AppData。
         centralSync.logEnabled();
@@ -164,7 +164,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
     try {
       // 复合身份索引与旧裸 ID 索引不兼容，直接使用新的派生索引库重建。
       const dbPath = path.join(__dirname, "sync_state_v2.db");
-      initDb(dbPath);
+      initDb(dbPath, { includeAvatarIndex: true });
       const physicalOwners = await scanPhysicalTopicTree(appDataPath);
       await repairTopicProjectionsFromDisk(appDataPath, physicalOwners);
       await reconcileLocalFiles(appDataPath, physicalOwners);
@@ -357,6 +357,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 deletedAt,
                 appDataPath,
                 persistAvatarIndex: false,
+                maintainLegacyOwnerRoot: false,
               });
               if (!result?.success) {
                 throw withSyncErrorContext(

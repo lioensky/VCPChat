@@ -361,6 +361,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
           rawResults.push(...await uploadEntitiesBatch(
             topicItems.map(({ internal }) => internal),
             appDataPath,
+            { maintainLegacyOwnerRoot: centralSync === null },
           ));
         }
         const results = rawResults.map((result) =>

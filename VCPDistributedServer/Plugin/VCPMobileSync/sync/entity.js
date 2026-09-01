@@ -362,9 +362,15 @@ async function downloadEntities(requests) {
  * 批量上传实体 (主要用于 Topic 归口优化)
  * @param {object[]} items - [{id, type, data}]
  * @param {string} appDataPath
+ * @param {object} [options]
+ * @param {boolean} [options.maintainLegacyOwnerRoot=true]
  * @returns {Promise<object[]>} 结果列表
  */
-async function uploadEntitiesBatch(items, appDataPath) {
+async function uploadEntitiesBatch(
+  items,
+  appDataPath,
+  { maintainLegacyOwnerRoot = true } = {},
+) {
   if (!Array.isArray(items)) return [];
 
   const db = getDb();
@@ -521,7 +527,7 @@ async function uploadEntitiesBatch(items, appDataPath) {
         await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
         await fs.rename(tmpPath, configPath);
 
-        // 同一父 config 的 Topic 状态先全部提交，再只刷新一次 Owner root。
+        // 同一父 config 的 Topic 状态先全部提交；Legacy 再刷新一次 Owner root。
         const successfulItems = group.items.filter((item) => successfulIds.has(item.id));
         const commitIndex = db.transaction(() => {
           for (const item of successfulItems) {
@@ -533,11 +539,13 @@ async function uploadEntitiesBatch(items, appDataPath) {
               { refreshOwner: false },
             );
           }
-          const owner = successfulItems[0];
-          refreshOwnerContentHash({
-            ownerType: owner.ownerType,
-            ownerId: owner.ownerId,
-          });
+          if (maintainLegacyOwnerRoot) {
+            const owner = successfulItems[0];
+            refreshOwnerContentHash({
+              ownerType: owner.ownerType,
+              ownerId: owner.ownerId,
+            });
+          }
         });
         commitIndex();
       } catch (e) {
@@ -1680,6 +1688,8 @@ function isWriteLocked(identity) {
  * @param {string} params.type - 实体类型 (agent/group/agent_topic/group_topic/avatar)
  * @param {number} params.deletedAt - 删除时间戳
  * @param {string} params.appDataPath - AppData 路径
+ * @param {boolean} [params.persistAvatarIndex=true]
+ * @param {boolean} [params.maintainLegacyOwnerRoot=true]
  * @returns {Promise<{success: boolean, error?: object}>}
  */
 async function deleteEntity({
@@ -1690,6 +1700,7 @@ async function deleteEntity({
   deletedAt,
   appDataPath,
   persistAvatarIndex = true,
+  maintainLegacyOwnerRoot = true,
 }) {
   const db = getDb();
   const logger = getLogger();
@@ -1823,12 +1834,15 @@ async function deleteEntity({
       if (removePhysicalTopic) {
         await fs.rm(topicDir, { recursive: true, force: true });
       }
-      upsertTopicTombstone({
-        ownerType,
-        ownerId: safeOwnerId,
-        topicId: safeId,
-        deletedAt,
-      });
+      upsertTopicTombstone(
+        {
+          ownerType,
+          ownerId: safeOwnerId,
+          topicId: safeId,
+          deletedAt,
+        },
+        { maintainLegacyOwnerRoot },
+      );
       db.prepare(
         `UPDATE messages
          SET deleted_at = CASE
