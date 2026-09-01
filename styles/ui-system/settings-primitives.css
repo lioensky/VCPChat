@@ -61,6 +61,44 @@
     min-width: 0;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    margin: 0 4px 10px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    color: var(--vcp-ui-text-2);
+    background: transparent;
+    cursor: pointer;
+    opacity: .72;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button:hover,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button:focus-visible {
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-fill-1);
+    opacity: 1;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-input {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    padding: 0 8px;
+    border: 0;
+    outline: 0;
+    color: var(--vcp-ui-text-0);
+    background: transparent;
+    font: inherit;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell:hover {
     background: var(--vcp-ui-fill-1);
 }
