@@ -182,6 +182,21 @@ try {
         assert.ok(geometry.toggleTop < geometry.copyBottom && geometry.toggleBottom > geometry.copyTop, `appearance switch ${index + 1} shares the copy row`);
     });
     console.log('  [PASS] appearance home-visual switches stay on the right');
+    const scenarioGrid = await page.evaluate(() => {
+        const grid = document.getElementById('fontScenarioPreviewGrid');
+        const cards = [...(grid?.querySelectorAll('.scenario-preview-card') || [])].map(card => card.getBoundingClientRect());
+        return {
+            columns: grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 0,
+            count: cards.length,
+            firstRow: cards.slice(0, 2).every(card => Math.abs(card.top - cards[0].top) <= 2),
+            secondRow: cards.slice(2, 4).every(card => Math.abs(card.top - cards[2].top) <= 2),
+        };
+    });
+    assert.equal(scenarioGrid.columns, 2, 'scenario preview uses a two-column grid');
+    assert.equal(scenarioGrid.count, 4, 'scenario preview exposes four cards');
+    assert.equal(scenarioGrid.firstRow, true, 'scenario preview first row is aligned');
+    assert.equal(scenarioGrid.secondRow, true, 'scenario preview second row is aligned');
+    console.log('  [PASS] scenario preview uses a 2x2 card grid');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });
 
