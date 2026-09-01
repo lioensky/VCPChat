@@ -109,5 +109,4 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         when: ['rustUseAssistant'],
     }),
 ], {
-    adoptNodeIds: ['assistantAgent'],
 });

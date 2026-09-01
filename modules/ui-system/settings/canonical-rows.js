@@ -1,29 +1,15 @@
 // canonical-rows — one canonical row system for the unified settings surface.
 // The upstream form row is retained as the business anchor; geometry, spacing
 // and typography belong to the canonical wrapper.
-import { sectionKeyForRow, sectionKeyForTitle } from './section-ownership.js';
-function removeLegacySubsectionHeadings(form) {
-    form.querySelectorAll('.vcp-uiux-editor-section-heading').forEach(heading => {
-        const section = heading.closest('.settings-section');
-        // The section h3 is the single canonical heading.  Subsection cards
-        // must not introduce a second title/description stack.
-        if (section?.querySelector(':scope > .settings-section-title')) heading.remove();
-    });
-}
-
+import { sectionKeyForRow } from './section-ownership.js';
 function mountCanonicalSettingsRows(form) {
     if (!form) return;
     // Legacy <hr> separators predate row-owned dividers and each draws its own
     // top+bottom line pair next to the row hairline.  Removing them here (the
     // canonical pass) replaces the retired CSS display:none rule.
     form.querySelectorAll('hr').forEach(separator => separator.remove());
-    form.querySelectorAll(':scope > .settings-section').forEach(section => {
-        // The stamped attribute is authoritative (main.html); the title map
-        // only backfills DOM built without it.
-        const key = section.dataset.settingsSectionKey
-            || sectionKeyForTitle(section.querySelector(':scope > .settings-section-title')?.textContent);
-        if (key) section.dataset.settingsSectionKey = key;
-    });
+    // 分区归属只认 main.html 分区壳盖的 data-settings-section-key（M4 起壳
+    // 永远带戳）；行级归属由 sectionKeyForRow 统一读取。
     const candidates = form.querySelectorAll(
         ':scope [data-vcp-settings-row], :scope [data-vcp-settings-control-row], :scope .vcp-settings-row, :scope .vcp-settings-control-row, :scope .settings-form-group, :scope .form-group-inline, :scope > .form-group, :scope .form-group'
     );
@@ -81,4 +67,4 @@ function composeCanonicalRowSlots(row) {
     row.replaceChildren(copy, ...remaining, ...controls);
 }
 
-export { mountCanonicalSettingsRows, removeLegacySubsectionHeadings };
+export { mountCanonicalSettingsRows };

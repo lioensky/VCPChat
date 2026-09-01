@@ -28,7 +28,6 @@ export function section(key, title, fields, options = {}) {
         fields: Object.freeze(fields),
         // 渲染替换时需要整体保留节点身份（而非仅迁移现值）的控件 id：
         // 动态选项的 select、动态追加子行的容器等。
-        adoptNodeIds: Object.freeze(options.adoptNodeIds || []),
     });
 }
 
