@@ -557,6 +557,11 @@ export function setupEventListeners(deps) {
             setupRustAssistantConfigListeners();
             modal.dataset.globalSettingsControlsBound = 'true';
         }
+        // The modal is cloned after startup; explicitly reapply the loaded
+        // settings snapshot so the persisted avatar is restored on every open.
+        Promise.resolve(window.syncGlobalSettingsToUI?.()).catch(error => {
+            console.warn('[GlobalSettings] Failed to sync modal snapshot:', error);
+        });
     }
 
     const openGlobalSettings = () => {
