@@ -485,6 +485,28 @@ function mountSettingsShell(root) {
     if (!panel || !layout || !nav || !content || !form || !title || !close) {
         return;
     }
+    const nameInput = form.querySelector('#userName');
+    const nameDisplay = form.querySelector('.vcp-uiux-identity-name-value');
+    const nameEdit = form.querySelector('.vcp-uiux-identity-name-edit');
+    if (nameInput && nameDisplay && nameEdit && !nameEdit.dataset.bound) {
+        const syncName = () => { nameDisplay.textContent = nameInput.value || '用户'; };
+        const setEditing = editing => {
+            nameEdit.dataset.bound = 'true';
+            nameEdit.dataset.editing = String(editing);
+            nameEdit.setAttribute('aria-label', editing ? '完成用户名编辑' : '修改用户名');
+            nameEdit.querySelector('.vcp-ui-icon').textContent = editing ? 'check' : 'edit';
+            nameInput.hidden = !editing;
+            nameDisplay.hidden = editing;
+            nameInput.closest('.agent-name-wrapper')?.classList.toggle('is-editing', editing);
+            if (editing) { nameInput.focus(); nameInput.select(); }
+        };
+        nameInput.hidden = true;
+        syncName();
+        const listenIdentity = (target, type, handler, label) => shellScope ? shellScope.listen(target, type, handler, undefined, label) : target.addEventListener(type, handler);
+        listenIdentity(nameEdit, 'click', () => setEditing(nameEdit.dataset.editing !== 'true'), 'identity-name-edit');
+        listenIdentity(nameInput, 'input', syncName, 'identity-name-input');
+        listenIdentity(nameInput, 'keydown', event => { if (event.key === 'Enter') { event.preventDefault(); setEditing(false); } if (event.key === 'Escape') { event.preventDefault(); syncName(); setEditing(false); } }, 'identity-name-keys');
+    }
 
     let meta = [];
     try {
