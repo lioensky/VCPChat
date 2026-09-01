@@ -20,7 +20,7 @@ function applyRowAnchors(row, field) {
 
 function buildLabel(doc, field, styleValue) {
     const label = el(doc, 'label', '', styleValue);
-    if (field.type !== 'radioGroup') label.setAttribute('for', field.key);
+    if (field.type !== 'radioGroup' && field.type !== 'numberCells') label.setAttribute('for', field.key);
     if (field.labelTitle) label.setAttribute('title', field.labelTitle);
     label.textContent = field.label;
     return label;
@@ -42,6 +42,7 @@ function buildInputBase(doc, field, styleValue) {
     if (field.placeholder !== undefined) input.placeholder = field.placeholder;
     if (field.required) input.required = true;
     if (field.value !== undefined) input.value = String(field.value);
+    if (field.maxLength !== undefined) input.setAttribute('maxlength', String(field.maxLength));
     return input;
 }
 
@@ -62,10 +63,12 @@ function buildTextarea(doc, field) {
 function buildSwitchControl(doc, field) {
     const holder = doc.createElement('label');
     holder.className = 'switch';
+    if (field.ariaLabel) holder.setAttribute('aria-label', field.ariaLabel);
     const input = doc.createElement('input');
     input.type = 'checkbox';
     input.id = field.key;
     input.name = field.key;
+    if (field.checked) input.checked = true;
     const slider = doc.createElement('span');
     slider.className = 'slider round';
     holder.append(input, slider);
@@ -79,6 +82,7 @@ function buildSelect(doc, field) {
     if (field.selectStyle !== undefined && field.selectStyle !== null) {
         node.setAttribute('data-vcp-style', String(field.selectStyle));
     }
+    if (field.ariaLabel) node.setAttribute('aria-label', field.ariaLabel);
     if (field.hidden !== false) node.hidden = true;
     for (const option of field.options || []) {
         const optionNode = doc.createElement('option');
@@ -124,6 +128,16 @@ export function renderSchemaField(doc, field) {
             return row;
         }
         case 'text': {
+            if (field.rowAsLabel) {
+                // 历史标记：整行就是一个 label（寄语内容行）。
+                const row = doc.createElement('label');
+                row.className = 'vcp-settings-row';
+                row.setAttribute('for', field.key);
+                const span = doc.createElement('span');
+                span.textContent = field.label;
+                row.append(span, buildInputBase(doc, field, field.controlStyle));
+                return row;
+            }
             const row = el(doc, 'div', 'vcp-settings-row' + (field.stacked ? ' vcp-settings-row-stacked' : ''), field.rowStyle);
             applyRowAnchors(row, field);
             row.append(buildLabel(doc, field, field.labelStyle), buildInputBase(doc, field, field.controlStyle));
@@ -132,6 +146,20 @@ export function renderSchemaField(doc, field) {
             return row;
         }
         case 'switch': {
+            if (field.variant === 'homeVisual') {
+                // 历史标记：主页视觉开关行（copy 文案 + label.switch）。
+                const row = el(doc, 'div', 'appearance-home-visual-setting');
+                row.setAttribute('data-vcp-settings-row', '');
+                applyRowAnchors(row, field);
+                const copy = el(doc, 'span', 'appearance-home-visual-copy');
+                const strong = doc.createElement('strong');
+                strong.textContent = field.label;
+                const small = doc.createElement('small');
+                small.textContent = field.description;
+                copy.append(strong, small);
+                row.append(copy, buildSwitchControl(doc, field));
+                return row;
+            }
             const row = el(doc, 'div', 'vcp-settings-control-row', field.rowStyle ?? 15);
             applyRowAnchors(row, field);
             if (field.hintInsideWrapper) {
@@ -150,6 +178,15 @@ export function renderSchemaField(doc, field) {
             return row;
         }
         case 'select': {
+            if (field.bareRow) {
+                // 历史标记：裸 select 行——原语言行/字体行 passes 以
+                // `#<key>Row` 为宿主自行重建可见 UI，静态只保留容器 + select。
+                const row = el(doc, 'div', field.rowClass || '');
+                applyRowAnchors(row, field);
+                row.setAttribute('data-vcp-settings-row', '');
+                row.append(buildSelect(doc, field));
+                return row;
+            }
             const row = el(doc, 'div', field.groupRowClass || 'form-group', field.rowStyle ?? (field.groupRowClass ? undefined : 34));
             applyRowAnchors(row, field);
             row.append(buildSelect(doc, field));
@@ -172,18 +209,34 @@ export function renderSchemaField(doc, field) {
             return holder;
         }
         case 'range': {
+            if (field.geometry) {
+                // 历史标记：外观几何滑杆（label 整行 + heading 内嵌 output）。
+                const row = doc.createElement('label');
+                row.className = 'vcp-settings-row appearance-geometry-control';
+                row.setAttribute('for', field.key);
+                const heading = doc.createElement('span');
+                heading.className = 'appearance-range-heading';
+                const title = doc.createElement('span');
+                title.textContent = field.label;
+                const output = doc.createElement('output');
+                output.id = `${field.key}Value`;
+                output.setAttribute('for', field.key);
+                output.textContent = field.outputText ?? '';
+                heading.append(title, output);
+                row.append(heading, buildRangeInput(doc, field));
+                if (field.helper) {
+                    const small = doc.createElement('small');
+                    small.className = 'appearance-geometry-helper';
+                    small.textContent = field.helper;
+                    row.append(small);
+                }
+                return row;
+            }
             const row = el(doc, 'div', 'vcp-settings-row', field.rowStyle);
             applyRowAnchors(row, field);
             const container = doc.createElement('div');
             container.className = 'slider-container';
-            const input = doc.createElement('input');
-            input.type = 'range';
-            input.id = field.key;
-            input.name = field.key;
-            if (field.min !== undefined) input.min = String(field.min);
-            if (field.max !== undefined) input.max = String(field.max);
-            if (field.step !== undefined) input.step = String(field.step);
-            if (field.value !== undefined) input.value = String(field.value);
+            const input = buildRangeInput(doc, field);
             container.append(input);
             const output = doc.createElement('output');
             output.id = field.outputId;
@@ -252,6 +305,19 @@ export function renderSchemaField(doc, field) {
             }
             return row;
         }
+        case 'numberCells': {
+            const row = el(doc, 'div', 'vcp-settings-control-row', field.rowStyle ?? 17);
+            applyRowAnchors(row, field);
+            row.append(buildLabel(doc, field, field.labelStyle ?? 11));
+            for (const child of field.fields) {
+                const cell = doc.createElement('div');
+                cell.append(buildLabel(doc, child, child.labelStyle ?? 18), buildNumberInput(doc, child, child.controlStyle ?? 19));
+                row.append(cell);
+            }
+            const hint = buildHint(doc, field, field.hintStyle ?? 4);
+            if (hint) row.append(hint);
+            return row;
+        }
         case 'custom': {
             const node = field.build(doc);
             return node;
@@ -259,6 +325,18 @@ export function renderSchemaField(doc, field) {
         default:
             throw new Error(`field-renderer: 未支持的 schema 字段类型 "${field.type}"（key=${field.key}）`);
     }
+}
+
+function buildRangeInput(doc, field) {
+    const input = doc.createElement('input');
+    input.type = 'range';
+    input.id = field.key;
+    input.name = field.key;
+    if (field.min !== undefined) input.min = String(field.min);
+    if (field.max !== undefined) input.max = String(field.max);
+    if (field.step !== undefined) input.step = String(field.step);
+    if (field.value !== undefined) input.value = String(field.value);
+    return input;
 }
 
 function buildNumberInput(doc, field, styleValue) {
@@ -292,7 +370,7 @@ function buildCardChevron(doc) {
 }
 
 function renderSchemaLayout(doc, descriptor) {
-    if (descriptor.type === 'card' || descriptor.type === 'radioGroup' || descriptor.type === 'inlineNumbers') {
+    if (descriptor.type === 'card' || descriptor.type === 'radioGroup' || descriptor.type === 'inlineNumbers' || descriptor.type === 'numberCells') {
         return renderSchemaField(doc, descriptor);
     }
     throw new Error(`field-renderer: 未支持的布局类型 "${descriptor.type}"`);

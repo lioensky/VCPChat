@@ -86,6 +86,14 @@ export function inlineNumbers(key, fields) {
     return Object.freeze({ kind: 'layout', key, type: 'inlineNumbers', fields: Object.freeze(fields) });
 }
 
+// 行标题 + 若干"标签+数字"单元格 + 行尾提示的控制行（宽屏自定义宽度等）。
+export function numberCells(key, { label, hint, items, ...rest }) {
+    return Object.freeze({
+        kind: 'layout', key, type: 'numberCells', label, hint, ...rest,
+        fields: Object.freeze(items),
+    });
+}
+
 // 依赖子句的可读拼装：visibleWhen('a', 'b=value') → ['a', 'b=value']。
 export function visibleWhen(...clauses) {
     return clauses;
