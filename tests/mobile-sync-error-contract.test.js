@@ -18,6 +18,9 @@ const {
   withSyncErrorContext,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/error-contract");
 const {
+  negotiateVersionCheck,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
+const {
   startWsServer,
   stopWsServer,
   registerRoutes,
@@ -182,7 +185,7 @@ test("Wire errors accept only complete envelopes", () => {
 });
 
 test("WebSocket, HTTP and NDJSON reuse the same error object", () => {
-  const error = createSyncError("PLUGIN_VERSION_MISMATCH", "wrong package");
+  const error = createSyncError("WIRE_VERSION_MISMATCH", "wrong wire");
   const expected = normalizeSyncError(error);
   assert.deepEqual(createSyncErrorFrame(error), {
     type: "SYNC_ERROR",
@@ -324,8 +327,10 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
       if (payload.type === "VERSION_CHECK") {
         return {
           type: "VERSION_ACK",
-          pluginVersion: "1.5.0",
-          protocolVersion: "1.5",
+          versions: [
+            { component: "desktop_plugin", version: "1.5.0" },
+            { component: "wire", version: "1.5" },
+          ],
           backendMode: "legacy",
         };
       }
@@ -346,8 +351,10 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
 
   socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
-    mobileVersion: "1.1.6",
-    protocolVersion: "1.5",
+    versions: [
+      { component: "mobile_app", version: "1.1.6" },
+      { component: "wire", version: "1.5" },
+    ],
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
 
@@ -392,8 +399,10 @@ test("diagnostic WebSocket returns a CDS startup error before VERSION_ACK", asyn
 
   socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
-    mobileVersion: "1.1.6",
-    protocolVersion: "1.5",
+    versions: [
+      { component: "mobile_app", version: "1.1.6" },
+      { component: "wire", version: "1.5" },
+    ],
   }));
   assert.deepEqual(await nextFrame("SYNC_ERROR"), {
     type: "SYNC_ERROR",
@@ -407,6 +416,41 @@ test("diagnostic WebSocket returns a CDS startup error before VERSION_ACK", asyn
       failedTopicIds: [],
     },
   });
+});
+
+test("WebSocket reports a Wire mismatch before closing with 1002", async (t) => {
+  const server = await startWsServer({
+    port: 0,
+    syncToken: "mismatch-token",
+    onMessage: async (payload) =>
+      negotiateVersionCheck(payload, {
+        desktopPluginVersion: "1.5.0",
+        backendMode: "cds",
+      }).ack,
+  });
+  t.after(async () => stopWsServer());
+  const socket = new FakeWebSocket();
+  const nextFrame = createWsFrameReader(socket);
+  t.after(() => socket.terminate());
+  server.emit("connection", socket, {
+    url: "/ws-sync?token=mismatch-token",
+    headers: { host: "127.0.0.1" },
+    socket: { remoteAddress: "127.0.0.1" },
+  });
+  const closed = new Promise((resolve) => socket.once("close", resolve));
+
+  socket.emit("message", JSON.stringify({
+    type: "VERSION_CHECK",
+    versions: [
+      { component: "mobile_app", version: "1.1.6" },
+      { component: "wire", version: "1.4" },
+    ],
+  }));
+  const frame = await nextFrame("SYNC_ERROR");
+  assert.equal(frame.error.code, "WIRE_VERSION_MISMATCH");
+  assert.equal(frame.error.origin, "desktop_plugin");
+  assert.equal(frame.error.stage, "handshake");
+  assert.equal(await closed, 1002);
 });
 
 test("HTTP route handlers return the same structured error contract", async () => {

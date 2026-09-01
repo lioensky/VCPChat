@@ -104,11 +104,14 @@ pnpm exec electron-rebuild --only better-sqlite3
 公开握手固定为：
 
 ```text
-VERSION_CHECK { mobileVersion, protocolVersion: "1.5" }
-VERSION_ACK   { pluginVersion: "1.5.0", protocolVersion: "1.5", backendMode: "legacy" | "cds" }
+VERSION_CHECK { versions: [{component:"mobile_app",version:<App>},
+                           {component:"wire",version:"1.5"}] }
+VERSION_ACK   { versions: [{component:"desktop_plugin",version:"1.5.0"},
+                           {component:"wire",version:"1.5"}],
+                backendMode: "legacy" | "cds" }
 ```
 
-兼容性只由 `protocolVersion` 精确判断；`pluginVersion` 是诊断信息。旧 Wire 不保留别名或双栈。Phase 3 每个 Topic 的 decision 必须是以下判别联合之一：
+`versions` 数组顺序无关但组件必须唯一：CHECK 固定 `mobile_app+wire`，ACK 固定 `desktop_plugin+wire`。兼容性只由 `wire` 精确判断；包版本是诊断信息。旧顶层版本字段不保留别名或双栈。Phase 3 每个 Topic 的 decision 必须是以下判别联合之一：
 
 ```text
 { ownerType, ownerId, topicId, ok: true,

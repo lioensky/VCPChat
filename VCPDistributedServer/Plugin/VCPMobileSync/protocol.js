@@ -4,6 +4,7 @@ const FINAL_ACK_IDENTITY_FIELDS = ["sessionId", "attemptId", "nonce"];
 const WIRE_PROTOCOL_VERSION = "1.5";
 const BACKEND_MODES = new Set(["legacy", "cds"]);
 const SYNC_PHASES = new Set(["owner_metadata", "topic_metadata", "messages"]);
+const VERSION_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 
 function parseJsonWithoutDuplicateKeys(text) {
   if (typeof text !== "string") {
@@ -119,16 +120,7 @@ function parseJsonWithoutDuplicateKeys(text) {
   return JSON.parse(text);
 }
 
-function requireNonEmptyString(value, field) {
-  if (typeof value !== "string" || value.length === 0) {
-    const error = new Error(`${field} must be a non-empty string`);
-    error.code = "PROTOCOL_INVALID";
-    throw error;
-  }
-  return value;
-}
-
-function requireExactKeys(payload, fields, label) {
+function requireExactKeys(payload, fields, label, code = "PROTOCOL_INVALID") {
   const expected = new Set(fields);
   const actual = Object.keys(payload);
   if (
@@ -136,20 +128,13 @@ function requireExactKeys(payload, fields, label) {
     actual.some((field) => !expected.has(field))
   ) {
     const error = new Error(`${label} has unexpected or missing fields`);
-    error.code = "PROTOCOL_INVALID";
+    error.code = code;
     throw error;
   }
 }
 
 function validateSyncRequestFrame(payload) {
   switch (payload.type) {
-    case "VERSION_CHECK":
-      requireExactKeys(
-        payload,
-        ["type", "mobileVersion", "protocolVersion"],
-        payload.type,
-      );
-      break;
     case "PHASE_START":
       requireExactKeys(payload, ["type", "phase"], payload.type);
       break;
@@ -219,35 +204,115 @@ function validateSyncRequestFrame(payload) {
   return payload;
 }
 
-function createVersionAck(payload, pluginVersion, backendMode) {
-  if (!payload || payload.type !== "VERSION_CHECK") {
-    const error = new Error("expected VERSION_CHECK");
-    error.code = "VERSION_CHECK_INVALID";
-    throw error;
-  }
-  requireNonEmptyString(payload.mobileVersion, "VERSION_CHECK.mobileVersion");
-  const protocolVersion = requireNonEmptyString(
-    payload.protocolVersion,
-    "VERSION_CHECK.protocolVersion",
-  );
-  if (protocolVersion !== WIRE_PROTOCOL_VERSION) {
-    const error = new Error(
-      `wire protocol mismatch: expected ${WIRE_PROTOCOL_VERSION}, received ${protocolVersion}`,
+function versionContractError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function requireVersionToken(value, field, code) {
+  if (typeof value !== "string" || !VERSION_TOKEN_PATTERN.test(value)) {
+    throw versionContractError(
+      code,
+      `${field} must be a 1-64 byte safe ASCII version token`,
     );
-    error.code = "PROTOCOL_MISMATCH";
-    throw error;
   }
-  requireNonEmptyString(pluginVersion, "pluginVersion");
+  return value;
+}
+
+function parseVersionClaims(payload, { label, components, code }) {
+  requireExactKeys(payload, ["type", "versions"], label, code);
+  if (
+    !Array.isArray(payload.versions) ||
+    payload.versions.length !== components.length
+  ) {
+    throw versionContractError(
+      code,
+      `${label}.versions must contain exactly ${components.length} entries`,
+    );
+  }
+  const expected = new Set(components);
+  const versions = new Map();
+  for (const [index, claim] of payload.versions.entries()) {
+    if (!claim || typeof claim !== "object" || Array.isArray(claim)) {
+      throw versionContractError(
+        code,
+        `${label}.versions[${index}] must be an object`,
+      );
+    }
+    requireExactKeys(
+      claim,
+      ["component", "version"],
+      `${label}.versions[${index}]`,
+      code,
+    );
+    if (typeof claim.component !== "string" || !expected.has(claim.component)) {
+      throw versionContractError(
+        code,
+        `${label}.versions[${index}] has an unexpected component`,
+      );
+    }
+    const version = requireVersionToken(
+      claim.version,
+      `${label}.versions[${index}].version`,
+      code,
+    );
+    if (versions.has(claim.component)) {
+      throw versionContractError(
+        code,
+        `${label}.versions contains duplicate component ${claim.component}`,
+      );
+    }
+    versions.set(claim.component, version);
+  }
+  if (components.some((component) => !versions.has(component))) {
+    throw versionContractError(
+      code,
+      `${label}.versions is missing a required component`,
+    );
+  }
+  return versions;
+}
+
+function negotiateVersionCheck(payload, { desktopPluginVersion, backendMode }) {
+  if (!payload || payload.type !== "VERSION_CHECK") {
+    throw versionContractError("VERSION_CHECK_INVALID", "expected VERSION_CHECK");
+  }
+  const versions = parseVersionClaims(payload, {
+    label: "VERSION_CHECK",
+    components: ["mobile_app", "wire"],
+    code: "VERSION_CHECK_INVALID",
+  });
+  const packageVersion = requireVersionToken(
+    desktopPluginVersion,
+    "desktop plugin version",
+    "PROTOCOL_INVALID",
+  );
   if (!BACKEND_MODES.has(backendMode)) {
-    const error = new Error("backendMode must be legacy or cds");
-    error.code = "PROTOCOL_INVALID";
-    throw error;
+    throw versionContractError(
+      "PROTOCOL_INVALID",
+      "backendMode must be legacy or cds",
+    );
+  }
+  const wireVersion = versions.get("wire");
+  if (wireVersion !== WIRE_PROTOCOL_VERSION) {
+    throw versionContractError(
+      "WIRE_VERSION_MISMATCH",
+      `wire protocol mismatch: expected ${WIRE_PROTOCOL_VERSION}, received ${wireVersion}`,
+    );
   }
   return {
-    type: "VERSION_ACK",
-    pluginVersion,
-    protocolVersion: WIRE_PROTOCOL_VERSION,
-    backendMode,
+    ack: {
+      type: "VERSION_ACK",
+      versions: [
+        { component: "desktop_plugin", version: packageVersion },
+        { component: "wire", version: WIRE_PROTOCOL_VERSION },
+      ],
+      backendMode,
+    },
+    peer: {
+      mobileAppVersion: versions.get("mobile_app"),
+    },
   };
 }
 
@@ -297,7 +362,7 @@ function createPhaseAck(payload, { echoFinalIdentity = false } = {}) {
 module.exports = {
   WIRE_PROTOCOL_VERSION,
   createPhaseAck,
-  createVersionAck,
+  negotiateVersionCheck,
   parseJsonWithoutDuplicateKeys,
   validateSyncRequestFrame,
 };

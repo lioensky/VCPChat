@@ -51,7 +51,11 @@ const {
   deleteMessage,
 } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
-const { createPhaseAck, createVersionAck } = require("./protocol");
+const {
+  WIRE_PROTOCOL_VERSION,
+  createPhaseAck,
+  negotiateVersionCheck,
+} = require("./protocol");
 const { createSyncError, withSyncErrorContext } = require("./error-contract");
 const { acquireLock } = require("./utils/lock");
 const {
@@ -275,8 +279,17 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         }
         case "VERSION_CHECK": {
           const manifest = require("./plugin-manifest.json");
-          logger.logOperation("websocket", "version_check", "mobile", "info", `mobileVersion=${payload.mobileVersion}, pluginVersion=${manifest.version}`);
-          const ack = createVersionAck(payload, manifest.version, backendMode);
+          const { ack, peer } = negotiateVersionCheck(payload, {
+            desktopPluginVersion: manifest.version,
+            backendMode,
+          });
+          logger.logOperation(
+            "websocket",
+            "version_check",
+            "mobile",
+            "info",
+            `mobilePackageVersion=${peer.mobileAppVersion}, desktopPackageVersion=${manifest.version}, wireVersion=${WIRE_PROTOCOL_VERSION}`,
+          );
           if (backendFailure) throw backendFailure;
           return ack;
         }

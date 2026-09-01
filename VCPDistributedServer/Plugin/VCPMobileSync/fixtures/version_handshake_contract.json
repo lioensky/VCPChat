@@ -1,0 +1,19 @@
+{
+  "schema": "vcp-sync-version-handshake-contract",
+  "wireVersion": "1.5",
+  "versionCheck": {
+    "type": "VERSION_CHECK",
+    "versions": [
+      { "component": "mobile_app", "version": "1.1.6" },
+      { "component": "wire", "version": "1.5" }
+    ]
+  },
+  "versionAck": {
+    "type": "VERSION_ACK",
+    "versions": [
+      { "component": "desktop_plugin", "version": "1.5.0" },
+      { "component": "wire", "version": "1.5" }
+    ],
+    "backendMode": "cds"
+  }
+}

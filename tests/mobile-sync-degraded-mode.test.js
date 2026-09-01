@@ -179,8 +179,10 @@ test("CDS 缺席时只开放诊断 WebSocket并返回稳定错误", async (t) =>
     await assert.rejects(
       diagnosticOnMessage({
         type: "VERSION_CHECK",
-        mobileVersion: "1.1.6",
-        protocolVersion: "1.5",
+        versions: [
+          { component: "mobile_app", version: "1.1.6" },
+          { component: "wire", version: "1.5" },
+        ],
       }),
       (error) =>
         error.code === publicCode &&
@@ -192,9 +194,11 @@ test("CDS 缺席时只开放诊断 WebSocket并返回稳定错误", async (t) =>
   await assert.rejects(
     diagnosticOnMessage({
       type: "VERSION_CHECK",
-      mobileVersion: "1.1.6",
-      protocolVersion: "1.4",
+      versions: [
+        { component: "mobile_app", version: "1.1.6" },
+        { component: "wire", version: "1.4" },
+      ],
     }),
-    (error) => error.code === "PROTOCOL_MISMATCH",
+    (error) => error.code === "WIRE_VERSION_MISMATCH",
   );
 });

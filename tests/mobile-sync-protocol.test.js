@@ -6,80 +6,106 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const manifest = require("../VCPDistributedServer/Plugin/VCPMobileSync/plugin-manifest.json");
+const versionFixture = require(
+  "../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/version_handshake_contract.json"
+);
 const {
   createPhaseAck,
-  createVersionAck,
+  negotiateVersionCheck,
   parseJsonWithoutDuplicateKeys,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
 
-test("VCPMobileSync Wire 1.5 握手声明插件版本与桌面后端", () => {
+test("VCPMobileSync Wire 1.5 握手使用唯一结构化版本合同", () => {
   assert.equal(manifest.version, "1.5.0");
-  assert.deepEqual(
-    createVersionAck(
-      {
-        type: "VERSION_CHECK",
-        mobileVersion: "1.1.6",
-        protocolVersion: "1.5",
-      },
-      manifest.version,
-      "cds",
-    ),
-    {
-      type: "VERSION_ACK",
-      pluginVersion: "1.5.0",
-      protocolVersion: "1.5",
-      backendMode: "cds",
-    },
-  );
+  const result = negotiateVersionCheck(versionFixture.versionCheck, {
+    desktopPluginVersion: manifest.version,
+    backendMode: "cds",
+  });
+  assert.deepEqual(result.ack, versionFixture.versionAck);
+  assert.deepEqual(result.peer, { mobileAppVersion: "1.1.6" });
   assert.equal(
-    createVersionAck(
+    negotiateVersionCheck(
       {
         type: "VERSION_CHECK",
-        mobileVersion: "1.1.6",
-        protocolVersion: "1.5",
+        versions: [...versionFixture.versionCheck.versions].reverse(),
       },
-      manifest.version,
-      "legacy",
-    ).backendMode,
+      { desktopPluginVersion: "9.9.9", backendMode: "legacy" },
+    ).ack.backendMode,
     "legacy",
   );
   assert.throws(
-    () => createVersionAck(
-      {
-        type: "VERSION_CHECK",
-        mobileVersion: "1.1.6",
-        protocolVersion: "1.5",
-      },
-      manifest.version,
-      "fallback",
-    ),
+    () => negotiateVersionCheck(versionFixture.versionCheck, {
+      desktopPluginVersion: manifest.version,
+      backendMode: "fallback",
+    }),
     (error) => error.code === "PROTOCOL_INVALID",
   );
 });
 
-test("VERSION_CHECK 缺字段或协议漂移时 fail closed", () => {
+test("VERSION_CHECK 先校验完整结构，再裁决 Wire", () => {
   assert.throws(
     () =>
-      createVersionAck(
-        { type: "VERSION_CHECK", mobileVersion: "1.1.4" },
-        manifest.version,
-        "legacy",
-      ),
-    /protocolVersion/,
-  );
-  assert.throws(
-    () =>
-      createVersionAck(
+      negotiateVersionCheck(
         {
           type: "VERSION_CHECK",
-          mobileVersion: "1.1.4",
-          protocolVersion: "1.0",
+          mobileVersion: "1.1.6",
+          protocolVersion: "1.5",
         },
-        manifest.version,
-        "legacy",
+        { desktopPluginVersion: manifest.version, backendMode: "legacy" },
       ),
-    (error) => error.code === "PROTOCOL_MISMATCH",
+    (error) => error.code === "VERSION_CHECK_INVALID",
   );
+  assert.throws(
+    () =>
+      negotiateVersionCheck(
+        {
+          type: "VERSION_CHECK",
+          versions: [
+            { component: "mobile_app", version: "1.1.6" },
+            { component: "wire", version: "1.4" },
+          ],
+        },
+        { desktopPluginVersion: manifest.version, backendMode: "legacy" },
+      ),
+    (error) => error.code === "WIRE_VERSION_MISMATCH",
+  );
+
+  for (const versions of [
+    [{ component: "wire", version: "1.4" }],
+    [
+      { component: "wire", version: "1.4" },
+      { component: "wire", version: "1.5" },
+    ],
+    [
+      { component: "desktop_plugin", version: "1.5.0" },
+      { component: "wire", version: "1.4" },
+    ],
+    [
+      { component: "mobile_app", version: "bad version" },
+      { component: "wire", version: "1.4" },
+    ],
+    [
+      { component: "mobile_app", version: "1".repeat(65) },
+      { component: "wire", version: "1.4" },
+    ],
+    [
+      { component: "mobile_app", version: 116 },
+      { component: "wire", version: "1.4" },
+    ],
+    [
+      { component: "mobile_app", version: "1.1.6", extra: true },
+      { component: "wire", version: "1.4" },
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        negotiateVersionCheck(
+          { type: "VERSION_CHECK", versions },
+          { desktopPluginVersion: manifest.version, backendMode: "legacy" },
+        ),
+      (error) => error.code === "VERSION_CHECK_INVALID",
+    );
+  }
 });
 
 test("CDS Rust 与 Electron lifecycle 的 protocol/schema 常量一致", () => {
