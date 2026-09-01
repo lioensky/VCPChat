@@ -1150,10 +1150,15 @@
                                         <input type="file" id="userAvatarInput" name="userAvatar"
                                             accept="image/png, image/jpeg, image/gif" data-vcp-style="2">
                                     </div>
-                                    <div class="agent-name-wrapper">
-                                        <label for="userName">用户名:</label>
-                                        <input type="text" id="userName" name="userName" placeholder="您的用户名"
-                                            required>
+                                <div class="agent-name-wrapper">
+                                    <label for="userName">用户名:</label>
+                                    <div class="vcp-uiux-identity-name-display">
+                                        <span class="vcp-uiux-identity-name-value">用户</span>
+                                        <button type="button" class="vcp-uiux-identity-name-edit" aria-label="修改用户名" title="修改用户名">
+                                            <span class="vcp-ui-icon" aria-hidden="true">edit</span>
+                                        </button>
+                                    </div>
+                                    <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
                                     </div>
                                 </div>
 

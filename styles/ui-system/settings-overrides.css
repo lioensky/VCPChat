@@ -467,6 +467,10 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input { max-width: 280px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input { width: 100%; margin-left: 0; box-sizing: border-box; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-display { display: flex; align-items: center; gap: 8px; min-height: 38px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 20px; font-weight: 600; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-edit { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; color: var(--vcp-ui-text-2); background: transparent; cursor: pointer; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-edit:hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
     grid-column: 2;
@@ -478,9 +482,9 @@
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header {
-    padding: 8px 10px;
+    padding: 8px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
-    border-radius: 8px;
+    border-radius: 999px;
     white-space: nowrap;
 }
 
