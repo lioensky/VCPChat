@@ -126,3 +126,54 @@ dsw 语义 CSS（单层级联）
 - **M4-b 覆盖层清零（66a26752）**：settings-overrides.css（1747 行）原文前置于 settings-template.css（保持相对级联顺序），入口移除导入。overrides 与 shell/primitives 本无同选择器重复（css-parts 跨分区测试既有约束），位移不改级联——八分区截图与合并前逐字节一致。css-parts 契约测试改写为合并部语义（横幅在前、canonicalized 声明在后、其后只允许 :is 机有声明）。
 - **M4-c 投影死代码退役（18de5bbe）**：removeLegacySubsectionHeadings（无人调用）与 sectionKeyForTitle 标题回填删除；schema-surface 的 adoptNodeIds 摘引/快照回填路径随静态面一并退役（首渲染无可采集现值，持久值全由 typed 投影回填）；分区归属契约脚本改查 schema 编译产物（JS 绑定 id ∈ main.html 壳 ∪ 渲染产物，423 个 id 交叉核对）。全套 365/367，探针 31/31，重启往返截图逐字节一致。
 - **验证基线变化**：M4 后不再有双面对照；验收判据改为「唯一 schema 面 + 重启往返等值 + 与 M3 静态面基线的跨会话像素对比」。跨会话对比存在亚像素字体栅格化噪声（≤0.9%，全部分布在文字行带内，内容逐字相同）；advanced-features 分区高度差为探针种子状态差异（净化开关），非回归。探针种子改用规范持久化格式（appearanceProfile/voiceNetworkSettings 嵌套；划词配置在其独立 store，settings.json 扁平键为历史遗留不参与回填）。
+
+## 十三、M5 终态演进路线（规划：渲染器直出 canonical 结构 + store 按 schema key 读写）
+
+### 13.0 目标与非目标
+
+**目标**：拆掉"两跳"架构的最后余量。现状是 schema 先编译出与旧静态标记同构的"昨天的标记"（M0-M3 像素等价契约的产物），再由 17 个管线 pass 术后矫正成今天的界面；保存/回填链则与 schema 平行存在三份手写清单（schema 声明、保存链 81 处 `getElementById`、typed-field-owners 892 行投影表）。终态：渲染器直接产出 canonical 最终结构（管线退役），store 按 schema 声明推导读写（三清单合一）。
+
+**非目标**：不动 uiux 原语库本身（Input/Switch/LanguageRow 等是终态地基）；不动设置 shell/导航/autosave 语义；不追求在本路线内 rebase 进 prb——按既有纪律定期 rebase 即可。
+
+### 13.1 M5-a 值链路合一（先行：纯逻辑，零视觉风险）
+
+字段描述符补齐值语义，读写链从 schema 推导：
+
+1. **kernel 扩展**：字段声明增加 `valuePath`（settings.json 持久化路径，默认等于 key，嵌套如 `voiceNetworkSettings.providerUrl`）与 `value` 选项（`parse: 'int' | 'float'`、`clamp: [min, max]`、`fallback`、`checkedValue/uncheckedValue`）。
+2. **store 扩展**：`collectSettings(form)` 遍历 SCHEMA_SECTIONS → 按描述符产出与现保存载荷**逐键同形**的对象；`applySettings(form, settings)` 对称回填（写值 + 派发 `vcp-uiux-sync`，收敛 M0 记录的胶囊滞留怪癖）。
+3. **等价性金测**（本阶段核心门禁）：单测对渲染后的表单灌入随机值，断言新 `collectSettings` 与旧 `handleSaveGlobalSettings` 收集器的产出 JSON 完全一致（含嵌套 voice/appearanceProfile、parseInt/钳位、URL 补全等特例）；特例全部改写为描述符声明后从保存链删除。
+4. **切换保存链**：`handleSaveGlobalSettings` 改调 `collectSettings`，保留提交锁/超时/retry 事件契约不变；人工特例（头像、论坛凭据、划词独立 store）维持现通道，仅清单化登记。
+5. **回填链收敛**：typed-field-owners 的 44 条投影表改为 `applySettings` 驱动；划词/论坛/外观 profile 三个 typed 消费者保留（它们是状态服务，删除的只是手写 DOM 映射段）。
+
+**验收**：金测等价 + 全套不回退 + 探针改值→autosave→settings.json 与旧链字节一致 + 重启往返等值。**回退**：单提交粒度，revert 即回旧链。
+
+### 13.2 M5-b 渲染器直出 canonical 行（试点：快捷操作分区）
+
+1. field-renderer 直接产出最终结构：`vcp-uiux-general-item/general-row` + row-copy 槽 + `data-setting-primitive` 挂点；旧包裹类（vcp-settings-row/form-group）不再输出。
+2. `mountCanonicalSettingsRows` 加 canonicalRow 已达标记跳过；试点分区通过后该 pass 对全部分区成空转 → 删除 pass 与 `composeCanonicalRowSlots`。
+3. hr 停止输出（现管线本就挂载即删，画面零变化）；行语义类映射表入文档（`vcp-settings-row-stacked` 等保留类的对应关系）。
+4. 测试面翻新：schema-render/bridge-modules 中断言旧类的用例改为断言 canonical 结构。
+5. **试点验收后不铺开**——先跑一个分区，确认探针/像素/CSS 三关全过再进入 13.3。
+
+### 13.3 M5-c 原语直挂：逐 pass 退役（由简到繁，每 pass 一个提交）
+
+渲染器按字段类型直接输出原语就绪结构，管线对应 pass 删除。顺序按风险升序：
+
+| 序 | pass | 说明 |
+|---|---|---|
+| 1 | uiux-switches | 开关行直出 holder 结构，最简单 |
+| 2 | legacy-range-pass / global-pill-steppers | 滑杆/步进器直出 |
+| 3 | uiux-inputs / agent-name-fields | 输入原语包裹直出 |
+| 4 | appearance-rows / global-pill-steppers 语言行 | 裸 select 直出语言行宿主 |
+| 5 | select-projection | 最大的一块：分段/弹层直出，单独设计稿 |
+| 6 | uiux-disclosures / form-icons | 收尾 |
+
+每个 pass 退役的固定流程：该类型行直出 → 断言该 pass 空转的单测 → 删 pass → 八分区探针 + 像素对比 0 + 重启往返。
+
+### 13.4 M5-d 收尾
+
+advanced-visibility/rust-visibility 薄包装并入渲染器统一的依赖求值（visibleIf 已声明，事件路径与投影路径最终同一求值器）；marker-registry 清单复核；§十三回填施工记录；评估 rebase 回 prb 的冲突面（预期集中在被删 pass 文件，"我们删了 vs 上游改了"，维持删除）。
+
+### 13.5 总门禁与施工纪律
+
+沿用既有纪律：每阶段独立提交、中文 conventional commit、D6 红线、绝不 `git add -A`；全套测试不回退；每阶段八分区实机探针 + 像素对比 + 重启往返；像素基线随每阶段滚动更新（对比对象 = 上一阶段末截图）。M5-a 完成前不动渲染侧，M5-b 试点验收前不铺开 13.3。
