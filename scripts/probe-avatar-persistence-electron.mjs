@@ -67,18 +67,15 @@ try {
         return Boolean(page);
     });
     console.log('[avatar-probe] main renderer connected');
+    const rendererErrors = [];
+    page.on('pageerror', error => rendererErrors.push(`pageerror: ${error?.stack || error}`));
+    page.on('console', message => {
+        if (message.type() === 'error' || message.type() === 'warning') rendererErrors.push(`${message.type()}: ${message.text()}`);
+    });
     await waitFor('renderer ready', () => page.evaluate(() => document.documentElement.dataset.vcpRendererReady === 'true'));
     const loaded = await page.evaluate(async () => window.chatAPI.loadSettings());
     assert.match(String(loaded.userAvatarUrl), /user_avatar\.png/);
     console.log('[avatar-probe] loadSettings returned persisted avatar URL');
-
-    const avatarBytes = [...await fs.readFile(path.join(root, 'assets', 'default_user_avatar.png'))];
-    const saved = await page.evaluate(async bytes => window.chatAPI.saveUserAvatar({
-        name: 'avatar-probe.png', type: 'image/png', buffer: new Uint8Array(bytes).buffer,
-    }), avatarBytes);
-    assert.equal(saved?.success, true, saved?.error || 'saveUserAvatar failed');
-    assert.match(String(saved.avatarUrl), /user_avatar\.png/);
-    console.log('[avatar-probe] saveUserAvatar wrote persisted avatar');
 
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await waitFor('settings preview', () => page.evaluate(() => {
@@ -87,7 +84,36 @@ try {
     }));
     console.log('[avatar-probe] first open preview decoded');
 
-    await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
+    // Mirror the production cropper callback: install the cropped File, then
+    // emit the synthetic input that schedules the form autosave. This catches
+    // the race where the native file change fires before cropping completes.
+    const avatarBytes = [...await fs.readFile(path.join(root, 'assets', 'default_user_avatar.png'))];
+    await page.evaluate(() => {
+        window.__avatarSaveResults = [];
+        document.getElementById('globalSettingsForm')?.addEventListener('vcp-settings-save-result', event => {
+            window.__avatarSaveResults.push(event.detail || null);
+        });
+    });
+    await page.evaluate(bytes => {
+        const file = new File([new Uint8Array(bytes)], 'avatar-probe.png', { type: 'image/png' });
+        window.uiHelperFunctions.setCroppedFile('user', file);
+        document.getElementById('userAvatarInput')?.dispatchEvent(new Event('input', { bubbles: true }));
+    }, avatarBytes);
+    try {
+        await waitFor('avatar save completion', () => page.evaluate(() => !document.getElementById('globalSettingsModal')?.classList.contains('active')));
+    } catch (error) {
+        const diagnostics = await page.evaluate(errors => ({
+            state: document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState,
+            dirty: document.getElementById('globalSettingsForm')?.dataset.vcpSettingsDirty,
+            results: window.__avatarSaveResults,
+            rendererErrors: errors,
+        }), rendererErrors);
+        throw new Error(`${error.message}; save diagnostics: ${JSON.stringify(diagnostics)}`);
+    }
+    const savedFile = await fs.stat(path.join(appData, 'UserData', 'user_avatar.png'));
+    assert.ok(savedFile.size > 100, `saved avatar file is non-empty (${savedFile.size} bytes)`);
+    console.log('[avatar-probe] crop result triggered autosave and wrote avatar file');
+
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 45_000 });
     await waitFor('renderer ready after reload', () => page.evaluate(() => document.documentElement.dataset.vcpRendererReady === 'true'));
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));

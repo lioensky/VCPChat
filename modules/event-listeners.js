@@ -597,6 +597,10 @@ export function setupEventListeners(deps) {
             if (file) {
                 uiHelperFunctions.openAvatarCropper(file, (croppedFile) => {
                     setCroppedFile('user', croppedFile);
+                    // The picker change happened before the crop result
+                    // existed, so explicitly schedule the real settings save
+                    // after the cropped File is installed.
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
                     const userAvatarPreview = document.getElementById('userAvatarPreview');
                     if (userAvatarPreview) {
                         const previewUrl = URL.createObjectURL(croppedFile);
