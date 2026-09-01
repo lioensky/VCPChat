@@ -560,8 +560,8 @@ function mountSettingsShell(root) {
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
     searchInput.className = 'vcp-uiux-settings-search-input';
-    searchInput.placeholder = '搜索设置';
-    searchInput.setAttribute('aria-label', '搜索设置');
+    searchInput.placeholder = '搜索设置项';
+    searchInput.setAttribute('aria-label', '搜索设置项');
     searchInput.hidden = true;
     search.append(searchButton, searchInput);
     const titleRow = document.createElement('div');
@@ -701,7 +701,14 @@ function mountSettingsShell(root) {
     };
     const closeSearch = () => { state.query = ''; search.classList.remove('is-open'); title.hidden = false; searchInput.value = ''; searchInput.hidden = true; searchButton.hidden = false; renderList(); };
     shellScope?.listen(searchButton, 'click', () => { search.classList.add('is-open'); title.hidden = true; searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); });
-    shellScope?.listen(searchInput, 'input', () => { state.query = searchInput.value.trim().toLocaleLowerCase(); renderList(); });
+    shellScope?.listen(searchInput, 'input', () => {
+        state.query = searchInput.value.trim().toLocaleLowerCase();
+        renderList();
+        if (state.query) {
+            const first = rows.find(row => !row.hidden);
+            if (first && first.dataset.section !== state.active) activateSection(first.dataset.section);
+        }
+    });
     shellScope?.listen(searchInput, 'keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); searchButton.focus(); } });
     shellScope?.listen(document, 'pointerdown', event => {
         if (search.classList.contains('is-open') && !search.contains(event.target)) closeSearch();
