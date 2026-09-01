@@ -1246,10 +1246,88 @@
    selection state, so the native radio dot must not paint beside the title.
    The card list also owns the full row width instead of the title column. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-selector .chat-presentation-mode-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
     grid-column: 1 / -1;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option {
+    box-sizing: border-box;
     position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 96px;
+    align-items: stretch;
+    justify-content: stretch;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, .12)));
+    border-radius: 16px;
+    color: var(--vcp-ui-text-0);
+    background: var(--vcp-ui-bg-secondary, var(--vcp-ui-fill-0, #fff));
+    cursor: pointer;
+    transition: border-color var(--vcp-ui-transition-fast, 120ms ease), background-color var(--vcp-ui-transition-fast, 120ms ease), box-shadow var(--vcp-ui-transition-fast, 120ms ease);
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover {
+    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border, rgba(0, 0, 0, .2)));
+    background: var(--vcp-ui-control-hover, var(--vcp-ui-fill-1, #f7f7f7));
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:focus-within {
+    outline: 2px solid color-mix(in srgb, var(--vcp-ui-accent, #4f7cff) 34%, transparent);
+    outline-offset: 2px;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) {
+    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border, rgba(0, 0, 0, .2)));
+    background: var(--vcp-ui-selection-bg, var(--vcp-ui-fill-1, #f5f6f7));
+    box-shadow: none;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option > span {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 94px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 12px;
+    box-sizing: border-box;
+    text-align: center;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-icon {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 24px;
+    color: var(--vcp-ui-text-2);
+    font-size: 22px;
+    line-height: 1;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) .chat-presentation-mode-icon {
+    color: var(--vcp-ui-text-accent, var(--vcp-ui-accent, currentColor));
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option strong {
+    display: block;
+    min-width: 0;
+    color: inherit;
+    font-size: var(--vcp-ui-font-body, 14px);
+    font-weight: 500;
+    line-height: 22px;
+    white-space: nowrap;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option small {
+    /* Keep the existing explanatory copy available to assistive technology
+       without making the cube taller than the DSH selector contract. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option > input[type="radio"] {
     position: absolute;
@@ -1257,6 +1335,18 @@
     height: 1px;
     opacity: 0;
     pointer-events: none;
+}
+
+@media (max-width: 620px) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-selector .chat-presentation-mode-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 430px) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-selector .chat-presentation-mode-options {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 /* Label-less rows keep helper notes as direct small children (no copy slot to
