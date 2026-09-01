@@ -652,27 +652,47 @@
     outline: none;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair > input[type="text"]:is(:focus, :focus-visible) {
+    box-shadow: none !important;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card #resetUserAvatarColorsBtn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    width: 150px;
-    max-width: 150px;
+    gap: 0;
+    width: 32px;
+    max-width: 32px;
     min-height: 32px;
     height: 32px;
-    padding: 0 10px;
-    border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
+    padding: 0;
+    border: 0;
     border-radius: 8px;
-    background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    filter: none;
     color: var(--vcp-ui-text-1);
-    font-size: var(--vcp-ui-font-caption);
+    font-size: 0;
     white-space: nowrap;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card #resetUserAvatarColorsBtn:hover {
-    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border));
-    background: var(--vcp-ui-control-bg-hover, var(--vcp-ui-fill-1));
+    border: 0;
+    background: var(--vcp-ui-fill-1);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card #resetUserAvatarColorsBtn :is(svg, .vcp-ui-icon) {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
 }
 
 @media (max-width: 520px) {
