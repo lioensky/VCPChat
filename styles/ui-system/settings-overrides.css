@@ -470,7 +470,7 @@
     box-shadow: none;
 }
 
-/* Scenario preview follows the Harness 2x2 card gallery: four equal cards,
+/* Scenario preview follows the 2x2 card gallery: four equal cards,
    stable gutters and a single-column fallback for narrow settings panes. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid {
     display: grid;
@@ -533,7 +533,7 @@
 }
 
 /* The card title already names the scenario, so the generated LanguageRow
-   copy would repeat "聊天字体/场景字体". Keep only the compact Harness pill
+   copy would repeat "聊天字体/场景字体". Keep only the compact pill
    at the card's lower-right corner. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-controls .vcp-uiux-language-row {
     display: flex;
@@ -718,7 +718,7 @@
     align-self: end;
 }
 
-/* Keep the two identity color fields on the same Harness input surface as
+/* Keep the two identity color fields on the same unified input surface as
    the rest of SettingsShell. ColorPair still owns the native color control;
    this wrapper owns the shared border, fill and compact geometry. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair {
@@ -752,6 +752,8 @@
     height: 24px;
     padding: 1px;
     border: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
     border-radius: 6px;
     background: transparent;
 }
@@ -1291,6 +1293,38 @@
     border: 0 !important;
     opacity: 0 !important;
     pointer-events: none !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-numeric-stepper-row-input {
+    position: static !important;
+    width: 42px !important;
+    min-width: 0 !important;
+    height: 24px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    appearance: textfield;
+    -webkit-appearance: textfield;
+    background: transparent !important;
+    color: inherit !important;
+    text-align: center;
+    box-shadow: none !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+    font: inherit !important;
+    line-height: 22px !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-numeric-stepper-row-input::-webkit-inner-spin-button,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-numeric-stepper-row-input::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-numeric-stepper-row-stepper {
+    overflow: hidden;
 }
 
 /* The author row grid must not defeat the UA [hidden] presentation (the

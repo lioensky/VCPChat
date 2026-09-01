@@ -1914,14 +1914,22 @@ test('Uiux NumericStepperRow external snapshot sync is presentation-only and own
         let changes = 0;
         input.addEventListener('change', () => { changes += 1; });
         mountNumericStepperRow(document.getElementById('row'), input, { title: 'Size' }, scope);
-        const value = () => document.querySelector('.vcp-uiux-numeric-stepper-row-value')?.textContent;
-        assert.equal(value(), '10');
+        const editor = () => document.querySelector('.vcp-uiux-numeric-stepper-row-input');
+        assert.equal(editor().value, '10');
         input.value = '42';
         input.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
-        assert.equal(value(), '42');
+        assert.equal(editor().value, '42');
+        assert.equal(changes, 0);
+        // Keystrokes stay local to the editor: the business range input
+        // sanitizes out-of-range text on assignment, so only the commit paths
+        // (blur/change/arrows) may write through.
+        editor().value = '55';
+        editor().dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        assert.equal(input.value, '42', 'editor keystrokes must not reach the business input');
         assert.equal(changes, 0);
         await scope.dispose('sync-complete');
-        assert.equal(document.querySelector('.vcp-uiux-numeric-stepper-row-value'), null);
+        assert.equal(document.querySelector('.vcp-uiux-numeric-stepper-row-input'), null);
+        assert.equal(document.getElementById('size')?.dataset.vcpAppearanceDraftControl, undefined, 'dispose retracts the draft marker');
         assert.equal(document.getElementById('size')?.parentElement?.id, 'row', 'dispose restores the canonical range input');
     } finally {
         globalThis.document = previousDocument;
@@ -1942,7 +1950,7 @@ test('Uiux FontSizeRow external snapshot sync is presentation-only and owner-bou
         let changes = 0;
         select.addEventListener('change', () => { changes += 1; });
         mountFontSizeRow(document.getElementById('row'), select, scope);
-        const value = () => document.querySelector('.vcp-uiux-font-size-row-value')?.textContent;
+        const value = () => document.querySelector('.vcp-uiux-font-size-row-value')?.value;
         assert.equal(value(), '14');
         select.value = 'large';
         select.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
@@ -1950,6 +1958,7 @@ test('Uiux FontSizeRow external snapshot sync is presentation-only and owner-bou
         assert.equal(changes, 0);
         await scope.dispose('sync-complete');
         assert.equal(document.querySelector('.vcp-uiux-font-size-row-value'), null);
+        assert.equal(document.getElementById('scale')?.dataset.vcpAppearanceDraftControl, undefined, 'dispose retracts the draft marker');
         assert.equal(document.getElementById('scale')?.parentElement?.id, 'row', 'dispose restores the canonical select');
     } finally {
         globalThis.document = previousDocument;

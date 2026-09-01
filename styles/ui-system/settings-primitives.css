@@ -77,7 +77,10 @@
     min-width: 0;
     min-height: 32px;
     margin: 0 0 10px;
-    padding: 0 16px 0 12px;
+    /* Match the reference SettingsRoot: the nav's 12px inset plus the title's own
+       12px padding provide the complete 24px title offset. A further
+       title-row left inset would push the heading 12px too far right. */
+    padding: 0 16px 0 0;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-title-row > .vcp-uiux-settings-nav-title {
@@ -113,6 +116,15 @@
     background: transparent;
     cursor: pointer;
     opacity: .72;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    overflow: visible;
+    color: currentColor;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search.is-open:focus-within {

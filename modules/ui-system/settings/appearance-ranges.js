@@ -7,7 +7,8 @@ export function mountAppearanceRanges(form, api, scope) {
         const input = form.querySelector(`#${id}`);
         const host = input?.parentElement;
         if (!input || !host || input.dataset.vcpTypedPrimitiveMounted === 'true') return;
-        if (api.mountNumericStepperRow) api.mountNumericStepperRow(host, input, { title, description }, scope);
+        const appearanceKey = id.replace(/^appearance/, '').replace(/^Sidebar/, 'sidebar').replace(/^Custom/, 'custom');
+        if (api.mountNumericStepperRow) api.mountNumericStepperRow(host, input, { title, description, appearanceKey, suppressAutosave: true }, scope);
         else api.mountRange(input, { output: form.querySelector(`#${id}Value`), format: value => `${value}px` }, scope);
         input.dataset.vcpTypedPrimitiveMounted = 'true';
         scope.own(() => { delete input.dataset.vcpTypedPrimitiveMounted; }, `typed-${id}-marker`, 'ui-primitive');

@@ -1362,7 +1362,7 @@
             MATERIAL_FIELDS.forEach(field => {
                 draft.profile[field] = MATERIAL_DEFAULTS[field];
             });
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing sidebar height:', error); }
             return;
         }
         const materialEffect = target.dataset.materialEffect;
@@ -1370,7 +1370,7 @@
             draft.profile.surface = 'custom';
             draft.profile.surfaceEffect = materialEffect;
             Object.assign(draft.profile, MATERIAL_EFFECTS[materialEffect].values);
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing avatar size:', error); }
             return;
         }
         if (target.matches('[data-reset-all]')) {
@@ -1435,7 +1435,7 @@
             syncControls();
             return;
         }
-        const control = event.target.closest('input[type="range"][data-appearance-key]');
+        const control = event.target.closest('input[data-appearance-key]');
         if (!control || saving || !draft) return;
         const key = control.dataset.appearanceKey;
         if (key === 'sidebarRowHeight') {
@@ -1448,7 +1448,7 @@
                 draft.profile.sidebarAvatarSize = nextAutoAvatar;
             }
             draft.profile.sidebarAvatarSize = Math.min(draft.profile.sidebarAvatarSize, nextRowHeight - 4);
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing radius:', error); }
             return;
         }
         if (key === 'sidebarAvatarSize') {
@@ -1470,7 +1470,7 @@
         const value = Math.min(config.max, Math.max(config.min, Number(control.value)));
         draft.profile[key] = value;
         draft.profile.surface = 'custom';
-        await preview({ appearanceOnly: true });
+        try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing appearance value:', error); }
     }
 
     function handleKeydown(event) {

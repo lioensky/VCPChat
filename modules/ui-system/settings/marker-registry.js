@@ -28,6 +28,13 @@ const MARKERS = Object.freeze({
     vcpSelectRebuilding: { owner: 'settings/select-projection.js', cleanup: 'scope-owned' },
     vcpTypedPrimitiveMounted: { owner: 'all generated-primitive mount sites', cleanup: 'scope-owned' },
     vcpSettingsIconsNormalized: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
+    // Appearance stepper/font-size editors are draft surfaces: the marker on
+    // the editor and its business control makes settings/autosave.js skip
+    // them; the primitive's scope disposer deletes it from the business node.
+    vcpAppearanceDraftControl: { owner: 'generated primitives (numeric-stepper-row/font-size-row) + settings/autosave.js', cleanup: 'scope-owned' },
+    // Icon name carried by injected icon hosts for the lucide adapter to
+    // render; the host element's lifetime is the presentation scope's.
+    vcpIcon: { owner: 'settings-bridge.js form icons + lucide-adapter.js', cleanup: 'persistent' },
 
     // settings-bridge.js — generated Buttons on the global surface
     vcpTypedGlobalSettingsEntry: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },

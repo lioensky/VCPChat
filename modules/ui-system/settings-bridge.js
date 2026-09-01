@@ -319,6 +319,11 @@ function mountUiuxInputs(form) {
     if (!api?.mountInput || !scope) return;
     const selector = 'input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])';
     form.querySelectorAll(selector).forEach(control => {
+        // NumericStepperRow owns a deliberately lightweight editable proxy
+        // inside its capsule. Do not wrap that proxy with the generic Input
+        // primitive, which would reintroduce the boxed field surface.
+        if (control.classList.contains('vcp-uiux-numeric-stepper-row-input')
+            || control.classList.contains('vcp-uiux-font-size-row-value')) return;
         if (control.dataset.vcpUiuxInputPrimitive === 'true') return;
         // Registered non-input projections own their field's chrome (stepper
         // hosts adopted wholesale, raw controls kept bare for their typed
@@ -610,10 +615,10 @@ function mountSettingsShell(root) {
     searchButton.className = 'vcp-uiux-settings-search-button';
     searchButton.setAttribute('aria-label', '搜索设置');
     searchButton.title = '搜索设置';
-    const searchIcon = document.createElement('span');
-    searchIcon.className = 'vcp-ui-icon';
-    searchIcon.textContent = 'search';
-    searchIcon.setAttribute('aria-hidden', 'true');
+    const searchIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    searchIcon.dataset.vcpIcon = 'search-outline-16';
+    searchIcon.setAttribute('class', 'vcp-icon vcp-uiux-settings-search-icon');
+    window.VcpIcons?.render(searchIcon, 'search-outline-16');
     searchButton.append(searchIcon);
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
@@ -647,10 +652,10 @@ function mountSettingsShell(root) {
     // seat. Replace the legacy text glyph once, while preserving the same
     // business button and close listener.
     if (!close.dataset.vcpUiuxClose) {
-        const icon = document.createElement('span');
-        icon.className = 'vcp-ui-icon vcp-uiux-settings-close-icon';
-        icon.setAttribute('aria-hidden', 'true');
-        icon.textContent = 'x';
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.dataset.vcpIcon = 'close-outline-16';
+        icon.setAttribute('class', 'vcp-icon vcp-uiux-settings-close-icon');
+        window.VcpIcons?.render(icon, 'close-outline-16');
         const hiddenLabel = document.createElement('span');
         hiddenLabel.className = 'vcp-uiux-settings-close-label';
         hiddenLabel.textContent = close.getAttribute('aria-label') || '关闭';
