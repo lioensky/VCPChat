@@ -93,3 +93,14 @@ dsw 语义 CSS（单层级联）
 - 实例验证（临时 appdata + CDP）：22/22 通过——锚点齐全、依赖可见性行为（主开关/选择值/保险行）、自动保存 dirty→saved→磁盘落盘、开关关闭零干扰、重复 refresh 幂等。
 - 像素对比：`scripts/compare-settings-schema-pixels.mjs` 入库；同交互序列下 schema 面与静态面分区截图差异 0.0000%。
 - 已知存量怪癖（非本迁移引入，记录备查）：`middleClickQuickAction` 走 typed 通用 pairs 静默回填，不派发 `vcp-uiux-sync`，静态面 select 胶囊在纯快照恢复后标签可能滞留占位文案；M1 迁移该字段时一并收敛。
+
+## 九、M1 施工记录（已完成：五个静态分区）
+
+- kernel 扩展：`text/radio/range/button/card/radioGroup/inlineNumbers/custom` 描述原语；显式样式覆盖（rowStyle/controlStyle/hintStyle/labelStyle/textareaStyle/selectStyle/rowClass/rowHidden）；`walkFields` 深度遍历；分区级 `adoptNodeIds`。
+- 渲染器：六类布局全量编译；卡片（toggle+chevron SVG，body id 由 card key 派生）；无 id 的 form-group 行用 `grouped: true` 表达；开关行支持提示内包裹（hintInsideWrapper）与行内附加组件（extra，划词调试面板）。
+- 专属组件入 `render/widgets.js`：头像资料卡、折叠自定义样式区（颜色对+重置按钮）、划词调试面板、动画 CSS 示例块、动画预览——标记逐字对齐静态版本，由既有增强按类名/id 接管。
+- store 重构为 id 键值快照（checkbox/radio→checked）：`captureSectionValues`/`restoreSectionValues`，custom 组件经 `captureKeys` 声明内部控件；schema-surface 增加 `adoptNodeIds` 整体节点迁移（划词 Agent 下拉的运行时选项、网络笔记路径容器子行），替换后原节点搬回渲染产物。
+- 新 schema：user-identity / server-connection / render-settings / selection-assistant / voice-settings；quick-actions 适配 textareaStyle 显式化。
+- 测试：单测 14 例全绿；全套 367/369（仍只剩 2 条基线既有失败）。
+- 实例验证：33/33——六分区控件状态映射（value/checked/行可见性/hidden/选项数）schema 面 vs 静态面逐项一致；data-vcp-style 标记集与行类名集合逐分区一致；行为断言（卡片折叠、网络笔记动态行、动画预设显隐、划词依赖投影、语音单选+choice 收编、M1 字段 autosave 落盘含 URL 自动补全）全过。
+- 像素对比：六分区截图像素差异 0（render-settings 有 1 字节纯白区渲染抖动，2,003,463 字节中 1 字节）。
