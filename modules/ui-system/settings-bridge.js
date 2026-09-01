@@ -915,6 +915,24 @@ const handleModalVisibility = event => {
 const handleSurfaceUpdated = () => scheduleRefresh();
 if (bridgeScope) bridgeScope.listen(document, 'modal-visibility-changed', handleModalVisibility, undefined, 'settings-modal-visibility');
 else document.addEventListener('modal-visibility-changed', handleModalVisibility);
+
+// Collapse toggles for settings cards (vcp-settings-card). The card markup
+// is static business markup in main.html and outlives individual surface
+// mounts, so the toggle is a delegated listener rather than a per-mount
+// binding. Collapsed state is visual only — form serialization keeps
+// reading every field regardless of visibility.
+if (!globalThis.vcpSettingsCardToggleBound) {
+    globalThis.vcpSettingsCardToggleBound = true;
+    document.addEventListener('click', event => {
+        const toggle = event.target instanceof Element
+            ? event.target.closest('.vcp-settings-card-toggle') : null;
+        if (!toggle) return;
+        const card = toggle.closest('.vcp-settings-card');
+        if (!card) return;
+        const collapsed = card.classList.toggle('vcp-settings-card-collapsed');
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+    });
+}
 if (bridgeScope) {
     bridgeScope.listen(document, 'modal-ready', handleModalVisibility, undefined, 'settings-modal-ready');
     bridgeScope.listen(document, 'vcp-settings-surface-updated', handleSurfaceUpdated, undefined, 'settings-surface-updated');

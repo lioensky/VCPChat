@@ -1238,10 +1238,19 @@
                             <div class="settings-section" id="section-server-connection" data-settings-section-key="server-connection">
                                 <h3 class="settings-section-title">服务器连接</h3>
                                 <div class="vcp-settings-card" data-vcp-settings-card="vcp-connection">
-                                    <div class="vcp-settings-card-header">
-                                        <strong class="vcp-settings-card-title">VCP 连接</strong>
-                                        <small class="vcp-settings-card-description">连接 VCP 主服务与 WebSocket 的地址和鉴权。</small>
-                                    </div>
+                                    <button type="button" class="vcp-settings-card-toggle" aria-expanded="true"
+                                        aria-controls="vcpConnectionCardBody">
+                                        <span class="vcp-settings-card-heading">
+                                            <strong class="vcp-settings-card-title">VCP 连接</strong>
+                                            <small class="vcp-settings-card-description">连接 VCP 主服务与 WebSocket 的地址和鉴权。</small>
+                                        </span>
+                                        <svg class="vcp-settings-card-chevron" viewBox="0 0 16 16" fill="none"
+                                            stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                                            stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M3.5 6l4.5 4.5L12.5 6"></path>
+                                        </svg>
+                                    </button>
+                                    <div class="vcp-settings-card-body" id="vcpConnectionCardBody">
                                     <div class="vcp-settings-row vcp-settings-row-stacked">
                                         <label for="vcpServerUrl">VCP 服务器 URL</label>
                                         <input type="url" id="vcpServerUrl" name="vcpServerUrl"
@@ -1265,6 +1274,7 @@
                                     <div class="vcp-settings-row vcp-settings-row-stacked">
                                         <label for="vcpLogKey">VCP WebSocket鉴权 Key</label>
                                         <input type="password" id="vcpLogKey" name="vcpLogKey">
+                                    </div>
                                     </div>
                                 </div>
                                 <div class="vcp-settings-row">

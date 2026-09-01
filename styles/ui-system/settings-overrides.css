@@ -80,13 +80,51 @@
     background: var(--vcp-ui-bg-1);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card > .vcp-uiux-general-row:last-of-type {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card > .vcp-settings-card-body > .vcp-uiux-general-row:last-of-type {
     border-bottom: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-header {
+/* Card head is a real toggle button: whole head clickable, chevron marks
+   the state (down = collapsed, up = expanded). */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
     padding: 14px 0 10px;
+    border: 0;
     border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-heading {
+    display: block;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-chevron {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    color: var(--vcp-ui-text-3);
+    transition: transform 160ms ease;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card:not(.vcp-settings-card-collapsed) .vcp-settings-card-chevron {
+    transform: rotate(180deg);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card.vcp-settings-card-collapsed .vcp-settings-card-body {
+    display: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card.vcp-settings-card-collapsed {
+    padding-bottom: 4px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-title {
