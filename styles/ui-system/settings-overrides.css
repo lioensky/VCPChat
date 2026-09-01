@@ -49,6 +49,30 @@
     box-shadow: none;
 }
 
+/* Appearance home-visual toggles retain a legacy flex-card rule from the
+   studio surface. In Global Settings they are canonical two-column rows:
+   copy on the left, the native Uiux switch anchored to the far right. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-home-visual-setting {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    column-gap: 24px !important;
+    row-gap: 0 !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-home-visual-setting > .appearance-home-visual-copy {
+    grid-column: 1 !important;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-home-visual-setting > .switch {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+    align-self: center !important;
+    margin: 0 !important;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > label:first-child,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > span:first-child {
     min-width: 0;
