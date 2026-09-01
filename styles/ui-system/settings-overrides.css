@@ -49,6 +49,21 @@
     box-shadow: none;
 }
 
+/* Stacked row variant (opt in per row from main.html): copy on top, a
+   full-width control below — used for multiline prompt fields where a
+   280px side column is too narrow to be useful. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    row-gap: 8px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked textarea {
+    grid-column: 1;
+    width: 100%;
+    min-height: 96px;
+}
+
 /* Appearance home-visual toggles retain a legacy flex-card rule from the
    studio surface. In Global Settings they are canonical two-column rows:
    copy on the left, the native Uiux switch anchored to the far right. */
