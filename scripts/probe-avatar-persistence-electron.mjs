@@ -118,14 +118,22 @@ try {
             cardHeight: card?.height,
             avatarWidth: avatar?.width,
             avatarHeight: avatar?.height,
+            avatarCenter: avatar ? avatar.top + avatar.height / 2 : null,
+            valueCenter: value.top + value.height / 2,
+            cardCenter: card ? card.top + card.height / 2 : null,
         } : null;
     });
+    console.log('[avatar-probe] identity geometry', JSON.stringify(nameValueGeometry));
     assert.ok(nameValueGeometry && nameValueGeometry.editLeft - nameValueGeometry.valueRight <= 12,
         `username edit button must stay beside the name (gap ${nameValueGeometry ? nameValueGeometry.editLeft - nameValueGeometry.valueRight : 'n/a'}px)`);
     assert.ok(nameValueGeometry && nameValueGeometry.avatarWidth <= 52 && nameValueGeometry.avatarHeight <= 52,
         `identity avatar stays compact (${nameValueGeometry?.avatarWidth}x${nameValueGeometry?.avatarHeight}px)`);
     assert.ok(nameValueGeometry && nameValueGeometry.cardHeight <= 100,
         `identity card stays vertically compact (${nameValueGeometry?.cardHeight}px)`);
+    assert.ok(nameValueGeometry
+        && Math.abs(nameValueGeometry.avatarCenter - nameValueGeometry.cardCenter) <= 2
+        && Math.abs(nameValueGeometry.valueCenter - nameValueGeometry.cardCenter) <= 2,
+    `identity content stays centered in card (avatar ${nameValueGeometry?.avatarCenter}px, name ${nameValueGeometry?.valueCenter}px, card ${nameValueGeometry?.cardCenter}px)`);
     const originalName = await page.$eval('#userName', input => input.value);
     await page.click('.vcp-uiux-identity-name-edit');
     await waitFor('username editor', () => page.evaluate(() => {
