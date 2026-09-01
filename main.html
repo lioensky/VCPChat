@@ -1237,29 +1237,35 @@
                             <!-- 服务器连接 -->
                             <div class="settings-section" id="section-server-connection" data-settings-section-key="server-connection">
                                 <h3 class="settings-section-title">服务器连接</h3>
-                                <div class="vcp-settings-row">
-                                    <label for="vcpServerUrl">VCP 服务器 URL:</label>
-                                    <input type="url" id="vcpServerUrl" name="vcpServerUrl"
-                                        placeholder="将自动补全 /v1/chat/completions" required>
-                                </div>
-                                <div class="vcp-settings-row">
-                                    <label for="vcpApiKey">VCP API Key:</label>
-                                    <input type="password" id="vcpApiKey" name="vcpApiKey">
-                                </div>
-                                <div class="vcp-settings-row">
-                                    <label for="vcpLogUrl">VCP WebSocket服务器 URL:</label>
-                                    <input type="url" id="vcpLogUrl" name="vcpLogUrl">
-                                </div>
-                                <div class="vcp-settings-row">
-                                    <label for="fileKey">VCP文件/图床密码:</label>
-                                    <input type="password" id="fileKey" name="fileKey" placeholder="用于拼接表情包图片地址">
-                                    <small data-vcp-style="4">
-                                        用于访问VCP返回的文件/图片地址，将拼接为 [`/pw=密码/images或files/分类/文件名`]。
-                                    </small>
-                                </div>
-                                <div class="vcp-settings-row">
-                                    <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
-                                    <input type="password" id="vcpLogKey" name="vcpLogKey">
+                                <div class="vcp-settings-card" data-vcp-settings-card="vcp-connection">
+                                    <div class="vcp-settings-card-header">
+                                        <strong class="vcp-settings-card-title">VCP 连接</strong>
+                                        <small class="vcp-settings-card-description">连接 VCP 主服务与 WebSocket 的地址和鉴权。</small>
+                                    </div>
+                                    <div class="vcp-settings-row vcp-settings-row-stacked">
+                                        <label for="vcpServerUrl">VCP 服务器 URL</label>
+                                        <input type="url" id="vcpServerUrl" name="vcpServerUrl"
+                                            placeholder="将自动补全 /v1/chat/completions" required>
+                                    </div>
+                                    <div class="vcp-settings-row vcp-settings-row-stacked">
+                                        <label for="vcpApiKey">VCP API Key</label>
+                                        <input type="password" id="vcpApiKey" name="vcpApiKey">
+                                    </div>
+                                    <div class="vcp-settings-row vcp-settings-row-stacked">
+                                        <label for="vcpLogUrl">VCP WebSocket服务器 URL</label>
+                                        <input type="url" id="vcpLogUrl" name="vcpLogUrl">
+                                    </div>
+                                    <div class="vcp-settings-row vcp-settings-row-stacked">
+                                        <label for="fileKey">VCP文件/图床密码</label>
+                                        <input type="password" id="fileKey" name="fileKey" placeholder="用于拼接表情包图片地址">
+                                        <small data-vcp-style="4">
+                                            用于访问VCP返回的文件/图片地址，将拼接为 [`/pw=密码/images或files/分类/文件名`]。
+                                        </small>
+                                    </div>
+                                    <div class="vcp-settings-row vcp-settings-row-stacked">
+                                        <label for="vcpLogKey">VCP WebSocket鉴权 Key</label>
+                                        <input type="password" id="vcpLogKey" name="vcpLogKey">
+                                    </div>
                                 </div>
                                 <div class="vcp-settings-row">
                                     <label>网络笔记路径:</label>
