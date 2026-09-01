@@ -450,9 +450,9 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: 76px minmax(0, 1fr) max-content;
+    grid-template-columns: 60px minmax(0, 1fr) max-content;
     align-items: center;
-    gap: 0 14px;
+    gap: 0 10px;
     margin: 0 0 18px;
     padding: 14px 16px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
@@ -460,35 +460,37 @@
     background: var(--vcp-ui-fill-0);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 14px; min-width: 0; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 60px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper { grid-column: 1; grid-row: 1; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 68px; height: 68px; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display { width: 56px; height: 56px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper {
     grid-column: 2;
     grid-row: 1;
     display: grid;
-    grid-template-columns: minmax(0, 220px) auto auto;
-    grid-template-rows: 38px;
+    grid-template-columns: max-content 26px 26px;
+    grid-template-rows: 32px;
     align-items: center;
     align-self: center;
-    column-gap: 8px;
+    column-gap: 4px;
+    width: fit-content;
+    max-width: 100%;
     min-width: 0;
-    min-height: 38px;
+    min-height: 32px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > label { display: none; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input {
     width: 100% !important;
-    min-height: 36px !important;
-    height: 36px !important;
+    min-height: 32px !important;
+    height: 32px !important;
     margin: 0;
     box-sizing: border-box;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > .vcp-uiux-input-wrap {
     grid-column: 1;
     grid-row: 1;
-    width: min(220px, 100%) !important;
-    max-width: 220px;
+    width: 168px !important;
+    max-width: 168px;
     justify-self: start;
     align-self: center;
 }
@@ -500,20 +502,24 @@
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input[hidden] { display: none !important; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-display { display: contents; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 20px; font-weight: 600; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 18px; font-weight: 600; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-value { grid-column: 1; grid-row: 1; align-self: center; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; color: var(--vcp-ui-text-2); background: transparent; cursor: pointer; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel):hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel {
     grid-row: 1;
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     align-self: center;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit { grid-column: 2; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel { grid-column: 3; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel[hidden] { display: none !important; }
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper.is-editing {
+    grid-template-columns: 168px 26px 26px;
+}
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
     /* Keep both states in the same grid geometry.  If the collapsed state
@@ -523,7 +529,7 @@
     grid-column: 1 / -1;
     grid-row: 1 / span 2;
     display: grid;
-    grid-template-columns: 76px minmax(0, 1fr) 180px;
+    grid-template-columns: 60px minmax(0, 1fr) 180px;
     grid-template-rows: minmax(68px, auto) auto;
     margin: 0;
     border: 0;
