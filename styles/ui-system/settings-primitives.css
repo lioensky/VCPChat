@@ -77,7 +77,7 @@
     min-width: 0;
     min-height: 32px;
     margin: 0 0 10px;
-    padding: 0 4px 0 0;
+    padding: 0 16px 0 12px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-title-row > .vcp-uiux-settings-nav-title {
@@ -91,16 +91,24 @@
     z-index: 2;
     min-width: 0;
     margin: 0;
-    padding: 0 4px 0 8px;
-    background: var(--vcp-ui-bg-1);
+    padding: 0;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--vcp-ui-fill-0) 72%, transparent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-0) 6%, transparent);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-button {
+    display: inline-flex;
+    flex: 0 0 28px;
     width: 28px;
     height: 28px;
     padding: 0;
     border: 0;
     border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     color: var(--vcp-ui-text-2);
     background: transparent;
     cursor: pointer;
@@ -115,15 +123,20 @@
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-input {
+    flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    height: 30px;
-    padding: 0 8px;
+    height: 38px;
+    padding: 0 12px;
     border: 0;
     outline: 0;
     color: var(--vcp-ui-text-0);
     background: transparent;
     font: inherit;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-search-input:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--vcp-ui-accent);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-settings-nav-cell:hover {
