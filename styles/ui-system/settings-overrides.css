@@ -83,7 +83,7 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #networkNotesPathsContainer .network-path-input-group {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 8px;
     width: 100%;
     margin: 0;
@@ -103,7 +103,7 @@
     flex: 0 0 auto;
     width: auto;
     min-width: 0;
-    min-height: var(--vcp-ui-control-md, 32px);
+    min-height: 0;
     padding: 0 var(--vcp-ui-space-3, 12px);
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
     border-radius: var(--vcp-ui-radius-sm, 8px);
@@ -184,20 +184,41 @@
 
 /* Card footer strip for row-level actions (e.g. the network-notes add
    button): right-aligned under a hairline, like the card action bars. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-footer {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="network-notes"] .vcp-settings-card-body {
+    padding-top: 12px;
+}
+
+/* The add action is a full-width dashed affordance styled like one more
+   path row: same height as an input, centered label, plus glyph. It keeps
+   its own styling instead of the generated Button primitive. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-add-row {
     display: flex;
-    justify-content: flex-end;
-    padding: 12px 0 4px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-height: var(--vcp-ui-control-md, 32px);
+    padding: 0 12px;
+    margin: 8px 0 2px;
+    border: 1px dashed var(--vcp-ui-border, var(--vcp-ui-border-subtle, rgba(0, 0, 0, 0.18)));
+    border-radius: var(--vcp-ui-radius-md, 10px);
+    color: var(--vcp-ui-text-3);
+    background: transparent;
+    font-family: var(--vcp-ui-font-family, inherit);
+    font-size: var(--vcp-ui-font-body, 14px);
+    cursor: pointer;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-footer:empty {
-    display: none;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-add-row::before {
+    content: '+';
+    font-size: 16px;
+    line-height: 1;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-footer > button {
-    flex: 0 0 auto;
-    width: auto;
-    min-width: 96px;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-add-row:hover {
+    border-color: var(--vcp-ui-text-3);
+    color: var(--vcp-ui-text-1);
+    background: var(--vcp-ui-fill-0, rgba(0, 0, 0, 0.03));
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card.vcp-settings-card-collapsed {
