@@ -119,3 +119,10 @@ dsw 语义 CSS（单层级联）
 - 测试 18 例全绿；全套 371/373（仅剩 2 条基线既有失败）。
 - 实例探针扩到八分区：44/44——控件状态映射、style/类名集合逐分区与静态面一致；新增行为断言（外观原语收编 7 项、呈现模式/内容宽度依赖投影、工作台摘要与场景预览渲染）；探针时序教训：依赖行 radio 变更后须等防抖自动保存落盘再取静态面基线。
 - 像素对比：八分区全部 0.0000%（含 2292px 高的外观分区）。
+
+## 十二、M4 施工记录（已完成：单层化收尾，三段提交）
+
+- **M4-a 静态标记退役（b907010c）**：main.html 八个分区清空为壳（id + data-settings-section-key），2138→1724 行；schema-surface 移除 localStorage 开关门，enhanceGlobalSettings 管线前无条件原地替换。现值回填改由 typed-field-owners 快照投影按 id 承接（含 vcp-uiux-sync 同步胶囊显示）。六个静态标记扁平化契约测试合并为分区退役契约；保存链测试改经 applySchemaSurface 渲染后驱动。全套 366/368（2 条基线既有失败）。
+- **M4-b 覆盖层清零（66a26752）**：settings-overrides.css（1747 行）原文前置于 settings-template.css（保持相对级联顺序），入口移除导入。overrides 与 shell/primitives 本无同选择器重复（css-parts 跨分区测试既有约束），位移不改级联——八分区截图与合并前逐字节一致。css-parts 契约测试改写为合并部语义（横幅在前、canonicalized 声明在后、其后只允许 :is 机有声明）。
+- **M4-c 投影死代码退役（18de5bbe）**：removeLegacySubsectionHeadings（无人调用）与 sectionKeyForTitle 标题回填删除；schema-surface 的 adoptNodeIds 摘引/快照回填路径随静态面一并退役（首渲染无可采集现值，持久值全由 typed 投影回填）；分区归属契约脚本改查 schema 编译产物（JS 绑定 id ∈ main.html 壳 ∪ 渲染产物，423 个 id 交叉核对）。全套 365/367，探针 31/31，重启往返截图逐字节一致。
+- **验证基线变化**：M4 后不再有双面对照；验收判据改为「唯一 schema 面 + 重启往返等值 + 与 M3 静态面基线的跨会话像素对比」。跨会话对比存在亚像素字体栅格化噪声（≤0.9%，全部分布在文字行带内，内容逐字相同）；advanced-features 分区高度差为探针种子状态差异（净化开关），非回归。探针种子改用规范持久化格式（appearanceProfile/voiceNetworkSettings 嵌套；划词配置在其独立 store，settings.json 扁平键为历史遗留不参与回填）。
