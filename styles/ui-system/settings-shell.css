@@ -701,7 +701,7 @@
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #globalSettingsForm .vcp-uiux-color-pair input[type="text"]:is(:focus-visible, :focus) {
-        box-shadow: 0 0 0 3px var(--vcp-ui-focus-ring);
+        box-shadow: none;
         outline: none;
     }
 
