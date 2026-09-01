@@ -700,19 +700,23 @@ function mountSettingsShell(root) {
         });
     };
     const closeSearch = () => { state.query = ''; search.classList.remove('is-open'); title.hidden = false; searchInput.value = ''; searchInput.hidden = true; searchButton.hidden = false; renderList(); };
-    shellScope?.listen(searchButton, 'click', () => { search.classList.add('is-open'); title.hidden = true; searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); });
-    shellScope?.listen(searchInput, 'input', () => {
+    const listenSearch = (target, type, handler, label) => {
+        if (shellScope) shellScope.listen(target, type, handler, undefined, label);
+        else target.addEventListener(type, handler);
+    };
+    listenSearch(searchButton, 'click', () => { search.classList.add('is-open'); title.hidden = true; searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); }, 'settings-search-open');
+    listenSearch(searchInput, 'input', () => {
         state.query = searchInput.value.trim().toLocaleLowerCase();
         renderList();
         if (state.query) {
             const first = rows.find(row => !row.hidden);
             if (first && first.dataset.section !== state.active) activateSection(first.dataset.section);
         }
-    });
-    shellScope?.listen(searchInput, 'keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); searchButton.focus(); } });
-    shellScope?.listen(document, 'pointerdown', event => {
+    }, 'settings-search-input');
+    listenSearch(searchInput, 'keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); searchButton.focus(); } }, 'settings-search-escape');
+    listenSearch(document, 'pointerdown', event => {
         if (search.classList.contains('is-open') && !search.contains(event.target)) closeSearch();
-    });
+    }, 'settings-search-outside');
 
     const activateSection = (value) => {
         if (!state.meta.some(item => item.value === value)) return;
