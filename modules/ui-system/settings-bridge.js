@@ -703,6 +703,9 @@ function mountSettingsShell(root) {
     shellScope?.listen(searchButton, 'click', () => { search.classList.add('is-open'); searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); });
     shellScope?.listen(searchInput, 'input', () => { state.query = searchInput.value.trim().toLocaleLowerCase(); renderList(); });
     shellScope?.listen(searchInput, 'keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); searchButton.focus(); } });
+    shellScope?.listen(document, 'pointerdown', event => {
+        if (search.classList.contains('is-open') && !search.contains(event.target)) closeSearch();
+    });
 
     const activateSection = (value) => {
         if (!state.meta.some(item => item.value === value)) return;
