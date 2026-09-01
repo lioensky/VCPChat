@@ -470,6 +470,74 @@
     box-shadow: none;
 }
 
+/* Scenario preview follows the Harness 2x2 card gallery: four equal cards,
+   stable gutters and a single-column fallback for narrow settings panes. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    margin-top: 8px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-card {
+    display: flex;
+    min-width: 0;
+    min-height: 176px;
+    flex-direction: column;
+    padding: 16px;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border-radius: 12px;
+    background: #fff;
+    box-sizing: border-box;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-card:hover {
+    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-title {
+    margin: 0 0 10px;
+    color: var(--vcp-ui-text-0);
+    font-size: var(--vcp-ui-font-body);
+    font-weight: 600;
+    line-height: 22px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-body {
+    min-width: 0;
+    color: var(--vcp-ui-text-1);
+    font-size: var(--vcp-ui-font-body);
+    line-height: 24px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-code {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 14px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-controls > div {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+@media (max-width: 620px) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* User identity is a compact summary card; custom colors expand from its
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
