@@ -1,0 +1,84 @@
+# 研究方案 · 全局设置 schema 渲染终态（实验分支）
+
+> 分支：`exp/settings-schema`（自 `pr/global-settings-unified-ui` f894b317 分出）。
+> 性质：实验项，不受"小步可审查 PR"约束；任何中间态可停、可独立评估。
+> 硬约束：**视觉零变化**（像素级走查为准）；**行为契约不变**（设置 key 与 settings.json 结构、autosave 语义、i18n 文案全部保持）。
+
+## 一、要解决的债（现状账单，2026-09-01 实测）
+
+| 债务 | 规模 | 性质 |
+|---|---|---|
+| `styles/ui-system/settings-*.css` | 3,333 行 | 级联税：选择器越写越长，改一处要和三层作用域打架 |
+| `modules/ui-system/settings-bridge.js` | 991 行 | DOM 手术：挂载/拆桥/守卫/重投影 |
+| `modules/ui-system/typed-field-owners.js` | 892 行 | 手写 key→控件投影表，逐字段 set/check |
+| `modules/ui-system/settings/`（23 个模块） | 1,604 行 | canonical-rows、select-projection、4 个 visibility、choice/forum/identity/home/appearance 按域补丁 |
+| `main.html` 全局设置模板 | ~800 行静态标记 + 100 个 `data-vcp-style` 标记 | 双源事实：HTML 是事实，JS 再"翻译"一遍 |
+| `modules/global-settings-manager.js` | 440 行 | 按控件 id 逐个收集/回填 DOM |
+
+根因（七节定调）：新视觉层是**投影在 legacy DOM 上**，不是**拥有自己的 DOM**。投影态的债是持续收的级联税；schema 态的债是一次性迁移成本。
+
+## 二、终态架构
+
+```
+modules/settings/schema/*.js        ← 唯一事实源：每分区一个 schema
+   （key / type / label / hint / default / component / visibleIf）
+        ↓ 渲染
+modules/settings/render/*.js       ← schema → DOM，挂 uiux 原语
+   （字段渲染器 + 分区渲染器；胶囊 Select/Input/Stepper 即原语产物）
+        ↓ 状态
+modules/settings/store.js          ← key → patch → IPC 保存
+   （接管 save-coordinator 的 autosave 语义）
+        ↓ 唯一样式层
+dsw 语义 CSS（单层级联）
+   （settings-overrides.css 清零；类名即语义，无三层作用域对抗）
+```
+
+各债务的消灭方式：
+
+- `main.html` 设置标记、`data-vcp-style`、`typed-field-owners` 手写投影表 → 被 schema 取代（字段一处声明，渲染/收集/回填全由此推导）。
+- `canonical-rows` / `select-projection` / 按域补丁 → 渲染器直接产出正确结构，无需术后矫正。
+- 4 个 visibility 模块 → schema `visibleIf` 声明式依赖，渲染器统一求值。
+- `settings-overrides.css` → 渲染产物直接带语义类，级联单层。
+- `global-settings-manager` 的 DOM 收集 → store 按 schema key 读写。
+
+## 三、双轨运行（关键工程决策）
+
+实验分支与 PR 分支（`pr/global-settings-unified-ui`）并行：
+
+1. 实验分支用**运行时开关**（`VCPCHAT_SETTINGS_SCHEMA=1`）切换新旧 surface，新旧可实时对比——这是"视觉零变化"的验收工具，也是回退保险。
+2. 定期 rebase 到 PR 分支。冲突面集中在**将被删除的文件**（main.html 设置标记、settings/ 投影模块），属"我们删了 vs 上游改了"，好解：维持删除。
+3. PR 分支继续收用户反馈的 UI 修复（如本轮的卡片/堆叠系列）；这些修复在实验分支以 schema 形式重表达，不复刻补丁。
+
+## 四、迁移顺序（由简到繁，每分区一个提交）
+
+| 阶段 | 分区 | 原因 |
+|---|---|---|
+| M0 内核 | schema 内核 + 渲染器骨架 + 开关；**快捷操作**试点 | 最简、纯文本/数字/开关，本轮刚做过堆叠与卡片，视觉基准最新 |
+| M1 静态分区 | 用户身份、服务器连接、消息渲染、划词助手、语音设置 | 字段类型收敛（text/url/password/select/switch），visibility 少 |
+| M2 依赖分区 | 高级功能 | `visibleIf` 首个实战（advanced/render/rust visibility 合一） |
+| M3 外观 | 界面与外观 | 最重：appearance-studio 联动、stepper 提交式编辑、白屏修复的等价重构 |
+| M4 单层化 | 删 `main.html` 设置标记、`settings/` 投影模块下线、`settings-overrides.css` 清零 | 全部迁移完成后执行 |
+
+每分区迁移 = 声明 schema → 渲染器出 DOM → 逻辑切 store → 删该分区 legacy 标记与对应经典 CSS → 走查。
+
+## 五、验收标准（每分区、每里程碑）
+
+1. **像素走查**：新旧 surface 逐分区 CDP 截图对比（同 appdata、同主题、同窗口尺寸），无可见差异。
+2. **行为等价**：设置 key 与保存结果不变——改字段→autosave→重开回填一致；special 键（颜色对、外观数值、stepper 提交式）逐个过。
+3. **级联健康度**：`settings-overrides.css` 行数单调下降，M4 归零。
+4. **回归防线**：现有 353 个测试不回退；为 store/schema 补单测（schema 完整性、visibleIf 求值、patch 语义）。
+
+## 六、风险与对策
+
+- **文案/结构遗漏**：schema 从 main.html 一次性机械提取（写提取脚本生成初稿，人工核对），不靠手抄。
+- **special 控件行为**：颜色对、stepper、外观数值等有隐藏交互语义，参考老分支 `backup/pre-squash-20260830` 的 `modules/ui-system/settings/*-controls.js` 对照移植（该分支只提取不复活）。
+- **appearance-studio 耦合**：M3 前不动它；studio 读写的 profile key 保持，渲染层替换后 studio 只换取数来源。
+- **半途停滞**：双轨开关保证任何阶段可停——旧 surface 始终可用，实验分支不影响任何在用功能。
+
+## 七、起步动作（M0 清单）
+
+1. `modules/settings/schema/quick-actions.js`：从 main.html `section-quick-actions` 机械提取。
+2. `modules/settings/render/field-renderer.js`：type→uiux 原语映射（text/password/url→Input，textarea→多行，number→Stepper，select→胶囊 Select，switch→Switch，button→Button）。
+3. `modules/settings/store.js`：接管 save-coordinator 客户端注册，patch 语义与 typed-field-owners 现状一致。
+4. 开关挂载：`VCPCHAT_SETTINGS_SCHEMA=1` 时全局设置弹窗渲染 schema surface，否则走现桥。
+5. 像素对比脚本（CDP 截图新旧 surface 同分区）入 `scripts/`。
