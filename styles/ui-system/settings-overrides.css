@@ -474,12 +474,16 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-edit:hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
     margin: 0;
     border: 0;
     background: transparent;
     align-self: center;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) > #userName {
+    display: none !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header {
