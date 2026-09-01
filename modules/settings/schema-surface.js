@@ -12,18 +12,20 @@ import { serverConnectionSection } from './schema/server-connection.js';
 import { renderSettingsSection } from './schema/render-settings.js';
 import { selectionAssistantSection } from './schema/selection-assistant.js';
 import { voiceSettingsSection } from './schema/voice-settings.js';
+import { advancedFeaturesSection } from './schema/advanced-features.js';
 import { renderSchemaSection } from './render/field-renderer.js';
 import { captureSectionValues, restoreSectionValues } from './store.js';
 
 const SCHEMA_TOGGLE_KEY = 'vcpchat-settings-schema';
 
-// 已迁移到 schema 渲染的分区清单；每完成一个阶段（M2-M3）在此登记。
+// 已迁移到 schema 渲染的分区清单；M3（界面与外观）完成后收齐全部。
 const SCHEMA_SECTIONS = Object.freeze([
     userIdentitySection,
     serverConnectionSection,
     renderSettingsSection,
     selectionAssistantSection,
     voiceSettingsSection,
+    advancedFeaturesSection,
     quickActionsSection,
 ]);
 

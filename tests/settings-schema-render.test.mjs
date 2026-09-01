@@ -8,6 +8,7 @@ import { serverConnectionSection } from '../modules/settings/schema/server-conne
 import { renderSettingsSection } from '../modules/settings/schema/render-settings.js';
 import { selectionAssistantSection } from '../modules/settings/schema/selection-assistant.js';
 import { voiceSettingsSection } from '../modules/settings/schema/voice-settings.js';
+import { advancedFeaturesSection } from '../modules/settings/schema/advanced-features.js';
 import { renderSchemaSection, renderSchemaField } from '../modules/settings/render/field-renderer.js';
 import { captureSectionValues, restoreSectionValues, readControlById } from '../modules/settings/store.js';
 import { applySchemaSurface, isSchemaSurfaceEnabled, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
@@ -31,10 +32,10 @@ function renderIntoForm(sectionDescriptor) {
     return { form, host };
 }
 
-test('六分区全部登记且 schema 编译无异常', () => {
+test('七分区全部登记且 schema 编译无异常', () => {
     const keys = schemaSurfaceSections().map(s => s.key);
     assert.deepEqual(keys, ['user-identity', 'server-connection', 'render-settings',
-        'selection-assistant', 'voice-settings', 'quick-actions']);
+        'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']);
     for (const sectionDescriptor of schemaSurfaceSections()) {
         const nodes = renderSchemaSection(sectionDescriptor, doc);
         assert.ok(nodes.length > 1, `${sectionDescriptor.key} 应编译出标题与行`);
@@ -219,6 +220,35 @@ test('voice-settings：单选组结构与胶囊 select 行', () => {
     assert.equal(form.querySelector('#voiceLocalSovitsUrl').getAttribute('type'), 'url');
     assert.equal(form.querySelector('#voiceInputModeRow').classList.contains('vcp-settings-row'), true);
     assert.equal(form.querySelector('#voiceInputMode').hidden, true);
+});
+
+test('advanced-features：依赖行、分隔线与模型复合控件', () => {
+    const { form, host } = renderIntoForm(advancedFeaturesSection);
+    for (const id of ['enableDistributedServer', 'enableVcpToolInjection', 'enableThoughtChainInjection',
+        'enableAiMessageButtons', 'enableContextSanitizer', 'contextSanitizerDepthContainer',
+        'contextSanitizerDepth', 'agentMusicControl', 'topicSummaryModelContainer', 'topicSummaryModel',
+        'openTopicSummaryModelSelectBtn']) {
+        assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
+    }
+    // 净化深度行：依赖子句 + 历史样式
+    const depthRow = form.querySelector('#contextSanitizerDepthContainer');
+    assert.equal(depthRow.getAttribute('data-vcp-style'), '34');
+    assert.equal(depthRow.getAttribute('data-visible-when'), 'enableContextSanitizer');
+    assert.equal(form.querySelector('#contextSanitizerDepth').getAttribute('data-vcp-style'), '19');
+    assert.equal(form.querySelector('#contextSanitizerDepth').value, '2');
+    // 开关行的 title 提示
+    assert.ok(form.querySelector('label[for="enableThoughtChainInjection"][title]'));
+    // 分隔线与模型复合控件
+    const hr = host.querySelector('hr');
+    assert.equal(hr.getAttribute('data-vcp-style'), '36');
+    assert.ok(form.querySelector('#topicSummaryModelContainer .model-input-container button svg'));
+    // 复合控件内部输入可快照迁移
+    form.querySelector('#topicSummaryModel').value = 'gpt-x';
+    const snapshot = captureSectionValues(form, advancedFeaturesSection);
+    assert.equal(snapshot.get('topicSummaryModel'), 'gpt-x');
+    host.replaceChildren(...renderSchemaSection(advancedFeaturesSection, doc));
+    restoreSectionValues(form, snapshot);
+    assert.equal(form.querySelector('#topicSummaryModel').value, 'gpt-x');
 });
 
 test('canonical-rows 对编译产物投影出与静态标记一致的 canonical 行', () => {

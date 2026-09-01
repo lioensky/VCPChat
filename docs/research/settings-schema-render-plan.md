@@ -104,3 +104,8 @@ dsw 语义 CSS（单层级联）
 - 测试：单测 14 例全绿；全套 367/369（仍只剩 2 条基线既有失败）。
 - 实例验证：33/33——六分区控件状态映射（value/checked/行可见性/hidden/选项数）schema 面 vs 静态面逐项一致；data-vcp-style 标记集与行类名集合逐分区一致；行为断言（卡片折叠、网络笔记动态行、动画预设显隐、划词依赖投影、语音单选+choice 收编、M1 字段 autosave 落盘含 URL 自动补全）全过。
 - 像素对比：六分区截图像素差异 0（render-settings 有 1 字节纯白区渲染抖动，2,003,463 字节中 1 字节）。
+
+## 十、M2 施工记录（已完成：高级功能分区）
+
+- schema/advanced-features：五枚开关（33×4/15/35 历史样式与 title 提示保留）、净化深度依赖行（容器 id 锚点 + data-visible-when）、hr 分隔线（36）与话题总结模型复合控件（model-input-container，mountTypedTopicSummaryModelPicker 接管，内部输入经 captureKeys 快照迁移）。
+- 测试 15 例全绿；全套不回退；实例探针扩到七分区：37/37（控件状态映射、style/类名集合逐项一致 + 既有行为断言）；分区像素差异 0。
