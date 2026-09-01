@@ -456,6 +456,7 @@
     margin: 0 0 18px;
     padding: 10px 14px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border)) !important;
     border-radius: 14px;
     background: #fff;
 }
