@@ -64,6 +64,55 @@
     min-height: 96px;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row.vcp-settings-row-stacked > input {
+    grid-column: 1;
+    width: 100%;
+}
+
+/* Settings card: groups related rows behind a titled frame (e.g. the
+   server-connection VCP fields). The wrapper is presentation-only — the
+   canonical row projection and form serialization are untouched. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card {
+    margin: 8px 0 16px;
+    padding: 4px 20px 8px;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+    border-radius: 12px;
+    background: var(--vcp-ui-bg-1);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card > .vcp-uiux-general-row:last-of-type {
+    border-bottom: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-header {
+    padding: 14px 0 10px;
+    border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, 0.12)));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-title {
+    display: block;
+    color: var(--vcp-ui-text-0);
+    font-size: var(--vcp-ui-font-body);
+    font-weight: 600;
+    line-height: 24px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-description {
+    display: block;
+    margin-top: 2px;
+    color: var(--vcp-ui-text-3);
+    font-size: var(--vcp-ui-font-caption);
+    line-height: var(--vcp-ui-line-body, 20px);
+}
+
+/* Field labels inside a card read as form-field titles (image contract:
+   prominent label above a full-width input), not as side-column captions. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card .vcp-settings-row-stacked > label {
+    color: var(--vcp-ui-text-0);
+    font-size: var(--vcp-ui-font-body);
+    font-weight: 600;
+}
+
 /* Appearance home-visual toggles retain a legacy flex-card rule from the
    studio surface. In Global Settings they are canonical two-column rows:
    copy on the left, the native Uiux switch anchored to the far right. */
