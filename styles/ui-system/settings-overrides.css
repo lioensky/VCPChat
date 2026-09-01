@@ -450,7 +450,7 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: 76px minmax(0, 1fr) auto;
+    grid-template-columns: 76px minmax(180px, 1fr) auto;
     align-items: center;
     gap: 0 14px;
     margin: 0 0 18px;
@@ -480,17 +480,21 @@
     border: 0;
     background: transparent;
     align-self: center;
+    justify-self: end;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) > #userName {
     display: none !important;
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper:not(.is-editing) .vcp-uiux-input-wrap { display: none !important; }
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header {
     padding: 8px 14px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 999px;
     white-space: nowrap;
+    max-width: 190px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
