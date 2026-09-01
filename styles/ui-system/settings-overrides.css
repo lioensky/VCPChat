@@ -489,6 +489,7 @@
     background: transparent;
     align-self: stretch;
     justify-self: stretch;
+    pointer-events: none;
 }
 
 /* The capsule itself stays compact; the parent remains full-width so the
@@ -522,6 +523,7 @@
     max-width: 180px;
     color: var(--vcp-ui-text-1);
     background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+    pointer-events: auto;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header:hover {
@@ -532,6 +534,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
     grid-column: 1 / -1;
     grid-row: 2;
+    pointer-events: auto;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-dependent-panel {

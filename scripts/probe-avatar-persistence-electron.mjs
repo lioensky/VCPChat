@@ -102,6 +102,17 @@ try {
         `custom style capsule must be right aligned (inset ${geometry.rightInset}px)`);
     assert.ok(geometry.capsuleWidth <= 200, `custom style capsule remains compact (${geometry.capsuleWidth}px)`);
     console.log('[avatar-probe] custom style capsule geometry is right-aligned', JSON.stringify(geometry));
+
+    await page.click('.vcp-uiux-identity-name-edit');
+    await waitFor('username editor', () => page.evaluate(() => {
+        const input = document.getElementById('userName');
+        const display = document.querySelector('.vcp-uiux-identity-name-value');
+        return Boolean(input && !input.hidden && display?.hidden
+            && document.activeElement === input);
+    }));
+    console.log('[avatar-probe] username edit button receives pointer input and focuses the editor');
+    await page.click('.vcp-uiux-identity-name-edit');
+
     await page.evaluate(() => document.getElementById('userStyleCollapseHeader')?.click());
     await waitFor('expanded style disclosure', () => page.evaluate(() => !document.querySelector('.vcp-uiux-user-profile-card .agent-style-collapsible-container')?.classList.contains('collapsed')));
     const expandedGeometry = await page.evaluate(() => {

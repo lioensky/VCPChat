@@ -464,10 +464,45 @@ function restoreFormIcons(root) {
     delete root.dataset.vcpSettingsIconsNormalized;
 }
 
+function bindIdentityNameEditor(form) {
+    const nameInput = form?.querySelector('#userName');
+    const nameDisplay = form?.querySelector('.vcp-uiux-identity-name-value');
+    const nameEdit = form?.querySelector('.vcp-uiux-identity-name-edit');
+    if (!nameInput || !nameDisplay || !nameEdit || nameEdit.dataset.vcpIdentityNameBound === 'true') return;
+    const shellScope = ensurePresentationScope();
+    const syncName = () => { nameDisplay.textContent = nameInput.value || '用户'; };
+    const setEditing = editing => {
+        nameEdit.dataset.vcpIdentityNameBound = 'true';
+        nameEdit.dataset.vcpIdentityNameEditing = String(editing);
+        nameEdit.setAttribute('aria-label', editing ? '完成用户名编辑' : '修改用户名');
+        // The icon adapter owns the SVG inside this button. Do not write
+        // textContent here: doing so would remove the rendered SVG paths.
+        nameInput.hidden = !editing;
+        nameDisplay.hidden = editing;
+        nameInput.closest('.agent-name-wrapper')?.classList.toggle('is-editing', editing);
+        if (editing) { nameInput.focus(); nameInput.select(); }
+    };
+    nameInput.hidden = true;
+    syncName();
+    const listenIdentity = (target, type, handler, label) => shellScope ? shellScope.listen(target, type, handler, undefined, label) : target.addEventListener(type, handler);
+    listenIdentity(nameEdit, 'click', () => setEditing(nameEdit.dataset.vcpIdentityNameEditing !== 'true'), 'identity-name-edit');
+    listenIdentity(nameInput, 'input', syncName, 'identity-name-input');
+    listenIdentity(nameInput, 'keydown', event => {
+        if (event.key === 'Enter') { event.preventDefault(); setEditing(false); }
+        if (event.key === 'Escape') { event.preventDefault(); syncName(); setEditing(false); }
+    }, 'identity-name-keys');
+    nameEdit.dataset.vcpIdentityNameBound = 'true';
+    shellScope?.own(() => {
+        delete nameEdit.dataset.vcpIdentityNameBound;
+        delete nameEdit.dataset.vcpIdentityNameEditing;
+    }, 'identity-name-editor-markers', 'ui-presentation');
+}
+
 // SettingsShell build: assemble a live Uiux SettingsRoot primitive tree.
 // The original form sections remain the business source of truth; only the
 // shell chrome (nav/header/options) is reconstructed here.
 function mountSettingsShell(root) {
+    bindIdentityNameEditor(root.querySelector('#globalSettingsForm'));
     if (root.querySelector('.vcp-uiux-settings-panel')) {
         reconcileSettingsShell(root);
         return;
@@ -485,33 +520,6 @@ function mountSettingsShell(root) {
     if (!panel || !layout || !nav || !content || !form || !title || !close) {
         return;
     }
-    const nameInput = form.querySelector('#userName');
-    const nameDisplay = form.querySelector('.vcp-uiux-identity-name-value');
-    const nameEdit = form.querySelector('.vcp-uiux-identity-name-edit');
-    if (nameInput && nameDisplay && nameEdit && !nameEdit.dataset.vcpIdentityNameBound) {
-        const syncName = () => { nameDisplay.textContent = nameInput.value || '用户'; };
-        const setEditing = editing => {
-            nameEdit.dataset.vcpIdentityNameBound = 'true';
-            nameEdit.dataset.vcpIdentityNameEditing = String(editing);
-            nameEdit.setAttribute('aria-label', editing ? '完成用户名编辑' : '修改用户名');
-            nameEdit.querySelector('.vcp-ui-icon').textContent = editing ? 'check' : 'edit';
-            nameInput.hidden = !editing;
-            nameDisplay.hidden = editing;
-            nameInput.closest('.agent-name-wrapper')?.classList.toggle('is-editing', editing);
-            if (editing) { nameInput.focus(); nameInput.select(); }
-        };
-        nameInput.hidden = true;
-        syncName();
-        const listenIdentity = (target, type, handler, label) => shellScope ? shellScope.listen(target, type, handler, undefined, label) : target.addEventListener(type, handler);
-        listenIdentity(nameEdit, 'click', () => setEditing(nameEdit.dataset.vcpIdentityNameEditing !== 'true'), 'identity-name-edit');
-        listenIdentity(nameInput, 'input', syncName, 'identity-name-input');
-        listenIdentity(nameInput, 'keydown', event => { if (event.key === 'Enter') { event.preventDefault(); setEditing(false); } if (event.key === 'Escape') { event.preventDefault(); syncName(); setEditing(false); } }, 'identity-name-keys');
-        shellScope?.own(() => {
-            delete nameEdit.dataset.vcpIdentityNameBound;
-            delete nameEdit.dataset.vcpIdentityNameEditing;
-        }, 'identity-name-editor-markers', 'ui-presentation');
-    }
-
     let meta = [];
     try {
         const sourceMeta = JSON.parse(nav.dataset.settingsSections || '[]');
@@ -857,6 +865,10 @@ function teardown() {
 
 const handleModalVisibility = event => {
     if (event.detail?.modalId === 'globalSettingsModal') {
+        if (event.detail?.active !== false) {
+            const root = event.detail?.root || document.getElementById('globalSettingsModal');
+            bindIdentityNameEditor(root?.querySelector('#globalSettingsForm'));
+        }
         if (event.detail?.active === false) flushSettingsAutosave();
         scheduleRefresh();
     }
