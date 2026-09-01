@@ -532,6 +532,27 @@
     flex: 1 1 auto;
 }
 
+/* The card title already names the scenario, so the generated LanguageRow
+   copy would repeat "聊天字体/场景字体". Keep only the compact Harness pill
+   at the card's lower-right corner. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-controls .vcp-uiux-language-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-controls .vcp-uiux-language-row-text {
+    display: none;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-controls .vcp-uiux-language-row-selector {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
 @media (max-width: 620px) {
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid {
         grid-template-columns: minmax(0, 1fr);
