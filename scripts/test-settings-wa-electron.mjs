@@ -256,6 +256,22 @@ try {
         assert.ok(geometry.toggleTop < geometry.copyBottom && geometry.toggleBottom > geometry.copyTop, `bubble option switch ${index + 1} shares the copy row: ${JSON.stringify(geometry)}`);
     });
     console.log('  [PASS] bubble option switches stay on the right');
+
+    const contentWidthGeometry = await page.evaluate(() => {
+        const input = document.getElementById('chatLayoutModeNormal');
+        const row = input?.closest('.vcp-uiux-general-row');
+        const copy = row?.querySelector('.vcp-uiux-row-copy') || row?.querySelector(':scope > label:first-child');
+        const choice = row?.querySelector('.vcp-settings-control-row, .vcp-uiux-choice');
+        if (!row || !copy || !choice) return null;
+        const rowRect = row.getBoundingClientRect();
+        const copyRect = copy.getBoundingClientRect();
+        const choiceRect = choice.getBoundingClientRect();
+        return { rowRight: rowRect.right, copyTop: copyRect.top, copyBottom: copyRect.bottom, choiceLeft: choiceRect.left, choiceRight: choiceRect.right, choiceTop: choiceRect.top, choiceBottom: choiceRect.bottom };
+    });
+    assert.ok(contentWidthGeometry, 'content-width choice row is present');
+    assert.ok(contentWidthGeometry.choiceRight >= contentWidthGeometry.rowRight - 4, `content-width choice is right aligned: ${JSON.stringify(contentWidthGeometry)}`);
+    assert.ok(contentWidthGeometry.choiceTop < contentWidthGeometry.copyBottom && contentWidthGeometry.choiceBottom > contentWidthGeometry.copyTop, `content-width choice shares the title row: ${JSON.stringify(contentWidthGeometry)}`);
+    console.log('  [PASS] content-width choice stays on the right');
     await page.evaluate(() => document.querySelectorAll('#globalSettingsModal .vcp-uiux-settings-nav-cell')[0]?.click());
     await page.waitForFunction(() => document.querySelector('#globalSettingsModal .settings-section.active')?.id === 'section-user-identity', { timeout: timeoutMs });
 
