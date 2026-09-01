@@ -699,8 +699,8 @@ function mountSettingsShell(root) {
             section.removeAttribute('aria-hidden');
         });
     };
-    const closeSearch = () => { state.query = ''; search.classList.remove('is-open'); searchInput.value = ''; searchInput.hidden = true; searchButton.hidden = false; renderList(); };
-    shellScope?.listen(searchButton, 'click', () => { search.classList.add('is-open'); searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); });
+    const closeSearch = () => { state.query = ''; search.classList.remove('is-open'); title.hidden = false; searchInput.value = ''; searchInput.hidden = true; searchButton.hidden = false; renderList(); };
+    shellScope?.listen(searchButton, 'click', () => { search.classList.add('is-open'); title.hidden = true; searchButton.hidden = true; searchInput.hidden = false; searchInput.focus({ preventScroll: true }); });
     shellScope?.listen(searchInput, 'input', () => { state.query = searchInput.value.trim().toLocaleLowerCase(); renderList(); });
     shellScope?.listen(searchInput, 'keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); searchButton.focus(); } });
     shellScope?.listen(document, 'pointerdown', event => {

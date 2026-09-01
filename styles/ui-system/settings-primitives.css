@@ -94,7 +94,7 @@
     padding: 0;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 12px;
-    background: color-mix(in srgb, var(--vcp-ui-fill-0) 72%, transparent);
+    background: var(--vcp-ui-bg-1);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--vcp-ui-text-0) 6%, transparent);
 }
 
