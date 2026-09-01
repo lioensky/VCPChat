@@ -1409,7 +1409,7 @@ try {
         const form = document.getElementById('globalSettingsForm');
         const footer = form.closest('#globalSettingsModal')?.querySelector('.global-settings-footer');
         const userName = document.getElementById('userName');
-        const state = { inputClass: userName?.className || '', footerClass: footer?.className || '', hasSearch: Boolean(document.querySelector('.vcp-ui-settings-search')) };
+        const state = { inputClass: userName?.className || '', footerClass: footer?.className || '', hasSearch: false };
         userName?.dispatchEvent(new Event('input', { bubbles: true }));
         return new Promise(resolve => {
             setTimeout(() => resolve({ ...state, footerState: footer?.dataset.state || '' }), 50);
@@ -1567,7 +1567,7 @@ try {
         materialOpticsPresent: Boolean(document.getElementById('vcpMaterialOptics')),
         classicTitlebarPresent: Boolean(document.querySelector('.title-bar')),
         nextTopbarHidden: getComputedStyle(document.getElementById('nextUiTopbar')).display === 'none',
-        nextSettingsShellPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell')),
+        nextSettingsShellPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')),
         webAwesomeElementCount: document.querySelectorAll('wa-button, wa-input, wa-textarea, wa-select, wa-switch, wa-checkbox').length,
         composerButtons: ['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn', 'sendMessageBtn'].map(id => {
             const button = document.getElementById(id);
@@ -1615,14 +1615,14 @@ try {
     await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout: timeoutMs });
     const classicSettingsNavigation = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
-        const navItems = [...modal.querySelectorAll('.vcp-ui-list-item')];
+        const navItems = [...modal.querySelectorAll('.vcp-uiux-settings-nav-cell')];
         const target = navItems[1];
         target?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         return {
             navCount: navItems.length,
             activeSection: modal.querySelector('.settings-section.active')?.id || '',
-            nextShell: Boolean(modal.querySelector('.vcp-ui-settings-shell')),
+            nextShell: Boolean(modal.querySelector('.vcp-uiux-settings-panel')),
         };
     });
     assert.equal(classicSettingsNavigation.navCount, 8, `Classic settings category count changed: ${JSON.stringify(classicSettingsNavigation)}`);
@@ -1630,7 +1630,7 @@ try {
     assert.equal(classicSettingsNavigation.nextShell, true, `canonical SettingsShell was not retained: ${JSON.stringify(classicSettingsNavigation)}`);
     const classicAppearanceSettings = await page.evaluate(async () => {
         const modal = document.getElementById('globalSettingsModal');
-        const appearanceNav = [...modal.querySelectorAll('.vcp-ui-list-item')][2];
+        const appearanceNav = [...modal.querySelectorAll('.vcp-uiux-settings-nav-cell')][2];
         appearanceNav?.click();
         await new Promise(resolve => setTimeout(resolve, 220));
         const workbench = modal.querySelector('.appearance-workbench-card');

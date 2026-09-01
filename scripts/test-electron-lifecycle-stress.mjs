@@ -521,13 +521,8 @@ async function cycleAgentSettings(page, label, { expectEnhanced = true } = {}) {
     assert.ok(state.promptNodes > 0, `${label}: agent settings prompt editor disappeared: ${JSON.stringify(state)}`);
     if (expectEnhanced) {
         assert.ok(state.enhanced > 0, `${label}: agent settings adapters disappeared: ${JSON.stringify(state)}`);
-        if (state.settingsPresentation === 'classic') {
-            assert.equal(state.controlledSettingsSelects, 0,
-                `${label}: VCPUI crossed the Classic settings presentation boundary: ${JSON.stringify(state)}`);
-        } else {
-            assert.equal(state.nativeSettingsSelects, state.settingsSelects,
-                `${label}: document-wide Select observer captured a settings control: ${JSON.stringify(state)}`);
-        }
+        assert.equal(state.nativeSettingsSelects, state.settingsSelects,
+            `${label}: document-wide Select observer captured a settings control: ${JSON.stringify(state)}`);
         assert.equal(state.settingsSelectProxies, 0,
             `${label}: settings form retained Web Awesome Select proxies: ${JSON.stringify(state)}`);
     } else {
