@@ -2,9 +2,10 @@
    This file is an entry point only: every rule lives in a single-concern
    part file and the import order below reproduces the original cascade
    byte-for-byte. Do not add rules here and do not reorder the imports;
-   the uiux-settings-css-parts invariant test enforces both. */
+   the uiux-settings-css-parts invariant test enforces both.
+   M4：settings-overrides.css 已整块并入 settings-template.css（保持相对
+   级联顺序），覆盖层文件退役。 */
 @import url('./settings-shell.css');
-@import url('./settings-overrides.css');
 @import url('./settings-primitives.css');
 @import url('./settings-template.css');
 @import url('./settings-portal.css');

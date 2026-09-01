@@ -15,9 +15,8 @@ const styleDir = path.join(process.cwd(), 'styles', 'ui-system');
 const entryPath = path.join(styleDir, 'settings.css');
 const ENTRY_PARTS = [
     'settings-shell.css',       // layered shell/typography/controls/cards/avatar
-    'settings-overrides.css',   // unlayered legacy + canonical row/input ownership passes
     'settings-primitives.css',  // live SettingsRoot panel/nav/content primitives
-    'settings-template.css',    // canonicalized [data-vcp-style] template declarations
+    'settings-template.css',    // M4 合并：overrides 原文 + canonicalized [data-vcp-style] 声明
     'settings-portal.css',      // body-level portal stacking override
     'settings-stream-animation.css', // upstream streaming-animation settings + live preview
 ];
@@ -73,8 +72,7 @@ test('cross-part selector duplicates follow the override-after-layer contract', 
                     // one concern — not a split problem. The one sanctioned
                     // CROSS-part repeat: a later UNLAYERED declaration
                     // out-ranking an earlier LAYERED one (the "unlayered
-                    // wins" cascade contract documented at the top of
-                    // settings-overrides.css). Any other cross-part duplicate
+                    // wins" cascade contract). Any other cross-part duplicate
                     // means two concerns fight over one selector.
                     const sanctioned = previous.part === name
                         || (previous.layered && !layered);
@@ -87,10 +85,17 @@ test('cross-part selector duplicates follow the override-after-layer contract', 
     assert.ok(owner.size > 100, 'settings parts unexpectedly contain almost no rules — check the split');
 });
 
-test('the template part stays machine-owned and the portal part keeps the stacking override', () => {
+test('the template part carries the merged overrides and canonical declarations; portal keeps the stacking override', () => {
     const template = read('settings-template.css');
-    assert.match(template, /Canonicalized template presentation declarations/, 'template part header comment missing');
-    assert.doesNotMatch(template.replace(/\/\*[\s\S]*?\*\//g, ''), /^(?!\s*:is).*\{/m, 'template part must contain only canonicalized declarations');
+    assert.match(template, /M4 合并说明：settings-overrides\.css 已整块并入本文件/,
+        'the merged part must document the retired overrides file');
+    assert.match(template, /Canonicalized template presentation declarations/, 'template declarations must stay in the merged part');
+    // 合并顺序契约：overrides 原文在前、canonicalized 声明在后。
+    assert.ok(template.indexOf('M4 合并说明') < template.indexOf('Canonicalized template presentation declarations'),
+        'overrides content must precede the canonicalized declarations');
+    const canonical = template.slice(template.indexOf('Canonicalized template presentation declarations'));
+    assert.doesNotMatch(canonical.replace(/\/\*[\s\S]*?\*\//g, ''), /^(?!\s*:is).*\{/m,
+        'everything after the canonicalized banner must stay machine-owned :is declarations');
     const portal = read('settings-portal.css');
     assert.match(portal, /z-index:\s*calc\(var\(--vcp-ui-z-overlay\)\s*\+\s*10\)/, 'portal part must keep the overlay-relative stacking lift');
     assert.match(portal, /\.vcp-uiux-primitive-menu/, 'portal part must target the generated primitive menu portal');

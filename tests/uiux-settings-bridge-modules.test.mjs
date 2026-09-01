@@ -450,7 +450,7 @@ test('Agent ColorPairs have one generated synchronization owner and preserve can
 
 test('global voice and chat-layout radios adopt the generated Choice pill batch', () => {
     const entry = read(bridgeEntry);
-    const css = read(path.join(root, 'styles', 'ui-system', 'settings-overrides.css'));
+    const css = read(path.join(root, 'styles', 'ui-system', 'settings-template.css'));
     assert.match(entry, /mountChoiceControls\(form, api\(\), scope\(\)\)/, 'global settings enhancement wires the Choice batch');
     const choiceOwner = read(path.join(settingsDir, 'choice-controls.js'));
     assert.match(choiceOwner, /#voiceModeLocal/, 'voice mode is the active high-frequency native radio consumer');
@@ -790,7 +790,7 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
     assert.ok(!html.includes('id="middleClickQuickActionContainer"'), 'quick-actions rows moved to schema');
     assert.ok(!html.includes('id="contextSanitizerDepthContainer"'), 'advanced-features rows moved to schema');
     // The flattened sections own the top-border divider model in CSS.
-    const overrides = read(path.join(root, 'styles', 'ui-system', 'settings-overrides.css'));
+    const overrides = read(path.join(root, 'styles', 'ui-system', 'settings-template.css'));
     assert.match(overrides, /\.vcp-ui-scope#globalSettingsModal \.vcp-uiux-general-row \+ \.vcp-uiux-general-row \{\s*\n\s*border-top: 1px solid/,
         'the unified settings surface draws its hairlines from the adjacent-sibling top border');
     assert.ok(!overrides.includes('vcp-uiux-row-tail'),
