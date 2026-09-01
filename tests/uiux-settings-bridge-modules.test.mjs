@@ -773,16 +773,22 @@ test('data-visible-when 投影：复选/取值/未知来源放行/隐藏还原',
     assert.equal(module.evaluateVisibleWhen(form, ''), true, 'empty expression is always visible');
 });
 
-test('quick-actions 扁平化：依赖容器退场，条件行直接挂在分区下', () => {
+test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承接', () => {
+    // main.html 的八个分区壳只剩 id + data-settings-section-key；行结构、
+    // 业务锚点与 data-visible-when 组合的全部契约移到
+    // tests/settings-schema-render.test.mjs（schema 编译产物逐字对齐原静态标记）。
     const html = read(path.join(root, 'main.html'));
-    assert.doesNotMatch(html, /id="middleClickAdvancedContainer"/,
-        'the advanced guard container must retire with the flattened rows');
-    for (const id of ['middleClickQuickActionContainer', 'regenerateConfirmationContainer', 'middleClickAdvancedToggleRow', 'middleClickAdvancedSettings']) {
-        assert.match(html, new RegExp(`id="${id}"`), `flattened row ${id} must remain in the section`);
+    for (const key of ['user-identity', 'server-connection', 'appearance-settings', 'render-settings',
+        'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions']) {
+        assert.match(html, new RegExp(`id="section-${key}" data-settings-section-key="${key}"></div>`),
+            `section ${key} shell must remain for nav/ownership`);
     }
-    // Conditional rows declare their composition instead of nesting wrappers.
-    assert.match(html, /id="regenerateConfirmationContainer"[^>]*data-visible-when="enableMiddleClickQuickAction && middleClickQuickAction=regenerate"/s);
-    assert.match(html, /id="middleClickAdvancedSettings"[^>]*data-visible-when="enableMiddleClickQuickAction && enableMiddleClickAdvanced"/s);
+    const templateMatch = html.match(/<template id="globalSettingsModalTemplate">([\s\S]*?)<\/template>/);
+    assert.ok(templateMatch, 'the global settings modal template must remain');
+    assert.ok(!templateMatch[1].includes('data-vcp-style='),
+        'the static settings rows retire with the schema surface');
+    assert.ok(!html.includes('id="middleClickQuickActionContainer"'), 'quick-actions rows moved to schema');
+    assert.ok(!html.includes('id="contextSanitizerDepthContainer"'), 'advanced-features rows moved to schema');
     // The flattened sections own the top-border divider model in CSS.
     const overrides = read(path.join(root, 'styles', 'ui-system', 'settings-overrides.css'));
     assert.match(overrides, /\.vcp-ui-scope#globalSettingsModal \.vcp-uiux-general-row \+ \.vcp-uiux-general-row \{\s*\n\s*border-top: 1px solid/,
@@ -794,65 +800,22 @@ test('quick-actions 扁平化：依赖容器退场，条件行直接挂在分区
     // partial double hairlines otherwise).
     assert.match(overrides, /\.vcp-uiux-general-row :is\(\.vcp-uiux-language-row, \.vcp-uiux-numeric-stepper-row, \.vcp-uiux-font-size-row\) \{\s*\n\s*border-bottom: 0;/,
         'nested row primitives opt out of their self-drawn hairline inside canonical rows');
-});
-
-test('advanced-features 扁平化：净化深度行改为条件行属性', () => {
-    const html = read(path.join(root, 'main.html'));
-    assert.match(html, /id="contextSanitizerDepthContainer"[^>]*data-visible-when="enableContextSanitizer"/s,
-        'the sanitizer depth row must own its visibility via data-visible-when');
     // The section projection keeps the export but delegates to the shared
     // evaluator; no hardcoded per-row display writes survive the flatten.
-    const helper = read(path.join(root, 'modules', 'ui-system', 'settings', 'advanced-visibility.js'));
-    assert.ok(!helper.includes('contextSanitizerDepthContainer'),
+    const advancedHelper = read(path.join(root, 'modules', 'ui-system', 'settings', 'advanced-visibility.js'));
+    assert.ok(!advancedHelper.includes('contextSanitizerDepthContainer'),
         'the advanced projection must not hand-write retired conditional rows');
-    assert.match(helper, /syncDependentRows\(form\)/);
+    assert.match(advancedHelper, /syncDependentRows\(form\)/);
+    const rustHelper = read(path.join(root, 'modules', 'ui-system', 'settings', 'rust-visibility.js'));
+    assert.ok(!rustHelper.includes('rustGuardRulesContainer'),
+        'the rust projection must not hand-write retired guard containers');
+    assert.match(rustHelper, /syncDependentRows\(form\)/);
+    // The fallback binder re-evaluates the same clauses for degraded mode.
+    const legacy = read(eventListeners);
+    assert.match(legacy, /syncDependentRows/);
     const audit = read(path.join(root, 'scripts', 'audit-settings-layout.mjs'));
     assert.match(audit, /FLAT_SECTIONS = new Set\(\['quick-actions', 'advanced-features', 'render-settings', 'server-connection', 'voice-settings', 'selection-assistant', 'user-identity', 'appearance-settings'\]\)/,
         'the layout probe must enforce the flattened sections');
-});
-
-test('user-identity 扁平化：identity 容器退场，头像合成与折叠样式区成为 canonical 行', () => {
-    const html = read(path.join(root, 'main.html'));
-    const sectionStart = html.indexOf('id="section-user-identity"');
-    const sectionEnd = html.indexOf('id="section-server-connection"');
-    assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'user-identity section bounds');
-    const section = html.slice(sectionStart, sectionEnd);
-    assert.ok(!section.includes('agent-identity-container'),
-        'the identity wrapper must retire; avatar+name composition joins the row system');
-    assert.match(section, /class="agent-identity-main" data-vcp-settings-row>/,
-        'the avatar+name composite becomes one canonical row');
-    assert.match(section, /class="agent-style-collapsible-container collapsed" data-vcp-settings-row>/,
-        'the style disclosure keeps its collapse semantics as a canonical row');
-    for (const kept of ['userAvatarPreview', 'userName', 'userStyleCollapseHeader', 'userAvatarBorderColor', 'adminUsername']) {
-        assert.ok(section.includes(`id="${kept}"`), `identity control ${kept} must remain`);
-    }
-});
-
-test('appearance-settings 扁平化：四个 editor-section 与依赖面板退场，呈现模式成为行属性', () => {
-    const html = read(path.join(root, 'main.html'));
-    const sectionStart = html.indexOf('id="section-appearance-settings"');
-    const sectionEnd = html.indexOf('<!-- 消息渲染 -->');
-    assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'appearance section bounds');
-    const section = html.slice(sectionStart, sectionEnd);
-    // 包裹结构整体退场：editor-section、依赖面板、网格与几何容器不再承载行。
-    for (const retired of ['vcp-uiux-editor-section', 'userChatBubbleSettings', 'chatBubbleWidthSettings',
-        'wideChatLayoutSettings', 'appearance-settings-grid', 'appearance-sidebar-geometry-controls',
-        'appearance-home-tagline-setting', 'settings-dependent-panel', 'settings-nested-panel']) {
-        assert.ok(!section.includes(retired), `${retired} must retire with the flattened appearance section`);
-    }
-    // 视觉行与条件行：workbench 卡片之后到分区结束全部是 canonical 行。
-    for (const promoted of ['appearanceDensityRow', 'appearanceRadiusRow', 'appearanceTypographyRow',
-        'appearanceFontScaleRow', 'appearanceContentWidthRow', 'appearanceSurfaceRow',
-        'appearanceSidebarRadiusLanguageRow']) {
-        assert.match(section, new RegExp(`id="${promoted}" data-vcp-settings-row>`),
-            `${promoted} joins the canonical row system`);
-    }
-    assert.ok((section.match(/data-vcp-settings-row/g) || []).length >= 9,
-        'home visual rows, language hosts and geometry rows all become canonical rows');
-    // 呈现模式的守卫面板变成行属性；radio 源用裸 id（checked 语义）组合。
-    assert.match(section, /data-visible-when="chatPresentationModeBubble"/);
-    assert.match(section, /data-visible-when="chatPresentationModeBubble && enableUserChatBubbleUi"/);
-    assert.match(section, /data-visible-when="chatPresentationModeBubble && chatLayoutModeWide"/);
     // 事件路径与快照路径都改走共享行评估器，不允许残留直写。
     const presentation = read(path.join(root, 'modules', 'renderer', 'mainChatSettingsPresentationOwner.js'));
     for (const retired of ['userChatBubbleSettings', 'chatBubbleWidthSettings']) {
@@ -865,53 +828,6 @@ test('appearance-settings 扁平化：四个 editor-section 与依赖面板退�
     const canonical = read(path.join(root, 'modules', 'ui-system', 'settings', 'canonical-rows.js'));
     assert.match(canonical, /appearance-home-tagline-setting, \[data-settings-section-key="appearance-settings"\]'/,
         'appearanceOwner covers the stamped appearance section');
-});
-
-test('selection-assistant 扁平化：rust guard 容器退场，条件行组合声明', () => {
-    const html = read(path.join(root, 'main.html'));
-    const sectionStart = html.indexOf('id="section-selection-assistant"');
-    const sectionEnd = html.indexOf('id="section-voice-settings"');
-    assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'selection-assistant section bounds');
-    const section = html.slice(sectionStart, sectionEnd);
-    // Guard/panel wrappers retire; the diagnostics panel becomes an inline
-    // expansion of the debug toggle row.
-    for (const retired of ['rustAssistantConfigContainer', 'rustGuardRulesContainer', 'rustCustomThresholdsPanel', 'rustWhitelistPanel', 'rustBlacklistPanel', 'rustScreenshotAppsPanel']) {
-        assert.ok(!section.includes(`id="${retired}"`), `guard container ${retired} must retire`);
-    }
-    for (const kept of ['rustDebugPanel', 'rustRuleModeRow', 'rustEnableCustomThresholds']) {
-        assert.ok(section.includes(`id="${kept}"`), `flattened row ${kept} must remain`);
-    }
-    // Composed conditions replace the nested wrappers.
-    assert.match(section, /id="rustDebugPanel"[^>]*data-visible-when="rustDebugMode"/s);
-    assert.match(section, /data-vcp-style="23" data-visible-when="rustUseAssistant"/);
-    assert.match(section, /data-visible-when="rustUseAssistant && rustEnableCustomThresholds"/);
-    assert.match(section, /data-visible-when="rustUseAssistant && rustRuleMode=whitelist"/);
-    assert.match(section, /data-visible-when="rustUseAssistant && rustRuleMode=blacklist"/);
-    // The section projection delegates to the shared evaluator.
-    const helper = read(path.join(root, 'modules', 'ui-system', 'settings', 'rust-visibility.js'));
-    assert.ok(!helper.includes('rustGuardRulesContainer'),
-        'the rust projection must not hand-write retired guard containers');
-    assert.match(helper, /syncDependentRows\(form\)/);
-    // The fallback binder re-evaluates the same clauses for degraded mode.
-    const legacy = read(eventListeners);
-    assert.match(legacy, /syncDependentRows/);
-});
-
-test('render-settings 扁平化：editor-section 包裹退场，行直接挂在分区下', () => {
-    const html = read(path.join(root, 'main.html'));
-    // The render section no longer ships the wrapper markup (its heading was
-    // already runtime-removed as a duplicate of the section title).
-    const sectionStart = html.indexOf('id="section-render-settings"');
-    const sectionEnd = html.indexOf('id="section-selection-assistant"');
-    assert.ok(sectionStart > 0 && sectionEnd > sectionStart, 'render-settings section bounds');
-    const section = html.slice(sectionStart, sectionEnd);
-    assert.ok(!section.includes('vcp-uiux-editor-section'), 'the editor-section wrapper must retire');
-    for (const id of ['minChunkBufferSize', 'streamAnimationSettingsRow', 'streamAnimationDurationRow', 'streamAnimationCustomRow']) {
-        assert.ok(section.includes(`id="${id}"`), `flattened render row ${id} must remain`);
-    }
-    // The inline number row joins the canonical row system so the section is
-    // one contiguous canonical row run (adjacency + divider probes).
-    assert.match(section, /class="form-group settings-inline-number-row"/);
 });
 
 test('settings 挂载管线：步骤失败必须带步名记录并向调用方抛出', async () => {

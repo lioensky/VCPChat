@@ -1,11 +1,12 @@
-// schema-surface — schema 渲染面的切换与挂载（实验分支 exp/settings-schema）。
-// 双轨迁移：默认关闭（沿用 main.html 静态标记）；localStorage 置
-// `vcpchat-settings-schema=1` 后，enhanceGlobalSettings 进入管线之前把
-// 已迁移分区替换为 schema 编译产物。替换只动分区容器的子节点，分区
-// 元素本身保持身份稳定（settings-shell 的分区索引与导航不受影响）。
+// schema-surface — schema 渲染面的挂载（实验分支 exp/settings-schema，M4 起转正）。
+// M0-M3 双轨期用 localStorage 开关切换新旧 surface 做像素/行为对照；M4 删除
+// main.html 静态设置标记后 schema 面成为唯一呈现，enhanceGlobalSettings 进入
+// 管线之前把全部分区原地替换为 schema 编译产物。替换只动分区容器的子节点，
+// 分区元素本身保持身份稳定（settings-shell 的分区索引与导航不受影响）。
 // 幂等性：分区容器打上 vcpSchemaRendered 持久标记，重复 refresh 不重渲染。
-// 现值迁移：替换前采集控件快照、替换后回写；动态节点（populate 出来的
-// select 选项、动态追加的路径输入行）按 adoptNodeIds 整体保留原节点。
+// 现值迁移：替换前采集控件快照、替换后回写（静态标记退役后首渲染为空快照，
+// 持久值由 typed-field-owners 的快照投影按 id 回填）；动态节点（populate 出来
+// 的 select 选项、动态追加的路径输入行）按 adoptNodeIds 整体保留原节点。
 import { quickActionsSection } from './schema/quick-actions.js';
 import { userIdentitySection } from './schema/user-identity.js';
 import { serverConnectionSection } from './schema/server-connection.js';
@@ -16,8 +17,6 @@ import { advancedFeaturesSection } from './schema/advanced-features.js';
 import { appearanceSettingsSection } from './schema/appearance-settings.js';
 import { renderSchemaSection } from './render/field-renderer.js';
 import { captureSectionValues, restoreSectionValues } from './store.js';
-
-const SCHEMA_TOGGLE_KEY = 'vcpchat-settings-schema';
 
 // 已迁移到 schema 渲染的分区清单；M3（界面与外观）已收齐全部分区。
 const SCHEMA_SECTIONS = Object.freeze([
@@ -31,21 +30,13 @@ const SCHEMA_SECTIONS = Object.freeze([
     quickActionsSection,
 ]);
 
-export function isSchemaSurfaceEnabled() {
-    try {
-        return typeof localStorage !== 'undefined' && localStorage.getItem(SCHEMA_TOGGLE_KEY) === '1';
-    } catch {
-        return false;
-    }
-}
-
 export function schemaSurfaceSections() {
     return SCHEMA_SECTIONS;
 }
 
-// 把已迁移分区替换为 schema 编译产物；返回发生替换的分区 key 列表。
+// 把全部分区替换为 schema 编译产物；返回发生替换的分区 key 列表。
 export function applySchemaSurface(form, doc = form?.ownerDocument || undefined) {
-    if (!form || !doc || !isSchemaSurfaceEnabled()) return [];
+    if (!form || !doc) return [];
     const replacedKeys = [];
     for (const sectionDescriptor of SCHEMA_SECTIONS) {
         const host = form.querySelector(`#section-${sectionDescriptor.key}`);
