@@ -94,7 +94,8 @@ function ensureSettingsAccessibility(modal) {
 function focusSettingsModal(modal) {
     if (!modal?.classList.contains('active')) return;
     const target = modal.querySelector('.vcp-uiux-settings-nav-cell, input:not([type="hidden"]), select, textarea, button') || modal;
-    requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    const schedule = globalThis.requestAnimationFrame || (callback => globalThis.setTimeout(callback, 0));
+    schedule(() => target.focus({ preventScroll: true }));
 }
 
 function trapSettingsFocus(event) {
