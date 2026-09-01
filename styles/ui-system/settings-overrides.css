@@ -446,6 +446,39 @@
     box-shadow: none;
 }
 
+/* User identity is a compact summary card; custom colors expand from its
+   right-hand action instead of occupying a separate full-width row. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0 16px;
+    margin: 0 0 20px;
+    padding: 16px;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border-radius: 12px;
+    background: var(--vcp-ui-fill-0);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    border: 0;
+    background: transparent;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header {
+    padding: 8px 10px;
+    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls {
+    grid-column: 1 / -1;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-dependent-panel {
     padding: 0;
 }
