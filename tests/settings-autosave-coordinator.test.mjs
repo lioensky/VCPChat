@@ -126,6 +126,29 @@ test('coordinator keeps durable base, draft, and pending path operations indepen
     await coordinator.dispose();
 });
 
+test('coordinator adopts the normalized durable response and reapplies only pending operations', async () => {
+    const form = new FakeForm();
+    const coordinator = claimSaveCoordinator(form);
+    coordinator.setDurableBase({ appearanceProfile: { sidebarRowHeight: 46, density: 'comfortable' } }, 'r1');
+    const committed = { op: 'set', path: ['appearanceProfile', 'sidebarRowHeight'], value: 100 };
+    const pending = { op: 'set', path: ['appearanceProfile', 'density'], value: 'compact' };
+    coordinator.recordDraft({ appearanceProfile: { sidebarRowHeight: 100 } }, [committed]);
+    coordinator.recordDraft({ appearanceProfile: { density: 'compact' } }, [pending]);
+    coordinator.recordCommit({
+        success: true,
+        status: 'success',
+        currentRevision: 'r2',
+        settings: { appearanceProfile: { sidebarRowHeight: 64, density: 'comfortable' } },
+    }, { appearanceProfile: { sidebarRowHeight: 100 } }, [committed]);
+    const state = coordinator.getSnapshot();
+    assert.equal(state.durableRevision, 'r2');
+    assert.equal(state.durableBase.appearanceProfile.sidebarRowHeight, 64);
+    assert.equal(state.draft.appearanceProfile.sidebarRowHeight, 64);
+    assert.equal(state.draft.appearanceProfile.density, 'compact');
+    assert.deepEqual(state.pendingOps, [pending]);
+    await coordinator.dispose();
+});
+
 test('client registration release removes remounted owner without affecting others', async () => {
     const form = new FakeForm();
     const coordinator = claimSaveCoordinator(form);

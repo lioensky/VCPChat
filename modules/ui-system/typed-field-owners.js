@@ -248,7 +248,13 @@ function ensureTypedSettingsService() {
                     // only the caller-facing publication is stale when a
                     // newer local generation already exists.
                     typedSettingsRevision = result?.currentRevision ?? typedSettingsRevision;
-                    typedSettingsBase = Object.freeze({ ...(result?.settings || typedSettingsBase), ...(patch || {}) });
+                    // Main-process validation can clamp or normalize a
+                    // submitted value. Keep the next typed draft anchored to
+                    // that durable response rather than reintroducing the
+                    // pre-validation patch on the renderer side.
+                    typedSettingsBase = Object.freeze(result?.settings && typeof result.settings === 'object'
+                        ? { ...result.settings }
+                        : { ...typedSettingsBase, ...(patch || {}) });
                     typedSettingsConflict = null;
                     getSaveCoordinator(document.getElementById('globalSettingsForm'))?.recordCommit?.(result, patch, patchToPathOps(patch));
                     if (generation !== typedSettingsSaveGeneration) {

@@ -34,6 +34,23 @@ function deepMerge(base, patch) {
     return output;
 }
 
+function applyOperations(base, operations = []) {
+    const output = JSON.parse(JSON.stringify(base || {}));
+    for (const operation of operations) {
+        const path = operation?.path;
+        if (!Array.isArray(path) || !path.length) continue;
+        let target = output;
+        for (const part of path.slice(0, -1)) {
+            if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) target[part] = {};
+            target = target[part];
+        }
+        const leaf = path[path.length - 1];
+        if (operation.op === 'unset') delete target[leaf];
+        else if (operation.op === 'set') target[leaf] = operation.value;
+    }
+    return output;
+}
+
 function createCoordinator(form) {
     const clients = new Map();
     const operations = new Map();
@@ -168,13 +185,18 @@ function createCoordinator(form) {
                 retryableFailure = result;
                 return snapshot();
             }
-            durableBase = deepFreeze(deepMerge(durableBase, patch || {}));
+            // The manager validates and may normalize submitted values. Its
+            // returned snapshot, not the renderer patch, is the durable
+            // source of truth for the next revision/CAS submission.
+            durableBase = deepFreeze(result?.settings && typeof result.settings === 'object'
+                ? deepMerge({}, result.settings)
+                : deepMerge(durableBase, patch || {}));
             if (result.currentRevision !== undefined) durableRevision = result.currentRevision;
             const committed = new Set((ops || []).map(operation => JSON.stringify(operation)));
             pendingOps = pendingOps.filter(operation => !committed.has(JSON.stringify(operation)));
             retryableFailure = null;
             conflict = null;
-            if (!pendingOps.length && !form.dataset.vcpSettingsDirty) draft = durableBase;
+            draft = deepFreeze(pendingOps.length ? applyOperations(durableBase, pendingOps) : durableBase);
             return snapshot();
         },
         hasClient: id => clients.has(id),
