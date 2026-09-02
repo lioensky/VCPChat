@@ -143,7 +143,7 @@ dsw 语义 CSS（单层级联）
 2. **store 扩展**：`collectSettings(form)` 遍历 SCHEMA_SECTIONS → 按描述符产出与现保存载荷**逐键同形**的对象；`applySettings(form, settings)` 对称回填（写值 + 派发 `vcp-uiux-sync`，收敛 M0 记录的胶囊滞留怪癖）。
 3. **等价性金测**（本阶段核心门禁）：单测对渲染后的表单灌入随机值，断言新 `collectSettings` 与旧 `handleSaveGlobalSettings` 收集器的产出 JSON 完全一致（含嵌套 voice/appearanceProfile、parseInt/钳位、URL 补全等特例）；特例全部改写为描述符声明后从保存链删除。
 4. **切换保存链**：`handleSaveGlobalSettings` 改调 `collectSettings`，保留提交锁/超时/retry 事件契约不变；人工特例（头像、论坛凭据、划词独立 store）维持现通道，仅清单化登记。
-5. **回填链收敛**：typed-field-owners 的 44 条投影表改为 `applySettings` 驱动；划词/论坛/外观 profile 三个 typed 消费者保留（它们是状态服务，删除的只是手写 DOM 映射段）。
+5. **回填链收敛**：typed-field-owners 的 42 条投影表（对抗式审查勘误：原记 44）改为 `applySettings` 驱动；划词/论坛/外观 profile 三个 typed 消费者保留（它们是状态服务，删除的只是手写 DOM 映射段）。
 
 **验收**：金测等价 + 全套不回退 + 探针改值→autosave→settings.json 与旧链字节一致 + 重启往返等值。**回退**：单提交粒度，revert 即回旧链。
 
@@ -151,7 +151,7 @@ dsw 语义 CSS（单层级联）
 
 - **值链路合一（b63cbd36）**：新增 `modules/settings/value-semantics.js`——`collectSettings`（保存收集）/`applySettings`（对称回填，仅实际变化时派发 `vcp-uiux-sync`）/`collectKey`（12 步求值链：常量→读控件→absent/present→checkedValue 映射→trim→parse+roundTo/nanFallback→min/max 钳位→falsy→currentFallback→fallback→allowed→slice→upper→transform，逐条复刻旧链怪癖：`parseInt||fallback` 的 0→fallback、`checked !== false` 的 undefined→true、滑杆 NaN→92 钳当前值、`Number('')`→0→100 等）/`assignPayload`（dot-path 嵌套写入）。字段描述符补齐 `save` 声明（valuePath/value/collect:false/save:false），分区级 `collect(scope)` 钩子承接组合项（appearanceProfile 归一化、chatPresentationMode 读取、networkNotesPaths 容器收集、user-identity 三键）；自定义组件经 `saveMap` 按 captureKeys 挂接。旧保存链 130 行 payload 块逐字转录为金测冻结参照 `tests/settings-value-golden.test.mjs`：5 组随机种子全键 deepStrictEqual（含嵌套 voice/appearanceProfile、URL 补全、钳位、字体 currentFallback）+ 空表单等价 + 20 余条怪癖定点断言 + 划词/论坛/头像独立通道 `SAVE_CHANNEL_MANIFEST` 清单化。12 文件 +925/−69。
 - **切换保存链（bc03faaa）**：`handleSaveGlobalSettings` 改调 `collectSettings(schemaSurfaceSections(), …)`（−133/+14），提交锁/超时/retry 事件契约、parseMultilineKeywords 划词补丁、头像/论坛通道不动。
-- **回填链收敛（f46038a6）**：typed-field-owners 44 条手写投影表替换为 `applySettings` 驱动（−62/+7），写值仅在实际变化时派发 `vcp-uiux-sync`（收敛 M0 胶囊滞留怪癖）；显示默认、头像预览、可见性、划词/论坛/外观三个 typed 消费者保留。
+- **回填链收敛（f46038a6）**：typed-field-owners 42 条手写投影表（对抗式审查勘误：原记 44）替换为 `applySettings` 驱动（−62/+7），写值仅在实际变化时派发 `vcp-uiux-sync`（收敛 M0 胶囊滞留怪癖）；显示默认、头像预览、可见性、划词/论坛/外观三个 typed 消费者保留。
 - **验收记录**：金测 5/5 绿；全套 372/370（2 条基线既有失败）；实机探针 10/10 载荷断言落盘正确（'  '→'请继续'、'0'→5/1000、' f9 '→'F9'、123→钳位 98、嵌套 sovitsUrl trim 等），重启回填 8/8 归一等值；像素对比 6/8 分区与 M4 末基线字节一致，其余 3 分区差异 ≤0.27% 且经逐带比对确认为跨会话文字反锯齿噪声。探针 run-1 状态对比的 4 条「差异」为基线伪差：run-1 在全量保存后即重采 DOM，读到的是应用有意保留的未归一草稿（保存期间投影被 dirty/saving 守卫跳过），重启值与落盘归一值一致；rustRuleMode 'whitelist'→'none' 为划词通道既有派生语义（规则模式不入盘，重启按白名单空数组推导 none），非 M5-a 回归。D6 复查 14 个变更文件干净，已推 fork（6ff41a96..f46038a6）。
 
 ### 13.2 M5-b 渲染器直出 canonical 行（试点：快捷操作分区）
@@ -258,3 +258,12 @@ advanced-visibility/rust-visibility 薄包装并入渲染器统一的依赖求�
 ### 13.5 总门禁与施工纪律
 
 沿用既有纪律：每阶段独立提交、中文 conventional commit、D6 红线、绝不 `git add -A`；全套测试不回退；每阶段八分区实机探针 + 像素对比 + 重启往返；像素基线随每阶段滚动更新（对比对象 = 上一阶段末截图）。M5-a 完成前不动渲染侧，M5-b 试点验收前不铺开 13.3。
+
+### 13.6 M5 全量对抗式审查记录
+
+- **方法**：三层独立交叉——① 机械残余扫描（退役模块导出名/标记全库 grep、M5 全量新增行 D6 红线 grep）；② 两路互不通信的只读对抗式审查（投影/退役面 diff 审查 vs 值链路语义完整性审查，均对照 `bc03faaa^` 的退役前实现逐属性比对）；③ 全套单测 + 八分区探针三跑 + 像素基线比对。
+- **值链路完整性（审查结论：全部往返成立）**：schema 值承载字段 73 个（76 描述符 − 3 非值 custom），collect/apply 双向覆盖零缺口；旧 typed 投影表实测 **42 条**（文档原记 44，已勘误）被 applySettings 求值链全量子代（checkedValue/checked/字符串写值/undefined-null 跳过语义逐条对应）；冻结金测（旧 130 行 payload 块逐字转录）逐键 deepStrictEqual 背书。专项全过：语言行镜像（change + vcp-uiux-sync 双路）、assistantAgent 运行期重建（childList observer）、networkNotesPaths 动态行、头像/密码 redaction 契约、步进器钳制、Choice dataset.value、开关 present 语义、rust 多行关键词。
+- **投影/退役面（审查结论：无 P0/P1）**：全部被删模块零活引用（mountUiuxSwitches/mountChoice/selectProjection.mount 等 agent 面幸存者均有真实消费方且 teardown 保留）；canonical-row.js 对退役 pass 逐属性忠实转录（hr 清理随编译期停发而删除、分离节点以显式 sectionKey 兜底、radioGroup 内层 label 不匹配选择器）；直出结构与原语挂载的 SVG path 数据字节一致、copy 表逐条比对一致；重入守卫/作用域释放/重复 own 标签均安全；styles/ 目录 M5 diff 为空（140 行变更是分支早期浅色主题重构，非 M5 损伤）。
+- **收口施工（随审查落地）**：① field-renderer plain 数字行 stepper 分支补齐"不输出 hint"的语义（与分组分支、退役挂载的 replaceChildren 行为对齐——当前 schema 无命中行，属潜伏陷阱修复）；② store.js 头注释刷新（分区快照三件套 captureSectionValues/restoreSectionValues/sectionValueIds 无生产调用方，保留为迁移语义测试契约载体）；③ 计划文档 44→42 条勘误（§13.1 两处 + pr-plan 一处）。
+- **记录在案不改的 P2（均有先例/设计理由）**：collectKey 在控件缺席时省略键（旧链总是发默认值——新语义对"分区渲染失败"更安全，不会用默认值覆写已存设置）；density 恢复双写回退（project() 'comfortable' vs schema 默认 'compact'，恢复路径既有意图）；middleClickAdvancedDelay max 钳制缺口与 rustRuleMode 零关键词推导为 none（均为退役前既有语义，维持平价）；非动态语言行的空挂 observer（方案已记录的取舍）。
+- **审查验收**：全套 384/382（2 例既有失败不回退）；探针 45/45；像素对 pass6 末基线 8/10 零差 + 2 处已知瞬态（F9 胶囊 AA、字形栅格化竞态）均已裁断；D6 全量新增行零命中。审查后分支 tip 推送 fork，M5 全线收官。

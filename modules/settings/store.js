@@ -1,9 +1,10 @@
 // store — 全局设置表单的值访问门面。
-// 职责：按控件语义读写表单值（开关/单选走 checked，其余走 value），
-// 并在 schema 面替换静态标记前后迁移分区现值。快照以控件 id 为键，
-// 与字段类型解耦：custom 组件通过 captureKeys 声明需要迁移的内部控件。
+// 职责：按控件语义读写表单值（开关/单选走 checked，其余走 value）。
 // M5-a 起，保存/回填链也从这里出发：collectSettings/applySettings 按
-// 字段描述符的 save 声明推导全量载荷与回填写值（引擎见 value-semantics.js）。
+// 字段描述符的 save 声明推导全量载荷与回填写值（引擎见 value-semantics.js），
+// 分区重渲染的现值迁移改由 applySettings + typed owners 的 project() 承担；
+// 下面的分区快照三件套不再有生产调用方，保留为迁移语义的测试契约载体
+// （settings-schema-render.test.mjs 以其验证重渲染等值不变量）。
 
 export { collectSettings, applySettings, collectKey, clampBubbleWidthPercent, SAVE_PASSTHROUGH_KEYS, SAVE_CHANNEL_MANIFEST } from './value-semantics.js';
 
