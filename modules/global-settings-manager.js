@@ -1,6 +1,9 @@
 /**
  * This module handles the logic for saving global settings.
  */
+import { collectSettings } from './settings/value-semantics.js';
+import { schemaSurfaceSections } from './settings/schema-surface.js';
+
 export function handleSaveGlobalSettings(e, deps) {
     e.preventDefault();
     const settingsForm = e.currentTarget || document.getElementById('globalSettingsForm');
@@ -76,146 +79,24 @@ async function saveGlobalSettings(deps, settingsForm) {
     }
     const currentSettings = refs.globalSettings.get();
 
-    const clampBubbleWidthPercent = (rawValue, fallback) => {
-        const parsed = Number.parseInt(rawValue, 10);
-        if (!Number.isFinite(parsed)) return fallback;
-        return Math.min(98, Math.max(50, parsed));
-    };
+    // M5-a 值链路合一：settings.json 全量载荷由 schema 字段描述符的 save
+    // 声明推导（value-semantics.collectSettings），与旧手写收集器逐键等价
+    // （tests/settings-value-golden.test.mjs 金测为门禁）。锁/超时/结果事件
+    // 契约不变；划词 patch、论坛凭据、头像仍是独立通道。
+    const newSettings = collectSettings(schemaSurfaceSections(), {
+        doc: document,
+        currentSettings,
+        settingsManager,
+        getAppearance,
+        normalizeChatPresentationMode,
+    });
 
-    const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
-    const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
-    const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path);
     const parseMultilineKeywords = (id) => {
         const value = document.getElementById(id)?.value || '';
         return value
             .split(/\r?\n|,|，|;|；/)
             .map(item => item.trim())
             .filter(Boolean);
-    };
-
-    const voiceMode = document.getElementById('voiceModeNetwork')?.checked ? 'network' : 'local';
-    const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold']);
-    const selectedVoiceInputMode = document.getElementById('voiceInputMode')?.value;
-    const voiceInputMode = allowedVoiceInputModes.has(selectedVoiceInputMode)
-        ? selectedVoiceInputMode
-        : 'windows_voice_typing';
-    const voiceInputShortcut = (
-        document.getElementById('voiceInputShortcut')?.value.trim()
-        || 'F7'
-    ).toUpperCase();
-    const allowedStreamAnimationPresets = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
-    const selectedStreamAnimationPreset = document.getElementById('streamAnimationPreset')?.value;
-    const streamAnimationPreset = allowedStreamAnimationPresets.has(selectedStreamAnimationPreset)
-        ? selectedStreamAnimationPreset
-        : 'slide-left';
-    const rawStreamAnimationDurationMs = Number(document.getElementById('streamAnimationDurationMs')?.value);
-    const streamAnimationDurationMs = Number.isFinite(rawStreamAnimationDurationMs)
-        ? Math.min(2000, Math.max(100, Math.round(rawStreamAnimationDurationMs / 50) * 50))
-        : 500;
-    const streamAnimationCustomCss = (document.getElementById('streamAnimationCustomCss')?.value || '').slice(0, 4000);
-
-    const newSettings = {
-        userName: document.getElementById('userName').value.trim() || '用户',
-        userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
-        userNameTextColor: document.getElementById('userNameTextColor')?.value || '#ffffff',
-        userUseThemeColorsInChat: document.getElementById('userUseThemeColorsInChat')?.checked || false,
-        continueWritingPrompt: document.getElementById('continueWritingPrompt').value.trim() || '请继续',
-        flowlockContinueDelay: parseInt(document.getElementById('flowlockContinueDelay').value, 10) || 5,
-        enableMiddleClickQuickAction: document.getElementById('enableMiddleClickQuickAction').checked,
-        middleClickQuickAction: document.getElementById('middleClickQuickAction').value,
-        enableMiddleClickAdvanced: document.getElementById('enableMiddleClickAdvanced').checked,
-        middleClickAdvancedDelay: Math.max(1000, parseInt(document.getElementById('middleClickAdvancedDelay').value, 10) || 1000),
-        enableRegenerateConfirmation: document.getElementById('enableRegenerateConfirmation').checked,
-        vcpServerUrl: settingsManager.completeVcpUrl(document.getElementById('vcpServerUrl').value.trim()),
-        vcpApiKey: document.getElementById('vcpApiKey').value,
-        fileKey: document.getElementById('fileKey')?.value || '',
-        vcpLogUrl: document.getElementById('vcpLogUrl').value.trim(),
-        vcpLogKey: document.getElementById('vcpLogKey').value.trim(),
-        topicSummaryModel: document.getElementById('topicSummaryModel').value.trim(),
-        networkNotesPaths: networkNotesPaths,
-        sidebarWidth: refs.globalSettings.get().sidebarWidth,
-        notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
-        enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
-        streamAnimationPreset,
-        streamAnimationDurationMs,
-        streamAnimationCustomCss,
-        showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
-        showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
-        homeVisualTagline: document.getElementById('homeVisualTagline')?.value.trim().slice(0, 120)
-            || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
-        appearanceProfile: getAppearance()?.normalize({
-            density: document.getElementById('appearanceDensity')?.value,
-            radius: document.getElementById('appearanceRadius')?.value,
-            typography: document.getElementById('appearanceTypography')?.value,
-            fontScale: document.getElementById('appearanceFontScale')?.value,
-            contentWidth: document.getElementById('appearanceContentWidth')?.value,
-            sidebarRowHeight: Number(document.getElementById('appearanceSidebarRowHeight')?.value)
-                || currentSettings.appearanceProfile?.sidebarRowHeight
-                || 46,
-            sidebarAvatarSize: Number(document.getElementById('appearanceSidebarAvatarSize')?.value)
-                || currentSettings.appearanceProfile?.sidebarAvatarSize
-                || 32,
-            customRadius: Number(document.getElementById('appearanceCustomRadius')?.value ?? 10),
-            surface: document.getElementById('appearanceSurface')?.value,
-            surfaceEffect: currentSettings.appearanceProfile?.surfaceEffect,
-            surfaceOpacity: currentSettings.appearanceProfile?.surfaceOpacity,
-            surfaceBlur: currentSettings.appearanceProfile?.surfaceBlur,
-            surfaceSaturation: currentSettings.appearanceProfile?.surfaceSaturation,
-            surfaceBrightness: currentSettings.appearanceProfile?.surfaceBrightness,
-            surfaceBorder: currentSettings.appearanceProfile?.surfaceBorder,
-            surfaceShadow: currentSettings.appearanceProfile?.surfaceShadow,
-            surfaceSheen: currentSettings.appearanceProfile?.surfaceSheen,
-            shellRadius: currentSettings.appearanceProfile?.shellRadius,
-            composerRadius: currentSettings.appearanceProfile?.composerRadius,
-            sidebarRadius: document.getElementById('appearanceSidebarRadius')?.value
-                || currentSettings.appearanceProfile?.sidebarRadius,
-            cardRadius: currentSettings.appearanceProfile?.cardRadius
-        }, 'next') || currentSettings.appearanceProfile,
-        chatFontPreset: document.getElementById('chatFontPreset')?.value || currentSettings.chatFontPreset || 'system',
-        chatFontCustom: document.getElementById('chatFontCustom')?.value.trim() || '',
-        chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || currentSettings.chatCodeFontPreset || 'consolas',
-        chatCodeFontCustom: document.getElementById('chatCodeFontCustom')?.value.trim() || '',
-        chatDiaryFontPreset: document.getElementById('chatDiaryFontPreset')?.value || currentSettings.chatDiaryFontPreset || 'serif',
-        chatDiaryFontCustom: document.getElementById('chatDiaryFontCustom')?.value.trim() || '',
-        chatToolFontPreset: document.getElementById('chatToolFontPreset')?.value || currentSettings.chatToolFontPreset || 'system',
-        chatToolFontCustom: document.getElementById('chatToolFontCustom')?.value.trim() || '',
-        enableWideChatLayout: document.getElementById('chatLayoutModeWide')?.checked || false,
-        chatPresentationMode: normalizeChatPresentationMode(
-            document.querySelector('input[name="chatPresentationMode"]:checked')?.value
-                || currentSettings.chatPresentationMode
-        ),
-        enableUserChatBubbleUi: document.getElementById('enableUserChatBubbleUi')?.checked !== false,
-        showUserMetaInChatBubbleUi: document.getElementById('showUserMetaInChatBubbleUi')?.checked !== false,
-        chatBubbleMaxWidthDefault: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthDefault, 82),
-        chatBubbleMaxWidthNotifications: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNotifications, 90),
-        chatBubbleMaxWidthNarrow: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNarrow, 85),
-        chatBubbleMaxWidthWideDefault: clampBubbleWidthPercent(document.getElementById('chatBubbleMaxWidthWideDefault')?.value, 92),
-        chatBubbleMaxWidthWideNotifications: clampBubbleWidthPercent(document.getElementById('chatBubbleMaxWidthWideNotifications')?.value, 96),
-        chatBubbleMaxWidthWideNarrow: clampBubbleWidthPercent(
-            document.getElementById('chatBubbleMaxWidthWideNarrow')?.value,
-            clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthWideNarrow, 92)
-        ),
-        minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 16,
-        smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 100,
-        assistantAgent: document.getElementById('assistantAgent').value,
-        voiceMode,
-        voiceInputMode,
-        voiceInputShortcut,
-        voiceLocalSettings: {
-            sovitsUrl: document.getElementById('voiceLocalSovitsUrl')?.value.trim() || '',
-            sovitsKey: document.getElementById('voiceLocalSovitsKey')?.value || ''
-        },
-        voiceNetworkSettings: {
-            providerUrl: document.getElementById('voiceNetworkProviderUrl')?.value.trim() || '',
-            providerKey: document.getElementById('voiceNetworkProviderKey')?.value || ''
-        },
-        enableDistributedServer: document.getElementById('enableDistributedServer').checked,
-        agentMusicControl: document.getElementById('agentMusicControl').checked,
-        enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,
-        enableThoughtChainInjection: document.getElementById('enableThoughtChainInjection').checked,
-        enableContextSanitizer: document.getElementById('enableContextSanitizer').checked,
-        contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
-        enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
     };
 
     // 处理规则模式选择
