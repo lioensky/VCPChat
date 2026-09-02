@@ -108,6 +108,16 @@ export function numberCells(key, { label, hint, items, ...rest }) {
     });
 }
 
+// Native details disclosure used for compact groups of related settings. The
+// children remain ordinary schema fields, so value capture/restore and field
+// ownership continue to follow the same recursive contract.
+export function disclosure(key, { title, description, fields, open = true }) {
+    return Object.freeze({
+        kind: 'layout', key, type: 'disclosure', title, description,
+        open, fields: Object.freeze(fields),
+    });
+}
+
 // 依赖子句的可读拼装：visibleWhen('a', 'b=value') → ['a', 'b=value']。
 export function visibleWhen(...clauses) {
     return clauses;

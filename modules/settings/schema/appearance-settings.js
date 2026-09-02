@@ -11,7 +11,7 @@
 // 组装、经 getAppearance().normalize 归一）；呈现模式经
 // normalizeChatPresentationMode 收敛；标准模式气泡宽度三键不来自表单，
 // 直接从现值钳位透传。
-import { section, switchField, text, select, range, radio, radioGroup, numberCells, number, custom } from './kernel.js';
+import { section, switchField, text, select, range, radio, radioGroup, numberCells, number, custom, disclosure } from './kernel.js';
 import { clampBubbleWidthPercent } from '../value-semantics.js';
 import { buildAppearanceWorkbenchCard, buildFontScenarioPreviewRow, buildChatPresentationModeFieldset } from '../render/widgets.js';
 
@@ -77,28 +77,64 @@ const APPEARANCE_PROFILE_SELECTS = [
 
 export const appearanceSettingsSection = section('appearance-settings', '界面与外观', [
     custom('appearanceSettingsWorkbenchCard', buildAppearanceWorkbenchCard),
-    switchField('showHomeVisualBrand', {
-        variant: 'homeVisual',
-        label: '主页视觉文字',
-        description: '在空会话中显示 VCPCHAT 标识与寄语',
-        ariaLabel: '显示主页视觉文字',
-        checked: true,
-        save: { present: true },
+    // Keep presentation controls directly below the workbench as the primary
+    // second block; the homepage copy is a separately collapsible group.
+    custom('chatPresentationModeGroup', buildChatPresentationModeFieldset, [
+        'chatPresentationModeBubble',
+        'chatPresentationModePanel',
+        'chatPresentationModeImmersive',
+    ], {
+        saveMap: {
+            chatPresentationModeBubble: { valuePath: 'chatPresentationMode', checkedValue: 'bubble', collect: false },
+            chatPresentationModePanel: { valuePath: 'chatPresentationMode', checkedValue: 'panel', collect: false },
+            chatPresentationModeImmersive: { valuePath: 'chatPresentationMode', checkedValue: 'immersive', collect: false },
+        },
     }),
-    switchField('showHomeVisualTagline', {
-        variant: 'homeVisual',
-        label: '首页寄语',
-        description: '显示在 VCPCHAT 视觉文字下方',
-        ariaLabel: '显示首页寄语',
-        checked: true,
-        save: { present: true },
+    custom('fontScenarioPreviewGrid', buildFontScenarioPreviewRow, [
+        'chatFontPreset', 'chatFontCustom',
+        'chatCodeFontPreset', 'chatCodeFontCustom',
+        'chatDiaryFontPreset', 'chatDiaryFontCustom',
+        'chatToolFontPreset', 'chatToolFontCustom',
+    ], {
+        saveMap: {
+            chatFontPreset: { currentFallback: 'chatFontPreset', fallback: 'system' },
+            chatFontCustom: { trim: true, falsy: '' },
+            chatCodeFontPreset: { currentFallback: 'chatCodeFontPreset', fallback: 'consolas' },
+            chatCodeFontCustom: { trim: true, falsy: '' },
+            chatDiaryFontPreset: { currentFallback: 'chatDiaryFontPreset', fallback: 'serif' },
+            chatDiaryFontCustom: { trim: true, falsy: '' },
+            chatToolFontPreset: { currentFallback: 'chatToolFontPreset', fallback: 'system' },
+            chatToolFontCustom: { trim: true, falsy: '' },
+        },
     }),
-    text('homeVisualTagline', {
-        rowAsLabel: true,
-        label: '寄语内容',
-        maxLength: 120,
-        value: HOME_TAGLINE_DEFAULT,
-        save: { trim: true, slice: 120, falsy: HOME_TAGLINE_DEFAULT },
+    disclosure('homeVisualSettings', {
+        title: '主页视觉文字',
+        description: '控制空会话中的标识、寄语显示和寄语内容',
+        fields: [
+            switchField('showHomeVisualBrand', {
+                variant: 'homeVisual',
+                label: '主页视觉文字',
+                description: '在空会话中显示 VCPCHAT 标识与寄语',
+                ariaLabel: '显示主页视觉文字',
+                checked: true,
+                save: { present: true },
+            }),
+            switchField('showHomeVisualTagline', {
+                variant: 'homeVisual',
+                label: '首页寄语',
+                description: '显示在 VCPCHAT 视觉文字下方',
+                ariaLabel: '显示首页寄语',
+                checked: true,
+                save: { present: true },
+            }),
+            text('homeVisualTagline', {
+                rowAsLabel: true,
+                label: '寄语内容',
+                maxLength: 120,
+                value: HOME_TAGLINE_DEFAULT,
+                save: { trim: true, slice: 120, falsy: HOME_TAGLINE_DEFAULT },
+            }),
+        ],
     }),
     ...APPEARANCE_PROFILE_SELECTS.map(({ key, profileKey, options, languageRow, fontSizeRow }) => select(key, {
         bareRow: true,
@@ -147,36 +183,6 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         outputText: '10px',
         helper: '头像最大值会随当前列表项高度自动限制，避免超出圆角边界。',
         save: { valuePath: 'appearanceProfile.customRadius', collect: false },
-    }),
-    custom('fontScenarioPreviewGrid', buildFontScenarioPreviewRow, [
-        'chatFontPreset', 'chatFontCustom',
-        'chatCodeFontPreset', 'chatCodeFontCustom',
-        'chatDiaryFontPreset', 'chatDiaryFontCustom',
-        'chatToolFontPreset', 'chatToolFontCustom',
-    ], {
-        saveMap: {
-            chatFontPreset: { currentFallback: 'chatFontPreset', fallback: 'system' },
-            chatFontCustom: { trim: true, falsy: '' },
-            chatCodeFontPreset: { currentFallback: 'chatCodeFontPreset', fallback: 'consolas' },
-            chatCodeFontCustom: { trim: true, falsy: '' },
-            chatDiaryFontPreset: { currentFallback: 'chatDiaryFontPreset', fallback: 'serif' },
-            chatDiaryFontCustom: { trim: true, falsy: '' },
-            chatToolFontPreset: { currentFallback: 'chatToolFontPreset', fallback: 'system' },
-            chatToolFontCustom: { trim: true, falsy: '' },
-        },
-    }),
-    custom('chatPresentationModeGroup', buildChatPresentationModeFieldset, [
-        'chatPresentationModeBubble',
-        'chatPresentationModePanel',
-        'chatPresentationModeImmersive',
-    ], {
-        // 呈现模式是单选组复合键：collect 走分区钩子，这里声明三个成员
-        // radio 的回填写值。
-        saveMap: {
-            chatPresentationModeBubble: { valuePath: 'chatPresentationMode', checkedValue: 'bubble', collect: false },
-            chatPresentationModePanel: { valuePath: 'chatPresentationMode', checkedValue: 'panel', collect: false },
-            chatPresentationModeImmersive: { valuePath: 'chatPresentationMode', checkedValue: 'immersive', collect: false },
-        },
     }),
     radioGroup('chatLayoutMode', {
         label: '内容宽度',

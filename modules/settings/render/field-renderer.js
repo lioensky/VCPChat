@@ -704,6 +704,38 @@ function buildCardChevron(doc) {
 }
 
 function renderSchemaLayout(doc, descriptor, canonicalContext = null) {
+    if (descriptor.type === 'disclosure') {
+        const details = doc.createElement('details');
+        details.className = 'vcp-settings-disclosure';
+        details.id = descriptor.key;
+        details.open = descriptor.open !== false;
+        const summary = doc.createElement('summary');
+        summary.className = 'vcp-settings-disclosure-summary';
+        const copy = doc.createElement('span');
+        copy.className = 'vcp-settings-disclosure-copy';
+        const title = doc.createElement('strong');
+        title.textContent = descriptor.title || descriptor.key;
+        copy.append(title);
+        if (descriptor.description) {
+            const description = doc.createElement('small');
+            description.textContent = descriptor.description;
+            copy.append(description);
+        }
+        const icon = doc.createElement('span');
+        icon.className = 'vcp-ui-icon vcp-settings-disclosure-chevron';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = 'expand_more';
+        summary.append(copy, icon);
+        const content = doc.createElement('div');
+        content.className = 'vcp-settings-disclosure-content';
+        for (const child of descriptor.fields || []) {
+            content.append(child.kind === 'layout'
+                ? renderSchemaLayout(doc, child, canonicalContext)
+                : renderSchemaField(doc, child, canonicalContext));
+        }
+        details.append(summary, content);
+        return details;
+    }
     if (descriptor.type === 'card' || descriptor.type === 'radioGroup' || descriptor.type === 'inlineNumbers' || descriptor.type === 'numberCells') {
         return renderSchemaField(doc, descriptor, canonicalContext);
     }

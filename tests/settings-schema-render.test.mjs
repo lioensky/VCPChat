@@ -334,7 +334,20 @@ test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关',
 });
 
 test('appearance-settings：场景字体预览与呈现模式组件', () => {
-    const { form } = renderIntoForm(appearanceSettingsSection);
+    const { form, host } = renderIntoForm(appearanceSettingsSection);
+    const appearanceChildren = [...host.children];
+    const workbenchHost = appearanceChildren.find(node => node.id === 'appearanceSettingsWorkbenchCard');
+    const presentationHost = appearanceChildren.find(node => node.contains(host.querySelector('input[name="chatPresentationMode"]')));
+    const fontHost = appearanceChildren.find(node => node.contains(host.querySelector('#fontScenarioPreviewGrid')));
+    assert.ok(appearanceChildren.indexOf(workbenchHost) < appearanceChildren.indexOf(presentationHost),
+        '工作台应位于消息呈现模式之前');
+    assert.ok(appearanceChildren.indexOf(presentationHost) < appearanceChildren.indexOf(fontHost),
+        '消息呈现模式应位于四格字体预览之前');
+    const homeDisclosure = form.querySelector('#homeVisualSettings');
+    assert.equal(homeDisclosure?.tagName, 'DETAILS');
+    assert.equal(homeDisclosure?.open, true);
+    assert.equal(homeDisclosure.querySelectorAll('#showHomeVisualBrand, #showHomeVisualTagline, #homeVisualTagline').length, 3,
+        '主页视觉文字、寄语开关和寄语内容应在同一可折叠框内');
     // 工作台卡：appearance-studio 的摘要锚点与工作台按钮
     const workbench = form.querySelector('#appearanceSettingsWorkbenchCard');
     assert.ok(workbench.querySelector('[data-appearance-summary-preview]'));
