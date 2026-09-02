@@ -721,6 +721,9 @@
     cursor: pointer;
     list-style: none;
 }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure:not([open]) > .vcp-settings-disclosure-summary {
+    border-bottom: 0;
+}
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-summary::-webkit-details-marker { display: none; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-copy {
     min-width: 0;
