@@ -7,6 +7,7 @@
     let croppedUserAvatarFile = null;
     let croppedGroupAvatarFile = null;
     const modalGenerations = new Map();
+    const modalClosePromises = new WeakMap();
 
     const uiHelperFunctions = {};
     const textareaResizeStates = new WeakMap();
@@ -514,6 +515,8 @@
     uiHelperFunctions.closeModal = function(modalId) {
         const modalElement = document.getElementById(modalId);
         if (!modalElement) return Promise.resolve(false);
+        const existingClose = modalClosePromises.get(modalElement);
+        if (existingClose) return existingClose;
         const finishClose = () => {
             if (!modalElement.isConnected) return false;
             modalElement.classList.remove('active');
@@ -528,10 +531,14 @@
         if (modalId === 'globalSettingsModal' && modalElement.classList.contains('active')) {
             const form = modalElement.querySelector('#globalSettingsForm');
             const coordinator = window.VCPUISettingsBridge?.flush;
-            const dirty = form?.dataset.vcpSettingsDirty === 'true' || form?.dataset.vcpAutosaveState === 'saving';
-            if (coordinator && dirty && modalElement.dataset.vcpSettingsClosePending !== 'true') {
+            const coordinatorSnapshot = window.VCPUISettingsBridge?.getSnapshot?.();
+            const dirty = form?.dataset.vcpSettingsDirty === 'true'
+                || form?.dataset.vcpAutosaveState === 'saving'
+                || ['dirty', 'saving', 'error', 'conflict'].includes(coordinatorSnapshot?.status)
+                || coordinatorSnapshot?.pendingOps?.length > 0;
+            if (coordinator && dirty) {
                 modalElement.dataset.vcpSettingsClosePending = 'true';
-                return Promise.resolve(coordinator()).then(snapshot => {
+                const closePromise = Promise.resolve().then(() => coordinator()).then(snapshot => {
                     delete modalElement.dataset.vcpSettingsClosePending;
                     if (snapshot?.status === 'error' || snapshot?.status === 'conflict') {
                         modalElement.classList.add('active');
@@ -543,7 +550,11 @@
                     modalElement.classList.add('active');
                     console.warn('[UI Helper] Settings close flush failed:', error);
                     return false;
+                }).finally(() => {
+                    if (modalClosePromises.get(modalElement) === closePromise) modalClosePromises.delete(modalElement);
                 });
+                modalClosePromises.set(modalElement, closePromise);
+                return closePromise;
             }
         }
         return finishClose();

@@ -911,6 +911,9 @@ scheduleRefresh();
 window.VCPUISettingsBridge = Object.freeze({
     refresh: scheduleRefresh,
     flush: flushSettingsAutosave,
+    getSnapshot() {
+        return getSaveCoordinator(document.getElementById('globalSettingsForm'))?.getSnapshot?.();
+    },
     reloadExternal() {
         return getSaveCoordinator(document.getElementById('globalSettingsForm'))?.reloadExternal?.();
     },

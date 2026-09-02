@@ -161,7 +161,13 @@ function ensureTypedSettingsService() {
             getSaveCoordinator(form)?.clearConflict?.();
             if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
         }
-        if (!isReload && form?.dataset.vcpSettingsDirty === 'true') {
+        // The global save handler publishes its own committed snapshot after
+        // durable completion.  That event is not an external writer; while
+        // the owner is still settling its terminal result the form may still
+        // carry the dirty marker, so treating source=settings-save as an
+        // external change creates a self-conflict and blocks modal close.
+        const isOwnCommit = event.detail?.source === 'settings-save';
+        if (!isReload && !isOwnCommit && form?.dataset.vcpSettingsDirty === 'true') {
             typedSettingsConflict = { external: event.detail?.settings, revision: event.detail?.revision };
             form.dataset.vcpSettingsConflict = 'true';
             getSaveCoordinator(form)?.recordCommit?.({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: event.detail?.revision }, {}, []);
