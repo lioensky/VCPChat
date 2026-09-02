@@ -85,7 +85,6 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         selectStyle: 30,
         hintStyle: 4,
         when: ['rustUseAssistant'],
-        hint: '提示：白名单和黑名单不能同时使用，选择一种模式',
         options: [
             { value: 'none', label: '不使用规则' },
             { value: 'whitelist', label: '白名单模式（只在匹配的应用中启用）' },
@@ -115,6 +114,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
     }),
     textarea('rustScreenshotApps', {
         grouped: true,
+        stacked: true,
         label: '截图软件关键词（每行一个）',
         hint: '检测到这些窗口时，暂停导词助手以避免冲突',
         rows: 3,

@@ -1014,6 +1014,18 @@ const settingsManager = (() => {
                 }
             });
 
+            if (!globalThis.vcpTopicSummaryClickDelegated) {
+                globalThis.vcpTopicSummaryClickDelegated = true;
+                document.addEventListener('click', (ev) => {
+                    const btn = ev.target?.closest?.('#openTopicSummaryModelSelectBtn');
+                    if (!btn) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const input = document.getElementById('topicSummaryModel');
+                    handleOpenModelSelect(input);
+                });
+            }
+
             // Event Listeners for always-present elements
             if (agentSettingsForm) {
                 agentSettingsForm.addEventListener('submit', saveCurrentAgentSettings);

@@ -703,8 +703,8 @@ test('语言行/字号行直出结构（M5-c pass4：appearance-rows/语言行�
     assert.equal([...agentLangRow.querySelector('.vcp-uiux-language-row-selector').childNodes]
         .find(node => node.nodeType === 3).textContent, '请选择一个Agent', '空值回落到占位选项标签');
     assert.equal(selection.querySelector('#rustRuleModeRow > .vcp-uiux-language-row .vcp-uiux-language-row-title').textContent, '规则模式');
-    // rustRuleMode 行带 hint：select + hint + 语言行的次序与旧 mount 一致。
-    assert.ok(selection.querySelector('#rustRuleModeRow > small'), 'hint 保留在语言行之前');
+    // rustRuleMode 删除了冗余 hint，仅保留 select + 语言行。
+    assert.ok(!selection.querySelector('#rustRuleModeRow > small'), '冗余 hint 已按需求删除');
 
     const quick = renderIntoForm(quickActionsSection).form;
     const middleLangRow = quick.querySelector('#middleClickQuickActionContainer > .vcp-uiux-language-row');

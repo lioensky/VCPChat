@@ -276,7 +276,7 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
     switch (field.type) {
         case 'textarea': {
             if (field.groupId || field.grouped) {
-                const row = el(doc, 'div', 'form-group', field.rowStyle ?? 16);
+                const row = el(doc, 'div', 'form-group' + (field.stacked ? ' vcp-settings-row-stacked' : ''), field.rowStyle ?? 16);
                 applyRowAnchors(row, field);
                 row.append(buildLabel(doc, field, field.labelStyle), buildTextarea(doc, field));
                 const hint = buildHint(doc, field, field.hintStyle ?? 4);

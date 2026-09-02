@@ -45,7 +45,7 @@ export function mountGlobalTextInputs(form, api, scope) {
     if (!form || !scope || !api?.mountInput) return;
     form.querySelectorAll('input[type="text"], input:not([type])').forEach(input => {
         if (input.dataset.vcpTypedPrimitiveMounted === 'true' || input.closest('.vcp-uiux-input-wrap')) return;
-        if (input.type === 'file' || input.dataset.vcpTypedFieldOwner === 'true') return;
+        if (input.type === 'file' || input.dataset.vcpTypedFieldOwner === 'true' || input.closest('.model-input-container')) return;
         try {
             api.mountInput(input, {}, scope);
             input.dataset.vcpTypedPrimitiveMounted = 'true';

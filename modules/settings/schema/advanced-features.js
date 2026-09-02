@@ -11,7 +11,7 @@ function buildTopicSummaryModelRow(doc) {
     row.id = 'topicSummaryModelContainer';
     const label = doc.createElement('label');
     label.setAttribute('for', 'topicSummaryModel');
-    label.textContent = '话题总结模型:';
+    label.textContent = '话题总结模型';
     const container = doc.createElement('div');
     container.className = 'model-input-container';
     const input = doc.createElement('input');

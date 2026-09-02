@@ -1330,68 +1330,115 @@
    trigger. Keep the text input and menu command intact while removing the
    nested field/button borders that produced the double-box screenshot. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container {
+    position: relative;
     display: flex;
     align-items: center;
+    width: 280px;
+    max-width: 100%;
     min-height: 36px;
+    height: 36px;
     gap: 0;
-    padding: 0 6px 0 14px;
+    padding: 0 4px 0 14px;
     border-radius: 18px;
-    background: color-mix(in srgb, var(--vcp-ui-text-0) 8%, var(--vcp-ui-bg-0));
+    background: var(--dsw-alias-bg-module-platform, rgb(245, 246, 247));
+    box-sizing: border-box;
+    border: 0 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container > input {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container :is(.vcp-uiux-input-wrap, .wrap) {
+    display: flex !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container input {
+    flex: 1;
     min-width: 0;
     height: 36px;
     padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
+    font-family: inherit;
+    font-size: 13px !important;
+    line-height: 22px !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container > input:focus {
-    border: 0;
-    box-shadow: none;
-    outline: none;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container input:focus {
+    border: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container > button {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container input::placeholder {
+    color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3)) !important;
+    font-size: 12px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container > button,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #openTopicSummaryModelSelectBtn {
     flex: 0 0 28px;
     width: 28px;
     min-width: 28px;
     height: 28px;
     min-height: 28px;
     padding: 0;
-    border: 0;
+    border: 0 !important;
     border-radius: 14px;
-    background: transparent;
-}
-
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container > button:hover {
-    background: var(--vcp-ui-fill-2);
-}
-
-/* GeneralRow layout for the summary-model setting: title and control share a
-   row, with one quiet helper line beneath instead of a tall stacked form. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr);
+    background: transparent !important;
+    color: var(--dsw-alias-label-secondary, var(--vcp-ui-text-2)) !important;
+    cursor: pointer;
+    display: inline-flex;
     align-items: center;
-    column-gap: 24px;
-    row-gap: 6px;
+    justify-content: center;
+    transition: background-color var(--vcp-ui-transition-fast, 120ms), color var(--vcp-ui-transition-fast, 120ms);
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > label {
-    grid-column: 1;
-    grid-row: 1;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .model-input-container > button:hover,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #openTopicSummaryModelSelectBtn:hover {
+    background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)) !important;
+    color: var(--vcp-ui-accent) !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1));
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .vcp-uiux-row-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .vcp-uiux-row-copy label {
+    display: block;
     margin: 0;
-    font-size: var(--vcp-ui-font-body);
+    font-size: var(--vcp-ui-font-body, 14px);
+    font-weight: 400;
     line-height: 22px;
+    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .model-input-container {
-    grid-column: 2;
-    grid-row: 1;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .vcp-uiux-row-copy small {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--vcp-ui-font-caption, 12px);
+    font-weight: 400;
+    line-height: 18px;
+    color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3));
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > small {
