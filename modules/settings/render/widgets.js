@@ -4,7 +4,7 @@
 // main.html 静态版本，由既有增强（avatar-picker、identity-name 编辑器、
 // uiux-disclosures、identity-controls、动画预览监听、语言行/分段激活）
 // 按类名/id 接管。后续阶段组件化后从这里收编。
-import { el } from './shared.js';
+import { buildFormIcon, el } from './shared.js';
 import { buildInputPrimitiveWrap, buildLanguageRowStructure } from './field-renderer.js';
 
 export function buildUserProfileCard(doc) {
@@ -22,20 +22,9 @@ export function buildUserProfileCard(doc) {
     const overlay = doc.createElement('label');
     overlay.setAttribute('for', 'userAvatarInput');
     overlay.className = 'avatar-upload-overlay';
-    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '2');
-    const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z');
-    const circle = doc.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', '12');
-    circle.setAttribute('cy', '13');
-    circle.setAttribute('r', '4');
-    svg.append(path, circle);
-    overlay.append(svg);
+    // M5-c pass6：表单图标直出（原 form-icons pass 收编为 vcp-ui-icon 节点，
+    // 由 lucide-adapter 统一渲染为相机图标）。
+    overlay.append(buildFormIcon(doc, 'camera'));
     const fileInput = doc.createElement('input');
     fileInput.type = 'file';
     fileInput.id = 'userAvatarInput';
@@ -91,7 +80,10 @@ export function buildUserProfileCard(doc) {
 function buildUserStyleCollapsible(doc) {
     const container = el(doc, 'div', 'agent-style-collapsible-container collapsed');
     container.dataset.vcpSettingsRow = 'true';
-    const header = el(doc, 'div', 'style-collapse-header');
+    // M5-c pass6：折叠区静态标记直出（原 uiux-disclosures 步的收编循环），
+    // 运行期只剩 aria/collapse 行为绑定。
+    container.dataset.settingPrimitive = 'disclosure';
+    const header = el(doc, 'div', 'style-collapse-header vcp-uiux-disclosure-row');
     header.id = 'userStyleCollapseHeader';
     const icon = el(doc, 'span', 'style-collapse-icon');
     icon.textContent = '▶';
@@ -138,24 +130,7 @@ function buildResetColorsItem(doc) {
     button.className = 'reset-colors-btn';
     button.setAttribute('aria-label', '重置为头像默认颜色');
     button.setAttribute('title', '重置为头像默认颜色');
-    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', '16');
-    svg.setAttribute('height', '16');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '2');
-    for (const d of [
-        'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8',
-        'M21 3v5h-5',
-        'M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16',
-        'M3 21v-5h5',
-    ]) {
-        const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', d);
-        svg.append(path);
-    }
-    button.append(svg);
+    button.append(buildFormIcon(doc, 'refresh'));
     item.append(button);
     return item;
 }

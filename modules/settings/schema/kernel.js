@@ -35,10 +35,6 @@ export function section(key, title, fields, options = {}) {
         // chatPresentationMode 等复合/派生键），collectSettings 在字段遍历
         // 之后合并其产出。
         collect: options.collect,
-        // canonical 直出开关（M5-b）：声明的分区由 field-renderer 直接产出
-        // canonical 行（跳过 canonical-rows 投影 pass），未声明的分区仍走
-        // 旧包裹类 + pass 投影，逐分区迁移直至 pass 空转退役。
-        canonicalRows: options.canonicalRows,
         // 渲染替换时需要整体保留节点身份（而非仅迁移现值）的控件 id：
         // 动态选项的 select、动态追加子行的容器等。
     });

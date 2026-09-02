@@ -64,8 +64,10 @@ function canonicalizeRenderedRow(row, sectionKey = '') {
     const ownerKey = sectionKey || sectionKeyForRow(row);
     if (ownerKey) item.dataset.settingsSectionKey = ownerKey;
     // 阶段 3 扁平化后 appearance 分区整体是 feature-owned 行区；旧包裹类只
-    // 兜底挂载时尚未盖 section key 的 DOM。
-    if (row.closest(APPEARANCE_ROW_ROOTS)) {
+    // 兜底挂载时尚未盖 section key 的 DOM。M5-c pass6 起渲染器在行尚未挂载
+    // 时就地 canonical 化（closest 查不到分区壳），appearance 归属由调用方
+    // 显式传入的 sectionKey 直接判定。
+    if (ownerKey === 'appearance-settings' || row.closest(APPEARANCE_ROW_ROOTS)) {
         item.dataset.settingPrimitive = 'appearance-row';
         item.classList.add('vcp-uiux-appearance-row');
     }

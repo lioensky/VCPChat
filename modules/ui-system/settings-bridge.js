@@ -14,7 +14,6 @@
 import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
 import { mountSettingsAutosave, flushLegacyAutosave, teardownLegacyAutosave } from './settings/autosave.js';
 import { claimSaveCoordinator, getSaveCoordinator } from './settings/save-coordinator.js';
-import { mountCanonicalSettingsRows } from './settings/canonical-rows.js';
 import { runSettingsPipeline } from './settings/pipeline.js';
 import { syncRenderSettingsVisibility } from './settings/render-visibility.js';
 import { mountAppearanceRanges } from './settings/appearance-ranges.js';
@@ -34,9 +33,6 @@ import { addTypedNetworkPathInput, ensureTypedSettingsService, ensureRustAssista
 const shellState = new WeakMap();
 const shellRoots = new Set();
 const disclosureStates = new Set();
-// Replaced inline SVGs inside the global form, keyed by container, so teardown
-// restores the original upstream paths during teardown.
-const iconReplacements = new Set();
 let refreshQueued = false;
 const settingsHost = document.getElementById('tabContentSettings');
 let destroyPromise = null;
@@ -56,10 +52,14 @@ function hasGlobalSettingsSurface() {
 function syncGlobalSettingsHost() {
     const modal = document.getElementById('globalSettingsModal');
     const active = Boolean(modal?.classList.contains('active'));
-    document.documentElement.classList.toggle('vcp-global-settings-host', active);
+    // Fail-closed 契约：投影一旦失败（sticky 标记），classic 层接管整个
+    // surface 生命周期——后续 refresh 不再重新打开 CSS 门，也不重贴 surface
+    // 别名，否则 reconcile 路径会静默二次投影，把降级面悄悄翻回统一面。
+    const failed = modal?.dataset.vcpSurfaceProjectionFailed === 'true';
+    document.documentElement.classList.toggle('vcp-global-settings-host', active && !failed);
     // Keep the historical marker as a non-branching compatibility alias for
     // automation/tests; all styling is owned by the unified surface marker.
-    modal?.classList.add('vcp-global-settings-surface');
+    if (!failed) modal?.classList.add('vcp-global-settings-surface');
     if (modal) {
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
@@ -124,6 +124,9 @@ function trapSettingsFocus(event) {
 // hooks — the provable minimum for the failure path.
 function deactivateGlobalSettingsSurface(modal, error) {
     console.error('[VCPUI SettingsBridge] Unified surface projection failed; the classic presentation takes over:', error);
+    // sticky 失败标记：本次 renderer 生命周期内不再重试投影（见
+    // syncGlobalSettingsHost），teardown 时随 surface 一并清除。
+    modal.dataset.vcpSurfaceProjectionFailed = 'true';
     document.documentElement.classList.remove('vcp-global-settings-host');
     modal.classList.remove('vcp-global-settings-surface');
     for (const [selector, legacyClass] of [
@@ -198,6 +201,8 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
 // Global settings modal: control enhancement, autosave status, and the
 // source-equivalent SettingsRoot shell.
 function enhanceGlobalSettings(root, form) {
+    // sticky 失败标记在位：classic 层接管，本生命周期内不再投影。
+    if (root.dataset.vcpSurfaceProjectionFailed === 'true') return;
     // schema 渲染面（exp/settings-schema）：在整条投影管线之前把已迁移分区
     // 替换为 schema 编译产物，管线随后按原样投影；开关关闭时此调用为空操作。
     applySchemaSurface(form);
@@ -213,13 +218,6 @@ function enhanceGlobalSettings(root, form) {
         // clients. It only needs the form, so it stays step zero — a save
         // client mounting first would silently miss its registration.
         { name: 'save-coordinator', run: () => claimSaveCoordinator(form) },
-        {
-            name: 'canonical-rows',
-            before: ['global-pill-steppers',
-                'global-typed-primitives',
-                'uiux-disclosures', 'agent-name-fields'],
-            run: () => mountCanonicalSettingsRows(form),
-        },
         {
             name: 'global-pill-steppers',
             // M5-c pass2 起 stepper 投影退役：结构由 field-renderer 直出，激活
@@ -255,17 +253,11 @@ function enhanceGlobalSettings(root, form) {
             run: () => mountTypedTopicSummaryModelPicker(form),
         },
         { name: 'forum-field-owner', run: () => mountTypedForumFieldOwner(root, form) },
-        // M5-c pass1：uiux-switches 退役——开关行的 Toggle 原语 holder 由
-        // field-renderer 直出（fieldProjection 'toggle' 字段仍走运行时收编）。
+        // M5-c pass6：折叠区的静态标记（settingPrimitive + disclosure-row
+        // 类）已由 render/widgets.js 直出，本步只剩 aria/collapse 行为绑定。
         {
             name: 'uiux-disclosures',
-            run: () => {
-                form.querySelectorAll('.agent-style-collapsible-container').forEach(disclosure => {
-                    disclosure.dataset.settingPrimitive = 'disclosure';
-                    disclosure.querySelector('.style-collapse-header')?.classList.add('vcp-uiux-disclosure-row');
-                });
-                mountUiuxDisclosures(form);
-            },
+            run: () => mountUiuxDisclosures(form),
         },
         {
             name: 'agent-name-fields',
@@ -279,7 +271,6 @@ function enhanceGlobalSettings(root, form) {
         { name: 'settings-shell', run: () => mountSettingsShell(root) },
         { name: 'autosave', run: () => mountSettingsAutosave(root, form, scope()) },
         { name: 'typed-field-owner', run: () => mountTypedFieldOwner(root, form) },
-        { name: 'form-icons', run: () => normalizeFormIcons(root) },
     ];
     runSettingsPipeline(steps);
     ensureSettingsAccessibility(root);
@@ -382,43 +373,9 @@ function teardownUiuxDisclosures() {
     [...disclosureStates].forEach(state => state.cleanup());
 }
 
-// Replaces the handful of hand-inlined Lucide paths inside the global form
-// with VCPUI icon nodes (rendered by lucide-adapter). Originals are kept for
-// deterministic teardown and business-DOM restoration.
-function normalizeFormIcons(root) {
-    if (root.dataset.vcpSettingsIconsNormalized) return;
-    const replaced = [];
-    const replaceIcon = (container, lucideName) => {
-        const svg = container?.querySelector('svg');
-        if (!svg) return;
-        const icon = document.createElement('span');
-        icon.className = 'vcp-ui-icon';
-        icon.setAttribute('aria-hidden', 'true');
-        icon.textContent = lucideName;
-        svg.replaceWith(icon);
-        // lucide-adapter replaces this temporary span with an SVG. Retaining
-        // the span in the restoration record keeps an already-detached node
-        // alive for the whole surface lifetime and, across repeated round-trips,
-        // makes Chromium report a linear detached-node chain.
-        // Restoration only needs the container and upstream SVG.
-        replaced.push({ container, original: svg });
-    };
-    replaceIcon(root.querySelector('#resetUserAvatarColorsBtn'), 'refresh');
-    replaceIcon(root.querySelector('.avatar-upload-overlay'), 'camera');
-    replaceIcon(root.querySelector('#openTopicSummaryModelSelectBtn'), 'chevron-down');
-    replaced.forEach(record => iconReplacements.add(record));
-    if (replaced.length) root.dataset.vcpSettingsIconsNormalized = 'true';
-}
-
-function restoreFormIcons(root) {
-    iconReplacements.forEach(({ container, original }) => {
-        const current = container.querySelector('svg[data-vcp-icon], span.vcp-ui-icon');
-        if (current) current.replaceWith(original);
-        else if (!original.isConnected) container.prepend(original);
-    });
-    iconReplacements.clear();
-    delete root.dataset.vcpSettingsIconsNormalized;
-}
+// M5-c pass6：表单图标直出——原 normalizeFormIcons 收编的三个内联 Lucide
+// SVG（重置颜色按钮/头像上传浮层/话题总结模型按钮）已由渲染器直接产出
+// vcp-ui-icon 节点（lucide-adapter 统一渲染），收编与还原机制随之退役。
 
 function bindIdentityNameEditor(form) {
     const nameInput = form?.querySelector('#userName');
@@ -848,8 +805,9 @@ function teardown() {
         shellState.delete(root);
     });
     shellRoots.clear();
-    document.querySelectorAll('#globalSettingsModal[data-vcp-settings-icons-normalized]').forEach(restoreFormIcons);
-    document.getElementById('globalSettingsModal')?.classList.remove('vcp-global-settings-surface');
+    const modal = document.getElementById('globalSettingsModal');
+    modal?.classList.remove('vcp-global-settings-surface');
+    delete modal?.dataset.vcpSurfaceProjectionFailed;
     document.documentElement.classList.remove('vcp-global-settings-host');
 }
 

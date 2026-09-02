@@ -68,5 +68,4 @@ export const quickActionsSection = section('quick-actions', '快捷操作', [
         when: ['enableMiddleClickQuickAction', 'enableMiddleClickAdvanced'],
         save: { parse: 'int', fallback: 1000, min: 1000 },
     }),
-    // M5-b canonical 直出试点：本分区由渲染器直接产出 canonical 行。
-], { canonicalRows: true });
+]);

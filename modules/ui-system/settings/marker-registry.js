@@ -11,10 +11,11 @@
 // - 'business-contract': persisted/save-contract state, not presentation bookkeeping
 
 const MARKERS = Object.freeze({
-    // canonical-rows.js — canonical row/section identity stamped onto the form
-    vcpSettingsRow: { owner: 'settings/canonical-rows.js', cleanup: 'persistent' },
-    canonicalRow: { owner: 'settings/canonical-rows.js', cleanup: 'persistent' },
-    vcpCanonicalRowsMounted: { owner: 'settings/canonical-rows.js', cleanup: 'persistent' },
+    // canonical 行/分区身份（M5-c pass6 起由渲染器直出 + render/canonical-row.js
+    // 机械层盖章；canonical-rows 投影 pass 已退役，vcpCanonicalRowsMounted
+    // 随之注销）
+    vcpSettingsRow: { owner: 'render/widgets.js + typed-field-owners.js', cleanup: 'persistent' },
+    canonicalRow: { owner: 'render/canonical-row.js（渲染器直出共用机械层）', cleanup: 'persistent' },
     vcpCanonicalNav: { owner: 'settings-bridge.js', cleanup: 'persistent' },
     settingsSections: { owner: 'settings-bridge.js', cleanup: 'persistent' },
     settingsSectionKey: { owner: 'settings/section-ownership.js + main.html', cleanup: 'persistent' },
@@ -39,7 +40,11 @@ const MARKERS = Object.freeze({
     // module (and this marker) survives for the agent settings surface.
     vcpSelectRebuilding: { owner: 'settings/select-projection.js (agent surface)', cleanup: 'scope-owned' },
     vcpTypedPrimitiveMounted: { owner: 'all generated-primitive mount sites', cleanup: 'scope-owned' },
-    vcpSettingsIconsNormalized: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
+    // M5-c pass6 retired the form-icons step: the three inline Lucide SVGs are
+    // direct-rendered vcp-ui-icon nodes, so vcpSettingsIconsNormalized (and
+    // its teardown restoration) is deregistered with the mechanism.
+    // fail-closed 降级标记：投影失败后 classic 层接管，标记 sticky 到 teardown。
+    vcpSurfaceProjectionFailed: { owner: 'settings-bridge.js fail-closed fallback', cleanup: 'manual-retract' },
     // Appearance stepper/font-size editors are draft surfaces: the marker on
     // the editor and its business control makes settings/autosave.js skip
     // them; the primitive's scope disposer deletes it from the business node.

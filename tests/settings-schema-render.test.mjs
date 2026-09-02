@@ -13,7 +13,6 @@ import { appearanceSettingsSection } from '../modules/settings/schema/appearance
 import { renderSchemaSection, renderSchemaField } from '../modules/settings/render/field-renderer.js';
 import { captureSectionValues, restoreSectionValues, readControlById } from '../modules/settings/store.js';
 import { applySchemaSurface, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
-import { mountCanonicalSettingsRows } from '../modules/ui-system/settings/canonical-rows.js';
 import { activateNumericStepperRow } from '../modules/uiux/generated/primitives/numeric-stepper-row.js';
 import { mountGlobalSteppers } from '../modules/ui-system/settings/global-input-upgrades.js';
 import { activateLanguageRow } from '../modules/uiux/generated/primitives/language-row.js';
@@ -124,8 +123,8 @@ test('user-identity：专属组件与业务锚点齐备', () => {
     assert.ok(form.querySelector('.agent-style-collapsible-container.collapsed'));
     assert.ok(form.querySelector('.vcp-uiux-identity-name-display .vcp-uiux-identity-name-edit'));
     assert.equal(form.querySelector('#userAvatarBorderColor').value, '#3d5a80');
-    // 管理员行的历史样式标记
-    assert.equal(form.querySelector('#adminUsername').closest('.vcp-settings-row').getAttribute('data-vcp-style'), '3');
+    // 管理员行的历史样式标记（pass6 起 canonical 行直出，样式标记穿越映射）
+    assert.equal(form.querySelector('#adminUsername').closest('.vcp-uiux-general-item').getAttribute('data-vcp-style'), '3');
     assert.equal(form.querySelector('#adminPassword').getAttribute('type'), 'password');
 });
 
@@ -156,14 +155,14 @@ test('render-settings：stepper 内联行、预设行、滑杆与自定义行', 
         'streamAnimationPreviewElement']) {
         assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
     }
-    // 开关行：label+hint 在包裹 div 内
-    const smoothRow = form.querySelector('#enableSmoothStreaming').closest('.vcp-settings-control-row');
+    // 开关行：label+hint 在包裹 div 内（canonical 化不拆业务内部分组）
+    const smoothRow = form.querySelector('#enableSmoothStreaming').closest('.vcp-uiux-general-item');
     assert.equal(smoothRow.getAttribute('data-vcp-style'), '15');
     assert.ok(smoothRow.querySelector(':scope > div > small'));
     // stepper 双控件内联行（M5-c pass2：直出 NumericStepperRow 终态结构，
     // 旧 cell label 由原语行内 title 承担，不再输出）
     const inlineRow = form.querySelector('#minChunkBufferSize').closest('.settings-inline-number-row');
-    assert.ok(inlineRow.classList.contains('form-group'));
+    assert.ok(inlineRow.classList.contains('vcp-uiux-general-item'), '内联行直出 canonical 行（旧 form-group 类按映射退役）');
     const chunkInput = form.querySelector('#minChunkBufferSize');
     assert.equal(chunkInput.getAttribute('data-vcp-style'), '19');
     assert.equal(chunkInput.getAttribute('min'), '1');
@@ -179,8 +178,8 @@ test('render-settings：stepper 内联行、预设行、滑杆与自定义行', 
     assert.equal(chunkEditor.getAttribute('min'), '1');
     assert.equal(chunkRow.querySelectorAll('.vcp-uiux-numeric-stepper-row-arrow').length, 2);
     assert.equal(form.querySelector('#smoothStreamIntervalMs').value, '100');
-    // 预设 select hidden 且行 id 保留
-    assert.equal(form.querySelector('#streamAnimationSettingsRow').classList.contains('vcp-settings-row'), true);
+    // 预设 select hidden 且行 id 保留（canonical 行直出，id/data 锚点穿越）
+    assert.equal(form.querySelector('#streamAnimationSettingsRow').classList.contains('vcp-uiux-general-item'), true);
     assert.equal(form.querySelector('#streamAnimationPreset').hidden, true);
     assert.equal(form.querySelector('#streamAnimationPreset').options.length, 6);
     // 滑杆（stepper 投影）：slider-container 内直出原语结构，output 退役
@@ -208,7 +207,7 @@ test('selection-assistant：调试面板、阈值依赖与规则模式', () => {
         assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
     }
     // 调试面板挂在开关行内，可见性依赖调试开关
-    const debugRow = form.querySelector('#rustDebugMode').closest('.vcp-settings-control-row');
+    const debugRow = form.querySelector('#rustDebugMode').closest('.vcp-uiux-general-item');
     assert.equal(debugRow.getAttribute('data-vcp-style'), '23');
     const panel = form.querySelector('#rustDebugPanel');
     assert.equal(panel.parentElement, debugRow);
@@ -216,17 +215,17 @@ test('selection-assistant：调试面板、阈值依赖与规则模式', () => {
     for (const spanId of ['assistantRuntimeMode', 'assistantRuntimeProcessPid', 'assistantRuntimeShowError']) {
         assert.ok(panel.querySelector(`#${spanId}`), `missing panel span #${spanId}`);
     }
-    // 阈值行依赖子句与样式
-    const threshold = form.querySelector('#rustMinEventIntervalMs').closest('.form-group');
+    // 阈值行依赖子句与样式（canonical 行直出，row-copy 槽收纳 label+hint）
+    const threshold = form.querySelector('#rustMinEventIntervalMs').closest('.vcp-uiux-general-item');
     assert.equal(threshold.getAttribute('data-vcp-style'), '26');
     assert.equal(threshold.getAttribute('data-visible-when'), 'rustUseAssistant && rustEnableCustomThresholds');
     assert.equal(form.querySelector('#rustMinEventIntervalMs').getAttribute('data-vcp-style'), '27');
-    assert.equal(threshold.querySelector('small').getAttribute('data-vcp-style'), '28');
+    assert.equal(threshold.querySelector('.vcp-uiux-row-copy small').getAttribute('data-vcp-style'), '28');
     // 规则模式 select 与关键词 textarea
     assert.equal(form.querySelector('#rustRuleMode').getAttribute('data-vcp-style'), '30');
     assert.equal(form.querySelector('#rustRuleModeRow').getAttribute('data-vcp-style'), '29');
     assert.equal(form.querySelector('#rustRuleModeRow').getAttribute('data-visible-when'), 'rustUseAssistant');
-    assert.equal(form.querySelector('#rustBlacklistKeywords').closest('.form-group').getAttribute('data-visible-when'),
+    assert.equal(form.querySelector('#rustBlacklistKeywords').closest('.vcp-uiux-general-item').getAttribute('data-visible-when'),
         'rustUseAssistant && rustRuleMode=blacklist');
     assert.equal(form.querySelector('#rustWhitelistKeywords').getAttribute('rows'), '3');
     assert.equal(form.querySelector('#rustWhitelistKeywords').getAttribute('data-vcp-style'), null);
@@ -244,9 +243,11 @@ test('voice-settings：单选组结构与胶囊 select 行', () => {
     assert.equal(local.checked, true);
     assert.equal(local.name, 'voiceMode');
     assert.equal(local.value, 'local');
+    // 分段结构直出（M5-c pass5）：内层控制行保留历史类并叠加 choice 结构，
+    // 外层行 pass6 起为 canonical 行。
     const innerRow = local.closest('.vcp-settings-control-row');
     assert.equal(innerRow.getAttribute('data-vcp-style'), '13');
-    const group = local.closest('.form-group');
+    const group = local.closest('.vcp-uiux-general-item');
     assert.equal(group.getAttribute('data-vcp-style'), '32');
     assert.equal(group.querySelector(':scope > label').getAttribute('data-vcp-style'), '11');
     assert.equal(group.querySelector(':scope > label').textContent, '语音工作模式');
@@ -254,7 +255,7 @@ test('voice-settings：单选组结构与胶囊 select 行', () => {
     // 快捷键默认值与 url 占位
     assert.equal(form.querySelector('#voiceInputShortcut').value, 'F7');
     assert.equal(form.querySelector('#voiceLocalSovitsUrl').getAttribute('type'), 'url');
-    assert.equal(form.querySelector('#voiceInputModeRow').classList.contains('vcp-settings-row'), true);
+    assert.equal(form.querySelector('#voiceInputModeRow').classList.contains('vcp-uiux-general-item'), true);
     assert.equal(form.querySelector('#voiceInputMode').hidden, true);
 });
 
@@ -277,7 +278,11 @@ test('advanced-features：依赖行、分隔线与模型复合控件', () => {
     // 分隔线不再编译输出（M5-b）：canonical 行自带 hairline，投影 pass 本就
     // 挂载即删，画面零变化。
     assert.equal(host.querySelector('hr'), null, 'advancedDivider <hr> 停止输出');
-    assert.ok(form.querySelector('#topicSummaryModelContainer .model-input-container button svg'));
+    // M5-c pass6：表单图标直出——模型选择按钮直接产出 vcp-ui-icon 节点
+    //（lucide-adapter 运行期渲染为 SVG），收编式 normalizeFormIcons 退役。
+    const topicSummaryIcon = form.querySelector('#openTopicSummaryModelSelectBtn .vcp-ui-icon');
+    assert.ok(topicSummaryIcon, '模型选择按钮应直出 vcp-ui-icon');
+    assert.equal(topicSummaryIcon.textContent, 'chevron-down');
     // 复合控件内部输入可快照迁移
     form.querySelector('#topicSummaryModel').value = 'gpt-x';
     const snapshot = captureSectionValues(form, advancedFeaturesSection);
@@ -300,7 +305,9 @@ test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关',
         assert.ok(selectNode.options.length >= 2, `#${key} 应保留全部选项`);
     }
     const radiusRow = form.querySelector('#appearanceSidebarRadiusLanguageRow');
-    assert.equal(radiusRow.className, 'appearance-radius-language-host');
+    assert.equal(radiusRow.className,
+        'vcp-uiux-general-item vcp-uiux-general-row appearance-radius-language-host vcp-uiux-appearance-row',
+        '宿主行直出 canonical 行（appearance 变体 + 历史宿主类保留）');
     assert.equal(radiusRow.querySelector('#appearanceSidebarRadius').getAttribute('aria-label'), '列表项圆角');
     // 几何滑杆：label 整行 + heading 内嵌 output + min/max/step
     const heightRow = form.querySelector('label[for="appearanceSidebarRowHeight"]');
@@ -319,8 +326,9 @@ test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关',
     assert.equal(brandRow.querySelector('.appearance-home-visual-copy strong').textContent, '主页视觉文字');
     assert.equal(brandRow.querySelector('label.switch').getAttribute('aria-label'), '显示主页视觉文字');
     assert.equal(form.querySelector('#showHomeVisualTagline').checked, true);
-    // 寄语内容：整行 label + span 标题 + maxlength
-    const taglineRow = form.querySelector('label.vcp-settings-row[for="homeVisualTagline"]');
+    // 寄语内容：整行 label 直出 canonical 行（label 行保留标签元素身份）
+    const taglineRow = form.querySelector('label.vcp-uiux-general-item[for="homeVisualTagline"]');
+    assert.ok(taglineRow.classList.contains('vcp-uiux-appearance-row'), 'appearance 分区 canonical 行为 appearance-row 变体');
     assert.equal(taglineRow.querySelector(':scope > span').textContent, '寄语内容');
     assert.equal(taglineRow.querySelector('#homeVisualTagline').getAttribute('maxlength'), '120');
 });
@@ -344,9 +352,11 @@ test('appearance-settings：场景字体预览与呈现模式组件', () => {
     assert.equal(form.querySelector('#chatFontPreset').options.length, 8);
     assert.equal(form.querySelector('#chatToolFontPreset').options.length, 13);
     assert.equal(form.querySelector('#scenarioPreviewCode').textContent.includes('const sum'), true);
-    // 呈现模式：fieldset 三张 radio 卡，气泡默认选中
+    // 呈现模式：fieldset 三张 radio 卡，气泡默认选中（canonical 行直出，
+    // 历史选择器类与样式标记穿越）
     const bubble = form.querySelector('#chatPresentationModeBubble');
-    assert.equal(bubble.closest('fieldset').className, 'form-group chat-presentation-mode-selector');
+    assert.equal(bubble.closest('fieldset').className,
+        'vcp-uiux-general-item vcp-uiux-general-row chat-presentation-mode-selector vcp-uiux-appearance-row');
     assert.equal(bubble.value, 'bubble');
     assert.equal(bubble.checked, true);
     assert.equal(form.querySelector('#chatPresentationModePanel').checked, false);
@@ -355,19 +365,19 @@ test('appearance-settings：场景字体预览与呈现模式组件', () => {
 
 test('appearance-settings：内容宽度单选组、气泡依赖行与宽屏数字组', () => {
     const { form, host } = renderIntoForm(appearanceSettingsSection);
-    const widthRow = form.querySelector('#chatLayoutModeNormal').closest('.form-group');
+    const widthRow = form.querySelector('#chatLayoutModeNormal').closest('.vcp-uiux-general-item');
     assert.equal(widthRow.getAttribute('data-vcp-style'), '12');
     assert.equal(widthRow.querySelector(':scope > .vcp-settings-control-row').getAttribute('data-vcp-style'), '13');
     assert.equal(widthRow.querySelector('label').getAttribute('data-vcp-style'), '11');
     assert.equal(form.querySelector('#chatLayoutModeNormal').checked, true);
-    // 气泡依赖行：visible-when 子句与 hintInsideWrapper 结构
-    const bubbleRow = form.querySelector('#enableUserChatBubbleUi').closest('.vcp-settings-control-row');
+    // 气泡依赖行：visible-when 子句与 hintInsideWrapper 结构（canonical 行直出）
+    const bubbleRow = form.querySelector('#enableUserChatBubbleUi').closest('.vcp-uiux-general-item');
     assert.equal(bubbleRow.getAttribute('data-visible-when'), 'chatPresentationModeBubble');
     assert.ok(bubbleRow.querySelector(':scope > div > small'));
     const metaRow = form.querySelector('#userChatBubbleMetaSettings');
     assert.equal(metaRow.getAttribute('data-visible-when'), 'chatPresentationModeBubble && enableUserChatBubbleUi');
-    // 宽屏数字组：三组 label+number，依赖两子句
-    const wideRow = form.querySelector('#chatBubbleMaxWidthWideDefault').closest('.vcp-settings-control-row');
+    // 宽屏数字组：三组 label+number，依赖两子句（canonical 行直出）
+    const wideRow = form.querySelector('#chatBubbleMaxWidthWideDefault').closest('.vcp-uiux-general-item');
     assert.equal(wideRow.getAttribute('data-visible-when'), 'chatPresentationModeBubble && chatLayoutModeWide');
     assert.equal(wideRow.getAttribute('data-vcp-style'), '17');
     assert.equal(wideRow.querySelector(':scope > label').textContent, '宽屏模式自定义宽度（%）');
@@ -386,7 +396,7 @@ test('appearance-settings：内容宽度单选组、气泡依赖行与宽屏数�
     assert.equal(form.querySelector('#chatBubbleMaxWidthWideDefault').value, '80');
 });
 
-test('canonical 行直出结构完备，投影 pass 对已达标记空转（M5-b 试点）', () => {
+test('canonical 行直出结构完备（M5-b 试点结构，pass6 起全分区铺开）', () => {
     const { form } = renderIntoForm(quickActionsSection);
     const stackedItem = form.querySelector('#continueWritingPrompt').closest('.vcp-uiux-general-item');
     assert.ok(stackedItem, 'textarea 行应直出 canonical 行');
@@ -403,12 +413,43 @@ test('canonical 行直出结构完备，投影 pass 对已达标记空转（M5-b
     assert.ok(switchRow.querySelector(':scope > .vcp-uiux-row-copy label'));
     assert.ok(switchRow.querySelector(':scope > label.switch'));
     assert.ok(form.querySelector('#middleClickQuickActionContainer'), '容器 id 必须穿越直出');
-    // 已达标记：投影 pass 对直出产物零改动（管线其余 pass 所见 DOM 与
-    // 「旧包裹类 + pass 投影」逐节点一致）。
-    const before = form.innerHTML;
-    mountCanonicalSettingsRows(form);
-    assert.equal(form.innerHTML, before, 'canonical-rows 对直出行必须空转');
-    assert.equal(form.dataset.vcpCanonicalRowsMounted, 'true');
+    assert.equal(form.querySelectorAll('.form-group, .vcp-settings-row, .vcp-settings-control-row, .settings-form-group, .form-group-inline').length, 0,
+        '试点分区不得残留旧包裹类');
+});
+
+const CONTROL_SELECTOR = 'input, select, textarea, button, [role="switch"]';
+
+test('canonical 行直出全分区铺开，退役的 canonical-rows pass 空转（M5-c pass6 不变量）', () => {
+    for (const sectionDescriptor of schemaSurfaceSections()) {
+        const { form } = renderIntoForm(sectionDescriptor);
+        // 旧包裹类零残留：与退役 pass 的守卫语义一致——嵌套在已达 canonical
+        // 行内的控制行（radioGroup 内层）与尚无控件的空容器行（网络笔记路径
+        // 容器，运行期才追加子行）不在 pass 候选内，允许保留旧类。
+        const residue = [...form.querySelectorAll('.form-group, .vcp-settings-row, .vcp-settings-control-row, .settings-form-group, .form-group-inline')]
+            .filter(row => row instanceof dom.window.HTMLElement)
+            .filter(row => !row.closest('[data-canonical-row="true"]'))
+            .filter(row => row.querySelector(CONTROL_SELECTOR));
+        assert.equal(residue.length, 0,
+            `${sectionDescriptor.key}：编译产物残留旧包裹类 ${residue.map(r => r.id || r.className).join(', ')}`);
+        // 与退役 pass 同一候选清单：每个候选行都带 canonicalRow 已达标记。
+        for (const row of form.querySelectorAll('[data-vcp-settings-row], [data-vcp-settings-control-row], .vcp-uiux-general-item, .vcp-uiux-general-row, .settings-form-group, .form-group-inline, .form-group')) {
+            if (!(row instanceof dom.window.HTMLElement)) continue;
+            if (!row.querySelector(CONTROL_SELECTOR)) continue;
+            // 与退役 pass 的候选语义一致：嵌套在已达 canonical 行内的行不参与。
+            if (row.dataset.canonicalRow !== 'true' && row.closest('[data-canonical-row="true"]')) continue;
+            assert.equal(row.dataset.canonicalRow, 'true',
+                `${sectionDescriptor.key}：#${row.id || row.dataset.settingKey || 'anonymous'} 行未直出 canonical 结构`);
+        }
+        // 分区 key 盖章穿越（appearance 分区行为 appearance-row 变体）。
+        for (const item of form.querySelectorAll('.vcp-uiux-general-item')) {
+            assert.equal(item.dataset.settingsSectionKey, sectionDescriptor.key,
+                `${sectionDescriptor.key}：canonical 行缺分区 key`);
+            if (sectionDescriptor.key === 'appearance-settings') {
+                assert.equal(item.dataset.settingPrimitive, 'appearance-row');
+                assert.ok(item.classList.contains('vcp-uiux-appearance-row'));
+            }
+        }
+    }
 });
 
 test('开关行直出 Toggle 原语 holder（M5-c pass1：uiux-switches 退役）', () => {
@@ -439,8 +480,7 @@ test('步进器行直出结构 + 激活行为绑定（M5-c pass2：stepper 投�
     const api = { activateNumericStepperRow };
 
     const { form } = renderIntoForm(renderSettingsSection);
-    mountCanonicalSettingsRows(form);
-    // 直出后 canonical 行内已是原语终态结构：行为激活前编辑器为空、箭头可用。
+    // canonical 行内已是原语终态结构：行为激活前编辑器为空、箭头可用。
     const range = form.querySelector('#streamAnimationDurationMs');
     const row = range.closest('.vcp-uiux-numeric-stepper-row');
     const editor = row.querySelector('.vcp-uiux-numeric-stepper-row-input');
@@ -483,7 +523,6 @@ test('步进器行直出结构 + 激活行为绑定（M5-c pass2：stepper 投�
 
     // 快捷操作分区的分组步进器行同样直出 + 激活。
     const qa = renderIntoForm(quickActionsSection);
-    mountCanonicalSettingsRows(qa.form);
     const delayRow = qa.form.querySelector('#middleClickAdvancedDelay').closest('.vcp-uiux-numeric-stepper-row');
     assert.ok(delayRow, '分组步进器行直出结构存在');
     assert.equal(delayRow.parentElement.id, 'middleClickAdvancedSettings', '宿主行锚点保留');
