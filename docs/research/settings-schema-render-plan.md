@@ -215,7 +215,9 @@ dsw 语义 CSS（单层级联）
 - **测试**：新增三个用例——语言行/字号行直出结构断言（六个分区 11 行：行文案/触发按钮文本节点/箭头 path/字号行量程与 draft 标记/select 挂行内/hint 次序/canonical 分区容器宿主同样成立）；激活行为绑定（激活即同步 px 读数与标签、vcp-uiux-sync 镜像、菜单选择写穿业务 select 并派发 change、重复激活幂等、MutationObserver 选项重建镜像、全部直出行激活覆盖断言）；空转完备性不变量（全八分区编译产物中每个带直出行的裸 select 行都必须已激活 = 退役 pass 无可挂载对象）。bridge-modules 单一载体清单（appearance-controls → global-language-rows 激活契约）、管线步断言（appearance-rows 退役守卫 + canonical-rows before 边更新）与 typed-primitives 扫描清单（activateLanguageRow/activateFontSizeRow 进原语清单，mountSelect 随兜底退役移出）同步。
 - **验收**：全套 380 测试 378 过（2 例既有失败不回退）；八分区探针 45/45 双跑（含重启往返等值，双跑状态逐字节一致）；像素 7/8 分区对 pass3 末基线（d27326e3）字节一致，voice-settings 仅 4 像素单通道 241→242（F9 输入胶囊圆角反锯齿，pass2 同类已判定噪声，双跑逐字节稳定复现、非随机竞态）。D6 复查干净。
 
-#### 13.3.5 设计稿：pass5 分段/弹层直出（前置设计稿，施工记录随后回填本节）
+#### 13.3.5 pass5 分段/弹层直出、select-projection 步退役（40b57f00 设计稿 + b6ae09eb 施工）
+
+##### 13.3.5.1 前置设计稿（40b57f00）
 
 - **勘验结论（设计前提）**：pass4 的通用激活扫描已把全部 17 个 schema select（11 个语言行宿主 + 字号行 + widgets 四个场景字体行 + 划词 Agent 动态行）在管线内统一打上 `vcpTypedPrimitiveMounted`（激活步先于 select-projection）。全八分区"编译 + 激活链"仿真核实：**0 个未打标 select**——pass5 原表的"弹层直出"对象已被 pass4 全部消费，select-projection 在 schema 面空转。因此 pass5 收缩为两件事：
   1. **分段（Choice）直出**：全 schema 恰有两个 radioGroup（voiceModeGroup、chatLayoutMode），choice-controls 的两个 id 表项与之一一对应。radioGroup 渲染直接产出 mountChoice 终态产物：内层控制行加 `vcp-uiux-choice` 类、radio 标签加 `vcp-uiux-choice-option` 类、行 `dataset.value` 取编译期 checked 值（local / normal）——sync 的语义就是"从 checked radio 重推导 dataset.value"。choice-controls.js（mountChoiceControls）整文件退役；choice 原语抽出 bindChoiceBehavior 共用，新增 activateChoice 只绑行为（change/vcp-uiux-sync 重推导 dataset.value）并调 ensureStyles——schema 面退役后无其他 mountChoice 调用点，分段样式必须由激活方同一管线 tick 注入。mountChoice 本体保留：agent 流式输出分段（agent-settings-bridge）仍是 mount 语义。
@@ -223,6 +225,13 @@ dsw 语义 CSS（单层级联）
 - **删 observer 的事件链安全论证**：select-projection 的 observer/sync 桥在 schema 面的三个职责均已冗余——① applySettings（M5-a 值链）写值时自行派发 vcp-uiux-sync，语言行镜像直接监听该事件；② restoreSectionValues 仅在分区重渲染时迁移现值，先于管线激活（激活读现值）；③ global-settings-updated 的发布方（global-settings-manager/appearance-studio）只广播设置快照、不直写 schema select。选项重建（assistantAgent）由 pass4 推广的语言行 MutationObserver 接管。
 - **空转不变量（单测门禁）**：全八分区编译产物经激活链后，每个 select 必须已打 `vcpTypedPrimitiveMounted`（= select-projection 无可投影对象），每个 `vcp-uiux-choice` 行必须已激活（= choice-controls 无可挂载对象）。
 - **验收**：沿用固定流程——+3 单测；八分区探针 45/45 + 重启往返；像素对 pass4 末基线（c5d834a4）预期 0 差（直出 = 运行期挂载逐属性等值）。
+
+##### 13.3.5.2 施工记录（b6ae09eb）
+
+- **直出语义**：field-renderer 的 radioGroup 分支（全 schema 恰两处：语音工作模式、内容宽度）在编译期就地产出 Choice 原语（mountChoice）的终态产物——内层控制行加 `vcp-uiux-choice` 类、radio 标签加 `vcp-uiux-choice-option` 类、行 `dataset.value` 取编译期 checked 值（local / normal）；choice-controls.js（mountChoiceControls 的两个 id 表项）整文件删除。choice 原语抽出 bindChoiceBehavior 共用（dataset.value 从 checked radio 重推导），新增 activateChoice 导出——直出结构上只绑 change/vcp-uiux-sync 行为并注入分段样式表（schema 面退役后无其他 mountChoice 调用点，样式必须由激活方同一管线 tick 注入）；mountChoice 本体保留给 agent 流式输出分段。弹层侧按勘验结论零直出对象：select-projection 管线步删除，模块与 bridge-shared 导出保留（agent-settings-bridge 仍是真实消费方），settings-bridge 收尾的 selectProjection.teardown() 保留（共享单例清扫语义不变）；global-pill-steppers 的 before 边随之收缩。
+- **运行期只剩行为**：global-input-upgrades.js 新增 mountGlobalChoices——按 `.vcp-uiux-choice` 结构通用扫描（不再维护 id 表），activateChoice + vcpTypedPrimitiveMounted 标记，并入 global-typed-primitives 步。marker-registry：vcpSelectRebuilding 属主注记 schema 面退役（agent 面保留）；Choice 的 dataset.value 值镜像登记为 persistent（schema 面初值随直出就地产出并有意跨 teardown 存续，agent 面 mount 语义仍在 dispose 时删除）。
+- **测试**：新增三个用例——分段直出结构（两个单选组的行类/选项类/dataset.value 初值）；激活行为绑定（change 与 vcp-uiux-sync 双路重推导、重复激活幂等）；空转完备性不变量（全八分区经与管线同序的激活链后，每个 select 必须已打标 = select-projection 无可投影对象，每个分段行必须已激活 = choice-controls 无可挂载对象）。bridge-modules 清单同步：管线步断言去掉 select-projection 并加退役守卫、Choice 批测试改断直出 + mountGlobalChoices、原语清单 mountChoice→activateChoice、choice-controls.js 删除守卫；选择投影模块级契约测试保留（agent 面消费方）。
+- **验收**：全套 383 测试 381 过（2 例既有失败不回退）；八分区探针 45/45 双跑（含重启往返等值）；像素 run1 对 pass4 末基线（c5d834a4）10/10 字节一致，run2 仅 voice-settings 4 像素单通道 242→241（F9 输入胶囊圆角反锯齿，与 pass4 判定的同 4 像素集双向翻转，run1 全等证明非系统性差异，维持噪声判定）。D6 复查干净。
 
 ### 13.4 M5-d 收尾
 
