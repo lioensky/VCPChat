@@ -7,6 +7,9 @@ import { schemaSurfaceSections } from './settings/schema-surface.js';
 export function handleSaveGlobalSettings(e, deps) {
     e.preventDefault();
     const settingsForm = e.currentTarget || document.getElementById('globalSettingsForm');
+    if (settingsForm && settingsForm.dataset.vcpAutosaveSubmission !== 'true') {
+        settingsForm.dispatchEvent(new CustomEvent('vcp-settings-manual-save-start'));
+    }
     if (settingsForm?.dataset.globalSettingsSaving === 'true') {
         // The legacy autosave state machine unlocks only on a
         // `vcp-settings-save-result` event. Returning silently here wedged that
@@ -33,9 +36,6 @@ export function handleSaveGlobalSettings(e, deps) {
     // A real submit supersedes any pending legacy debounce. Without this
     // boundary, the explicit save can close the modal and the old timer then
     // starts a second save against a torn-down surface.
-    if (settingsForm && settingsForm.dataset.vcpAutosaveSubmission !== 'true') {
-        settingsForm.dispatchEvent(new CustomEvent('vcp-settings-manual-save-start'));
-    }
 
     return saveGlobalSettings(deps, settingsForm).catch(error => {
         // Exceptions (notably the bounded IPC timeout) are terminal outcomes

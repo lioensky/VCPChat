@@ -149,6 +149,8 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
         state.pending = false;
+        delete form.dataset.vcpKeepOpenAfterSave;
+        delete form.dataset.vcpAutosaveSubmission;
     };
     // Results arrive through the coordinator's routing (阶段 4): this client
     // is registered as the default consumer, so it sees only the form-level
