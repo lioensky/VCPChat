@@ -40,7 +40,7 @@
 - focused settings/UI tests：coordinator 12/12、Electron-facing 4/4、整体设置/UI 58/58 通过；新增 typed A/B durable-revision、retry conflict 和 reload cancellation 回归。
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
 - `npm run check:uiux`：通过（别名指向 artifact gate）。
-- `npm run test:settings-wa-electron`：通过；包含 2 个 JSDOM lifecycle contracts，以及真实 Electron CDP gate 的 8 个场景（shell/nav/search、深浅主题截图、IPC 保存、reload 恢复）。
+- `npm run test:settings-wa-electron`：通过；包含 4 个 JSDOM lifecycle contracts，以及真实 Electron CDP gate 的 8 个场景（shell/nav/search、深浅主题截图、IPC 保存、reload 恢复）。
 - `node scripts/test-electron-windows-matrix.mjs`：在当前 macOS 主机生成 evidence，Windows 行明确 `skipped`（host-required），未伪造 Windows 通过。
 - `VCPCHAT_MANUAL_SOAK_MINUTES=0.001 VCPCHAT_MANUAL_SOAK_INTERVAL_SECONDS=0.001 node scripts/test-electron-manual-soak.mjs`：生成 23 个无错误 checkpoint；该工具仍明确要求人工 checklist，不能把短时观察升级为完整 soak 通过。
 - `node scripts/test-ui-system.mjs`：UI system contract assertions pass; the JSDOM process leaves existing requestSubmit/timer activity alive and does not produce a stable terminating exit here.
@@ -51,6 +51,6 @@
 
 与 DeepSeek Harness 的 `write-behind`/settings-file 原则逐项对照后，发现并修复一项真实缺陷：typed 串行写入中，较早请求的成功结果此前会因 generation 变旧而直接丢弃，导致后续 patch 使用旧 revision。现在 durable success 与调用方的 `stale` 语义分离：提交仍推进 base/revision、清理已提交 ops，只有当前调用方不再拥有发布权时才返回 `stale`；回归测试验证 A/B 两次编辑分别使用 `r1`、`r2` 且无 stranded pending。
 
-当前完成度：**约 92%（Global Settings 本地功能完成）**。剩余 8% 是交付证据而非已知实现缺陷：Windows 原生 runner、packaged Electron、GPU/DPI 几何矩阵、长时人工 soak，以及 native `fs.watch` 驱动的真实 Electron 外部冲突交互仍未形成可采信证据。不得把 macOS 解包 Electron 或短时诊断记录外推为这些平台/场景已通过。
+随后又完成合并前阻塞修复：原子写入改用随机独占临时文件；手动提交会取消遗留 legacy debounce，自动保存通过瞬时提交标记保持窗口语义；Toast 生命周期测试增加调度裕量。当前 Global Settings 本地完成度约 **95%**。剩余证据缺口仍是 Windows 原生 runner、packaged Electron、GPU/DPI 几何矩阵、长时人工 soak，以及 native `fs.watch` 驱动的真实 Electron 外部冲突交互。不得把 macOS 解包 Electron或短时诊断记录外推为这些平台/场景已通过。
 
-验收结论：Global Settings 自动保存协调器在本地源码、focused tests、锁/CAS/RMW、真实 macOS Electron CDP（保存、重载、布局、搜索、主题截图）和 UI artifact gate 上完成；目标保持 **active**，直到剩余交付证据补齐。
+验收结论：Global Settings 自动保存协调器已合并回 `exp/settings-schema`，在本地源码、focused tests、锁/CAS/RMW、真实 macOS Electron CDP（保存、重载、布局、搜索、主题截图）和 UI artifact gate 上完成；目标仍保持 **active**，直到剩余交付证据补齐。

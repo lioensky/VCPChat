@@ -2,7 +2,7 @@
 
 Status: implementation complete for Global Settings; external delivery evidence gates remain open
 
-Baseline: `exp/settings-schema` at `6d70bee6`; implementation branch: `feat/settings-autosave-coordinator`.
+Baseline: `exp/settings-schema` at `f8d73250`; integrated on `exp/settings-schema` at `05ac26a6` (merge `5627a9d9`).
 
 ## Current architecture
 
