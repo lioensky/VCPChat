@@ -162,6 +162,14 @@ dsw 语义 CSS（单层级联）
 4. 测试面翻新：schema-render/bridge-modules 中断言旧类的用例改为断言 canonical 结构。
 5. **试点验收后不铺开**——先跑一个分区，确认探针/像素/CSS 三关全过再进入 13.3。
 
+**施工记录（已完成：快捷操作分区试点通过，ae5169df）**：
+
+- **直出落地**：新增 `modules/settings/render/canonical-row.js`——canonical 行机械层（`canonicalizeRenderedRow` 单行变换 + `composeCanonicalRowSlots` 槽位组合）与行语义类映射表（旧包裹类 vcp-settings-row/vcp-settings-control-row/form-group/settings-form-group/form-group-inline → 移除并替换为 vcp-uiux-general-item/general-row；行上其余类如 vcp-settings-row-stacked、settings-inline-number-row 原样保留；行属性 id/data-visible-when/data-vcp-style/hidden 原样保留；dataset 增补 settingPrimitive/settingsSectionKey/settingKey/canonicalRow；title+helper 收入 row-copy 槽）。`section()` 增加 `canonicalRows` 开关，quick-actions 试点声明；field-renderer 对声明分区的每行（含 card/radioGroup 嵌套行）就地 canonical 化，旧包裹类不再出现在编译产物。
+- **pass 收敛**：mountCanonicalSettingsRows 退化为候选扫描 + hr 清理，单行变换改调共享 canonicalizeRenderedRow（单一载体），并按 dataset.canonicalRow 已达标记对直出行空转；pass 本体待 13.3 六个 pass 全部退役后随之删除（届时全部直出，pass 对全分区空转）。
+- **hr 停止输出**：advanced-features 的 advancedDivider（`<hr>`，data-vcp-style=36）不再编译——投影 pass 本就挂载即删，画面零变化。
+- **测试面翻新**：schema-render 行形态断言改查 canonical 结构（含旧包裹类零残留、映射类保留、样式标记穿越）；canonical 直出完备性 + pass 空转不变量（innerHTML 逐字节不变）；bridge-modules「函数单一载体」扫描纳入 render/canonical-row.js、appearanceOwner 断言随机械层搬家、已达标记断言补入 pass 文件。
+- **验收记录**：全套 372/370（2 条基线既有失败）；实机探针 45/45（含 M5-b 专查：快捷操作直出行 ≥7 且旧包裹类零残留、row-copy 槽在位、投影 pass 照常挂载，加上 M5-a 保存链全量回归）；像素对比 8 分区对 M5-a 末基线全部 0 差异（5 分区字节一致、2 分区 0 差异字节、quick-actions 字节一致——直出与 pass 投影逐像素等值）；CSS 关由全套 css-parts/settings 契约测试覆盖。D6 复查干净，已推 fork（a3c6f05c..ae5169df）。
+
 ### 13.3 M5-c 原语直挂：逐 pass 退役（由简到繁，每 pass 一个提交）
 
 渲染器按字段类型直接输出原语就绪结构，管线对应 pass 删除。顺序按风险升序：
