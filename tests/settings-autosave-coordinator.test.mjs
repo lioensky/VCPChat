@@ -112,6 +112,11 @@ test('coordinator keeps durable base, draft, and pending path operations indepen
     assert.equal(state.durableBase.userName, 'Initial');
     assert.equal(state.draft.userName, 'Draft');
     assert.equal(state.pendingOps.length, 1);
+    coordinator.recordDraft({ appearanceProfile: { fontScale: 'large' } }, []);
+    state = coordinator.getSnapshot();
+    assert.equal(state.draft.appearanceProfile.density, 'comfortable');
+    assert.equal(state.draft.appearanceProfile.fontScale, 'large');
+    assert.equal(Object.isFrozen(state.draft.appearanceProfile), true);
     coordinator.reportState('conflict');
     coordinator.recordCommit({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: 'r2' });
     state = coordinator.getSnapshot();

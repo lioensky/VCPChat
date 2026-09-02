@@ -17,6 +17,23 @@ function patchToOperations(patch, prefix = []) {
     });
 }
 
+function deepFreeze(value) {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+    Object.values(value).forEach(deepFreeze);
+    return Object.freeze(value);
+}
+
+function deepMerge(base, patch) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+    const output = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {};
+    for (const [key, value] of Object.entries(patch)) {
+        output[key] = value && typeof value === 'object' && !Array.isArray(value)
+            ? deepMerge(output[key], value)
+            : value;
+    }
+    return output;
+}
+
 function createCoordinator(form) {
     const clients = new Map();
     const operations = new Map();
@@ -131,13 +148,13 @@ function createCoordinator(form) {
             };
         },
         setDurableBase(settings, revision = undefined) {
-            durableBase = Object.freeze({ ...(settings || {}) });
+            durableBase = deepFreeze(deepMerge({}, settings || {}));
             if (revision !== undefined) durableRevision = revision;
             if (!form.dataset.vcpSettingsDirty) draft = durableBase;
             return snapshot();
         },
         recordDraft(patch = {}, ops = []) {
-            draft = Object.freeze({ ...draft, ...(patch || {}) });
+            draft = deepFreeze(deepMerge(draft, patch || {}));
             pendingOps = [...pendingOps, ...(Array.isArray(ops) ? ops : [])];
             return snapshot();
         },
@@ -151,7 +168,7 @@ function createCoordinator(form) {
                 retryableFailure = result;
                 return snapshot();
             }
-            durableBase = Object.freeze({ ...durableBase, ...(patch || {}) });
+            durableBase = deepFreeze(deepMerge(durableBase, patch || {}));
             if (result.currentRevision !== undefined) durableRevision = result.currentRevision;
             const committed = new Set((ops || []).map(operation => JSON.stringify(operation)));
             pendingOps = pendingOps.filter(operation => !committed.has(JSON.stringify(operation)));
@@ -250,7 +267,7 @@ function createCoordinator(form) {
                 const revision = settings.__vcpSettingsRevision;
                 const externalSettings = { ...settings };
                 delete externalSettings.__vcpSettingsRevision;
-                durableBase = Object.freeze({ ...externalSettings });
+                durableBase = deepFreeze(deepMerge({}, externalSettings));
                 durableRevision = revision;
                 draft = durableBase;
                 pendingOps = [];
