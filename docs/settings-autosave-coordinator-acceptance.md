@@ -18,7 +18,7 @@
 | 场景 | 期望 | 证据状态 |
 |---|---|---|
 | typed A/B 快速连续编辑 | A、B 均持久化 | path operation 与 serialized queue 通过；真实 DOM owner 仍需 Electron 证据 |
-| typed 与 legacy 并发 | 未触碰字段不被覆盖 | manager 双实例 CAS 通过；legacy full-snapshot 兼容调用仍有迁移缺口 |
+| typed 与 legacy 并发 | 未触碰字段不被覆盖 | legacy form 在设置页内先 diff 再转 path ops；其他业务调用仍保留兼容快照 |
 | in-flight 追加 patch 后首个失败 | 失败 batch retained，后续 flush 可重试 | retained batch 代码已补；owner 时序仍需 Electron 证据 |
 | 旧 operation 迟到结果 | 不改变当前 draft/status | coordinator matching-terminal test 通过 |
 | cancelled/stale/conflict | 保持明确非 success 语义 | adapter 单测通过 |
@@ -44,4 +44,4 @@
 - `npm run test:ui-system`：在既有 global input primitive fixture 断言失败，非本批 autosave 合同断言。
 - `npm run test:electron-ui-apps`：启动后未在本机已有 Electron 实例环境中形成可采信的退出结果，不能替代 packaged Electron 验收。
 
-验收结论：本批已完成 coordinator、path mutation、fresh CAS、双实例锁、外部 watcher 和冲突动作入口；由于仍有 legacy 兼容调用迁移、真实 DOM owner 时序、UI System 基线失败和 packaged/cross-platform Electron 证据缺口，状态为 **Needs Further Work**，不可标记为 PR-ready。
+验收结论：本批已完成 coordinator、path mutation、fresh CAS、双实例锁、外部 watcher、冲突动作入口及设置页内 legacy diff 迁移；由于仍有其他业务兼容调用迁移、真实 DOM owner 时序、UI System 基线失败和 packaged/cross-platform Electron 证据缺口，状态为 **Needs Further Work**，不可标记为 PR-ready。
