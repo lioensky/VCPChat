@@ -165,10 +165,13 @@ test('render-settings：stepper 内联行、预设行、滑杆与自定义行', 
     const smoothRow = form.querySelector('#enableSmoothStreaming').closest('.vcp-uiux-general-item');
     assert.equal(smoothRow.getAttribute('data-vcp-style'), '15');
     assert.ok(smoothRow.querySelector(':scope > div > small'));
-    // stepper 双控件内联行（M5-c pass2：直出 NumericStepperRow 终态结构，
-    // 旧 cell label 由原语行内 title 承担，不再输出）
-    const inlineRow = form.querySelector('#minChunkBufferSize').closest('.settings-inline-number-row');
-    assert.ok(inlineRow.classList.contains('vcp-uiux-general-item'), '内联行直出 canonical 行（旧 form-group 类按映射退役）');
+    // 两个流式参数各自占一行，避免窄窗口下标题与步进器挤在同一行。
+    const chunkHost = form.querySelector('#minChunkBufferSize').closest('.vcp-uiux-general-item');
+    const intervalHost = form.querySelector('#smoothStreamIntervalMs').closest('.vcp-uiux-general-item');
+    assert.ok(chunkHost && intervalHost && chunkHost !== intervalHost, '两个流式参数应为独立行');
+    assert.ok([...chunkHost.parentElement.children].indexOf(chunkHost)
+        < [...intervalHost.parentElement.children].indexOf(intervalHost),
+        '最小渲染 Chunk 字数应位于最小刷新间隔之前');
     const chunkInput = form.querySelector('#minChunkBufferSize');
     assert.equal(chunkInput.getAttribute('data-vcp-style'), '19');
     assert.equal(chunkInput.getAttribute('min'), '1');

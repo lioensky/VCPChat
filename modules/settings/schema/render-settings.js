@@ -1,7 +1,7 @@
 // schema/render-settings — "消息渲染" 分区（M1）。
 // 流式开关（提示在包裹 div 内）、双 stepper 内联行、动画预设 select、
 // 时长滑杆、自定义 CSS 行（含示例块）与动画预览组件。
-import { section, switchField, inlineNumbers, select, range, textarea, custom, card } from './kernel.js';
+import { section, switchField, select, range, custom, card, number } from './kernel.js';
 import { buildStreamAnimationCustomExample, buildStreamAnimationPreview } from '../render/widgets.js';
 
 const STREAM_ANIMATION_PRESETS = ['slide-left', 'fade', 'rise', 'scale', 'none', 'custom'];
@@ -32,10 +32,18 @@ export const renderSettingsSection = section('render-settings', '消息渲染', 
         hint: '对增量文本进行缓冲，使输出节奏更加平滑。',
         hintInsideWrapper: true,
     }),
-    inlineNumbers('streamInlineNumbers', [
-        { key: 'minChunkBufferSize', label: '最小渲染 Chunk 字数（≥1）', min: 1, defaultValue: 16, save: { parse: 'int', fallback: 16 } },
-        { key: 'smoothStreamIntervalMs', label: '最小刷新间隔（ms，≥1）', min: 1, defaultValue: 100, save: { parse: 'int', fallback: 100 } },
-    ]),
+    number('minChunkBufferSize', {
+        rowId: 'minChunkBufferSizeRow',
+        min: 1,
+        defaultValue: 16,
+        save: { parse: 'int', fallback: 16 },
+    }),
+    number('smoothStreamIntervalMs', {
+        rowId: 'smoothStreamIntervalMsRow',
+        min: 1,
+        defaultValue: 100,
+        save: { parse: 'int', fallback: 100 },
+    }),
     card('streamAnimationSettingsCard', {
         cardKey: 'stream-animation',
         title: '流式内容动效',
