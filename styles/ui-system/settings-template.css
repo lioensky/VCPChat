@@ -641,6 +641,7 @@
     /* Keep end-of-list wheel chaining out of the overflow:hidden panel;
        mirrors the canonical rule in settings-primitives.css. */
     overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-options > form {
@@ -1670,9 +1671,10 @@
 /* Label-less rows host a self-titled primitive (LanguageRow pill, stepper in
    its slider container). Let that primitive own the full row instead of
    collapsing into the 260px copy column. */
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:not(:has(> .vcp-uiux-row-copy)) > .vcp-uiux-language-row,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:not(:has(> .vcp-uiux-row-copy)) > :is(.vcp-uiux-language-row, .vcp-uiux-numeric-stepper-row, .vcp-uiux-font-size-row),
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:not(:has(> .vcp-uiux-row-copy)) > .slider-container {
     grid-column: 1 / -1;
+    width: 100%;
 }
 
 /* The legacy slider container is a flex row and would shrink the stepper to
