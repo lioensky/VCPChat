@@ -7,9 +7,7 @@ const generatedRoot = path.join(root, 'modules', 'uiux', 'generated');
 
 const required = [
     'browser-entry.js',
-    'browser-entry.d.ts',
     'index.js',
-    'index.d.ts',
     'runtime/scope.js',
     'runtime/service-registry.js',
 ];

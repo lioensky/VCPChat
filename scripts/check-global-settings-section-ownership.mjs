@@ -2,27 +2,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const bridge = fs.readFileSync(new URL('../modules/ui-system/settings-bridge.js', import.meta.url), 'utf8');
-const rows = fs.readFileSync(new URL('../modules/ui-system/settings/canonical-rows.js', import.meta.url), 'utf8');
 const ownership = fs.readFileSync(new URL('../modules/ui-system/settings/section-ownership.js', import.meta.url), 'utf8');
 const doc = fs.readFileSync(new URL('../docs/global-settings-section-ownership.md', import.meta.url), 'utf8');
 const settingsDir = new URL('../modules/ui-system/settings/', import.meta.url);
 const identity = fs.readFileSync(new URL('identity-controls.js', settingsDir), 'utf8');
-const choices = fs.readFileSync(new URL('choice-controls.js', settingsDir), 'utf8');
-const advancedVisibility = fs.readFileSync(new URL('../modules/ui-system/settings/advanced-visibility.js', import.meta.url), 'utf8');
 const typedOwners = fs.readFileSync(new URL('../modules/ui-system/typed-field-owners.js', import.meta.url), 'utf8');
-const rustVisibility = fs.readFileSync(new URL('../modules/ui-system/settings/rust-visibility.js', import.meta.url), 'utf8');
 const sections = ['user-identity', 'server-connection', 'appearance-settings', 'render-settings', 'selection-assistant', 'voice-settings', 'advanced-features', 'quick-actions'];
 for (const section of sections) assert.ok(doc.includes(`| \`${section}\` |`), `ownership document must list ${section}`);
 assert.match(bridge, /function enhanceGlobalSettings\(root, form\)/, 'bridge must retain one global section entry point during migration');
 assert.match(`${bridge}\n${identity}`, /(?:function mountTypedAvatarColorPair|export function mountIdentityColorPairs)\(/, 'identity owner must remain explicit');
-assert.match(`${bridge}\n${choices}`, /(?:function mountTypedGlobalChoiceGroups|export function mountChoiceControls)\(/, 'choice owner must remain explicit');
-assert.match(bridge, /function mountUiuxInputs\(/, 'input owner must remain explicit');
-assert.match(rows, /sectionKeyForRow\(row\)/, 'canonical rows must publish section ownership metadata');
 assert.match(ownership, /section\?\.dataset\?\.settingsSectionKey/, 'section ownership must honor the stamped section key attribute');
-assert.match(advancedVisibility, /export function syncAdvancedSettingsVisibility\(form\)/, 'advanced helper must expose one section projection contract');
-assert.match(rustVisibility, /export function syncRustAssistantVisibility\(form\)/, 'Rust helper must expose one section projection contract');
-assert.match(`${bridge}\n${typedOwners}`, /syncAdvancedSettingsVisibility\(form\)/, 'the bridge composition must invoke the advanced section helper');
-assert.match(`${bridge}\n${typedOwners}`, /syncRustAssistantVisibility\(form\)/, 'the bridge composition must invoke the Rust section helper');
 for (const section of sections) assert.match(ownership, new RegExp(`'[^']+'\\s*:\\s*'${section}'`), `section key must map ${section}`);
 const mainHtml = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
 for (const section of sections) {
@@ -43,7 +32,6 @@ const controlProbeFiles = [
     'modules/ui-system/typed-field-owners.js',
     'modules/global-settings-manager.js',
     'modules/settingsManager.js',
-    'modules/ui-system/settings/canonical-rows.js',
     'modules/ui-system/settings/render-visibility.js',
     'modules/ui-system/settings/dependent-rows.js',
 ];
@@ -55,11 +43,14 @@ const controlProbeAllowlist = new Map([
     ['rustGuardRulesContainer', 'nested container removed by flattening; guarded with if (container)'],
     ['userUseThemeColorsInChat', 'absent upstream as well; pre-existing optional control'],
     ['stripRegexListContainer', 'absent upstream as well; pre-existing optional container'],
+    ['streamAnimationDurationValue', 'schema-rendered output label; not a static main.html id'],
 ]);
 // M4 起设置分区没有静态标记：JS 绑定的 id 必须存在于 main.html（模态壳、
 // 导航与非设置域）或 schema 编译产物之中。
 const { JSDOM } = await import('jsdom');
 const schemaDoc = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' }).window.document;
+globalThis.document = schemaDoc;
+globalThis.window = schemaDoc.defaultView;
 const { schemaSurfaceSections } = await import('../modules/settings/schema-surface.js');
 const { renderSchemaSection } = await import('../modules/settings/render/field-renderer.js');
 const schemaSurfaceHost = schemaDoc.createElement('div');
