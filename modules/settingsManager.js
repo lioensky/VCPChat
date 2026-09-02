@@ -1128,9 +1128,6 @@ const settingsManager = (() => {
                         }
                     } catch (e) { /* ignore */ }
                     populateModelList(models, currentModelSelectCallback, hotModelIds, favoriteModelIds);
-                    const available = Array.isArray(models) && models.length > 0;
-                    uiHelper.showToastNotification(available ? '模型列表已刷新' : '模型服务暂不可用',
-                        available ? 'success' : 'error');
                 });
             }
 

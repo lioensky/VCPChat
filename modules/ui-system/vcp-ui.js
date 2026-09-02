@@ -2159,6 +2159,20 @@ function removeToast(owner, controller) {
 
 function createOwnedToast(owner, message, options = {}) {
     if (!owner.active) return null;
+    const text = String(message ?? '');
+    const stack = ensureFeedbackHost().querySelector('.vcp-ui-toast-stack');
+    if (stack && text) {
+        const existing = [...owner.toasts].find(t => t.element?.textContent?.includes(text));
+        if (existing) {
+            const timer = toastTimers.get(existing);
+            if (timer !== undefined) clearTimeout(timer);
+            const duration = options.duration ?? 4200;
+            if (duration > 0) {
+                toastTimers.set(existing, setTimeout(() => existing.destroy(), duration));
+            }
+            return existing;
+        }
+    }
     const controller = toastFactory({ ...options, message });
     const originalDestroy = controller.destroy.bind(controller);
     controller.destroy = () => {
