@@ -17,7 +17,6 @@ import { claimSaveCoordinator, getSaveCoordinator } from './settings/save-coordi
 import { mountCanonicalSettingsRows } from './settings/canonical-rows.js';
 import { runSettingsPipeline } from './settings/pipeline.js';
 import { syncRenderSettingsVisibility } from './settings/render-visibility.js';
-import { mountAppearanceSelects, mountAppearanceLanguageRows, mountChatFontRows, mountAppearanceRadiusLanguageRow, mountAppearanceFontSizeRow } from './settings/appearance-controls.js';
 import { mountAppearanceRanges } from './settings/appearance-ranges.js';
 import { mountAppearanceToggles } from './settings/appearance-toggles.js';
 import { mountHomeTaglineInput } from './settings/home-controls.js';
@@ -217,27 +216,19 @@ function enhanceGlobalSettings(root, form) {
         { name: 'save-coordinator', run: () => claimSaveCoordinator(form) },
         {
             name: 'canonical-rows',
-            before: ['appearance-rows', 'global-pill-steppers',
+            before: ['global-pill-steppers',
                 'global-typed-primitives',
                 'uiux-disclosures', 'agent-name-fields'],
             run: () => mountCanonicalSettingsRows(form),
         },
         {
-            name: 'appearance-rows',
-            before: ['select-projection'],
-            run: () => {
-                mountAppearanceFontSizeRow(form, api(), scope());
-                mountAppearanceLanguageRows(form, api(), scope());
-                mountChatFontRows(form, api(), scope());
-                mountAppearanceSelects(form, api(), scope());
-                mountAppearanceRadiusLanguageRow(form, api(), scope());
-            },
-        },
-        {
             name: 'global-pill-steppers',
-            // Global pill/stepper projections must own their nodes before the
-            // catch-all select projection.（M5-c pass2 起 stepper 投影退役：
-            // 结构由 field-renderer 直出，激活并入 global-typed-primitives。）
+            // Language/pill/stepper activations must own their nodes before
+            // the catch-all select projection.（M5-c pass2 起 stepper 投影退役：
+            // 结构由 field-renderer 直出，激活并入 global-typed-primitives；
+            // pass4 起语言行/字号行结构亦直出，appearance-rows 步删除，本步
+            // 只剩直出结构的行为激活——global-language-rows 的通用激活扫描 +
+            // 语音快捷键 Input 收编。）
             before: ['select-projection'],
             run: () => {
                 mountGlobalLanguageRows(form, api(), scope());

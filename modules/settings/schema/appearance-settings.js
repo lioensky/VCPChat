@@ -1,7 +1,8 @@
 // schema/appearance-settings — 界面与外观分区（M3）。
 // 全分区行结构对齐 main.html：裸 select 行（密度/圆角/字体/字号/内容宽度/
-// 页面材质/列表项圆角）由 appearance-controls 的语言行/字号行 passes 以
-// `#<key>Row` 为宿主重建可见 UI；几何滑杆由 appearance-ranges 挂 stepper；
+// 页面材质/列表项圆角）以 languageRow/fontSizeRow 元数据驱动 field-renderer
+// 直出语言行/字号行结构（M5-c pass4），运行期只剩行为激活；几何滑杆由
+// appearance-ranges 挂 stepper；
 // 主页视觉开关由 appearance-toggles 接管；场景字体与呈现模式是自包含组件
 // （widgets.js），8 个字体控件与 3 个呈现模式 radio 通过 captureKeys +
 // saveMap 参与保存/回填（M5-a）。appearance-studio 只读
@@ -19,6 +20,7 @@ const HOME_TAGLINE_DEFAULT = '语义级打穿 AI、UI/UX、APP 与人类想象�
 const APPEARANCE_PROFILE_SELECTS = [
     {
         key: 'appearanceDensity', profileKey: 'appearanceProfile.density',
+        languageRow: { title: '界面密度', description: '调整设置页与工作区控件的疏密程度' },
         options: [
             { value: 'compact', label: '紧凑' },
             { value: 'comfortable', label: '舒适' },
@@ -27,6 +29,7 @@ const APPEARANCE_PROFILE_SELECTS = [
     },
     {
         key: 'appearanceRadius', profileKey: 'appearanceProfile.radius',
+        languageRow: { title: '圆角', description: '调整页面容器与控件的圆角风格' },
         options: [
             { value: 'square', label: '直角 · 0px' },
             { value: 'small', label: '小圆角 · 6px 基准' },
@@ -37,6 +40,7 @@ const APPEARANCE_PROFILE_SELECTS = [
     },
     {
         key: 'appearanceTypography', profileKey: 'appearanceProfile.typography',
+        languageRow: { title: '界面字体', description: '选择界面使用的字体风格' },
         options: [
             { value: 'system', label: '系统字体' },
             { value: 'humanist', label: 'VChat 人文无衬线' },
@@ -45,6 +49,7 @@ const APPEARANCE_PROFILE_SELECTS = [
     },
     {
         key: 'appearanceFontScale', profileKey: 'appearanceProfile.fontScale',
+        fontSizeRow: { title: '字号', description: '调整界面文字大小' },
         options: [
             { value: 'small', label: '较小' },
             { value: 'normal', label: '标准' },
@@ -53,6 +58,7 @@ const APPEARANCE_PROFILE_SELECTS = [
     },
     {
         key: 'appearanceContentWidth', profileKey: 'appearanceProfile.contentWidth',
+        languageRow: { title: '内容宽度', description: '调整工作区内容的最大阅读宽度' },
         options: [
             { value: 'full', label: '铺满' },
             { value: 'centered', label: '居中阅读' },
@@ -60,6 +66,7 @@ const APPEARANCE_PROFILE_SELECTS = [
     },
     {
         key: 'appearanceSurface', profileKey: 'appearanceProfile.surface',
+        languageRow: { title: '导航材质', description: '选择侧栏与页面的表面材质' },
         options: [
             { value: 'translucent', label: '跟随主题' },
             { value: 'solid', label: '纯色' },
@@ -93,10 +100,12 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         value: HOME_TAGLINE_DEFAULT,
         save: { trim: true, slice: 120, falsy: HOME_TAGLINE_DEFAULT },
     }),
-    ...APPEARANCE_PROFILE_SELECTS.map(({ key, profileKey, options }) => select(key, {
+    ...APPEARANCE_PROFILE_SELECTS.map(({ key, profileKey, options, languageRow, fontSizeRow }) => select(key, {
         bareRow: true,
         rowId: `${key}Row`,
         options,
+        languageRow,
+        fontSizeRow,
         // profile 复合收集走分区钩子，这里只声明回填路径。
         save: { valuePath: profileKey, collect: false },
     })),
@@ -119,6 +128,7 @@ export const appearanceSettingsSection = section('appearance-settings', '界面�
         rowId: 'appearanceSidebarRadiusLanguageRow',
         rowClass: 'appearance-radius-language-host',
         ariaLabel: '列表项圆角',
+        languageRow: { title: '列表项圆角', description: '控制助手、话题和账户列表项的圆角' },
         options: [
             { value: 'tuned', label: '原设计 · 10px' },
             { value: 'follow', label: '跟随全局 · 自动' },

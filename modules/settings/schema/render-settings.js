@@ -39,6 +39,7 @@ export const renderSettingsSection = section('render-settings', '消息渲染', 
     select('streamAnimationPreset', {
         rowId: 'streamAnimationSettingsRow',
         groupRowClass: 'vcp-settings-row',
+        languageRow: { title: '流式内容动效', description: '消息内容进场动画样式' },
         hintStyle: null,
         options: [
             { value: 'slide-left', label: '右侧滑入（经典）' },

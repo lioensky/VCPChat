@@ -30,6 +30,7 @@ export const quickActionsSection = section('quick-actions', '快捷操作', [
     }),
     select('middleClickQuickAction', {
         groupId: 'middleClickQuickActionContainer',
+        languageRow: { title: '中键快速执行功能', description: '按住中键从快捷环直接执行所选功能' },
         hint: '提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能',
         hidden: true,
         when: ['enableMiddleClickQuickAction'],

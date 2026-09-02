@@ -2,10 +2,10 @@
 // 这些块（头像资料卡、折叠样式区、调试面板、动画示例/预览、外观工作台卡、
 // 字体场景预览、呈现模式选择器）是自包含组件而非普通字段：标记逐字对齐
 // main.html 静态版本，由既有增强（avatar-picker、identity-name 编辑器、
-// uiux-disclosures、identity-controls、动画预览监听、appearance-controls、
+// uiux-disclosures、identity-controls、动画预览监听、语言行激活、
 // choice-controls）按类名/id 接管。后续阶段组件化后从这里收编。
 import { el } from './shared.js';
-import { buildInputPrimitiveWrap } from './field-renderer.js';
+import { buildInputPrimitiveWrap, buildLanguageRowStructure } from './field-renderer.js';
 
 export function buildUserProfileCard(doc) {
     const card = el(doc, 'div', 'vcp-uiux-user-profile-card');
@@ -339,20 +339,31 @@ const SCENARIO_FONT_OPTIONS = {
     ],
 };
 
-function buildScenarioFontControls(doc, { presetRowId, presetId, optionKey, customRowId, customId, placeholder, ariaLabel }) {
+function buildScenarioFontControls(doc, { presetRowId, presetId, optionKey, customRowId, customId, placeholder, ariaLabel, langRow }) {
     const presetRow = doc.createElement('div');
     presetRow.id = presetRowId;
     const select = doc.createElement('select');
     select.id = presetId;
     select.name = presetId;
     select.hidden = true;
-    for (const [value, label] of SCENARIO_FONT_OPTIONS[optionKey]) {
+    const options = SCENARIO_FONT_OPTIONS[optionKey];
+    for (const [value, label] of options) {
         const option = doc.createElement('option');
         option.value = value;
         option.textContent = label;
         select.append(option);
     }
     presetRow.append(select);
+    // M5-c pass4：场景字体的语言行结构直出（mountChatFontRows 退役，运行期
+    // 只剩 global-language-rows 的行为激活）。
+    if (langRow) {
+        presetRow.append(buildLanguageRowStructure(doc, {
+            title: langRow.title,
+            description: langRow.description,
+            options: options.map(([value, label]) => ({ value, label })),
+            activeId: select.value,
+        }));
+    }
     const customRow = el(doc, 'div', '', 8);
     customRow.id = customRowId;
     const input = doc.createElement('input');
@@ -382,6 +393,7 @@ export function buildFontScenarioPreviewRow(doc) {
     chatBody.textContent = '这是普通聊天正文的显示效果，适合长段阅读与自然对话。';
     chatCard.append(chatTitle, chatBody, buildScenarioFontControls(doc, {
         presetRowId: 'chatFontPresetRow', presetId: 'chatFontPreset', optionKey: 'chat',
+        langRow: { title: '聊天字体', description: '选择聊天正文使用的字体' },
         customRowId: 'chatFontCustomRow', customId: 'chatFontCustom',
         placeholder: '例如: "LXGW WenKai", "Microsoft YaHei", sans-serif',
         ariaLabel: '聊天字体自定义值',
@@ -396,6 +408,7 @@ export function buildFontScenarioPreviewRow(doc) {
     codeBody.textContent = 'const sum = (a, b) =>\n  a + b;';
     codeCard.append(codeTitle, codeBody, buildScenarioFontControls(doc, {
         presetRowId: 'chatCodeFontPresetRow', presetId: 'chatCodeFontPreset', optionKey: 'code',
+        langRow: { title: '代码字体', description: '选择代码块使用的字体' },
         customRowId: 'chatCodeFontCustomRow', customId: 'chatCodeFontCustom',
         placeholder: '例如: "Maple Mono", "JetBrains Mono", monospace',
         ariaLabel: '代码字体自定义值',
@@ -409,6 +422,7 @@ export function buildFontScenarioPreviewRow(doc) {
     diaryBody.textContent = '晚风穿过窗边，纸页轻轻翻动，像一段被放慢的心事。';
     diaryCard.append(diaryTitle, diaryBody, buildScenarioFontControls(doc, {
         presetRowId: 'chatDiaryFontPresetRow', presetId: 'chatDiaryFontPreset', optionKey: 'diary',
+        langRow: { title: '场景字体', description: '选择日记与文学块使用的字体' },
         customRowId: 'chatDiaryFontCustomRow', customId: 'chatDiaryFontCustom',
         placeholder: '例如: "Noto Serif SC", Georgia, serif',
         ariaLabel: '日记字体自定义值',
@@ -422,6 +436,7 @@ export function buildFontScenarioPreviewRow(doc) {
     toolBody.append('status: success', doc.createElement('br'), 'result: 已完成内容整理与渲染。');
     toolCard.append(toolTitle, toolBody, buildScenarioFontControls(doc, {
         presetRowId: 'chatToolFontPresetRow', presetId: 'chatToolFontPreset', optionKey: 'tool',
+        langRow: { title: '场景字体', description: '选择工具结果与系统卡片使用的字体' },
         customRowId: 'chatToolFontCustomRow', customId: 'chatToolFontCustom',
         placeholder: '例如: "Segoe UI", "Microsoft YaHei", sans-serif',
         ariaLabel: '工具字体自定义值',

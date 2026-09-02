@@ -36,7 +36,9 @@ const MARKERS = Object.freeze({
     // Appearance stepper/font-size editors are draft surfaces: the marker on
     // the editor and its business control makes settings/autosave.js skip
     // them; the primitive's scope disposer deletes it from the business node.
-    vcpAppearanceDraftControl: { owner: 'generated primitives (numeric-stepper-row/font-size-row) + settings/autosave.js', cleanup: 'scope-owned' },
+    // M5-c pass4 起 font-size-row 的标记随直出结构由渲染器就地产出
+    // （field-renderer buildFontSizeRowStructure），mount 路径保持原样。
+    vcpAppearanceDraftControl: { owner: 'generated primitives (numeric-stepper-row/font-size-row) + field-renderer.js (static) + settings/autosave.js', cleanup: 'scope-owned' },
     // Icon name carried by injected icon hosts for the lucide adapter to
     // render; the host element's lifetime is the presentation scope's.
     vcpIcon: { owner: 'settings-bridge.js form icons + lucide-adapter.js', cleanup: 'persistent' },
