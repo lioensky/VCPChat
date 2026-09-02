@@ -43,6 +43,7 @@ const MARKERS = Object.freeze({
     // module (and this marker) survives for the agent settings surface.
     vcpSelectRebuilding: { owner: 'settings/select-projection.js (agent surface)', cleanup: 'scope-owned' },
     vcpTypedPrimitiveMounted: { owner: 'all generated-primitive mount sites', cleanup: 'scope-owned' },
+    vcpUiuxInputPrimitive: { owner: 'settings/global-input-upgrades.js compatibility text inputs', cleanup: 'scope-owned' },
     // M5-c pass6 retired the form-icons step: the three inline Lucide SVGs are
     // direct-rendered vcp-ui-icon nodes, so vcpSettingsIconsNormalized (and
     // its teardown restoration) is deregistered with the mechanism.
@@ -76,13 +77,17 @@ const MARKERS = Object.freeze({
     vcpTypedForumFieldOwnerMounted: { owner: 'typed-field-owners.js', cleanup: 'manual-retract' },
     vcpSettingsDirty: { owner: 'settings/autosave.js + settingsManager', cleanup: 'business-contract' },
     vcpSettingsRevision: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
+    vcpSettingsOperationId: { owner: 'settings/save-coordinator.js', cleanup: 'business-contract' },
     vcpSettingsSource: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
     vcpAutosaveState: { owner: 'settings/autosave.js + settingsManager', cleanup: 'business-contract' },
-    // Set by the autosave submit so the save handler keeps the dialog open
-    // after success; consumed (deleted) by global-settings-manager.js.
+    vcpAutosaveSubmission: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
+    // Compatibility marker for callers that still request a keep-open save;
+    // autosave submissions now use the transient boundary above.
     vcpKeepOpenAfterSave: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
     globalSettingsSaving: { owner: 'settings/autosave.js', cleanup: 'business-contract' },
     vcpAutosaveMounted: { owner: 'settings/autosave.js', cleanup: 'manual-retract' },
+    vcpSettingsConflictActions: { owner: 'settings-bridge.js conflict action bar', cleanup: 'scope-owned' },
+    vcpSettingsConflict: { owner: 'typed-field-owners.js external reconciliation', cleanup: 'business-contract' },
 
     // agent-settings-bridge.js — configured via the private Input owner's
     // `marker` option and deleted with the owning presentation scope

@@ -23,12 +23,12 @@ test('typed SettingsUiService publishes only committed patches and releases exte
     const release = service.state.subscribe((_value, snapshot) => revisions.push(snapshot.revision));
     assert.deepEqual(revisions, [0]);
     const denied = await service.save.execute({ density: 'compact' });
-    assert.deepEqual(denied, { success: false, error: 'denied' });
+    assert.deepEqual(denied, { success: false, status: 'failed', error: 'denied' });
     assert.equal(service.state.get().density, 'comfortable');
     assert.deepEqual(revisions, [0]);
     fail = false;
     const saved = await service.save.execute({ density: 'compact' });
-    assert.deepEqual(saved, { success: true });
+    assert.deepEqual(saved, { success: true, status: 'success' });
     assert.equal(service.state.get().density, 'compact');
     assert.deepEqual(revisions, [0, 1]);
     external.forEach(listener => listener({ currentThemeMode: 'dark' }));
@@ -87,7 +87,7 @@ test('typed SettingsUiService invalidates a timed-out save without disposing the
     service.cancelPendingSaves?.();
     assert.equal(cancelled, true, 'service cancellation reaches the adapter owner');
     resolveSave({ success: true });
-    assert.deepEqual(await pending, { success: true });
+    assert.deepEqual(await pending, { success: false, status: 'stale' });
     assert.equal(service.state.get().density, 'comfortable');
     assert.deepEqual(revisions, [0], 'late completion cannot publish after timeout invalidation');
     await service.dispose?.();

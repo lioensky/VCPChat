@@ -1214,8 +1214,9 @@ export function setupEventListeners(deps) {
 
         const saveSidebarState = settings => {
             if (!chatAPI?.saveSettings) return;
-
-            chatAPI.saveSettings(settings || refs.globalSettings.get()).then(result => {
+            const source = settings || refs.globalSettings.get();
+            const ops = Object.entries(source || {}).map(([key, value]) => ({ op: 'set', path: [key], value }));
+            chatAPI.saveSettings({ __vcpSettingsOps: ops }).then(result => {
                 if (!result.success) {
                     console.error('保存侧边栏状态失败:', result.error);
                 }
@@ -1323,9 +1324,7 @@ export function setupEventListeners(deps) {
             const nextSettings = { ...globalSettings, assistantEnabled: isActive };
             refs.globalSettings.set(nextSettings);
             chatAPI.toggleSelectionListener(isActive);
-            const result = await chatAPI.saveSettings({
-                ...nextSettings
-            });
+            const result = await chatAPI.saveSettings({ __vcpSettingsOps: [{ op: 'set', path: ['assistantEnabled'], value: isActive }] });
             if (result.success) {
                 uiHelperFunctions.showToastNotification(`划词助手已${isActive ? '开启' : '关闭'}`, 'info');
             } else {

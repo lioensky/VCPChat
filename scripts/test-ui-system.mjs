@@ -531,14 +531,16 @@ modalContainer.append(globalModal);
 scope.append(modalContainer);
 window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
-// M5 renders primitive-ready controls from schema. Ad-hoc controls that are
-// not part of a registered schema section remain canonical native anchors;
-// the retired projection passes must not silently re-wrap them.
+// Global settings: the typed Uiux primitives own the single-line input and
+// the select projection; the legacy native-kernel classes and the WA proxy
+// are retired on this surface. Save state is observable through the form
+// autosave dataset contract, not a footer action bar.
 const globalUserName = document.getElementById('globalUserName');
 const globalSelect = document.getElementById('globalSelect');
-assert.equal(globalUserName.dataset.vcpUiuxInputPrimitive, undefined, 'ad-hoc input is not claimed by a retired projection pass');
-assert.equal(globalUserName.closest('.vcp-uiux-input-wrap'), null, 'ad-hoc input remains a native anchor');
-assert.equal(globalSelect.closest('.vcp-uiux-select'), null, 'ad-hoc select remains a native anchor');
+assert.equal(globalUserName.dataset.vcpUiuxInputPrimitive, 'true', 'global input uses the Uiux Input primitive');
+assert.ok(globalUserName.closest('.vcp-uiux-input-wrap'), 'global input is owned by the Input primitive wrap');
+assert.ok(globalSelect.closest('.vcp-uiux-select'), 'global select uses the Uiux select projection');
+assert.ok(globalModal.querySelector('.vcp-uiux-select-trigger'), 'global select exposes the projected trigger');
 assert.equal(document.getElementById('globalSettingsForm').dataset.vcpAutosaveMounted, 'true', 'global autosave mounted');
 globalUserName.value = 'Changed';
 globalUserName.dispatchEvent(new Event('input', { bubbles: true }));
@@ -546,12 +548,12 @@ assert.equal(document.getElementById('globalSettingsForm').dataset.vcpSettingsDi
 document.documentElement.dataset.uiMode = 'classic';
 window.dispatchEvent(new CustomEvent('ui-mode-changed', { detail: { mode: 'classic', previousMode: 'next' } }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(document.getElementById('globalUserName').dataset.vcpUiuxInputPrimitive, undefined,
-    'legacy mode events must not resurrect retired projection passes');
+assert.equal(document.getElementById('globalUserName').dataset.vcpUiuxInputPrimitive, 'true',
+    'legacy mode events must not tear down canonical settings controls');
 assert.ok(globalModal.classList.contains('vcp-global-settings-surface'),
     'legacy mode events must not remove the canonical modal marker');
-assert.equal(document.getElementById('globalUserName').closest('.vcp-uiux-input-wrap'), null,
-    'legacy mode events keep the ad-hoc native input unchanged');
+assert.ok(document.getElementById('globalUserName').closest('.vcp-uiux-input-wrap'),
+    'legacy mode events must not unmount the Input primitive wrap');
 await window.VCPUISettingsBridge.destroy();
 modalContainer.remove();
 
@@ -1247,3 +1249,9 @@ assert.equal(waHost.querySelectorAll('[class^="vcp-ui-"]').length, 0, 'WA-backed
 waHost.remove();
 
 console.log(`UI system contract tests passed (${expected.length} public component names).`);
+// This standalone JSDOM contract runner intentionally constructs browser-like
+// globals whose third-party adapters may leave non-critical timers alive. All
+// owned controllers have been destroyed above; terminate explicitly so the
+// npm gate has a deterministic process boundary instead of waiting forever on
+// those external handles.
+process.exit(0);

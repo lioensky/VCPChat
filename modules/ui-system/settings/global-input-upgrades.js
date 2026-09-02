@@ -38,6 +38,25 @@ export function mountVoiceShortcutInput(form, api, scope) {
     scope.own(() => { delete input.dataset.vcpTypedPrimitiveMounted; }, 'typed-voice-shortcut-input-marker', 'ui-primitive');
 }
 
+// Keep dynamically supplied/legacy text fields on the same primitive contract
+// as schema fields.  This is deliberately scoped to the settings form and
+// skips controls that already own a generated wrap or a typed special path.
+export function mountGlobalTextInputs(form, api, scope) {
+    if (!form || !scope || !api?.mountInput) return;
+    form.querySelectorAll('input[type="text"], input:not([type])').forEach(input => {
+        if (input.dataset.vcpTypedPrimitiveMounted === 'true' || input.closest('.vcp-uiux-input-wrap')) return;
+        if (input.type === 'file' || input.dataset.vcpTypedFieldOwner === 'true') return;
+        try {
+            api.mountInput(input, {}, scope);
+            input.dataset.vcpTypedPrimitiveMounted = 'true';
+            input.dataset.vcpUiuxInputPrimitive = 'true';
+            scope.own(() => { delete input.dataset.vcpTypedPrimitiveMounted; delete input.dataset.vcpUiuxInputPrimitive; }, `typed-${input.id || 'text'}-input-marker`, 'ui-primitive');
+        } catch (error) {
+            console.warn('[VCPUI SettingsBridge] Could not mount global text Input primitive:', error);
+        }
+    });
+}
+
 // M5-c pass5：分段（Choice）行为激活。行类/标签类/dataset.value 初值已由
 // field-renderer 的 radioGroup 直出，这里按结构通用扫描（不再维护 id 表），
 // 只绑定 change/vcp-uiux-sync 的 dataset.value 重推导并注入分段样式表。

@@ -22,10 +22,54 @@ let typedRustAssistantService = null;
 let typedForumConfigService = null;
 let typedAssistantRuntimeService = null;
 let typedSettingsState = Object.freeze({});
+let typedSettingsBase = Object.freeze({});
+let typedSettingsDraft = Object.freeze({});
+let typedSettingsConflict = null;
 let typedSettingsExternalRelease = null;
 let typedSettingsSaveChain = Promise.resolve();
 let typedSettingsSaveGeneration = 0;
+let typedSettingsCancelEpoch = 0;
 let typedSettingsDisposed = false;
+let typedSettingsRevision = null;
+
+function patchToPathOps(patch, prefix = []) {
+    const ops = [];
+    for (const [key, value] of Object.entries(patch || {})) {
+        const path = [...prefix, key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) ops.push(...patchToPathOps(value, path));
+        else ops.push({ op: 'set', path, value });
+    }
+    return ops;
+}
+
+function readPath(value, path) {
+    let current = value;
+    for (const part of path) {
+        if (!current || typeof current !== 'object' || !(part in current)) return undefined;
+        current = current[part];
+    }
+    return current;
+}
+
+function jsonEqual(left, right) {
+    try { return JSON.stringify(left) === JSON.stringify(right); } catch { return Object.is(left, right); }
+}
+
+function changedPaths(before, after, prefix = []) {
+    if (jsonEqual(before, after)) return [];
+    const beforeObject = before && typeof before === 'object' && !Array.isArray(before);
+    const afterObject = after && typeof after === 'object' && !Array.isArray(after);
+    if (!beforeObject || !afterObject) return [prefix];
+    const paths = [];
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        paths.push(...changedPaths(before[key], after[key], [...prefix, key]));
+    }
+    return paths.length ? paths : [prefix];
+}
+
+function pathsOverlap(left, right) {
+    return left.every((part, index) => right[index] === part) || right.every((part, index) => left[index] === part);
+}
 
 function addTypedNetworkPathInput(root, path = '') {
     const container = root?.querySelector?.('#networkNotesPathsContainer');
@@ -81,28 +125,138 @@ function addTypedNetworkPathInput(root, path = '') {
 function ensureTypedSettingsService() {
     if (typedSettingsService || !window.VCPUIUX?.createSettingsUiService) return typedSettingsService;
     const externalListeners = new Set();
-    const publishExternal = settings => {
+    const publishExternal = (settings, { replaceDraft = false } = {}) => {
         if (typedSettingsDisposed) return;
-        typedSettingsState = Object.freeze({ ...typedSettingsState, ...(settings || {}) });
+        const next = Object.freeze({ ...(settings || {}) });
+        typedSettingsBase = next;
+        typedSettingsDraft = replaceDraft
+            ? next
+            : Object.freeze({ ...typedSettingsDraft, ...next });
+        typedSettingsState = typedSettingsDraft;
+        const form = document.getElementById('globalSettingsForm');
+        getSaveCoordinator(form)?.setDurableBase?.(next, typedSettingsRevision);
         externalListeners.forEach(listener => listener(typedSettingsState));
     };
-    const onExternalSettings = event => publishExternal(event.detail?.settings);
+    const onExternalSettings = event => {
+        if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
+        const form = document.getElementById('globalSettingsForm');
+        const isReload = event.detail?.source === 'settings-reload';
+        if (isReload) {
+            typedSettingsConflict = null;
+            // Reload is an explicit discard of the local draft. Cancel queued
+            // field timers and invalidate any in-flight publication before
+            // projecting the external snapshot, otherwise the old patch can
+            // fire after the controls have visibly reloaded.
+            typedSettingsService?.cancelPendingSaves?.();
+            typedFieldStates.forEach(state => {
+                if (state.timer) clearTimeout(state.timer);
+                state.timer = null;
+                state.pendingPatch = null;
+            });
+            typedForumFieldStates.forEach(state => {
+                if (state.timer) clearTimeout(state.timer);
+                state.timer = null;
+                state.pending = false;
+            });
+            getSaveCoordinator(form)?.clearConflict?.();
+            if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
+        }
+        if (!isReload && form?.dataset.vcpSettingsDirty === 'true') {
+            typedSettingsConflict = { external: event.detail?.settings, revision: event.detail?.revision };
+            form.dataset.vcpSettingsConflict = 'true';
+            getSaveCoordinator(form)?.recordCommit?.({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: event.detail?.revision }, {}, []);
+            window.dispatchEvent(new CustomEvent('settings-conflict', { detail: typedSettingsConflict }));
+            return;
+        }
+        publishExternal(event.detail?.settings, { replaceDraft: true });
+        if (form) delete form.dataset.vcpSettingsConflict;
+    };
+    const onRetryDraft = () => {
+        // A retry cannot silently overwrite a field changed externally. The
+        // user must reload or resolve that overlap before another write.
+        if (typedSettingsConflict?.overlap) return;
+        if (typedSettingsConflict?.revision !== undefined) typedSettingsRevision = typedSettingsConflict.revision;
+        typedSettingsConflict = null;
+        document.getElementById('globalSettingsForm')?.removeAttribute('data-vcp-settings-conflict');
+        getSaveCoordinator(document.getElementById('globalSettingsForm'))?.clearConflict?.();
+        typedFieldStates.forEach(state => {
+            if (!state.disposed && state.pendingPatch && !state.timer && !state.inFlight) state.schedule?.();
+        });
+    };
+    const externalSubscription = window.chatAPI?.onSettingsExternalUpdated?.(payload => {
+        const settings = payload?.settings || payload;
+        const revision = payload?.revision;
+        if (revision !== undefined) typedSettingsRevision = revision;
+        if (typedSettingsSaveGeneration > 0 && document.getElementById('globalSettingsForm')?.dataset.vcpSettingsDirty === 'true') {
+            typedSettingsConflict = { external: settings, revision };
+            const form = document.getElementById('globalSettingsForm');
+            form?.setAttribute('data-vcp-settings-conflict', 'true');
+            getSaveCoordinator(form)?.recordCommit?.({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: revision }, {}, []);
+            window.dispatchEvent(new CustomEvent('settings-conflict', { detail: typedSettingsConflict }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings, revision, source: 'settings-external' } }));
+    });
     if (bridgeScope) bridgeScope.listen(window, 'global-settings-updated', onExternalSettings, undefined, 'typed-settings-external-update');
     else window.addEventListener('global-settings-updated', onExternalSettings);
+    if (bridgeScope) bridgeScope.listen(window, 'settings-retry-draft', onRetryDraft, undefined, 'typed-settings-retry-draft');
+    else window.addEventListener('settings-retry-draft', onRetryDraft);
     typedSettingsExternalRelease = () => {
         if (!bridgeScope) window.removeEventListener('global-settings-updated', onExternalSettings);
+        if (!bridgeScope) window.removeEventListener('settings-retry-draft', onRetryDraft);
         externalListeners.clear();
+        externalSubscription?.();
         typedSettingsExternalRelease = null;
     };
     typedSettingsService = window.VCPUIUX.createSettingsUiService({
         get: () => typedSettingsState,
-        save: patch => {
+        save: (patch, metadata = {}) => {
             const generation = ++typedSettingsSaveGeneration;
+            const cancelEpoch = typedSettingsCancelEpoch;
+            const operationId = metadata.operationId || `typed-${Date.now().toString(36)}-${generation}`;
+            // Advance the in-memory draft at enqueue time. A later queued
+            // patch must observe this edit even while an earlier IPC call is
+            // still unresolved.
+            typedSettingsDraft = Object.freeze({ ...typedSettingsDraft, ...(patch || {}) });
+            typedSettingsState = typedSettingsDraft;
             const run = async () => {
-                const next = Object.freeze({ ...typedSettingsState, ...patch });
-                const result = await window.chatAPI?.saveSettings?.(next);
-                if (result?.success && generation === typedSettingsSaveGeneration) publishExternal(next);
-                return result?.success ? { success: true } : { success: false, error: result?.error || '设置保存失败' };
+                const form = document.getElementById('globalSettingsForm');
+                const coordinator = getSaveCoordinator(form);
+                const result = coordinator?.savePatch
+                    ? await coordinator.savePatch(patch, {
+                        owner: metadata.owner || 'typed-settings-field-owner',
+                        expectedRevision: typedSettingsRevision ?? undefined,
+                        operationId,
+                        transport: window.chatAPI?.saveSettings,
+                    })
+                    : await window.chatAPI?.saveSettings?.({
+                        __vcpSettingsOps: Object.freeze(patchToPathOps(patch)),
+                        expectedRevision: typedSettingsRevision ?? undefined,
+                        operationId,
+                    });
+                const status = result?.status || (result?.success ? 'success' : 'failed');
+                if (status === 'success' && cancelEpoch !== typedSettingsCancelEpoch) {
+                    return { success: false, status: 'stale', operationId, currentRevision: result?.currentRevision };
+                }
+                if (status === 'success') {
+                    // A typed save callback is serialized through
+                    // `typedSettingsSaveChain`.  An edit that arrives while
+                    // this request is in flight advances the generation, but
+                    // that does not make this durable commit stale: the next
+                    // queued request must observe its new revision.  Always
+                    // advance the committed base and coordinator bookkeeping;
+                    // only the caller-facing publication is stale when a
+                    // newer local generation already exists.
+                    typedSettingsRevision = result?.currentRevision ?? typedSettingsRevision;
+                    typedSettingsBase = Object.freeze({ ...(result?.settings || typedSettingsBase), ...(patch || {}) });
+                    typedSettingsConflict = null;
+                    getSaveCoordinator(document.getElementById('globalSettingsForm'))?.recordCommit?.(result, patch, patchToPathOps(patch));
+                    if (generation !== typedSettingsSaveGeneration) {
+                        return { success: false, status: 'stale', operationId, currentRevision: typedSettingsRevision };
+                    }
+                    return { success: true, status: 'success', operationId, currentRevision: typedSettingsRevision };
+                }
+                return { success: false, status, operationId, code: result?.code, error: result?.error || '设置保存失败', currentRevision: result?.currentRevision };
             };
             const result = typedSettingsSaveChain.then(run, run);
             typedSettingsSaveChain = result.catch(() => {});
@@ -110,6 +264,8 @@ function ensureTypedSettingsService() {
         },
         cancelPendingSaves: () => {
             typedSettingsSaveGeneration += 1;
+            typedSettingsCancelEpoch += 1;
+            typedSettingsRevision = null;
             // Do not let a timed-out IPC hold retry behind an unbounded chain.
             // The old request may still settle in the main process, but it has
             // lost publication rights and the next retry starts immediately.
@@ -120,7 +276,11 @@ function ensureTypedSettingsService() {
             return () => externalListeners.delete(listener);
         },
     });
-    void window.chatAPI?.loadSettings?.().then(settings => publishExternal(settings)).catch(() => {});
+    void window.chatAPI?.loadSettings?.().then(settings => {
+        if (settings?.__vcpSettingsRevision !== undefined) typedSettingsRevision = settings.__vcpSettingsRevision;
+        const { __vcpSettingsRevision, ...snapshot } = settings || {};
+        publishExternal(snapshot);
+    }).catch(() => {});
     if (window.VCPUIUX?.createUiServiceRegistryFromScope && bridgeScope && window.VCPUIUX?.settingsUiDefinition) {
         typedSettingsRegistry = window.VCPUIUX.createUiServiceRegistryFromScope(bridgeScope);
         const definition = window.VCPUIUX.settingsUiDefinition;
@@ -379,11 +539,11 @@ function mountTypedForumFieldOwner(root, form) {
     // client, so its owner-tagged results are routed here — the legacy
     // machine never filters them by string.
     const coordinator = getSaveCoordinator(form);
-    const setStatus = (mode) => {
-        if (coordinator) coordinator.reportState(mode);
+    const setStatus = (mode, details = {}) => {
+        if (coordinator) coordinator.reportState(mode, { owner: 'typed-forum-field-owner', ...details });
         else form.dataset.vcpAutosaveState = mode;
     };
-    coordinator?.registerClient({ id: 'typed-forum-field-owner', flush: flushTypedForumFields });
+    const releaseClient = coordinator?.registerClient({ id: 'typed-forum-field-owner', flush: flushTypedForumFields, hasWork: () => [...typedForumFieldStates].some(item => item === state && (item.pending || item.inFlight || item.timer)) });
     const run = async () => {
         state.timer = null;
         if (state.disposed || !state.pending || state.inFlight) return;
@@ -391,27 +551,37 @@ function mountTypedForumFieldOwner(root, form) {
         const username = form.querySelector('#adminUsername')?.value?.trim() || '';
         const password = form.querySelector('#adminPassword')?.value || '';
         state.inFlight = service.save.execute({ username, password, rememberCredentials: true });
-        setStatus('saving');
+        const operationId = coordinator?.createOperation('typed-forum-field-owner');
+        setStatus('saving', { operationId });
         try {
             const result = await state.inFlight;
             if (state.disposed) return;
             if (!result?.success) {
+                if (result?.status === 'stale' || result?.status === 'cancelled') {
+                    if (state.pending) schedule();
+                    return;
+                }
+                if (result?.status === 'conflict' && result.currentRevision !== undefined) {
+                    typedSettingsConflict = { revision: result.currentRevision, error: result.error };
+                    form.dataset.vcpSettingsConflict = 'true';
+                }
                 state.failed = true;
+                state.pending = true;
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, error: result?.error || '论坛配置保存失败', owner: 'typed-forum-field-owner' } }));
+                setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
+                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, status: result?.status || 'failed', error: result?.error || '论坛配置保存失败', owner: 'typed-forum-field-owner', operationId } }));
             } else {
                 state.failed = false;
-                if (!state.pending) delete form.dataset.vcpSettingsDirty;
-                setStatus('saved');
-                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: true, owner: 'typed-forum-field-owner' } }));
+                setStatus('saved', { owner: 'typed-forum-field-owner', dirty: Boolean(state.pending), operationId });
+                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: true, status: 'success', owner: 'typed-forum-field-owner', operationId } }));
             }
         } catch (error) {
             if (!state.disposed) {
                 state.failed = true;
+                state.pending = true;
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, error: error?.message || String(error), owner: 'typed-forum-field-owner' } }));
+                setStatus('error', { operationId });
+                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, status: 'failed', error: error?.message || String(error), owner: 'typed-forum-field-owner', operationId } }));
             }
         } finally { state.inFlight = null; if (state.pending) schedule(); }
     };
@@ -440,6 +610,7 @@ function mountTypedForumFieldOwner(root, form) {
         if (state.timer) clearTimeout(state.timer);
         controls.forEach(control => { delete control.dataset.vcpTypedForumFieldOwner; });
         typedForumFieldStates.delete(state);
+        releaseClient?.();
         delete form.dataset.vcpTypedForumFieldOwnerMounted;
     }, 'typed-forum-field-owner', 'ui-presentation');
 }
@@ -622,42 +793,88 @@ function mountTypedFieldOwner(root, form) {
     // client, so its owner-tagged results are routed here — the legacy
     // machine never filters them by string.
     const coordinator = getSaveCoordinator(form);
-    const setStatus = (mode) => {
-        if (coordinator) coordinator.reportState(mode);
+    const setStatus = (mode, details = {}) => {
+        if (coordinator) coordinator.reportState(mode, { owner: 'typed-settings-field-owner', ...details });
         else form.dataset.vcpAutosaveState = mode;
     };
-    coordinator?.registerClient({ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields });
-    const publish = (success, error = '') => {
-        form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success, error: error || undefined, owner: 'typed-settings-field-owner' } }));
+    const releaseClient = coordinator?.registerClient({ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields, hasWork: () => [...typedFieldStates].some(item => item === state && (item.pendingPatch || item.inFlight || item.timer)) });
+    const publish = (success, error = '', status = success ? 'success' : 'failed', operationId = undefined) => {
+        form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success, status, error: error || undefined, owner: 'typed-settings-field-owner', operationId } }));
     };
     const run = async () => {
         state.timer = null;
         if (state.disposed || !state.pendingPatch || state.inFlight) return;
         const patch = state.pendingPatch;
         state.pendingPatch = null;
-        state.inFlight = service.save.execute(patch);
-        setStatus('saving');
+        coordinator?.recordDraft?.(patch, patchToPathOps(patch));
+        const operationId = coordinator?.createOperation('typed-settings-field-owner');
+        state.inFlight = service.save.execute(patch, { operationId, owner: 'typed-settings-field-owner' });
+        setStatus('saving', { operationId });
         try {
             const result = await state.inFlight;
             if (state.disposed) return;
             if (!result?.success) {
+                if (result?.status === 'stale' || result?.status === 'cancelled') {
+                    // Superseded/cancelled work is not a durable failure and
+                    // must not poison the aggregate error state.
+                    if (state.pendingPatch) schedule();
+                    return;
+                }
+                state.pendingPatch = {
+                    ...(patch || {}),
+                    ...(state.pendingPatch || {}),
+                    ...(patch?.appearanceProfile || state.pendingPatch?.appearanceProfile
+                        ? { appearanceProfile: { ...(patch?.appearanceProfile || {}), ...(state.pendingPatch?.appearanceProfile || {}) } }
+                        : {}),
+                };
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                publish(false, result?.error || '设置保存失败');
+                if (result?.status === 'conflict' && result.settings && result.currentRevision !== undefined) {
+                    const localOps = patchToPathOps(state.pendingPatch);
+                    const externalChanges = changedPaths(typedSettingsBase, result.settings);
+                    const overlaps = localOps.some(operation => externalChanges.some(path => pathsOverlap(operation.path, path)));
+                    if (!overlaps) {
+                        typedSettingsBase = Object.freeze({ ...(result.settings || {}) });
+                        typedSettingsRevision = result.currentRevision;
+                        coordinator?.setDurableBase?.(typedSettingsBase, typedSettingsRevision);
+                        typedSettingsConflict = null;
+                        delete form.dataset.vcpSettingsConflict;
+                        // Settle the superseded operation before scheduling the
+                        // rebased patch; otherwise coordinator.flush() would
+                        // wait forever on the original conflict operation.
+                        publish(false, '已基于最新设置重放草稿', 'stale', operationId);
+                        setStatus('dirty', { dirty: true, operationId });
+                        if (!state.timer) schedule();
+                        return;
+                    }
+                    typedSettingsConflict = { external: result.settings, revision: result.currentRevision, overlap: true };
+                    form.dataset.vcpSettingsConflict = 'true';
+                }
+                coordinator?.recordCommit?.(result, {}, patchToPathOps(patch));
+                setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
+                publish(false, result?.error || '设置保存失败', result?.status || 'failed', operationId);
                 return;
             }
-            if (!state.pendingPatch) delete form.dataset.vcpSettingsDirty;
-            setStatus('saved');
-            publish(true);
+            state.retryableFailure = null;
+            setStatus('saved', { dirty: Boolean(state.pendingPatch), operationId });
+            publish(true, '', 'success', operationId);
             if (state.pendingPatch) schedule();
         } catch (error) {
             if (!state.disposed) {
+                state.pendingPatch = {
+                    ...(patch || {}),
+                    ...(state.pendingPatch || {}),
+                    ...(patch?.appearanceProfile || state.pendingPatch?.appearanceProfile
+                        ? { appearanceProfile: { ...(patch?.appearanceProfile || {}), ...(state.pendingPatch?.appearanceProfile || {}) } }
+                        : {}),
+                };
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                publish(false, error?.message || String(error));
+                coordinator?.recordCommit?.({ status: 'failed', error: error?.message || String(error), operationId }, {}, patchToPathOps(patch));
+                setStatus('error', { operationId });
+                publish(false, error?.message || String(error), 'failed', operationId);
             }
         } finally {
             state.inFlight = null;
+            if (state.pendingPatch && !state.disposed) schedule();
         }
     };
     const schedule = () => {
@@ -755,6 +972,7 @@ function mountTypedFieldOwner(root, form) {
         state.pendingPatch = null;
         state.disposed = true;
         service.cancelPendingSaves?.();
+        releaseClient?.();
         delete form.dataset.vcpTypedFieldOwnerMounted;
     });
     form.dataset.vcpTypedFieldOwnerMounted = 'true';
@@ -766,39 +984,49 @@ function mountTypedFieldOwner(root, form) {
 }
 
 function flushTypedForumFields() {
+    const waits = [];
     typedForumFieldStates.forEach(state => {
-        if (state.disposed || !state.pending || state.inFlight) return;
+        if (state.disposed || (!state.pending && !state.inFlight)) return;
+        if (state.inFlight) { waits.push(state.inFlight); return; }
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
-        void state.run?.();
+        const work = state.run?.();
+        if (work?.then) waits.push(work);
     });
+    return Promise.all(waits);
 }
 
 // Settings-field half of the flush, kept separate so the save coordinator can
 // register each client with exactly its own registry.
 function flushTypedSettingsFields() {
+    const waits = [];
     typedFieldStates.forEach(state => {
-        if (state.disposed || !state.pendingPatch || state.inFlight) return;
+        if (state.disposed || (!state.pendingPatch && !state.inFlight)) return;
+        if (state.inFlight) { waits.push(state.inFlight); return; }
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
         // The field owner intentionally starts its own command and does not
         // route through form.requestSubmit(), which would re-enter legacy
         // presentation and close the modal.
-        void state.run?.();
+        const work = state.run?.();
+        if (work?.then) waits.push(work);
     });
+    return Promise.all(waits);
 }
 
 // Typed halves of the entry's flush/teardown autosave composition: the draft
 // owners flush through their own commands (never form.requestSubmit()) and
 // retract their cleanups with the surface.
 function flushTypedOwners() {
-    flushTypedSettingsFields();
+    const waits = [flushTypedSettingsFields()];
     typedForumFieldStates.forEach(state => {
         if (state.disposed || !state.pending || state.inFlight) return;
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
-        void state.run?.();
+        const work = state.run?.();
+        if (work?.then) waits.push(work);
     });
+    return Promise.all(waits);
 }
 
 function teardownTypedOwners() {

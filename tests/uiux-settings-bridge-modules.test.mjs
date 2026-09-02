@@ -708,8 +708,8 @@ test('保存协调器：唯一提交入口与显式订阅替代 owner 字符串�
     assert.match(autosaveSource, /from '\.\/save-coordinator\.js'/, 'autosave registers with the coordinator');
     // typed owners 注册为协调器客户端，各自 flush 自己的注册表。
     const typed = read(typedOwners);
-    assert.match(typed, /registerClient\(\{ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields \}\)/);
-    assert.match(typed, /registerClient\(\{ id: 'typed-forum-field-owner', flush: flushTypedForumFields \}\)/);
+    assert.match(typed, /registerClient\(\{ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields,[\s\S]*?hasWork:/);
+    assert.match(typed, /registerClient\(\{ id: 'typed-forum-field-owner', flush: flushTypedForumFields,[\s\S]*?hasWork:/);
     // 桥入口：协调器先于 autosave 步挂载；flush/teardown 走协调器。
     const entry = read(bridgeEntry);
     assert.match(entry, /import \{ claimSaveCoordinator, getSaveCoordinator \} from '\.\/settings\/save-coordinator\.js';/);
@@ -722,9 +722,9 @@ test('保存协调器：唯一提交入口与显式订阅替代 owner 字符串�
         const clientIdx = entry.indexOf(`name: '${client}'`);
         assert.ok(coordinatorIdx < clientIdx, `the coordinator step must mount before the ${client} step`);
     }
-    assert.match(entry, /getSaveCoordinator\(document\.getElementById\('globalSettingsForm'\)\);\s*\n\s*if \(coordinator\) \{\s*\n\s*coordinator\.flush\(\);/,
+    assert.match(entry, /getSaveCoordinator\(document\.getElementById\('globalSettingsForm'\)\);\s*\n\s*if \(coordinator\) \{\s*\n\s*return coordinator\.flush\(\);/,
         'the close-time flush prefers the coordinator entry');
-    assert.match(entry, /teardownLegacyAutosave\(\);\s*\n\s*teardownTypedOwners\(\);\s*\n\s*getSaveCoordinator\(document\.getElementById\('globalSettingsForm'\)\)\?\.dispose\(\);/,
+    assert.match(entry, /await teardownSettingsAutosave\(\);/,
         'teardown disposes the coordinator');
 
     // 行为面：按 owner 路由结果，默认客户端收未标注结果；vcpAutosaveState

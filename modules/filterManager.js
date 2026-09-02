@@ -17,6 +17,9 @@ window.filterManager = (() => {
         }
         return _globalSettingsRef.set(newSettings);
     };
+    const saveSettingsPatch = patch => _electronAPI.saveSettings({
+        __vcpSettingsOps: Object.entries(patch || {}).map(([key, value]) => ({ op: 'set', path: [key], value })),
+    });
 
     function publishFilterState(source = 'filter-manager') {
         const settings = _globalSettingsRef ? getGlobalSettings() : {};
@@ -134,7 +137,7 @@ window.filterManager = (() => {
         localStorage.setItem('filterEnabled', isActive.toString());
 
         try {
-            const result = await _electronAPI.saveSettings({ ...settings, filterEnabled: isActive });
+            const result = await saveSettingsPatch({ filterEnabled: isActive });
             if (!result?.success) throw new Error(result?.error || '未知错误');
             updateFilterStatusDisplay();
             _uiHelper.showToastNotification(`过滤模式已${isActive ? '开启' : '关闭'}`, 'info');
@@ -546,10 +549,7 @@ window.filterManager = (() => {
      * 保存过滤设置到文件
      */
     async function saveFilterSettings() {
-        const result = await _electronAPI.saveSettings({
-            ...getGlobalSettings(),
-            filterRules: getGlobalSettings().filterRules
-        });
+        const result = await saveSettingsPatch({ filterRules: getGlobalSettings().filterRules });
 
         if (!result.success) {
             _uiHelper.showToastNotification(`保存过滤设置失败: ${result.error}`, 'error');
