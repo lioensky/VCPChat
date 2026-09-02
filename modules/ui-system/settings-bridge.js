@@ -218,8 +218,9 @@ function mountSettingsConflictActions(root, form) {
         Promise.resolve(work).then(() => { if (action === 'reload') delete form.dataset.vcpSettingsConflict; sync(); }).catch(() => sync());
     };
     form.addEventListener('vcp-settings-save-result', sync);
+    root.ownerDocument.defaultView?.addEventListener('global-settings-updated', sync);
     form.addEventListener('click', onClick);
-    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
+    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); root.ownerDocument.defaultView?.removeEventListener('global-settings-updated', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
     sync();
 }
 
