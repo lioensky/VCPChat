@@ -36,8 +36,10 @@ test('single-concern modules import cleanly and expose their contract', async ()
     autosave.flushLegacyAutosave();
     autosave.teardownLegacyAutosave();
 
-    const rows = await import(pathToFileURL(path.join(settingsDir, 'canonical-rows.js')).href);
-    assert.deepEqual(Object.keys(rows).sort(), ['mountCanonicalSettingsRows']);
+    // M5-c pass6：canonical-rows 投影 pass 退役（全分区直出后空转），
+    // 模块文件删除；保留删除守卫防止回潮。
+    assert.equal(fs.existsSync(path.join(settingsDir, 'canonical-rows.js')), false,
+        'canonical-rows pass module must stay retired');
 
     const fields = await import(pathToFileURL(path.join(settingsDir, 'field-registry.js')).href);
     assert.deepEqual(
@@ -152,7 +154,9 @@ test('each extracted function has exactly one home (entry or module, never both)
     const entry = read(bridgeEntry);
     const functions = [
         'mountSelectKeyboardGlue', 'mountUiuxSelects', 'teardownUiuxSelects',
-        'mountCanonicalSettingsRows', 'composeCanonicalRowSlots',
+        // M5-c pass6：mountCanonicalSettingsRows 随 canonical-rows 步退役；
+        // composeCanonicalRowSlots 唯一载体是渲染侧机械层。
+        'composeCanonicalRowSlots',
         'mountSettingsAutosave', 'flushLegacyAutosave', 'teardownLegacyAutosave',
         // 2026-08-31 domain split homes.
         'enhanceForm', 'mountTypedModelPicker', 'mountTypedSettingsConsumer', 'mountTypedFieldOwner',
@@ -208,7 +212,7 @@ test('the bridge entry wires the modules and stays the sole bridge-global owner'
     const shared = read(bridgeShared);
     assert.ok(shared.includes("from './select-projection.js'"), 'shared module must own the select projection');
     assert.ok(entry.includes("from './settings/autosave.js'"), 'entry must import the autosave module');
-    assert.ok(entry.includes("from './settings/canonical-rows.js'"), 'entry must import the canonical rows module');
+    assert.ok(!entry.includes("from './settings/canonical-rows.js'"), 'the retired canonical-rows module must not be imported');
     assert.match(shared, /createSelectProjection\(\{ ensurePresentationScope \}\)/, 'shared module must inject the presentation scope');
     // The presentation scope is module-private in bridge-shared; the entry may
     // only reach it via accessors. (A direct reference survived the domain
@@ -653,10 +657,10 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     const fn = entry.slice(entry.indexOf('function enhanceGlobalSettings(root, form)'), entry.indexOf('runSettingsPipeline(steps);'));
     assert.match(entry, /import \{ runSettingsPipeline \} from '\.\/settings\/pipeline\.js';/,
         'the entry executes the shared declarative pipeline runner');
-    for (const name of ['canonical-rows',
+    for (const name of [
         'global-pill-steppers', 'global-typed-primitives', 'topic-summary-picker',
         'forum-field-owner', 'uiux-disclosures',
-        'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
+        'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner']) {
         assert.match(fn, new RegExp(`name: '${name}'`), `mount step ${name} must stay declared`);
     }
     // M5-c pass2：legacy-range-pass 退役——全局设置面仅有的四条 range 全部
@@ -679,9 +683,13 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     // （agent 设置面仍是真实消费方），管线步与 before 边随之删除。
     assert.doesNotMatch(fn, /name: 'select-projection'/,
         'the vacuous schema-surface select projection pass must stay retired');
-    // The documented ordering hazard stays an explicit edge, not a comment.
-    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['global-pill-steppers'/,
-        'row-consuming passes must declare their dependence on canonical rows');
+    // M5-c pass6：canonical-rows 步退役——全部分区由渲染器直出 canonical 行，
+    // 投影 pass 在 schema 面无候选行；模块与管线步、before 边随之删除。
+    // form-icons 步同批退役：三个内联 Lucide SVG 由渲染器直出 vcp-ui-icon 节点。
+    assert.doesNotMatch(fn, /name: 'canonical-rows'/,
+        'the vacuous schema-surface canonical-rows pass must stay retired');
+    assert.doesNotMatch(fn, /name: 'form-icons'/,
+        'the vacuous form-icons pass must stay retired');
 });
 
 test('保存协调器：唯一提交入口与显式订阅替代 owner 字符串过滤（阶段 4）', async () => {
@@ -750,11 +758,14 @@ test('settings 域的 dataset marker 全部登记在统一注册表中', async (
             `marker ${name} cleanup must use a documented value, got: ${meta.cleanup}`);
     }
     // Business/control attributes are not idempotency markers and stay out.
+    // （vcpCanonicalRowsMounted 随 M5-c pass6 canonical-rows pass 退役注销。）
     for (const name of ['vcpTypedPrimitiveMounted', 'vcpTypedGlobalSettingsEntry', 'vcpTypedNetworkPathAction',
-        'vcpSettingsRow', 'vcpCanonicalRowsMounted', 'vcpSelectRebuilding',
+        'vcpSettingsRow', 'vcpSelectRebuilding',
         'vcpUiuxToggleMounted', 'vcpAutosaveState', 'vcpSettingsDirty', 'vcpTypedAgentModel']) {
         assert.ok(registry.isRegisteredSettingsMarker(name), `known marker ${name} must be registered`);
     }
+    assert.equal(registry.isRegisteredSettingsMarker('vcpCanonicalRowsMounted'), false,
+        'the retired canonical-rows pass marker must stay deregistered');
     assert.equal(registry.isRegisteredSettingsMarker('vcpTotallyUnknownMarker'), false);
 
     // Audit: every dataset marker literal used by the bridge domain must be
@@ -858,9 +869,10 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
     const canonical = read(path.join(root, 'modules', 'settings', 'render', 'canonical-row.js'));
     assert.match(canonical, /appearance-home-tagline-setting, \[data-settings-section-key="appearance-settings"\]'/,
         'appearanceOwner covers the stamped appearance section');
-    const canonicalPass = read(path.join(root, 'modules', 'ui-system', 'settings', 'canonical-rows.js'));
-    assert.match(canonicalPass, /dataset\.canonicalRow === 'true'/,
-        'canonical-rows pass must skip renderer-emitted canonical rows');
+    // M5-c pass6：canonical-rows 投影 pass 退役（渲染器全分区直出，pass 在
+    // schema 面无候选行），模块文件删除；保留删除守卫防止回潮。
+    assert.equal(fs.existsSync(path.join(root, 'modules', 'ui-system', 'settings', 'canonical-rows.js')), false,
+        'the retired canonical-rows pass module must stay deleted');
 });
 
 test('settings 挂载管线：步骤失败必须带步名记录并向调用方抛出', async () => {

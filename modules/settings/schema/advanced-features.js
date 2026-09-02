@@ -3,6 +3,7 @@
 // 快照路径也按容器 id 直写其可见性，id 即锚点）。话题总结模型行为
 // model-input-container 复合控件，由 mountTypedTopicSummaryModelPicker 接管。
 import { section, switchField, number, custom } from './kernel.js';
+import { buildFormIcon } from '../render/shared.js';
 
 function buildTopicSummaryModelRow(doc) {
     const row = doc.createElement('div');
@@ -23,22 +24,9 @@ function buildTopicSummaryModelRow(doc) {
     button.id = 'openTopicSummaryModelSelectBtn';
     button.className = 'small-button';
     button.title = '选择模型';
-    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('data-slot', 'icon');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke-width', '2');
-    svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.setAttribute('width', '14');
-    svg.setAttribute('height', '14');
-    const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    path.setAttribute('d', 'M19.5 8.25l-7.5 7.5-7.5-7.5');
-    svg.append(path);
-    button.append(svg);
+    // M5-c pass6：表单图标直出（原 form-icons pass 收编为 vcp-ui-icon 节点，
+    // 由 lucide-adapter 统一渲染为下拉箭头）。
+    button.append(buildFormIcon(doc, 'chevron-down'));
     container.append(input, button);
     const hint = doc.createElement('small');
     hint.setAttribute('data-vcp-style', '4');

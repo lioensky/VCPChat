@@ -49,7 +49,10 @@ function markPresentationDestroyed() {
 }
 
 function enhance(name, element, options = {}) {
-    if (!element || window.VCPUI.getController(element)) return;
+    // VCPUI 运行时缺席（降级环境/未加载库）时静默跳过：增强是可选呈现，
+    // 抛错会把整条投影管线拖垮（M5-c pass6 前 canonical-rows 步的 before 边
+    // 恰好把本调用排在 settings-shell 之后，库缺席的雷被顺序掩盖）。
+    if (!element || !window.VCPUI || window.VCPUI.getController(element)) return;
     try {
         const controller = window.VCPUI.enhance(name, element, options);
         controllers.add(controller);

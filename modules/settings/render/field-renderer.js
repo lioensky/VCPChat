@@ -716,9 +716,9 @@ export function renderSchemaSection(sectionDescriptor, doc) {
     title.className = 'settings-section-title';
     title.textContent = sectionDescriptor.title;
     nodes.push(title);
-    // M5-b：声明 canonicalRows 的分区直出 canonical 行，其余分区维持
-    // 旧包裹类、由 canonical-rows pass 投影。
-    const canonicalContext = sectionDescriptor.canonicalRows ? { sectionKey: sectionDescriptor.key } : null;
+    // M5-c pass6：全部分区直出 canonical 行（M5-b 试点通过后的全量铺开），
+    // canonical-rows 投影 pass 随之空转退役。
+    const canonicalContext = { sectionKey: sectionDescriptor.key };
     for (const field of sectionDescriptor.fields) {
         nodes.push(field.kind === 'layout' ? renderSchemaLayout(doc, field, canonicalContext) : renderSchemaField(doc, field, canonicalContext));
     }
