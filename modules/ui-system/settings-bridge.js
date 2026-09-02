@@ -633,6 +633,11 @@ function mountSettingsShell(root) {
         close.replaceChildren(icon, hiddenLabel);
         close.classList.add('vcp-uiux-settings-close');
         close.dataset.vcpUiuxClose = 'true';
+        close.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            window.uiHelperFunctions?.closeModal?.('globalSettingsModal');
+        });
     }
     actions.append(close);
     header.append(actions);

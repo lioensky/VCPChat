@@ -1147,6 +1147,24 @@
         });
     };
 
+    // Global capture-phase close delegation for modal close buttons.
+    // Ensures clicking any close button (or inner SVG) immediately closes the modal,
+    // unaffected by DOM transformations, event bubbling stops, or late bindings.
+    if (typeof document !== 'undefined') {
+        document.addEventListener('click', (e) => {
+            const closeBtn = e.target?.closest?.('.close-button, .vcp-uiux-settings-close');
+            if (closeBtn) {
+                const modal = closeBtn.closest('.modal, [role="dialog"], .vcp-uiux-settings-root');
+                const modalId = modal?.id || (modal?.classList?.contains('vcp-uiux-settings-root') ? 'globalSettingsModal' : null);
+                if (modalId) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uiHelperFunctions.closeModal(modalId);
+                }
+            }
+        }, true);
+    }
+
     window.uiHelperFunctions = uiHelperFunctions;
 
 })();
