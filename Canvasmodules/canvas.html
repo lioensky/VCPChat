@@ -7,8 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
     <title>协同 Canvas</title>
     <link rel="stylesheet" href="../styles/themes.css">
-    <link rel="stylesheet" href="../style.css">
-    <link rel="stylesheet" href="canvas.css"> <!-- Link to the new stylesheet -->
+    <link rel="stylesheet" href="canvas.css">
     <!-- CodeMirror 5 CSS -->
     <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
     <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
@@ -19,7 +18,9 @@
 <body>
     <div id="custom-title-bar">
         <div class="title-text-container">
-            <span class="title">VCP - Canvas</span>
+            <span class="app-mark" aria-hidden="true">VC</span>
+            <span class="title">VCP Canvas</span>
+            <span class="title-subtitle">轻量代码工作台</span>
         </div>
         <div class="window-controls">
             <button id="minimize-btn" class="window-control-btn" title="最小化">
@@ -41,28 +42,56 @@
         </div>
     </div>
     <div class="main-container">
-        <aside class="sidebar glass-panel active">
-            <h3>Canvas目录</h3>
-            <div class="search-container">
-                <input type="text" id="canvasSearchInput" placeholder="搜索文件或代码...">
+        <aside class="sidebar glass-panel active" id="file-sidebar">
+            <div class="sidebar-heading">
+                <div>
+                    <span class="section-eyebrow">WORKSPACE</span>
+                    <h3>Canvas目录</h3>
+                </div>
+                <button id="collapse-left-btn" class="icon-button" type="button" title="收起文件侧栏"
+                    aria-label="收起文件侧栏">‹</button>
             </div>
-            <ul id="historyList">
+            <div class="search-container">
+                <span class="search-icon" aria-hidden="true">⌕</span>
+                <input type="search" id="canvasSearchInput" placeholder="搜索文件或代码..." autocomplete="off"
+                    aria-label="搜索文件或代码">
+                <kbd>Ctrl P</kbd>
+            </div>
+            <ul id="historyList" aria-label="Canvas 文件列表">
                 <!-- 历史记录将在这里动态加载 -->
             </ul>
-            <button id="newCanvasBtn" class="global-action-button">新建 Canvas</button>
+            <button id="newCanvasBtn" class="global-action-button" type="button">
+                <span aria-hidden="true">＋</span>
+                <span>新建 Canvas</span>
+            </button>
         </aside>
-        <div class="resizer" id="resizer"></div>
+        <div class="resizer" id="resizer" role="separator" aria-label="调整文件侧栏宽度"></div>
         <div class="editor-container glass-panel">
-            <div id="external-change-bar" style="display: none;">
-                <span>AI 提交了一项 Canvas 编辑提案，正在等待您的决定。</span>
-                <button id="view-diff-btn">审阅变更</button>
-                <button id="dismiss-change-btn">拒绝</button>
+            <div id="external-change-bar" style="display: none;" role="status">
+                <span class="proposal-indicator" aria-hidden="true"></span>
+                <span class="proposal-message">AI 提交了一项 Canvas 编辑提案，正在等待您的决定。</span>
+                <button id="view-diff-btn" class="button button-primary" type="button">审阅变更</button>
+                <button id="dismiss-change-btn" class="button button-danger-ghost" type="button">拒绝</button>
             </div>
             <div class="editor-top-bar">
-                <button id="run-py-btn" class="action-btn">运行</button>
-                <button id="render-md-btn" class="action-btn">渲染</button>
-                <button id="render-html-btn" class="action-btn">渲染</button>
-                <button id="toggle-wrap-btn" class="action-btn" style="display: block;">自动换行: 关</button>
+                <div class="document-identity" title="当前文件">
+                    <button id="collapse-left-trigger" class="icon-button sidebar-trigger" type="button"
+                        title="展开文件侧栏" aria-label="展开文件侧栏">☰</button>
+                    <span class="file-type-badge" id="file-type-badge">TXT</span>
+                    <span id="active-file-name">未命名</span>
+                    <span id="dirty-indicator" class="dirty-indicator" title="保存状态">已保存</span>
+                </div>
+                <div class="toolbar-actions">
+                    <button id="run-py-btn" class="action-btn button-primary" type="button"
+                        title="运行 Python (Ctrl+Enter)">▶ 运行</button>
+                    <button id="render-md-btn" class="action-btn" type="button" title="预览 Markdown">◫ 预览</button>
+                    <button id="render-html-btn" class="action-btn" type="button" title="预览 HTML">◫ 预览</button>
+                    <span class="toolbar-separator" aria-hidden="true"></span>
+                    <button id="toggle-wrap-btn" class="action-btn is-visible" type="button"
+                        aria-pressed="false" title="切换自动换行">自动换行：关</button>
+                    <button id="toggle-right-btn" class="icon-button" type="button" aria-pressed="true"
+                        title="切换变动历史" aria-label="切换变动历史">▤</button>
+                </div>
             </div>
             <div id="editor-search-bar" class="search-bar" style="display: none;">
                 <div class="search-input-container">
@@ -89,29 +118,62 @@
                 </div>
             </div>
             <div class="editor-wrapper">
-                <textarea id="editor"></textarea> <!-- CodeMirror 5 will replace this -->
+                <textarea id="editor" aria-label="代码编辑器"></textarea>
             </div>
+            <section id="output-panel" class="output-panel" hidden aria-label="运行输出">
+                <div class="output-header">
+                    <div>
+                        <span class="output-status-dot" id="output-status-dot"></span>
+                        <strong>输出</strong>
+                        <span id="output-summary">等待运行</span>
+                    </div>
+                    <div class="output-actions">
+                        <button id="copy-output-btn" class="text-button" type="button">复制</button>
+                        <button id="clear-output-btn" class="text-button" type="button">清空</button>
+                        <button id="close-output-btn" class="icon-button" type="button" title="关闭输出"
+                            aria-label="关闭输出">×</button>
+                    </div>
+                </div>
+                <pre id="output-content" tabindex="0"></pre>
+            </section>
             <div class="status-bar">
-                <span id="filePath">未保存</span>
-                <span id="errorInfo">无错误</span>
+                <div class="status-group status-primary">
+                    <span id="saveStatus" class="status-item">就绪</span>
+                    <span id="filePath" class="status-item path-status" title="当前文件路径">未保存</span>
+                </div>
+                <div class="status-group">
+                    <span id="errorInfo" class="status-item">无错误</span>
+                    <span id="cursor-position" class="status-item">行 1，列 1</span>
+                    <span id="document-stats" class="status-item">0 行 · 0 字符</span>
+                    <span id="language-mode" class="status-item">纯文本</span>
+                    <span class="status-item">UTF-8</span>
+                </div>
             </div>
         </div>
-        <div class="resizer" id="resizer-right"></div>
+        <div class="resizer" id="resizer-right" role="separator" aria-label="调整变动历史侧栏宽度"></div>
         <aside class="sidebar glass-panel active" id="change-history-sidebar">
-            <h3>文档变动</h3>
-            <ul id="changeHistoryList">
+            <div class="sidebar-heading">
+                <div>
+                    <span class="section-eyebrow">TIMELINE</span>
+                    <h3>文档变动</h3>
+                </div>
+                <button id="collapse-right-btn" class="icon-button" type="button" title="收起变动历史"
+                    aria-label="收起变动历史">›</button>
+            </div>
+            <p class="sidebar-hint">选择记录可恢复当时的内容</p>
+            <ul id="changeHistoryList" aria-label="文档变动历史">
                 <!-- 变动历史将在这里动态加载 -->
             </ul>
         </aside>
     </div>
 
-    <div id="context-menu" class="custom-context-menu">
+    <div id="context-menu" class="custom-context-menu" role="menu">
         <button id="rename-btn">重命名</button>
         <button id="copy-btn">复制文件</button>
         <button id="delete-btn">删除文件</button>
     </div>
 
-    <div id="editor-context-menu" class="custom-context-menu">
+    <div id="editor-context-menu" class="custom-context-menu" role="menu">
         <button data-action="undo">撤销</button>
         <button data-action="redo">重做</button>
         <hr>
@@ -122,10 +184,11 @@
         <button data-action="selectAll">全选</button>
     </div>
 
-    <div id="diff-modal" class="modal-overlay" style="display: none;">
+    <div id="diff-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true"
+        aria-labelledby="diff-review-title">
         <div class="modal-content glass-panel">
             <div class="diff-review-heading">
-                <strong>Canvas 编辑提案审阅</strong>
+                <strong id="diff-review-title">Canvas 编辑提案审阅</strong>
                 <span id="diff-review-path"></span>
             </div>
             <div id="diff-view"></div>
@@ -135,8 +198,8 @@
                     placeholder="例如：请保留原有接口名称，并只调整函数内部实现。"></textarea>
             </label>
             <div class="modal-actions">
-                <button id="accept-changes-btn">允许并应用</button>
-                <button id="reject-changes-btn">拒绝提案</button>
+                <button id="reject-changes-btn" class="button button-danger-ghost" type="button">拒绝提案</button>
+                <button id="accept-changes-btn" class="button button-primary" type="button">允许并应用</button>
             </div>
         </div>
     </div>
@@ -151,8 +214,7 @@
     <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
     <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
     <script src="../node_modules/codemirror/mode/rust/rust.js"></script>
-    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
-    <!-- TS mode is often part of JS, let's revert to the original that worked -->
+    <!-- TypeScript mode is provided by the JavaScript mode package -->
     <script src="../node_modules/codemirror/mode/clike/clike.js"></script>
     <script src="../node_modules/codemirror/mode/go/go.js"></script>
     <script src="../node_modules/codemirror/mode/ruby/ruby.js"></script>
