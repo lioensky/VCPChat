@@ -19,3 +19,16 @@ test('settings Electron-facing contract drains close and exposes conflict recove
     const result = await closing;
     assert.equal(result.status, 'conflict');
 });
+
+test('reloadExternal publishes the latest snapshot on the window event channel', async () => {
+    const dom = new JSDOM('<form id="globalSettingsForm"></form>', { url: 'http://localhost/' });
+    const form = dom.window.document.querySelector('form');
+    const coordinator = claimSaveCoordinator(form);
+    let received;
+    dom.window.addEventListener('global-settings-updated', event => { received = event.detail; });
+    dom.window.chatAPI = { loadSettings: async () => ({ userName: 'External', __vcpSettingsRevision: 'r2' }) };
+    await coordinator.reloadExternal();
+    assert.equal(received.settings.userName, 'External');
+    assert.equal(received.revision, 'r2');
+    await coordinator.dispose();
+});

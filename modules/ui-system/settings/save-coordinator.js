@@ -162,8 +162,9 @@ function createCoordinator(form) {
                 const externalSettings = { ...settings };
                 delete externalSettings.__vcpSettingsRevision;
                 delete form.dataset.vcpSettingsDirty;
-                form.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings: externalSettings, revision, source: 'settings-reload' } }));
-                reportState('saved', { dirty: false });
+                const view = form.ownerDocument?.defaultView;
+                (view || form).dispatchEvent(new (view?.CustomEvent || CustomEvent)('global-settings-updated', { detail: { settings: externalSettings, revision, source: 'settings-reload' } }));
+                coordinator.reportState('saved', { dirty: false });
             }
             return snapshot();
         },
