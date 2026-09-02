@@ -948,11 +948,7 @@
     }
 
     /* Conflict recovery action bar */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-actions[hidden] {
-        display: none !important;
-    }
-
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-actions {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-actions:not([hidden]) {
         display: flex;
         align-items: center;
         justify-content: space-between;
