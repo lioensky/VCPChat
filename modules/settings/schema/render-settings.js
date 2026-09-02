@@ -27,22 +27,29 @@ function buildStreamAnimationCustomRow(doc) {
 }
 
 export const renderSettingsSection = section('render-settings', '消息渲染', [
-    switchField('enableSmoothStreaming', {
-        label: '开启高级流式渲染',
-        hint: '对增量文本进行缓冲，使输出节奏更加平滑。',
-        hintInsideWrapper: true,
-    }),
-    number('minChunkBufferSize', {
-        rowId: 'minChunkBufferSizeRow',
-        min: 1,
-        defaultValue: 16,
-        save: { parse: 'int', fallback: 16 },
-    }),
-    number('smoothStreamIntervalMs', {
-        rowId: 'smoothStreamIntervalMsRow',
-        min: 1,
-        defaultValue: 100,
-        save: { parse: 'int', fallback: 100 },
+    card('smoothStreamingSettingsCard', {
+        cardKey: 'smooth-streaming',
+        title: '高级流式渲染',
+        description: '对增量文本进行缓冲平滑输出，使输出节奏更加平稳。',
+        fields: [
+            switchField('enableSmoothStreaming', {
+                label: '开启高级流式渲染',
+                hint: '对增量文本进行缓冲，使输出节奏更加平滑。',
+                hintInsideWrapper: true,
+            }),
+            number('minChunkBufferSize', {
+                rowId: 'minChunkBufferSizeRow',
+                min: 1,
+                defaultValue: 16,
+                save: { parse: 'int', fallback: 16 },
+            }),
+            number('smoothStreamIntervalMs', {
+                rowId: 'smoothStreamIntervalMsRow',
+                min: 1,
+                defaultValue: 100,
+                save: { parse: 'int', fallback: 100 },
+            }),
+        ],
     }),
     card('streamAnimationSettingsCard', {
         cardKey: 'stream-animation',
