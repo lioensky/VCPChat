@@ -5,9 +5,9 @@
 // persisted keys remain canonical; this module owns only the typed command
 // path around them.
 import { bridgeScope, ensurePresentationScope } from './settings/bridge-shared.js';
-import { syncAdvancedSettingsVisibility } from './settings/advanced-visibility.js';
-import { syncRustAssistantVisibility } from './settings/rust-visibility.js';
 import { syncRenderSettingsVisibility } from './settings/render-visibility.js';
+// M5-d：advanced/rust 两个可见性薄包装退役——渲染器已在编译期把 field.when
+// 声明为 data-visible-when，事件路径与快照路径直调统一求值器 syncDependentRows。
 import { syncDependentRows } from './settings/dependent-rows.js';
 import { getSaveCoordinator } from './settings/save-coordinator.js';
 import { fieldDescriptor, fieldRestore } from './settings/field-registry.js';
@@ -187,7 +187,7 @@ function mountTypedSettingsConsumer(root) {
         if (sanitizerContainer) sanitizerContainer.style.display = sanitizerEnabled ? '' : 'none';
         // The flattened quick-actions rows own their visibility; the snapshot
         // path composes the conditions its retired wrapper containers used to
-        // provide (the event path is syncAdvancedSettingsVisibility below).
+        // provide (the event path is syncDependentRows below).
         const middleClickEnabled = settings.enableMiddleClickQuickAction === true;
         const quickActionContainer = form.querySelector('#middleClickQuickActionContainer');
         if (quickActionContainer) quickActionContainer.style.display = middleClickEnabled ? '' : 'none';
@@ -255,15 +255,15 @@ function mountTypedSettingsConsumer(root) {
                 ? 'whitelist'
                 : (Array.isArray(rust.blacklist) && rust.blacklist.length ? 'blacklist' : 'none');
             set('rustRuleMode', ruleMode);
-            syncRustAssistantVisibility(form);
+            syncDependentRows(form);
         };
         const release = rustService.state.subscribe(applyRust);
         const rustScope = ensurePresentationScope();
         if (rustScope) rustScope.own(release, 'typed-rust-assistant-consumer', 'ui-presentation');
         else release?.();
-        syncRustAssistantVisibility(form);
+        syncDependentRows(form);
         ['change', 'input'].forEach(type => {
-            const onChange = () => syncRustAssistantVisibility(form);
+            const onChange = () => syncDependentRows(form);
             if (rustScope) rustScope.listen(form, type, onChange);
             else form.addEventListener(type, onChange);
         });
@@ -610,7 +610,7 @@ function mountTypedFieldOwner(root, form) {
     // Conditional rows are presentation-owned. Keep their immediate response
     // local to this Settings owner so the ambient event-listeners module does
     // not compete with snapshot projection or survive modal teardown.
-    const syncConditionalRows = () => syncAdvancedSettingsVisibility(form);
+    const syncConditionalRows = () => syncDependentRows(form);
     syncConditionalRows();
     ['change', 'input'].forEach(type => {
         const onChange = () => syncConditionalRows();

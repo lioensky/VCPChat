@@ -35,7 +35,10 @@ const MARKERS = Object.freeze({
     // 直出结构的一部分，有意跨 teardown 存续；agent 设置面的 mount 语义
     // （choice.js）在 dispose 时删除它。
     value: { owner: 'generated Choice primitive (choice.js) + field-renderer radioGroup 直出', cleanup: 'persistent' },
-    settingPrimitive: { owner: 'settings-bridge.js + agent-settings-bridge.js + settings/canonical-rows.js', cleanup: 'manual-retract' },
+    // M5-c pass6 起 settingPrimitive 的写入方全部是直出/渲染层：canonical-row
+    // 机械层（row-copy/general-item/appearance-row）、widgets.js 与 agent 面
+    // （disclosure）、settings-bridge（section）；settings/canonical-rows.js 已删。
+    settingPrimitive: { owner: 'render/canonical-row.js + render/widgets.js + settings-bridge.js + agent-settings-bridge.js', cleanup: 'manual-retract' },
     // M5-c pass5 retired the schema-surface select-projection step; the
     // module (and this marker) survives for the agent settings surface.
     vcpSelectRebuilding: { owner: 'settings/select-projection.js (agent surface)', cleanup: 'scope-owned' },
@@ -53,7 +56,10 @@ const MARKERS = Object.freeze({
     vcpAppearanceDraftControl: { owner: 'generated primitives (numeric-stepper-row/font-size-row) + field-renderer.js (static) + settings/autosave.js', cleanup: 'scope-owned' },
     // Icon name carried by injected icon hosts for the lucide adapter to
     // render; the host element's lifetime is the presentation scope's.
-    vcpIcon: { owner: 'settings-bridge.js form icons + lucide-adapter.js', cleanup: 'persistent' },
+    // M5-c pass6 起 schema 面表单图标改由 buildFormIcon 直出 vcp-ui-icon 节点
+    // （类名承载图标名，不走该标记）；vcpIcon 只剩 settings-bridge 的搜索/
+    // 关闭图标宿主与 lucide-adapter 的转绘读取。
+    vcpIcon: { owner: 'settings-bridge.js (search/close hosts) + lucide-adapter.js', cleanup: 'persistent' },
 
     // settings-bridge.js — generated Buttons on the global surface
     vcpTypedGlobalSettingsEntry: { owner: 'settings-bridge.js', cleanup: 'scope-owned' },
