@@ -22,7 +22,7 @@ export { mountRiskConfirmation } from './primitives/risk-confirmation.js';
 export { mountSemanticIcon } from './primitives/semantic-icon.js';
 export { mountChoice } from './primitives/choice.js';
 export { mountRange } from './primitives/range.js';
-export { mountNumericStepperRow } from './primitives/numeric-stepper-row.js';
+export { mountNumericStepperRow, activateNumericStepperRow } from './primitives/numeric-stepper-row.js';
 export { mountToggle } from './primitives/toggle.js';
 export { mountColorPair } from './primitives/color-pair.js';
 export { mountOnboardingSurface } from './primitives/onboarding-surface.js';

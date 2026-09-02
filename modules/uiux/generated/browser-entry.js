@@ -27,7 +27,7 @@ import { mountRiskConfirmation } from './primitives/risk-confirmation.js';
 import { mountSemanticIcon } from './primitives/semantic-icon.js';
 import { mountChoice } from './primitives/choice.js';
 import { mountRange } from './primitives/range.js';
-import { mountNumericStepperRow } from './primitives/numeric-stepper-row.js';
+import { mountNumericStepperRow, activateNumericStepperRow } from './primitives/numeric-stepper-row.js';
 import { mountToggle } from './primitives/toggle.js';
 import { mountColorPair } from './primitives/color-pair.js';
 import { createPopupSelectController, mountPopupSelectView } from './primitives/popup-select.js';
@@ -74,6 +74,7 @@ const api = {
     mountChoice,
     mountRange,
     mountNumericStepperRow,
+    activateNumericStepperRow,
     mountToggle,
     mountColorPair,
     // Candidate-only command popup primitives. They are exposed solely so the

@@ -14,6 +14,8 @@ import { renderSchemaSection, renderSchemaField } from '../modules/settings/rend
 import { captureSectionValues, restoreSectionValues, readControlById } from '../modules/settings/store.js';
 import { applySchemaSurface, schemaSurfaceSections } from '../modules/settings/schema-surface.js';
 import { mountCanonicalSettingsRows } from '../modules/ui-system/settings/canonical-rows.js';
+import { activateNumericStepperRow } from '../modules/uiux/generated/primitives/numeric-stepper-row.js';
+import { mountGlobalSteppers } from '../modules/ui-system/settings/global-input-upgrades.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' });
 global.document = dom.window.document;
@@ -138,9 +140,11 @@ test('server-connection：卡片结构与动态容器锚点', () => {
 
 test('render-settings：stepper 内联行、预设行、滑杆与自定义行', () => {
     const { form } = renderIntoForm(renderSettingsSection);
+    // M5-c pass2 起 output（#streamAnimationDurationValue）随步进器直出退役——
+    // 旧管线里它本就被 NumericStepperRow 挂载的 replaceChildren 抹去。
     for (const id of ['enableSmoothStreaming', 'minChunkBufferSize', 'smoothStreamIntervalMs',
         'streamAnimationSettingsRow', 'streamAnimationPreset', 'streamAnimationDurationRow',
-        'streamAnimationDurationMs', 'streamAnimationDurationValue', 'streamAnimationCustomRow',
+        'streamAnimationDurationMs', 'streamAnimationCustomRow',
         'streamAnimationCustomCss', 'fillStreamAnimationCssExample', 'replayStreamAnimationPreview',
         'streamAnimationPreviewElement']) {
         assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
@@ -149,23 +153,38 @@ test('render-settings：stepper 内联行、预设行、滑杆与自定义行', 
     const smoothRow = form.querySelector('#enableSmoothStreaming').closest('.vcp-settings-control-row');
     assert.equal(smoothRow.getAttribute('data-vcp-style'), '15');
     assert.ok(smoothRow.querySelector(':scope > div > small'));
-    // stepper 双控件内联行
+    // stepper 双控件内联行（M5-c pass2：直出 NumericStepperRow 终态结构，
+    // 旧 cell label 由原语行内 title 承担，不再输出）
     const inlineRow = form.querySelector('#minChunkBufferSize').closest('.settings-inline-number-row');
     assert.ok(inlineRow.classList.contains('form-group'));
-    assert.equal(form.querySelector('#minChunkBufferSize').getAttribute('data-vcp-style'), '19');
-    const stepperCell = form.querySelector('#minChunkBufferSize').parentElement;
-    assert.equal(stepperCell.querySelector(':scope > label').getAttribute('data-vcp-style'), '18');
-    assert.equal(form.querySelector('#minChunkBufferSize').getAttribute('min'), '1');
+    const chunkInput = form.querySelector('#minChunkBufferSize');
+    assert.equal(chunkInput.getAttribute('data-vcp-style'), '19');
+    assert.equal(chunkInput.getAttribute('min'), '1');
+    const chunkRow = chunkInput.closest('.vcp-uiux-numeric-stepper-row');
+    assert.ok(chunkRow, 'stepper 直出行必须存在');
+    assert.equal(chunkInput.parentElement, chunkRow, '业务 input 是步进行最后一个子节点');
+    assert.equal(chunkRow.querySelector('.vcp-uiux-numeric-stepper-row-title').textContent, '最小渲染 Chunk 字数');
+    assert.equal(chunkRow.querySelector('.vcp-uiux-numeric-stepper-row-description').textContent, '达到该字数才触发一次渲染（≥1）');
+    assert.equal(chunkRow.querySelector('.vcp-uiux-numeric-stepper-row-unit').textContent, '字');
+    assert.equal(chunkRow.querySelector(':scope > label'), null, 'cell 旧 label 不再输出');
+    const chunkEditor = chunkRow.querySelector('.vcp-uiux-numeric-stepper-row-input');
+    assert.equal(chunkEditor.getAttribute('aria-label'), '最小渲染 Chunk 字数');
+    assert.equal(chunkEditor.getAttribute('min'), '1');
+    assert.equal(chunkRow.querySelectorAll('.vcp-uiux-numeric-stepper-row-arrow').length, 2);
     assert.equal(form.querySelector('#smoothStreamIntervalMs').value, '100');
     // 预设 select hidden 且行 id 保留
     assert.equal(form.querySelector('#streamAnimationSettingsRow').classList.contains('vcp-settings-row'), true);
     assert.equal(form.querySelector('#streamAnimationPreset').hidden, true);
     assert.equal(form.querySelector('#streamAnimationPreset').options.length, 6);
-    // 滑杆与 output
+    // 滑杆（stepper 投影）：slider-container 内直出原语结构，output 退役
     const range = form.querySelector('#streamAnimationDurationMs');
     assert.equal(range.getAttribute('min'), '100');
     assert.equal(range.getAttribute('max'), '2000');
-    assert.equal(form.querySelector('#streamAnimationDurationValue').textContent, '500ms');
+    const durationRow = range.closest('.vcp-uiux-numeric-stepper-row');
+    assert.ok(durationRow, '滑杆步进行直出结构存在');
+    assert.ok(range.closest('.slider-container'), 'slider-container 宿主保留');
+    assert.equal(durationRow.querySelector('.vcp-uiux-numeric-stepper-row-unit').textContent, 'ms');
+    assert.equal(form.querySelector('#streamAnimationDurationValue'), null, 'output 随直出退役');
     // 自定义行默认 hidden，textarea 契约与示例按钮
     assert.equal(form.querySelector('#streamAnimationCustomRow').hidden, true);
     assert.equal(form.querySelector('#streamAnimationCustomCss').getAttribute('rows'), '4');
@@ -402,6 +421,72 @@ test('开关行直出 Toggle 原语 holder（M5-c pass1：uiux-switches 退役�
     assert.equal(brandInput.closest('span.vcp-uiux-toggle'), null, 'toggle 收编字段不静态包裹');
     assert.equal(brandInput.parentElement.className, 'switch', '收编字段保持 label.switch 直接子级');
 });
+
+test('步进器行直出结构 + 激活行为绑定（M5-c pass2：stepper 投影/legacy-range 退役）', () => {
+    // 测试用最小 scope：listen 直挂事件，own 记录释放项。
+    const owned = [];
+    const scope = {
+        listen: (target, type, handler) => { target.addEventListener(type, handler); return () => target.removeEventListener(type, handler); },
+        own: dispose => { owned.push(dispose); return dispose; },
+    };
+    const api = { activateNumericStepperRow };
+
+    const { form } = renderIntoForm(renderSettingsSection);
+    mountCanonicalSettingsRows(form);
+    // 直出后 canonical 行内已是原语终态结构：行为激活前编辑器为空、箭头可用。
+    const range = form.querySelector('#streamAnimationDurationMs');
+    const row = range.closest('.vcp-uiux-numeric-stepper-row');
+    const editor = row.querySelector('.vcp-uiux-numeric-stepper-row-input');
+    assert.equal(editor.value, '', '静态结构不预设现值（回填链负责）');
+    assert.equal(editor.min, '100');
+    assert.equal(editor.max, '2000');
+    assert.equal(editor.step, '50');
+
+    mountGlobalSteppers(form, api, scope);
+    // 激活即同步呈现：业务值 500（schema 默认）镜像进编辑器，箭头按界启用。
+    assert.equal(editor.value, '500');
+    const [up, down] = row.querySelectorAll('.vcp-uiux-numeric-stepper-row-arrow');
+    assert.equal(up.disabled, false);
+    assert.equal(down.disabled, false);
+    // 箭头步进写穿业务 input 并派发 input/change（保存链契约）。
+    const events = [];
+    range.addEventListener('input', () => events.push('input'));
+    range.addEventListener('change', () => events.push('change'));
+    up.click();
+    assert.equal(range.value, '550');
+    assert.equal(editor.value, '550');
+    assert.deepEqual(events, ['input', 'change']);
+    // vcp-uiux-sync（回填快照写值）镜像进编辑器。
+    range.value = '1500';
+    range.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
+    assert.equal(editor.value, '1500');
+    // 归一化：越界编辑收敛到界内并写回业务 input。
+    editor.value = '99999';
+    editor.dispatchEvent(new dom.window.Event('change'));
+    assert.equal(range.value, '2000');
+    assert.equal(editor.value, '2000');
+    assert.equal(up.disabled, true, '上界处禁用增大箭头');
+
+    // 幂等：重复激活不重复绑行为（一次点击只步进一次）。
+    mountGlobalSteppers(form, api, scope);
+    events.length = 0;
+    down.click();
+    assert.equal(range.value, '1950');
+    assert.deepEqual(events, ['input', 'change']);
+
+    // 快捷操作分区的分组步进器行同样直出 + 激活。
+    const qa = renderIntoForm(quickActionsSection);
+    mountCanonicalSettingsRows(qa.form);
+    const delayRow = qa.form.querySelector('#middleClickAdvancedDelay').closest('.vcp-uiux-numeric-stepper-row');
+    assert.ok(delayRow, '分组步进器行直出结构存在');
+    assert.equal(delayRow.parentElement.id, 'middleClickAdvancedSettings', '宿主行锚点保留');
+    assert.equal(delayRow.parentElement.querySelector(':scope > small'), null, '旧 hint 被原语行取代');
+    mountGlobalSteppers(qa.form, api, scope);
+    const delayEditor = delayRow.querySelector('.vcp-uiux-numeric-stepper-row-input');
+    assert.equal(delayEditor.min, '1000');
+    assert.equal(delayEditor.max, '5000');
+});
+
 
 test('store 快照：多类型现值迁移不丢失', () => {
     const { form, host } = renderIntoForm(quickActionsSection);

@@ -219,7 +219,7 @@ function enhanceGlobalSettings(root, form) {
         {
             name: 'canonical-rows',
             before: ['uiux-inputs', 'appearance-rows', 'global-pill-steppers',
-                'global-typed-primitives', 'legacy-range-pass',
+                'global-typed-primitives',
                 'uiux-disclosures', 'agent-name-fields'],
             run: () => mountCanonicalSettingsRows(form),
         },
@@ -246,11 +246,11 @@ function enhanceGlobalSettings(root, form) {
         {
             name: 'global-pill-steppers',
             // Global pill/stepper projections must own their nodes before the
-            // catch-all select projection and the legacy Range enhance pass.
-            before: ['select-projection', 'legacy-range-pass'],
+            // catch-all select projection.（M5-c pass2 起 stepper 投影退役：
+            // 结构由 field-renderer 直出，激活并入 global-typed-primitives。）
+            before: ['select-projection'],
             run: () => {
                 mountGlobalLanguageRows(form, api(), scope());
-                mountGlobalSteppers(form, api(), scope());
                 mountVoiceShortcutInput(form, api(), scope());
             },
         },
@@ -264,6 +264,8 @@ function enhanceGlobalSettings(root, form) {
                 mountAppearanceToggles(form, api(), scope());
                 mountIdentityColorPairs(form, api(), scope(), (message, kind) => window.uiHelperFunctions?.showToastNotification?.(message, kind));
                 mountForumCredentialInputs(form, api(), scope());
+                // M5-c pass2：步进器行结构已由渲染器直出，这里只激活行为。
+                mountGlobalSteppers(form, api(), scope());
             },
         },
         {
@@ -275,10 +277,6 @@ function enhanceGlobalSettings(root, form) {
             run: () => mountTypedTopicSummaryModelPicker(form),
         },
         { name: 'forum-field-owner', run: () => mountTypedForumFieldOwner(root, form) },
-        {
-            name: 'legacy-range-pass',
-            run: () => form.querySelectorAll('input[type="range"]').forEach(range => { if (!['appearanceSidebarAvatarSize', 'appearanceSidebarRowHeight', 'appearanceCustomRadius', 'streamAnimationDurationMs'].includes(range.id)) enhance('Range', range); }),
-        },
         // M5-c pass1：uiux-switches 退役——开关行的 Toggle 原语 holder 由
         // field-renderer 直出（fieldProjection 'toggle' 字段仍走运行时收编）。
         {

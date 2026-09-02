@@ -1,19 +1,20 @@
 // Global settings number/stepper + text Input upgrades.  The native inputs
-// stay the sole business nodes; NumericStepperRow replaces its host's
-// children while mounted and restores them on dispose, and mountInput wraps
-// the shortcut field without moving save/dirty semantics (the typed field
-// owner keeps listening on the same native control).
+// stay the sole business nodes; NumericStepperRow's structure is emitted
+// statically by field-renderer (M5-c pass2 直出) and this binder only
+// activates its behavior; mountInput wraps the shortcut field without moving
+// save/dirty semantics (the typed field owner keeps listening on the same
+// native control).
 // The stepper descriptors and every projection rule live in field-registry.js.
 import { STEPPER_FIELDS } from './field-registry.js';
 
 export function mountGlobalSteppers(form, api, scope) {
-    if (!form || !scope || !api?.mountNumericStepperRow) return;
-    STEPPER_FIELDS.forEach(({ id, title, description, unit }) => {
+    if (!form || !scope || !api?.activateNumericStepperRow) return;
+    STEPPER_FIELDS.forEach(({ id }) => {
         const input = form.querySelector(`#${id}`);
-        const host = input?.parentElement;
-        if (!input || !host || input.dataset.vcpTypedPrimitiveMounted === 'true') return;
+        const row = input?.closest('.vcp-uiux-numeric-stepper-row');
+        if (!input || !row || input.dataset.vcpTypedPrimitiveMounted === 'true') return;
         input.dataset.vcpTypedPrimitiveMounted = 'true';
-        api.mountNumericStepperRow(host, input, { title, description, unit }, scope);
+        api.activateNumericStepperRow(row, input, scope);
         scope.own(() => { delete input.dataset.vcpTypedPrimitiveMounted; }, `typed-${id}-stepper-marker`, 'ui-primitive');
     });
 }
