@@ -101,6 +101,22 @@ test('coordinator exposes explicit retry and external reload actions', async () 
     await coordinator.dispose();
 });
 
+test('coordinator operation resolves only from its matching terminal result', async () => {
+    const form = new FakeForm();
+    const coordinator = claimSaveCoordinator(form);
+    const operationId = coordinator.createOperation('owner');
+    let settled = false;
+    const tracked = coordinator.track(operationId, new Promise(() => {}));
+    tracked.then(() => { settled = true; });
+    form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { operationId: 'other', status: 'success', success: true } }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(settled, false);
+    form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { operationId, status: 'failed', success: false } }));
+    const result = await tracked;
+    assert.equal(result.status, 'failed');
+    await coordinator.dispose();
+});
+
 test('two manager instances serialize writes and report a revision conflict', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-race-'));
     const filename = path.join(dir, 'settings.json');

@@ -56,7 +56,7 @@ function createCoordinator(form) {
             form.dataset.vcpSettingsOperationId = operationId;
             let resolveOperation;
             const completion = new Promise(resolve => { resolveOperation = resolve; });
-            operations.set(operationId, { resolve: resolveOperation, owner, promise: completion });
+            operations.set(operationId, { resolve: resolveOperation, owner, completion, promise: completion });
             if (owner && clients.has(owner)) {
                 const client = clients.get(owner);
                 client.status = 'saving';
@@ -101,8 +101,9 @@ function createCoordinator(form) {
             if (!operationId || !promise || typeof promise.then !== 'function') return Promise.resolve(promise);
             let resolveOperation;
             const result = new Promise(resolve => { resolveOperation = resolve; });
-            const record = operations.get(operationId) || { resolve: resolveOperation, owner, promise: null };
-            if (!operations.has(operationId)) operations.set(operationId, record);
+            const existing = operations.get(operationId);
+            const record = existing || { resolve: resolveOperation, owner, promise: null };
+            if (!existing) operations.set(operationId, record);
             const tracked = Promise.resolve(promise).then(value => {
                 if (operations.get(operationId) === record) {
                     operations.delete(operationId);
@@ -117,7 +118,7 @@ function createCoordinator(form) {
                 throw error;
             });
             record.promise = tracked;
-            return Promise.race([tracked, result]);
+            return Promise.race([tracked, existing?.completion || result]);
         },
         async flush() {
             if (flushBarrier) return flushBarrier;

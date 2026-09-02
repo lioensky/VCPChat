@@ -36,7 +36,11 @@ function armSaveFallback(state) {
         state.pending = true;
         state.failureOwner = 'legacy-autosave';
         state.setStatus('error');
-        state.completionResolve?.({ success: false, status: 'failed', error: '保存超时' });
+        const operationId = state.form.dataset.vcpSettingsOperationId;
+        state.form.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+            detail: { success: false, status: 'failed', operationId, owner: 'legacy-autosave', error: '保存超时' },
+        }));
+        state.completionResolve?.({ success: false, status: 'failed', operationId, error: '保存超时' });
         state.completionResolve = null;
         if (state.pending) state.schedule();
     }, state.fallbackMs);
