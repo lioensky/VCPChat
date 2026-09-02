@@ -1858,9 +1858,18 @@
 /* Label-less rows keep helper notes as direct small children (no copy slot to
    tuck them into); grid auto-placement would float them above the row's
    primitive. Park them as full-width footnotes under the row content. */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row:has(> small) {
+    row-gap: 6px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > label:first-child {
+    margin-bottom: 0;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row > small {
     order: 9;
     grid-column: 1 / -1;
+    margin-top: 0;
 }
 
 /* The chat/code font rows wrap their LanguageRow primitive in inner hosts;
