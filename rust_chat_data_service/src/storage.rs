@@ -257,10 +257,29 @@ pub struct DatabaseStats {
     pub last_reconcile_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DatabaseStartupState {
+    pub database_existed: bool,
+    pub previous_clean_shutdown: bool,
+    pub filesystem_dirty: bool,
+    pub schema_migrated: bool,
+    pub integrity_checked: bool,
+}
+
+impl DatabaseStartupState {
+    pub fn requires_startup_reconcile(self) -> bool {
+        !self.database_existed
+            || !self.previous_clean_shutdown
+            || self.filesystem_dirty
+            || self.schema_migrated
+    }
+}
+
 #[derive(Clone)]
 pub struct Database {
     pub(crate) connection: Arc<Mutex<Connection>>,
     path: PathBuf,
+    startup_state: DatabaseStartupState,
 }
 
 impl Database {
@@ -271,8 +290,9 @@ impl Database {
             })?;
         }
 
-        let connection = match Self::open_and_migrate(path) {
-            Ok(connection) => connection,
+        let database_existed = path.exists();
+        let (connection, mut startup_state) = match Self::open_and_migrate(path, database_existed) {
+            Ok(result) => result,
             Err(error) => {
                 if path.exists() {
                     let isolated = path.with_extension(format!("corrupt.{}.sqlite3", now_ms()));
@@ -287,20 +307,25 @@ impl Database {
                         isolated_path = %isolated.display(),
                         "isolated unusable chat database"
                     );
-                    Self::open_and_migrate(path)?
+                    Self::open_and_migrate(path, false)?
                 } else {
                     return Err(error);
                 }
             }
         };
+        startup_state.database_existed = database_existed && !startup_state.schema_migrated;
 
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             path: path.to_path_buf(),
+            startup_state,
         })
     }
 
-    fn open_and_migrate(path: &Path) -> Result<Connection> {
+    fn open_and_migrate(
+        path: &Path,
+        database_existed: bool,
+    ) -> Result<(Connection, DatabaseStartupState)> {
         let mut connection = Connection::open(path)
             .with_context(|| format!("failed to open database {}", path.display()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -311,42 +336,141 @@ impl Database {
              PRAGMA temp_store=MEMORY;",
         )?;
 
-        let integrity: String = connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
-        if integrity != "ok" {
-            anyhow::bail!("SQLite quick_check failed: {integrity}");
-        }
-
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(SCHEMA_V3)?;
-        let has_v1_tombstones = transaction.query_row(
+        let has_service_meta = connection.query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM sqlite_master
-                WHERE type='table' AND name='tombstones'
+                WHERE type='table' AND name='service_meta'
              )",
             [],
             |row| row.get::<_, bool>(0),
         )?;
-        if has_v1_tombstones {
-            transaction.execute_batch(COLLAPSE_V1_TOMBSTONES)?;
+        let stored_schema = if has_service_meta {
+            connection
+                .query_row(
+                    "SELECT value FROM service_meta WHERE key='schema_version'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .and_then(|value| value.parse::<u32>().ok())
+        } else {
+            None
+        };
+        anyhow::ensure!(
+            stored_schema.is_none_or(|version| version <= SCHEMA_VERSION),
+            "database schema {} is newer than runtime schema {SCHEMA_VERSION}",
+            stored_schema.unwrap_or_default()
+        );
+
+        let schema_migrated = stored_schema != Some(SCHEMA_VERSION);
+        let previous_clean_shutdown =
+            has_service_meta && meta_optional_i64(&connection, "clean_shutdown")? == Some(1);
+        let filesystem_dirty =
+            !has_service_meta || meta_optional_i64(&connection, "filesystem_dirty")? != Some(0);
+        let integrity_checked = !previous_clean_shutdown || schema_migrated;
+        if integrity_checked {
+            let integrity: String =
+                connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+            if integrity != "ok" {
+                anyhow::bail!("SQLite quick_check failed: {integrity}");
+            }
         }
-        migrate_sync_hash_contract(&transaction)?;
-        transaction.execute(
-            "INSERT INTO service_meta(key, value) VALUES('schema_version', ?1)
-             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            [SCHEMA_VERSION.to_string()],
-        )?;
-        transaction.execute(
-            "INSERT OR IGNORE INTO service_meta(key, value) VALUES
-             ('global_content_revision', '0'),
-             ('tantivy_index_revision', '0')",
+
+        if schema_migrated {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            transaction.execute_batch(SCHEMA_V3)?;
+            let has_v1_tombstones = transaction.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                    WHERE type='table' AND name='tombstones'
+                 )",
+                [],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if has_v1_tombstones {
+                transaction.execute_batch(COLLAPSE_V1_TOMBSTONES)?;
+            }
+            migrate_sync_hash_contract(&transaction)?;
+            transaction.execute(
+                "INSERT INTO service_meta(key, value) VALUES('schema_version', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [SCHEMA_VERSION.to_string()],
+            )?;
+            transaction.execute(
+                "INSERT OR IGNORE INTO service_meta(key, value) VALUES
+                 ('global_content_revision', '0'),
+                 ('tantivy_index_revision', '0'),
+                 ('clean_shutdown', '0'),
+                 ('filesystem_dirty', '1')",
+                [],
+            )?;
+            transaction.commit()?;
+        }
+
+        // Mark the currently running generation as unclean before publishing
+        // readiness. Graceful shutdown is the only path that changes it to 1.
+        connection.execute(
+            "INSERT INTO service_meta(key, value) VALUES('clean_shutdown', '0')
+             ON CONFLICT(key) DO UPDATE SET value='0'",
             [],
         )?;
-        transaction.commit()?;
-        Ok(connection)
+        connection.execute(
+            "INSERT OR IGNORE INTO service_meta(key, value)
+             VALUES('filesystem_dirty', '1')",
+            [],
+        )?;
+
+        Ok((
+            connection,
+            DatabaseStartupState {
+                database_existed,
+                previous_clean_shutdown,
+                filesystem_dirty,
+                schema_migrated,
+                integrity_checked,
+            },
+        ))
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn startup_state(&self) -> DatabaseStartupState {
+        self.startup_state
+    }
+
+    pub fn mark_filesystem_dirty(&self) -> Result<()> {
+        let connection = self.connection.lock();
+        connection.execute(
+            "INSERT INTO service_meta(key, value) VALUES('filesystem_dirty', '1')
+             ON CONFLICT(key) DO UPDATE SET value='1'",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn filesystem_dirty(&self) -> Result<bool> {
+        let connection = self.connection.lock();
+        Ok(meta_optional_i64(&connection, "filesystem_dirty")? != Some(0))
+    }
+
+    pub fn mark_clean_shutdown(&self) -> Result<()> {
+        let mut connection = self.connection.lock();
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "INSERT INTO service_meta(key, value) VALUES('filesystem_dirty', '0')
+             ON CONFLICT(key) DO UPDATE SET value='0'",
+            [],
+        )?;
+        transaction.execute(
+            "INSERT INTO service_meta(key, value) VALUES('clean_shutdown', '1')
+             ON CONFLICT(key) DO UPDATE SET value='1'",
+            [],
+        )?;
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn upsert_owner(
@@ -2407,6 +2531,59 @@ mod tests {
         let database =
             Database::open(&directory.path().join("chat.sqlite3")).expect("open test database");
         (directory, database)
+    }
+
+    #[test]
+    fn clean_shutdown_enables_fast_start_while_unclean_exit_requires_recovery() {
+        let directory = tempfile::tempdir().expect("create startup-state directory");
+        let path = directory.path().join("chat.sqlite3");
+
+        let first = Database::open(&path).expect("create database");
+        let first_state = first.startup_state();
+        assert!(first_state.schema_migrated);
+        assert!(first_state.integrity_checked);
+        assert!(first_state.requires_startup_reconcile());
+        first
+            .mark_clean_shutdown()
+            .expect("commit clean first shutdown");
+        drop(first);
+
+        let clean = Database::open(&path).expect("reopen clean database");
+        let clean_state = clean.startup_state();
+        assert!(clean_state.database_existed);
+        assert!(clean_state.previous_clean_shutdown);
+        assert!(!clean_state.filesystem_dirty);
+        assert!(!clean_state.schema_migrated);
+        assert!(!clean_state.integrity_checked);
+        assert!(!clean_state.requires_startup_reconcile());
+        // Dropping without mark_clean_shutdown simulates process termination.
+        drop(clean);
+
+        let unclean = Database::open(&path).expect("reopen after unclean exit");
+        let unclean_state = unclean.startup_state();
+        assert!(!unclean_state.previous_clean_shutdown);
+        assert!(unclean_state.integrity_checked);
+        assert!(unclean_state.requires_startup_reconcile());
+    }
+
+    #[test]
+    fn filesystem_dirty_survives_reconcile_metadata_until_clean_shutdown() {
+        let (_directory, database) = test_database();
+        database
+            .mark_filesystem_dirty()
+            .expect("persist filesystem dirty state");
+        database
+            .set_last_reconcile_at(123)
+            .expect("record reconcile timestamp");
+        assert!(
+            database.filesystem_dirty().expect("read dirty state"),
+            "a running reconcile must not erase watcher events racing with it"
+        );
+
+        database
+            .mark_clean_shutdown()
+            .expect("commit clean shutdown");
+        assert!(!database.filesystem_dirty().expect("read clean state"));
     }
 
     #[test]

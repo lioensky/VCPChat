@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::{Arc, OnceLock},
+};
 
 use anyhow::{Context, Result};
 use jieba_rs::Jieba;
@@ -163,6 +168,124 @@ fn default_window() -> i64 {
 
 fn default_max_chars() -> usize {
     60_000
+}
+
+#[derive(Clone)]
+pub struct SearchRuntime {
+    directory: PathBuf,
+    database: Database,
+    index: Arc<OnceLock<SearchIndex>>,
+    initialization: Arc<Mutex<()>>,
+}
+
+impl SearchRuntime {
+    pub fn new(directory: PathBuf, database: Database) -> Self {
+        Self {
+            directory,
+            database,
+            index: Arc::new(OnceLock::new()),
+            initialization: Arc::new(Mutex::new(())),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn is_initialized(&self) -> bool {
+        self.index.get().is_some()
+    }
+
+    pub fn ensure_initialized(&self) -> Result<&SearchIndex> {
+        if let Some(index) = self.index.get() {
+            return Ok(index);
+        }
+
+        let _guard = self.initialization.lock();
+        if let Some(index) = self.index.get() {
+            return Ok(index);
+        }
+
+        let index = match SearchIndex::open(&self.directory, self.database.clone()) {
+            Ok(index) => index,
+            Err(error) => {
+                let isolated = self
+                    .directory
+                    .parent()
+                    .unwrap_or_else(|| Path::new(""))
+                    .join(format!(
+                        "chat_search_index.corrupt.{}",
+                        crate::storage::now_ms()
+                    ));
+                if self.directory.exists() {
+                    fs::rename(&self.directory, &isolated).with_context(|| {
+                        format!(
+                            "failed to isolate unusable search index at {}",
+                            isolated.display()
+                        )
+                    })?;
+                }
+                tracing::error!(
+                    error = ?error,
+                    isolated_path = %isolated.display(),
+                    "isolated unusable search index; creating a replacement"
+                );
+                SearchIndex::open(&self.directory, self.database.clone())?
+            }
+        };
+        self.index
+            .set(index)
+            .map_err(|_| anyhow::anyhow!("search index initialized concurrently"))?;
+        tracing::info!(directory = %self.directory.display(), "search runtime initialized on demand");
+        Ok(self.index.get().expect("search index was just initialized"))
+    }
+
+    pub fn status(&self) -> SearchStatus {
+        self.index.get().map_or(
+            SearchStatus {
+                available: true,
+                rebuilding: false,
+            },
+            SearchIndex::status,
+        )
+    }
+
+    pub fn apply_ingest_commit_if_initialized(&self, commit: &IngestCommit) -> Result<()> {
+        self.index
+            .get()
+            .map(|index| index.apply_ingest_commit(commit))
+            .transpose()
+            .map(|_| ())
+    }
+
+    pub fn apply_ingest_commits_if_initialized(&self, commits: &[IngestCommit]) -> Result<()> {
+        self.index
+            .get()
+            .map(|index| index.apply_ingest_commits(commits))
+            .transpose()
+            .map(|_| ())
+    }
+
+    pub fn reconcile_revisions_if_initialized(&self) -> Result<usize> {
+        self.index
+            .get()
+            .map(SearchIndex::reconcile_revisions)
+            .transpose()
+            .map(|count| count.unwrap_or(0))
+    }
+
+    pub fn rebuild(&self) -> Result<usize> {
+        self.ensure_initialized()?.rebuild()
+    }
+
+    pub fn search_messages(&self, request: &MessageSearchRequest) -> Result<Vec<SearchHit>> {
+        let index = self.ensure_initialized()?;
+        index.reconcile_revisions()?;
+        index.search_messages(request)
+    }
+
+    pub fn search_memories(&self, request: &MemorySearchRequest) -> Result<Vec<MemoryWindow>> {
+        let index = self.ensure_initialized()?;
+        index.reconcile_revisions()?;
+        index.search_memories(request)
+    }
 }
 
 #[derive(Clone)]
@@ -727,7 +850,34 @@ fn normalize_query_syntax(query: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_query_syntax;
+    use super::{normalize_query_syntax, SearchRuntime};
+    use crate::storage::Database;
+
+    #[test]
+    fn search_runtime_stays_cold_until_search_capability_is_requested() {
+        let directory = tempfile::tempdir().expect("create lazy-search directory");
+        let database =
+            Database::open(&directory.path().join("chat.sqlite3")).expect("open database");
+        let index_dir = directory.path().join("search-index");
+        let runtime = SearchRuntime::new(index_dir.clone(), database);
+
+        assert!(!runtime.is_initialized());
+        assert!(!index_dir.exists());
+        assert_eq!(
+            runtime
+                .reconcile_revisions_if_initialized()
+                .expect("cold revision reconcile"),
+            0
+        );
+        assert!(!runtime.is_initialized());
+        assert!(!index_dir.exists());
+
+        runtime
+            .ensure_initialized()
+            .expect("initialize search capability");
+        assert!(runtime.is_initialized());
+        assert!(index_dir.join("meta.json").exists());
+    }
 
     #[test]
     fn converts_legacy_deepmemo_query_syntax() {
