@@ -45,7 +45,7 @@
 - `VCPCHAT_MANUAL_SOAK_MINUTES=0.001 VCPCHAT_MANUAL_SOAK_INTERVAL_SECONDS=0.001 node scripts/test-electron-manual-soak.mjs`：生成 23 个无错误 checkpoint；该工具仍明确要求人工 checklist，不能把短时观察升级为完整 soak 通过。
 - `node scripts/test-ui-system.mjs`：UI system contract assertions pass; the JSDOM process leaves existing requestSubmit/timer activity alive and does not produce a stable terminating exit here.
 - `npm run test:ui-system`：wrapper reaches the passing UI contract stage but cannot provide a stable final exit because of the same open-handle behavior.
-- `npm run test:electron-ui-apps`：单独重跑仍在 `scripts/test-electron-ui-apps-smoke.mjs:534` 等待 `VCPFrontendPlugins.get('vchat-dynamic-wallpaper')` 时 90 秒超时，审计摘要为 `0/0 passed`。当前仓库的该插件 manifest 仍是 `.block`，因此 smoke 期待与 fixture 状态不一致；这项门禁不能宣称通过，也不能替代 packaged Electron 验收。
+- `npm run test:electron-ui-apps`：已修正动态壁纸插件契约。smoke 现在以 `listEnabledFrontendPlugins()` 为准：当前 `.block` manifest 被明确审计为 disabled，并验证未注入插件 DOM；只有启用 manifest 才等待注册和控制面板。修复后测试越过原 534 行阻塞，但随后在设置页增强保存栏等待处超时（`scripts/test-electron-ui-apps-smoke.mjs:1420`），因此该门禁仍不能宣称通过，也不能替代 packaged Electron 验收。动态壁纸插件属于既有独立 UI/plugin surface，与 autosave coordinator 无关。
 
 ## 对抗性复核结论（2026-09-02）
 

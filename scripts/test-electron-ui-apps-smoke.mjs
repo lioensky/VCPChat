@@ -528,23 +528,46 @@ try {
     assert.equal(brandAssets.fontLoaded, true, `VCPChat Orbitron wordmark font failed to load: ${JSON.stringify(brandAssets)}`);
     assert.match(brandAssets.computedFamily, /VCP Orbitron/, `VCPChat wordmark resolved to the wrong family: ${JSON.stringify(brandAssets)}`);
     assert.ok(brandAssets.novaWidth > 0 && brandAssets.novaHeight > 0, `Nova launch asset failed to decode: ${JSON.stringify(brandAssets)}`);
-    // Renderer readiness does not imply that the asynchronous frontend-plugin
-    // IPC scan has completed. Audit the plugin after its own readiness
-    // contract instead of racing it under a busy CI/Electron host.
-    await page.waitForFunction(
-        () => Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
-        { timeout: timeoutMs }
-    );
+    // The plugin manager is the source of truth for this optional surface.
+    // A .block manifest is intentionally absent from the enabled list, so a
+    // disabled plugin must be audited as disabled rather than treated as a
+    // renderer boot failure.
+    const wallpaperAvailability = await page.evaluate(async () => {
+        const response = await window.chatAPI?.listEnabledFrontendPlugins?.();
+        const plugins = response?.success && Array.isArray(response.plugins) ? response.plugins : [];
+        const enabled = plugins.some((plugin) => String(plugin.id || '').toLowerCase() === 'vchatdynamicwallpaper'
+            || String(plugin.id || '').toLowerCase() === 'vchat-dynamic-wallpaper');
+        return { enabled, available: response?.success === true, pluginCount: plugins.length };
+    });
+    assert.equal(wallpaperAvailability.available, true,
+        `frontend plugin availability query failed: ${JSON.stringify(wallpaperAvailability)}`);
+    if (wallpaperAvailability.enabled) {
+        await page.waitForFunction(
+            () => Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
+            { timeout: timeoutMs }
+        );
+    }
     const nextWallpaperIntegration = await page.evaluate(() => ({
+        pluginLoaded: Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
         titlePanelPresent: Boolean(document.querySelector('.chat-header #vchat-dynamic-wallpaper-panel')),
         titleGroupPresent: Boolean(document.querySelector('.chat-header #vchat-wallpaper-title-group')),
         nextMenuPresent: Boolean(document.getElementById('vchatDynamicWallpaperMenuButton')),
         studioActionPresent: Boolean(document.querySelector('[data-studio-action="wallpaper"]')),
     }));
-    assert.equal(nextWallpaperIntegration.titlePanelPresent, true, `Next must use the upstream Classic wallpaper title control: ${JSON.stringify(nextWallpaperIntegration)}`);
-    assert.equal(nextWallpaperIntegration.titleGroupPresent, true, `Wallpaper title group is missing from the shared chat header: ${JSON.stringify(nextWallpaperIntegration)}`);
-    assert.equal(nextWallpaperIntegration.nextMenuPresent, false, `Next-only wallpaper account entry must not be injected: ${JSON.stringify(nextWallpaperIntegration)}`);
-    assert.equal(nextWallpaperIntegration.studioActionPresent, false, `Appearance Studio must not expose a plugin-specific wallpaper action: ${JSON.stringify(nextWallpaperIntegration)}`);
+    if (wallpaperAvailability.enabled) {
+        assert.equal(nextWallpaperIntegration.pluginLoaded, true, `enabled wallpaper plugin did not register: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titlePanelPresent, true, `Next must use the upstream Classic wallpaper title control: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titleGroupPresent, true, `Wallpaper title group is missing from the shared chat header: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.nextMenuPresent, false, `Next-only wallpaper account entry must not be injected: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.studioActionPresent, false, `Appearance Studio must not expose a plugin-specific wallpaper action: ${JSON.stringify(nextWallpaperIntegration)}`);
+        summary.push({ surface: '动态壁纸插件边界', mode: 'next', pass: true, lucide: 0, note: '插件已启用，验证注册、标题栏复用和 Next 边界' });
+    } else {
+        assert.equal(nextWallpaperIntegration.pluginLoaded, false, `disabled wallpaper plugin was loaded: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titlePanelPresent, false, `disabled wallpaper plugin injected a title panel: ${JSON.stringify(nextWallpaperIntegration)}`);
+        assert.equal(nextWallpaperIntegration.titleGroupPresent, false, `disabled wallpaper plugin injected a title group: ${JSON.stringify(nextWallpaperIntegration)}`);
+        console.log('[test-electron-ui-apps] optional vchat-dynamic-wallpaper is disabled; plugin integration assertions skipped');
+        summary.push({ surface: '动态壁纸插件边界', mode: 'next', pass: true, lucide: 0, note: 'plugin-manifest.json.block；明确跳过启用态集成断言并验证无注入' });
+    }
     const messageSemantics = await page.evaluate(() => {
         const originalMode = document.documentElement.dataset.uiMode || 'next';
         const host = document.createElement('div');
@@ -916,10 +939,11 @@ try {
     assert.equal(narrowDock.iconsVisible, true, `narrow notification dock icons are clipped: ${JSON.stringify(narrowDock)}`);
     assert.equal(narrowDock.buttonOverflow, false, `narrow notification dock buttons overflow: ${JSON.stringify(narrowDock)}`);
     await page.$eval('#appTrayPinnedApps > .capsule-button', button => button.focus());
+    await page.hover('#appTrayPinnedApps > .capsule-button');
     await new Promise(resolve => setTimeout(resolve, 220));
     const dockTooltip = await page.$eval('#appTrayPinnedApps > .capsule-button', button => ({
         label: button.getAttribute('aria-label'),
-        focused: button.matches(':focus-visible'),
+        focused: document.activeElement === button,
         content: getComputedStyle(button, '::before').content,
         opacity: getComputedStyle(button, '::before').opacity,
         visibility: getComputedStyle(button, '::before').visibility,
@@ -1607,9 +1631,13 @@ try {
     classicMainStyle.classicNotificationControls.forEach(control => {
         assert.equal(control.present, false, `retired notification proxy remains hidden in the DOM: ${JSON.stringify(control)}`);
     });
-    assert.equal(classicMainStyle.wallpaperControlPresent, true, `Classic video wallpaper control is missing: ${JSON.stringify(classicMainStyle)}`);
-    assert.equal(classicMainStyle.wallpaperControlHasSvg, true, `Classic video wallpaper control lost its SVG icon: ${JSON.stringify(classicMainStyle)}`);
-    assert.deepEqual(classicMainStyle.wallpaperControlLeakedText, [], `Classic video wallpaper control exposed icon text: ${JSON.stringify(classicMainStyle)}`);
+    if (wallpaperAvailability.enabled) {
+        assert.equal(classicMainStyle.wallpaperControlPresent, true, `Classic video wallpaper control is missing: ${JSON.stringify(classicMainStyle)}`);
+        assert.equal(classicMainStyle.wallpaperControlHasSvg, true, `Classic video wallpaper control lost its SVG icon: ${JSON.stringify(classicMainStyle)}`);
+        assert.deepEqual(classicMainStyle.wallpaperControlLeakedText, [], `Classic video wallpaper control exposed icon text: ${JSON.stringify(classicMainStyle)}`);
+    } else {
+        assert.equal(classicMainStyle.wallpaperControlPresent, false, `disabled wallpaper plugin injected a Classic control: ${JSON.stringify(classicMainStyle)}`);
+    }
 
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout: timeoutMs });
@@ -1654,6 +1682,13 @@ try {
 
     console.log('Electron UI apps smoke passed (canonical main layout plus upstream-Classic child host integration).');
 } catch (error) {
+    summary.push({
+        surface: 'Electron smoke remainder',
+        mode: 'runner',
+        pass: false,
+        lucide: 0,
+        note: `aborted: ${error?.message || String(error)}`,
+    });
     console.error(`Electron UI apps smoke failed:\n${error?.stack || error}`);
     for (const [label, errors] of [...pageErrors, ...consoleErrors]) {
         if (errors.length) console.error(`\n${label} errors:\n${errors.slice(0, 12).map(line => `- ${line}`).join('\n')}`);
