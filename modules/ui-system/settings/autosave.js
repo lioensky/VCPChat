@@ -94,13 +94,17 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
             // exactly the settings-page white-out regression. The close-time
             // flush also passes here — the modal is already going away, so
             // the marker is a no-op there.
-            form.dataset.vcpKeepOpenAfterSave = 'true';
+            // Let the save handler capture this boundary synchronously, then
+            // clear it so a later manual submit still closes the modal.
+            form.dataset.vcpAutosaveSubmission = 'true';
             // The coordinator owns the only form.requestSubmit() path; the
             // synchronous throw of a form without a submittable control
             // propagates through it unchanged.
             if (coordinator) coordinator.submit();
             else requestSubmitWithoutNativeValidation(form);
+            delete form.dataset.vcpAutosaveSubmission;
         } catch {
+            delete form.dataset.vcpAutosaveSubmission;
             // A form without a submittable control throws synchronously; the
             // state machine must unwind or every later save stays wedged on
             // saving=true with the status frozen at 保存中….
@@ -141,6 +145,11 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         if (event.target.dataset.vcpAppearanceDraftControl === 'true') return;
         schedule();
     };
+    const onManualSaveStart = () => {
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = null;
+        state.pending = false;
+    };
     // Results arrive through the coordinator's routing (阶段 4): this client
     // is registered as the default consumer, so it sees only the form-level
     // save flow — typed clients receive their own owner-tagged results and
@@ -178,6 +187,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
     };
     const releaseInput = listen(form, 'input', onInput, 'settings-legacy-autosave-input');
     const releaseChange = listen(form, 'change', onInput, 'settings-legacy-autosave-change');
+    const releaseManualSave = listen(form, 'vcp-settings-manual-save-start', onManualSaveStart, 'settings-legacy-autosave-manual-save');
     const releaseResult = coordinator
         ? coordinator.registerClient({
             id: 'legacy-autosave',
@@ -195,6 +205,7 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         // available during early bootstrap, and every release is idempotent.
         void releaseInput?.();
         void releaseChange?.();
+        void releaseManualSave?.();
         void releaseResult?.();
         delete form.dataset.vcpAutosaveState;
         delete form.dataset.vcpAutosaveMounted;
@@ -228,9 +239,12 @@ function flushState(state) {
         const coordinator = getSaveCoordinator(state.form);
         const operationId = coordinator?.createOperation('legacy-autosave');
         coordinator?.reportState('saving', { owner: 'legacy-autosave', operationId });
+        state.form.dataset.vcpAutosaveSubmission = 'true';
         if (coordinator) coordinator.submit();
         else requestSubmitWithoutNativeValidation(state.form);
+        delete state.form.dataset.vcpAutosaveSubmission;
     } catch (error) {
+        delete state.form.dataset.vcpAutosaveSubmission;
         clearSaveFallback(state);
         state.saving = false;
         state.inFlight = false;

@@ -370,7 +370,10 @@ class SettingsManager extends EventEmitter {
     }
 
     async writeSettings(settings) {
-        const tempFile = this.settingsPath + '.tmp';
+        // Use a unique exclusively-created sibling. A shared `.tmp` path lets
+        // overlapping callers delete one another's temporary file when a
+        // write or verification step fails.
+        const tempFile = `${this.settingsPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
         const backupFile = this.settingsPath + '.backup';
 
         try {

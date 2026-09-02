@@ -30,6 +30,13 @@ export function handleSaveGlobalSettings(e, deps) {
     }
     if (settingsForm) settingsForm.dataset.globalSettingsSaving = 'true';
 
+    // A real submit supersedes any pending legacy debounce. Without this
+    // boundary, the explicit save can close the modal and the old timer then
+    // starts a second save against a torn-down surface.
+    if (settingsForm && settingsForm.dataset.vcpAutosaveSubmission !== 'true') {
+        settingsForm.dispatchEvent(new CustomEvent('vcp-settings-manual-save-start'));
+    }
+
     return saveGlobalSettings(deps, settingsForm).catch(error => {
         // Exceptions (notably the bounded IPC timeout) are terminal outcomes
         // for the autosave consumer too. Publish the same failure contract as
@@ -79,6 +86,7 @@ function patchToOps(patch, prefix = []) {
 
 async function saveGlobalSettings(deps, settingsForm) {
     const chatAPI = window.chatAPI || window.electronAPI;
+    const autosaveSubmission = settingsForm?.dataset.vcpAutosaveSubmission === 'true';
     const reportSaveResult = (success, error = '', status = success ? 'success' : 'failed', extra = {}) => {
         settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
             detail: { success, status, operationId: settingsForm?.dataset.vcpSettingsOperationId, error: error || undefined, ...extra }
@@ -328,7 +336,8 @@ async function saveGlobalSettings(deps, settingsForm) {
         // stay in the dialog — an autosave that slams the modal shut (and
         // tears the unified surface down mid-edit) is what white-screened the
         // settings page on every numeric commit.
-        const keepOpenAfterSave = settingsForm?.dataset.vcpKeepOpenAfterAvatarSave === 'true'
+        const keepOpenAfterSave = autosaveSubmission
+            || settingsForm?.dataset.vcpKeepOpenAfterAvatarSave === 'true'
             || settingsForm?.dataset.vcpKeepOpenAfterSave === 'true';
         if (keepOpenAfterSave) {
             delete settingsForm.dataset.vcpKeepOpenAfterAvatarSave;

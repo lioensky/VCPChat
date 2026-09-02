@@ -80,8 +80,9 @@ const MARKERS = Object.freeze({
     vcpSettingsOperationId: { owner: 'settings/save-coordinator.js', cleanup: 'business-contract' },
     vcpSettingsSource: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
     vcpAutosaveState: { owner: 'settings/autosave.js + settingsManager', cleanup: 'business-contract' },
-    // Set by the autosave submit so the save handler keeps the dialog open
-    // after success; consumed (deleted) by global-settings-manager.js.
+    vcpAutosaveSubmission: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
+    // Compatibility marker for callers that still request a keep-open save;
+    // autosave submissions now use the transient boundary above.
     vcpKeepOpenAfterSave: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
     globalSettingsSaving: { owner: 'settings/autosave.js', cleanup: 'business-contract' },
     vcpAutosaveMounted: { owner: 'settings/autosave.js', cleanup: 'manual-retract' },
