@@ -331,7 +331,11 @@ async function saveGlobalSettings(deps, settingsForm) {
             uiHelperFunctions.showToastNotification(`设置已保存，但界面应用失败：${presentationError?.message || presentationError}`, 'warning');
         }
         reportSaveResult(true, '', 'success', { currentRevision: result?.currentRevision });
-        uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
+        delete settingsForm.dataset.vcpSettingsConflict;
+        settingsForm?.removeAttribute?.('data-vcp-settings-conflict');
+        if (!autosaveSubmission && settingsForm?.dataset.vcpAutosaveMounted !== 'true') {
+            uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
+        }
         // Keep-open contract: avatar saves and autosave-initiated submissions
         // stay in the dialog — an autosave that slams the modal shut (and
         // tears the unified surface down mid-edit) is what white-screened the
