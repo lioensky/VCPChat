@@ -42,7 +42,7 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
         inputType: 'url',
         label: 'MiMo API URL:',
         placeholder: 'https://www.dmxapi.cn/v1 或 https://api.xiaomimimo.com/v1',
-        hint: '可填写到 /v1，也可填写完整的 /v1/chat/completions；程序会自动补全。',
+        hint: '可填写到 /v1，也可填写完整的 /v1/chat/completions。',
         save: { valuePath: 'voiceNetworkSettings.providerUrl', trim: true, falsy: '' },
     }),
     text('voiceNetworkProviderKey', {
