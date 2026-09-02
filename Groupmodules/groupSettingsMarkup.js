@@ -69,6 +69,12 @@ window.GroupSettingsMarkup = (() => {
                                 </select>
                             </div>
 
+                            <div id="sequentialOrderContainer" class="group-settings-field-shell" style="display: none;">
+                                <label class="group-settings-field-label">顺序发言次序</label>
+                                <div class="group-settings-helper-text">拖拽成员调整发言顺序。新加入且尚未排序的成员会自动追加到末尾。</div>
+                                <div id="sequentialSpeakerOrderList" class="sequential-speaker-order-list" role="list" aria-label="顺序发言次序"></div>
+                            </div>
+
                             <div id="memberTagsContainer" class="group-settings-field-shell" style="display: none;">
                                 <label for="tagMatchMode">Tag 触发模式</label>
                                 <select id="tagMatchMode">

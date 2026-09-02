@@ -471,6 +471,116 @@ body:not(.light-theme) #groupSettingsForm select:focus-visible {
     gap: 8px;
 }
 
+#groupSettingsContainer .sequential-speaker-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 2px 0;
+}
+
+#groupSettingsContainer .sequential-speaker-order-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    padding: 4px 7px 4px 10px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--agent-settings-pill-radius);
+    color: var(--highlight-text);
+    cursor: grab;
+    user-select: none;
+    transition: border-color 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+}
+
+#groupSettingsContainer .sequential-speaker-order-item:active {
+    cursor: grabbing;
+}
+
+#groupSettingsContainer .sequential-speaker-order-item.dragging {
+    opacity: 0.46;
+}
+
+#groupSettingsContainer .sequential-speaker-order-item.drag-over {
+    border-color: var(--highlight-text);
+    transform: translateY(1px);
+}
+
+#groupSettingsContainer .sequential-speaker-drag-handle {
+    color: var(--secondary-text);
+    font-size: 1.05em;
+    letter-spacing: -3px;
+    cursor: grab;
+}
+
+#groupSettingsContainer .sequential-speaker-order-item .avatar-small {
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+#groupSettingsContainer .sequential-speaker-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#groupSettingsContainer .sequential-speaker-order-controls {
+    display: inline-flex;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+#groupSettingsContainer .sequential-order-move-btn {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--secondary-text);
+    cursor: pointer;
+}
+
+#groupSettingsContainer .sequential-order-move-btn:hover,
+#groupSettingsContainer .sequential-order-move-btn:focus-visible {
+    color: var(--highlight-text);
+    background: color-mix(in srgb, var(--highlight-text) 14%, transparent);
+    outline: none;
+}
+
+#groupSettingsContainer .sequential-speaker-order-empty {
+    padding: 12px;
+    color: var(--secondary-text);
+    text-align: center;
+    font-size: 0.88em;
+}
+
+body.light-theme #groupSettingsContainer .sequential-speaker-order-item {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+}
+
+body:not(.light-theme) #groupSettingsContainer .sequential-speaker-order-item {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+}
+
 #groupSettingsContainer .member-tag-input-item {
     display: flex;
     flex-direction: column;
