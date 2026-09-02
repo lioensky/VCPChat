@@ -45,7 +45,7 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 
 全量完成追踪（保持 active）：
 
-1. 将 `filterManager`、`chatManager`、`uiManager`、`event-listeners`、`appearance-studio` 等直接 `saveSettings` 调用迁移到统一 patch/revision capability，或明确证明其不触碰 Global Settings surface。
+1. 将 `filterManager`、`chatManager`、`uiManager`、`event-listeners` 等直接 `saveSettings` 调用迁移到统一 patch/revision capability，或明确证明其不触碰 Global Settings surface；`appearance-studio` 已迁移为 path ops。
 2. 将 renderer typed service 拆分为 committed base、local draft、pending ops 三层，并在 dirty/conflict 时禁止外部快照覆盖控件。
 3. 增加 Electron close/reopen/reload/timeout/conflict 操作序列，覆盖真实 preload、IPC、main manager 和 modal teardown。
 4. 在 macOS 当前环境完成 packaged smoke；补充 Windows runner 证据、GPU/DPI 几何和人工 soak 记录。
