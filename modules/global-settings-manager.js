@@ -353,7 +353,10 @@ async function saveGlobalSettings(deps, settingsForm) {
         }
    } else {
        const error = result?.error || '保存接口未返回成功结果';
-       reportSaveResult(false, error, result?.status === 'conflict' ? 'conflict' : 'failed', { code: result?.code, currentRevision: result?.currentRevision });
-       uiHelperFunctions.showToastNotification(`保存全局设置失败: ${error}`, 'error');
+       const isConflict = result?.status === 'conflict' || result?.code === 'SETTINGS_CONFLICT' || String(error).includes('Settings changed since it was read');
+       reportSaveResult(false, error, isConflict ? 'conflict' : 'failed', { code: result?.code, currentRevision: result?.currentRevision });
+       if (!isConflict) {
+           uiHelperFunctions.showToastNotification(`保存全局设置失败: ${error}`, 'error');
+       }
     }
 }
