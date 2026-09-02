@@ -356,17 +356,16 @@ function flushSettingsAutosave() {
     // window where the pipeline has not claimed the form yet.
     const coordinator = getSaveCoordinator(document.getElementById('globalSettingsForm'));
     if (coordinator) {
-        coordinator.flush();
-        return;
+        return coordinator.flush();
     }
-    flushLegacyAutosave();
-    flushTypedOwners();
+    return Promise.all([flushLegacyAutosave(), flushTypedOwners()]);
 }
 
-function teardownSettingsAutosave() {
+async function teardownSettingsAutosave() {
+    const coordinator = getSaveCoordinator(document.getElementById('globalSettingsForm'));
+    if (coordinator) await coordinator.dispose();
     teardownLegacyAutosave();
     teardownTypedOwners();
-    getSaveCoordinator(document.getElementById('globalSettingsForm'))?.dispose();
 }
 
 function teardownUiuxDisclosures() {
@@ -778,7 +777,7 @@ function scheduleRefresh() {
     queueMicrotask(refresh);
 }
 
-function teardown() {
+async function teardown() {
     const scope = takePresentationScope();
     // Retract enhanced controller identity synchronously before a rapid
     // A rapid surface round-trip can schedule another refresh.  The Scope
@@ -787,12 +786,11 @@ function teardown() {
     // presentation generation.
     releaseAllControllers();
     if (scope) {
-        void scope.dispose('settings-presentation-teardown').catch(error => {
-            console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error);
-        });
+        try { await scope.dispose('settings-presentation-teardown'); }
+        catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }
     }
     releaseAllAgentModelPickers();
-    teardownSettingsAutosave();
+    await teardownSettingsAutosave();
     teardownUiuxDisclosures();
     selectProjection.teardown();
     [...shellRoots].forEach(root => {
@@ -886,8 +884,7 @@ window.VCPUISettingsBridge = Object.freeze({
             document.removeEventListener('modal-ready', handleModalVisibility);
             document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
         }
-        teardown();
-        destroyPromise = bridgeScope?.dispose('settings-bridge-destroyed') || Promise.resolve();
+        destroyPromise = teardown().then(() => bridgeScope?.dispose('settings-bridge-destroyed') || undefined);
         return destroyPromise;
     },
     get enhancedCount() {

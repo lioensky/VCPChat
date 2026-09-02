@@ -722,9 +722,9 @@ test('保存协调器：唯一提交入口与显式订阅替代 owner 字符串�
         const clientIdx = entry.indexOf(`name: '${client}'`);
         assert.ok(coordinatorIdx < clientIdx, `the coordinator step must mount before the ${client} step`);
     }
-    assert.match(entry, /getSaveCoordinator\(document\.getElementById\('globalSettingsForm'\)\);\s*\n\s*if \(coordinator\) \{\s*\n\s*coordinator\.flush\(\);/,
+    assert.match(entry, /getSaveCoordinator\(document\.getElementById\('globalSettingsForm'\)\);\s*\n\s*if \(coordinator\) \{\s*\n\s*return coordinator\.flush\(\);/,
         'the close-time flush prefers the coordinator entry');
-    assert.match(entry, /teardownLegacyAutosave\(\);\s*\n\s*teardownTypedOwners\(\);\s*\n\s*getSaveCoordinator\(document\.getElementById\('globalSettingsForm'\)\)\?\.dispose\(\);/,
+    assert.match(entry, /await teardownSettingsAutosave\(\);/,
         'teardown disposes the coordinator');
 
     // 行为面：按 owner 路由结果，默认客户端收未标注结果；vcpAutosaveState

@@ -76,6 +76,7 @@ const MARKERS = Object.freeze({
     vcpTypedForumFieldOwnerMounted: { owner: 'typed-field-owners.js', cleanup: 'manual-retract' },
     vcpSettingsDirty: { owner: 'settings/autosave.js + settingsManager', cleanup: 'business-contract' },
     vcpSettingsRevision: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
+    vcpSettingsOperationId: { owner: 'settings/save-coordinator.js', cleanup: 'business-contract' },
     vcpSettingsSource: { owner: 'typed-field-owners.js', cleanup: 'business-contract' },
     vcpAutosaveState: { owner: 'settings/autosave.js + settingsManager', cleanup: 'business-contract' },
     // Set by the autosave submit so the save handler keeps the dialog open

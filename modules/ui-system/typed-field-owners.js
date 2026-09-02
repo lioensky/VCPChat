@@ -26,6 +26,7 @@ let typedSettingsExternalRelease = null;
 let typedSettingsSaveChain = Promise.resolve();
 let typedSettingsSaveGeneration = 0;
 let typedSettingsDisposed = false;
+let typedSettingsRevision = null;
 
 function addTypedNetworkPathInput(root, path = '') {
     const container = root?.querySelector?.('#networkNotesPathsContainer');
@@ -98,11 +99,27 @@ function ensureTypedSettingsService() {
         get: () => typedSettingsState,
         save: patch => {
             const generation = ++typedSettingsSaveGeneration;
+            const operationId = `typed-${Date.now().toString(36)}-${generation}`;
+            // Advance the in-memory draft at enqueue time. A later queued
+            // patch must observe this edit even while an earlier IPC call is
+            // still unresolved.
+            typedSettingsState = Object.freeze({ ...typedSettingsState, ...(patch || {}) });
             const run = async () => {
-                const next = Object.freeze({ ...typedSettingsState, ...patch });
-                const result = await window.chatAPI?.saveSettings?.(next);
-                if (result?.success && generation === typedSettingsSaveGeneration) publishExternal(next);
-                return result?.success ? { success: true } : { success: false, error: result?.error || '设置保存失败' };
+                const result = await window.chatAPI?.saveSettings?.({
+                    __vcpSettingsPatch: Object.freeze({ ...(patch || {}) }),
+                    expectedRevision: typedSettingsRevision ?? undefined,
+                    operationId,
+                });
+                const status = result?.status || (result?.success ? 'success' : 'failed');
+                if (status === 'success' && generation === typedSettingsSaveGeneration) {
+                    typedSettingsRevision = result?.currentRevision ?? typedSettingsRevision;
+                    publishExternal(result?.settings || typedSettingsState);
+                    return { success: true, status: 'success', operationId, currentRevision: typedSettingsRevision };
+                }
+                if (status === 'success' && generation !== typedSettingsSaveGeneration) {
+                    return { success: false, status: 'stale', operationId, currentRevision: result?.currentRevision };
+                }
+                return { success: false, status, operationId, code: result?.code, error: result?.error || '设置保存失败', currentRevision: result?.currentRevision };
             };
             const result = typedSettingsSaveChain.then(run, run);
             typedSettingsSaveChain = result.catch(() => {});
@@ -110,6 +127,7 @@ function ensureTypedSettingsService() {
         },
         cancelPendingSaves: () => {
             typedSettingsSaveGeneration += 1;
+            typedSettingsRevision = null;
             // Do not let a timed-out IPC hold retry behind an unbounded chain.
             // The old request may still settle in the main process, but it has
             // lost publication rights and the next retry starts immediately.
@@ -379,11 +397,11 @@ function mountTypedForumFieldOwner(root, form) {
     // client, so its owner-tagged results are routed here — the legacy
     // machine never filters them by string.
     const coordinator = getSaveCoordinator(form);
-    const setStatus = (mode) => {
-        if (coordinator) coordinator.reportState(mode);
+    const setStatus = (mode, details = {}) => {
+        if (coordinator) coordinator.reportState(mode, { owner: 'typed-forum-field-owner', ...details });
         else form.dataset.vcpAutosaveState = mode;
     };
-    coordinator?.registerClient({ id: 'typed-forum-field-owner', flush: flushTypedForumFields });
+    coordinator?.registerClient({ id: 'typed-forum-field-owner', flush: flushTypedForumFields, hasWork: () => [...typedForumFieldStates].some(item => item === state && (item.pending || item.inFlight || item.timer)) });
     const run = async () => {
         state.timer = null;
         if (state.disposed || !state.pending || state.inFlight) return;
@@ -391,27 +409,27 @@ function mountTypedForumFieldOwner(root, form) {
         const username = form.querySelector('#adminUsername')?.value?.trim() || '';
         const password = form.querySelector('#adminPassword')?.value || '';
         state.inFlight = service.save.execute({ username, password, rememberCredentials: true });
-        setStatus('saving');
+        const operationId = coordinator?.createOperation('typed-forum-field-owner');
+        setStatus('saving', { operationId });
         try {
             const result = await state.inFlight;
             if (state.disposed) return;
             if (!result?.success) {
                 state.failed = true;
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, error: result?.error || '论坛配置保存失败', owner: 'typed-forum-field-owner' } }));
+                setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
+                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, status: result?.status || 'failed', error: result?.error || '论坛配置保存失败', owner: 'typed-forum-field-owner', operationId } }));
             } else {
                 state.failed = false;
-                if (!state.pending) delete form.dataset.vcpSettingsDirty;
-                setStatus('saved');
-                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: true, owner: 'typed-forum-field-owner' } }));
+                setStatus('saved', { owner: 'typed-forum-field-owner', dirty: Boolean(state.pending), operationId });
+                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: true, status: 'success', owner: 'typed-forum-field-owner', operationId } }));
             }
         } catch (error) {
             if (!state.disposed) {
                 state.failed = true;
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, error: error?.message || String(error), owner: 'typed-forum-field-owner' } }));
+                setStatus('error', { operationId });
+                form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, status: 'failed', error: error?.message || String(error), owner: 'typed-forum-field-owner', operationId } }));
             }
         } finally { state.inFlight = null; if (state.pending) schedule(); }
     };
@@ -622,13 +640,13 @@ function mountTypedFieldOwner(root, form) {
     // client, so its owner-tagged results are routed here — the legacy
     // machine never filters them by string.
     const coordinator = getSaveCoordinator(form);
-    const setStatus = (mode) => {
-        if (coordinator) coordinator.reportState(mode);
+    const setStatus = (mode, details = {}) => {
+        if (coordinator) coordinator.reportState(mode, { owner: 'typed-settings-field-owner', ...details });
         else form.dataset.vcpAutosaveState = mode;
     };
-    coordinator?.registerClient({ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields });
-    const publish = (success, error = '') => {
-        form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success, error: error || undefined, owner: 'typed-settings-field-owner' } }));
+    coordinator?.registerClient({ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields, hasWork: () => [...typedFieldStates].some(item => item === state && (item.pendingPatch || item.inFlight || item.timer)) });
+    const publish = (success, error = '', status = success ? 'success' : 'failed', operationId = undefined) => {
+        form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success, status, error: error || undefined, owner: 'typed-settings-field-owner', operationId } }));
     };
     const run = async () => {
         state.timer = null;
@@ -636,28 +654,29 @@ function mountTypedFieldOwner(root, form) {
         const patch = state.pendingPatch;
         state.pendingPatch = null;
         state.inFlight = service.save.execute(patch);
-        setStatus('saving');
+        const operationId = coordinator?.createOperation('typed-settings-field-owner');
+        setStatus('saving', { operationId });
         try {
             const result = await state.inFlight;
             if (state.disposed) return;
             if (!result?.success) {
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                publish(false, result?.error || '设置保存失败');
+                setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
+                publish(false, result?.error || '设置保存失败', result?.status || 'failed', result?.operationId || operationId);
                 return;
             }
-            if (!state.pendingPatch) delete form.dataset.vcpSettingsDirty;
-            setStatus('saved');
-            publish(true);
+            setStatus('saved', { dirty: Boolean(state.pendingPatch), operationId });
+            publish(true, '', 'success', result?.operationId || operationId);
             if (state.pendingPatch) schedule();
         } catch (error) {
             if (!state.disposed) {
                 form.dataset.vcpSettingsDirty = 'true';
-                setStatus('error');
-                publish(false, error?.message || String(error));
+                setStatus('error', { operationId });
+                publish(false, error?.message || String(error), 'failed', operationId);
             }
         } finally {
             state.inFlight = null;
+            if (state.pendingPatch && !state.disposed) schedule();
         }
     };
     const schedule = () => {
@@ -766,26 +785,34 @@ function mountTypedFieldOwner(root, form) {
 }
 
 function flushTypedForumFields() {
+    const waits = [];
     typedForumFieldStates.forEach(state => {
-        if (state.disposed || !state.pending || state.inFlight) return;
+        if (state.disposed || (!state.pending && !state.inFlight)) return;
+        if (state.inFlight) { waits.push(state.inFlight); return; }
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
-        void state.run?.();
+        const work = state.run?.();
+        if (work?.then) waits.push(work);
     });
+    return Promise.all(waits);
 }
 
 // Settings-field half of the flush, kept separate so the save coordinator can
 // register each client with exactly its own registry.
 function flushTypedSettingsFields() {
+    const waits = [];
     typedFieldStates.forEach(state => {
-        if (state.disposed || !state.pendingPatch || state.inFlight) return;
+        if (state.disposed || (!state.pendingPatch && !state.inFlight)) return;
+        if (state.inFlight) { waits.push(state.inFlight); return; }
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
         // The field owner intentionally starts its own command and does not
         // route through form.requestSubmit(), which would re-enter legacy
         // presentation and close the modal.
-        void state.run?.();
+        const work = state.run?.();
+        if (work?.then) waits.push(work);
     });
+    return Promise.all(waits);
 }
 
 // Typed halves of the entry's flush/teardown autosave composition: the draft

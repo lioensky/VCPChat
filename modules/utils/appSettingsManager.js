@@ -1,6 +1,7 @@
 // modules/utils/settingsManager.js
 const fs = require('fs-extra');
 const path = require('path');
+const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
 class SettingsValidator {
@@ -288,19 +289,27 @@ class SettingsManager extends EventEmitter {
 
     async acquireLock(timeout = 5000) {
         const startTime = Date.now();
-        while (await fs.pathExists(this.lockFile)) {
-            if (Date.now() - startTime > timeout) {
-                console.warn('Lock acquisition timeout, removing stale lock');
-                await fs.remove(this.lockFile).catch(() => {});
-                break;
+        const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        for (;;) {
+            try {
+                await fs.writeFile(this.lockFile, token, { flag: 'wx', encoding: 'utf8' });
+                return token;
+            } catch (error) {
+                if (error?.code !== 'EEXIST') throw error;
+                if (Date.now() - startTime > timeout) {
+                    const busy = new Error('Settings lock acquisition timed out');
+                    busy.code = 'SETTINGS_LOCK_BUSY';
+                    throw busy;
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
         }
-        await fs.writeFile(this.lockFile, `${process.pid}-${Date.now()}`);
     }
 
-    async releaseLock() {
-        await fs.remove(this.lockFile).catch(() => {});
+    async releaseLock(token) {
+        if (!token) return;
+        const current = await fs.readFile(this.lockFile, 'utf8').catch(() => null);
+        if (current === token) await fs.remove(this.lockFile).catch(() => {});
     }
 
     async readSettings() {
@@ -398,9 +407,9 @@ class SettingsManager extends EventEmitter {
         }
     }
 
-    async updateSettings(updater) {
+    async updateSettings(updater, options = {}) {
         return new Promise((resolve, reject) => {
-            this.queue.push({ updater, resolve, reject });
+            this.queue.push({ updater, resolve, reject, options });
             this.processQueue();
         });
     }
@@ -411,27 +420,38 @@ class SettingsManager extends EventEmitter {
         }
 
         this.processing = true;
-        const { updater, resolve, reject } = this.queue.shift();
+        const { updater, resolve, reject, options = {} } = this.queue.shift();
+        let lockToken;
 
         try {
-            await this.acquireLock();
+            lockToken = await this.acquireLock();
 
             const currentSettings = await this.readSettings();
+            const currentRevision = this.getRevision(currentSettings);
+            if (options.expectedRevision !== undefined && options.expectedRevision !== currentRevision) {
+                const conflict = new Error(`Settings changed since it was read (expected ${options.expectedRevision}, current ${currentRevision})`);
+                conflict.code = 'SETTINGS_CONFLICT';
+                conflict.expectedRevision = options.expectedRevision;
+                conflict.currentRevision = currentRevision;
+                conflict.operationId = options.operationId;
+                throw conflict;
+            }
             let newSettings;
             if (typeof updater === 'function') {
                 newSettings = await updater(currentSettings);
             } else {
-                // 确保在合并时，不会丢失 defaultSettings 中定义的字段
-                newSettings = { ...this.defaultSettings, ...currentSettings, ...updater };
+                newSettings = { ...this.defaultSettings, ...currentSettings, ...this.mergePatch(currentSettings, updater) };
             }
 
             await this.writeSettings(newSettings);
 
-            resolve({ success: true, settings: newSettings });
+            resolve({ success: true, status: 'success', operationId: options.operationId, currentRevision: this.getRevision(newSettings), settings: newSettings });
         } catch (error) {
-            reject(error);
+            if (error?.code === 'SETTINGS_CONFLICT') {
+                resolve({ success: false, status: 'conflict', code: error.code, operationId: error.operationId, expectedRevision: error.expectedRevision, currentRevision: error.currentRevision, error: error.message });
+            } else reject(error);
         } finally {
-            await this.releaseLock();
+            await this.releaseLock(lockToken);
             this.processing = false;
 
             // 继续处理队列
@@ -439,6 +459,28 @@ class SettingsManager extends EventEmitter {
                 setImmediate(() => this.processQueue());
             }
         }
+    }
+
+    getRevision(settings) {
+        const stable = value => {
+            if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+            if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`;
+            return JSON.stringify(value);
+        };
+        return crypto.createHash('sha256').update(stable(settings || {})).digest('hex');
+    }
+
+    mergePatch(current, patch) {
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+        const merge = (base, next) => {
+            if (!next || typeof next !== 'object' || Array.isArray(next)) return next;
+            const output = { ...(base && typeof base === 'object' && !Array.isArray(base) ? base : {}) };
+            for (const [key, value] of Object.entries(next)) output[key] = value && typeof value === 'object' && !Array.isArray(value)
+                ? merge(output[key], value)
+                : value;
+            return output;
+        };
+        return merge(current, patch);
     }
 
     // 定期清理过期的锁文件
@@ -449,11 +491,11 @@ class SettingsManager extends EventEmitter {
                     const lockContent = await fs.readFile(this.lockFile, 'utf8');
                     const [pid, timestamp] = lockContent.split('-');
 
-                    // 如果锁文件超过10秒，认为是过期的
-                    if (Date.now() - parseInt(timestamp) > 10000) {
-                        console.log('Removing stale lock file');
-                        await fs.remove(this.lockFile);
-                    }
+                    // Lock age cannot distinguish a crashed owner from a live
+                    // writer paused by the OS. Never remove another owner\'s
+                    // lock here; recovery is operator-driven.
+                    void pid;
+                    void timestamp;
                 } catch (error) {
                     console.error('Error checking lock file:', error);
                 }

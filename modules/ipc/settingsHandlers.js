@@ -124,14 +124,14 @@ function initialize(paths) {
 
     ipcMain.handle('save-settings', async (event, settings) => {
         try {
+            const payload = settings || {};
+            const operationId = payload.operationId || payload.__vcpSettingsOperationId;
+            const expectedRevision = payload.expectedRevision;
+            const patch = payload.__vcpSettingsPatch;
             // User avatar URL is handled by 'save-user-avatar', remove it from general settings to avoid saving a file path
             // Also protect order fields from being accidentally overwritten by stale renderer snapshots.
-            const {
-                userAvatarUrl,
-                combinedItemOrder,
-                agentOrder,
-                ...settingsToSave
-            } = settings;
+            const source = patch && typeof patch === 'object' ? patch : payload;
+            const { userAvatarUrl, combinedItemOrder, agentOrder, __vcpSettingsPatch, __vcpSettingsOperationId, expectedRevision: ignoredRevision, operationId: ignoredOperationId, ...settingsToSave } = source;
 
             // 确保 flowlockContinueDelay 是一个有效的数字
             if ('flowlockContinueDelay' in settingsToSave
@@ -139,11 +139,11 @@ function initialize(paths) {
                 settingsToSave.flowlockContinueDelay = 5; // 如果无效，则设置为默认值
             }
 
-            const result = await settingsManager.updateSettings(settingsToSave);
+            const result = await settingsManager.updateSettings(settingsToSave, { expectedRevision, operationId });
             return result;
         } catch (error) {
             console.error('保存设置失败:', error);
-            return { success: false, error: error.message };
+            return { success: false, status: error?.code === 'SETTINGS_CONFLICT' ? 'conflict' : 'failed', code: error?.code, expectedRevision: error?.expectedRevision, currentRevision: error?.currentRevision, operationId: settings?.operationId || settings?.__vcpSettingsOperationId, error: error.message };
         }
     });
 

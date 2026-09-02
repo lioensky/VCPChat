@@ -20,6 +20,7 @@ export function handleSaveGlobalSettings(e, deps) {
         settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
             detail: {
                 success: false,
+                status: 'inflight',
                 error: '已有保存任务进行中，请稍后重试',
                 owner: 'global-settings-concurrent-guard',
                 inflight: true,
@@ -34,7 +35,7 @@ export function handleSaveGlobalSettings(e, deps) {
         // for the autosave consumer too. Publish the same failure contract as
         // an explicit `{ success: false }` result before releasing the lock.
         settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
-            detail: { success: false, error: error?.message || String(error) }
+            detail: { success: false, status: error?.code === 'SETTINGS_CONFLICT' ? 'conflict' : 'failed', code: error?.code, operationId: settingsForm?.dataset.vcpSettingsOperationId, error: error?.message || String(error) }
         }));
         throw error;
     }).finally(() => {
@@ -55,9 +56,9 @@ function awaitWithTimeout(value, timeoutMs) {
 
 async function saveGlobalSettings(deps, settingsForm) {
     const chatAPI = window.chatAPI || window.electronAPI;
-    const reportSaveResult = (success, error = '') => {
+    const reportSaveResult = (success, error = '', status = success ? 'success' : 'failed', extra = {}) => {
         settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
-            detail: { success, error: error || undefined }
+            detail: { success, status, operationId: settingsForm?.dataset.vcpSettingsOperationId, error: error || undefined, ...extra }
         }));
     };
 
@@ -225,9 +226,13 @@ async function saveGlobalSettings(deps, settingsForm) {
     // result cannot continue this operation because the bounded await has
     // already rejected and the form lock is released by the outer finally.
     const typedSettingsService = window.VCPUISettingsBridge?.getTypedService?.();
+    const operationId = settingsForm?.dataset.vcpSettingsOperationId || `global-${Date.now().toString(36)}`;
+    const savePayload = typedSettingsService?.save?.execute
+        ? newSettings
+        : { ...newSettings, __vcpSettingsOperationId: operationId, expectedRevision: settingsForm?.dataset.vcpSettingsRevision || undefined, operationId };
     const saveOperation = typedSettingsService?.save?.execute
-        ? typedSettingsService.save.execute(newSettings)
-        : chatAPI.saveSettings(newSettings);
+        ? typedSettingsService.save.execute(savePayload)
+        : chatAPI.saveSettings(savePayload);
     let result;
     try {
         result = await awaitWithTimeout(saveOperation, deps.saveTimeoutMs);
@@ -293,7 +298,7 @@ async function saveGlobalSettings(deps, settingsForm) {
             console.error('[GlobalSettings] Saved, but applying presentation settings failed:', presentationError);
             uiHelperFunctions.showToastNotification(`设置已保存，但界面应用失败：${presentationError?.message || presentationError}`, 'warning');
         }
-        reportSaveResult(true);
+        reportSaveResult(true, '', 'success', { currentRevision: result?.currentRevision });
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         // Keep-open contract: avatar saves and autosave-initiated submissions
         // stay in the dialog — an autosave that slams the modal shut (and
@@ -315,7 +320,7 @@ async function saveGlobalSettings(deps, settingsForm) {
         }
    } else {
        const error = result?.error || '保存接口未返回成功结果';
-       reportSaveResult(false, error);
+       reportSaveResult(false, error, result?.status === 'conflict' ? 'conflict' : 'failed', { code: result?.code, currentRevision: result?.currentRevision });
        uiHelperFunctions.showToastNotification(`保存全局设置失败: ${error}`, 'error');
     }
 }

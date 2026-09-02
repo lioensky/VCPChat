@@ -1,93 +1,153 @@
-// save-coordinator — the single save entry for the global settings form
-// (repayment plan 阶段 4). The legacy autosave state machine and the typed
-// settings/forum field owners register here as clients; nobody filters the
-// shared `vcp-settings-save-result` stream by owner string any more.
-//
-// What the coordinator owns:
-//   · form.requestSubmit() — the only submission path; the legacy autosave's
-//     debounce and the close-time flush both go through submit();
-//   · result routing — a result event tagged with a registered client id is
-//     delivered to that client alone; every untagged result (the form-level
-//     save flow in global-settings-manager) goes to the client marked
-//     `isDefault`, which is the legacy autosave;
-//   · `form.dataset.vcpAutosaveState` (dirty | saving | saved | error, absent
-//     when idle) — clients report transitions through reportState(), keeping
-//     the observable contract identical while the write happens in one place.
-//
-// Trimmed seam by design: no schemastery/cordis schema, and the revision
-// (compare-and-set) hook is intentionally left open — clients that gain
-// concurrent-write semantics will declare it on their registration.
+// One asynchronous save owner for a global-settings form. Clients still own
+// field-specific adapters, but this coordinator owns result identity,
+// aggregate status, and the close-time quiescence barrier.
 const coordinators = new WeakMap();
+const STATUS_ORDER = Object.freeze(['conflict', 'error', 'saving', 'dirty', 'saved', 'idle']);
+
+function createOperationId() {
+    return `settings-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function createCoordinator(form) {
     const clients = new Map();
+    const operations = new Map();
+    let disposed = false;
+    let flushBarrier = null;
+    let aggregateTimer = null;
+    const aggregateStatus = () => {
+        const statuses = [...clients.values()].map(client => client.status).filter(Boolean);
+        return STATUS_ORDER.find(status => statuses.includes(status)) || 'idle';
+    };
+    const publishAggregate = () => {
+        aggregateTimer = null;
+        const status = aggregateStatus();
+        if (status === 'idle') delete form.dataset.vcpAutosaveState;
+        else form.dataset.vcpAutosaveState = status;
+        const dirty = [...clients.values()].some(client => client.dirty || ['dirty', 'saving', 'error', 'conflict'].includes(client.status));
+        if (dirty) form.dataset.vcpSettingsDirty = 'true';
+        else delete form.dataset.vcpSettingsDirty;
+    };
+    const scheduleAggregate = () => {
+        if (aggregateTimer !== null) clearTimeout(aggregateTimer);
+        aggregateTimer = setTimeout(publishAggregate, 0);
+        publishAggregate();
+    };
     const onResultEvent = event => {
-        const detail = event.detail;
-        const owner = detail?.owner;
-        // An owner-tagged result is delivered to that owner alone. If the
-        // owner never registered, the result is dropped rather than falling
-        // through to the default client — a typed owner's outcome must never
-        // resolve the legacy machine just because its registration is
-        // missing (standalone uiuxes, teardown ordering).
-        if (owner) {
-            clients.get(owner)?.onResult?.(detail);
-            return;
-        }
-        for (const client of clients.values()) {
-            if (client.isDefault) client.onResult?.(detail);
+        const detail = event.detail || {};
+        const owner = detail.owner;
+        if (owner) clients.get(owner)?.onResult?.(detail);
+        else for (const client of clients.values()) if (client.isDefault) client.onResult?.(detail);
+        const operation = detail.operationId && operations.get(detail.operationId);
+        if (operation && ['success', 'failed', 'cancelled', 'stale', 'conflict'].includes(detail.status)) {
+            operation.resolve(detail);
+            operations.delete(detail.operationId);
         }
     };
     form.addEventListener('vcp-settings-save-result', onResultEvent);
     const coordinator = {
         form,
-        // Explicit subscription: a client owns every result tagged with its
-        // id; the default client receives the untagged form-level results.
-        // `flush` lets the close-time flush drive all clients through one
-        // entry. Returns the unsubscribe function.
-        registerClient({ id, onResult = null, flush = null, isDefault = false }) {
+        createOperation(owner) {
+            const operationId = createOperationId();
+            form.dataset.vcpSettingsOperationId = operationId;
+            if (owner && clients.has(owner)) {
+                const client = clients.get(owner);
+                client.status = 'saving';
+                client.dirty = true;
+                scheduleAggregate();
+            }
+            return operationId;
+        },
+        registerClient({ id, onResult = null, flush = null, hasWork = null, isDefault = false }) {
             if (!id) throw new Error('save-coordinator client requires an id');
-            clients.set(id, { id, onResult, flush, isDefault: Boolean(isDefault) });
+            const existing = clients.get(id);
+            const client = existing || { id, status: 'idle', dirty: false };
+            Object.assign(client, { onResult, flush, hasWork, isDefault: Boolean(isDefault) });
+            clients.set(id, client);
+            scheduleAggregate();
             return () => {
-                if (clients.get(id)?.onResult === onResult) clients.delete(id);
+                if (clients.get(id) !== client) return;
+                clients.delete(id);
+                scheduleAggregate();
             };
         },
         hasClient: id => clients.has(id),
-        // The single submission entry. Synchronous submit failures (a form
-        // without a submittable control throws) propagate to the caller so
-        // each client keeps unwinding its own state machine.
         submit: () => {
-            // Settings sections are projected into a single form, so native
-            // validation can target a required control in an inactive section
-            // (for example an empty VCP URL) and block unrelated changes such
-            // as an avatar. Business validation belongs to the save handler;
-            // the coordinator only dispatches the submit lifecycle.
             const previousNoValidate = form.noValidate;
             form.noValidate = true;
-            try {
-                return form.requestSubmit();
-            } finally {
-                form.noValidate = previousNoValidate;
+            try { return form.requestSubmit(); }
+            finally { form.noValidate = previousNoValidate; }
+        },
+        reportState(mode, { owner = null, operationId = null, dirty = undefined } = {}) {
+            const client = owner ? clients.get(owner) : [...clients.values()].find(entry => entry.isDefault);
+            if (client) {
+                if (mode) client.status = mode;
+                else client.status = 'idle';
+                if (dirty !== undefined) client.dirty = Boolean(dirty);
+                else if (['dirty', 'saving', 'error', 'conflict'].includes(mode)) client.dirty = true;
+                else if (!mode || mode === 'saved' || mode === 'idle') client.dirty = false;
             }
+            if (operationId && !form.dataset.vcpSettingsOperationId) form.dataset.vcpSettingsOperationId = operationId;
+            scheduleAggregate();
         },
-        reportState(mode) {
-            if (mode) form.dataset.vcpAutosaveState = mode;
-            else delete form.dataset.vcpAutosaveState;
+        track(operationId, promise, { owner = null } = {}) {
+            if (!operationId || !promise || typeof promise.then !== 'function') return Promise.resolve(promise);
+            let resolveOperation;
+            const result = new Promise(resolve => { resolveOperation = resolve; });
+            const record = { resolve: resolveOperation, owner, promise: null };
+            operations.set(operationId, record);
+            const tracked = Promise.resolve(promise).then(value => {
+                if (operations.get(operationId) === record) {
+                    operations.delete(operationId);
+                    resolveOperation(value);
+                }
+                return value;
+            }, error => {
+                if (operations.get(operationId) === record) {
+                    operations.delete(operationId);
+                    resolveOperation({ success: false, status: 'failed', operationId, error: error?.message || String(error) });
+                }
+                throw error;
+            });
+            record.promise = tracked;
+            return Promise.race([tracked, result]);
         },
-        flush() {
-            clients.forEach(client => client.flush?.());
+        async flush() {
+            if (flushBarrier) return flushBarrier;
+            flushBarrier = (async () => {
+                for (;;) {
+                    const hooks = [...clients.values()].map(client => client.flush?.()).filter(Boolean);
+                    if (hooks.length) await Promise.all(hooks);
+                    const pending = [...operations.values()].map(operation => operation.promise).filter(Boolean);
+                    if (pending.length) await Promise.allSettled(pending);
+                    const followUp = [...clients.values()].some(client => client.hasWork?.() === true);
+                    if (!followUp && ![...operations.values()].some(operation => operation.promise)) break;
+                }
+            })().finally(() => { flushBarrier = null; });
+            return flushBarrier;
         },
-    };
-    coordinator.dispose = () => {
-        form.removeEventListener('vcp-settings-save-result', onResultEvent);
-        clients.clear();
-        coordinators.delete(form);
+        async dispose() {
+            if (disposed) return;
+            disposed = true;
+            form.removeEventListener('vcp-settings-save-result', onResultEvent);
+            await coordinator.flush();
+            if (aggregateTimer !== null) clearTimeout(aggregateTimer);
+            clients.clear();
+            operations.clear();
+            delete form.dataset.vcpSettingsOperationId;
+            coordinators.delete(form);
+        },
+        getSnapshot() {
+            return Object.freeze({
+                status: aggregateStatus(),
+                dirty: form.dataset.vcpSettingsDirty === 'true',
+                clients: Object.freeze([...clients.values()].map(client => Object.freeze({ id: client.id, status: client.status, dirty: client.dirty }))),
+            });
+        },
     };
     coordinators.set(form, coordinator);
     return coordinator;
 }
 
-// Idempotent claim: the pipeline step re-runs on every presentation refresh,
-// and the same form element must keep one coordinator.
 export function claimSaveCoordinator(form) {
     if (!form) return null;
     return coordinators.get(form) || createCoordinator(form);
