@@ -133,12 +133,20 @@ function mountTypedAgentButtons(form) {
             // typed Button owns this node, that minimum becomes a geometry
             // override (md contract is 36px). Keep the correction owner-bound
             // and restore the exact declaration during teardown.
-            const minHeight = size === 'sm' ? '28px' : '36px';
+            const minHeight = key.includes('refresh') ? '32px' : (size === 'sm' ? '28px' : '36px');
             const originalMinHeight = [button.style.getPropertyValue('min-height'), button.style.getPropertyPriority('min-height')];
             button.style.setProperty('min-height', minHeight, 'important');
+            if (key.includes('refresh')) {
+                button.style.setProperty('height', '32px', 'important');
+                button.style.setProperty('border-radius', '8px', 'important');
+            }
             scope.own(() => {
                 if (originalMinHeight[0]) button.style.setProperty('min-height', originalMinHeight[0], originalMinHeight[1]);
                 else button.style.removeProperty('min-height');
+                if (key.includes('refresh')) {
+                    button.style.removeProperty('height');
+                    button.style.removeProperty('border-radius');
+                }
                 delete button.dataset[marker];
             }, `${key}-button-marker`, 'ui-presentation');
             button.dataset[marker] = 'true';

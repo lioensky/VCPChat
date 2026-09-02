@@ -3,7 +3,7 @@
    ======================================== */
 /* CSS custom properties */
 [id="agentSettingsContainer"] {
-  --agent-settings-pill-radius: 16px;
+  --agent-settings-pill-radius: 8px;
 }
 
 /* Base input and select styles */
@@ -14,35 +14,35 @@
 [id="agentSettingsContainer"] input[type="number"]:not(.input),
 [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
   width: 100%;
-  height: 34px;
-  min-height: 34px;
-  max-height: 34px;
-  padding: 0 12px;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  padding: 0 10px;
   margin-bottom: 0;
-  border-radius: var(--agent-settings-pill-radius) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: transparent;
+  border-radius: var(--vcp-ui-radius-sm, 8px) !important;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
   background-clip: padding-box;
-  color: var(--highlight-text);
-  font-size: 0.9em;
+  color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0, #0f1115));
+  font-size: 14px;
   line-height: 1;
   box-sizing: border-box;
-  transition: background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+  transition: border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 /* Select dropdown styling */
 [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
-  padding-right: 34px;
+  padding-right: 32px;
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
   background-repeat: no-repeat;
-  background-position: right 12px center;
+  background-position: right 10px center;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
 [id="agentSettingsContainer"] #agentModel {
-  padding-right: 38px;
+  padding-right: 36px;
 }
 
 /* Light theme - input styles */
@@ -53,19 +53,10 @@ body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="url"]:not
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="password"]:not(.input),
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input),
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-    color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-  );
-  border-color: rgba(51, 51, 51, 0.08);
-  backdrop-filter: blur(12px) saturate(138%);
-  -webkit-backdrop-filter: blur(12px) saturate(138%);
-  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-    inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
-    inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18), inset 0 0 1px rgba(0, 0, 0, 0.06);
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  border-color: var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  color: var(--dsw-alias-label-primary, #0f1115);
+  box-shadow: none;
 }
 
 body[data-vcp-theme="light"]
@@ -75,15 +66,8 @@ body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="url"]:not
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="password"]:not(.input):hover,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):hover,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):hover {
-  border-color: color-mix(
-    in srgb,
-    var(--highlight-text) 72%,
-    rgba(51, 51, 51, 0.12)
-  );
-  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+  border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+  box-shadow: none;
 }
 
 body[data-vcp-theme="light"]
@@ -103,11 +87,8 @@ body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus-visible {
   outline: none;
-  border-color: var(--highlight-text);
-  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+  border-color: var(--dsw-alias-brand-primary, #1677ff);
+  box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(22, 119, 255, 0.2));
 }
 
 /* Dark theme - input styles */
@@ -118,18 +99,10 @@ body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="url"]:not(
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="password"]:not(.input),
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="number"]:not(.input),
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native) {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-    color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-  );
-  border-color: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px) saturate(124%);
-  -webkit-backdrop-filter: blur(10px) saturate(124%);
-  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
-    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 0 1px rgba(255, 255, 255, 0.03);
+  background: var(--dsw-alias-bg-layer-1, #232324);
+  border-color: var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  color: var(--dsw-alias-label-primary, #f9fafb);
+  box-shadow: none;
 }
 
 body[data-vcp-theme="dark"]
@@ -139,15 +112,8 @@ body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="url"]:not(
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="password"]:not(.input):hover,
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="number"]:not(.input):hover,
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):hover {
-  border-color: color-mix(
-    in srgb,
-    var(--highlight-text) 68%,
-    rgba(255, 255, 255, 0.12)
-  );
-  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+  border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
+  box-shadow: none;
 }
 
 body[data-vcp-theme="dark"]
@@ -171,27 +137,20 @@ body[data-vcp-theme="dark"]
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus,
 body[data-vcp-theme="dark"] [id="agentSettingsContainer"] select:not(.vcp-uiux-select-native):focus-visible {
   outline: none;
-  border-color: var(--highlight-text);
-  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+  border-color: var(--dsw-alias-brand-primary, #1677ff);
+  box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring, rgba(22, 119, 255, 0.2));
 }
 
 /* Number input specific styles */
 [id="agentSettingsContainer"] input[type="number"]:not(.input) {
-  padding: 0 12px;
+  padding: 0 10px;
   background-image: none;
 }
 
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):hover,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):focus,
 body[data-vcp-theme="light"] [id="agentSettingsContainer"] input[type="number"]:not(.input):focus-visible {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-    color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-  );
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
   background-image: none;
 }
 
@@ -200,53 +159,39 @@ body[data-vcp-theme="dark"] [id="agentSettingsContainer"] input[type="number"]:n
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   input[type="number"]:not(.input):focus-visible {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-    color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-  );
+  background: var(--dsw-alias-bg-layer-1, #232324);
   background-image: none;
 }
 
 /* Model input container buttons */
 [id="agentSettingsContainer"] .model-input-container button:not(#openModelSelectBtn) {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--agent-settings-pill-radius);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: transparent;
-  color: var(--highlight-text);
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: var(--vcp-ui-radius-sm, 8px);
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  background: var(--dsw-alias-bg-module-platform, rgba(0, 0, 0, 0.04));
+  color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0, #0f1115));
+  box-shadow: none;
 }
 
 body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .model-input-container
   button:not(#openModelSelectBtn) {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-    color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-  );
-  border-color: rgba(51, 51, 51, 0.08);
-  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18), inset 0 0 1px rgba(0, 0, 0, 0.06);
+  background: var(--dsw-alias-bg-module-platform, rgba(0, 0, 0, 0.04));
+  border-color: var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1));
+  box-shadow: none;
 }
 
 body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .model-input-container
   button:not(#openModelSelectBtn) {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-    color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-  );
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
-    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 0 1px rgba(255, 255, 255, 0.03);
+  background: var(--dsw-alias-bg-module-platform, rgba(255, 255, 255, 0.06));
+  border-color: var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+  color: var(--dsw-alias-label-primary, #f9fafb);
+  box-shadow: none;
 }
 
 body[data-vcp-theme="light"]
@@ -257,20 +202,9 @@ body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .model-input-container
   button:not(#openModelSelectBtn):focus-visible {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
-    color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.3))
-  );
-  border-color: color-mix(
-    in srgb,
-    var(--highlight-text) 72%,
-    rgba(51, 51, 51, 0.12)
-  );
-  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.08));
+  border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+  box-shadow: none;
 }
 
 body[data-vcp-theme="dark"]
@@ -281,20 +215,9 @@ body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .model-input-container
   button:not(#openModelSelectBtn):focus-visible {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
-    color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
-  );
-  border-color: color-mix(
-    in srgb,
-    var(--highlight-text) 68%,
-    rgba(255, 255, 255, 0.12)
-  );
-  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+  background: var(--dsw-alias-interactive-bg-hover, rgba(255, 255, 255, 0.1));
+  border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
+  box-shadow: none;
 }
 
 /* Specific component adjustments */
@@ -305,19 +228,77 @@ body[data-vcp-theme="dark"]
 .params-content .form-group-inline {
   flex-direction: row !important;
   align-items: center;
-  gap: 0;
+  gap: 12px;
 }
 
-.params-content .form-group-inline label {
+.params-content .form-group-inline label.agent-stream-mode-title {
   margin-bottom: 0;
   display: inline-flex;
   align-items: center;
-  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary, var(--secondary-text));
 }
 
-.params-content .form-group-inline input[type="radio"] {
-  width: 16px;
-  height: 16px;
-  margin-right: 5px;
-  accent-color: var(--user-bubble-bg);
+.params-content .agent-stream-mode-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--dsw-alias-bg-module-platform, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
+  box-sizing: border-box;
+}
+
+body[data-vcp-theme="dark"] .params-content .agent-stream-mode-selector {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.params-content .agent-stream-mode-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 16px;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary, #666666);
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  margin: 0 !important;
+}
+
+.params-content .agent-stream-mode-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.params-content .agent-stream-mode-option:hover {
+  color: var(--dsw-alias-label-primary, #111111);
+}
+
+body[data-vcp-theme="dark"] .params-content .agent-stream-mode-option:hover {
+  color: #ffffff;
+}
+
+.params-content .agent-stream-mode-option:has(input[type="radio"]:checked) {
+  background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+  color: var(--dsw-alias-label-primary, #111111) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+}
+
+body[data-vcp-theme="dark"] .params-content .agent-stream-mode-option:has(input[type="radio"]:checked) {
+  background: var(--dsw-alias-bg-layer-2, #2c2c2e) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
 }

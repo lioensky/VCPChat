@@ -45,9 +45,9 @@
 }
 
 .prompt-mode-button.active {
-    background-color: var(--user-bubble-bg);
-    color: white;
-    font-weight: 500;
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    color: var(--dsw-alias-label-primary, #111111) !important;
+    font-weight: 600;
 }
 
 .prompt-mode-button-icon {
@@ -890,8 +890,8 @@
 
 /* 亮色主题适配 */
 body.light-theme .prompt-mode-button.active {
-    background-color: var(--user-bubble-bg);
-    color: white;
+    background-color: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+    color: var(--dsw-alias-label-primary, #111111) !important;
 }
 
 body.light-theme .block-context-menu {

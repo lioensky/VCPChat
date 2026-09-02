@@ -28,16 +28,15 @@
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
     color: var(--text-on-accent);
-    border-radius: 6px;
+    border-radius: var(--vcp-ui-radius-sm, 8px);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard), border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
     box-sizing: border-box;
-    height: 38px;
-    /* Match the typical height of inputs */
-    width: 38px;
+    height: 32px;
+    width: 32px;
 }
 
 #agentSettingsForm .model-input-container button:not(.vcp-uiux-agent-model-picker-trigger):hover,

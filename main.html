@@ -628,16 +628,18 @@
                                     <label for="agentTopK">Top K (0-64):</label>
                                     <input type="number" id="agentTopK" name="top_k" min="0" max="64" step="1">
                                 </div>
-                                <div class="form-group-inline">
-                                    <label>输出模式:</label>
-                                    <label for="agentStreamOutputTrue" style="margin-left: 10px;">
-                                        <input type="radio" id="agentStreamOutputTrue" name="streamOutput" value="true"
-                                            checked> 流
-                                    </label>
-                                    <label for="agentStreamOutputFalse" style="margin-left: 15px;">
-                                        <input type="radio" id="agentStreamOutputFalse" name="streamOutput"
-                                            value="false"> 非流
-                                    </label>
+                                <div class="form-group-inline agent-stream-mode-group">
+                                    <label class="agent-stream-mode-title">输出模式:</label>
+                                    <div class="agent-stream-mode-selector">
+                                        <label for="agentStreamOutputTrue" class="agent-stream-mode-option">
+                                            <input type="radio" id="agentStreamOutputTrue" name="streamOutput" value="true" checked>
+                                            <span>流式</span>
+                                        </label>
+                                        <label for="agentStreamOutputFalse" class="agent-stream-mode-option">
+                                            <input type="radio" id="agentStreamOutputFalse" name="streamOutput" value="false">
+                                            <span>非流式</span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
