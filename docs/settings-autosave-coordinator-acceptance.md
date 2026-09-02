@@ -39,11 +39,10 @@
 - `git diff --check`：通过。
 - focused settings/UI tests：当前组合 15/15 + 33/33 通过；coordinator 新增 durable-state/release tests 通过。
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
-- `npm run test:settings-wa-electron`：通过（2 个 settings lifecycle contracts；使用 JSDOM，不等同于 packaged Electron）。
-- `npm run check:uiux`：仓库无该脚本；可用脚本为 `check:uiux:artifacts`。
-- `npm run test:settings-wa-electron`：仓库无该脚本。
+- `npm run check:uiux`：通过（别名指向 artifact gate）。
+- `npm run test:settings-wa-electron`：通过；包含 2 个 JSDOM lifecycle contracts，以及真实 Electron CDP gate 的 8 个场景（shell/nav/search、深浅主题截图、IPC 保存、reload 恢复）。
 - `node scripts/test-ui-system.mjs`：UI system contract assertions pass; the JSDOM process leaves existing requestSubmit/timer activity alive and does not produce a stable terminating exit here.
-- `npm run test:ui-system`：the wrapper reaches the passing UI contract stage but cannot provide a stable final exit because of the same open-handle behavior.
+- `npm run test:ui-system`：wrapper reaches the passing UI contract stage but cannot provide a stable final exit because of the same open-handle behavior.
 - `npm run test:electron-ui-apps`：启动后未在本机已有 Electron 实例环境中形成可采信的退出结果，不能替代 packaged Electron 验收。
 
 验收结论：Global Settings 自动保存协调器施工完成，核心 focused tests 与 Electron-facing contracts 通过，状态为 **Functionally complete locally**。PR 发布前仍需补 packaged Electron、跨平台、GPU/DPI 与人工 soak 证据；这些是环境验收缺口，不是本地实现已证明的行为。

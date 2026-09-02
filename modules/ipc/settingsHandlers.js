@@ -104,6 +104,10 @@ function initialize(paths) {
     ipcMain.handle('load-settings', async () => {
         try {
             const settings = await settingsManager.readSettings();
+            // Revision must describe only durable settings.json content. The
+            // avatar URL below is a transient file URL with a cache-busting
+            // timestamp and must never participate in CAS identity.
+            const durableRevision = settingsManager.getRevision(settings);
             
             // Check for user avatar
             const avatarFile = await fs.pathExists(USER_AVATAR_FILE)
@@ -115,7 +119,7 @@ function initialize(paths) {
                 settings.userAvatarUrl = null; // Or a default path
             }
             
-            settings.__vcpSettingsRevision = settingsManager.getRevision(settings);
+            settings.__vcpSettingsRevision = durableRevision;
             return settings;
         } catch (error) {
             console.error('加载设置失败:', error);

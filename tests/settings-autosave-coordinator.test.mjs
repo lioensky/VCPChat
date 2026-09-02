@@ -56,6 +56,7 @@ test('settings manager uses content revisions, deep patches, and exclusive locks
         assert.equal(second.success, false);
         assert.equal(second.status, 'conflict');
         assert.equal(second.code, 'SETTINGS_CONFLICT');
+        assert.equal(second.settings.userName, 'Alice');
         const current = await manager.readSettings();
         assert.equal(current.userName, 'Alice');
         assert.equal(current.appearanceProfile.density, 'compact');
@@ -161,6 +162,21 @@ test('two manager instances serialize writes and report a revision conflict', as
         ]);
         assert.equal([a.status, b.status].filter(status => status === 'success').length, 1);
         assert.equal([a.status, b.status].filter(status => status === 'conflict').length, 1);
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('lock timeout reports busy and does not delete an unknown owner lock', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-lock-busy-'));
+    const filename = path.join(dir, 'settings.json');
+    const manager = new SettingsManager(filename);
+    const token = 'foreign-owner-lock';
+    try {
+        await fs.writeFile(filename, JSON.stringify(await manager.readSettings()));
+        await fs.writeFile(`${filename}.lock`, token);
+        await assert.rejects(() => manager.acquireLock(20), error => error?.code === 'SETTINGS_LOCK_BUSY');
+        assert.equal(await fs.readFile(`${filename}.lock`, 'utf8'), token);
     } finally {
         await fs.rm(dir, { recursive: true, force: true });
     }

@@ -41,6 +41,35 @@ function patchToPathOps(patch, prefix = []) {
     return ops;
 }
 
+function readPath(value, path) {
+    let current = value;
+    for (const part of path) {
+        if (!current || typeof current !== 'object' || !(part in current)) return undefined;
+        current = current[part];
+    }
+    return current;
+}
+
+function jsonEqual(left, right) {
+    try { return JSON.stringify(left) === JSON.stringify(right); } catch { return Object.is(left, right); }
+}
+
+function changedPaths(before, after, prefix = []) {
+    if (jsonEqual(before, after)) return [];
+    const beforeObject = before && typeof before === 'object' && !Array.isArray(before);
+    const afterObject = after && typeof after === 'object' && !Array.isArray(after);
+    if (!beforeObject || !afterObject) return [prefix];
+    const paths = [];
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        paths.push(...changedPaths(before[key], after[key], [...prefix, key]));
+    }
+    return paths.length ? paths : [prefix];
+}
+
+function pathsOverlap(left, right) {
+    return left.every((part, index) => right[index] === part) || right.every((part, index) => left[index] === part);
+}
+
 function addTypedNetworkPathInput(root, path = '') {
     const container = root?.querySelector?.('#networkNotesPathsContainer');
     if (!container) return false;
@@ -121,6 +150,9 @@ function ensureTypedSettingsService() {
         if (form) delete form.dataset.vcpSettingsConflict;
     };
     const onRetryDraft = () => {
+        // A retry cannot silently overwrite a field changed externally. The
+        // user must reload or resolve that overlap before another write.
+        if (typedSettingsConflict?.overlap) return;
         if (typedSettingsConflict?.revision !== undefined) typedSettingsRevision = typedSettingsConflict.revision;
         typedSettingsConflict = null;
         document.getElementById('globalSettingsForm')?.removeAttribute('data-vcp-settings-conflict');
@@ -752,6 +784,27 @@ function mountTypedFieldOwner(root, form) {
                         : {}),
                 };
                 form.dataset.vcpSettingsDirty = 'true';
+                if (result?.status === 'conflict' && result.settings && result.currentRevision !== undefined) {
+                    const localOps = patchToPathOps(state.pendingPatch);
+                    const externalChanges = changedPaths(typedSettingsBase, result.settings);
+                    const overlaps = localOps.some(operation => externalChanges.some(path => pathsOverlap(operation.path, path)));
+                    if (!overlaps) {
+                        typedSettingsBase = Object.freeze({ ...(result.settings || {}) });
+                        typedSettingsRevision = result.currentRevision;
+                        coordinator?.setDurableBase?.(typedSettingsBase, typedSettingsRevision);
+                        typedSettingsConflict = null;
+                        delete form.dataset.vcpSettingsConflict;
+                        // Settle the superseded operation before scheduling the
+                        // rebased patch; otherwise coordinator.flush() would
+                        // wait forever on the original conflict operation.
+                        publish(false, '已基于最新设置重放草稿', 'stale', operationId);
+                        setStatus('dirty', { dirty: true, operationId });
+                        if (!state.timer) schedule();
+                        return;
+                    }
+                    typedSettingsConflict = { external: result.settings, revision: result.currentRevision, overlap: true };
+                    form.dataset.vcpSettingsConflict = 'true';
+                }
                 coordinator?.recordCommit?.(result, {}, patchToPathOps(patch));
                 setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
                 publish(false, result?.error || '设置保存失败', result?.status || 'failed', operationId);

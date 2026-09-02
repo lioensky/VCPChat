@@ -85,6 +85,7 @@ export function createSettingsUiService(input) {
                     if (result?.code !== undefined) failure.code = result.code;
                     if (result?.operationId !== undefined) failure.operationId = result.operationId;
                     if (result?.currentRevision !== undefined) failure.currentRevision = result.currentRevision;
+                    if (result?.settings !== undefined) failure.settings = result.settings;
                     return Object.freeze(failure);
                 }
                 // A newer save owns publication rights. The older IPC result

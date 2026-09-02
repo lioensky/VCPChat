@@ -184,6 +184,7 @@ class SettingsManager extends EventEmitter {
         this.lockFile = settingsPath + '.lock';
         this.externalWatcher = null;
         this.externalWatchTimer = null;
+        this.lastInternalRevision = null;
 
         // 默认设置模板
         this.defaultSettings = {
@@ -395,6 +396,7 @@ class SettingsManager extends EventEmitter {
             const newTimestamp = Date.now();
             this.cache = { ...validated };
             this.cacheTimestamp = newTimestamp;
+            this.lastInternalRevision = this.getRevision(validated);
 
             // 触发更新事件
             this.emit('settings-updated', validated);
@@ -425,13 +427,14 @@ class SettingsManager extends EventEmitter {
         this.processing = true;
         const { updater, resolve, reject, options = {} } = this.queue.shift();
         let lockToken;
+        let currentSettings;
 
         try {
             lockToken = await this.acquireLock();
 
             // CAS must compare against the bytes currently protected by this
             // lock, never a renderer/process cache that may be stale.
-            const currentSettings = await this.readSettings({ fresh: true });
+            currentSettings = await this.readSettings({ fresh: true });
             const currentRevision = this.getRevision(currentSettings);
             if (options.expectedRevision !== undefined && options.expectedRevision !== currentRevision) {
                 const conflict = new Error(`Settings changed since it was read (expected ${options.expectedRevision}, current ${currentRevision})`);
@@ -455,7 +458,7 @@ class SettingsManager extends EventEmitter {
             resolve({ success: true, status: 'success', operationId: options.operationId, currentRevision: this.getRevision(newSettings), settings: newSettings });
         } catch (error) {
             if (error?.code === 'SETTINGS_CONFLICT') {
-                resolve({ success: false, status: 'conflict', code: error.code, operationId: error.operationId, expectedRevision: error.expectedRevision, currentRevision: error.currentRevision, error: error.message });
+                resolve({ success: false, status: 'conflict', code: error.code, operationId: error.operationId, expectedRevision: error.expectedRevision, currentRevision: error.currentRevision, settings: currentSettings, error: error.message });
             } else reject(error);
         } finally {
             await this.releaseLock(lockToken);
@@ -542,7 +545,13 @@ class SettingsManager extends EventEmitter {
                 this.externalWatchTimer = setTimeout(async () => {
                     try {
                         const settings = await this.readSettings({ fresh: true });
-                        this.emit('settings-external-updated', { settings, revision: this.getRevision(settings) });
+                        const revision = this.getRevision(settings);
+                        // fs.watch reports the atomic rename performed by our
+                        // own write. Suppress that echo; otherwise a newer
+                        // local draft in flight can be misclassified as an
+                        // external conflict.
+                        if (revision === this.lastInternalRevision) return;
+                        this.emit('settings-external-updated', { settings, revision });
                     } catch (error) {
                         this.emit('settings-external-error', error);
                     }
