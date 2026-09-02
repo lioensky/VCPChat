@@ -107,6 +107,9 @@ function ensureTypedSettingsService() {
         if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
         publishExternal(event.detail?.settings);
     };
+    const onRetryDraft = () => {
+        if (typedSettingsConflict?.revision !== undefined) typedSettingsRevision = typedSettingsConflict.revision;
+    };
     const externalSubscription = window.chatAPI?.onSettingsExternalUpdated?.(payload => {
         const settings = payload?.settings || payload;
         const revision = payload?.revision;
@@ -114,14 +117,18 @@ function ensureTypedSettingsService() {
         if (typedSettingsSaveGeneration > 0 && document.getElementById('globalSettingsForm')?.dataset.vcpSettingsDirty === 'true') {
             typedSettingsConflict = { external: settings, revision };
             document.getElementById('globalSettingsForm')?.setAttribute('data-vcp-settings-conflict', 'true');
+            window.dispatchEvent(new CustomEvent('settings-conflict', { detail: typedSettingsConflict }));
             return;
         }
         window.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings, revision, source: 'settings-external' } }));
     });
     if (bridgeScope) bridgeScope.listen(window, 'global-settings-updated', onExternalSettings, undefined, 'typed-settings-external-update');
     else window.addEventListener('global-settings-updated', onExternalSettings);
+    if (bridgeScope) bridgeScope.listen(window, 'settings-retry-draft', onRetryDraft, undefined, 'typed-settings-retry-draft');
+    else window.addEventListener('settings-retry-draft', onRetryDraft);
     typedSettingsExternalRelease = () => {
         if (!bridgeScope) window.removeEventListener('global-settings-updated', onExternalSettings);
+        if (!bridgeScope) window.removeEventListener('settings-retry-draft', onRetryDraft);
         externalListeners.clear();
         externalSubscription?.();
         typedSettingsExternalRelease = null;
@@ -456,6 +463,10 @@ function mountTypedForumFieldOwner(root, form) {
                 if (result?.status === 'stale' || result?.status === 'cancelled') {
                     if (state.pending) schedule();
                     return;
+                }
+                if (result?.status === 'conflict' && result.currentRevision !== undefined) {
+                    typedSettingsConflict = { revision: result.currentRevision, error: result.error };
+                    form.dataset.vcpSettingsConflict = 'true';
                 }
                 state.failed = true;
                 state.pending = true;

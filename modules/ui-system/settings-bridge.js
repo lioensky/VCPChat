@@ -219,8 +219,9 @@ function mountSettingsConflictActions(root, form) {
     };
     form.addEventListener('vcp-settings-save-result', sync);
     root.ownerDocument.defaultView?.addEventListener('global-settings-updated', sync);
+    root.ownerDocument.defaultView?.addEventListener('settings-conflict', sync);
     form.addEventListener('click', onClick);
-    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); root.ownerDocument.defaultView?.removeEventListener('global-settings-updated', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
+    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); root.ownerDocument.defaultView?.removeEventListener('global-settings-updated', sync); root.ownerDocument.defaultView?.removeEventListener('settings-conflict', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
     sync();
 }
 

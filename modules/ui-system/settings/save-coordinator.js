@@ -168,6 +168,7 @@ function createCoordinator(form) {
             return snapshot();
         },
         retryDraft() {
+            form.ownerDocument?.defaultView?.dispatchEvent(new CustomEvent('settings-retry-draft'));
             return coordinator.flush();
         },
     };
