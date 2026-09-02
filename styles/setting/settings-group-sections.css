@@ -734,21 +734,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
 
 #agentSettingsForm .form-actions .delete-button-container,
 #groupSettingsForm .form-actions .delete-button-container {
-    max-height: 0;
-    opacity: 0;
-    overflow: hidden;
-    margin-top: 0;
-    will-change: max-height, opacity;
-    transition: max-height var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
-                opacity var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard),
-                margin-top var(--vcp-motion-duration-slow) var(--vcp-motion-ease-standard);
-}
-
-
-/* 只有当滚动到底部（添加了 scrolled-to-bottom 类）时才显示 */
-#agentSettingsForm .form-actions.scrolled-to-bottom .delete-button-container,
-#groupSettingsForm .form-actions.scrolled-to-bottom .delete-button-container {
-    max-height: 50px;
+    max-height: none;
     opacity: 1;
     margin-top: 4px;
     overflow: visible;

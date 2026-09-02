@@ -148,7 +148,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="stream-animation"],
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="smooth-streaming"] {
     border-radius: 12px;
-    background: #fff;
+    background: var(--vcp-ui-bg-1);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card > .vcp-settings-card-body > .vcp-uiux-general-row:last-of-type {
@@ -461,7 +461,7 @@
         /* The legacy .modal-content rule uses !important for its background.
            Keep the SettingsRoot token authoritative while this surface still
            carries the compatibility class. */
-        background: var(--vcp-ui-bg-1) !important;
+        background: var(--vcp-ui-bg-0) !important;
         box-shadow: var(--vcp-ui-shadow-lg);
         font-family: inherit;
         font-size: var(--vcp-ui-font-body);
@@ -481,7 +481,7 @@
     border: 0;
     border-right: 0;
     border-radius: 0;
-        background: transparent;
+        background: var(--vcp-ui-bg-0);
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-disclosure-row {
@@ -610,7 +610,10 @@
     overflow: hidden;
     border: 0;
     border-radius: 0;
-    background: var(--vcp-ui-bg-1);
+    /* The source settings pane is intentionally a white work surface in both
+       themes; the navigation rail owns theme contrast. */
+    background: var(--vcp-settings-content-bg, #fff);
+    color: var(--vcp-settings-content-text, #1f2329);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-header {
@@ -749,7 +752,7 @@
     padding: 4px 20px 8px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 12px;
-    background: #fff;
+    background: var(--vcp-ui-bg-1);
     overflow: hidden;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-summary {
@@ -760,7 +763,7 @@
     gap: 12px;
     padding: 14px 0 10px;
     color: var(--vcp-ui-text-0);
-    background: #fff;
+    background: var(--vcp-ui-bg-1);
     border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     cursor: pointer;
     list-style: none;
@@ -797,7 +800,7 @@
     padding: 16px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-radius: 12px;
-    background: #fff;
+    background: var(--vcp-ui-bg-1);
     box-sizing: border-box;
 }
 
@@ -879,7 +882,7 @@
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border)) !important;
     border-radius: 14px;
-    background: #fff;
+    background: var(--vcp-ui-bg-1);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 52px minmax(0, 1fr); align-items: center; align-self: center; height: 56px; min-height: 56px; gap: 8px; min-width: 0; }
@@ -1040,7 +1043,7 @@
     padding: 0 6px;
     border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
     border-radius: 8px;
-    background: #fff;
+    background: var(--vcp-ui-bg-1);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .color-input-group > .vcp-uiux-color-pair:focus-within {

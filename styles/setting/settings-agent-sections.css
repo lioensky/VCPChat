@@ -549,16 +549,9 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     -webkit-backdrop-filter: none !important;
 }
 
-/* Keep the canonical submit command for autosave, but remove obsolete UI. */
-#agentSettingsForm > .form-actions button[type="submit"],
-#agentSettingsForm > .form-actions #deleteAgentBtn,
-#agentSettingsForm > .form-actions .delete-button-container {
-    display: none !important;
-}
-
 #agentSettingsForm > .form-actions {
-    border-top: 0 !important;
-    padding-top: 0 !important;
+    border-top: 1px solid var(--border-color) !important;
+    padding-top: 12px !important;
 }
 
 /* Restore the compact-tab guards from the pre-sync workspace. */
@@ -625,14 +618,14 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     appearance: none;
     height: 20px;
     margin: 0;
-    accent-color: var(--vcp-color-brand, var(--button-bg));
+    accent-color: var(--vcp-ui-accent, var(--highlight-text));
 }
 
 #agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-runnable-track,
 #agentSettingsContainer .slider-container > input[type="range"]::-webkit-slider-runnable-track {
     height: 4px;
     border-radius: 999px;
-    background: var(--vcp-color-border, var(--border-color));
+    background: var(--vcp-ui-fill-2, var(--border-color));
 }
 
 #agentSettingsContainer .slider-container > #agentTtsSpeed::-webkit-slider-thumb,
@@ -641,7 +634,7 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     height: 16px;
     margin-top: -6px;
     appearance: none;
-    border: 2px solid var(--vcp-color-brand, var(--button-bg));
+    border: 2px solid var(--vcp-ui-accent, var(--highlight-text));
     border-radius: 50%;
-    background: var(--vcp-color-surface, var(--input-bg));
+    background: var(--vcp-ui-bg-1, var(--input-bg));
 }

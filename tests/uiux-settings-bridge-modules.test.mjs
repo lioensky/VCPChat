@@ -368,6 +368,20 @@ test('Agent TTS Range has one presentation output owner and no manager-side list
         'the typed Range wrapper, not an Agent-id selector, must own flexible row geometry');
 });
 
+test('Agent actions remain upstream-visible and theme-token driven', () => {
+    const agentCss = read(path.join(root, 'styles', 'setting', 'settings-agent-sections.css'));
+    const groupCss = read(path.join(root, 'styles', 'setting', 'settings-group-sections.css'));
+    const agentForm = read(path.join(root, 'styles', 'setting', 'settings-agent-form.css'));
+    assert.doesNotMatch(agentCss, /#agentSettingsForm\s*>\s*\.form-actions\s+button\[type="submit"\][^\{]*\{[^}]*display:\s*none\s*!important/,
+        'Agent save action must not be hidden by the presentation layer');
+    assert.doesNotMatch(agentCss, /#agentSettingsForm\s*>\s*\.form-actions\s+#deleteAgentBtn[^\{]*\{[^}]*display:\s*none\s*!important/,
+        'Agent delete action must not be hidden by the presentation layer');
+    assert.doesNotMatch(groupCss, /\.form-actions\.scrolled-to-bottom\s+\.delete-button-container/,
+        'delete action visibility must not depend on reaching the scroll end');
+    assert.match(agentForm, /#agentSettingsForm \.form-actions button\[type="submit"\][^\{]*\{[\s\S]*?color:\s*var\(--highlight-text\)/,
+        'Agent save action keeps the upstream theme color contract');
+});
+
 test('Agent TTS Voice Select keeps business option loading while one typed projection owns presentation', () => {
     const agent = read(agentBridge);
     const manager = read(path.join(root, 'modules', 'settingsManager.js'));
