@@ -449,11 +449,59 @@ body {
     flex-direction: column;
 }
 
+.diff-review-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 12px;
+    color: var(--primary-text);
+}
+
+#diff-review-path {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--secondary-text);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 #diff-view {
     flex-grow: 1;
+    min-height: 0;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border-color);
+}
+
+.review-reason-field {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: 7px;
+    padding-top: 12px;
+    color: var(--secondary-text);
+    font-size: 13px;
+}
+
+#review-reason-input {
+    width: 100%;
+    min-height: 62px;
+    max-height: 120px;
+    box-sizing: border-box;
+    resize: vertical;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    outline: none;
+    padding: 9px 11px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font: inherit;
+}
+
+#review-reason-input:focus {
+    border-color: var(--accent-bg);
+    box-shadow: 0 0 0 2px rgba(110, 168, 254, 0.2);
 }
 
 .modal-actions {

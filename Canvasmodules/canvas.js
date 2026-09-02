@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const dismissChangeBtn = document.getElementById('dismiss-change-btn');
     const diffModal = document.getElementById('diff-modal');
     const diffViewContainer = document.getElementById('diff-view');
+    const diffReviewPath = document.getElementById('diff-review-path');
+    const reviewReasonInput = document.getElementById('review-reason-input');
     const acceptChangesBtn = document.getElementById('accept-changes-btn');
     const rejectChangesBtn = document.getElementById('reject-changes-btn');
     const canvasSearchInput = document.getElementById('canvasSearchInput');
@@ -38,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchCloseBtn = document.getElementById('search-close-btn');
 
     let editor;
-    let externalFileContent = null; // To store content from AI
+    let pendingEditProposal = null;
     let diffView = null;
     const editorContextMenu = document.getElementById('editor-context-menu');
     let filesHistory = {}; // Object to store history arrays, keyed by file path
@@ -228,14 +230,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
  
-        api.onExternalFileChanged((file) => {
-            if (editor && editor.getValue() !== file.content) {
-                console.log('External change detected, showing notification bar.');
-                externalFileContent = file.content; // Store the new content
-                externalChangeBar.style.display = 'flex';
-            }
+        api.onCanvasEditProposal((proposal) => {
+            if (!proposal?.requestId) return;
+            pendingEditProposal = proposal;
+            reviewReasonInput.value = '';
+            diffReviewPath.textContent = proposal.path || '';
+            externalChangeBar.style.display = 'flex';
+            errorInfoSpan.textContent = 'AI 编辑提案等待审阅';
         });
- 
+  
         // Inform main process that the window is ready to receive data
         api?.canvasReady?.();
         if (api?.windowReady) {
@@ -267,9 +270,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     viewDiffBtn.addEventListener('click', () => {
-        if (editor && externalFileContent !== null) {
-            const originalContent = editor.getValue();
-            initializeDiffView(originalContent, externalFileContent);
+        if (editor && pendingEditProposal) {
+            initializeDiffView(
+                pendingEditProposal.originalContent,
+                pendingEditProposal.modifiedContent
+            );
+            diffReviewPath.textContent = pendingEditProposal.path || '';
             diffModal.style.display = 'flex';
             // Refresh the diff view after it becomes visible
             setTimeout(() => {
@@ -277,6 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
                    diffView.edit.refresh();
                    diffView.right.orig.refresh();
                 }
+                reviewReasonInput.focus();
             }, 10);
         }
     });
@@ -284,28 +291,38 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeDiffViewAndBar() {
         diffModal.style.display = 'none';
         externalChangeBar.style.display = 'none';
-        externalFileContent = null;
+        reviewReasonInput.value = '';
+        diffReviewPath.textContent = '';
+        pendingEditProposal = null;
+        errorInfoSpan.textContent = currentSession.context === 'desktop-widget'
+            ? `Widget源码模式${currentSession.metadata?.savedId ? ` · ${currentSession.metadata.savedId}` : ''}`
+            : '无错误';
+    }
+
+    function submitEditDecision(approved, fallbackReason = '') {
+        if (!pendingEditProposal || !api?.sendCanvasEditDecision) return false;
+        const reason = reviewReasonInput.value.trim() || fallbackReason;
+        api.sendCanvasEditDecision({
+            requestId: pendingEditProposal.requestId,
+            approved,
+            reason,
+        });
+        closeDiffViewAndBar();
+        return true;
     }
 
     acceptChangesBtn.addEventListener('click', () => {
-        if (editor && externalFileContent !== null) {
-            editor.setValue(externalFileContent); // This will trigger the auto-save
-        }
-        closeDiffViewAndBar();
+        submitEditDecision(true);
     });
 
-    function rejectChanges() {
-        if (editor && api) {
-            const userContent = editor.getValue();
-            const path = filePathSpan.textContent;
-            // Force save the user's current content back to the file system
-            api.saveCanvasFile({ path, content: userContent });
-        }
-        closeDiffViewAndBar();
+    function rejectChanges(fallbackReason = '') {
+        submitEditDecision(false, fallbackReason);
     }
 
-    rejectChangesBtn.addEventListener('click', rejectChanges);
-    dismissChangeBtn.addEventListener('click', rejectChanges);
+    rejectChangesBtn.addEventListener('click', () => rejectChanges());
+    dismissChangeBtn.addEventListener('click', () => {
+        rejectChanges('用户未打开差异详情并直接拒绝了该提案。');
+    });
 
     // --- UI Event Listeners ---
     newCanvasBtn.addEventListener('click', () => {

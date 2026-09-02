@@ -118,6 +118,10 @@
      {
        "command": "CreateCanvas",
        "description": "功能: 在指定的Canvas目录中创建一个新文件，并通知主程序打开Canvas窗口来显示这个新文件。这是一个集成功能，结合了文件创建和UI交互。\n参数:\n- fileName (字符串, 必需): 要创建的文件的名称，包含扩展名 (例如 'my_script.js')。\n- content (字符串, 必需): 要写入新文件的初始内容。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」CreateCanvas「末」,\nfileName:「始」new_canvas.js「末」,\ncontent:「始」console.log('Hello, Canvas!');「末」\n<<<[END_TOOL_REQUEST]>>>"
+     },
+     {
+       "command": "EditCanvas",
+       "description": "功能: 向当前已打开的 Canvas 活跃文档提交一次精确的 target/replace 编辑提案。无需也不允许输入文件路径。提案通过 IPC 显示差异供用户审阅，本次工具调用会等待用户明确允许或拒绝；只有允许后才写入文件，拒绝时文件保持不变。target 必须与提交时活跃文档中的一处原文精确匹配，且仅替换首次出现的位置。\n参数:\n- target (字符串, 必需): 当前 Canvas 活跃文档中要替换的精确原文。\n- replace (字符串, 必需): 替换后的新内容，可为空字符串以删除 target。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」EditCanvas「末」,\ntarget:「始」需要修改的精确原文「末」,\nreplace:「始」修改后的内容「末」\n<<<[END_TOOL_REQUEST]>>>"
      }
    ]
  }

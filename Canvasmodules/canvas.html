@@ -54,9 +54,9 @@
         <div class="resizer" id="resizer"></div>
         <div class="editor-container glass-panel">
             <div id="external-change-bar" style="display: none;">
-                <span>AI has modified this file.</span>
-                <button id="view-diff-btn">View Changes</button>
-                <button id="dismiss-change-btn">Dismiss</button>
+                <span>AI 提交了一项 Canvas 编辑提案，正在等待您的决定。</span>
+                <button id="view-diff-btn">审阅变更</button>
+                <button id="dismiss-change-btn">拒绝</button>
             </div>
             <div class="editor-top-bar">
                 <button id="run-py-btn" class="action-btn">运行</button>
@@ -124,10 +124,19 @@
 
     <div id="diff-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-panel">
+            <div class="diff-review-heading">
+                <strong>Canvas 编辑提案审阅</strong>
+                <span id="diff-review-path"></span>
+            </div>
             <div id="diff-view"></div>
+            <label class="review-reason-field" for="review-reason-input">
+                <span>审批理由或备注（拒绝时将反馈给 AI）</span>
+                <textarea id="review-reason-input" rows="3"
+                    placeholder="例如：请保留原有接口名称，并只调整函数内部实现。"></textarea>
+            </label>
             <div class="modal-actions">
-                <button id="accept-changes-btn">Accept Changes</button>
-                <button id="reject-changes-btn">Reject Changes</button>
+                <button id="accept-changes-btn">允许并应用</button>
+                <button id="reject-changes-btn">拒绝提案</button>
             </div>
         </div>
     </div>

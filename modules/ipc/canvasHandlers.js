@@ -1,7 +1,7 @@
 const { ipcMain, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
-const chokidar = require('chokidar');
+const crypto = require('crypto');
 const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
@@ -10,14 +10,13 @@ let mainWindow;
 let openChildWindows;
 let CANVAS_CACHE_DIR = path.join(__dirname, '..', '..', 'AppData', 'Canvas');
 let canvasWindow = null;
-let fileWatcher = null;
-const internalSaveInProgress = new Set(); // Track internal saves
-const internalSaveTimers = new Map(); // filePath -> timeout id
 let initialFilePath = null;
 let activeRootDir = CANVAS_CACHE_DIR;
 let activeCanvasContext = 'canvas';
 let activeCanvasMetadata = {};
 let ipcHandlersRegistered = false;
+const pendingCanvasEditRequests = new Map();
+const CANVAS_EDIT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
 const SUPPORTED_EXTENSIONS = [
     '.txt', '.js', '.py', '.css', '.html', '.json', '.md', '.rs', '.ts',
     '.cpp', '.h', '.cs', '.java', '.go', '.rb', '.php', '.swift', '.kt',
@@ -84,28 +83,108 @@ function notifyDesktopWidgetSourceSaved(filePath) {
     }
 }
 
-function restartFileWatcher() {
-    if (fileWatcher) {
-        fileWatcher.close();
-        fileWatcher = null;
+function applyTargetReplacement(content, target, replacement) {
+    const index = content.indexOf(target);
+    if (index < 0) {
+        const error = new Error('当前 Canvas 文档中找不到指定 target，提案未提交。');
+        error.code = 'CANVAS_TARGET_NOT_FOUND';
+        throw error;
+    }
+    return content.slice(0, index) + replacement + content.slice(index + target.length);
+}
+
+function settleCanvasEditRequest(requestId, result) {
+    const pending = pendingCanvasEditRequests.get(requestId);
+    if (!pending) return false;
+    clearTimeout(pending.timer);
+    pendingCanvasEditRequests.delete(requestId);
+    pending.resolve(result);
+    return true;
+}
+
+function rejectAllPendingCanvasEdits(message, code = 'CANVAS_WINDOW_CLOSED') {
+    for (const [requestId, pending] of pendingCanvasEditRequests) {
+        clearTimeout(pending.timer);
+        pending.resolve({
+            success: false,
+            approved: false,
+            code,
+            message,
+            requestId,
+            path: pending.filePath,
+        });
+    }
+    pendingCanvasEditRequests.clear();
+}
+
+async function handleCanvasEditDecision(event, decision = {}) {
+    const requestId = String(decision.requestId || '');
+    const pending = pendingCanvasEditRequests.get(requestId);
+    if (!pending || event.sender.id !== pending.webContentsId) return;
+
+    if (decision.approved !== true) {
+        const reason = String(decision.reason || '').trim();
+        settleCanvasEditRequest(requestId, {
+            success: false,
+            approved: false,
+            code: 'CANVAS_EDIT_REJECTED',
+            message: reason || '用户拒绝了 Canvas 编辑提案。',
+            reason,
+            requestId,
+            path: pending.filePath,
+        });
+        return;
     }
 
-    fileWatcher = chokidar.watch(activeRootDir, {
-        persistent: true,
-        ignoreInitial: true,
-    }).on('change', (filePath) => {
-        if (internalSaveInProgress.has(filePath)) {
-            console.log(`Internal save detected for ${filePath}. Ignoring watch event.`);
-            return;
+    try {
+        if (activeCanvasPath !== pending.filePath) {
+            const error = new Error('Canvas 活跃文档已切换，提案未应用。');
+            error.code = 'CANVAS_CONTEXT_CHANGED';
+            throw error;
         }
 
-        if (canvasWindow && !canvasWindow.isDestroyed()) {
-            console.log(`External file change detected: ${filePath}`);
-            getCanvasFileContent(filePath).then(fileContent => {
-                canvasWindow.webContents.send('external-file-changed', fileContent);
-            }).catch(err => console.error(`Error reading changed file ${filePath}:`, err));
+        const currentContent = await fs.readFile(pending.filePath, pending.encoding);
+        if (currentContent !== pending.originalContent) {
+            const error = new Error('Canvas 文档在审阅期间已发生变化，提案未应用。');
+            error.code = 'CANVAS_CONTENT_CONFLICT';
+            throw error;
         }
-    });
+
+        const temporaryPath = `${pending.filePath}.canvas-edit-${process.pid}-${Date.now()}`;
+        try {
+            await fs.writeFile(temporaryPath, pending.modifiedContent, pending.encoding);
+            await fs.move(temporaryPath, pending.filePath, { overwrite: true });
+        } finally {
+            await fs.remove(temporaryPath).catch(() => {});
+        }
+
+        notifyDesktopWidgetSourceSaved(pending.filePath);
+        canvasWindow.webContents.send('canvas-file-changed', {
+            path: pending.filePath,
+            content: pending.modifiedContent,
+        });
+        const reason = String(decision.reason || '').trim();
+        settleCanvasEditRequest(requestId, {
+            success: true,
+            approved: true,
+            code: 'CANVAS_EDIT_APPROVED',
+            message: reason
+                ? `用户已允许并应用 Canvas 编辑提案。审阅备注：${reason}`
+                : '用户已允许并应用 Canvas 编辑提案。',
+            reason,
+            requestId,
+            path: pending.filePath,
+        });
+    } catch (error) {
+        settleCanvasEditRequest(requestId, {
+            success: false,
+            approved: true,
+            code: error.code || 'CANVAS_EDIT_APPLY_FAILED',
+            message: error.message,
+            requestId,
+            path: pending.filePath,
+        });
+    }
 }
 
 function initialize(config) {
@@ -129,6 +208,7 @@ function initialize(config) {
     ipcMain.on('create-new-canvas', handleCreateNewCanvas);
     ipcMain.on('load-canvas-file', handleLoadCanvasFile);
     ipcMain.on('save-canvas-file', handleSaveCanvasFile);
+    ipcMain.on('canvas-edit-decision', handleCanvasEditDecision);
     ipcMain.handle('rename-canvas-file', handleRenameCanvasFile);
     ipcMain.on('copy-canvas-file', handleCopyCanvasFile);
     ipcMain.on('delete-canvas-file', handleDeleteCanvasFile);
@@ -153,7 +233,6 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
             canvasWindow.show();
         }
         canvasWindow.focus();
-        restartFileWatcher();
         if (filePath) {
             handleLoadCanvasFile({ sender: canvasWindow.webContents }, filePath);
         }
@@ -195,6 +274,7 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
 
     canvasWindow.on('closed', () => {
         openChildWindows = openChildWindows.filter(win => win !== canvasWindow);
+        rejectAllPendingCanvasEdits('Canvas 窗口已关闭，编辑提案未应用。');
         canvasWindow = null;
         initialFilePath = null;
         activeCanvasPath = null;
@@ -208,15 +288,6 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
                 console.log('Could not send canvas-window-closed message, main window likely already destroyed.');
             }
         }
-        if (fileWatcher) {
-            fileWatcher.close();
-            fileWatcher = null;
-        }
-        for (const timerId of internalSaveTimers.values()) {
-            clearTimeout(timerId);
-        }
-        internalSaveTimers.clear();
-        internalSaveInProgress.clear();
     });
 
     canvasWindow.on('focus', async () => {
@@ -243,8 +314,6 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
             }
         }
     });
-
-    restartFileWatcher();
 }
 
 async function handleCanvasReady(event) {
@@ -255,11 +324,13 @@ async function handleCanvasReady(event) {
         if (initialFilePath && (await fs.pathExists(initialFilePath))) {
             current = await getCanvasFileContent(initialFilePath);
             history.forEach(h => h.isActive = (h.path === initialFilePath));
+            activeCanvasPath = initialFilePath;
             initialFilePath = null; // Consume it
         } else if (history.length > 0) {
             // Default behavior: load the first file
             current = await getCanvasFileContent(history[0].path);
             history[0].isActive = true;
+            activeCanvasPath = history[0].path;
         }
         sender.send('canvas-load-data', { history, current, session: getSessionPayload() });
     } catch (error) {
@@ -303,27 +374,11 @@ async function handleLoadCanvasFile(event, filePath) {
 
 async function handleSaveCanvasFile(event, file) {
     try {
-        // Flag this path as an internal save before writing
-        internalSaveInProgress.add(file.path);
-        const existingTimer = internalSaveTimers.get(file.path);
-        if (existingTimer) {
-            clearTimeout(existingTimer);
-            internalSaveTimers.delete(file.path);
-        }
-
         await fs.writeFile(file.path, file.content);
-        console.log(`Internal save successful for: ${file.path}`);
+        console.log(`Canvas save successful for: ${file.path}`);
         notifyDesktopWidgetSourceSaved(file.path);
     } catch (error) {
         console.error(`Failed to save canvas file ${file.path}:`, error);
-    } finally {
-        // After a short delay, remove the flag.
-        // This gives chokidar time to fire its event, which we will then ignore.
-        const timerId = setTimeout(() => {
-            internalSaveInProgress.delete(file.path);
-            internalSaveTimers.delete(file.path);
-        }, 100);
-        internalSaveTimers.set(file.path, timerId);
     }
 }
 
@@ -430,6 +485,77 @@ async function getCanvasFileContent(filePath) {
 
 let activeCanvasPath = null; // Keep track of the currently active canvas file
 
+async function requestCanvasEdit(payload = {}) {
+    const target = payload.target;
+    const replacement = payload.replace;
+    const encoding = payload.encoding || 'utf8';
+
+    if (typeof target !== 'string' || target.length === 0) {
+        throw new Error('Canvas 编辑提案必须提供非空 target。');
+    }
+    if (typeof replacement !== 'string') {
+        throw new Error('Canvas 编辑提案必须提供 replace 字符串。');
+    }
+    if (pendingCanvasEditRequests.size > 0) {
+        const error = new Error('已有 Canvas 编辑提案正在等待用户审阅。');
+        error.code = 'CANVAS_EDIT_ALREADY_PENDING';
+        throw error;
+    }
+
+    await createCanvasWindow();
+    if (!canvasWindow || canvasWindow.isDestroyed()) {
+        throw new Error('Canvas 窗口无法打开。');
+    }
+    if (!activeCanvasPath) {
+        const history = await getCanvasHistory();
+        if (!history.length) {
+            throw new Error('Canvas 中没有可编辑的活跃文档。');
+        }
+        activeCanvasPath = history[0].path;
+        await handleLoadCanvasFile({ sender: canvasWindow.webContents }, activeCanvasPath);
+    }
+
+    const originalContent = await fs.readFile(activeCanvasPath, encoding);
+    const modifiedContent = applyTargetReplacement(originalContent, target, replacement);
+    const requestId = crypto.randomUUID();
+    const filePath = activeCanvasPath;
+
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            settleCanvasEditRequest(requestId, {
+                success: false,
+                approved: false,
+                code: 'CANVAS_EDIT_REVIEW_TIMEOUT',
+                message: '等待用户审阅 Canvas 编辑提案超时，文件未发生变化。',
+                requestId,
+                path: filePath,
+            });
+        }, CANVAS_EDIT_REVIEW_TIMEOUT_MS);
+
+        pendingCanvasEditRequests.set(requestId, {
+            resolve,
+            timer,
+            webContentsId: canvasWindow.webContents.id,
+            filePath,
+            encoding,
+            originalContent,
+            modifiedContent,
+        });
+
+        canvasWindow.webContents.send('canvas-edit-proposal', {
+            requestId,
+            path: filePath,
+            originalContent,
+            modifiedContent,
+            target,
+            replace: replacement,
+        });
+        if (canvasWindow.isMinimized()) canvasWindow.restore();
+        if (!canvasWindow.isVisible()) canvasWindow.show();
+        canvasWindow.focus();
+    });
+}
+
 async function handleGetLatestCanvasContent() {
     if (!canvasWindow || canvasWindow.isDestroyed()) {
         return { error: 'Canvas window is not open.' };
@@ -460,5 +586,6 @@ module.exports = {
     initialize,
     createCanvasWindow, // Export for direct calling
     getCanvasWindow,    // Export for direct access
+    requestCanvasEdit,
     handleGetLatestCanvasContent,
 };

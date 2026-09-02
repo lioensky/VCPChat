@@ -307,7 +307,6 @@ function createCatalog(ops) {
         saveCanvasFile: command((file) => ops.send('save-canvas-file', file)),
         onCanvasLoadData: subscription(ops.subscribe('canvas-load-data', (_event, data) => data)),
         onCanvasFileChanged: subscription(ops.subscribe('canvas-file-changed', (_event, file) => file)),
-        onExternalFileChanged: subscription(ops.subscribe('external-file-changed', (_event, file) => file)),
         onCanvasContentUpdate: subscription(ops.subscribe('canvas-content-update', (_event, data) => data)),
         onLoadCanvasFileByPath: subscription(ops.subscribe('load-canvas-file-by-path', (_event, filePath) => filePath)),
         onCanvasWindowClosed: subscription(ops.subscribe('canvas-window-closed', () => undefined)),

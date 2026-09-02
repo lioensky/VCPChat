@@ -802,14 +802,37 @@ class DistributedServer {
                     }
                 }
 
-                // --- Special Handling for create_canvas action (applied to the finalResult) ---
+                // --- Special Handling for Canvas actions (applied to the finalResult) ---
                 if (finalResult && finalResult._specialAction === 'create_canvas') {
                     if (typeof this.handleCanvasControl === 'function') {
                         console.log(`[${this.serverName}] Detected create_canvas action. Calling main process handler.`);
-                        this.handleCanvasControl(finalResult.payload.filePath);
+                        void this.handleCanvasControl(finalResult.payload.filePath);
                     } else {
                         console.error(`[${this.serverName}] Canvas control handler is not configured for the Distributed Server.`);
                     }
+                } else if (finalResult && finalResult._specialAction === 'edit_canvas') {
+                    if (typeof this.handleCanvasControl !== 'function') {
+                        throw new Error('Canvas control handler is not configured for the Distributed Server.');
+                    }
+                    console.log(`[${this.serverName}] Detected edit_canvas action. Waiting for user review.`);
+                    const canvasResult = await this.handleCanvasControl({
+                        action: 'edit',
+                        ...finalResult.payload,
+                    });
+                    if (canvasResult.status === 'error') {
+                        const error = new Error(canvasResult.message || 'Canvas edit review failed.');
+                        error.code = canvasResult.code;
+                        throw error;
+                    }
+                    finalResult = {
+                        content: [{
+                            type: 'text',
+                            text: canvasResult.result?.approved
+                                ? '用户已允许并应用 Canvas 编辑提案。'
+                                : `Canvas 编辑提案未应用：${canvasResult.result?.message || '用户拒绝了该提案。'}`,
+                        }],
+                        details: canvasResult.result,
+                    };
                 }
                 // --- End of special handling ---
             }
