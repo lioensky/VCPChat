@@ -43,6 +43,7 @@ const MARKERS = Object.freeze({
     // module (and this marker) survives for the agent settings surface.
     vcpSelectRebuilding: { owner: 'settings/select-projection.js (agent surface)', cleanup: 'scope-owned' },
     vcpTypedPrimitiveMounted: { owner: 'all generated-primitive mount sites', cleanup: 'scope-owned' },
+    vcpUiuxInputPrimitive: { owner: 'settings/global-input-upgrades.js compatibility text inputs', cleanup: 'scope-owned' },
     // M5-c pass6 retired the form-icons step: the three inline Lucide SVGs are
     // direct-rendered vcp-ui-icon nodes, so vcpSettingsIconsNormalized (and
     // its teardown restoration) is deregistered with the mechanism.
