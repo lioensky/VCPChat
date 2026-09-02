@@ -492,9 +492,9 @@
         const trigger = document.getElementById('openAppearanceStudioFromSettings');
         if (!card || !form || !trigger) return;
         if (!card.dataset.appearanceSummaryBound) {
-            const bindSummary = (target, type, handler) => moduleScope
-                ? moduleScope.listen(target, type, handler, undefined, `appearance-settings-summary:${type}`)
-                : target.addEventListener(type, handler);
+            const bindSummary = (target, type, handler, options) => moduleScope
+                ? moduleScope.listen(target, type, handler, options, `appearance-settings-summary:${type}`)
+                : target.addEventListener(type, handler, options);
             bindSummary(form, 'change', event => {
                 if (event.target.matches('input[name="appearanceSidebarRadiusChoice"]')) {
                     const compatibilityControl = document.getElementById('appearanceSidebarRadius');
@@ -504,7 +504,16 @@
                     syncSettingsSummary();
                 }
             });
-            bindSummary(form, 'input', event => {
+            // 回填快照（applySettings）写值只派发不冒泡的 vcp-uiux-sync；
+            // 若快照回填落在开模态的 rAF 绑定同步之后，摘要会滞留 base
+            // 默认文案且再无事件兜底。捕获监听能在祖先上收到不冒泡事件，
+            // 使回填写值后的摘要无条件重同步（消除开模态竞态）。
+            bindSummary(form, 'vcp-uiux-sync', event => {
+                if (event.target.matches?.('[id^="appearance"], #showHomeVisualBrand, #showHomeVisualTagline, #homeVisualTagline, input[name="chatPresentationMode"]')) {
+                    syncSettingsSummary();
+                }
+            }, true);
+        bindSummary(form, 'input', event => {
                 if (event.target.id === 'appearanceCustomRadius') {
                     const output = document.getElementById('appearanceCustomRadiusValue');
                     if (output) output.value = `${event.target.value}px`;
