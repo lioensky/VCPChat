@@ -313,6 +313,23 @@ class SettingsManager extends EventEmitter {
                 return token;
             } catch (error) {
                 if (error?.code !== 'EEXIST') throw error;
+                try {
+                    const current = await fs.readFile(this.lockFile, 'utf8');
+                    const [pidStr] = (current || '').split('-');
+                    const pidNum = parseInt(pidStr, 10);
+                    if (Number.isInteger(pidNum) && pidNum > 0) {
+                        let isDead = false;
+                        try {
+                            process.kill(pidNum, 0);
+                        } catch (err) {
+                            if (err.code === 'ESRCH') isDead = true;
+                        }
+                        if (isDead) {
+                            await fs.remove(this.lockFile).catch(() => {});
+                            continue;
+                        }
+                    }
+                } catch {}
                 if (Date.now() - startTime > timeout) {
                     const busy = new Error('Settings lock acquisition timed out');
                     busy.code = 'SETTINGS_LOCK_BUSY';
@@ -543,18 +560,24 @@ class SettingsManager extends EventEmitter {
             if (await fs.pathExists(this.lockFile)) {
                 try {
                     const lockContent = await fs.readFile(this.lockFile, 'utf8');
-                    const [pid, timestamp] = lockContent.split('-');
-
-                    // Lock age cannot distinguish a crashed owner from a live
-                    // writer paused by the OS. Never remove another owner\'s
-                    // lock here; recovery is operator-driven.
-                    void pid;
-                    void timestamp;
+                    const [pidStr] = (lockContent || '').split('-');
+                    const pidNum = parseInt(pidStr, 10);
+                    if (Number.isInteger(pidNum) && pidNum > 0) {
+                        let isDead = false;
+                        try {
+                            process.kill(pidNum, 0);
+                        } catch (err) {
+                            if (err.code === 'ESRCH') isDead = true;
+                        }
+                        if (isDead) {
+                            await fs.remove(this.lockFile).catch(() => {});
+                        }
+                    }
                 } catch (error) {
                     console.error('Error checking lock file:', error);
                 }
             }
-        }, 30000); // 每30秒检查一次
+        }, 5000);
     }
 
     startExternalWatcher() {
