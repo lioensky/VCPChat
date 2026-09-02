@@ -6,11 +6,11 @@ Baseline: `exp/settings-schema` at `6d70bee6`; implementation branch: `feat/sett
 
 ## Current architecture
 
-The global settings surface still contains compatibility owners, but all Global Settings owners register with `SettingsSaveCoordinator`. Legacy form submission, typed field patches, and forum child transactions publish aggregate state through the coordinator. The coordinator keeps durable base, local draft, pending path operations, operation identity, retryable failure, and conflict state; close waits for its barrier before owner teardown.
+The global settings surface still contains compatibility owners, but all Global Settings owners register with `SettingsSaveCoordinator`. Legacy form submission, typed field patches, and forum child transactions publish aggregate state through the coordinator. Typed saves use the coordinator's operation-aware `savePatch()` transport; direct IPC remains only as an early-bootstrap/compatibility fallback. The coordinator keeps durable base, local draft, pending path operations, operation identity, retryable failure, and conflict state; close waits for its barrier before owner teardown.
 
-The main process accepts the complete payload in `modules/ipc/settingsHandlers.js` and delegates to `modules/utils/appSettingsManager.js`. The manager serializes its in-process queue and writes a validated JSON file through a temporary sibling, but lock acquisition is check-then-write, stale locks are removed by age, and there is no compare-and-set revision contract. Multiple renderer owners can therefore submit stale complete snapshots that overwrite unrelated edits.
+The main process accepts both compatibility snapshots and operation-aware path payloads in `modules/ipc/settingsHandlers.js` and delegates to `modules/utils/appSettingsManager.js`. The manager serializes its in-process queue, acquires an exclusive lock, performs fresh-read/CAS/read-modify-write, validates, and atomically replaces a temporary sibling. Unknown lock owners are never removed automatically.
 
-## Confirmed defects
+## Historical defects addressed by this plan
 
 1. A typed save that is in flight while a second field changes can publish the first result without advancing the local snapshot. The queued second save is then assembled from stale state and can erase the first field.
 2. Typed and legacy owners submit complete snapshots through different queues. Whichever request lands last can overwrite a newer value from the other owner.
@@ -49,7 +49,7 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 2. renderer typed service 与 coordinator 已分离 committed base、local draft、pending ops，并在 dirty/conflict 时禁止外部快照覆盖控件。
 3. Electron-facing close/reload/conflict contracts 已覆盖；真实 packaged Electron 操作序列仍待环境可用时补证。
 4. macOS packaged smoke、Windows runner、GPU/DPI 几何和人工 soak 仍是发布前证据项。
-5. `test:ui-system` 的既有 global input primitive fixture 失败保持独立基线，不用 autosave 变更伪造通过。
+5. `test:ui-system` 的 UI contract assertions pass; the wrapper may remain alive under JSDOM because of existing open handles, which is recorded as environment evidence rather than hidden.
 
 Revision tokens are opaque content-derived values exposed only through the save protocol. This keeps the existing `settings.json` user field shape unchanged while still allowing CAS across renderer windows and process restarts.
 
