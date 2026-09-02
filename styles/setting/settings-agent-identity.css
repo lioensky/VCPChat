@@ -298,46 +298,30 @@
 
 body[data-vcp-theme="light"] .color-input-group > input[type="color"],
 body[data-vcp-theme="light"] .color-input-group > input[type="text"] {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.82),
-        rgba(255, 255, 255, 0.58)
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
-        inset 0 0 1px rgba(0, 0, 0, 0.08);
+    background: var(--vcp-ui-bg-1, #ffffff);
+    border: 1px solid var(--vcp-ui-control-border, #d1d5db);
+    border-radius: 8px;
+    box-shadow: none;
 }
 
 body[data-vcp-theme="light"] .color-input-group > input[type="text"]:hover,
 body[data-vcp-theme="light"] .color-input-group > input[type="text"]:focus,
 body[data-vcp-theme="light"] .color-input-group > input[type="text"]:focus-visible {
-    border-color: var(--highlight-text);
+    border-color: var(--vcp-ui-control-focus, #3b82f6);
 }
 
 body[data-vcp-theme="dark"] .color-input-group > input[type="color"],
 body[data-vcp-theme="dark"] .color-input-group > input[type="text"] {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.08),
-        rgba(255, 255, 255, 0.04)
-    );
-    border-color: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    background: var(--vcp-ui-bg-1, #1e1e20);
+    border: 1px solid var(--vcp-ui-control-border, rgba(255, 255, 255, 0.14));
+    border-radius: 8px;
+    box-shadow: none;
 }
 
 body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:hover,
 body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:focus,
 body[data-vcp-theme="dark"] .color-input-group > input[type="text"]:focus-visible {
-    border-color: var(--highlight-text);
+    border-color: var(--vcp-ui-control-focus, #60a5fa);
 }
 
 /* 自定义CSS文本框 */

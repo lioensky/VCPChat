@@ -101,24 +101,41 @@ function buildUserStyleCollapsible(doc) {
 }
 
 function buildColorPairItem(doc, colorId, textId, labelText, defaultValue, ariaLabel) {
-    const item = el(doc, 'div', 'style-control-item');
+    const item = el(doc, 'div', 'style-control-item color-pill-control-item');
     const label = doc.createElement('label');
-    label.setAttribute('for', colorId);
+    label.setAttribute('for', textId);
     label.textContent = labelText;
-    const group = el(doc, 'div', 'color-input-group');
+
+    const pill = el(doc, 'div', 'vcp-color-single-pill');
+    pill.id = `${colorId}Pill`;
+    pill.style.backgroundColor = defaultValue;
+    pill.title = '点击选择颜色';
+
+    const radio = el(doc, 'span', 'vcp-color-radio-ring');
+    radio.setAttribute('aria-hidden', 'true');
+
+    const text = doc.createElement('input');
+    text.type = 'text';
+    text.id = textId;
+    text.className = 'vcp-color-pill-input';
+    text.value = defaultValue;
+    text.placeholder = defaultValue;
+    text.maxLength = 7;
+    text.setAttribute('aria-label', ariaLabel);
+    text.spellcheck = false;
+    text.autocomplete = 'off';
+
     const color = doc.createElement('input');
     color.type = 'color';
     color.id = colorId;
     color.name = colorId;
     color.value = defaultValue;
-    const text = doc.createElement('input');
-    text.type = 'text';
-    text.id = textId;
-    text.placeholder = defaultValue;
-    text.maxLength = 7;
-    text.setAttribute('aria-label', ariaLabel);
-    group.append(color, text);
-    item.append(label, group);
+    color.className = 'vcp-color-native-input';
+    color.tabIndex = -1;
+    color.setAttribute('aria-hidden', 'true');
+
+    pill.append(radio, text, color);
+    item.append(label, pill);
     return item;
 }
 

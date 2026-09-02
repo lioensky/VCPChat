@@ -1008,9 +1008,9 @@
     grid-row: 2;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content;
-    align-items: end;
-    gap: 10px;
-    padding: 8px 14px 0;
+    align-items: start;
+    gap: 16px;
+    padding: 10px 14px 0;
     pointer-events: auto;
 }
 
@@ -1020,13 +1020,105 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item {
     min-width: 0;
-    gap: 4px;
+    gap: 6px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item.full-width {
     grid-column: 3;
     grid-row: 1;
-    align-self: end;
+    align-self: start;
+    padding-top: 24px;
+}
+
+/* Single Color Pill Control (Image 5 style) */
+.vcp-color-single-pill {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 9999px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
+                border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    color: #ffffff;
+    user-select: none;
+}
+
+.vcp-color-single-pill:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+}
+
+.vcp-color-single-pill.is-light {
+    border-color: rgba(0, 0, 0, 0.18);
+    color: #111111;
+}
+
+.vcp-color-single-pill .vcp-color-radio-ring {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    opacity: 0.85;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: transform var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+                opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
+}
+
+.vcp-color-single-pill .vcp-color-radio-ring:hover {
+    transform: scale(1.18);
+    opacity: 1;
+}
+
+.vcp-color-single-pill .vcp-uiux-input-wrap {
+    flex: 1 1 auto;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    height: 100% !important;
+}
+
+.vcp-color-single-pill .vcp-uiux-input-wrap > .input,
+.vcp-color-single-pill .vcp-color-pill-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100% !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    color: inherit !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    font-family: var(--vcp-ui-font-family, system-ui, -apple-system, sans-serif) !important;
+    letter-spacing: 0.5px !important;
+    padding: 0 !important;
+    cursor: pointer;
+}
+
+.vcp-color-single-pill .vcp-color-pill-input:focus {
+    cursor: text;
+}
+
+.vcp-color-single-pill .vcp-color-native-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    padding: 0;
+    margin: 0;
+    border: none;
 }
 
 /* Keep the two identity color fields on the same unified input surface as
