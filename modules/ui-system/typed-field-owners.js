@@ -22,6 +22,9 @@ let typedRustAssistantService = null;
 let typedForumConfigService = null;
 let typedAssistantRuntimeService = null;
 let typedSettingsState = Object.freeze({});
+let typedSettingsBase = Object.freeze({});
+let typedSettingsDraft = Object.freeze({});
+let typedSettingsConflict = null;
 let typedSettingsExternalRelease = null;
 let typedSettingsSaveChain = Promise.resolve();
 let typedSettingsSaveGeneration = 0;
@@ -94,7 +97,10 @@ function ensureTypedSettingsService() {
     const externalListeners = new Set();
     const publishExternal = settings => {
         if (typedSettingsDisposed) return;
-        typedSettingsState = Object.freeze({ ...typedSettingsState, ...(settings || {}) });
+        const next = Object.freeze({ ...(settings || {}) });
+        typedSettingsBase = next;
+        typedSettingsDraft = Object.freeze({ ...typedSettingsDraft, ...next });
+        typedSettingsState = typedSettingsDraft;
         externalListeners.forEach(listener => listener(typedSettingsState));
     };
     const onExternalSettings = event => {
@@ -106,6 +112,7 @@ function ensureTypedSettingsService() {
         const revision = payload?.revision;
         if (revision !== undefined) typedSettingsRevision = revision;
         if (typedSettingsSaveGeneration > 0 && document.getElementById('globalSettingsForm')?.dataset.vcpSettingsDirty === 'true') {
+            typedSettingsConflict = { external: settings, revision };
             document.getElementById('globalSettingsForm')?.setAttribute('data-vcp-settings-conflict', 'true');
             return;
         }
@@ -127,7 +134,8 @@ function ensureTypedSettingsService() {
             // Advance the in-memory draft at enqueue time. A later queued
             // patch must observe this edit even while an earlier IPC call is
             // still unresolved.
-            typedSettingsState = Object.freeze({ ...typedSettingsState, ...(patch || {}) });
+            typedSettingsDraft = Object.freeze({ ...typedSettingsDraft, ...(patch || {}) });
+            typedSettingsState = typedSettingsDraft;
             const run = async () => {
                 const result = await window.chatAPI?.saveSettings?.({
                     __vcpSettingsOps: Object.freeze(patchToPathOps(patch)),
@@ -137,6 +145,8 @@ function ensureTypedSettingsService() {
                 const status = result?.status || (result?.success ? 'success' : 'failed');
                 if (status === 'success' && generation === typedSettingsSaveGeneration) {
                     typedSettingsRevision = result?.currentRevision ?? typedSettingsRevision;
+                    typedSettingsBase = Object.freeze({ ...(result?.settings || typedSettingsBase), ...(patch || {}) });
+                    typedSettingsConflict = null;
                     publishExternal(result?.settings || typedSettingsState);
                     return { success: true, status: 'success', operationId, currentRevision: typedSettingsRevision };
                 }
