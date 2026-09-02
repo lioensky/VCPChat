@@ -21,7 +21,7 @@ import { mountAppearanceToggles } from './settings/appearance-toggles.js';
 import { mountHomeTaglineInput } from './settings/home-controls.js';
 import { mountIdentityColorPairs } from './settings/identity-controls.js';
 import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
-import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
+import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput, mountGlobalTextInputs } from './settings/global-input-upgrades.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
 import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
@@ -261,7 +261,11 @@ function enhanceGlobalSettings(root, form) {
             name: 'global-typed-primitives',
             run: () => {
                 mountHomeTaglineInput(form, api(), scope());
+                mountGlobalTextInputs(form, api(), scope());
                 mountGlobalChoices(form, api(), scope());
+                // Compatibility projection for dynamically supplied selects;
+                // schema-emitted choice rows are skipped by the projection.
+                selectProjection.mount(form);
                 mountAppearanceRanges(form, api(), scope());
                 mountAppearanceToggles(form, api(), scope());
                 mountIdentityColorPairs(form, api(), scope(), (message, kind) => window.uiHelperFunctions?.showToastNotification?.(message, kind));
