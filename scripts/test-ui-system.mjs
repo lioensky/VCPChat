@@ -1249,3 +1249,9 @@ assert.equal(waHost.querySelectorAll('[class^="vcp-ui-"]').length, 0, 'WA-backed
 waHost.remove();
 
 console.log(`UI system contract tests passed (${expected.length} public component names).`);
+// This standalone JSDOM contract runner intentionally constructs browser-like
+// globals whose third-party adapters may leave non-critical timers alive. All
+// owned controllers have been destroyed above; terminate explicitly so the
+// npm gate has a deterministic process boundary instead of waiting forever on
+// those external handles.
+process.exit(0);

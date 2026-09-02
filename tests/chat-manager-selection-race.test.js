@@ -448,7 +448,10 @@ test('last-open persistence is ordered and awaited across rapid topic selections
 
     firstSave.release.resolve();
     await Promise.all([first, second]);
-    assert.equal(fixture.savedSettings.at(-1).lastOpenTopicId, 'topic-b');
+    const lastSave = fixture.savedSettings.at(-1);
+    const savedTopic = lastSave.lastOpenTopicId
+        ?? lastSave.__vcpSettingsOps?.find(operation => operation.path?.join('.') === 'lastOpenTopicId')?.value;
+    assert.equal(savedTopic, 'topic-b');
     assert.equal(fixture.state().topicId, 'topic-b');
     fixture.dom.window.close();
 });
