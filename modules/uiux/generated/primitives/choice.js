@@ -14,13 +14,22 @@ export function mountChoice(root, scope) {
     const labels = Array.from(root.querySelectorAll('label'))
         .filter(label => label.querySelector('input[type="radio"]'));
     root.classList.add('vcp-uiux-choice');
+    labels.forEach(label => label.classList.add('vcp-uiux-choice-option'));
     // dataset.value mirrors the checked radio; vcp-uiux-sync re-derives it
     // from the group so host-driven programmatic writes (snapshot replay)
     // converge like user-driven change events.
+    const sync = bindChoiceBehavior(root, labels, scope);
+    return scope.own(() => { root.classList.remove('vcp-uiux-choice'); delete root.dataset.value; labels.forEach(label => label.classList.remove('vcp-uiux-choice-option')); }, 'uiux-choice', 'ui-primitive');
+}
+
+// Shared value-mirroring behavior for both mount paths. The mount path adds
+// the presentation classes itself; the activation path (settings schema
+// surface, M5-c pass5) finds them already emitted by the renderer and only
+// binds the change/vcp-uiux-sync re-derivation.
+function bindChoiceBehavior(root, labels, scope) {
     const sync = () => { const checked = labels.map(label => label.querySelector('input[type="radio"]')).find(input => input?.checked); if (checked)
         root.dataset.value = checked.value; };
     labels.forEach(label => {
-        label.classList.add('vcp-uiux-choice-option');
         const input = label.querySelector('input[type="radio"]');
         if (input) {
             scope.listen(input, 'change', sync);
@@ -28,5 +37,22 @@ export function mountChoice(root, scope) {
         }
     });
     sync();
-    return scope.own(() => { root.classList.remove('vcp-uiux-choice'); delete root.dataset.value; labels.forEach(label => label.classList.remove('vcp-uiux-choice-option')); }, 'uiux-choice', 'ui-primitive');
+    return sync;
+}
+
+// Activation counterpart for renderer-emitted Choice structure: the classes
+// and the initial dataset.value are already in the markup, so this only
+// injects the stylesheet (no other mountChoice call site remains on the
+// settings surface) and binds the behavior. Dispose keeps the static
+// structure; the scope owns the listeners.
+export function activateChoice(root, scope) {
+    if (!root || !scope)
+        throw new TypeError('Choice requires root and scope.');
+    if (!root.classList.contains('vcp-uiux-choice'))
+        throw new TypeError('activateChoice requires renderer-emitted choice structure.');
+    ensureStyles();
+    const labels = Array.from(root.querySelectorAll('label'))
+        .filter(label => label.querySelector('input[type="radio"]'));
+    bindChoiceBehavior(root, labels, scope);
+    return scope.own(() => { }, 'uiux-choice-activated', 'ui-primitive');
 }

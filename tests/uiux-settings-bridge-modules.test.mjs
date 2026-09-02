@@ -79,8 +79,9 @@ test('single-concern modules import cleanly and expose their contract', async ()
     assert.equal(typeof home.mountHomeTaglineInput, 'function');
     const identity = await import(pathToFileURL(path.join(settingsDir, 'identity-controls.js')).href);
     assert.equal(typeof identity.mountIdentityColorPairs, 'function');
-    const choices = await import(pathToFileURL(path.join(settingsDir, 'choice-controls.js')).href);
-    assert.equal(typeof choices.mountChoiceControls, 'function');
+    const choicePrimitive = await import(pathToFileURL(path.join(root, 'modules', 'uiux', 'generated', 'primitives', 'choice.js')).href);
+    assert.equal(typeof choicePrimitive.mountChoice, 'function');
+    assert.equal(typeof choicePrimitive.activateChoice, 'function');
     const forum = await import(pathToFileURL(path.join(settingsDir, 'forum-controls.js')).href);
     assert.equal(typeof forum.mountForumCredentialInputs, 'function');
     const modelDirectory = await import(pathToFileURL(path.join(settingsDir, 'agent-model-picker-directory.js')).href);
@@ -454,12 +455,23 @@ test('Agent ColorPairs have one generated synchronization owner and preserve can
 test('global voice and chat-layout radios adopt the generated Choice pill batch', () => {
     const entry = read(bridgeEntry);
     const css = read(path.join(root, 'styles', 'ui-system', 'settings-template.css'));
-    assert.match(entry, /mountChoiceControls\(form, api\(\), scope\(\)\)/, 'global settings enhancement wires the Choice batch');
-    const choiceOwner = read(path.join(settingsDir, 'choice-controls.js'));
-    assert.match(choiceOwner, /#voiceModeLocal/, 'voice mode is the active high-frequency native radio consumer');
-    assert.match(choiceOwner, /api\.mountChoice\(voice, scope\)/, 'the generated Choice mounts under the presentation owner');
-    assert.match(choiceOwner, /#chatLayoutModeNormal/, 'the chat-layout radio group joins the Choice pill batch');
-    assert.match(choiceOwner, /api\.mountChoice\(chatLayout, scope\)/, 'chat-layout mounts under the same presentation owner');
+    const renderer = read(path.join(root, 'modules', 'settings', 'render', 'field-renderer.js'));
+    const upgrades = read(path.join(settingsDir, 'global-input-upgrades.js'));
+    // M5-c pass5：分段结构由渲染器直出，运行期只剩 activateChoice 行为绑定。
+    assert.match(renderer, /innerRow\.classList\.add\('vcp-uiux-choice'\)/,
+        'the renderer emits the Choice row class statically');
+    assert.match(renderer, /'vcp-uiux-choice-option'/,
+        'the renderer emits the Choice option classes statically');
+    assert.match(renderer, /dataset\.value = checkedRadio\.value/,
+        'the renderer seeds dataset.value from the compiled checked radio');
+    assert.match(entry, /mountGlobalChoices\(form, api\(\), scope\(\)\)/,
+        'global settings enhancement wires the Choice activation scan');
+    assert.match(upgrades, /api\.activateChoice\(row, scope\)/,
+        'the scan activates behavior on renderer-emitted choice rows');
+    assert.doesNotMatch(entry, /mountChoiceControls/,
+        'the retired id-table choice mount must stay retired');
+    assert.ok(!fs.existsSync(path.join(settingsDir, 'choice-controls.js')),
+        'choice-controls.js stays deleted');
     assert.doesNotMatch(css, /#voiceModeLocal/, 'the retired page-local voice radio CSS no longer competes with Choice');
 });
 
@@ -470,16 +482,17 @@ test('global typed primitive mounts keep one lifecycle registration per primitiv
     const toggles = read(path.join(settingsDir, 'appearance-toggles.js'));
     const home = read(path.join(settingsDir, 'home-controls.js'));
     const identity = read(path.join(settingsDir, 'identity-controls.js'));
-    const choices = read(path.join(settingsDir, 'choice-controls.js'));
     const forum = read(path.join(settingsDir, 'forum-controls.js'));
-    const globalTypedOwners = languageRowsModule + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + choices + '\n' + forum + '\n' + read(path.join(settingsDir, 'global-input-upgrades.js'));
+    const globalTypedOwners = languageRowsModule + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + forum + '\n' + read(path.join(settingsDir, 'global-input-upgrades.js'));
     // Each generated primitive calls scope.own() internally.  The bridge can
     // own its DOM marker, but must not register the returned release again:
     // that adds a second resource to every Settings-open cycle and asks the
     // same idempotent disposer to run twice during teardown.
     assert.doesNotMatch(globalTypedOwners, /scope\.own\(\w*release[,) ]/i,
         'bridge must not duplicate generated primitive disposers in the presentation scope');
-    for (const primitive of ['mountChoice', 'mountRange', 'mountToggle', 'mountColorPair', 'mountInput', 'activateLanguageRow', 'activateFontSizeRow']) {
+    // M5-c pass5：schema 面的分段行结构由渲染器直出，运行期只剩行为激活
+    // （mountChoice 语义保留给 agent 设置面，不在本扫描清单内）。
+    for (const primitive of ['activateChoice', 'mountRange', 'mountToggle', 'mountColorPair', 'mountInput', 'activateLanguageRow', 'activateFontSizeRow']) {
         assert.match(globalTypedOwners, new RegExp(`api\\.${primitive}\\(`),
             `${primitive} must remain mounted by the generated primitive`);
     }
@@ -641,7 +654,7 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     assert.match(entry, /import \{ runSettingsPipeline \} from '\.\/settings\/pipeline\.js';/,
         'the entry executes the shared declarative pipeline runner');
     for (const name of ['canonical-rows',
-        'global-pill-steppers', 'select-projection', 'global-typed-primitives', 'topic-summary-picker',
+        'global-pill-steppers', 'global-typed-primitives', 'topic-summary-picker',
         'forum-field-owner', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
         assert.match(fn, new RegExp(`name: '${name}'`), `mount step ${name} must stay declared`);
@@ -658,12 +671,15 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     // M5-c pass4：appearance-rows 退役——语言行/字号行结构由渲染器直出
     // （field-renderer buildLanguageRowStructure / buildFontSizeRowStructure），
     // 运行期只剩 global-language-rows 的通用行为激活（并入 global-pill-steppers
-    // 步，仍先于 select-projection）。
+    // 步；pass5 起 select-projection 管线步退役，before 边随之收缩）。
     assert.doesNotMatch(fn, /name: 'appearance-rows'/,
         'the retired appearance-rows pass must stay retired');
-    // The two documented ordering hazards stay explicit edges, not comments.
-    assert.match(fn, /name: 'global-pill-steppers',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
-        'pill/stepper/language-row activations must declare precedence over the select projection');
+    // M5-c pass5：select-projection 退役——pass4 的通用激活扫描已把全部
+    // schema select 打标收编，弹层投影在 schema 面无可投影对象；模块保留
+    // （agent 设置面仍是真实消费方），管线步与 before 边随之删除。
+    assert.doesNotMatch(fn, /name: 'select-projection'/,
+        'the vacuous schema-surface select projection pass must stay retired');
+    // The documented ordering hazard stays an explicit edge, not a comment.
     assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['global-pill-steppers'/,
         'row-consuming passes must declare their dependence on canonical rows');
 });

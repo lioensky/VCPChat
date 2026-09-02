@@ -25,7 +25,7 @@ import { mountStateDot } from './primitives/state-dot.js';
 import { mountToast } from './primitives/toast.js';
 import { mountRiskConfirmation } from './primitives/risk-confirmation.js';
 import { mountSemanticIcon } from './primitives/semantic-icon.js';
-import { mountChoice } from './primitives/choice.js';
+import { mountChoice, activateChoice } from './primitives/choice.js';
 import { mountRange } from './primitives/range.js';
 import { mountNumericStepperRow, activateNumericStepperRow } from './primitives/numeric-stepper-row.js';
 import { mountToggle } from './primitives/toggle.js';
@@ -74,6 +74,7 @@ const api = {
     mountRiskConfirmation,
     mountSemanticIcon,
     mountChoice,
+    activateChoice,
     mountRange,
     mountNumericStepperRow,
     activateNumericStepperRow,

@@ -21,9 +21,8 @@ import { mountAppearanceRanges } from './settings/appearance-ranges.js';
 import { mountAppearanceToggles } from './settings/appearance-toggles.js';
 import { mountHomeTaglineInput } from './settings/home-controls.js';
 import { mountIdentityColorPairs } from './settings/identity-controls.js';
-import { mountChoiceControls } from './settings/choice-controls.js';
 import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
-import { mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
+import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
 import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
@@ -223,24 +222,22 @@ function enhanceGlobalSettings(root, form) {
         },
         {
             name: 'global-pill-steppers',
-            // Language/pill/stepper activations must own their nodes before
-            // the catch-all select projection.（M5-c pass2 起 stepper 投影退役：
-            // 结构由 field-renderer 直出，激活并入 global-typed-primitives；
-            // pass4 起语言行/字号行结构亦直出，appearance-rows 步删除，本步
-            // 只剩直出结构的行为激活——global-language-rows 的通用激活扫描 +
-            // 语音快捷键 Input 收编。）
-            before: ['select-projection'],
+            // M5-c pass2 起 stepper 投影退役：结构由 field-renderer 直出，激活
+            // 并入 global-typed-primitives；pass4 起语言行/字号行结构亦直出，
+            // appearance-rows 步删除；pass5 起 select-projection 随之退役
+            //（全部 select 已由直出结构 + 行为激活接管）。本步只剩直出结构的
+            // 行为激活——global-language-rows 的通用激活扫描 + 语音快捷键
+            // Input 收编。
             run: () => {
                 mountGlobalLanguageRows(form, api(), scope());
                 mountVoiceShortcutInput(form, api(), scope());
             },
         },
-        { name: 'select-projection', run: () => selectProjection.mount(form) },
         {
             name: 'global-typed-primitives',
             run: () => {
                 mountHomeTaglineInput(form, api(), scope());
-                mountChoiceControls(form, api(), scope());
+                mountGlobalChoices(form, api(), scope());
                 mountAppearanceRanges(form, api(), scope());
                 mountAppearanceToggles(form, api(), scope());
                 mountIdentityColorPairs(form, api(), scope(), (message, kind) => window.uiHelperFunctions?.showToastNotification?.(message, kind));

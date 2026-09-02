@@ -29,8 +29,15 @@ const MARKERS = Object.freeze({
     // 运行期不再有包裹标记。）
     vcpUiuxToggleMounted: { owner: 'agent-settings-bridge.js via settings/bridge-shared.js', cleanup: 'manual-retract' },
     vcpUiuxClose: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
+    // Choice 原语的分段值镜像（checked radio 的 value）。M5-c pass5 起 schema
+    // 面的初值由 field-renderer 的 radioGroup 直出、激活后由行为重推导，属于
+    // 直出结构的一部分，有意跨 teardown 存续；agent 设置面的 mount 语义
+    // （choice.js）在 dispose 时删除它。
+    value: { owner: 'generated Choice primitive (choice.js) + field-renderer radioGroup 直出', cleanup: 'persistent' },
     settingPrimitive: { owner: 'settings-bridge.js + agent-settings-bridge.js + settings/canonical-rows.js', cleanup: 'manual-retract' },
-    vcpSelectRebuilding: { owner: 'settings/select-projection.js', cleanup: 'scope-owned' },
+    // M5-c pass5 retired the schema-surface select-projection step; the
+    // module (and this marker) survives for the agent settings surface.
+    vcpSelectRebuilding: { owner: 'settings/select-projection.js (agent surface)', cleanup: 'scope-owned' },
     vcpTypedPrimitiveMounted: { owner: 'all generated-primitive mount sites', cleanup: 'scope-owned' },
     vcpSettingsIconsNormalized: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
     // Appearance stepper/font-size editors are draft surfaces: the marker on
