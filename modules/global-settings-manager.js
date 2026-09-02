@@ -253,7 +253,7 @@ async function saveGlobalSettings(deps, settingsForm) {
     const settingsPatch = buildSettingsPatch(currentSettings, newSettings) || {};
     const savePayload = typedSettingsService?.save?.execute
         ? settingsPatch
-        : { __vcpSettingsOps: patchToOps(settingsPatch), __vcpSettingsOperationId: operationId, expectedRevision: settingsForm?.dataset.vcpSettingsRevision || undefined, operationId };
+        : { ...settingsPatch, __vcpSettingsOps: patchToOps(settingsPatch), __vcpSettingsOperationId: operationId, expectedRevision: settingsForm?.dataset.vcpSettingsRevision || undefined, operationId };
     const saveOperation = typedSettingsService?.save?.execute
         ? typedSettingsService.save.execute(savePayload)
         : chatAPI.saveSettings(savePayload);

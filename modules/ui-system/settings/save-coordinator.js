@@ -12,9 +12,21 @@ function createCoordinator(form) {
     const clients = new Map();
     const operations = new Map();
     let disposed = false;
+    let listenerReleased = false;
     let flushBarrier = null;
     let aggregateTimer = null;
+    // Durable state is intentionally separate from presentation owners.  The
+    // coordinator keeps the last committed base and an immutable local draft
+    // so an owner cannot accidentally clear another owner's pending work.
+    let durableBase = Object.freeze({});
+    let durableRevision = null;
+    let draft = Object.freeze({});
+    let pendingOps = [];
+    let retryableFailure = null;
+    let conflict = null;
     const aggregateStatus = () => {
+        if (conflict) return 'conflict';
+        if (retryableFailure) return 'error';
         const statuses = [...clients.values()].map(client => client.status).filter(Boolean);
         return STATUS_ORDER.find(status => statuses.includes(status)) || 'idle';
     };
@@ -31,6 +43,12 @@ function createCoordinator(form) {
         status: aggregateStatus(),
         dirty: form.dataset.vcpSettingsDirty === 'true',
         clients: Object.freeze([...clients.values()].map(client => Object.freeze({ id: client.id, status: client.status, dirty: client.dirty }))),
+        durableRevision,
+        durableBase,
+        draft,
+        pendingOps: Object.freeze(pendingOps.map(operation => Object.freeze({ ...operation, path: Object.freeze([...(operation.path || [])]) }))),
+        retryableFailure,
+        conflict,
     });
     const scheduleAggregate = () => {
         if (aggregateTimer !== null) clearTimeout(aggregateTimer);
@@ -78,6 +96,36 @@ function createCoordinator(form) {
                 scheduleAggregate();
             };
         },
+        setDurableBase(settings, revision = undefined) {
+            durableBase = Object.freeze({ ...(settings || {}) });
+            if (revision !== undefined) durableRevision = revision;
+            if (!form.dataset.vcpSettingsDirty) draft = durableBase;
+            return snapshot();
+        },
+        recordDraft(patch = {}, ops = []) {
+            draft = Object.freeze({ ...draft, ...(patch || {}) });
+            pendingOps = [...pendingOps, ...(Array.isArray(ops) ? ops : [])];
+            return snapshot();
+        },
+        recordCommit(result = {}, patch = {}, ops = []) {
+            if (result?.status === 'conflict' || result?.code === 'SETTINGS_CONFLICT') {
+                conflict = result;
+                retryableFailure = result;
+                return snapshot();
+            }
+            if (result?.status !== 'success' && result?.success !== true) {
+                retryableFailure = result;
+                return snapshot();
+            }
+            durableBase = Object.freeze({ ...durableBase, ...(patch || {}) });
+            if (result.currentRevision !== undefined) durableRevision = result.currentRevision;
+            const committed = new Set((ops || []).map(operation => JSON.stringify(operation)));
+            pendingOps = pendingOps.filter(operation => !committed.has(JSON.stringify(operation)));
+            retryableFailure = null;
+            conflict = null;
+            if (!pendingOps.length && !form.dataset.vcpSettingsDirty) draft = durableBase;
+            return snapshot();
+        },
         hasClient: id => clients.has(id),
         submit: () => {
             const previousNoValidate = form.noValidate;
@@ -95,6 +143,8 @@ function createCoordinator(form) {
                 else if (!mode || mode === 'saved' || mode === 'idle') client.dirty = false;
             }
             if (operationId && !form.dataset.vcpSettingsOperationId) form.dataset.vcpSettingsOperationId = operationId;
+            if (mode === 'conflict') conflict = { operationId };
+            if (mode === 'error') retryableFailure = { operationId };
             scheduleAggregate();
         },
         track(operationId, promise, { owner = null } = {}) {
@@ -138,14 +188,19 @@ function createCoordinator(form) {
         },
         async dispose() {
             if (disposed) return;
-            if (operations.size === 0) form.removeEventListener('vcp-settings-save-result', onResultEvent);
+            const hasPendingWork = [...clients.values()].some(client => client.hasWork?.() === true);
+            if (operations.size === 0 && !hasPendingWork && !listenerReleased) {
+                form.removeEventListener('vcp-settings-save-result', onResultEvent);
+                listenerReleased = true;
+            }
             // Keep the result channel alive while the barrier drains. Removing
             // it first strands operation promises that are completed by the
             // terminal result event.
             const snapshot = await coordinator.flush();
             if (snapshot?.status === 'error' || snapshot?.status === 'conflict') return snapshot;
             disposed = true;
-            form.removeEventListener('vcp-settings-save-result', onResultEvent);
+            if (!listenerReleased) form.removeEventListener('vcp-settings-save-result', onResultEvent);
+            listenerReleased = true;
             if (aggregateTimer !== null) clearTimeout(aggregateTimer);
             clients.clear();
             operations.clear();
@@ -161,6 +216,12 @@ function createCoordinator(form) {
                 const revision = settings.__vcpSettingsRevision;
                 const externalSettings = { ...settings };
                 delete externalSettings.__vcpSettingsRevision;
+                durableBase = Object.freeze({ ...externalSettings });
+                durableRevision = revision;
+                draft = durableBase;
+                pendingOps = [];
+                retryableFailure = null;
+                conflict = null;
                 delete form.dataset.vcpSettingsDirty;
                 const view = form.ownerDocument?.defaultView;
                 (view || form).dispatchEvent(new (view?.CustomEvent || CustomEvent)('global-settings-updated', { detail: { settings: externalSettings, revision, source: 'settings-reload' } }));

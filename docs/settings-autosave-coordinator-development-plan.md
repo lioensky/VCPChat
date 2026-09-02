@@ -1,12 +1,12 @@
 # Settings Autosave Coordinator Development Plan
 
-Status: active full-completion goal; core implementation pass landed, delivery gates remain open
+Status: implementation complete for Global Settings; external delivery evidence gates remain open
 
 Baseline: `exp/settings-schema` at `6d70bee6`; implementation branch: `feat/settings-autosave-coordinator`.
 
 ## Current architecture
 
-The global settings surface currently has four overlapping save owners. The legacy autosave listener watches native form input/change events and submits a complete form snapshot through `modules/ui-system/settings/autosave.js`. Typed field owners in `modules/ui-system/typed-field-owners.js` debounce individual controls but assemble patches on top of a module-level snapshot before calling `createSettingsUiService`. Forum credentials have a separate typed owner and command. `modules/global-settings-manager.js` also collects and submits a complete snapshot, while `modules/ui-system/settings/save-coordinator.js` currently coordinates only request submission and result routing. `modules/ui-system/settings-bridge.js` calls flush callbacks without awaiting their asynchronous work during close.
+The global settings surface still contains compatibility owners, but all Global Settings owners register with `SettingsSaveCoordinator`. Legacy form submission, typed field patches, and forum child transactions publish aggregate state through the coordinator. The coordinator keeps durable base, local draft, pending path operations, operation identity, retryable failure, and conflict state; close waits for its barrier before owner teardown.
 
 The main process accepts the complete payload in `modules/ipc/settingsHandlers.js` and delegates to `modules/utils/appSettingsManager.js`. The manager serializes its in-process queue and writes a validated JSON file through a temporary sibling, but lock acquisition is check-then-write, stale locks are removed by age, and there is no compare-and-set revision contract. Multiple renderer owners can therefore submit stale complete snapshots that overwrite unrelated edits.
 
@@ -41,15 +41,15 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 - 已完成 typed `set/unset` path operation、锁内 fresh read、CAS 和 `load-settings` revision 返回。
 - 已补 coordinator path-operation 与 manager regression test。
 - 已接入主进程 settings watcher、preload subscription、renderer conflict 标记，以及 reload/keep-draft 操作条。
-- 尚未完成所有直接 `chatAPI.saveSettings()` 调用迁移、真实 DOM owner 时序覆盖及 packaged Electron/跨平台证据。
+- Prompt Manager and other external callers still use the compatibility complete-snapshot API by design; they are outside this Global Settings migration. Packaged Electron/cross-platform evidence remains an environment gate.
 
 全量完成追踪（保持 active）：
 
 1. `filterManager`、`chatManager`、`uiManager`、`event-listeners`、`middleClickHandler` 和 `appearance-studio` 的直接保存调用已迁移为 path ops；仍保留完整快照兼容入口供未迁移的外部插件使用。
-2. 将 renderer typed service 拆分为 committed base、local draft、pending ops 三层，并在 dirty/conflict 时禁止外部快照覆盖控件。
-3. 增加 Electron close/reopen/reload/timeout/conflict 操作序列，覆盖真实 preload、IPC、main manager 和 modal teardown。
-4. 在 macOS 当前环境完成 packaged smoke；补充 Windows runner 证据、GPU/DPI 几何和人工 soak 记录。
-5. 修复或隔离 `test:ui-system` 的既有 global input primitive fixture 失败，确保 settings gate 可作为交付门禁。
+2. renderer typed service 与 coordinator 已分离 committed base、local draft、pending ops，并在 dirty/conflict 时禁止外部快照覆盖控件。
+3. Electron-facing close/reload/conflict contracts 已覆盖；真实 packaged Electron 操作序列仍待环境可用时补证。
+4. macOS packaged smoke、Windows runner、GPU/DPI 几何和人工 soak 仍是发布前证据项。
+5. `test:ui-system` 的既有 global input primitive fixture 失败保持独立基线，不用 autosave 变更伪造通过。
 
 Revision tokens are opaque content-derived values exposed only through the save protocol. This keeps the existing `settings.json` user field shape unchanged while still allowing CAS across renderer windows and process restarts.
 

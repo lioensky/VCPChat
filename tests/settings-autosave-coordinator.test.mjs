@@ -101,6 +101,36 @@ test('coordinator exposes explicit retry and external reload actions', async () 
     await coordinator.dispose();
 });
 
+test('coordinator keeps durable base, draft, and pending path operations independent', async () => {
+    const form = new FakeForm();
+    const coordinator = claimSaveCoordinator(form);
+    coordinator.setDurableBase({ userName: 'Initial', appearanceProfile: { density: 'comfortable' } }, 'r1');
+    coordinator.recordDraft({ userName: 'Draft' }, [{ op: 'set', path: ['userName'], value: 'Draft' }]);
+    let state = coordinator.getSnapshot();
+    assert.equal(state.durableRevision, 'r1');
+    assert.equal(state.durableBase.userName, 'Initial');
+    assert.equal(state.draft.userName, 'Draft');
+    assert.equal(state.pendingOps.length, 1);
+    coordinator.reportState('conflict');
+    coordinator.recordCommit({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: 'r2' });
+    state = coordinator.getSnapshot();
+    assert.equal(state.status, 'conflict');
+    assert.equal(state.draft.userName, 'Draft');
+    await coordinator.dispose();
+});
+
+test('client registration release removes remounted owner without affecting others', async () => {
+    const form = new FakeForm();
+    const coordinator = claimSaveCoordinator(form);
+    const releaseTyped = coordinator.registerClient({ id: 'typed' });
+    coordinator.registerClient({ id: 'legacy', isDefault: true });
+    assert.equal(coordinator.hasClient('typed'), true);
+    releaseTyped();
+    assert.equal(coordinator.hasClient('typed'), false);
+    assert.equal(coordinator.hasClient('legacy'), true);
+    await coordinator.dispose();
+});
+
 test('coordinator operation resolves only from its matching terminal result', async () => {
     const form = new FakeForm();
     const coordinator = claimSaveCoordinator(form);
