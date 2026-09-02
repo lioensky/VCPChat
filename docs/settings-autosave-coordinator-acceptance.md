@@ -20,7 +20,7 @@
 | typed A/B 快速连续编辑 | A、B 均持久化 | path operation 与 serialized queue 通过；真实 DOM owner 仍需 Electron 证据 |
 | typed 与 legacy 并发 | 未触碰字段不被覆盖 | manager 双实例 CAS 通过；legacy full-snapshot 兼容调用仍有迁移缺口 |
 | in-flight 追加 patch 后首个失败 | 失败 batch retained，后续 flush 可重试 | retained batch 代码已补；owner 时序仍需 Electron 证据 |
-| 旧 operation 迟到结果 | 不改变当前 draft/status | adapter 单测通过；coordinator 迟到事件待补 |
+| 旧 operation 迟到结果 | 不改变当前 draft/status | coordinator matching-terminal test 通过 |
 | cancelled/stale/conflict | 保持明确非 success 语义 | adapter 单测通过 |
 | flush | 等待真实 durable completion | dispose/flush 时序测试待补 |
 | dispose | drain 后再释放 owner/listener | 代码已修，Electron 待验证 |
@@ -37,7 +37,7 @@
 
 - `node --check`：相关 JS 通过。
 - `git diff --check`：通过。
-- focused settings/UI tests：47/47 通过（临时复用现有 worktree 的依赖目录，未写入目标分支）。
+- focused settings/UI tests：47/47 通过；autosave coordinator subset 7/7 通过（临时复用现有 worktree 的依赖目录，未写入目标分支）。
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
 - `npm run check:uiux`：仓库无该脚本；可用脚本为 `check:uiux:artifacts`。
 - `npm run test:settings-wa-electron`：仓库无该脚本。
