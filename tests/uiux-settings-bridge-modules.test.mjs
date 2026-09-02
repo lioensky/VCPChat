@@ -161,6 +161,9 @@ test('each extracted function has exactly one home (entry or module, never both)
     ];
     const moduleSource = [
         ...fs.readdirSync(settingsDir).filter(name => name.endsWith('.js')).map(name => read(path.join(settingsDir, name))),
+        // M5-b：canonical 行机械层移居渲染侧，composeCanonicalRowSlots 的唯一
+        // 载体随清单一并扫描。
+        read(path.join(root, 'modules', 'settings', 'render', 'canonical-row.js')),
         read(agentBridge), read(typedOwners),
     ].join('\n');
     for (const name of functions) {
@@ -824,10 +827,14 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
     assert.match(presentation, /import \{ syncDependentRows \} from '\.\.\/ui-system\/settings\/dependent-rows\.js';/);
     const typed = read(path.join(root, 'modules', 'ui-system', 'typed-field-owners.js'));
     assert.ok(!typed.includes('chatBubbleWidthSettings'), 'typed snapshot path must not write the retired panel');
-    // canonical 行投影：appearance 分区整体是 feature-owned 行区。
-    const canonical = read(path.join(root, 'modules', 'ui-system', 'settings', 'canonical-rows.js'));
+    // canonical 行投影：appearance 分区整体是 feature-owned 行区（M5-b 起机械
+    // 层与渲染器直出共享，断言跟着搬到 render/canonical-row.js）。
+    const canonical = read(path.join(root, 'modules', 'settings', 'render', 'canonical-row.js'));
     assert.match(canonical, /appearance-home-tagline-setting, \[data-settings-section-key="appearance-settings"\]'/,
         'appearanceOwner covers the stamped appearance section');
+    const canonicalPass = read(path.join(root, 'modules', 'ui-system', 'settings', 'canonical-rows.js'));
+    assert.match(canonicalPass, /dataset\.canonicalRow === 'true'/,
+        'canonical-rows pass must skip renderer-emitted canonical rows');
 });
 
 test('settings 挂载管线：步骤失败必须带步名记录并向调用方抛出', async () => {
