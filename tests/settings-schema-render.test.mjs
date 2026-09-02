@@ -146,6 +146,12 @@ test('server-connection：卡片结构与动态容器锚点', () => {
 
 test('render-settings：stepper 内联行、预设行、滑杆与自定义行', () => {
     const { form } = renderIntoForm(renderSettingsSection);
+    const animationCard = form.querySelector('[data-vcp-settings-card="stream-animation"]');
+    assert.ok(animationCard, '流式动效相关设置应归入独立卡片');
+    assert.equal(animationCard.querySelector('.vcp-settings-card-title').textContent, '流式内容动效');
+    assert.ok(animationCard.querySelector('#streamAnimationSettingsRow'));
+    assert.ok(animationCard.querySelector('#streamAnimationDurationRow'));
+    assert.ok(animationCard.querySelector('#streamAnimationPreviewElement'));
     // M5-c pass2 起 output（#streamAnimationDurationValue）随步进器直出退役——
     // 旧管线里它本就被 NumericStepperRow 挂载的 replaceChildren 抹去。
     for (const id of ['enableSmoothStreaming', 'minChunkBufferSize', 'smoothStreamIntervalMs',
@@ -687,7 +693,7 @@ test('语言行/字号行直出结构（M5-c pass4：appearance-rows/语言行�
 
     const render = renderIntoForm(renderSettingsSection).form;
     const streamLangRow = render.querySelector('#streamAnimationSettingsRow > .vcp-uiux-language-row');
-    assert.equal(streamLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '流式内容动效');
+    assert.equal(streamLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '动画预设');
 
     const selection = renderIntoForm(selectionAssistantSection).form;
     const agentLangRow = selection.querySelector('#assistantAgentContainer > .vcp-uiux-language-row');

@@ -140,6 +140,11 @@
     background: var(--vcp-ui-bg-1);
 }
 
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="stream-animation"] {
+    border-radius: 12px;
+    background: #fff;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card > .vcp-settings-card-body > .vcp-uiux-general-row:last-of-type {
     border-bottom: 0;
 }

@@ -1,7 +1,7 @@
 // schema/render-settings — "消息渲染" 分区（M1）。
 // 流式开关（提示在包裹 div 内）、双 stepper 内联行、动画预设 select、
 // 时长滑杆、自定义 CSS 行（含示例块）与动画预览组件。
-import { section, switchField, inlineNumbers, select, range, textarea, custom } from './kernel.js';
+import { section, switchField, inlineNumbers, select, range, textarea, custom, card } from './kernel.js';
 import { buildStreamAnimationCustomExample, buildStreamAnimationPreview } from '../render/widgets.js';
 
 const STREAM_ANIMATION_PRESETS = ['slide-left', 'fade', 'rise', 'scale', 'none', 'custom'];
@@ -36,34 +36,41 @@ export const renderSettingsSection = section('render-settings', '消息渲染', 
         { key: 'minChunkBufferSize', label: '最小渲染 Chunk 字数（≥1）', min: 1, defaultValue: 16, save: { parse: 'int', fallback: 16 } },
         { key: 'smoothStreamIntervalMs', label: '最小刷新间隔（ms，≥1）', min: 1, defaultValue: 100, save: { parse: 'int', fallback: 100 } },
     ]),
-    select('streamAnimationPreset', {
-        rowId: 'streamAnimationSettingsRow',
-        groupRowClass: 'vcp-settings-row',
-        languageRow: { title: '流式内容动效', description: '消息内容进场动画样式' },
-        hintStyle: null,
-        options: [
-            { value: 'slide-left', label: '右侧滑入（经典）' },
-            { value: 'fade', label: '纯淡入' },
-            { value: 'rise', label: '柔和上浮' },
-            { value: 'scale', label: '轻微缩放' },
-            { value: 'none', label: '关闭动画' },
-            { value: 'custom', label: '自定义 CSS' },
+    card('streamAnimationSettingsCard', {
+        cardKey: 'stream-animation',
+        title: '流式内容动效',
+        description: '为新出现的段落、列表、代码块等内容选择进场动画。系统启用“减少动态效果”时会自动停用。',
+        fields: [
+            select('streamAnimationPreset', {
+                rowId: 'streamAnimationSettingsRow',
+                groupRowClass: 'vcp-settings-row',
+                languageRow: { title: '动画预设', description: '消息内容进场动画样式' },
+                hintStyle: null,
+                options: [
+                    { value: 'slide-left', label: '右侧滑入（经典）' },
+                    { value: 'fade', label: '纯淡入' },
+                    { value: 'rise', label: '柔和上浮' },
+                    { value: 'scale', label: '轻微缩放' },
+                    { value: 'none', label: '关闭动画' },
+                    { value: 'custom', label: '自定义 CSS' },
+                ],
+                save: { allowed: STREAM_ANIMATION_PRESETS, fallback: 'slide-left' },
+            }),
+            range('streamAnimationDurationMs', {
+                rowId: 'streamAnimationDurationRow',
+                min: 100,
+                max: 2000,
+                step: 50,
+                value: 500,
+                outputId: 'streamAnimationDurationValue',
+                outputFor: 'streamAnimationDurationMs',
+                outputText: '500ms',
+                save: { parse: 'float', nanFallback: 500, roundTo: 50, min: 100, max: 2000 },
+            }),
+            custom('streamAnimationCustomRow', buildStreamAnimationCustomRow, ['streamAnimationCustomCss'], {
+                saveMap: { streamAnimationCustomCss: { falsy: '', slice: 4000 } },
+            }),
+            custom('streamAnimationPreview', buildStreamAnimationPreview),
         ],
-        save: { allowed: STREAM_ANIMATION_PRESETS, fallback: 'slide-left' },
     }),
-    range('streamAnimationDurationMs', {
-        rowId: 'streamAnimationDurationRow',
-        min: 100,
-        max: 2000,
-        step: 50,
-        value: 500,
-        outputId: 'streamAnimationDurationValue',
-        outputFor: 'streamAnimationDurationMs',
-        outputText: '500ms',
-        save: { parse: 'float', nanFallback: 500, roundTo: 50, min: 100, max: 2000 },
-    }),
-    custom('streamAnimationCustomRow', buildStreamAnimationCustomRow, ['streamAnimationCustomCss'], {
-        saveMap: { streamAnimationCustomCss: { falsy: '', slice: 4000 } },
-    }),
-    custom('streamAnimationPreview', buildStreamAnimationPreview),
 ]);
