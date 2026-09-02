@@ -10,6 +10,61 @@ const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPat
 let diceWindow = null;
 let diceServer = null;
 
+// AI 可选择的主题和“骰子魔法”必须在主进程边界校验，避免任意资源路径或
+// 极端物理参数进入渲染进程。
+const ALLOWED_DICE_THEMES = new Set([
+    'default',
+    'gemstone',
+    'rock',
+    'rust',
+    'smooth',
+    'blueGreenMetal',
+    'diceOfRolling',
+    'gemstoneMarble',
+    'wooden',
+]);
+
+const ALLOWED_DICE_MAGIC = new Set([
+    'normal',
+    'moon',
+    'storm',
+    'lead',
+    'bounce',
+]);
+
+const DICE_PHYSICS_LIMITS = Object.freeze({
+    gravity: [0.15, 2.5],
+    mass: [0.25, 6],
+    friction: [0.05, 1],
+    restitution: [0, 0.95],
+    linearDamping: [0.05, 0.9],
+    angularDamping: [0.05, 0.9],
+    spinForce: [1, 18],
+    throwForce: [1, 10],
+    startingHeight: [3, 14],
+    settleTimeout: [2500, 10000],
+});
+
+function sanitizeDicePhysics(physics) {
+    if (!physics || typeof physics !== 'object' || Array.isArray(physics)) {
+        return {};
+    }
+
+    return Object.entries(DICE_PHYSICS_LIMITS).reduce((safePhysics, [key, [min, max]]) => {
+        const value = Number(physics[key]);
+        if (Number.isFinite(value)) {
+            safePhysics[key] = Math.min(max, Math.max(min, value));
+        }
+        return safePhysics;
+    }, {});
+}
+
+function sanitizeDiceColor(color) {
+    return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color.trim())
+        ? color.trim()
+        : undefined;
+}
+
 // --- Dice Server and Window Creation ---
 function startDiceServer(projectRoot) {
     return new Promise((resolve, reject) => {
@@ -93,14 +148,31 @@ async function createOrFocusDiceWindow(projectRoot) {
 }
 
 // --- Dice Control Handler ---
-async function handleDiceControl(args) {
-    const { notation, themecolor } = args;
-    console.log(`[DiceControl] Received command: roll, Notation: ${notation}, ThemeColor: ${themecolor}`);
+async function handleDiceControl(args = {}) {
+    const {
+        notation,
+        themecolor,
+        theme,
+        magic,
+        physics,
+    } = args;
 
-    const options = {};
-    if (themecolor) {
-        options.themeColor = themecolor;
-    }
+    const safeThemeColor = sanitizeDiceColor(themecolor);
+    const safeTheme = ALLOWED_DICE_THEMES.has(theme) ? theme : undefined;
+    const safeMagic = ALLOWED_DICE_MAGIC.has(magic) ? magic : 'normal';
+    const safePhysics = sanitizeDicePhysics(physics);
+
+    console.log(
+        `[DiceControl] Received roll: notation=${notation}, theme=${safeTheme || 'current'}, `
+        + `magic=${safeMagic}, color=${safeThemeColor || 'default'}`,
+    );
+
+    const options = {
+        magic: safeMagic,
+        physics: safePhysics,
+    };
+    if (safeThemeColor) options.themeColor = safeThemeColor;
+    if (safeTheme) options.theme = safeTheme;
 
     try {
         // We need projectRoot to create the window if it doesn't exist.

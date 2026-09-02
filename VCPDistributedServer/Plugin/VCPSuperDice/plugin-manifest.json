@@ -2,8 +2,8 @@
   "name": "SuperDice",
   "displayName": "超级骰子",
   "pluginType": "synchronous",
-  "version": "1.0.0",
-  "description": "一个基于物理引擎的高性能3D骰子插件，允许AI或用户通过指令进行真实的骰子投掷，并可干预物理参数。",
+  "version": "1.1.0",
+  "description": "基于物理引擎的3D骰子插件。AI可选择骰子材质、颜色与安全的物理魔法预设，也可在受控范围内精调物理参数。",
   "author": "Kilo Code",
   "license": "MIT",
   "entryPoint": {
@@ -16,7 +16,7 @@
     "invocationCommands": [
       {
         "command": "roll",
-        "description": "功能: 根据提供的标准骰子表达式，支持同时丢出多个不同骰子，（如 '2d6+1d20'）进行3D物理投掷，支持d4-d100，并可选择指定骰子颜色。\n参数:\n- notation (字符串, 必需): 标准的骰子投掷表达式，支持用'+'连接多个表达式。\n- themecolor (字符串, 可选): 一个有效的CSS颜色值 (例如 '#FF0000')，用于设置骰子的颜色。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」SuperDice「末」,\ncommand:「始」roll「末」,\nnotation:「始」1d20「末」,\nthemecolor:「始」#8b4513「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 使用真实3D物理引擎投掷d4-d100，可混合多个骰组，并施加材质与物理魔法。\n参数:\n- notation (字符串, 必需): 标准骰子表达式，例如 1d20、2d6+1d20。\n- theme (字符串, 可选): 骰子材质主题。可选值: default(纯色)、gemstone(宝石)、rock(岩石)、rust(锈蚀)、smooth(光滑)、blueGreenMetal(蓝绿旧金属)、diceOfRolling(滚动之骰)、gemstoneMarble(彩虹大理石)、wooden(木质)。\n- themecolor (字符串, 可选): #RRGGBB颜色。仅default、gemstone、rock、rust、smooth等可着色主题有效。\n- magic (字符串, 可选): 物理魔法预设。normal=常态，moon=月面慢落，storm=暴风旋转，lead=铅骰重坠，bounce=弹跳狂欢。默认normal。\n- physics (JSON对象, 可选): 在魔法预设上精调本次物理参数。支持gravity(0.15-2.5)、mass(0.25-6)、friction(0.05-1)、restitution(0-0.95)、linearDamping(0.05-0.9)、angularDamping(0.05-0.9)、spinForce(1-18)、throwForce(1-10)、startingHeight(3-14)、settleTimeout(2500-10000)。超界值会被安全钳制。优先使用预设，只在需要特殊叙事效果时精调physics。\n示例——施放紫色宝石月面骰:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」SuperDice「末」,\ncommand:「始」roll「末」,\nnotation:「始」2d6+1d20「末」,\ntheme:「始」gemstone「末」,\nthemecolor:「始」#8B5CF6「末」,\nmagic:「始」moon「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

@@ -1,13 +1,15 @@
 import DiceBox from "/node_modules/@3d-dice/dice-box/dist/dice-box.es.js";
+import { DiceSoundscape } from "./dice-soundscape.js";
 
 const Box = new DiceBox({
     container: "#dice-canvas-container",
     assetPath: "/assets/dice-box/",
     theme: "default",
     offscreen: true,
-    scale: 6
+    scale: 6.8
 });
 
+const soundscape = new DiceSoundscape();
 const api = window.utilityAPI || window.electronAPI;
 const elements = {
     notationInput: document.getElementById('notation-input'),
@@ -19,11 +21,111 @@ const elements = {
     resultDetail: document.getElementById('result-detail'),
     rollCount: document.getElementById('roll-count'),
     quickDice: Array.from(document.querySelectorAll('.quick-die')),
+    themeSelect: document.getElementById('theme-select'),
+    themeColor: document.getElementById('theme-color'),
+    colorField: document.querySelector('.color-field'),
+    magicSelect: document.getElementById('magic-select'),
     minimizeButton: document.getElementById('minimize-dice-btn'),
     maximizeButton: document.getElementById('maximize-dice-btn'),
     closeButton: document.getElementById('close-dice-btn'),
     titlebar: document.querySelector('.titlebar')
 };
+
+const COLOR_THEMES = new Set([
+    'default',
+    'gemstone',
+    'rock',
+    'rust',
+    'smooth'
+]);
+
+const AVAILABLE_THEMES = new Set([
+    'default',
+    'gemstone',
+    'rock',
+    'rust',
+    'smooth',
+    'blueGreenMetal',
+    'diceOfRolling',
+    'gemstoneMarble',
+    'wooden'
+]);
+
+const BASE_PHYSICS = Object.freeze({
+    gravity: 1,
+    mass: 1,
+    friction: 0.8,
+    restitution: 0.1,
+    linearDamping: 0.5,
+    angularDamping: 0.4,
+    spinForce: 6,
+    throwForce: 5,
+    startingHeight: 8,
+    settleTimeout: 5000
+});
+
+const MAGIC_PRESETS = Object.freeze({
+    normal: BASE_PHYSICS,
+    moon: {
+        ...BASE_PHYSICS,
+        gravity: 0.28,
+        mass: 0.8,
+        friction: 0.45,
+        restitution: 0.2,
+        linearDamping: 0.22,
+        angularDamping: 0.18,
+        spinForce: 4,
+        throwForce: 3.2,
+        startingHeight: 10,
+        settleTimeout: 8000
+    },
+    storm: {
+        ...BASE_PHYSICS,
+        gravity: 0.85,
+        friction: 0.3,
+        restitution: 0.35,
+        linearDamping: 0.18,
+        angularDamping: 0.08,
+        spinForce: 15,
+        throwForce: 8,
+        startingHeight: 11,
+        settleTimeout: 7000
+    },
+    lead: {
+        ...BASE_PHYSICS,
+        gravity: 1.65,
+        mass: 4,
+        friction: 0.95,
+        restitution: 0.04,
+        linearDamping: 0.72,
+        angularDamping: 0.68,
+        spinForce: 3,
+        throwForce: 4,
+        startingHeight: 6,
+        settleTimeout: 4000
+    },
+    bounce: {
+        ...BASE_PHYSICS,
+        gravity: 0.9,
+        mass: 0.7,
+        friction: 0.16,
+        restitution: 0.88,
+        linearDamping: 0.12,
+        angularDamping: 0.14,
+        spinForce: 9,
+        throwForce: 7,
+        startingHeight: 9,
+        settleTimeout: 8500
+    }
+});
+
+const MAGIC_LABELS = Object.freeze({
+    normal: '常态',
+    moon: '月面慢落',
+    storm: '暴风旋转',
+    lead: '铅骰重坠',
+    bounce: '弹跳狂欢'
+});
 
 const state = {
     rollCount: 0,
@@ -31,7 +133,10 @@ const state = {
     fallbackTimer: null,
     resizeTimer: null,
     orbitRateFrame: null,
-    orbitAnimations: []
+    orbitAnimations: [],
+    theme: 'default',
+    themeColor: '#a78bfa',
+    magic: 'normal'
 };
 
 const normalizeNotation = (value) => String(value || '')
@@ -315,11 +420,24 @@ const parseAndRoll = (notationValue) => {
     setNotation(notation);
     setRollingState(true);
 
+    const diceCount = Array.from(getDiceCounts(notation).values())
+        .reduce((sum, count) => sum + count, 0);
+
+    soundscape.start({
+        theme: state.theme,
+        magic: state.magic,
+        diceCount
+    });
+
     try {
-        Box.roll(toDiceBoxNotations(notation));
+        Box.roll(toDiceBoxNotations(notation), {
+            theme: state.theme,
+            themeColor: state.themeColor
+        });
         return true;
     } catch (error) {
         console.error('[Dice] Failed to roll notation:', notation, error);
+        soundscape.stop({ allowTail: false });
         setRollingState(false);
         elements.rollStatus.textContent = '投掷未能启动';
         return false;
@@ -406,6 +524,86 @@ const initializeTheme = async () => {
     if (api?.onThemeUpdated) api.onThemeUpdated(applyTheme);
 };
 
+const setColorControlAvailability = () => {
+    const canColor = COLOR_THEMES.has(state.theme);
+    elements.themeColor.disabled = !canColor;
+    elements.colorField.classList.toggle('is-disabled', !canColor);
+    elements.colorField.title = canColor
+        ? '选择骰子的灵光颜色'
+        : '当前贴图材质拥有固定颜色';
+};
+
+const applyDiceTheme = async (theme, color = state.themeColor) => {
+    const safeTheme = AVAILABLE_THEMES.has(theme) ? theme : 'default';
+    state.theme = safeTheme;
+    state.themeColor = /^#[0-9a-f]{6}$/i.test(color) ? color : '#a78bfa';
+
+    elements.themeSelect.value = state.theme;
+    elements.themeColor.value = state.themeColor;
+    setColorControlAvailability();
+    elements.rollStatus.textContent = '正在重塑骰子材质';
+
+    try {
+        await Box.updateConfig({
+            theme: state.theme,
+            themeColor: state.themeColor
+        });
+        elements.rollStatus.textContent = '骰貌已完成重塑';
+    } catch (error) {
+        console.error('[Dice] Failed to apply dice theme:', error);
+        state.theme = 'default';
+        elements.themeSelect.value = state.theme;
+        setColorControlAvailability();
+        elements.rollStatus.textContent = '材质加载失败，已返回默认';
+    }
+
+    window.setTimeout(() => {
+        if (!state.rolling) elements.rollStatus.textContent = '命运正在候场';
+    }, 1400);
+};
+
+const applyMagicPreset = async (magic) => {
+    const safeMagic = Object.hasOwn(MAGIC_PRESETS, magic) ? magic : 'normal';
+    state.magic = safeMagic;
+    elements.magicSelect.value = safeMagic;
+
+    try {
+        await Box.updateConfig(MAGIC_PRESETS[safeMagic]);
+        elements.rollStatus.textContent = safeMagic === 'normal'
+            ? '物理法则已恢复常态'
+            : `${MAGIC_LABELS[safeMagic]}已附着`;
+    } catch (error) {
+        console.error('[Dice] Failed to apply magic preset:', error);
+        state.magic = 'normal';
+        elements.magicSelect.value = 'normal';
+        elements.rollStatus.textContent = '魔法失效，已恢复常态';
+    }
+
+    window.setTimeout(() => {
+        if (!state.rolling) elements.rollStatus.textContent = '命运正在候场';
+    }, 1400);
+};
+
+const bindCustomizerControls = () => {
+    elements.themeSelect.addEventListener('change', () => {
+        applyDiceTheme(elements.themeSelect.value);
+    });
+
+    elements.themeColor.addEventListener('input', () => {
+        state.themeColor = elements.themeColor.value;
+    });
+
+    elements.themeColor.addEventListener('change', () => {
+        applyDiceTheme(state.theme, elements.themeColor.value);
+    });
+
+    elements.magicSelect.addEventListener('change', () => {
+        applyMagicPreset(elements.magicSelect.value);
+    });
+
+    setColorControlAvailability();
+};
+
 const bindWindowControls = () => {
     elements.minimizeButton.addEventListener('click', () => {
         api?.minimizeWindow?.();
@@ -476,13 +674,38 @@ const bindRemoteRolls = () => {
 
         const isLight = document.body.classList.contains('light-theme');
         const defaultThemeColor = isLight ? '#7b55ad' : '#a78bfa';
+        const remoteTheme = AVAILABLE_THEMES.has(options?.theme)
+            ? options.theme
+            : state.theme;
+        const remoteColor = /^#[0-9a-f]{6}$/i.test(options?.themeColor)
+            ? options.themeColor
+            : defaultThemeColor;
+        const remoteMagic = Object.hasOwn(MAGIC_PRESETS, options?.magic)
+            ? options.magic
+            : 'normal';
+        const remotePhysics = options?.physics && typeof options.physics === 'object'
+            ? options.physics
+            : {};
+
+        state.theme = remoteTheme;
+        state.themeColor = remoteColor;
+        state.magic = remoteMagic;
+        elements.themeSelect.value = remoteTheme;
+        elements.themeColor.value = remoteColor;
+        elements.magicSelect.value = remoteMagic;
+        setColorControlAvailability();
 
         Box.updateConfig({
-            ...(options || {}),
-            themeColor: options?.themeColor || defaultThemeColor
+            ...MAGIC_PRESETS[remoteMagic],
+            ...remotePhysics,
+            theme: remoteTheme,
+            themeColor: remoteColor
+        }).then(() => {
+            parseAndRoll(notation);
+        }).catch((error) => {
+            console.error('[Dice] Failed to prepare remote roll:', error);
+            elements.rollStatus.textContent = '远程骰子魔法施放失败';
         });
-
-        parseAndRoll(notation);
     });
 };
 
@@ -490,8 +713,13 @@ Box.init()
     .then(async () => {
         console.log('[Dice] Dice Box is ready.');
 
+        Box.onDieComplete = () => {
+            soundscape.onDieComplete();
+        };
+
         Box.onRollComplete = (results) => {
             console.log('[Dice] Roll complete:', results);
+            soundscape.complete();
             presentResults(results);
 
             if (api?.sendDiceRollComplete) {
@@ -502,6 +730,7 @@ Box.init()
         setupOrbitAnimations();
         bindStableViewportResize();
         bindWindowControls();
+        bindCustomizerControls();
         bindRollControls();
         bindRemoteRolls();
         setNotation(elements.notationInput.value);
@@ -512,6 +741,7 @@ Box.init()
     })
     .catch((error) => {
         console.error('[Dice] Failed to initialize Dice Box:', error);
+        soundscape.stop({ allowTail: false });
         elements.rollStatus.textContent = '3D 引擎启动失败';
         elements.resultDetail.textContent = '请关闭窗口后重新打开';
         signalReady();

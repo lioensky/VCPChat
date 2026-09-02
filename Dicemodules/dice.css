@@ -556,6 +556,78 @@ body.is-rolling .status-orb {
     animation: pool-count-pop 420ms cubic-bezier(0.2, 0.85, 0.3, 1.35);
 }
 
+.dice-customizer {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) 62px minmax(0, 1fr);
+    gap: 6px;
+}
+
+.customizer-field {
+    display: grid;
+    min-width: 0;
+    height: 38px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    padding: 0 9px;
+    border: 1px solid var(--dice-stroke);
+    border-radius: 12px;
+    color: var(--dice-muted);
+    background: rgba(255, 255, 255, 0.025);
+    font-size: 8px;
+    letter-spacing: 0.05em;
+}
+
+.customizer-field select {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    color: var(--primary-text, #fff);
+    background: transparent;
+    font-size: 9px;
+    cursor: pointer;
+    outline: none;
+}
+
+.customizer-field select option {
+    color: var(--primary-text, #fff);
+    background: var(--secondary-bg, #181421);
+}
+
+.color-field {
+    grid-template-columns: auto 22px;
+    padding-right: 7px;
+    padding-left: 8px;
+}
+
+#theme-color {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--dice-stroke);
+    border-radius: 7px;
+    background: transparent;
+    cursor: pointer;
+}
+
+#theme-color::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+#theme-color::-webkit-color-swatch {
+    border: 0;
+    border-radius: 6px;
+}
+
+.color-field.is-disabled {
+    opacity: 0.42;
+}
+
+.color-field.is-disabled #theme-color {
+    cursor: not-allowed;
+}
+
 .roll-composer {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 100px;
@@ -886,6 +958,25 @@ body.is-rolling .roll-button-icon {
     .quick-die small,
     .deck-footer {
         display: none;
+    }
+
+    .dice-customizer {
+        grid-template-columns: minmax(0, 1.3fr) 48px minmax(0, 1fr);
+    }
+
+    .customizer-field {
+        height: 32px;
+        padding-right: 7px;
+        padding-left: 7px;
+    }
+
+    .customizer-field > span {
+        display: none;
+    }
+
+    .color-field {
+        display: flex;
+        justify-content: center;
     }
 
     .notation-field,
