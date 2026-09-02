@@ -247,6 +247,14 @@ dsw 语义 CSS（单层级联）
 
 advanced-visibility/rust-visibility 薄包装并入渲染器统一的依赖求值（visibleIf 已声明，事件路径与投影路径最终同一求值器）；marker-registry 清单复核；§十三回填施工记录；评估 rebase 回 prb 的冲突面（预期集中在被删 pass 文件，"我们删了 vs 上游改了"，维持删除）。
 
+#### 13.4.1 施工记录（9d7ec5fd）
+
+- **可见性薄包装退役**：勘验确认 advanced-visibility.js / rust-visibility.js 均只是一行转调 `syncDependentRows(form)` 的薄包装（唯一消费方 typed-field-owners.js），而渲染器早在编译期把 `field.when` 声明为行的 `data-visible-when`（field-renderer.js `field.when.join(' && ')`），统一求值器就是 dependent-rows.js 的 `evaluateVisibleWhen/syncDependentRows`——事件路径（rust 的 change/input 监听与快照 apply、advanced 的 syncConditionalRows）与快照/降级路径（event-listeners.js、mainChatSettingsPresentationOwner.js）本就全部收敛于它。施工即删除两个包装文件，typed-field-owners 直调 `syncDependentRows`，事件路径与投影路径最终同一求值器成立；render-visibility.js 保留（旧式 id 表 + 时长输出镜像，非 data-visible-when 语义，不在本路线范围）。
+- **marker-registry 清单复核**（逐条对当前写入方核查）：`settingPrimitive` 的 owner 串仍列着 pass6 已删除的 settings/canonical-rows.js → 更正为当前写入方全集合（render/canonical-row.js + render/widgets.js + settings-bridge.js + agent-settings-bridge.js）并注记缘由；`vcpIcon` 的 owner 注记刷新（pass6 后 schema 面表单图标走 buildFormIcon 直出的 vcp-ui-icon 类名承载，vcpIcon 标记只剩 settings-bridge 搜索/关闭图标宿主 + lucide-adapter 转绘读取）；其余条目（vcpSchemaRendered、visibleWhen、vcpUiuxToggleMounted、vcpSelectRebuilding、vcpTypedPrimitiveMounted、typed/forum/autosave 族、agent 族）与写入方逐一吻合，无悬空登记。
+- **测试**：bridge-modules 两处包装导入断言改为文件删除守卫（防回潮）+ typed owners 不得再出现 syncAdvancedSettingsVisibility/syncRustAssistantVisibility 的负断言 + 必须直连 `import { syncDependentRows } from './settings/dependent-rows.js'` 的正断言；管线 import 清单同步（render-visibility + dependent-rows）。
+- **rebase 冲突面评估（merge-tree 试合并对 origin/main，merge-base 4c68ba66）**：我方 192 个改动文件中与上游交集仅 1 个文件（styles/setting/settings-group-sections.css），试用合并恰好 1 处冲突——我方群组设置浅色主题选择器组 vs 上游新增的 Windows/Chromium 原生 option 弹层配色块，二者语义无关、双方保留即可（非删除-vs-修改形态）。**原预期"被删 pass 文件 '我们删了 vs 上游改了' 的冲突零命中"**——上游未触碰任何 pass 模块/投影文件；M5 系列的全部退役面（uiux-switches/steppers/inputs/appearance-rows/select-projection/choice-controls/canonical-rows/form-icons/advanced-visibility/rust-visibility）在上游侧无改动，rebase 维持删除即可干净落地。
+- **验收**：全套 384 测试 382 过（2 例既有失败不回退）；八分区探针 45/45 三跑；像素 run1==run2 8/10 分区零差，对 pass6 末基线（5ef51862）同样 8/10 零差——voice-settings 4px 为已知 F9 胶囊反锯齿双向翻转（pass4/pass5/pass6 同先例，run1==run2 逐字节复现，非随机）；advanced-features 224px（"话题总结模型"标签"题"字 16×16 块）仅在 run1 出现、run2/run3 对基线零差——Chromium 字形栅格化瞬态竞态，本次改动不触碰任何文本节点，裁断为非回归。D6 复查干净。
+
 ### 13.5 总门禁与施工纪律
 
 沿用既有纪律：每阶段独立提交、中文 conventional commit、D6 红线、绝不 `git add -A`；全套测试不回退；每阶段八分区实机探针 + 像素对比 + 重启往返；像素基线随每阶段滚动更新（对比对象 = 上一阶段末截图）。M5-a 完成前不动渲染侧，M5-b 试点验收前不铺开 13.3。
