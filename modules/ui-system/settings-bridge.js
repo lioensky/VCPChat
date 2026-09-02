@@ -11,7 +11,7 @@
 // layout — native nav cells in the left rail, a header/options content column,
 // the original form as the business source, and autosave status in the header.
 
-import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, mountUiuxSwitches, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
+import { ensurePresentationScope, takePresentationScope, isPresentationDestroyed, markPresentationDestroyed, enhance, uniqueSettingsKey, selectProjection, releaseDisconnectedControllers, releaseAllControllers, enhancedControllerCount, bridgeScope } from './settings/bridge-shared.js';
 import { mountSettingsAutosave, flushLegacyAutosave, teardownLegacyAutosave } from './settings/autosave.js';
 import { claimSaveCoordinator, getSaveCoordinator } from './settings/save-coordinator.js';
 import { mountCanonicalSettingsRows } from './settings/canonical-rows.js';
@@ -219,7 +219,7 @@ function enhanceGlobalSettings(root, form) {
         {
             name: 'canonical-rows',
             before: ['uiux-inputs', 'appearance-rows', 'global-pill-steppers',
-                'global-typed-primitives', 'legacy-range-pass', 'uiux-switches',
+                'global-typed-primitives', 'legacy-range-pass',
                 'uiux-disclosures', 'agent-name-fields'],
             run: () => mountCanonicalSettingsRows(form),
         },
@@ -279,7 +279,8 @@ function enhanceGlobalSettings(root, form) {
             name: 'legacy-range-pass',
             run: () => form.querySelectorAll('input[type="range"]').forEach(range => { if (!['appearanceSidebarAvatarSize', 'appearanceSidebarRowHeight', 'appearanceCustomRadius', 'streamAnimationDurationMs'].includes(range.id)) enhance('Range', range); }),
         },
-        { name: 'uiux-switches', run: () => mountUiuxSwitches(form) },
+        // M5-c pass1：uiux-switches 退役——开关行的 Toggle 原语 holder 由
+        // field-renderer 直出（fieldProjection 'toggle' 字段仍走运行时收编）。
         {
             name: 'uiux-disclosures',
             run: () => {

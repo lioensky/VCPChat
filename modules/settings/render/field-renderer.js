@@ -15,6 +15,7 @@
 import { walkFields } from '../schema/kernel.js';
 import { el } from './shared.js';
 import { canonicalizeRenderedRow } from './canonical-row.js';
+import { fieldProjection } from '../../ui-system/settings/field-registry.js';
 
 function applyRowAnchors(row, field) {
     if (field.rowId) row.id = field.rowId;
@@ -79,6 +80,19 @@ function buildSwitchControl(doc, field) {
     if (field.checked) input.checked = true;
     const slider = doc.createElement('span');
     slider.className = 'slider round';
+    // M5-c pass1：开关行直出 Toggle 原语 holder——mountToggle 的最终产物
+    //（span.vcp-uiux-toggle 包裹 input + 内联隐藏旧 .slider）在编译期就地
+    // 产出，管线 uiux-switches pass 退役（Toggle 样式表由真实原语挂载方
+    // 首次挂载时注入，同一管线 tick 内完成）。typed toggle 收编字段（主页
+    // 视觉双开关）仍由各自挂载方运行时收编，这里保持原语就绪裸结构。
+    if (fieldProjection(field.key) !== 'toggle') {
+        const wrap = doc.createElement('span');
+        wrap.className = 'vcp-uiux-toggle';
+        wrap.append(input);
+        slider.style.display = 'none';
+        holder.append(wrap, slider);
+        return holder;
+    }
     holder.append(input, slider);
     return holder;
 }
