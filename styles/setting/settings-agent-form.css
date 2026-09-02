@@ -46,25 +46,30 @@
 #agentSettingsForm :not(.vcp-uiux-color-pair) > input[type="password"]:not(.input),
 #agentSettingsForm :not(.vcp-uiux-color-pair) > input[type="number"]:not(.input),
 #agentSettingsForm :not(.vcp-uiux-color-pair) > input[type="file"],
-#agentSettingsForm textarea,
 #agentSettingsForm select:not(.vcp-uiux-select-native) {
     width: 100%;
+    height: 32px;
+    min-height: 32px;
     box-sizing: border-box;
-    padding: 9px 10px;
+    padding: 0 10px;
     margin-bottom: 0;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
+    border-radius: var(--vcp-ui-radius-sm, 8px);
+    border: 1px solid var(--dsw-alias-border-l2, var(--border-color));
+    background-color: var(--dsw-alias-bg-layer-1, var(--input-bg));
+    color: var(--dsw-alias-label-primary, var(--primary-text));
+    font-size: 14px;
 }
-
-#agentSettingsForm input[type="file"] {
-    padding: 5px;
-}
-
 
 #agentSettingsForm textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin-bottom: 0;
+    border-radius: var(--vcp-ui-radius-sm, 8px);
+    border: 1px solid var(--dsw-alias-border-l2, var(--border-color));
+    background-color: var(--dsw-alias-bg-layer-1, var(--input-bg));
+    color: var(--dsw-alias-label-primary, var(--primary-text));
+    font-size: 14px;
     min-height: 80px;
     resize: vertical;
 }
@@ -79,24 +84,26 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: calc(100% + 2px);
-    margin-left: -2px;
+    width: 100%;
+    margin-left: 0;
     height: 37px;
+    min-height: 37px;
     padding: 0 12px;
     font-size: 0.95em;
     font-weight: 500;
     line-height: 1;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px !important;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
     cursor: pointer;
     white-space: nowrap;
     box-sizing: border-box;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     transition:
         background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
-        box-shadow var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
-        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
-        transform var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
+        color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
 }
 
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
@@ -104,117 +111,78 @@
 }
 
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: var(--highlight-text);
-    border-color: var(--highlight-text);
-    color: var(--text-on-accent);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+    color: var(--highlight-text);
+    box-shadow: none !important;
 }
 
 #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
-}
-
-#agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
-    background: var(--danger-color);
-    border-color: var(--danger-color);
-    color: #ffffff;
+    color: var(--vcp-ui-danger, #ef4444);
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
-        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
-        inset 0 0 1px rgba(0, 0, 0, 0.08);
+    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 85%, rgba(255, 255, 255, 0.7));
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+    color: var(--highlight-text);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: var(--highlight-text);
-    border-color: var(--highlight-text);
-    color: #ffffff;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 95%, rgba(0, 0, 0, 0.08));
+    border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
+    color: var(--highlight-text);
+    box-shadow: none !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
-        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
-    backdrop-filter: blur(10px) saturate(130%);
-    -webkit-backdrop-filter: blur(10px) saturate(130%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
-        inset 0 0 1px rgba(0, 0, 0, 0.08);
+    background: var(--dsw-alias-bg-layer-1, #ffffff);
+    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, transparent);
+    color: var(--vcp-ui-danger, #ef4444);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
-    background: var(--danger-color);
-    border-color: var(--danger-color);
-    color: #ffffff;
+    background: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 10%, #ffffff);
+    border-color: var(--vcp-ui-danger, #ef4444);
+    color: var(--vcp-ui-danger, #ef4444);
+    box-shadow: none !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
-        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
-    );
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    background: var(--dsw-alias-bg-layer-2, #262628);
+    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+    color: var(--highlight-text);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: var(--highlight-text);
-    border-color: var(--highlight-text);
-    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    background: var(--dsw-alias-interactive-bg-hover, #323235);
+    border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
+    color: #ffffff;
+    box-shadow: none !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
-    );
-    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
-    backdrop-filter: blur(8px) saturate(118%);
-    -webkit-backdrop-filter: blur(8px) saturate(118%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 35%, transparent);
+    color: var(--vcp-ui-danger, #ef4444);
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
-    background: var(--danger-color);
-    border-color: var(--danger-color);
+    background: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 18%, #1e1e20);
+    border-color: var(--vcp-ui-danger, #ef4444);
     color: #ffffff;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    box-shadow: none !important;
 }
 
 #selectAgentPromptForSettings {

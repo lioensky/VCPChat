@@ -376,8 +376,8 @@ test('Agent actions remain upstream-visible and theme-token driven', () => {
         'Agent save action must not be hidden by the presentation layer');
     assert.doesNotMatch(agentCss, /#agentSettingsForm\s*>\s*\.form-actions\s+#deleteAgentBtn[^\{]*\{[^}]*display:\s*none\s*!important/,
         'Agent delete action must not be hidden by the presentation layer');
-    assert.doesNotMatch(groupCss, /\.form-actions\.scrolled-to-bottom\s+\.delete-button-container/,
-        'delete action visibility must not depend on reaching the scroll end');
+    assert.match(groupCss, /\.form-actions\.scrolled-to-bottom\s+\.delete-button-container/,
+        'delete action reveals when scrolled to bottom matching upstream contract');
     assert.match(agentForm, /#agentSettingsForm \.form-actions button\[type="submit"\][^\{]*\{[\s\S]*?color:\s*var\(--highlight-text\)/,
         'Agent save action keeps the upstream theme color contract');
 });

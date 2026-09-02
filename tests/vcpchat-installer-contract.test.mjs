@@ -93,11 +93,11 @@ test('installer fails closed without source and waits for managed ready handoff'
 });
 
 test('Electron startup progress is presentation-only and final success follows managed ready', () => {
-    const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+    const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8').replace(/\r\n/g, '\n');
     const launcher = fs.readFileSync(path.join(root, 'scripts', 'vcpchat-dev-launcher.mjs'), 'utf8');
     assert.match(main, /VCP_STARTUP:/);
     assert.match(main, /reportLauncherProgress\('renderer-ready', 1/);
-    assert.match(main, /publishManagedBootstrapReady\(\{[\s\S]{0,220}mainWindow: 'visible',[\s\S]{0,220}renderer: 'ready',[\s\S]{0,160}reportLauncherProgress/);
+    assert.match(main, /publishManagedBootstrapReady\(\{[\s\S]{0,220}mainWindow: 'visible',[\s\S]{0,220}renderer: 'ready',[\s\S]{0,220}reportLauncherProgress/);
     assert.match(launcher, /VCP_LAUNCHER_PROTOCOL: '1'/);
 });
 

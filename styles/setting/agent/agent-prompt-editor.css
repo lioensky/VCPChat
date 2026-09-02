@@ -290,19 +290,10 @@ body[data-vcp-theme="light"]
   [id="agentSettingsContainer"]
   .system-prompt-container
   .prompt-mode-button:not(.vcp-uiux-button).active {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--highlight-text) 92%, rgba(255, 255, 255, 0.18)),
-    color-mix(in srgb, var(--highlight-text) 80%, rgba(255, 255, 255, 0.08))
-  );
-  border-color: color-mix(
-    in srgb,
-    var(--highlight-text) 90%,
-    rgba(51, 51, 51, 0.16)
-  );
-  color: var(--text-on-accent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 30%, transparent);
+  background: var(--dsw-alias-bg-layer-1, #ffffff) !important;
+  border-color: transparent !important;
+  color: var(--dsw-alias-label-primary, #111111) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
 }
 
 /* Dark theme styles */
@@ -427,16 +418,10 @@ body[data-vcp-theme="dark"]
   [id="agentSettingsContainer"]
   .system-prompt-container
   .prompt-mode-button:not(.vcp-uiux-button).active {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--highlight-text) 86%, rgba(255, 255, 255, 0.14)),
-    color-mix(in srgb, var(--highlight-text) 74%, rgba(255, 255, 255, 0.05))
-  );
-  border-color: var(--highlight-text);
-  color: var(--text-on-accent);
-  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
-    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
-    0 0 0 1px color-mix(in srgb, var(--highlight-text) 32%, transparent);
+  background: var(--dsw-alias-bg-layer-2, #2c2c2e) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Focus states - Light theme */
