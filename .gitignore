@@ -15,6 +15,7 @@ AppData/LoomApps/*
 !AppData/LoomApps/example-mobile/**
 
 node_modules/
+/node_modules
 
 .env
 !audio_engine/.env
