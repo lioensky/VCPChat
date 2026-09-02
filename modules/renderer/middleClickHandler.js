@@ -1045,8 +1045,7 @@ function updateMiddleClickQuickAction(newAction) {
     // Save settings
     if (mainRendererReferences.electronAPI && mainRendererReferences.electronAPI.saveSettings) {
         mainRendererReferences.electronAPI.saveSettings({
-            ...globalSettings,
-            middleClickQuickAction: newAction
+            __vcpSettingsOps: [{ op: 'set', path: ['middleClickQuickAction'], value: newAction }],
         }).then(result => {
             if (result.success) {
                 const actionNames = {

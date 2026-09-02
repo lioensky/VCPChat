@@ -19,6 +19,9 @@ const uiManager = (() => {
     let uiHelperCapability = null;
     let disposed = false;
     let generation = 0;
+    const saveSettingPatch = (patch) => electronAPI?.saveSettings?.({
+        __vcpSettingsOps: Object.entries(patch || {}).map(([key, value]) => ({ op: 'set', path: [key], value })),
+    });
     let themeDisposer = null;
     const tasks = new Set();
     const fallbackTimers = new Set();
@@ -76,7 +79,7 @@ const uiManager = (() => {
                     const nextSettings = { ...currentSettings, [settingKey]: roundedWidth };
                     globalSettingsRef.set(nextSettings);
                     try {
-                        await electronAPI.saveSettings(nextSettings);
+                        await saveSettingPatch({ [settingKey]: roundedWidth });
                         console.log('Sidebar width saved to settings.');
                     } catch (error) {
                         console.error('Failed to save sidebar width:', error);
@@ -391,7 +394,7 @@ const uiManager = (() => {
                     leftSidebar.classList.remove('avatar-only');
                     const settings = { ...globalSettingsRef.get(), sidebarAvatarOnly: false };
                     globalSettingsRef.set(settings);
-                    electronAPI?.saveSettings?.(settings).catch(error => {
+                    saveSettingPatch({ sidebarAvatarOnly: false })?.catch(error => {
                         console.error('[UIManager] Failed to save compact sidebar state:', error);
                     });
                     switchToTab('settings');
@@ -436,7 +439,7 @@ const uiManager = (() => {
             leftSidebar.classList.remove('avatar-only');
             const settings = { ...globalSettingsRef.get(), sidebarAvatarOnly: false };
             globalSettingsRef.set(settings);
-            electronAPI?.saveSettings?.(settings).catch(error => {
+            saveSettingPatch({ sidebarAvatarOnly: false })?.catch(error => {
                 console.error('[UIManager] Failed to save avatar-only sidebar state:', error);
             });
         }
