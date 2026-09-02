@@ -384,6 +384,15 @@ body[data-vcp-theme="light"] .app-tray-drawer-item:hover {
     transform: translateY(0) scale(1);
 }
 
+/* Keep the drawer painted while its owner runs the exit transition. The
+ * close path removes `.active` immediately to update semantics and focus;
+ * `.is-closing` carries only the visual transition until the timer removes it. */
+.app-tray-drawer.is-closing {
+    opacity: 0;
+    visibility: visible;
+    transform: translateY(10px) scale(0.95);
+}
+
 .app-tray-drawer-header {
     display: flex;
     justify-content: space-between;

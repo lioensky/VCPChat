@@ -129,6 +129,11 @@ const uiManager = (() => {
             body.classList.toggle('light-theme', shouldUseLight);
             body.classList.toggle('dark-theme', !shouldUseLight);
         }
+        // Theme selectors and the UI-system token contract both consume this
+        // attribute. Keep it in lockstep with the legacy classes so a theme
+        // update cannot leave Web Awesome scopes resolving the previous
+        // palette while the document visually reports the new mode.
+        if (body.dataset.vcpTheme !== theme) body.dataset.vcpTheme = theme;
 
         if (!channelAlreadyApplied) {
             themeChannel?.publish(

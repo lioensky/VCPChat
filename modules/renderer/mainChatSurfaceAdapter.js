@@ -33,7 +33,11 @@ function createStreamCapabilities(root, services) {
         },
         dispatchTerminal: detail => services.dispatchTerminal?.(detail),
         onProjectionSettled(value) {
-            services.notifySendStateChanged?.(value);
+            const terminal = value?.terminal;
+            const event = terminal
+                ? { type: terminal.kind === 'completed' ? 'completed' : terminal.kind, messageId: value.messageId, context: value.context }
+                : null;
+            services.notifySendStateChanged?.({ ...value, event });
         },
         onSettled(value) {
             // 最终 outcome 发布后的幂等兜底，覆盖持久化失败等异常路径。

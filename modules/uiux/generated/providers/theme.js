@@ -163,8 +163,6 @@ export function mountThemePresenter(root, service, context) {
             presenterOwners.set(documentRef, remaining);
         else {
             presenterOwners.delete(documentRef);
-            if (body?.dataset.vcpTheme === normalizeThemeSnapshot(service.theme.getSnapshot()).value.effective)
-                delete body.dataset.vcpTheme;
             if (createdMeta)
                 ownedMeta.remove();
         }

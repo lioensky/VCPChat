@@ -521,10 +521,10 @@ async function cycleAgentSettings(page, label, { expectEnhanced = true } = {}) {
     assert.ok(state.promptNodes > 0, `${label}: agent settings prompt editor disappeared: ${JSON.stringify(state)}`);
     if (expectEnhanced) {
         assert.ok(state.enhanced > 0, `${label}: agent settings adapters disappeared: ${JSON.stringify(state)}`);
-        assert.equal(state.nativeSettingsSelects, state.settingsSelects,
-            `${label}: document-wide Select observer captured a settings control: ${JSON.stringify(state)}`);
-        assert.equal(state.settingsSelectProxies, 0,
-            `${label}: settings form retained Web Awesome Select proxies: ${JSON.stringify(state)}`);
+        assert.equal(state.nativeSettingsSelects, 0,
+            `${label}: agent settings Selects unexpectedly fell back to native controls: ${JSON.stringify(state)}`);
+        assert.equal(state.settingsSelectProxies, state.settingsSelects,
+            `${label}: agent settings Select projection count drifted: ${JSON.stringify(state)}`);
     } else {
         assert.equal(state.enhanced, 0, `${label}: Next settings adapters leaked into Classic: ${JSON.stringify(state)}`);
     }

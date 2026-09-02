@@ -33,6 +33,7 @@ export function mountMenu(anchor, props, scope) {
         throw new TypeError('Menu requires a connected anchor, items and scope.');
     ensureStyles();
     const menuScope = scope.child('uiux-menu');
+    const ownerWindow = anchor.ownerDocument?.defaultView ?? (typeof window !== 'undefined' ? window : null);
     const parent = anchor.parentNode;
     const originalHasPopup = anchor.getAttribute('aria-haspopup');
     const originalExpanded = anchor.getAttribute('aria-expanded');
@@ -202,9 +203,9 @@ export function mountMenu(anchor, props, scope) {
         let left = props.side === 'right' ? rect.right + 4 : props.align === 'end' ? rect.right - width : rect.left;
         let top = props.side === 'right' ? rect.top : props.side === 'top' ? rect.top - height - 4 : rect.bottom + 4;
         if (width > 0)
-            left = Math.min(Math.max(left, VIEWPORT_MARGIN), window.innerWidth - width - VIEWPORT_MARGIN);
+            left = Math.min(Math.max(left, VIEWPORT_MARGIN), (ownerWindow?.innerWidth ?? 0) - width - VIEWPORT_MARGIN);
         if (height > 0)
-            top = Math.min(Math.max(top, VIEWPORT_MARGIN), window.innerHeight - height - VIEWPORT_MARGIN);
+            top = Math.min(Math.max(top, VIEWPORT_MARGIN), (ownerWindow?.innerHeight ?? 0) - height - VIEWPORT_MARGIN);
         list.style.left = `${left}px`;
         list.style.top = `${top}px`;
     };
@@ -241,10 +242,10 @@ export function mountMenu(anchor, props, scope) {
         openReleases.push(() => document.removeEventListener('pointerdown', onPointerDown));
         openReleases.push(() => document.removeEventListener('keydown', onKeyDown));
         if (props.portal) {
-            window.addEventListener('scroll', place, true);
-            window.addEventListener('resize', place);
-            openReleases.push(() => window.removeEventListener('scroll', place, true));
-            openReleases.push(() => window.removeEventListener('resize', place));
+            ownerWindow?.addEventListener('scroll', place, true);
+            ownerWindow?.addEventListener('resize', place);
+            openReleases.push(() => ownerWindow?.removeEventListener('scroll', place, true));
+            openReleases.push(() => ownerWindow?.removeEventListener('resize', place));
         }
     };
     if (props.closeOnPointerLeave) {

@@ -1,17 +1,17 @@
 @layer vcp-ui.base {
     /* Shared state vocabulary. Components opt in with data-state/data-motion;
        business code remains responsible only for setting the attributes. */
-    [data-motion='enter'] {
+    .vcp-ui-scope [data-motion='enter'] {
         animation: vcp-motion-enter var(--vcp-motion-duration-standard)
             var(--vcp-motion-ease-standard) both;
     }
 
-    [data-motion='exit'] {
+    .vcp-ui-scope [data-motion='exit'] {
         animation: vcp-motion-exit var(--vcp-motion-duration-standard)
             var(--vcp-motion-ease-standard) both;
     }
 
-    [data-dragging], [data-dragging='true'] {
+    .vcp-ui-scope [data-dragging], .vcp-ui-scope [data-dragging='true'] {
         transition: none;
     }
 
@@ -27,11 +27,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    [data-motion='enter'], [data-motion='exit'] {
+    .vcp-ui-scope [data-motion='enter'], .vcp-ui-scope [data-motion='exit'] {
         animation: none;
     }
 
-    [data-motion='exit'] {
+    .vcp-ui-scope [data-motion='exit'] {
         opacity: 0;
     }
 
@@ -44,14 +44,14 @@
         transition: none;
     }
 
-    :is(.vcp-uiux-tooltip-bubble, .vcp-uiux-toast,
+    .vcp-ui-scope :is(.vcp-uiux-tooltip-bubble, .vcp-uiux-toast,
         .vcp-ui-skeleton-line, .next-ui-embedded-app-status .vcp-ui-icon,
         .agent-emotion-card::before, .agent-emotion-sweep,
         .flame-pulse, .ask-nova-pulse) {
         animation: none;
     }
 
-    :is(.sidebar, .agent-emotion-card, .agent-name::after,
+    .vcp-ui-scope :is(.sidebar, .agent-emotion-card, .agent-name::after,
         .settings-sidebar, .settings-section, .vcp-ui-async-boundary) {
         transition: none;
     }
