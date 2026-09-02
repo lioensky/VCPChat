@@ -16,6 +16,7 @@ import { applySchemaSurface, schemaSurfaceSections } from '../modules/settings/s
 import { mountCanonicalSettingsRows } from '../modules/ui-system/settings/canonical-rows.js';
 import { activateNumericStepperRow } from '../modules/uiux/generated/primitives/numeric-stepper-row.js';
 import { mountGlobalSteppers } from '../modules/ui-system/settings/global-input-upgrades.js';
+import { fieldProjection } from '../modules/ui-system/settings/field-registry.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' });
 global.document = dom.window.document;
@@ -487,6 +488,88 @@ test('步进器行直出结构 + 激活行为绑定（M5-c pass2：stepper 投�
     assert.equal(delayEditor.max, '5000');
 });
 
+
+test('输入原语包裹直出结构（M5-c pass3：uiux-inputs 退役）', () => {
+    const server = renderIntoForm(serverConnectionSection).form;
+    for (const id of ['vcpServerUrl', 'vcpApiKey', 'vcpLogUrl', 'fileKey', 'vcpLogKey']) {
+        const input = server.querySelector(`#${id}`);
+        const wrap = input.closest('span.vcp-uiux-input-wrap');
+        assert.ok(wrap, `#${id} 应被 Input 原语 wrap 直出包裹`);
+        assert.equal(wrap.className, 'vcp-uiux-input-wrap wrap vcp-uiux-input-fill', `#${id} wrap 类名与 mountInput 产物一致`);
+        assert.ok(input.classList.contains('input'), `#${id} 收编 input 类`);
+        assert.equal(input.style.getPropertyPriority('height'), 'important', `#${id} 内联守卫样式带 important`);
+        assert.equal(input.style.getPropertyValue('padding'), '0px 10px');
+    }
+    // 业务样式标记留在 input 上（wrap 不接管 data-vcp-style）。
+    const quickDelay = renderIntoForm(quickActionsSection).form.querySelector('#flowlockContinueDelay');
+    assert.equal(quickDelay.getAttribute('data-vcp-style'), '19');
+    assert.ok(quickDelay.closest('span.vcp-uiux-input-wrap'));
+    const voice = renderIntoForm(voiceSettingsSection).form;
+    for (const id of ['voiceInputShortcut', 'voiceNetworkProviderUrl', 'voiceLocalSovitsKey']) {
+        assert.ok(voice.querySelector(`#${id}`).closest('span.vcp-uiux-input-wrap'), `#${id} 应直出包裹`);
+    }
+    const advanced = renderIntoForm(advancedFeaturesSection).form;
+    assert.ok(advanced.querySelector('#contextSanitizerDepth').closest('span.vcp-uiux-input-wrap'), '数字输入同样直出包裹');
+    const selection = renderIntoForm(selectionAssistantSection).form;
+    for (const id of ['rustMinEventIntervalMs', 'rustMinDistance', 'rustClipboardCheckIntervalMs']) {
+        assert.ok(selection.querySelector(`#${id}`).closest('span.vcp-uiux-input-wrap'), `#${id} 应直出包裹`);
+    }
+    const quick = renderIntoForm(quickActionsSection).form;
+    assert.ok(quick.querySelector('#flowlockContinueDelay').closest('span.vcp-uiux-input-wrap'), 'quick-actions 数字应直出包裹');    const appearance = renderIntoForm(appearanceSettingsSection).form;
+    for (const id of ['chatBubbleMaxWidthWideDefault', 'chatBubbleMaxWidthWideNotifications', 'chatBubbleMaxWidthWideNarrow']) {
+        assert.ok(appearance.querySelector(`#${id}`).closest('span.vcp-uiux-input-wrap'), `宽屏数字组 ${id} 应直出包裹`);
+    }
+    for (const id of ['chatFontCustom', 'chatCodeFontCustom', 'chatDiaryFontCustom', 'chatToolFontCustom']) {
+        assert.ok(appearance.querySelector(`#${id}`).closest('span.vcp-uiux-input-wrap'), `场景字体自定义值 ${id} 应直出包裹`);
+    }
+    // raw 投影字段保持裸结构：chrome 归 typed owners 运行时收编。
+    const identity = renderIntoForm(userIdentitySection).form;
+    for (const [sectionForm, id] of [
+        [appearance, 'homeVisualTagline'],
+        [identity, 'adminUsername'], [identity, 'adminPassword'],
+        [identity, 'userAvatarBorderColorText'],
+        [identity, 'userNameTextColorText'],
+    ]) {
+        const control = sectionForm.querySelector(`#${id}`);
+        assert.ok(control, `raw 字段 #${id} 存在`);
+        assert.equal(control.closest('span.vcp-uiux-input-wrap'), null, `raw 投影字段 #${id} 不静态包裹`);
+    }
+    // 步进器/字号行编辑器保持原语内轻量代理，不被通用 wrap 套框。
+    const render = renderIntoForm(renderSettingsSection).form;
+    assert.equal(render.querySelector('#minChunkBufferSize').closest('span.vcp-uiux-input-wrap'), null, '步进器业务 input 不包裹');
+    assert.equal(render.querySelector('.vcp-uiux-numeric-stepper-row-input').closest('span.vcp-uiux-input-wrap'), null, '步进器编辑器不包裹');
+});
+
+test('agent-name-wrapper 直出 Field 增强挂载产物（M5-c pass3：agent-name-fields 只剩行为绑定）', () => {
+    const { form } = renderIntoForm(userIdentitySection);
+    const wrapper = form.querySelector('.agent-name-wrapper');
+    assert.ok(wrapper, '用户名行存在');
+    assert.ok(wrapper.classList.contains('vcp-ui-settings-field'), 'Field 增强类直出');
+    assert.equal(wrapper.dataset.state, 'error', '初始校验态直出（空 required 输入的挂载态）');
+    const input = form.querySelector('#userName');
+    assert.equal(input.getAttribute('aria-invalid'), 'true', 'aria-invalid 直出');
+    const wrap = input.closest('span.vcp-uiux-input-wrap');
+    assert.ok(wrap, 'userName 应被 Input 原语 wrap 直出包裹');
+    assert.ok(wrap.classList.contains('vcp-uiux-input-fill'));
+    assert.equal(wrap.previousElementSibling?.className, 'vcp-uiux-identity-name-display', 'wrap 顶替原 input 位置（display 与 label 之间）');
+});
+
+test('直出完备性：退役的通用包裹 pass 对全部编译产物空转（M5-c pass3 不变量）', () => {
+    const selector = 'input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])';
+    const rawProjection = new Set(['homeVisualTagline', 'userAvatarBorderColorText', 'userNameTextColorText', 'adminUsername', 'adminPassword']);
+    for (const sectionDescriptor of schemaSurfaceSections()) {
+        const { form } = renderIntoForm(sectionDescriptor);
+        for (const control of form.querySelectorAll(selector)) {
+            if (control.classList.contains('vcp-uiux-numeric-stepper-row-input')) continue;
+            if (control.classList.contains('vcp-uiux-font-size-row-value')) continue;
+            if (control.closest('.model-input-container')) continue;
+            if (rawProjection.has(control.id)) continue;
+            if (fieldProjection(control.id) === 'stepper') continue;
+            assert.ok(control.closest('span.vcp-uiux-input-wrap'),
+                `${sectionDescriptor.key}：#${control.id || control.name || '(anon)'} 应全部直出包裹（pass 空转不变量）`);
+        }
+    }
+});
 
 test('store 快照：多类型现值迁移不丢失', () => {
     const { form, host } = renderIntoForm(quickActionsSection);

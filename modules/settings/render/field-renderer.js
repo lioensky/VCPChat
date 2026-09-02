@@ -55,6 +55,38 @@ function buildInputBase(doc, field, styleValue) {
     return input;
 }
 
+// M5-c pass3：输入原语包裹直出——单行文本/数字输入在编译期就地产出
+// uiux Input 原语（window.VCPUIUX.mountInput）的终态产品：span 包裹 +
+// input.input 类 + 内联守卫样式（转录自原语挂载，锁进 settings-schema-render
+// 直出结构断言），管线 uiux-inputs pass 退役。Input 样式表仍由真实原语
+// 挂载方（typed owners / 收编路径）在同一管线 tick 注入。raw 投影字段
+// （凭据/寄语/颜色对）的 chrome 归 typed owner 运行时挂载，这里不包裹。
+const INPUT_GUARD_STYLES = [
+    ['box-sizing', 'border-box'],
+    ['height', '22px'],
+    ['min-height', '0'],
+    ['max-height', 'none'],
+    ['border', '0'],
+    ['border-radius', '0'],
+    ['padding', '0 10px'],
+    ['line-height', '22px'],
+];
+
+function isRawProjectionField(field) {
+    return field?.key ? fieldProjection(field.key) === 'raw' : false;
+}
+
+export function buildInputPrimitiveWrap(doc, input) {
+    input.classList.add('input');
+    for (const [name, value] of INPUT_GUARD_STYLES) {
+        input.style.setProperty(name, value, 'important');
+    }
+    const wrap = doc.createElement('span');
+    wrap.className = 'vcp-uiux-input-wrap wrap vcp-uiux-input-fill';
+    wrap.append(input);
+    return wrap;
+}
+
 function buildTextarea(doc, field) {
     const node = doc.createElement('textarea');
     node.id = field.key;
@@ -152,7 +184,7 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
                     row.append(buildStepperControl(doc, field, groupedInput));
                     return row;
                 }
-                row.append(buildLabel(doc, field, field.labelStyle), groupedInput);
+                row.append(buildLabel(doc, field, field.labelStyle), buildInputPrimitiveWrap(doc, groupedInput));
                 const hint = buildHint(doc, field, field.hintStyle ?? 4);
                 if (hint) row.append(hint);
                 return row;
@@ -165,7 +197,7 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
                 // title/description 承担（旧 label 会被挂载替换，不再输出）。
                 row.append(buildStepperControl(doc, field, plainInput));
             } else {
-                row.append(buildLabel(doc, field, field.labelStyle), plainInput);
+                row.append(buildLabel(doc, field, field.labelStyle), buildInputPrimitiveWrap(doc, plainInput));
             }
             const hint = buildHint(doc, field, field.hintStyle ?? 4);
             if (hint) row.append(hint);
@@ -179,12 +211,14 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
                 row.setAttribute('for', field.key);
                 const span = doc.createElement('span');
                 span.textContent = field.label;
-                row.append(span, buildInputBase(doc, field, field.controlStyle));
+                const rowLabelInput = buildInputBase(doc, field, field.controlStyle);
+                row.append(span, isRawProjectionField(field) ? rowLabelInput : buildInputPrimitiveWrap(doc, rowLabelInput));
                 return row;
             }
             const row = el(doc, 'div', 'vcp-settings-row' + (field.stacked ? ' vcp-settings-row-stacked' : ''), field.rowStyle);
             applyRowAnchors(row, field);
-            row.append(buildLabel(doc, field, field.labelStyle), buildInputBase(doc, field, field.controlStyle));
+            const textInput = buildInputBase(doc, field, field.controlStyle);
+            row.append(buildLabel(doc, field, field.labelStyle), isRawProjectionField(field) ? textInput : buildInputPrimitiveWrap(doc, textInput));
             const hint = buildHint(doc, field, field.hintStyle ?? 4);
             if (hint) row.append(hint);
             return row;
@@ -355,7 +389,7 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
                 if (isStepperField(child)) {
                     cell.append(buildStepperControl(doc, child, cellInput));
                 } else {
-                    cell.append(buildLabel(doc, child, child.labelStyle ?? 18), cellInput);
+                    cell.append(buildLabel(doc, child, child.labelStyle ?? 18), buildInputPrimitiveWrap(doc, cellInput));
                 }
                 row.append(cell);
             }
@@ -367,7 +401,8 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
             row.append(buildLabel(doc, field, field.labelStyle ?? 11));
             for (const child of field.fields) {
                 const cell = doc.createElement('div');
-                cell.append(buildLabel(doc, child, child.labelStyle ?? 18), buildNumberInput(doc, child, child.controlStyle ?? 19));
+                const cellInput = buildNumberInput(doc, child, child.controlStyle ?? 19);
+                cell.append(buildLabel(doc, child, child.labelStyle ?? 18), buildInputPrimitiveWrap(doc, cellInput));
                 row.append(cell);
             }
             const hint = buildHint(doc, field, field.hintStyle ?? 4);

@@ -1,8 +1,8 @@
 // field-registry — the single descriptor table for settings fields that
 // adapters special-case by id.  Before this registry the same knowledge lived as
 // string comparisons scattered across the bridge and the settings modules
-// (an exclusion list in mountUiuxInputs, STEPPER_FIELDS here, skip ids in
-// mountUiuxSwitches).  Adapters consult the table instead of hardcoding
+// (exclusion lists in the retired projection passes, STEPPER_FIELDS here, skip
+// ids in mountUiuxSwitches).  Adapters consult the table instead of hardcoding
 // ids; ownership of each field stays with its dedicated mount function.
 //
 // 阶段 4 裁剪版 schema（对齐 uiux §2.3；不引入 schemastery/cordis）：
@@ -20,16 +20,18 @@
 //                 声明，本阶段不占用任何键。
 //
 // projection names who owns a field's presentation chrome:
-//   'stepper' — NumericStepperRow adopts the host wholesale (host.replaceChildren)
-//               and exposes the value through the stepper capsule; an Input wrap
-//               around the native input would become the stepper's mount host
-//               and collapse the row layout.
-//   'raw'     — the typed field owner keeps the bare native control it listens
-//               on; a generic Input wrap would draw a second frame around it.
-//   'toggle'  — a typed toggle adapter owns the switch; the generic switch pass
-//               must leave it alone.
-//   'input'   — the generic Uiux Input primitive may wrap it (default for
-//               fields absent from the table).
+//   'stepper' — NumericStepperRow structure is emitted statically by the
+//               field-renderer (M5-c pass2 直出) and the runtime only binds
+//               its behavior; an Input wrap around the native input would
+//               collapse the row layout.
+//   'raw'     — the typed field owner mounts the field's chrome itself at
+//               runtime (or keeps it bare); the renderer emits no generic
+//               Input wrap for it.
+//   'toggle'  — a typed toggle adapter owns the switch; the renderer emits
+//               the bare switch structure for it.
+//   'input'   — the renderer emits the Uiux Input wrap statically (M5-c
+//               pass3 直出); typed mounts converge on the existing wrap.
+//               This is the default for fields absent from the table.
 const DEFAULT_HOME_TAGLINE = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
 
 const FIELDS = Object.freeze({

@@ -156,7 +156,7 @@ test('each extracted function has exactly one home (entry or module, never both)
         // 2026-08-31 domain split homes.
         'enhanceForm', 'mountTypedModelPicker', 'mountTypedSettingsConsumer', 'mountTypedFieldOwner',
         'mountTypedForumFieldOwner', 'addTypedNetworkPathInput', 'ensureTypedSettingsService',
-        'mountUiuxSwitches', 'mountUiuxInputs', 'mountUiuxDisclosures',
+        'mountUiuxSwitches', 'mountUiuxDisclosures',
         'enhance', 'uniqueSettingsKey', 'mountSettingsShell', 'flushTypedOwners',
     ];
     const moduleSource = [
@@ -472,10 +472,7 @@ test('global typed primitive mounts keep one lifecycle registration per primitiv
     const identity = read(path.join(settingsDir, 'identity-controls.js'));
     const choices = read(path.join(settingsDir, 'choice-controls.js'));
     const forum = read(path.join(settingsDir, 'forum-controls.js'));
-    const globalTypedOwners = entry.slice(
-        entry.indexOf('function mountUiuxInputs'),
-        entry.indexOf('// R2-02C:'),
-    ) + '\n' + appearance + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + choices + '\n' + forum;
+    const globalTypedOwners = appearance + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + choices + '\n' + forum + '\n' + read(path.join(settingsDir, 'global-input-upgrades.js'));
     // Each generated primitive calls scope.own() internally.  The bridge can
     // own its DOM marker, but must not register the returned release again:
     // that adds a second resource to every Settings-open cycle and asks the
@@ -643,7 +640,7 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     const fn = entry.slice(entry.indexOf('function enhanceGlobalSettings(root, form)'), entry.indexOf('runSettingsPipeline(steps);'));
     assert.match(entry, /import \{ runSettingsPipeline \} from '\.\/settings\/pipeline\.js';/,
         'the entry executes the shared declarative pipeline runner');
-    for (const name of ['canonical-rows', 'uiux-inputs', 'appearance-rows',
+    for (const name of ['canonical-rows', 'appearance-rows',
         'global-pill-steppers', 'select-projection', 'global-typed-primitives', 'topic-summary-picker',
         'forum-field-owner', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
@@ -653,12 +650,17 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     // 被步进器/外观原语收编，Range enhance 扫描无可增强对象，pass 随 pass2 删除。
     assert.doesNotMatch(fn, /name: 'legacy-range-pass'/,
         'the vacuous legacy Range pass must stay retired');
+    // M5-c pass3：uiux-inputs 退役——单行输入的 Input 原语包裹由渲染器直出
+    // （render/field-renderer.js buildInputPrimitiveWrap），包裹扫描无可包裹
+    // 对象，pass 随 pass3 删除；raw 投影字段仍由 typed owners 运行时收编。
+    assert.doesNotMatch(fn, /name: 'uiux-inputs'/,
+        'the retired generic Input pass must stay retired');
     // The two documented ordering hazards stay explicit edges, not comments.
     assert.match(fn, /name: 'global-pill-steppers',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
         'pill/stepper projections must declare precedence over the select projection');
     assert.match(fn, /name: 'appearance-rows',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
         'appearance projections must declare precedence over the catch-all select projection');
-    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['uiux-inputs'/,
+    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['appearance-rows'/,
         'row-consuming passes must declare their dependence on canonical rows');
 });
 

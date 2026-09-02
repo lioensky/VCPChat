@@ -5,6 +5,7 @@
 // uiux-disclosures、identity-controls、动画预览监听、appearance-controls、
 // choice-controls）按类名/id 接管。后续阶段组件化后从这里收编。
 import { el } from './shared.js';
+import { buildInputPrimitiveWrap } from './field-renderer.js';
 
 export function buildUserProfileCard(doc) {
     const card = el(doc, 'div', 'vcp-uiux-user-profile-card');
@@ -43,7 +44,11 @@ export function buildUserProfileCard(doc) {
     fileInput.setAttribute('data-vcp-style', '2');
     avatarWrapper.append(img, overlay, fileInput);
     main.append(avatarWrapper);
-    const nameWrapper = el(doc, 'div', 'agent-name-wrapper');
+    const nameWrapper = el(doc, 'div', 'agent-name-wrapper vcp-ui-settings-field');
+    // M5-c pass3：Field 增强的挂载产物（vcp-ui-settings-field 类 + 初始校验
+    // 态）在编译期就地产出；运行期 agent-name-fields 步只剩校验态行为绑定
+    // （invalid/input/change → data-state/aria-invalid 重同步）。
+    nameWrapper.dataset.state = 'error';
     const nameLabel = doc.createElement('label');
     nameLabel.setAttribute('for', 'userName');
     nameLabel.textContent = '用户名:';
@@ -76,7 +81,8 @@ export function buildUserProfileCard(doc) {
     nameInput.name = 'userName';
     nameInput.placeholder = '您的用户名';
     nameInput.required = true;
-    nameWrapper.append(nameLabel, nameDisplay, nameInput);
+    nameInput.setAttribute('aria-invalid', 'true');
+    nameWrapper.append(nameLabel, nameDisplay, buildInputPrimitiveWrap(doc, nameInput));
     main.append(nameWrapper);
     card.append(main, buildUserStyleCollapsible(doc));
     return card;
@@ -355,7 +361,7 @@ function buildScenarioFontControls(doc, { presetRowId, presetId, optionKey, cust
     input.name = customId;
     input.placeholder = placeholder;
     input.setAttribute('aria-label', ariaLabel);
-    customRow.append(input);
+    customRow.append(buildInputPrimitiveWrap(doc, input));
     const controls = el(doc, 'div', 'scenario-preview-controls');
     controls.append(presetRow, customRow);
     return controls;

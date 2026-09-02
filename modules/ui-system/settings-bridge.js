@@ -25,7 +25,6 @@ import { mountIdentityColorPairs } from './settings/identity-controls.js';
 import { mountChoiceControls } from './settings/choice-controls.js';
 import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
 import { mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
-import { fieldProjection } from './settings/field-registry.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
 import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
@@ -218,19 +217,10 @@ function enhanceGlobalSettings(root, form) {
         { name: 'save-coordinator', run: () => claimSaveCoordinator(form) },
         {
             name: 'canonical-rows',
-            before: ['uiux-inputs', 'appearance-rows', 'global-pill-steppers',
+            before: ['appearance-rows', 'global-pill-steppers',
                 'global-typed-primitives',
                 'uiux-disclosures', 'agent-name-fields'],
             run: () => mountCanonicalSettingsRows(form),
-        },
-        {
-            name: 'uiux-inputs',
-            // The legacy VCPUI native-kernel Input/Textarea class enhancement
-            // is retired here: the Input primitive owns single-line input
-            // presentation, textareas keep the bare-control contract. Short
-            // enumerations remain native/segmented controls; long ones get a
-            // Uiux-style popover while the native select stays canonical.
-            run: () => mountUiuxInputs(form),
         },
         {
             name: 'appearance-rows',
@@ -291,6 +281,9 @@ function enhanceGlobalSettings(root, form) {
         },
         {
             name: 'agent-name-fields',
+            // M5-c pass3 起，Field 增强的挂载产物（vcp-ui-settings-field 类 +
+            // 初始校验态）由渲染器直出（render/widgets.js 用户名行）；本步
+            // 只保留校验态行为绑定（invalid/input/change 重同步）。
             run: () => form.querySelectorAll('.agent-name-wrapper').forEach(field => {
                 if (field.querySelector('input:not([type="hidden"]), select, textarea')) enhance('Field', field);
             }),
@@ -313,47 +306,10 @@ function enhanceGlobalSettings(root, form) {
     focusSettingsModal(root);
 }
 
-// Single-line text inputs are projected by the real library Input primitive
-// (window.VCPUIUX.mountInput): the native input stays the sole business node
-// while the primitive wrap owns the border/focus surface.  Textareas are
-// deliberately excluded — the primitive wrap is a fixed 32px single-line
-// frame, and the form's bare-control contract already gives textareas their
-// multiline geometry (contract gap reported to thread A).  The typed mounts
-// (home tagline, forum credentials, color pair) own their own controls.
-function mountUiuxInputs(form) {
-    const api = window.VCPUIUX;
-    const scope = ensurePresentationScope();
-    if (!api?.mountInput || !scope) return;
-    const selector = 'input:is(:not([type]), [type="text"], [type="url"], [type="password"], [type="number"], [type="email"], [type="search"], [type="tel"])';
-    form.querySelectorAll(selector).forEach(control => {
-        // NumericStepperRow owns a deliberately lightweight editable proxy
-        // inside its capsule. Do not wrap that proxy with the generic Input
-        // primitive, which would reintroduce the boxed field surface.
-        if (control.classList.contains('vcp-uiux-numeric-stepper-row-input')
-            || control.classList.contains('vcp-uiux-font-size-row-value')) return;
-        if (control.dataset.vcpUiuxInputPrimitive === 'true') return;
-        // Registered non-input projections own their field's chrome (stepper
-        // hosts adopted wholesale, raw controls kept bare for their typed
-        // owner); the field-registry documents each case.
-        const projection = fieldProjection(control.id);
-        if (projection && projection !== 'input') return;
-        if (control.closest('.vcp-uiux-input-wrap')) return;
-        // Compound picker containers (topic-summary model row) own their input
-        // presentation as one pill via the compound-container override CSS; an
-        // Input wrap between container and input would resurrect the boxed
-        // look those rules exist to remove.
-        if (control.closest('.model-input-container')) return;
-        try {
-            const release = api.mountInput(control, {}, scope);
-            if (!release) return;
-            control.dataset.vcpUiuxInputPrimitive = 'true';
-            control.closest('.vcp-uiux-input-wrap')?.classList.add('vcp-uiux-input-fill');
-            scope.own(() => { delete control.dataset.vcpUiuxInputPrimitive; }, `uiux-input-${control.id || control.name || uniqueSettingsKey()}`, 'ui-presentation');
-        } catch (error) {
-            console.warn('[VCPUI SettingsBridge] Could not mount Uiux Input primitive:', error);
-        }
-    });
-}
+// M5-c pass3：uiux-inputs pass 退役——单行输入的 Input 原语包裹
+// （span.vcp-uiux-input-wrap + input.input + 内联守卫样式）由渲染器直出
+// （render/field-renderer.js buildInputPrimitiveWrap，widgets.js 专属组件
+// 同样转录），typed owners 的 raw 投影字段仍由各自挂载方运行时收编。
 
 function mountUiuxDisclosures(form) {
     const ownerScope = ensurePresentationScope();

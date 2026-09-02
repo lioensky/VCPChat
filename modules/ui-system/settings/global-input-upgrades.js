@@ -1,9 +1,11 @@
 // Global settings number/stepper + text Input upgrades.  The native inputs
 // stay the sole business nodes; NumericStepperRow's structure is emitted
 // statically by field-renderer (M5-c pass2 直出) and this binder only
-// activates its behavior; mountInput wraps the shortcut field without moving
-// save/dirty semantics (the typed field owner keeps listening on the same
-// native control).
+// activates its behavior; the shortcut field's Input wrap is likewise
+// renderer-emitted (M5-c pass3 直出) and this mount only converges on it
+// (mountInput stays as the degraded fallback when the wrap is absent),
+// without moving save/dirty semantics (the typed field owner keeps listening
+// on the same native control).
 // The stepper descriptors and every projection rule live in field-registry.js.
 import { STEPPER_FIELDS } from './field-registry.js';
 
@@ -23,9 +25,9 @@ export function mountVoiceShortcutInput(form, api, scope) {
     if (!form || !scope || !api?.mountInput) return;
     const input = form.querySelector('#voiceInputShortcut');
     if (!input || input.dataset.vcpTypedPrimitiveMounted === 'true') return;
-    // The generic Input pass runs first and has usually wrapped this input
-    // already; nesting a second mountInput wrap inside it is what drew the
-    // double frame. Converge on that wrap instead of stacking another one.
+    // The renderer emits this field's Input wrap statically (M5-c pass3
+    // 直出); converge on it instead of stacking a second wrap — nesting a
+    // second mountInput wrap inside it is what drew the double frame.
     const existingWrap = input.closest('.vcp-uiux-input-wrap');
     if (existingWrap) {
         existingWrap.classList.add('vcp-uiux-input-fill');
