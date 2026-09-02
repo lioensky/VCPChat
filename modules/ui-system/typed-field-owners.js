@@ -11,6 +11,8 @@ import { syncRenderSettingsVisibility } from './settings/render-visibility.js';
 import { syncDependentRows } from './settings/dependent-rows.js';
 import { getSaveCoordinator } from './settings/save-coordinator.js';
 import { fieldDescriptor, fieldRestore } from './settings/field-registry.js';
+import { applySettings } from '../settings/store.js';
+import { schemaSurfaceSections } from '../settings/schema-surface.js';
 
 const typedFieldStates = new Set();
 const typedForumFieldStates = new Set();
@@ -150,68 +152,11 @@ function mountTypedSettingsConsumer(root) {
         // Never overwrite a user's dirty draft or an in-flight submission.
         if (form.dataset.vcpSettingsDirty === 'true' || form.dataset.globalSettingsSaving === 'true') return;
         const settings = snapshot.value || {};
-        const projection = [
-            // The retired userUseThemeColorsInChat row never wrote anything:
-            // the persisted key has no control inside #globalSettingsForm (its
-            // namesake checkbox lives in the per-agent agentSettingsForm), so
-            // that lookup resolved to null on every projection pass.
-            ['vcpServerUrl', 'vcpServerUrl'],
-            ['vcpApiKey', 'vcpApiKey'],
-            ['fileKey', 'fileKey'],
-            ['vcpLogUrl', 'vcpLogUrl'],
-            ['vcpLogKey', 'vcpLogKey'],
-            ['topicSummaryModel', 'topicSummaryModel'],
-            ['assistantAgent', 'assistantAgent'],
-            ['voiceModeLocal', 'voiceMode', 'checked-value', 'local'],
-            ['voiceModeNetwork', 'voiceMode', 'checked-value', 'network'],
-            ['voiceInputMode', 'voiceInputMode'],
-            ['voiceInputShortcut', 'voiceInputShortcut'],
-            ['voiceLocalSovitsUrl', 'voiceLocalSettings.sovitsUrl'],
-            ['voiceLocalSovitsKey', 'voiceLocalSettings.sovitsKey'],
-            ['voiceNetworkProviderUrl', 'voiceNetworkSettings.providerUrl'],
-            ['voiceNetworkProviderKey', 'voiceNetworkSettings.providerKey'],
-            ['enableDistributedServer', 'enableDistributedServer', 'checked'],
-            ['agentMusicControl', 'agentMusicControl', 'checked'],
-            ['enableVcpToolInjection', 'enableVcpToolInjection', 'checked'],
-            ['enableThoughtChainInjection', 'enableThoughtChainInjection', 'checked'],
-            ['enableContextSanitizer', 'enableContextSanitizer', 'checked'],
-            ['contextSanitizerDepth', 'contextSanitizerDepth'],
-            ['enableAiMessageButtons', 'enableAiMessageButtons', 'checked'],
-            ['flowlockContinueDelay', 'flowlockContinueDelay'],
-            ['enableMiddleClickQuickAction', 'enableMiddleClickQuickAction', 'checked'],
-            ['middleClickQuickAction', 'middleClickQuickAction'],
-            ['enableMiddleClickAdvanced', 'enableMiddleClickAdvanced', 'checked'],
-            ['middleClickAdvancedDelay', 'middleClickAdvancedDelay'],
-            ['enableRegenerateConfirmation', 'enableRegenerateConfirmation', 'checked'],
-            ['chatPresentationModeBubble', 'chatPresentationMode', 'checked-value', 'bubble'],
-            ['chatPresentationModePanel', 'chatPresentationMode', 'checked-value', 'panel'],
-            ['chatPresentationModeImmersive', 'chatPresentationMode', 'checked-value', 'immersive'],
-            ['enableUserChatBubbleUi', 'enableUserChatBubbleUi', 'checked'],
-            ['showUserMetaInChatBubbleUi', 'showUserMetaInChatBubbleUi', 'checked'],
-            ['chatBubbleMaxWidthWideDefault', 'chatBubbleMaxWidthWideDefault'],
-            ['chatBubbleMaxWidthWideNotifications', 'chatBubbleMaxWidthWideNotifications'],
-            ['chatBubbleMaxWidthWideNarrow', 'chatBubbleMaxWidthWideNarrow'],
-            ['minChunkBufferSize', 'minChunkBufferSize'],
-            ['smoothStreamIntervalMs', 'smoothStreamIntervalMs'],
-            ['enableSmoothStreaming', 'enableSmoothStreaming', 'checked'],
-            ['streamAnimationPreset', 'streamAnimationPreset'],
-            ['streamAnimationDurationMs', 'streamAnimationDurationMs'],
-            ['streamAnimationCustomCss', 'streamAnimationCustomCss'],
-        ];
-        projection.forEach(([id, path, mode, expected]) => {
-            const control = form.querySelector(`#${id}`);
-            if (!control) return;
-            const value = path.split('.').reduce((current, key) => current?.[key], settings);
-            if (value === undefined || value === null) return;
-            if (mode === 'checked-value') control.checked = String(value) === expected;
-            else if (mode === 'checked-inverse') control.checked = value !== true;
-            else if (mode === 'checked' || control.type === 'checkbox') control.checked = Boolean(value);
-            else if (mode === 'px-output') {
-                control.value = `${value}px`;
-                control.textContent = `${value}px`;
-            }
-            else control.value = String(value);
-        });
+        // M5-a 回填链收敛：原 44 条手写投影表由 schema 字段描述符对称推导
+        // （applySettings 与保存链 collectSettings 共用同一批 save 声明，
+        // 见 tests/settings-value-golden.test.mjs），写值仅在实际变化时
+        // 派发 vcp-uiux-sync，收敛快照回填的胶囊滞留怪癖。
+        applySettings(schemaSurfaceSections(), form, settings);
         // Display defaults ported from the retired startup fallback
         // (handoff retirement batch): the typed state stores raw persisted
         // data, but these two voice controls keep their first-open display
