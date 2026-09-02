@@ -193,6 +193,14 @@ dsw 语义 CSS（单层级联）
 - **验收**：全套 373 测试 371 过（2 例既有失败不回退）；八分区探针 45/45；重启往返等值；像素对比 7/8 分区 0 差，appearance-settings 出现 1333 字节摘要文本差。
 - **竞态修复（b067060c，非 pass1 引入）**：对照实验（m5b/m5c1 双构建 × 多次运行）证明该差异是两个构建都会随机踩中的既有竞态——开模态 rAF 绑定同步 vs 回填快照 applySettings 的时序，后者写值只派发不冒泡的 vcp-uiux-sync，绑定同步若先行则摘要滞留 base 默认文案且再无事件兜底。修复：bindSettingsSummary 增加捕获态 vcp-uiux-sync 监听（同一 matches 过滤），回填写值后摘要无条件重同步。修复后连续 3 次探针 45/45 且 appearance-settings 像素 0 差。
 
+#### 13.3.2 施工记录：pass2 stepper 投影 / legacy-range 退役（bd38cec9）
+
+- **直出语义**：field-renderer 新增 buildStepperControl——fieldProjection==='stepper' 的四字段（minChunkBufferSize/smoothStreamIntervalMs/streamAnimationDurationMs/middleClickAdvancedDelay）在渲染期直接产出 NumericStepperRow 终态结构（text/control 胶囊、编辑器内联守卫样式、箭头 svg、单位，逐属性转录自 mount 产物），业务 input 保持行内最后子节点；三种宿主形态分别嫁接：inlineNumbers 单元格（label 不再输出）、分组 number 行（label+hint 一并不输出，与旧挂载 replaceChildren 终态一致）、range 的 slider-container（output 随直出退役）。registry 的 title/description/unit 是行文案唯一来源（与旧挂载同源）。
+- **运行期只剩行为**：原语模块抽出 bindStepperBehavior（sync/normalize/change + 监听），mount 与新增 activateNumericStepperRow 共用；mountGlobalSteppers 改为激活绑定器（结构已直出，只绑行为 + vcpTypedPrimitiveMounted 标记），调用点从 global-pill-steppers 步并入 global-typed-primitives（registry 驱动的 typed 运行时家族）。browser-entry/index 同步导出 activateNumericStepperRow。
+- **legacy-range-pass 直接删除**：全局设置面仅有四条 range（三条外观几何 + streamAnimationDurationMs），全部在旧排除清单内——该 pass 早已空转，无可直出对象，随 pass2 删除；canonical-rows before 边与 global-pill-steppers 的 before 边同步收缩。
+- **测试**：render-settings 用例翻新为直出结构断言（编辑器/箭头/单位、业务 input 位置、output 退役）；新增"步进器行直出 + 激活"用例（激活同步呈现、箭头步进写穿业务 input 并派发 input/change、vcp-uiux-sync 镜像、越界归一化、重复激活幂等、分组行直出）；bridge-modules 管线步断言移除 legacy-range-pass 并加退役守卫。
+- **验收**：全套 374 测试 372 过（2 例既有失败不回退）；八分区探针 45/45 + 重启往返等值；像素 7/8 分区 0 差（appearance 基线为 pass1 竞态修复前的旧截图，对修复后末态复测 0 差后刷新基线），voice-settings 12 字节（0.001%）为两处圆角单通道 241→242 的反锯齿噪声（M5-a 同类已判定噪声）。
+
 ### 13.4 M5-d 收尾
 
 advanced-visibility/rust-visibility 薄包装并入渲染器统一的依赖求值（visibleIf 已声明，事件路径与投影路径最终同一求值器）；marker-registry 清单复核；§十三回填施工记录；评估 rebase 回 prb 的冲突面（预期集中在被删 pass 文件，"我们删了 vs 上游改了"，维持删除）。
