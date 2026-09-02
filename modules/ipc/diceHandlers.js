@@ -60,6 +60,8 @@ async function createOrFocusDiceWindow(projectRoot) {
         minWidth: 300,
         minHeight: 400,
         title: '超级骰子',
+        frame: false,
+        backgroundColor: '#100c1c',
         modal: false,
         webPreferences: {
             preload: resolveProjectPreload(projectRoot, PRELOAD_ROLES.UTILITY),

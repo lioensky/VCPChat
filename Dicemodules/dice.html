@@ -1,18 +1,104 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VChat Super Dice</title>
+    <meta name="theme-color" content="#100c1c">
+    <title>超级骰子 · 命运观测台</title>
     <link rel="stylesheet" href="dice.css">
 </head>
 <body>
-    <h1>超级骰子</h1>
-    <div id="dice-canvas-container"></div>
-    <div class="dice-ui">
-        <input type="text" id="notation-input" placeholder="例如: 2d6+3, 1d20" />
-        <button id="roll-button">投掷</button>
-    </div>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="noise-layer" aria-hidden="true"></div>
+
+    <header class="titlebar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                    <path d="M16 3 27 9.5v13L16 29 5 22.5v-13L16 3Z"></path>
+                    <circle cx="12" cy="12" r="1.8"></circle>
+                    <circle cx="20" cy="20" r="1.8"></circle>
+                    <circle cx="20" cy="12" r="1.8"></circle>
+                    <circle cx="12" cy="20" r="1.8"></circle>
+                </svg>
+            </span>
+            <span class="brand-copy">
+                <strong>超级骰子</strong>
+                <small>FATE OBSERVATORY</small>
+            </span>
+        </div>
+
+        <div class="window-controls" aria-label="窗口控制">
+            <button id="minimize-dice-btn" class="window-control" type="button" title="最小化" aria-label="最小化">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5h8"></path></svg>
+            </button>
+            <button id="maximize-dice-btn" class="window-control" type="button" title="最大化" aria-label="最大化">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="0.8"></rect></svg>
+            </button>
+            <button id="close-dice-btn" class="window-control window-control-close" type="button" title="关闭" aria-label="关闭">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 2.5 7 7m0-7-7 7"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="dice-app">
+        <section class="stage-shell" aria-label="3D 骰子投掷区域">
+            <div class="stage-topline">
+                <div class="stage-status" role="status" aria-live="polite">
+                    <span class="status-orb"></span>
+                    <span id="roll-status">命运正在候场</span>
+                </div>
+                <span id="current-notation" class="current-notation">1D20</span>
+            </div>
+
+            <div class="orbit orbit-outer" aria-hidden="true"></div>
+            <div class="orbit orbit-inner" aria-hidden="true"></div>
+            <div class="stage-rune stage-rune-left" aria-hidden="true">✦</div>
+            <div class="stage-rune stage-rune-right" aria-hidden="true">◇</div>
+            <div id="dice-canvas-container"></div>
+
+            <div id="result-card" class="result-card" aria-live="polite">
+                <span class="result-label">上次结果</span>
+                <strong id="result-total">—</strong>
+                <span id="result-detail" class="result-detail">掷出骰子，看看宇宙如何回应</span>
+            </div>
+        </section>
+
+        <section class="control-deck" aria-label="投掷控制">
+            <div class="quick-rolls" role="group" aria-label="快捷骰子；左键立即投掷，右键加入骰池">
+                <button class="quick-die" type="button" data-notation="1d4" title="左键立即投掷 · 右键加入骰池"><span>d4</span><small>微光</small></button>
+                <button class="quick-die" type="button" data-notation="1d6" title="左键立即投掷 · 右键加入骰池"><span>d6</span><small>经典</small></button>
+                <button class="quick-die" type="button" data-notation="1d8" title="左键立即投掷 · 右键加入骰池"><span>d8</span><small>进阶</small></button>
+                <button class="quick-die" type="button" data-notation="1d10" title="左键立即投掷 · 右键加入骰池"><span>d10</span><small>十面</small></button>
+                <button class="quick-die" type="button" data-notation="1d12" title="左键立即投掷 · 右键加入骰池"><span>d12</span><small>勇者</small></button>
+                <button class="quick-die is-active" type="button" data-notation="1d20" title="左键立即投掷 · 右键加入骰池"><span>d20</span><small>命运</small></button>
+            </div>
+
+            <div class="roll-composer">
+                <label class="notation-field" for="notation-input">
+                    <span class="notation-prefix" aria-hidden="true">⌁</span>
+                    <span class="sr-only">骰子表达式</span>
+                    <input type="text" id="notation-input" value="1d20" placeholder="例如：2d6+3 或 1d20" autocomplete="off" spellcheck="false">
+                </label>
+                <button id="roll-button" type="button">
+                    <span class="roll-button-icon" aria-hidden="true">◆</span>
+                    <span class="roll-button-copy">
+                        <strong>投掷</strong>
+                        <small>按 Enter</small>
+                    </span>
+                </button>
+            </div>
+
+            <div class="deck-footer">
+                <span>左键即掷</span>
+                <span class="deck-divider" aria-hidden="true"></span>
+                <span>右键加入骰池</span>
+                <span id="roll-count" class="roll-count">本次观测 0 回</span>
+            </div>
+        </section>
+    </main>
+
     <script type="module" src="dice.js"></script>
 </body>
 </html>
