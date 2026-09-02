@@ -21,3 +21,15 @@
 :is(html, html.vcp-global-settings-host) > body .vcp-uiux-menu-portal {
     z-index: calc(var(--vcp-ui-z-overlay) + 20) !important;
 }
+
+/* DeepSeek Harness menu width standard: compact max-content width (180px-280px)
+   instead of expanding to 360px with wide empty space. */
+:is(html, html.vcp-global-settings-host) > body :is(.vcp-uiux-menu-portal, .vcp-uiux-primitive-menu) {
+    width: max-content !important;
+    min-width: 180px !important;
+    max-width: 280px !important;
+}
+
+:is(html, html.vcp-global-settings-host) > body :is(.vcp-uiux-menu-portal, .vcp-uiux-primitive-menu) .vcp-uiux-menu-item-label {
+    max-width: none !important;
+}
