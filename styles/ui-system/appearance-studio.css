@@ -1026,8 +1026,8 @@
         align-items: center;
         gap: var(--vcp-ui-space-3);
         border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 24%, var(--vcp-ui-border));
-        border-radius: var(--vcp-ui-radius-card);
-        background: color-mix(in srgb, var(--vcp-ui-accent) 5%, var(--vcp-ui-fill-0));
+        border-radius: 12px;
+        background: #fff;
     }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview {
         height: 68px;
