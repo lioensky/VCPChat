@@ -112,10 +112,11 @@
         font-weight: 500;
     }
 
+    /* The Agent action bar keeps the upstream contract: no accent fill and no
+       divider above the sticky save/delete row. */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm .form-actions {
         gap: var(--vcp-ui-space-2);
         padding: var(--vcp-ui-space-3) 0 0;
-        border-top: 1px solid var(--vcp-ui-border);
         background: transparent;
     }
 
@@ -487,10 +488,10 @@
         outline: none;
     }
 
+    /* Same upstream contract as the Agent action bar: no divider line. */
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #groupSettingsForm .form-actions {
         gap: var(--vcp-ui-space-2);
         padding: var(--vcp-ui-space-3) 0 0;
-        border-top: 1px solid var(--vcp-ui-border);
         background: transparent;
     }
 

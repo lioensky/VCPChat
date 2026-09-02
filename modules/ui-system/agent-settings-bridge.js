@@ -112,8 +112,10 @@ function mountTypedAgentButtons(form) {
     const buttons = [
         ['#refreshTtsModelsBtn', 'outline', 'agent-tts-refresh'],
         ['#resetAvatarColorsBtn', 'outline', 'agent-reset-colors'],
-        ['.form-actions button[type="submit"]', 'primary', 'agent-save'],
-        ['#deleteAgentBtn', 'outline', 'agent-delete'],
+        // The save/delete actions deliberately stay native.  Upstream renders
+        // them through the unlayered settings-agent-form.css contract (37px
+        // geometry, theme-token colors, no accent fill); mounting a typed
+        // Button would replace that look with the primary-pill variant.
     ];
     buttons.forEach(([selector, variant, key]) => {
         const button = form?.querySelector?.(selector);
