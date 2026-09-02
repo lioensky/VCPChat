@@ -927,9 +927,11 @@ test('Uiux Toast owns body portal, anchor placement, lifetime and timer cancella
         rect = { left: 200, width: 400 };
         window.dispatchEvent(new dom.window.Event('resize'));
         assert.equal(toast.root.style.left, '400px');
-        await delay(TOAST_HOLD_MS + TOAST_FADE_MS - 10);
+        // The completion timer starts during mount; leave enough headroom for
+        // DOM/style setup and scheduler jitter before asserting it is pending.
+        await delay(TOAST_HOLD_MS + TOAST_FADE_MS - 100);
         assert.equal(done, 0);
-        await delay(20);
+        await delay(120);
         assert.equal(done, 1);
         await toast.dispose();
         assert.equal(document.querySelector('.vcp-uiux-toast'), null);
