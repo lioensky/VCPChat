@@ -16,12 +16,16 @@ import { applySchemaSurface, schemaSurfaceSections } from '../modules/settings/s
 import { mountCanonicalSettingsRows } from '../modules/ui-system/settings/canonical-rows.js';
 import { activateNumericStepperRow } from '../modules/uiux/generated/primitives/numeric-stepper-row.js';
 import { mountGlobalSteppers } from '../modules/ui-system/settings/global-input-upgrades.js';
+import { activateLanguageRow } from '../modules/uiux/generated/primitives/language-row.js';
+import { activateFontSizeRow } from '../modules/uiux/generated/primitives/font-size-row.js';
+import { mountGlobalLanguageRows } from '../modules/ui-system/settings/global-language-rows.js';
 import { fieldProjection } from '../modules/ui-system/settings/field-registry.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' });
 global.document = dom.window.document;
 global.localStorage = dom.window.localStorage;
 global.HTMLElement = dom.window.HTMLElement;
+global.MutationObserver = dom.window.MutationObserver;
 
 const doc = dom.window.document;
 
@@ -567,6 +571,178 @@ test('直出完备性：退役的通用包裹 pass 对全部编译产物空转�
             if (fieldProjection(control.id) === 'stepper') continue;
             assert.ok(control.closest('span.vcp-uiux-input-wrap'),
                 `${sectionDescriptor.key}：#${control.id || control.name || '(anon)'} 应全部直出包裹（pass 空转不变量）`);
+        }
+    }
+});
+
+test('语言行/字号行直出结构（M5-c pass4：appearance-rows/语言行退役）', () => {
+    // 裸 select 行：语言行结构与 select 同宿主直出（appearance 分区六行 + 侧栏圆角行）。
+    const appearance = renderIntoForm(appearanceSettingsSection).form;
+    const densityRow = appearance.querySelector('#appearanceDensityRow');
+    const langRow = densityRow.querySelector(':scope > .vcp-uiux-language-row');
+    assert.ok(langRow, '裸行内直出 .vcp-uiux-language-row');
+    assert.equal(langRow.querySelector('.vcp-uiux-language-row-title').textContent, '界面密度');
+    assert.equal(langRow.querySelector('.vcp-uiux-language-row-description').textContent, '调整设置页与工作区控件的疏密程度');
+    const trigger = langRow.querySelector('.vcp-uiux-language-row-selector');
+    assert.equal(trigger.type, 'button');
+    // 首个子节点是标签文本节点（激活期 sync 原位改写），编译期取默认选项标签。
+    const labelNode = [...trigger.childNodes].find(node => node.nodeType === 3);
+    assert.equal(labelNode.textContent, '紧凑');
+    const chevron = trigger.querySelector('svg.vcp-uiux-language-row-chevron');
+    assert.equal(chevron.getAttribute('viewBox'), '0 0 14 14');
+    assert.equal(chevron.querySelector('path').getAttribute('d'), 'M3 5L7 9L11 5');
+    assert.ok(densityRow.querySelector('#appearanceDensity')?.hidden, '业务 select 保留在宿主内');
+
+    // 圆角行：rowClass 宿主 + 自有文案。
+    const radiusLangRow = appearance.querySelector('#appearanceSidebarRadiusLanguageRow > .vcp-uiux-language-row');
+    assert.equal(radiusLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '列表项圆角');
+
+    // 字号行：结构整体直出，select 挂进行内（mount 的 replaceChildren 终态）。
+    const fontScaleRow = appearance.querySelector('#appearanceFontScaleRow');
+    const fsRow = fontScaleRow.querySelector(':scope > .vcp-uiux-font-size-row');
+    assert.ok(fsRow, '字号行直出结构存在');
+    assert.equal(fsRow.querySelector('.vcp-uiux-font-size-row-title').textContent, '字号');
+    assert.equal(fsRow.querySelector('.vcp-uiux-font-size-row-description').textContent, '调整界面文字大小');
+    const fsEditor = fsRow.querySelector('.vcp-uiux-font-size-row-value');
+    assert.equal(fsEditor.min, '13');
+    assert.equal(fsEditor.max, '16');
+    assert.equal(fsEditor.dataset.vcpAppearanceDraftControl, 'true');
+    assert.equal(fsRow.querySelector('#appearanceFontScale').dataset.vcpAppearanceDraftControl, 'true');
+    assert.equal(fsRow.querySelector('.vcp-uiux-font-size-row-unit').textContent, 'px');
+    const [fsUp, fsDown] = fsRow.querySelectorAll('.vcp-uiux-font-size-row-arrow');
+    assert.equal(fsUp.getAttribute('aria-label'), '增大字号');
+    assert.equal(fsDown.getAttribute('aria-label'), '减小字号');
+    assert.equal(fontScaleRow.querySelector(':scope > select'), null, 'select 移入行内，宿主只剩行');
+
+    // 场景字体行：widgets 直出（宿主 id 不变）。
+    const chatLangRow = appearance.querySelector('#chatFontPresetRow > .vcp-uiux-language-row');
+    assert.equal(chatLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '聊天字体');
+    assert.equal([...chatLangRow.querySelector('.vcp-uiux-language-row-selector').childNodes]
+        .find(node => node.nodeType === 3).textContent, '系统默认');
+
+    // 全局语言行：分组行 select + hint + 语言行（与旧 mount 追加位置一致）。
+    const voice = renderIntoForm(voiceSettingsSection).form;
+    const voiceRow = voice.querySelector('#voiceInputModeRow');
+    const voiceLangRow = voiceRow.querySelector(':scope > .vcp-uiux-language-row');
+    assert.ok(voiceLangRow);
+    assert.equal(voiceLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '语音输入模式');
+    assert.equal([...voiceLangRow.querySelector('.vcp-uiux-language-row-selector').childNodes]
+        .find(node => node.nodeType === 3).textContent, 'Windows 语音键入（Win+H）');
+    assert.ok(voiceRow.contains(voiceLangRow) && voiceLangRow.previousElementSibling === voiceRow.querySelector('#voiceInputMode'),
+        '语言行紧跟业务 select（旧 mount 追加位置）');
+
+    const render = renderIntoForm(renderSettingsSection).form;
+    const streamLangRow = render.querySelector('#streamAnimationSettingsRow > .vcp-uiux-language-row');
+    assert.equal(streamLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '流式内容动效');
+
+    const selection = renderIntoForm(selectionAssistantSection).form;
+    const agentLangRow = selection.querySelector('#assistantAgentContainer > .vcp-uiux-language-row');
+    assert.equal([...agentLangRow.querySelector('.vcp-uiux-language-row-selector').childNodes]
+        .find(node => node.nodeType === 3).textContent, '请选择一个Agent', '空值回落到占位选项标签');
+    assert.equal(selection.querySelector('#rustRuleModeRow > .vcp-uiux-language-row .vcp-uiux-language-row-title').textContent, '规则模式');
+    // rustRuleMode 行带 hint：select + hint + 语言行的次序与旧 mount 一致。
+    assert.ok(selection.querySelector('#rustRuleModeRow > small'), 'hint 保留在语言行之前');
+
+    const quick = renderIntoForm(quickActionsSection).form;
+    const middleLangRow = quick.querySelector('#middleClickQuickActionContainer > .vcp-uiux-language-row');
+    assert.ok(middleLangRow, '容器宿主语言行直出（canonical 分区同样成立）');
+    assert.equal(middleLangRow.querySelector('.vcp-uiux-language-row-title').textContent, '中键快速执行功能');
+});
+
+test('语言行/字号行激活行为绑定（M5-c pass4：运行期只剩行为）', async () => {
+    const owned = [];
+    const scope = {
+        listen: (target, type, handler) => { target.addEventListener(type, handler); return () => target.removeEventListener(type, handler); },
+        own: dispose => { owned.push(dispose); return dispose; },
+        child: () => scope,
+        dispose: async () => {},
+        active: true,
+    };
+    const api = { activateLanguageRow, activateFontSizeRow };
+
+    const appearance = renderIntoForm(appearanceSettingsSection).form;
+    mountGlobalLanguageRows(appearance, api, scope);
+    // 字号行激活即同步 px 读数（编译默认取首选项 small → 13px）。
+    const fsEditor = appearance.querySelector('.vcp-uiux-font-size-row-value');
+    assert.equal(fsEditor.value, '13');
+    const fsSelect = appearance.querySelector('#appearanceFontScale');
+    fsSelect.value = 'large';
+    fsSelect.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
+    assert.equal(fsEditor.value, '16');
+
+    // 语言行激活：vcp-uiux-sync（回填快照写值）镜像进胶囊标签。
+    const densityTrigger = appearance.querySelector('#appearanceDensityRow .vcp-uiux-language-row-selector');
+    assert.equal([...densityTrigger.childNodes].find(node => node.nodeType === 3).textContent, '紧凑');
+    const densitySelect = appearance.querySelector('#appearanceDensity');
+    densitySelect.value = 'comfortable';
+    densitySelect.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
+    assert.equal([...densityTrigger.childNodes].find(node => node.nodeType === 3).textContent, '舒适');
+
+    // 菜单选择写穿业务 select 并派发 change（保存链契约）。
+    densityTrigger.click();
+    const menuItem = [...doc.querySelectorAll('.vcp-uiux-menu-item')]
+        .find(item => item.textContent.includes('宽松'));
+    assert.ok(menuItem, '菜单挂载并渲染选项');
+    const changes = [];
+    densitySelect.addEventListener('change', () => changes.push(densitySelect.value));
+    menuItem.click();
+    assert.equal(densitySelect.value, 'relaxed');
+    assert.deepEqual(changes, ['relaxed']);
+
+    // 幂等：重复激活不重复绑行为（镜像只收敛一次）。
+    mountGlobalLanguageRows(appearance, api, scope);
+    densitySelect.value = 'compact';
+    densitySelect.dispatchEvent(new dom.window.Event('vcp-uiux-sync'));
+    assert.equal([...densityTrigger.childNodes].find(node => node.nodeType === 3).textContent, '紧凑');
+
+    // 全部直出行激活覆盖：每个语言行/字号行宿主的 select 都已打收编标记。
+    const activatedSelects = [...appearance.querySelectorAll('.vcp-uiux-language-row, .vcp-uiux-font-size-row')]
+        .map(row => (row.classList.contains('vcp-uiux-font-size-row') ? row : row.parentElement).querySelector('select'));
+    assert.ok(activatedSelects.length >= 11, 'appearance 分区的语言行/字号行全部直出');
+    for (const select of activatedSelects) {
+        assert.equal(select.dataset.vcpTypedPrimitiveMounted, 'true', `#${select.id} 已激活`);
+    }
+
+    // 动态选项重建：MutationObserver 镜像重建（划词 Agent 列表填充路径）。
+    const selection = renderIntoForm(selectionAssistantSection).form;
+    mountGlobalLanguageRows(selection, api, scope);
+    const agentSelect = selection.querySelector('#assistantAgent');
+    const agentTrigger = selection.querySelector('#assistantAgentContainer .vcp-uiux-language-row-selector');
+    const option = doc.createElement('option');
+    option.value = 'agent-1';
+    option.textContent = '测试 Agent';
+    agentSelect.append(option);
+    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    agentSelect.value = 'agent-1';
+    agentSelect.dispatchEvent(new dom.window.Event('change'));
+    assert.equal([...agentTrigger.childNodes].find(node => node.nodeType === 3).textContent, '测试 Agent',
+        '选项列表重建后胶囊镜像新选项');
+});
+
+test('直出完备性：退役的语言行/字号行 pass 对全部编译产物空转（M5-c pass4 不变量）', () => {
+    const owned = [];
+    const scope = {
+        listen: (target, type, handler) => { target.addEventListener(type, handler); return () => target.removeEventListener(type, handler); },
+        own: dispose => { owned.push(dispose); return dispose; },
+        child: () => scope,
+        dispose: async () => {},
+        active: true,
+    };
+    const api = { activateLanguageRow, activateFontSizeRow };
+    for (const sectionDescriptor of schemaSurfaceSections()) {
+        const { form } = renderIntoForm(sectionDescriptor);
+        mountGlobalLanguageRows(form, api, scope);
+        // 任何语言行宿主/字号行都必须已激活；反之，不存在"看起来是语言行
+        // 宿主（裸 select 行）却没有任何直出行"的残留（退役 pass 无可挂载对象）。
+        for (const row of form.querySelectorAll('[data-vcp-settings-row]')) {
+            const select = row.querySelector('select');
+            if (!select) continue;
+            const structure = row.querySelector(':scope > .vcp-uiux-language-row, :scope > .vcp-uiux-font-size-row');
+            if (structure) {
+                assert.equal(select.dataset.vcpTypedPrimitiveMounted, 'true',
+                    `${sectionDescriptor.key}：#${select.id} 的直出行未激活`);
+            }
         }
     }
 });

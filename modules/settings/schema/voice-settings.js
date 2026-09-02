@@ -22,6 +22,7 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
     select('voiceInputMode', {
         rowId: 'voiceInputModeRow',
         groupRowClass: 'vcp-settings-row',
+        languageRow: { title: '语音输入模式', description: '选择系统听写适配方式' },
         hintStyle: null,
         options: [
             { value: 'windows_voice_typing', label: 'Windows 语音键入（Win+H）' },

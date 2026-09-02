@@ -9,6 +9,8 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
     select('assistantAgent', {
         rowId: 'assistantAgentContainer',
         groupRowClass: 'vcp-settings-row',
+        // Agent 列表由运行时填充并整体重建，语言行胶囊需镜像每次重建。
+        languageRow: { title: '划词助手 Agent', description: '划词内容交给所选 Agent 处理', dynamic: true },
         hintStyle: null,
         options: [
             { value: '', label: '请选择一个Agent' },
@@ -79,6 +81,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
     select('rustRuleMode', {
         rowId: 'rustRuleModeRow',
         rowStyle: 29,
+        languageRow: { title: '规则模式', description: 'Rust 划词助手的文本处理规则' },
         selectStyle: 30,
         hintStyle: 4,
         when: ['rustUseAssistant'],

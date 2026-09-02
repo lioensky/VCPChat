@@ -14,8 +14,8 @@ import { mountInput } from './primitives/input.js';
 import { mountMenu } from './primitives/menu.js';
 import { mountAgentPresetSeat } from './primitives/agent-preset-seat.js';
 import { mountAgentPresetRow } from './primitives/agent-preset-row.js';
-import { mountLanguageRow } from './primitives/language-row.js';
-import { mountFontSizeRow } from './primitives/font-size-row.js';
+import { mountLanguageRow, activateLanguageRow } from './primitives/language-row.js';
+import { mountFontSizeRow, activateFontSizeRow } from './primitives/font-size-row.js';
 import { mountAgentModelPicker } from './primitives/agent-model-picker.js';
 import { mountModal } from './primitives/modal.js';
 import { mountTooltip } from './primitives/tooltip.js';
@@ -60,7 +60,9 @@ const api = {
     mountAgentPresetSeat,
     mountAgentPresetRow,
     mountLanguageRow,
+    activateLanguageRow,
     mountFontSizeRow,
+    activateFontSizeRow,
     mountAgentModelPicker,
     mountModal,
     mountTooltip,

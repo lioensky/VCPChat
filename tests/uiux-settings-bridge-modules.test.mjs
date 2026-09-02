@@ -69,8 +69,8 @@ test('single-concern modules import cleanly and expose their contract', async ()
     assert.equal(typeof rust.syncRustAssistantVisibility, 'function');
     const render = await import(pathToFileURL(path.join(settingsDir, 'render-visibility.js')).href);
     assert.equal(typeof render.syncRenderSettingsVisibility, 'function');
-    const appearance = await import(pathToFileURL(path.join(settingsDir, 'appearance-controls.js')).href);
-    assert.equal(typeof appearance.mountAppearanceSelects, 'function');
+    const languageRows = await import(pathToFileURL(path.join(settingsDir, 'global-language-rows.js')).href);
+    assert.equal(typeof languageRows.mountGlobalLanguageRows, 'function');
     const ranges = await import(pathToFileURL(path.join(settingsDir, 'appearance-ranges.js')).href);
     assert.equal(typeof ranges.mountAppearanceRanges, 'function');
     const toggles = await import(pathToFileURL(path.join(settingsDir, 'appearance-toggles.js')).href);
@@ -213,7 +213,7 @@ test('the bridge entry wires the modules and stays the sole bridge-global owner'
     // only reach it via accessors. (A direct reference survived the domain
     // split once and only blew up in the WA journey's destroy() call.)
     assert.ok(!/\bpresentationScope\b/.test(entry), 'entry must use the shared scope accessors, never the module-private variable');
-    assert.match(entry, /from '\.\/settings\/appearance-controls\.js'/, 'entry must import the appearance helper');
+    assert.match(entry, /from '\.\/settings\/global-language-rows\.js'/, 'entry must import the language-row activation module');
     assert.match(entry, /from '\.\/agent-settings-bridge\.js'/, 'entry must compose the Agent domain module');
     assert.match(entry, /from '\.\/typed-field-owners\.js'/, 'entry must compose the typed field owner module');
     const typed = read(typedOwners);
@@ -465,21 +465,21 @@ test('global voice and chat-layout radios adopt the generated Choice pill batch'
 
 test('global typed primitive mounts keep one lifecycle registration per primitive', () => {
     const entry = read(bridgeEntry);
-    const appearance = read(path.join(settingsDir, 'appearance-controls.js'));
+    const languageRowsModule = read(path.join(settingsDir, 'global-language-rows.js'));
     const ranges = read(path.join(settingsDir, 'appearance-ranges.js'));
     const toggles = read(path.join(settingsDir, 'appearance-toggles.js'));
     const home = read(path.join(settingsDir, 'home-controls.js'));
     const identity = read(path.join(settingsDir, 'identity-controls.js'));
     const choices = read(path.join(settingsDir, 'choice-controls.js'));
     const forum = read(path.join(settingsDir, 'forum-controls.js'));
-    const globalTypedOwners = appearance + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + choices + '\n' + forum + '\n' + read(path.join(settingsDir, 'global-input-upgrades.js'));
+    const globalTypedOwners = languageRowsModule + '\n' + ranges + '\n' + toggles + '\n' + home + '\n' + identity + '\n' + choices + '\n' + forum + '\n' + read(path.join(settingsDir, 'global-input-upgrades.js'));
     // Each generated primitive calls scope.own() internally.  The bridge can
     // own its DOM marker, but must not register the returned release again:
     // that adds a second resource to every Settings-open cycle and asks the
     // same idempotent disposer to run twice during teardown.
     assert.doesNotMatch(globalTypedOwners, /scope\.own\(\w*release[,) ]/i,
         'bridge must not duplicate generated primitive disposers in the presentation scope');
-    for (const primitive of ['mountChoice', 'mountRange', 'mountToggle', 'mountColorPair', 'mountInput', 'mountSelect']) {
+    for (const primitive of ['mountChoice', 'mountRange', 'mountToggle', 'mountColorPair', 'mountInput', 'activateLanguageRow', 'activateFontSizeRow']) {
         assert.match(globalTypedOwners, new RegExp(`api\\.${primitive}\\(`),
             `${primitive} must remain mounted by the generated primitive`);
     }
@@ -640,7 +640,7 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     const fn = entry.slice(entry.indexOf('function enhanceGlobalSettings(root, form)'), entry.indexOf('runSettingsPipeline(steps);'));
     assert.match(entry, /import \{ runSettingsPipeline \} from '\.\/settings\/pipeline\.js';/,
         'the entry executes the shared declarative pipeline runner');
-    for (const name of ['canonical-rows', 'appearance-rows',
+    for (const name of ['canonical-rows',
         'global-pill-steppers', 'select-projection', 'global-typed-primitives', 'topic-summary-picker',
         'forum-field-owner', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
@@ -655,12 +655,16 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
     // 对象，pass 随 pass3 删除；raw 投影字段仍由 typed owners 运行时收编。
     assert.doesNotMatch(fn, /name: 'uiux-inputs'/,
         'the retired generic Input pass must stay retired');
+    // M5-c pass4：appearance-rows 退役——语言行/字号行结构由渲染器直出
+    // （field-renderer buildLanguageRowStructure / buildFontSizeRowStructure），
+    // 运行期只剩 global-language-rows 的通用行为激活（并入 global-pill-steppers
+    // 步，仍先于 select-projection）。
+    assert.doesNotMatch(fn, /name: 'appearance-rows'/,
+        'the retired appearance-rows pass must stay retired');
     // The two documented ordering hazards stay explicit edges, not comments.
     assert.match(fn, /name: 'global-pill-steppers',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
-        'pill/stepper projections must declare precedence over the select projection');
-    assert.match(fn, /name: 'appearance-rows',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
-        'appearance projections must declare precedence over the catch-all select projection');
-    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['appearance-rows'/,
+        'pill/stepper/language-row activations must declare precedence over the select projection');
+    assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['global-pill-steppers'/,
         'row-consuming passes must declare their dependence on canonical rows');
 });
 

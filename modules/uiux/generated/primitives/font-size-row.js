@@ -25,6 +25,57 @@ function makeChevron(path) {
     svg.append(node);
     return svg;
 }
+// 行为绑定：M5-c pass4 起全局设置面的字号行结构由 field-renderer 静态直出
+// （buildFontSizeRowStructure），本函数只给直出结构绑事件（px 读数同步 /
+// 编辑器归一化 / 箭头步进），mount 与 activateFontSizeRow 共用同一份行为实现。
+function bindFontSizeRowBehavior(select, value, up, down, scope) {
+    const sync = () => { const px = SCALE_TO_PX[select.value] ?? 14; value.value = String(px); up.disabled = px >= 16; down.disabled = px <= 13; };
+    const applyEditorValue = () => {
+        const px = Math.max(13, Math.min(16, Number(value.value) || 14));
+        const nearest = SCALE_ORDER.reduce((best, candidate) => Math.abs(SCALE_TO_PX[candidate] - px) < Math.abs(SCALE_TO_PX[best] - px) ? candidate : best, 'normal');
+        value.value = String(SCALE_TO_PX[nearest]);
+        if (select.value !== nearest) {
+            select.value = nearest;
+            select.dispatchEvent(new select.ownerDocument.defaultView.Event('change', { bubbles: true }));
+        }
+        sync();
+    };
+    const change = (delta) => {
+        const current = Math.max(0, SCALE_ORDER.indexOf(select.value));
+        const next = SCALE_ORDER[Math.max(0, Math.min(SCALE_ORDER.length - 1, current + delta))];
+        if (next === select.value)
+            return;
+        select.value = next;
+        select.dispatchEvent(new select.ownerDocument.defaultView.Event('change', { bubbles: true }));
+        sync();
+    };
+    // vcp-uiux-sync mirrors host-driven programmatic value writes (snapshot
+    // replay) into the px readout, matching the Select primitive contract.
+    scope.listen(select, 'change', sync);
+    scope.listen(select, 'vcp-uiux-sync', sync);
+    scope.listen(value, 'change', applyEditorValue);
+    scope.listen(value, 'blur', applyEditorValue);
+    scope.listen(up, 'click', () => change(1));
+    scope.listen(down, 'click', () => change(-1));
+    sync();
+    return sync;
+}
+
+// 直出结构激活：对 field-renderer 静态产出的 .vcp-uiux-font-size-row 只绑行为，
+// 不重建结构（结构、内联样式、aria、draft 标记均已在渲染期定型）。
+export function activateFontSizeRow(row, select, scope) {
+    if (!row || !select || !row.classList?.contains('vcp-uiux-font-size-row') || !scope)
+        throw new TypeError('FontSizeRow activation requires a static font-size row, its business select and scope.');
+    ensureStyles();
+    const value = row.querySelector('.vcp-uiux-font-size-row-value');
+    const arrows = row.querySelectorAll('.vcp-uiux-font-size-row-arrow');
+    const up = arrows[0];
+    const down = arrows[1];
+    if (!value || !up || !down)
+        throw new Error('FontSizeRow activation requires the static editor and arrow buttons.');
+    bindFontSizeRowBehavior(select, value, up, down, scope);
+}
+
 /** Uiux FontSizeRow presentation over the existing canonical select. */
 export function mountFontSizeRow(host, select, scope) {
     if (!host || !select || !scope)
@@ -79,36 +130,8 @@ export function mountFontSizeRow(host, select, scope) {
     // autosave can continue to query and update it during the row lifetime.
     row.append(text, control, select);
     host.replaceChildren(row);
-    const sync = () => { const px = SCALE_TO_PX[select.value] ?? 14; value.value = String(px); up.disabled = px >= 16; down.disabled = px <= 13; };
-    const applyEditorValue = () => {
-        const px = Math.max(13, Math.min(16, Number(value.value) || 14));
-        const nearest = SCALE_ORDER.reduce((best, candidate) => Math.abs(SCALE_TO_PX[candidate] - px) < Math.abs(SCALE_TO_PX[best] - px) ? candidate : best, 'normal');
-        value.value = String(SCALE_TO_PX[nearest]);
-        if (select.value !== nearest) {
-            select.value = nearest;
-            select.dispatchEvent(new select.ownerDocument.defaultView.Event('change', { bubbles: true }));
-        }
-        sync();
-    };
-    const change = (delta) => {
-        const current = Math.max(0, SCALE_ORDER.indexOf(select.value));
-        const next = SCALE_ORDER[Math.max(0, Math.min(SCALE_ORDER.length - 1, current + delta))];
-        if (next === select.value)
-            return;
-        select.value = next;
-        select.dispatchEvent(new select.ownerDocument.defaultView.Event('change', { bubbles: true }));
-        sync();
-    };
-    // vcp-uiux-sync mirrors host-driven programmatic value writes (snapshot
-    // replay) into the px readout, matching the Select primitive contract.
-    scope.listen(select, 'change', sync);
-    scope.listen(select, 'vcp-uiux-sync', sync);
     select.dataset.vcpAppearanceDraftControl = 'true';
-    scope.listen(value, 'change', applyEditorValue);
-    scope.listen(value, 'blur', applyEditorValue);
-    scope.listen(up, 'click', () => change(1));
-    scope.listen(down, 'click', () => change(-1));
-    sync();
+    const sync = bindFontSizeRowBehavior(select, value, up, down, scope);
     const dispose = scope.own(() => {
         row.remove();
         host.replaceChildren(...originalChildren);
