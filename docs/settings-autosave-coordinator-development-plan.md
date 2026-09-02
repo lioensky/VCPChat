@@ -1,6 +1,6 @@
 # Settings Autosave Coordinator Development Plan
 
-Status: active implementation plan
+Status: implementation pass completed; acceptance remains open for external-conflict UX and Electron evidence
 
 Baseline: `exp/settings-schema` at `6d70bee6`; implementation branch: `feat/settings-autosave-coordinator`.
 
@@ -23,7 +23,7 @@ The main process accepts the complete payload in `modules/ipc/settingsHandlers.j
 
 ## DeepSeek Harness alignment
 
-The implementation follows the useful settings principles from DeepSeek Harness without importing Cordis or replacing VCPChat's existing settings schema:
+The implementation follows the useful settings principles from DeepSeek Harness without importing Cordis or replacing VCPChat's existing settings schema. This pass now includes:
 
 - Keep an immutable draft and explicit durable base revision.
 - Address edits as path operations so a partial/redacted view cannot delete fields it never saw.
@@ -34,6 +34,13 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 - Make `flush()` and `dispose()` barriers that resolve only after the queue reaches quiescence.
 - Retain failed batches/drafts for retry instead of silently dropping them.
 - Treat external edits as reconciliation/conflict events; preserve a dirty local draft.
+
+施工状态（本批）：
+
+- 已完成 close 前 drain、结果通道保留、legacy/typed Promise flush 和失败 batch retention。
+- 已完成 typed `set/unset` path operation、锁内 fresh read、CAS 和 `load-settings` revision 返回。
+- 已补 coordinator path-operation 与 manager regression test。
+- 尚未完成 watcher 驱动的 renderer conflict reconciliation、reload/keep-draft UI、所有直接 `chatAPI.saveSettings()` 调用迁移及真实 Electron/跨平台证据。
 
 Revision tokens are opaque content-derived values exposed only through the save protocol. This keeps the existing `settings.json` user field shape unchanged while still allowing CAS across renderer windows and process restarts.
 
