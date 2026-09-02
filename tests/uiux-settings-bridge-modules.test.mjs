@@ -645,13 +645,17 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
         'the entry executes the shared declarative pipeline runner');
     for (const name of ['canonical-rows', 'uiux-inputs', 'appearance-rows',
         'global-pill-steppers', 'select-projection', 'global-typed-primitives', 'topic-summary-picker',
-        'forum-field-owner', 'legacy-range-pass', 'uiux-disclosures',
+        'forum-field-owner', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
         assert.match(fn, new RegExp(`name: '${name}'`), `mount step ${name} must stay declared`);
     }
+    // M5-c pass2：legacy-range-pass 退役——全局设置面仅有的四条 range 全部
+    // 被步进器/外观原语收编，Range enhance 扫描无可增强对象，pass 随 pass2 删除。
+    assert.doesNotMatch(fn, /name: 'legacy-range-pass'/,
+        'the vacuous legacy Range pass must stay retired');
     // The two documented ordering hazards stay explicit edges, not comments.
-    assert.match(fn, /name: 'global-pill-steppers',\s*\n(?:.*\n)*?\s*before: \['select-projection', 'legacy-range-pass'\]/,
-        'pill/stepper projections must declare precedence over the select projection and the legacy Range pass');
+    assert.match(fn, /name: 'global-pill-steppers',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
+        'pill/stepper projections must declare precedence over the select projection');
     assert.match(fn, /name: 'appearance-rows',\s*\n(?:.*\n)*?\s*before: \['select-projection'\]/,
         'appearance projections must declare precedence over the catch-all select projection');
     assert.match(fn, /name: 'canonical-rows',\s*\n(?:.*\n)*?\s*before: \['uiux-inputs'/,

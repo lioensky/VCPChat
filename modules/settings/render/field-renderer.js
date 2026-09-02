@@ -15,7 +15,7 @@
 import { walkFields } from '../schema/kernel.js';
 import { el } from './shared.js';
 import { canonicalizeRenderedRow } from './canonical-row.js';
-import { fieldProjection } from '../../ui-system/settings/field-registry.js';
+import { fieldProjection, fieldDescriptor } from '../../ui-system/settings/field-registry.js';
 
 function applyRowAnchors(row, field) {
     if (field.rowId) row.id = field.rowId;
@@ -145,14 +145,28 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
             if (field.groupId || field.grouped) {
                 const row = el(doc, 'div', 'form-group', field.rowStyle ?? 41);
                 applyRowAnchors(row, field);
-                row.append(buildLabel(doc, field, field.labelStyle), buildNumberInput(doc, field, field.controlStyle ?? 27));
+                const groupedInput = buildNumberInput(doc, field, field.controlStyle ?? 27);
+                if (isStepperField(field)) {
+                    // M5-c pass2：分组步进器行同样直出终态结构（旧挂载的
+                    // replaceChildren 连 hint 一并替换，故此处不输出 hint）。
+                    row.append(buildStepperControl(doc, field, groupedInput));
+                    return row;
+                }
+                row.append(buildLabel(doc, field, field.labelStyle), groupedInput);
                 const hint = buildHint(doc, field, field.hintStyle ?? 4);
                 if (hint) row.append(hint);
                 return row;
             }
             const row = el(doc, 'div', 'vcp-settings-row', field.rowStyle ?? 37);
             applyRowAnchors(row, field);
-            row.append(buildLabel(doc, field, field.labelStyle), buildNumberInput(doc, field, field.controlStyle ?? 19));
+            const plainInput = buildNumberInput(doc, field, field.controlStyle ?? 19);
+            if (isStepperField(field)) {
+                // M5-c pass2：步进器投影直出原语终态结构，行文案由原语自带的
+                // title/description 承担（旧 label 会被挂载替换，不再输出）。
+                row.append(buildStepperControl(doc, field, plainInput));
+            } else {
+                row.append(buildLabel(doc, field, field.labelStyle), plainInput);
+            }
             const hint = buildHint(doc, field, field.hintStyle ?? 4);
             if (hint) row.append(hint);
             return row;
@@ -267,6 +281,13 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
             const container = doc.createElement('div');
             container.className = 'slider-container';
             const input = buildRangeInput(doc, field);
+            if (isStepperField(field)) {
+                // M5-c pass2：步进器投影直出后 output 由原语胶囊取代（与旧
+                // 挂载的 replaceChildren 终态一致）。
+                container.append(buildStepperControl(doc, field, input));
+                row.append(container);
+                return row;
+            }
             container.append(input);
             const output = doc.createElement('output');
             output.id = field.outputId;
@@ -330,7 +351,12 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
             applyRowAnchors(row, field);
             for (const child of field.fields) {
                 const cell = doc.createElement('div');
-                cell.append(buildLabel(doc, child, child.labelStyle ?? 18), buildNumberInput(doc, child, child.controlStyle ?? 19));
+                const cellInput = buildNumberInput(doc, child, child.controlStyle ?? 19);
+                if (isStepperField(child)) {
+                    cell.append(buildStepperControl(doc, child, cellInput));
+                } else {
+                    cell.append(buildLabel(doc, child, child.labelStyle ?? 18), cellInput);
+                }
                 row.append(cell);
             }
             return row;
@@ -367,6 +393,98 @@ function buildRangeInput(doc, field) {
     if (field.step !== undefined) input.step = String(field.step);
     if (field.value !== undefined) input.value = String(field.value);
     return input;
+}
+
+// M5-c pass2：步进器投影字段（field-registry projection==='stepper'）直出
+// NumericStepperRow 终态结构——与 uiux/generated/primitives/numeric-stepper-row.js
+// 的 mount 产物逐属性一致（text/control 胶囊、编辑器内联守卫样式、箭头
+// svg、单位），业务 input 保持原位作为步进行最后一个子节点；运行期只剩
+// activateNumericStepperRow 绑行为。结构是 mount 产物的转录，两者以
+// settings-schema-render 的直出结构断言锁定。
+const STEPPER_EDITOR_GUARD_STYLES = [
+    ['appearance', 'textfield'],
+    ['-webkit-appearance', 'none'],
+    ['background', 'transparent'],
+    ['border', '0'],
+    ['box-shadow', 'none'],
+    ['outline', 'none'],
+    ['width', '42px'],
+    ['height', '24px'],
+    ['padding', '0'],
+    ['margin', '0'],
+    ['text-align', 'center'],
+];
+const STEPPER_ARROW_PATHS = {
+    up: 'M2.15137 8.5L2.57617 8.07617L5.30273 5.34863C5.55843 5.09294 5.78438 4.86618 5.98828 4.70215C6.20088 4.53117 6.44405 4.38244 6.75 4.33398C6.91565 4.30778 7.08435 4.30778 7.25 4.33398C7.55595 4.38244 7.79912 4.53117 8.01172 4.70215C8.21561 4.86618 8.44157 5.09294 8.69727 5.34863L11.4238 8.07617L11.8486 8.5L11 9.34863L10.5762 8.92383L7.84863 6.19727C7.57405 5.92269 7.40124 5.75152 7.25977 5.6377C7.12709 5.53096 7.07728 5.52187 7.0625 5.51953C7.02105 5.51297 6.97895 5.51297 6.9375 5.51953C6.92272 5.52187 6.87291 5.53096 6.74023 5.6377C6.59876 5.75152 6.42595 5.92268 6.15137 6.19727L3.42383 8.92383L3 9.34863L2.15137 8.5Z',
+    down: 'M11.8486 5.5L11.4238 5.92383L8.69727 8.65137C8.44157 8.90706 8.21562 9.13382 8.01172 9.29785C7.79912 9.46883 7.55595 9.61756 7.25 9.66602C7.08435 9.69222 6.91565 9.69222 6.75 9.66602C6.44405 9.61756 6.20088 9.46883 5.98828 9.29785C5.78438 9.13382 5.55843 8.90706 5.30273 8.65137L2.57617 5.92383L2.15137 5.5L3 4.65137L3.42383 5.07617L6.15137 7.80273C6.42595 8.07732 6.59876 8.24849 6.74023 8.3623C6.87291 8.46904 6.92272 8.47813 6.9375 8.48047C6.97895 8.48703 7.02105 8.48703 7.0625 8.48047C7.07728 8.47813 7.12709 8.46904 7.25977 8.3623C7.40124 8.24849 7.57405 8.07732 7.84863 7.80273L10.5762 5.07617L11 4.65137L11.8486 5.5Z',
+};
+
+function buildStepperArrow(doc, path, title) {
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.className = 'vcp-uiux-numeric-stepper-row-arrow';
+    button.setAttribute('aria-label', title);
+    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '9');
+    svg.setAttribute('height', '9');
+    svg.setAttribute('viewBox', '0 0 14 14');
+    svg.setAttribute('aria-hidden', 'true');
+    const p = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', path);
+    p.setAttribute('fill', 'currentColor');
+    svg.append(p);
+    button.append(svg);
+    return button;
+}
+
+function buildStepperControl(doc, field, input) {
+    const descriptor = fieldDescriptor(field.key) || {};
+    const title = descriptor.title || field.label;
+    const row = doc.createElement('div');
+    row.className = 'vcp-uiux-numeric-stepper-row';
+    const text = doc.createElement('div');
+    text.className = 'vcp-uiux-numeric-stepper-row-text';
+    const titleNode = doc.createElement('div');
+    titleNode.className = 'vcp-uiux-numeric-stepper-row-title';
+    titleNode.textContent = title;
+    const desc = doc.createElement('div');
+    desc.className = 'vcp-uiux-numeric-stepper-row-description';
+    desc.textContent = descriptor.description ?? field.description ?? '';
+    text.append(titleNode, desc);
+    const control = doc.createElement('div');
+    control.className = 'vcp-uiux-numeric-stepper-row-control';
+    const stepper = doc.createElement('div');
+    stepper.className = 'vcp-uiux-numeric-stepper-row-stepper';
+    const editor = doc.createElement('input');
+    editor.type = 'number';
+    editor.className = 'vcp-uiux-numeric-stepper-row-input';
+    // Inline guards keep the editable proxy neutral even when legacy settings
+    // input rules load after the primitive stylesheet (transcribed from the
+    // primitive mount so the rendered structure is its final product).
+    for (const [name, value] of STEPPER_EDITOR_GUARD_STYLES) {
+        editor.style.setProperty(name, value, 'important');
+    }
+    editor.setAttribute('aria-label', title);
+    editor.min = input.min;
+    editor.max = input.max;
+    editor.step = input.step || '1';
+    const arrows = doc.createElement('span');
+    arrows.className = 'vcp-uiux-numeric-stepper-row-arrows';
+    arrows.append(
+        buildStepperArrow(doc, STEPPER_ARROW_PATHS.up, `增大${title}`),
+        buildStepperArrow(doc, STEPPER_ARROW_PATHS.down, `减小${title}`),
+    );
+    stepper.append(editor, arrows);
+    const unit = doc.createElement('span');
+    unit.className = 'vcp-uiux-numeric-stepper-row-unit';
+    unit.textContent = descriptor.unit ?? 'px';
+    control.append(stepper, unit);
+    row.append(text, control, input);
+    return row;
+}
+
+function isStepperField(field) {
+    return field?.key ? fieldProjection(field.key) === 'stepper' : false;
 }
 
 function buildNumberInput(doc, field, styleValue) {
