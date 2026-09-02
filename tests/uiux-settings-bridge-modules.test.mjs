@@ -65,10 +65,12 @@ test('single-concern modules import cleanly and expose their contract', async ()
     const registrySource = read(path.join(settingsDir, 'field-registry.js'));
     assert.ok(!/from\s+['"](?:schemastery|cordis)/i.test(registrySource), 'the trimmed descriptor schema must not grow schema-framework deps');
 
-    const advanced = await import(pathToFileURL(path.join(settingsDir, 'advanced-visibility.js')).href);
-    assert.equal(typeof advanced.syncAdvancedSettingsVisibility, 'function');
-    const rust = await import(pathToFileURL(path.join(settingsDir, 'rust-visibility.js')).href);
-    assert.equal(typeof rust.syncRustAssistantVisibility, 'function');
+    // M5-d：advanced/rust 两个可见性薄包装退役（渲染器已声明 data-visible-when，
+    // 事件路径直调 dependent-rows 的统一求值器），保留删除守卫防止回潮。
+    assert.equal(fs.existsSync(path.join(settingsDir, 'advanced-visibility.js')), false,
+        'the retired advanced-visibility wrapper must stay deleted');
+    assert.equal(fs.existsSync(path.join(settingsDir, 'rust-visibility.js')), false,
+        'the retired rust-visibility wrapper must stay deleted');
     const render = await import(pathToFileURL(path.join(settingsDir, 'render-visibility.js')).href);
     assert.equal(typeof render.syncRenderSettingsVisibility, 'function');
     const languageRows = await import(pathToFileURL(path.join(settingsDir, 'global-language-rows.js')).href);
@@ -222,9 +224,12 @@ test('the bridge entry wires the modules and stays the sole bridge-global owner'
     assert.match(entry, /from '\.\/agent-settings-bridge\.js'/, 'entry must compose the Agent domain module');
     assert.match(entry, /from '\.\/typed-field-owners\.js'/, 'entry must compose the typed field owner module');
     const typed = read(typedOwners);
-    for (const visibility of ['advanced-visibility.js', 'rust-visibility.js', 'render-visibility.js']) {
+    // M5-d：薄包装退役后，typed owners 只 import render-visibility（旧式 id 表）
+    // 与 dependent-rows（统一可见性求值器），不再有 advanced/rust 包装导入。
+    for (const visibility of ['render-visibility.js', 'dependent-rows.js']) {
         assert.match(typed, new RegExp(`from '\\./settings/${visibility}'`), `typed owners must import the ${visibility} helper`);
     }
+    assert.ok(!typed.includes('advanced-visibility'), 'typed owners must call the unified evaluator directly');
     const globalOwners = [...entry.matchAll(/window\.VCPUISettingsBridge\s*=/g)].length;
     assert.equal(globalOwners, 1, 'exactly one window.VCPUISettingsBridge assignment');
 });
@@ -842,14 +847,19 @@ test('设置分区静态标记退役（M4）：分区契约由 schema 渲染承�
         'nested row primitives opt out of their self-drawn hairline inside canonical rows');
     // The section projection keeps the export but delegates to the shared
     // evaluator; no hardcoded per-row display writes survive the flatten.
-    const advancedHelper = read(path.join(root, 'modules', 'ui-system', 'settings', 'advanced-visibility.js'));
-    assert.ok(!advancedHelper.includes('contextSanitizerDepthContainer'),
-        'the advanced projection must not hand-write retired conditional rows');
-    assert.match(advancedHelper, /syncDependentRows\(form\)/);
-    const rustHelper = read(path.join(root, 'modules', 'ui-system', 'settings', 'rust-visibility.js'));
-    assert.ok(!rustHelper.includes('rustGuardRulesContainer'),
-        'the rust projection must not hand-write retired guard containers');
-    assert.match(rustHelper, /syncDependentRows\(form\)/);
+    // M5-d：advanced/rust 薄包装文件删除（事件路径经 typed-field-owners 直调
+    // syncDependentRows），保留删除守卫；render-visibility 保留（旧式 id 表 +
+    // 时长输出镜像，非 data-visible-when 语义）。
+    assert.equal(fs.existsSync(path.join(root, 'modules', 'ui-system', 'settings', 'advanced-visibility.js')), false,
+        'the retired advanced-visibility wrapper must stay deleted');
+    assert.equal(fs.existsSync(path.join(root, 'modules', 'ui-system', 'settings', 'rust-visibility.js')), false,
+        'the retired rust-visibility wrapper must stay deleted');
+    const typedOwnersSource = read(path.join(root, 'modules', 'ui-system', 'typed-field-owners.js'));
+    for (const retiredCall of ['syncAdvancedSettingsVisibility', 'syncRustAssistantVisibility']) {
+        assert.ok(!typedOwnersSource.includes(retiredCall), `typed owners must not call ${retiredCall}`);
+    }
+    assert.match(typedOwnersSource, /import \{ syncDependentRows \} from '\.\/settings\/dependent-rows\.js';/,
+        'typed owners must import the unified visibility evaluator directly');
     // The fallback binder re-evaluates the same clauses for degraded mode.
     const legacy = read(eventListeners);
     assert.match(legacy, /syncDependentRows/);
