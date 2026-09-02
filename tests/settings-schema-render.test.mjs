@@ -82,17 +82,26 @@ test('quick-actions schema 编译产物保留全部业务锚点与行为标记',
     assert.equal(form.querySelector('.settings-section-title').textContent, '快捷操作');
 });
 
-test('编译产物行形态与静态标记同构（data-vcp-style 与类名）', () => {
+test('quick-actions 直出 canonical 行：行语义类映射与样式标记保留（M5-b 试点）', () => {
     const { form } = renderIntoForm(quickActionsSection);
-    const stackedRow = form.querySelector('#continueWritingPrompt').closest('.vcp-settings-row');
-    assert.ok(stackedRow.classList.contains('vcp-settings-row-stacked'));
-    assert.equal(stackedRow.getAttribute('data-vcp-style'), '37');
+    const stackedItem = form.querySelector('#continueWritingPrompt').closest('.vcp-uiux-general-item');
+    assert.ok(stackedItem, 'textarea 行应直出 canonical 行');
+    assert.ok(stackedItem.classList.contains('vcp-uiux-general-row'));
+    assert.ok(stackedItem.classList.contains('vcp-settings-row-stacked'), '历史堆叠类应按映射表保留');
+    assert.equal(stackedItem.dataset.canonicalRow, 'true');
+    assert.equal(stackedItem.dataset.settingPrimitive, 'general-item');
+    assert.equal(stackedItem.getAttribute('data-vcp-style'), '37');
     assert.equal(form.querySelector('#continueWritingPrompt').getAttribute('data-vcp-style'), '38');
     assert.equal(form.querySelector('#flowlockContinueDelay').getAttribute('data-vcp-style'), '19');
-    assert.equal(form.querySelector('#enableMiddleClickQuickAction').closest('.vcp-settings-control-row').getAttribute('data-vcp-style'), '15');
-    assert.equal(form.querySelector('#middleClickQuickActionContainer').getAttribute('data-vcp-style'), '34');
+    const switchItem = form.querySelector('#enableMiddleClickQuickAction').closest('.vcp-uiux-general-item');
+    assert.ok(switchItem, '开关行应直出 canonical 行');
+    assert.equal(switchItem.getAttribute('data-vcp-style'), '15');
+    const container = form.querySelector('#middleClickQuickActionContainer');
+    assert.equal(container.classList.contains('vcp-uiux-general-item'), true, '容器 id 穿越行语义映射');
+    assert.equal(container.getAttribute('data-vcp-style'), '34');
     assert.equal(form.querySelector('#middleClickAdvancedSettings').getAttribute('data-vcp-style'), '41');
     assert.equal(form.querySelector('#middleClickAdvancedDelay').getAttribute('data-vcp-style'), '27');
+    assert.ok(!form.querySelector('.vcp-settings-row, .vcp-settings-control-row, .form-group'), '旧包裹类不再输出');
 });
 
 test('user-identity：专属组件与业务锚点齐备', () => {
@@ -239,9 +248,9 @@ test('advanced-features：依赖行、分隔线与模型复合控件', () => {
     assert.equal(form.querySelector('#contextSanitizerDepth').value, '2');
     // 开关行的 title 提示
     assert.ok(form.querySelector('label[for="enableThoughtChainInjection"][title]'));
-    // 分隔线与模型复合控件
-    const hr = host.querySelector('hr');
-    assert.equal(hr.getAttribute('data-vcp-style'), '36');
+    // 分隔线不再编译输出（M5-b）：canonical 行自带 hairline，投影 pass 本就
+    // 挂载即删，画面零变化。
+    assert.equal(host.querySelector('hr'), null, 'advancedDivider <hr> 停止输出');
     assert.ok(form.querySelector('#topicSummaryModelContainer .model-input-container button svg'));
     // 复合控件内部输入可快照迁移
     form.querySelector('#topicSummaryModel').value = 'gpt-x';
@@ -351,23 +360,29 @@ test('appearance-settings：内容宽度单选组、气泡依赖行与宽屏数�
     assert.equal(form.querySelector('#chatBubbleMaxWidthWideDefault').value, '80');
 });
 
-test('canonical-rows 对编译产物投影出与静态标记一致的 canonical 行', () => {
+test('canonical 行直出结构完备，投影 pass 对已达标记空转（M5-b 试点）', () => {
     const { form } = renderIntoForm(quickActionsSection);
-    mountCanonicalSettingsRows(form);
     const stackedItem = form.querySelector('#continueWritingPrompt').closest('.vcp-uiux-general-item');
-    assert.ok(stackedItem, 'textarea 行应成为 canonical 行');
+    assert.ok(stackedItem, 'textarea 行应直出 canonical 行');
     assert.ok(stackedItem.classList.contains('vcp-uiux-general-row'));
     assert.ok(stackedItem.classList.contains('vcp-settings-row-stacked'));
     assert.equal(stackedItem.dataset.settingKey, 'continueWritingPrompt');
     assert.equal(stackedItem.dataset.settingsSectionKey, 'quick-actions');
     const copy = stackedItem.querySelector(':scope > .vcp-uiux-row-copy');
     assert.ok(copy, 'textarea 行应有 row-copy 槽');
+    assert.equal(copy.dataset.settingPrimitive, 'row-copy');
     assert.equal(copy.querySelector('label').getAttribute('for'), 'continueWritingPrompt');
     assert.ok(copy.querySelector('small'), '提示应进 row-copy 槽');
     const switchRow = form.querySelector('#enableMiddleClickQuickAction').closest('.vcp-uiux-general-item');
     assert.ok(switchRow.querySelector(':scope > .vcp-uiux-row-copy label'));
     assert.ok(switchRow.querySelector(':scope > label.switch'));
-    assert.ok(form.querySelector('#middleClickQuickActionContainer'), '容器 id 必须穿越投影');
+    assert.ok(form.querySelector('#middleClickQuickActionContainer'), '容器 id 必须穿越直出');
+    // 已达标记：投影 pass 对直出产物零改动（管线其余 pass 所见 DOM 与
+    // 「旧包裹类 + pass 投影」逐节点一致）。
+    const before = form.innerHTML;
+    mountCanonicalSettingsRows(form);
+    assert.equal(form.innerHTML, before, 'canonical-rows 对直出行必须空转');
+    assert.equal(form.dataset.vcpCanonicalRowsMounted, 'true');
 });
 
 test('store 快照：多类型现值迁移不丢失', () => {

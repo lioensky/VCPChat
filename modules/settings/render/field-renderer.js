@@ -5,8 +5,16 @@
 // 处理同一结构"保证。schema → 呈现标记的映射收敛在这里，分区退役
 // data-vcp-style 时只需要改这一层；描述符可用 rowStyle/hintStyle 等
 // 覆盖个别历史样式，默认值即各类型的现行标记。
+//
+// M5-b canonical 直出：分区声明 canonicalRows 后，本渲染器对每行就地
+// canonical 化（render/canonical-row.js 的 canonicalizeRenderedRow，与
+// canonical-rows 投影 pass 共用同一机械层），产出 vcp-uiux-general-item/
+// general-row + row-copy 槽 + data-setting-primitive 挂点，旧包裹类
+// （vcp-settings-row/form-group 等）不再出现在编译产物中；行语义类
+// 映射表见 canonical-row.js 头注。
 import { walkFields } from '../schema/kernel.js';
 import { el } from './shared.js';
+import { canonicalizeRenderedRow } from './canonical-row.js';
 
 function applyRowAnchors(row, field) {
     if (field.rowId) row.id = field.rowId;
@@ -93,7 +101,15 @@ function buildSelect(doc, field) {
     return node;
 }
 
-export function renderSchemaField(doc, field) {
+// canonicalContext = { sectionKey }（分区声明 canonicalRows 时由
+// renderSchemaSection 传入）；行节点构建后就地 canonical 化，保证与
+// canonical-rows pass 的产出逐属性一致。
+export function renderSchemaField(doc, field, canonicalContext = null) {
+    const node = buildSchemaFieldNode(doc, field, canonicalContext);
+    return canonicalContext ? canonicalizeRenderedRow(node, canonicalContext.sectionKey) : node;
+}
+
+function buildSchemaFieldNode(doc, field, canonicalContext = null) {
     switch (field.type) {
         case 'textarea': {
             if (field.groupId || field.grouped) {
@@ -276,7 +292,7 @@ export function renderSchemaField(doc, field) {
             body.className = 'vcp-settings-card-body';
             body.id = bodyId;
             for (const child of field.fields) {
-                body.append(child.kind === 'layout' ? renderSchemaLayout(doc, child) : renderSchemaField(doc, child));
+                body.append(child.kind === 'layout' ? renderSchemaLayout(doc, child, canonicalContext) : renderSchemaField(doc, child, canonicalContext));
             }
             cardNode.append(toggle, body);
             return cardNode;
@@ -288,7 +304,7 @@ export function renderSchemaField(doc, field) {
             row.append(buildLabel(doc, { ...field, type: 'radioGroup' }, field.labelStyle ?? 11));
             const innerRow = el(doc, 'div', 'vcp-settings-control-row', field.innerRowStyle ?? 13);
             for (const radioField of field.fields) {
-                innerRow.append(renderSchemaField(doc, radioField));
+                innerRow.append(renderSchemaField(doc, radioField, canonicalContext));
             }
             row.append(innerRow);
             const hint = buildHint(doc, field, field.hintStyle ?? 4);
@@ -369,9 +385,9 @@ function buildCardChevron(doc) {
     return svg;
 }
 
-function renderSchemaLayout(doc, descriptor) {
+function renderSchemaLayout(doc, descriptor, canonicalContext = null) {
     if (descriptor.type === 'card' || descriptor.type === 'radioGroup' || descriptor.type === 'inlineNumbers' || descriptor.type === 'numberCells') {
-        return renderSchemaField(doc, descriptor);
+        return renderSchemaField(doc, descriptor, canonicalContext);
     }
     throw new Error(`field-renderer: 未支持的布局类型 "${descriptor.type}"`);
 }
@@ -384,8 +400,11 @@ export function renderSchemaSection(sectionDescriptor, doc) {
     title.className = 'settings-section-title';
     title.textContent = sectionDescriptor.title;
     nodes.push(title);
+    // M5-b：声明 canonicalRows 的分区直出 canonical 行，其余分区维持
+    // 旧包裹类、由 canonical-rows pass 投影。
+    const canonicalContext = sectionDescriptor.canonicalRows ? { sectionKey: sectionDescriptor.key } : null;
     for (const field of sectionDescriptor.fields) {
-        nodes.push(field.kind === 'layout' ? renderSchemaLayout(doc, field) : renderSchemaField(doc, field));
+        nodes.push(field.kind === 'layout' ? renderSchemaLayout(doc, field, canonicalContext) : renderSchemaField(doc, field, canonicalContext));
     }
     return nodes;
 }

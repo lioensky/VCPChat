@@ -86,11 +86,8 @@ export const advancedFeaturesSection = section('advanced-features', '高级功�
         label: '启用Agent音乐控制',
         rowStyle: 35,
     }),
-    custom('advancedDivider', doc => {
-        const separator = doc.createElement('hr');
-        separator.setAttribute('data-vcp-style', '36');
-        return separator;
-    }),
+    // 旧 advancedDivider（<hr>，data-vcp-style=36）不再编译输出：行语义分隔
+    // 由 canonical 行自带的 hairline 承担，投影 pass 本就挂载即删（M5-b）。
     custom('topicSummaryModelContainer', buildTopicSummaryModelRow, ['topicSummaryModel'], {
         saveMap: { topicSummaryModel: { trim: true } },
     }),
