@@ -630,7 +630,7 @@
                         <!-- 语音设置可折叠容器 -->
                         <div class="agent-settings-collapsible-container agent-params-collapsible-container agent-settings-section collapsed" data-section-key="tts">
                             <div class="agent-settings-section-header params-header" id="ttsToggleHeader">
-                                <span class="agent-settings-section-title params-title">语音设置 (Sovits TTS)</span>
+                                <span class="agent-settings-section-title params-title">语音设置 (本地 SoVITS / 网络 MiMo 预置·自然控制·克隆)</span>
                                 <div class="agent-settings-section-summary params-summary" id="ttsSummary"></div>
                                 <button type="button" class="agent-settings-toggle-btn params-toggle-btn" id="ttsToggleBtn"
                                     aria-label="展开/折叠语音设置">
@@ -642,7 +642,7 @@
                             </div>
                             <div class="agent-settings-section-content params-content" id="ttsContent">
                                 <div>
-                                    <label for="agentTtsVoicePrimary">主语言模型:</label>
+                                    <label for="agentTtsVoicePrimary">主语言音色 / MiMo 模式:</label>
                                     <div class="model-input-container">
                                         <select id="agentTtsVoicePrimary" name="ttsVoicePrimary">
                                             <option value="">不使用语音</option>
@@ -670,7 +670,7 @@
                                 </div>
 
                                 <div>
-                                    <label for="agentTtsVoiceSecondary">副语言模型:</label>
+                                    <label for="agentTtsVoiceSecondary">副语言音色 / MiMo 模式:</label>
                                     <div class="model-input-container">
                                         <select id="agentTtsVoiceSecondary" name="ttsVoiceSecondary">
                                             <option value="">不使用</option>
@@ -690,6 +690,35 @@
                                             step="0.1" value="1.0">
                                         <span id="ttsSpeedValue">1.0</span>
                                     </div>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        本地 SoVITS 使用该语速；MiMo 按模型原生节奏合成，可用下方自然语言提示词描述语速。
+                                    </small>
+                                </div>
+
+                                <div class="settings-form-group tts-director-settings">
+                                    <div class="tts-director-heading">
+                                        <label for="agentTtsDirectorPromptInput">MiMo 自然语言演绎提示词:</label>
+                                        <button type="button" id="fillAgentTtsDirectorTemplateBtn"
+                                            class="tts-director-template-button" title="填入角色、场景和指导模板">
+                                            导演模板
+                                        </button>
+                                    </div>
+                                    <div class="tts-director-composer">
+                                        <textarea id="agentTtsDirectorPromptInput"
+                                            class="tts-director-editor tts-director-editor-new"
+                                            rows="1"
+                                            placeholder="点击展开，描述角色、场景与演绎指导；Ctrl+Enter 添加"></textarea>
+                                        <button type="button" id="addAgentTtsDirectorPromptBtn"
+                                            class="small-button tts-director-action-button"
+                                            title="添加导演提示词" aria-label="添加导演提示词">+</button>
+                                    </div>
+                                    <div id="agentTtsDirectorPromptsContainer"
+                                        class="tts-director-prompts-container"></div>
+                                    <small class="tts-director-help">
+                                        适用于网络模式：预置音色模式使用“提示词 + voice”控制演绎；
+                                        自然语言控制模式使用专用模型且不发送 voice；克隆模式使用参考音频作为 voice，并可用提示词微调发音风格。
+                                        Ctrl+Enter 添加，右侧 − 删除；本地 SoVITS 会忽略这些提示词。
+                                    </small>
                                 </div>
                             </div>
                         </div>
@@ -1637,6 +1666,80 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <div class="settings-subsection stream-animation-settings">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">流式内容动效</div>
+                                        <p class="settings-subsection-description">为新出现的段落、列表、代码块等内容选择进入动画。系统启用“减少动态效果”时会自动停用。</p>
+                                    </div>
+
+                                    <div class="stream-animation-control-grid">
+                                        <label class="settings-form-group" for="streamAnimationPreset">
+                                            <span>动画预设</span>
+                                            <select id="streamAnimationPreset" name="streamAnimationPreset">
+                                                <option value="slide-left">右侧滑入（经典）</option>
+                                                <option value="fade">纯淡入</option>
+                                                <option value="rise">柔和上浮</option>
+                                                <option value="scale">轻微缩放</option>
+                                                <option value="none">关闭动画</option>
+                                                <option value="custom">自定义 CSS</option>
+                                            </select>
+                                        </label>
+
+                                        <label class="settings-form-group stream-animation-duration-control" for="streamAnimationDurationMs">
+                                            <span class="stream-animation-range-heading">
+                                                <span>动画时长</span>
+                                                <output id="streamAnimationDurationValue" for="streamAnimationDurationMs">500ms</output>
+                                            </span>
+                                            <input type="range" id="streamAnimationDurationMs" name="streamAnimationDurationMs"
+                                                min="100" max="2000" step="50" value="500">
+                                            <small>统一微调所有预设的播放速度；数值越小，动画越快。</small>
+                                        </label>
+                                    </div>
+
+                                    <div id="streamAnimationCustomPanel" class="settings-nested-panel stream-animation-custom-panel" hidden>
+                                        <label class="settings-form-group" for="streamAnimationCustomCss">
+                                            <span>自定义动画 CSS 声明</span>
+                                            <textarea id="streamAnimationCustomCss" name="streamAnimationCustomCss" rows="5"
+                                                spellcheck="false"
+                                                placeholder="例如：&#10;opacity: 0;&#10;transform: translateY(12px) scale(0.98);&#10;filter: blur(3px);"></textarea>
+                                            <small>填写动画元素进入前的初始状态，无需选择器或花括号。结束状态固定恢复为 opacity: 1、transform: none、filter: none。</small>
+                                        </label>
+                                        <div class="stream-animation-custom-example">
+                                            <div class="stream-animation-custom-example-heading">
+                                                <strong>定义示例</strong>
+                                                <button type="button" id="fillStreamAnimationCssExample" class="small-button">填入示例</button>
+                                            </div>
+                                            <pre><code>opacity: 0;
+transform: translateY(12px) scale(0.98);
+filter: blur(3px);
+transform-origin: center bottom;</code></pre>
+                                            <small>保存后，每个新内容块会从上述状态过渡到正常状态；动画时长仍由上方滑杆统一控制。</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="stream-animation-preview" aria-labelledby="streamAnimationPreviewTitle">
+                                        <div class="stream-animation-preview-toolbar">
+                                            <div>
+                                                <strong id="streamAnimationPreviewTitle">动画预览</strong>
+                                                <small>预览会使用当前未保存的选项</small>
+                                            </div>
+                                            <button type="button" id="replayStreamAnimationPreview" class="small-button">
+                                                <span aria-hidden="true">↻</span>
+                                                重新播放
+                                            </button>
+                                        </div>
+                                        <div class="stream-animation-preview-stage">
+                                            <div id="streamAnimationPreviewElement" class="stream-animation-preview-message">
+                                                <span class="stream-animation-preview-avatar" aria-hidden="true">AI</span>
+                                                <span>
+                                                    <strong>流式内容块</strong>
+                                                    <small>这是一段新生成的回复内容。</small>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- 划词助手 -->
@@ -1837,7 +1940,7 @@
                                             <label for="voiceModeNetwork"
                                                 style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
                                                 <input type="radio" id="voiceModeNetwork" name="voiceMode" value="network">
-                                                <span>网络 API 模式</span>
+                                                <span>网络 MiMo TTS 模式</span>
                                             </label>
                                         </div>
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
@@ -1846,38 +1949,45 @@
                                     </div>
 
                                     <div class="settings-form-group">
-                                        <label for="speechRecognizerBrowserPath">STT 浏览器路径:</label>
-                                        <input type="text" id="speechRecognizerBrowserPath" name="speechRecognizerBrowserPath"
-                                            placeholder="留空自动探测系统 Chrome / Puppeteer Chromium">
+                                        <label for="voiceInputMode">语音输入模式:</label>
+                                        <select id="voiceInputMode" name="voiceInputMode">
+                                            <option value="windows_voice_typing">Windows 语音键入（Win+H）</option>
+                                            <option value="right_alt_hold">输入法语音（模拟长按右 Alt）</option>
+                                        </select>
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            用于反代网页获取 STT 功能时启动浏览器。支持自定义 Chrome / Chromium 可执行文件路径。
+                                            两种模式均使用同一快捷键启停。右 Alt 模式会在听写期间由程序持续模拟按住右 Alt，无需手动长按快捷键。
                                         </small>
                                     </div>
 
                                     <div class="settings-form-group">
-                                        <label for="speechRecognizerPagePath">STT 浏览器识别页路径:</label>
-                                        <input type="text" id="speechRecognizerPagePath" name="speechRecognizerPagePath"
-                                            placeholder="默认: Voicechatmodules/recognizer.html">
+                                        <label for="voiceInputShortcut">语音输入快捷键:</label>
+                                        <input type="text" id="voiceInputShortcut" name="voiceInputShortcut"
+                                            value="F7"
+                                            placeholder="当前支持 F1 - F24">
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            可配置用于浏览器语音识别的本地 HTML 页面相对路径，默认使用内置识别页。
+                                            当前支持 F1 - F24 单键。按一次开始听写，再按一次停止并发送；停止后会等待输入法完成文字上屏和静默防抖，请勿连续快速触发。
                                         </small>
                                     </div>
                                 </div>
 
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">网络 API 模式</div>
-                                        <p class="settings-subsection-description">当语音模式为“网络 API 模式”时，使用网络供应商配置作为主要推理入口。</p>
+                                        <div class="settings-subsection-title">网络 MiMo TTS</div>
+                                        <p class="settings-subsection-description">直接连接 DMXAPI 或小米官方 MiMo 2.5 TTS，支持 SSE 流式音频播放。</p>
                                     </div>
 
                                     <div class="settings-form-group">
-                                        <label for="voiceNetworkProviderUrl">网络供应商 URL:</label>
+                                        <label for="voiceNetworkProviderUrl">MiMo API URL:</label>
                                         <input type="url" id="voiceNetworkProviderUrl" name="voiceNetworkProviderUrl"
-                                            placeholder="例如: https://api.example.com/voice">
+                                            placeholder="https://www.dmxapi.cn/v1 或 https://api.xiaomimimo.com/v1">
+                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            可填写到 /v1，也可填写完整的 /v1/chat/completions；程序会自动补全。
+                                        </small>
                                     </div>
                                     <div class="settings-form-group">
-                                        <label for="voiceNetworkProviderKey">网络供应商 Key:</label>
-                                        <input type="password" id="voiceNetworkProviderKey" name="voiceNetworkProviderKey">
+                                        <label for="voiceNetworkProviderKey">MiMo API Key:</label>
+                                        <input type="password" id="voiceNetworkProviderKey" name="voiceNetworkProviderKey"
+                                            placeholder="填写与 URL 属于同一平台的 API Key">
                                     </div>
                                 </div>
 

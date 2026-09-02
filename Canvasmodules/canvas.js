@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const dismissChangeBtn = document.getElementById('dismiss-change-btn');
     const diffModal = document.getElementById('diff-modal');
     const diffViewContainer = document.getElementById('diff-view');
+    const diffReviewPath = document.getElementById('diff-review-path');
+    const reviewReasonInput = document.getElementById('review-reason-input');
     const acceptChangesBtn = document.getElementById('accept-changes-btn');
     const rejectChangesBtn = document.getElementById('reject-changes-btn');
     const canvasSearchInput = document.getElementById('canvasSearchInput');
@@ -36,16 +38,108 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchPrevBtn = document.getElementById('search-prev-btn');
     const searchNextBtn = document.getElementById('search-next-btn');
     const searchCloseBtn = document.getElementById('search-close-btn');
+    const fileSidebar = document.getElementById('file-sidebar');
+    const collapseLeftBtn = document.getElementById('collapse-left-btn');
+    const collapseLeftTrigger = document.getElementById('collapse-left-trigger');
+    const collapseRightBtn = document.getElementById('collapse-right-btn');
+    const toggleRightBtn = document.getElementById('toggle-right-btn');
+    const activeFileName = document.getElementById('active-file-name');
+    const fileTypeBadge = document.getElementById('file-type-badge');
+    const dirtyIndicator = document.getElementById('dirty-indicator');
+    const saveStatus = document.getElementById('saveStatus');
+    const cursorPosition = document.getElementById('cursor-position');
+    const documentStats = document.getElementById('document-stats');
+    const languageMode = document.getElementById('language-mode');
+    const outputPanel = document.getElementById('output-panel');
+    const outputContent = document.getElementById('output-content');
+    const outputSummary = document.getElementById('output-summary');
+    const outputStatusDot = document.getElementById('output-status-dot');
+    const copyOutputBtn = document.getElementById('copy-output-btn');
+    const clearOutputBtn = document.getElementById('clear-output-btn');
+    const closeOutputBtn = document.getElementById('close-output-btn');
 
     let editor;
-    let externalFileContent = null; // To store content from AI
+    let pendingEditProposal = null;
     let diffView = null;
     const editorContextMenu = document.getElementById('editor-context-menu');
     let filesHistory = {}; // Object to store history arrays, keyed by file path
     let allCanvasFiles = []; // Store all files for filtering
     let searchMatches = [];
     let currentMatchIndex = -1;
+    let currentTheme = 'dark';
+    let canvasSearchGeneration = 0;
+    let historyRenderGeneration = 0;
+    let isApplyingExternalContent = false;
     let currentSession = { context: 'canvas', rootDir: '', metadata: {} };
+
+    const languageLabels = {
+        javascript: 'JavaScript',
+        'text/typescript': 'TypeScript',
+        python: 'Python',
+        css: 'CSS',
+        htmlmixed: 'HTML',
+        'application/json': 'JSON',
+        markdown: 'Markdown',
+        rust: 'Rust',
+        'text/x-c++src': 'C++',
+        'text/x-csharp': 'C#',
+        'text/x-java': 'Java',
+        'text/x-go': 'Go',
+        'text/x-ruby': 'Ruby',
+        'application/x-httpd-php': 'PHP',
+        'text/x-swift': 'Swift',
+        'text/x-kotlin': 'Kotlin',
+        'text/x-sh': 'Shell',
+        'text/x-yaml': 'YAML',
+        'text/x-toml': 'TOML',
+        'application/xml': 'XML',
+        'text/plain': '纯文本',
+    };
+
+    function getDisplayName(path) {
+        return String(path || '').split(/[\\/]/).pop() || '未命名';
+    }
+
+    function setSaveState(state, detail) {
+        const labels = {
+            ready: detail || '就绪',
+            dirty: detail || '等待保存',
+            saving: detail || '正在保存…',
+            saved: detail || '已保存',
+            error: detail || '保存失败',
+        };
+        saveStatus.textContent = labels[state] || labels.ready;
+        saveStatus.className = `status-item${state === 'saving' ? ' is-saving' : ''}${state === 'saved' ? ' is-saved' : ''}${state === 'error' ? ' is-error' : ''}`;
+        dirtyIndicator.textContent = state === 'dirty' || state === 'saving' ? '未保存' : labels[state];
+        dirtyIndicator.classList.toggle('is-dirty', state === 'dirty' || state === 'saving');
+    }
+
+    function updateDocumentUi(path = filePathSpan.textContent) {
+        const safePath = path && path !== '未保存' ? path : '';
+        const extension = safePath.includes('.') ? safePath.split('.').pop().toUpperCase() : 'TXT';
+        const mode = getModeForFilePath(safePath);
+        activeFileName.textContent = getDisplayName(safePath);
+        activeFileName.title = safePath || '未保存';
+        fileTypeBadge.textContent = extension.slice(0, 5) || 'TXT';
+        languageMode.textContent = languageLabels[mode] || mode;
+        if (editor) {
+            const lineCount = editor.lineCount();
+            const charCount = editor.getValue().length;
+            documentStats.textContent = `${lineCount} 行 · ${charCount} 字符`;
+        }
+    }
+
+    function updateCursorStatus() {
+        if (!editor) return;
+        const cursor = editor.getCursor();
+        const selections = editor.listSelections();
+        const selectedLength = selections.reduce((total, selection) => {
+            return total + editor.getRange(selection.anchor, selection.head).length;
+        }, 0);
+        cursorPosition.textContent = selectedLength
+            ? `已选择 ${selectedLength} 字符`
+            : `行 ${cursor.line + 1}，列 ${cursor.ch + 1}`;
+    }
 
     function applySessionUi(session) {
         currentSession = session || { context: 'canvas', rootDir: '', metadata: {} };
@@ -57,7 +151,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (newCanvasBtn) {
-            newCanvasBtn.textContent = isWidgetSource ? '新建源码文件' : '新建 Canvas';
+            const label = newCanvasBtn.querySelector('span:last-child');
+            if (label) {
+                label.textContent = isWidgetSource ? '新建源码文件' : '新建 Canvas';
+            }
         }
 
         if (errorInfoSpan) {
@@ -73,14 +170,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editor) {
             // If editor exists, just update its content
             if (initialData.current) {
+                isApplyingExternalContent = true;
                 editor.setValue(initialData.current.content);
+                isApplyingExternalContent = false;
                 filePathSpan.textContent = initialData.current.path;
-                // Update syntax highlighting for the new content's file type
-                if (editor) {
-                    const mode = getModeForFilePath(initialData.current.path);
-                    editor.setOption('mode', mode);
-                    updateTopBarButtons(initialData.current.path);
-                }
+                const mode = getModeForFilePath(initialData.current.path);
+                editor.setOption('mode', mode);
+                updateTopBarButtons(initialData.current.path);
+                updateDocumentUi(initialData.current.path);
+                setSaveState('saved');
             }
             if (initialData.history) {
                 updateHistoryList(initialData.history);
@@ -101,16 +199,30 @@ document.addEventListener('DOMContentLoaded', () => {
         // Auto-save on content change
         let debounceTimer;
         editor.on('change', () => {
+            updateDocumentUi();
+            if (isApplyingExternalContent) return;
             clearTimeout(debounceTimer);
+            const path = filePathSpan.textContent;
+            if (path === '未保存' || !api) {
+                setSaveState('dirty');
+                return;
+            }
+            setSaveState('dirty');
             debounceTimer = setTimeout(() => {
-                const content = editor.getValue();
-                const path = filePathSpan.textContent;
-                if (path !== '未保存' && api) {
+                try {
+                    setSaveState('saving');
+                    const content = editor.getValue();
                     api.saveCanvasFile({ path, content });
                     addContentHistory(path, content);
+                    setSaveState('saved');
+                } catch (error) {
+                    console.error('Canvas auto-save failed:', error);
+                    setSaveState('error');
                 }
-            }, 2000);
+            }, 900);
         });
+
+        editor.on('cursorActivity', updateCursorStatus);
 
         // Editor Context Menu
         editor.on('contextmenu', (cm, e) => {
@@ -126,17 +238,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const history = cm.historySize();
             editorContextMenu.querySelector('[data-action="undo"]').disabled = history.undo === 0;
             editorContextMenu.querySelector('[data-action="redo"]').disabled = history.redo === 0;
-            editorContextMenu.style.top = `${e.clientY}px`;
-            editorContextMenu.style.left = `${e.clientX}px`;
-            editorContextMenu.style.display = 'block';
+            showContextMenu(editorContextMenu, e.clientX, e.clientY);
         });
 
-        // Search Shortcuts
+        // Workbench shortcuts
         editor.addKeyMap({
-            "Ctrl-F": (cm) => {
+            "Ctrl-F": () => {
                 toggleSearchBar(true);
             },
-            "Esc": (cm) => {
+            "Ctrl-P": () => {
+                canvasSearchInput.focus();
+                canvasSearchInput.select();
+            },
+            "Ctrl-Enter": () => {
+                if (runPyBtn.style.display !== 'none') runPyBtn.click();
+            },
+            "Esc": () => {
                 if (editorSearchBar.style.display !== 'none') {
                     toggleSearchBar(false);
                 }
@@ -146,21 +263,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (initialData.current) {
             const path = initialData.current.path;
             const initialContent = initialData.current.content;
+            isApplyingExternalContent = true;
             editor.setValue(initialContent);
+            isApplyingExternalContent = false;
             filePathSpan.textContent = path;
             // Initialize history for this file path if it doesn't exist
             if (!filesHistory[path]) {
                 filesHistory[path] = [];
             }
-            addContentHistory(path, initialContent, true); // Add initial state
-            updateChangeHistoryList(path); // Display history for the current file
+            addContentHistory(path, initialContent, true);
             // Set initial syntax highlighting
             const mode = getModeForFilePath(path);
             editor.setOption('mode', mode);
             updateTopBarButtons(path);
+            updateDocumentUi(path);
+            setSaveState('saved');
         } else {
+            isApplyingExternalContent = true;
             editor.setValue('// Welcome to Canvas with CodeMirror 5!');
+            isApplyingExternalContent = false;
+            updateDocumentUi('');
+            setSaveState('ready');
         }
+        updateCursorStatus();
 
         if (initialData.history) {
             updateHistoryList(initialData.history);
@@ -170,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Theme Handling ---
     function applyTheme(theme) {
-        const currentTheme = theme || 'dark';
+        currentTheme = theme || 'dark';
         document.body.classList.toggle('light-theme', currentTheme === 'light');
         if (editor) {
             editor.setOption('theme', currentTheme === 'light' ? 'default' : 'material-darker');
@@ -207,7 +332,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (editor && editor.getValue() !== file.content) {
+                isApplyingExternalContent = true;
                 editor.setValue(file.content);
+                isApplyingExternalContent = false;
                 const mode = getModeForFilePath(path);
                 editor.setOption('mode', mode);
                 updateTopBarButtons(path);
@@ -216,6 +343,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateChangeHistoryList(path);
             }
             filePathSpan.textContent = path;
+            updateDocumentUi(path);
+            setSaveState('saved');
             // Also ensure the list is updated even if content is the same
             // (e.g., switching back and forth between files)
             updateChangeHistoryList(path);
@@ -228,14 +357,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
  
-        api.onExternalFileChanged((file) => {
-            if (editor && editor.getValue() !== file.content) {
-                console.log('External change detected, showing notification bar.');
-                externalFileContent = file.content; // Store the new content
-                externalChangeBar.style.display = 'flex';
-            }
+        api.onCanvasEditProposal((proposal) => {
+            if (!proposal?.requestId) return;
+            pendingEditProposal = proposal;
+            reviewReasonInput.value = '';
+            diffReviewPath.textContent = proposal.path || '';
+            externalChangeBar.style.display = 'flex';
+            errorInfoSpan.textContent = 'AI 编辑提案等待审阅';
         });
- 
+  
         // Inform main process that the window is ready to receive data
         api?.canvasReady?.();
         if (api?.windowReady) {
@@ -266,10 +396,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function showContextMenu(menu, x, y) {
+        menu.style.display = 'block';
+        const rect = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - rect.width - 6))}px`;
+        menu.style.top = `${Math.max(46, Math.min(y, window.innerHeight - rect.height - 6))}px`;
+    }
+
     viewDiffBtn.addEventListener('click', () => {
-        if (editor && externalFileContent !== null) {
-            const originalContent = editor.getValue();
-            initializeDiffView(originalContent, externalFileContent);
+        if (editor && pendingEditProposal) {
+            initializeDiffView(
+                pendingEditProposal.originalContent,
+                pendingEditProposal.modifiedContent
+            );
+            diffReviewPath.textContent = pendingEditProposal.path || '';
             diffModal.style.display = 'flex';
             // Refresh the diff view after it becomes visible
             setTimeout(() => {
@@ -277,6 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
                    diffView.edit.refresh();
                    diffView.right.orig.refresh();
                 }
+                reviewReasonInput.focus();
             }, 10);
         }
     });
@@ -284,28 +425,64 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeDiffViewAndBar() {
         diffModal.style.display = 'none';
         externalChangeBar.style.display = 'none';
-        externalFileContent = null;
+        reviewReasonInput.value = '';
+        diffReviewPath.textContent = '';
+        pendingEditProposal = null;
+        errorInfoSpan.textContent = currentSession.context === 'desktop-widget'
+            ? `Widget源码模式${currentSession.metadata?.savedId ? ` · ${currentSession.metadata.savedId}` : ''}`
+            : '无错误';
+    }
+
+    function submitEditDecision(approved, fallbackReason = '') {
+        if (!pendingEditProposal || !api?.sendCanvasEditDecision) return false;
+        const reason = reviewReasonInput.value.trim() || fallbackReason;
+        api.sendCanvasEditDecision({
+            requestId: pendingEditProposal.requestId,
+            approved,
+            reason,
+        });
+        closeDiffViewAndBar();
+        return true;
     }
 
     acceptChangesBtn.addEventListener('click', () => {
-        if (editor && externalFileContent !== null) {
-            editor.setValue(externalFileContent); // This will trigger the auto-save
-        }
-        closeDiffViewAndBar();
+        submitEditDecision(true);
     });
 
-    function rejectChanges() {
-        if (editor && api) {
-            const userContent = editor.getValue();
-            const path = filePathSpan.textContent;
-            // Force save the user's current content back to the file system
-            api.saveCanvasFile({ path, content: userContent });
-        }
-        closeDiffViewAndBar();
+    function rejectChanges(fallbackReason = '') {
+        submitEditDecision(false, fallbackReason);
     }
 
-    rejectChangesBtn.addEventListener('click', rejectChanges);
-    dismissChangeBtn.addEventListener('click', rejectChanges);
+    rejectChangesBtn.addEventListener('click', () => rejectChanges());
+    dismissChangeBtn.addEventListener('click', () => {
+        rejectChanges('用户未打开差异详情并直接拒绝了该提案。');
+    });
+
+    diffModal.addEventListener('click', (event) => {
+        if (event.target === diffModal) {
+            diffModal.style.display = 'none';
+            editor?.focus();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeContextMenus();
+            if (diffModal.style.display !== 'none') {
+                diffModal.style.display = 'none';
+                editor?.focus();
+                return;
+            }
+        }
+        if (event.ctrlKey && event.key.toLowerCase() === 'p') {
+            event.preventDefault();
+            if (fileSidebar.classList.contains('is-collapsed')) {
+                setLeftSidebarCollapsed(false);
+            }
+            canvasSearchInput.focus();
+            canvasSearchInput.select();
+        }
+    });
 
     // --- UI Event Listeners ---
     newCanvasBtn.addEventListener('click', () => {
@@ -318,8 +495,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editor) {
             const currentStatus = editor.getOption('lineWrapping');
             editor.setOption('lineWrapping', !currentStatus);
-            toggleWrapBtn.textContent = `自动换行: ${!currentStatus ? '开' : '关'}`;
+            toggleWrapBtn.textContent = `自动换行：${!currentStatus ? '开' : '关'}`;
+            toggleWrapBtn.setAttribute('aria-pressed', String(!currentStatus));
         }
+    });
+
+    function setLeftSidebarCollapsed(collapsed) {
+        fileSidebar.classList.toggle('is-collapsed', collapsed);
+        resizer.classList.toggle('is-hidden', collapsed);
+        document.body.classList.toggle('left-sidebar-collapsed', collapsed);
+        setTimeout(() => editor?.refresh(), 220);
+    }
+
+    function setRightSidebarCollapsed(collapsed) {
+        changeHistorySidebar.classList.toggle('is-collapsed', collapsed);
+        resizerRight.classList.toggle('is-hidden', collapsed);
+        toggleRightBtn.setAttribute('aria-pressed', String(!collapsed));
+        setTimeout(() => editor?.refresh(), 220);
+    }
+
+    collapseLeftBtn.addEventListener('click', () => setLeftSidebarCollapsed(true));
+    collapseLeftTrigger.addEventListener('click', () => setLeftSidebarCollapsed(false));
+    collapseRightBtn.addEventListener('click', () => setRightSidebarCollapsed(true));
+    toggleRightBtn.addEventListener('click', () => {
+        setRightSidebarCollapsed(!changeHistorySidebar.classList.contains('is-collapsed'));
     });
 
     // --- Search Logic ---
@@ -447,22 +646,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (targetLi) {
             e.preventDefault();
             activeListItem = targetLi;
-            contextMenu.style.top = `${e.clientY}px`;
-            contextMenu.style.left = `${e.clientX}px`;
-            contextMenu.style.display = 'block';
+            showContextMenu(contextMenu, e.clientX, e.clientY);
         }
     });
 
-    document.addEventListener('click', (e) => {
-        // Close both context menus if clicked outside
-        if (!contextMenu.contains(e.target)) {
-            contextMenu.style.display = 'none';
-            activeListItem = null;
+    function closeContextMenus() {
+        contextMenu.style.display = 'none';
+        editorContextMenu.style.display = 'none';
+        activeListItem = null;
+    }
+
+    document.addEventListener('pointerdown', (event) => {
+        const clickedInsideMenu = contextMenu.contains(event.target)
+            || editorContextMenu.contains(event.target);
+        if (!clickedInsideMenu) closeContextMenus();
+    }, true);
+
+    document.addEventListener('contextmenu', (event) => {
+        const clickedFile = event.target.closest?.('#historyList li[data-path]');
+        const clickedEditor = event.target.closest?.('.CodeMirror');
+        const clickedInsideMenu = contextMenu.contains(event.target)
+            || editorContextMenu.contains(event.target);
+        if (!clickedFile && !clickedEditor && !clickedInsideMenu) {
+            closeContextMenus();
         }
-        if (!editorContextMenu.contains(e.target)) {
-            editorContextMenu.style.display = 'none';
-        }
-    });
+    }, true);
+
+    window.addEventListener('blur', closeContextMenus);
 
     editorContextMenu.addEventListener('click', (e) => {
         const action = e.target.closest('button')?.dataset.action;
@@ -542,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // If the renamed file is the active one, update the file path display
                         if (filePathSpan.textContent === oldPath) {
                             filePathSpan.textContent = newPath;
+                            updateDocumentUi(newPath);
                         }
                     } catch (error) {
                         console.error('Rename failed:', error);
@@ -581,9 +792,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isResizing = false;
     resizer.addEventListener('mousedown', (e) => {
         isResizing = true;
+        document.body.classList.add('is-resizing');
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', () => {
             isResizing = false;
+            document.body.classList.remove('is-resizing');
             document.removeEventListener('mousemove', handleMouseMove);
             // Refresh CodeMirror to adjust to the new size
             if (editor) {
@@ -608,9 +821,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isResizingRight = false;
     resizerRight.addEventListener('mousedown', (e) => {
         isResizingRight = true;
+        document.body.classList.add('is-resizing');
         document.addEventListener('mousemove', handleRightMouseMove);
         document.addEventListener('mouseup', () => {
             isResizingRight = false;
+            document.body.classList.remove('is-resizing');
             document.removeEventListener('mousemove', handleRightMouseMove);
             if (editor) {
                 editor.refresh();
@@ -632,47 +847,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Top Bar Button Logic ---
     function updateTopBarButtons(filePath) {
-       const extension = filePath ? filePath.split('.').pop().toLowerCase() : '';
-       runPyBtn.style.display = extension === 'py' ? 'block' : 'none';
-       renderMdBtn.style.display = extension === 'md' ? 'block' : 'none';
-       renderHtmlBtn.style.display = extension === 'html' ? 'block' : 'none';
+        const extension = filePath ? filePath.split('.').pop().toLowerCase() : '';
+        runPyBtn.style.display = extension === 'py' ? 'block' : 'none';
+        renderMdBtn.style.display = extension === 'md' ? 'block' : 'none';
+        renderHtmlBtn.style.display = extension === 'html' ? 'block' : 'none';
     }
 
-    runPyBtn.addEventListener('click', () => {
-       if (editor && api) {
-           const code = editor.getValue();
-           api.executePythonCode(code).then(({ stdout, stderr }) => {
-               // For now, just log the output. A dedicated output panel would be better.
-               console.log('Python stdout:', stdout);
-               console.error('Python stderr:', stderr);
-               alert('Python Output:\n' + (stdout || stderr));
-           }).catch(err => {
-               console.error('Python execution failed:', err);
-               alert('Python execution failed:\n' + err);
-           });
-       }
+    function showOutput(content, state, summary) {
+        outputPanel.hidden = false;
+        outputContent.textContent = content || '（没有输出）';
+        outputSummary.textContent = summary;
+        outputStatusDot.className = `output-status-dot is-${state}`;
+    }
+
+    runPyBtn.addEventListener('click', async () => {
+        if (!editor || !api?.executePythonCode) return;
+        runPyBtn.disabled = true;
+        showOutput('正在执行本地 Python…', 'running', '运行中');
+        try {
+            const { stdout = '', stderr = '' } = await api.executePythonCode(editor.getValue());
+            const sections = [];
+            if (stdout) sections.push(stdout);
+            if (stderr) sections.push(`STDERR\n${stderr}`);
+            showOutput(sections.join('\n\n'), stderr ? 'error' : 'success', stderr ? '执行完成，存在错误输出' : '执行成功');
+        } catch (error) {
+            console.error('Python execution failed:', error);
+            showOutput(String(error?.message || error), 'error', '执行失败');
+        } finally {
+            runPyBtn.disabled = false;
+        }
+    });
+
+    copyOutputBtn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(outputContent.textContent);
+        const previousText = copyOutputBtn.textContent;
+        copyOutputBtn.textContent = '已复制';
+        setTimeout(() => { copyOutputBtn.textContent = previousText; }, 1200);
+    });
+    clearOutputBtn.addEventListener('click', () => {
+        outputContent.textContent = '';
+        outputSummary.textContent = '已清空';
+        outputStatusDot.className = 'output-status-dot';
+    });
+    closeOutputBtn.addEventListener('click', () => {
+        outputPanel.hidden = true;
+        editor?.refresh();
     });
 
     renderMdBtn.addEventListener('click', () => {
-       if (editor && api) {
-           const content = editor.getValue();
-           api.openTextInNewWindow(content, 'Markdown Preview', 'dark');
-       }
+        if (editor && api) {
+            api.openTextInNewWindow(editor.getValue(), `${getDisplayName(filePathSpan.textContent)} · Markdown 预览`, currentTheme);
+        }
     });
 
     renderHtmlBtn.addEventListener('click', () => {
-       if (editor && api) {
-           const content = editor.getValue();
-           // We can reuse the text viewer for HTML rendering as it supports iframes
-           api.openTextInNewWindow(content, 'HTML Preview', 'dark');
-       }
+        if (editor && api) {
+            api.openTextInNewWindow(editor.getValue(), `${getDisplayName(filePathSpan.textContent)} · HTML 预览`, currentTheme);
+        }
     });
 
     // --- Helper Functions ---
     function getModeForFilePath(filePath) {
         if (!filePath) {
-           updateTopBarButtons('');
-           return 'javascript'; // Default mode
+            updateTopBarButtons('');
+            return 'text/plain';
         }
         const extension = filePath.split('.').pop().toLowerCase();
         switch (extension) {
@@ -735,14 +973,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const li = document.createElement('li');
             li.textContent = item.title;
             li.dataset.path = item.path;
-            if (item.isActive) {
+            li.title = item.path;
+            li.tabIndex = 0;
+            if (item.isActive || item.path === filePathSpan.textContent) {
                 li.classList.add('active');
             }
             historyList.appendChild(li);
         });
     }
 
+    historyList.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const item = event.target.closest('li[data-path]');
+        if (!item || !api) return;
+        event.preventDefault();
+        api.loadCanvasFile(item.dataset.path);
+    });
+
     canvasSearchInput.addEventListener('input', async () => {
+        const generation = ++canvasSearchGeneration;
         const searchTerm = canvasSearchInput.value.toLowerCase().trim();
         if (!searchTerm) {
             renderHistoryList(allCanvasFiles);
@@ -770,7 +1019,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error(`Failed to search in file ${file.path}:`, err);
             }
         }
-        renderHistoryList(filteredFiles);
+        if (generation === canvasSearchGeneration) {
+            renderHistoryList(filteredFiles);
+        }
     });
 
     // --- Document Change History Logic ---
@@ -778,8 +1029,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!path || !filesHistory[path]) return;
 
         const history = filesHistory[path];
-        // Avoid adding duplicates
-        if (!isInitial && history.length > 0 && history[history.length - 1].content === content) {
+        // Never append identical adjacent snapshots. This also protects against
+        // repeated load events during window initialization.
+        if (history.length > 0 && history[history.length - 1].content === content) {
+            updateChangeHistoryList(path);
             return;
         }
         const historyEntry = {
@@ -791,6 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function updateChangeHistoryList(path) {
+        const generation = ++historyRenderGeneration;
         changeHistoryList.innerHTML = '';
         if (!path || !filesHistory[path]) return;
 
@@ -807,7 +1061,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const fileName = window.electronPath ? await window.electronPath.basename(path) : path;
+        if (generation !== historyRenderGeneration || path !== filePathSpan.textContent) return;
 
+        changeHistoryList.innerHTML = '';
         history.forEach((item, index) => {
             const li = document.createElement('li');
             li.textContent = `${item.timestamp.toLocaleTimeString()} - ${fileName}`;

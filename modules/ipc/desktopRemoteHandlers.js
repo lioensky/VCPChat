@@ -142,21 +142,39 @@ function initialize(params) {
     console.log('[DesktopRemoteHandlers] Initialized.');
 }
 
-async function handleCanvasControl(filePath) {
+async function handleCanvasControl(commandPayload) {
     try {
-        if (!filePath) {
-            throw new Error('No filePath provided for canvas control.');
-        }
-
         if (!canvasHandlersRef) {
             canvasHandlersRef = require('./canvasHandlers');
         }
 
+        if (typeof commandPayload === 'string') {
+            await canvasHandlersRef.createCanvasWindow(commandPayload);
+            return { status: 'success', message: 'Canvas window command processed.' };
+        }
+
+        if (commandPayload?.action === 'edit') {
+            const result = await canvasHandlersRef.requestCanvasEdit(commandPayload);
+            return {
+                status: 'success',
+                message: result.message,
+                result,
+            };
+        }
+
+        const filePath = commandPayload?.filePath;
+        if (!filePath) {
+            throw new Error('Canvas control requires a filePath or an edit proposal.');
+        }
         await canvasHandlersRef.createCanvasWindow(filePath);
         return { status: 'success', message: 'Canvas window command processed.' };
     } catch (error) {
         console.error('[DesktopRemoteHandlers] handleCanvasControl error:', error);
-        return { status: 'error', message: error.message };
+        return {
+            status: 'error',
+            message: error.message,
+            code: error.code || 'CANVAS_CONTROL_FAILED',
+        };
     }
 }
 

@@ -416,7 +416,22 @@ test('自动 TTS 开关注入 Sovits 设置区且只朗读启动后完成的新�
     message.className = 'message-item assistant streaming';
     message.dataset.messageId = 'new-1';
     message.dataset.agentId = 'agent-a';
-    message.innerHTML = '<div class="md-content">新回复<pre><code>const hidden = true;</code></pre></div>';
+    message.innerHTML = `<div class="md-content">
+        新回复 @Nova
+        <div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use">工具请求机密</div>
+        <div class="vcp-tool-result-bubble" data-vcp-block-type="tool-result">工具返回机密</div>
+        <div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary">工具摘要机密</div>
+        <div class="vcp-role-divider" data-vcp-block-type="role-divider">角色分割机密</div>
+        <div class="vcp-flowlock-bubble" data-vcp-block-type="flowlock">心流锁机密</div>
+        <div class="maid-diary-update-bubble" data-vcp-block-type="maid-diary-update">日记更新机密</div>
+        <div class="vcp-thought-chain-bubble" data-vcp-block-type="thought-chain">思维链机密</div>
+        前文紧贴<<<[TOOL_REQUEST]>>>tool_name:「始」Demo「末」,command:「始」Run「末」<<<[END_TOOL_REQUEST]>>>后文保留
+        [[VCP调用结果信息汇总:- 工具名称: Demo
+        - 返回内容: 原始返回机密VCP调用结果结束]]
+        [本轮工具调用摘要:]原始摘要机密[本轮工具调用摘要结束]
+        <<<[ROLE_DIVIDE_SYSTEM]>>>角色协议机密<<<[END_ROLE_DIVIDE_SYSTEM]>>>
+        <pre><code>const hidden = true;</code></pre>
+    </div>`;
     window.document.getElementById('chatMessages').appendChild(message);
     await new Promise((resolve) => setTimeout(resolve, 30));
     message.classList.remove('streaming');
@@ -426,7 +441,13 @@ test('自动 TTS 开关注入 Sovits 设置区且只朗读启动后完成的新�
     assert.equal(calls[0].msgId, 'new-1');
     assert.equal(calls[0].voice, 'voice-a');
     assert.match(calls[0].text, /新回复/);
-    assert.doesNotMatch(calls[0].text, /hidden/);
+    assert.match(calls[0].text, /前文紧贴/);
+    assert.match(calls[0].text, /后文保留/);
+    assert.match(calls[0].text, /角色协议机密/);
+    assert.doesNotMatch(
+        calls[0].text,
+        /hidden|Nova|工具请求机密|工具返回机密|工具摘要机密|角色分割机密|心流锁机密|日记更新机密|思维链机密|原始返回机密|原始摘要机密|TOOL_REQUEST|VCP调用结果|ROLE_DIVIDE/
+    );
     assert.ok(!calls.some((call) => call.msgId === 'history-1'));
     assert.ok(!calls.some((call) => call.msgId === 'late-history'));
 

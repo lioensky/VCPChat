@@ -700,6 +700,8 @@ flowchart LR
 
 ## 6. 动态高级表格
 
+在一切开始前我随便输入一个`<div>`和`<style>`只会无事发生。表格正式开始。
+
 <div
     data-vdoc-island="interactive-paginated-table"
     id="interactive-paginated-table">

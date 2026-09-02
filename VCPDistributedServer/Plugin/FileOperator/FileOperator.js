@@ -1342,6 +1342,40 @@ async function createCanvas(fileName, content, encoding = 'utf8') {
   }
 }
 
+async function editCanvas(target, replacement, encoding = 'utf8') {
+  try {
+    if (typeof target !== 'string' || target.length === 0) {
+      throw new Error('EditCanvas requires a non-empty "target" string.');
+    }
+    if (typeof replacement !== 'string') {
+      throw new Error('EditCanvas requires a "replace" string.');
+    }
+    if (Buffer.byteLength(target, encoding) > MAX_FILE_SIZE
+      || Buffer.byteLength(replacement, encoding) > MAX_FILE_SIZE) {
+      throw new Error(`Canvas edit proposal exceeds the limit of ${formatFileSize(MAX_FILE_SIZE)}.`);
+    }
+
+    return {
+      success: true,
+      data: {
+        _specialAction: 'edit_canvas',
+        payload: {
+          target,
+          replace: replacement,
+          encoding,
+        },
+        message: 'Canvas edit proposal submitted. Waiting for the user to review and approve or reject it.'
+      }
+    };
+  } catch (error) {
+    debugLog('Error creating canvas edit proposal', { error: error.message });
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 async function updateHistory(filePath, searchString, replaceString, encoding = 'utf8') {
   try {
     debugLog('Updating history file', { filePath, searchString, replaceString });
@@ -1569,6 +1603,13 @@ async function processBatchRequest(request) {
         case 'CreateCanvas':
           result = await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
           break;
+        case 'EditCanvas':
+          result = await editCanvas(
+            getParameterValue(parameters, 'target'),
+            getParameterValue(parameters, 'replace'),
+            getParameterValue(parameters, 'encoding') || 'utf8'
+          );
+          break;
         case 'UpdateHistory':
           result = await updateHistory(
             getPathParameter(parameters),
@@ -1682,6 +1723,12 @@ async function processRequest(request) {
       return await downloadFile(parameters.url, parameters.downloadDir, parameters.fileName);
     case 'CreateCanvas':
       return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
+    case 'EditCanvas':
+      return await editCanvas(
+        getParameterValue(parameters, 'target'),
+        getParameterValue(parameters, 'replace'),
+        getParameterValue(parameters, 'encoding') || 'utf8'
+      );
     case 'UpdateHistory':
       return await updateHistory(
         getPathParameter(parameters),

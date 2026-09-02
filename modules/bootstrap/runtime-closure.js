@@ -60,6 +60,11 @@ function runtimeExecutableRelative(platform = process.platform, arch = process.a
     return normalize(path.join('modules', 'services', 'chatDataService', 'bin', `${platform}-${arch}`, executable));
 }
 
+function voiceInputRuntimeExecutableRelative(platform = process.platform, arch = process.arch) {
+    const executable = platform === 'win32' ? 'vcp_voice_input_engine.exe' : 'vcp_voice_input_engine';
+    return normalize(path.join('rust_voice_input_engine', 'runtime', `${platform}-${arch}`, executable));
+}
+
 function loadWebAwesomeFiles(projectRoot) {
     const manifestPath = path.join(projectRoot, 'vendor', 'webawesome-runtime', 'vcp-runtime-manifest.json');
     try {
@@ -95,12 +100,14 @@ function nativeBinaryFiles(projectRoot, moduleId) {
 function createRuntimeClosureManifest({ projectRoot, buildId = null, platform = process.platform, arch = process.arch } = {}) {
     const root = path.resolve(projectRoot || process.cwd());
     const rustRuntime = runtimeExecutableRelative(platform, arch);
+    const voiceInputRuntime = voiceInputRuntimeExecutableRelative(platform, arch);
     const candidates = [
         ...CORE_FILES,
         ...loadWebAwesomeFiles(root),
         ...NATIVE_MODULES.flatMap(moduleId => nativeBinaryFiles(root, moduleId)),
     ];
     if (fs.existsSync(path.join(root, rustRuntime))) candidates.push(rustRuntime);
+    if (fs.existsSync(path.join(root, voiceInputRuntime))) candidates.push(voiceInputRuntime);
     const files = [...new Set(candidates)].filter(relativePath => fs.existsSync(path.join(root, relativePath))).sort().map(relativePath => {
         const absolute = path.join(root, relativePath);
         return {
@@ -124,6 +131,7 @@ function createRuntimeClosureManifest({ projectRoot, buildId = null, platform = 
         files,
         nativeModules: NATIVE_MODULES.map(id => ({ id, binaries: nativeBinaryFiles(root, id) })),
         rustRuntime: fs.existsSync(path.join(root, rustRuntime)) ? rustRuntime : null,
+        voiceInputRuntime: fs.existsSync(path.join(root, voiceInputRuntime)) ? voiceInputRuntime : null,
         packagePolicy: {
             files: pkg.build?.files || [],
             asarUnpack: pkg.build?.asarUnpack || [],
@@ -166,6 +174,9 @@ function validateRuntimePolicy(manifest) {
     if (!unpack.some(pattern => pattern.includes('chatDataService/bin'))) {
         failures.push({ path: 'package.json#build.asarUnpack', reason: 'Rust runtime is not unpacked' });
     }
+    if (!unpack.some(pattern => pattern.includes('rust_voice_input_engine/runtime'))) {
+        failures.push({ path: 'package.json#build.asarUnpack', reason: 'Voice input Rust runtime is not unpacked' });
+    }
     for (const native of manifest.nativeModules || []) {
         if (!native.binaries.length) failures.push({ path: `node_modules/${native.id}`, reason: 'native binary missing' });
     }
@@ -179,6 +190,7 @@ module.exports = {
     sha256Buffer,
     sha256File,
     runtimeExecutableRelative,
+    voiceInputRuntimeExecutableRelative,
     createRuntimeClosureManifest,
     verifyDirectoryAgainstManifest,
     validateRuntimePolicy,

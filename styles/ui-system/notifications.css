@@ -429,7 +429,7 @@
     }
 
     html .vcp-ui-scope #appTrayDrawer {
-        right: var(--vcp-ui-space-5);
+        right: var(--vcp-ui-space-3);
         bottom: calc(100% + var(--vcp-ui-space-2));
         left: auto;
         width: min(288px, calc(100vw - var(--vcp-ui-space-6)));
@@ -476,12 +476,29 @@
         height: var(--vcp-ui-icon-md);
     }
 
-    html .vcp-ui-scope #appTrayDrawer::after {
-        right: -2px;
-        background: var(--vcp-ui-bg-1);
+    /*
+     * Use one bordered diamond instead of two differently sized clipped
+     * triangles. The old layers produced a visible antialiasing seam at
+     * fractional Windows/Electron display scales.
+     */
+    html .vcp-ui-scope #appTrayDrawer::before {
+        content: none;
+        display: none;
     }
 
-    html .vcp-ui-scope #appTrayDrawer::before {
-        right: -3px;
+    html .vcp-ui-scope #appTrayDrawer::after {
+        bottom: -6px;
+        right: 7px;
+        width: 11px;
+        height: 11px;
+        box-sizing: border-box;
+        clip-path: none;
+        border-right: 1px solid var(--vcp-ui-border);
+        border-bottom: 1px solid var(--vcp-ui-border);
+        background: var(--vcp-ui-bg-1);
+        transform: rotate(45deg);
+        transform-origin: center;
+        z-index: 0;
+        pointer-events: none;
     }
 }

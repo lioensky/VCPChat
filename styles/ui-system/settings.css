@@ -1215,6 +1215,324 @@
         background: var(--vcp-ui-bg-0);
     }
 
+    /* ---- streaming animation settings and live preview ---- */
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-settings {
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-control-grid {
+        display: grid;
+        grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.2fr);
+        gap: var(--vcp-ui-space-3);
+        align-items: start;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-control-grid .settings-form-group {
+        display: grid;
+        min-width: 0;
+        margin: 0;
+        align-content: start;
+        grid-template-rows: minmax(22px, auto) var(--vcp-ui-control-md) auto;
+        row-gap: var(--vcp-ui-space-1);
+    }
+
+    /* 动画预设与右侧时长控件共用同一标题基线和控制区高度。
+       下拉框保留轻量填充，同时用可见边框明确它是可交互控件。 */
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-control-grid .settings-form-group > span:first-child {
+        display: flex;
+        min-height: 22px;
+        align-items: center;
+        margin: 0;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #streamAnimationPreset,
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal wa-select.vcp-ui-select-proxy[data-vcp-source-id="streamAnimationPreset"] {
+        align-self: stretch;
+        height: var(--vcp-ui-control-md);
+        min-height: var(--vcp-ui-control-md);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #streamAnimationPreset {
+        border-color: var(--vcp-ui-control-border);
+        background: color-mix(in srgb, var(--vcp-ui-fill-1) 88%, var(--vcp-ui-bg-0));
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal wa-select.vcp-ui-select-proxy[data-vcp-source-id="streamAnimationPreset"]::part(combobox) {
+        border-color: var(--vcp-ui-control-border);
+        background: color-mix(in srgb, var(--vcp-ui-fill-1) 88%, var(--vcp-ui-bg-0));
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-text-0) 4%, transparent);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal wa-select.vcp-ui-select-proxy[data-vcp-source-id="streamAnimationPreset"]:hover::part(combobox) {
+        border-color: color-mix(in srgb, var(--vcp-ui-accent) 48%, var(--vcp-ui-control-border));
+        background: var(--vcp-ui-fill-2);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal wa-select.vcp-ui-select-proxy[data-vcp-source-id="streamAnimationPreset"]:focus-within::part(combobox) {
+        border-color: var(--vcp-ui-control-focus);
+        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-range-heading,
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-range-heading output {
+        color: var(--vcp-ui-accent);
+        font-family: var(--vcp-chat-code-font-family, monospace);
+        font-size: var(--vcp-ui-font-caption);
+        font-variant-numeric: tabular-nums;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-duration-control input[type="range"] {
+        width: 100%;
+        height: var(--vcp-ui-control-md);
+        margin: 0;
+        align-self: center;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-duration-control > small {
+        margin: 0;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-panel {
+        width: calc(100% - (2 * var(--vcp-ui-space-2)));
+        min-width: 0;
+        margin: 0 var(--vcp-ui-space-2);
+        padding: var(--vcp-ui-space-3);
+        box-sizing: border-box;
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 20%, var(--vcp-ui-border));
+        border-radius: var(--vcp-ui-radius-md);
+        background: color-mix(in srgb, var(--vcp-ui-fill-1) 86%, var(--vcp-ui-bg-0));
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-text-0) 4%, transparent);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-panel[hidden] {
+        display: none;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-panel .settings-form-group {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-panel textarea {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        min-height: 112px;
+        box-sizing: border-box;
+        font-family: var(--vcp-chat-code-font-family, monospace);
+        tab-size: 4;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-example {
+        display: grid;
+        gap: var(--vcp-ui-space-2);
+        margin-top: var(--vcp-ui-space-3);
+        padding-top: var(--vcp-ui-space-3);
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-example-heading {
+        display: flex;
+        min-height: 34px;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-2);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #fillStreamAnimationCssExample {
+        display: inline-flex;
+        width: auto;
+        min-width: 92px;
+        min-height: 32px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 var(--vcp-ui-space-3);
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 38%, var(--vcp-ui-border));
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 8%, var(--vcp-ui-bg-0));
+        box-shadow: 0 2px 7px color-mix(in srgb, var(--vcp-ui-accent) 9%, transparent);
+        font-family: var(--vcp-ui-font-family);
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+        transition:
+            color var(--vcp-ui-transition-fast),
+            border-color var(--vcp-ui-transition-fast),
+            background-color var(--vcp-ui-transition-fast),
+            box-shadow var(--vcp-ui-transition-fast),
+            transform var(--vcp-ui-transition-fast);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #fillStreamAnimationCssExample:hover {
+        border-color: var(--vcp-ui-accent);
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--vcp-ui-accent) 22%, transparent);
+        transform: translateY(-1px);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #fillStreamAnimationCssExample:active {
+        box-shadow: none;
+        transform: translateY(0) scale(0.98);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-example pre {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: var(--vcp-ui-space-3);
+        box-sizing: border-box;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-0);
+        overflow-x: auto;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-custom-example code {
+        font-family: var(--vcp-chat-code-font-family, monospace);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+        white-space: pre;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview {
+        padding: var(--vcp-ui-space-3);
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 24%, var(--vcp-ui-border));
+        border-radius: var(--vcp-ui-radius-md);
+        background: color-mix(in srgb, var(--vcp-ui-fill-1) 88%, var(--vcp-ui-bg-0));
+        box-shadow:
+            inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-text-0) 5%, transparent),
+            0 6px 20px color-mix(in srgb, var(--vcp-ui-bg-0) 35%, transparent);
+        overflow: hidden;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview {
+        display: inline-flex;
+        width: auto;
+        min-width: 104px;
+        min-height: 34px;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-ui-space-1);
+        padding: 0 var(--vcp-ui-space-3);
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 42%, var(--vcp-ui-border));
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 9%, var(--vcp-ui-bg-0));
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--vcp-ui-accent) 10%, transparent);
+        font-family: var(--vcp-ui-font-family);
+        font-size: var(--vcp-ui-font-helper);
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+        transition:
+            color var(--vcp-ui-transition-fast),
+            border-color var(--vcp-ui-transition-fast),
+            background-color var(--vcp-ui-transition-fast),
+            box-shadow var(--vcp-ui-transition-fast),
+            transform var(--vcp-ui-transition-fast);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview > span {
+        display: inline-block;
+        font-size: 1.15em;
+        line-height: 1;
+        transition: transform var(--vcp-ui-transition-normal);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview:hover {
+        border-color: var(--vcp-ui-accent);
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        box-shadow: 0 5px 14px color-mix(in srgb, var(--vcp-ui-accent) 24%, transparent);
+        transform: translateY(-1px);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview:hover > span {
+        transform: rotate(-45deg);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview:active {
+        box-shadow: none;
+        transform: translateY(0) scale(0.98);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar strong,
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar small {
+        display: block;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar small {
+        margin-top: var(--vcp-ui-space-1);
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-stage {
+        display: grid;
+        min-height: 112px;
+        margin-top: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3);
+        place-items: center;
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-border) 82%, var(--vcp-ui-accent));
+        border-radius: var(--vcp-ui-radius-sm);
+        background:
+            radial-gradient(circle at 16px 16px, color-mix(in srgb, var(--vcp-ui-accent) 14%, transparent) 1px, transparent 1px),
+            var(--vcp-ui-bg-0);
+        background-size: 16px 16px, auto;
+        box-shadow: inset 0 0 18px color-mix(in srgb, var(--vcp-ui-bg-0) 38%, transparent);
+        overflow: hidden;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-message {
+        display: flex;
+        width: min(100%, 420px);
+        box-sizing: border-box;
+        align-items: center;
+        gap: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3);
+        border-radius: var(--vcp-ui-radius-md);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+        box-shadow: var(--vcp-ui-shadow-sm);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-message > span:last-child {
+        display: grid;
+        min-width: 0;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-message small {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-avatar {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        flex: 0 0 36px;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--vcp-ui-on-accent);
+        background: var(--vcp-ui-accent);
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 700;
+    }
+
     /* 700×500 审查窗口等窄视口仍保持双栏 shell（classic 的窄屏堆叠不适用）。 */
     @media (max-width: 768px) {
         :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal .vcp-ui-settings-shell {
@@ -1224,6 +1542,10 @@
             flex-direction: initial;
             gap: 0;
             padding: 0;
+        }
+
+        :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-control-grid {
+            grid-template-columns: 1fr;
         }
 
         :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .global-settings-nav {

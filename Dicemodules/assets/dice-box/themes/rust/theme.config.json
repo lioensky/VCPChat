@@ -1,0 +1,20 @@
+{
+  "name": "Rust",
+  "systemName": "rust",
+  "author": "Frank Ali",
+  "version": 0.2,
+  "material": {
+    "type": "color",
+    "diffuseTexture": {
+      "light": "diffuse-light.png",
+      "dark": "diffuse-dark.png"
+    },
+    "diffuseLevel": 1,
+    "bumpTexture": "normal.png",
+    "bumpLevel": 1,
+    "specularTexture": "specular.jpg",
+    "specularPower": 1
+  },
+  "themeColor": "#aa4f4a",
+  "diceAvailable": ["d4","d6","d8","d10","d12","d20","d100"]
+}

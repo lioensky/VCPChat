@@ -37,7 +37,7 @@ use crate::{
     error::{ServiceError, ServiceResult},
     identity::{IdentityResolver, OwnerSelector, ResolvedOwner},
     ingest::{ReconcileStats, Reconciler, SnapshotStale},
-    search::{MemorySearchRequest, MessageSearchRequest, SearchIndex},
+    search::{MemorySearchRequest, MessageSearchRequest, SearchRuntime},
     storage::{now_ms, Database, SyncTopicVersion},
     sync::{
         self, ManifestRequest, ManifestResponse, MessageDiffRequest, MessageDiffResponse,
@@ -52,7 +52,7 @@ pub struct AppState {
     pub auth_token: Arc<str>,
     pub started_at: i64,
     pub reconciler: Reconciler,
-    pub search: Option<SearchIndex>,
+    pub search: Option<SearchRuntime>,
     pub identity: IdentityResolver,
     pub cancellation: CancellationToken,
     pub watcher_metrics: Option<Arc<WatcherMetrics>>,
@@ -392,7 +392,7 @@ async fn reconcile(State(state): State<AppState>) -> ServiceResult<Json<Reconcil
         let indexed_topics = state
             .search
             .as_ref()
-            .map(SearchIndex::reconcile_revisions)
+            .map(SearchRuntime::reconcile_revisions_if_initialized)
             .transpose()?
             .unwrap_or(0);
         Ok::<_, anyhow::Error>((stats, indexed_topics))
@@ -432,7 +432,7 @@ async fn ingest_history_path(
 
     if let (Some(search), Some(commit)) = (&state.search, &commit) {
         search
-            .apply_ingest_commit(commit)
+            .apply_ingest_commit_if_initialized(commit)
             .map_err(ServiceError::internal)?;
     }
 
@@ -575,7 +575,7 @@ async fn sync_entity_delete(
     if affects_search {
         if let Some(search) = &state.search {
             search
-                .reconcile_revisions()
+                .reconcile_revisions_if_initialized()
                 .map_err(ServiceError::internal)?;
         }
     }
@@ -662,7 +662,7 @@ async fn sync_reconcile_owners(
         state
             .search
             .as_ref()
-            .map(SearchIndex::reconcile_revisions)
+            .map(SearchRuntime::reconcile_revisions_if_initialized)
             .transpose()
             .map(|count| count.unwrap_or(0))
     }
@@ -1021,7 +1021,7 @@ async fn sync_messages_push(
     let result = sync::push_topic_messages(&state.reconciler, topic).await;
     if let (Some(search), Some(commit)) = (&state.search, &result.ingest_commit) {
         search
-            .apply_ingest_commit(commit)
+            .apply_ingest_commit_if_initialized(commit)
             .map_err(ServiceError::internal)?;
     }
     Ok(Json(result))

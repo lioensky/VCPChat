@@ -60,6 +60,24 @@ const settingsManager = (() => {
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider, ttsSpeedValueSpan;
+    let agentTtsDirectorPromptInput, addAgentTtsDirectorPromptBtn, fillAgentTtsDirectorTemplateBtn, agentTtsDirectorPromptsContainer;
+    let currentAgentTtsDirectorPrompts = [];
+    let agentTtsPrimarySelectController = null;
+    let agentTtsSecondarySelectController = null;
+    const TTS_DIRECTOR_TEMPLATE = `【角色】
+写清人物的身份、年龄、性格底色、外形气质与说话习惯。
+
+【场景】
+交代此刻发生了什么、和谁说话、情绪处在什么位置。
+
+【指导】
+像导演一样下达演绎要领：
+- 语速与顿挫：
+- 气息与虚实：
+- 停顿与重音：
+- 共鸣位置：
+- 音色质感：
+- 情绪起伏：`;
     let stripRegexListContainer;
 
     // --- New Regex Modal Elements ---
@@ -154,6 +172,15 @@ const settingsManager = (() => {
      */
     function populateAgentSettingsForm(agentId, agentConfig) {
         const populateToken = ++agentSettingsPopulateToken;
+
+        // 新增提示词编辑器只是尚未提交到列表的临时草稿，不属于 Agent 配置。
+        // 表单 DOM 会被所有 Agent 复用，因此切换 Agent 时必须立即清空，否则 A 的
+        // 草稿会继续显示在 B 的设置中，并可能被误添加、误保存到 B。
+        if (agentTtsDirectorPromptInput && editingAgentIdInput?.value !== agentId) {
+            agentTtsDirectorPromptInput.value = '';
+            agentTtsDirectorPromptInput.closest('.tts-director-composer')?.classList.remove('is-editing');
+            resizeTtsDirectorEditor(agentTtsDirectorPromptInput, false);
+        }
 
         // 所有 Agent 共用同一套表单和 PromptManager。串行切换上下文，并让较新的请求淘汰
         // 尚未开始写 DOM 的旧请求，避免异步初始化/保存交错后把 A 的内容显示或保存到 B。
@@ -275,8 +302,19 @@ const settingsManager = (() => {
         // Populate bilingual TTS settings
         await populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
 
+        // 音色查询是异步边界。等待期间若用户切换到了其他 Agent，旧任务不能再把
+        // TTS 正则、导演提示词列表和其他共享状态写回当前表单。
+        if (populateToken !== agentSettingsPopulateToken) {
+            console.debug(`[SettingsManager] Aborting stale TTS settings render for agent ${agentId}.`);
+            return { stale: true };
+        }
+
         agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
         agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
+        currentAgentTtsDirectorPrompts = Array.isArray(agentConfig.ttsDirectorPrompts)
+            ? agentConfig.ttsDirectorPrompts.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        renderTtsDirectorPrompts();
 
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
         ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
@@ -366,6 +404,7 @@ const settingsManager = (() => {
             ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
             ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
             ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+            ttsDirectorPrompts: [...currentAgentTtsDirectorPrompts],
             ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
             stripRegexes: currentAgentRegexes,
             avatarBorderColor: agentAvatarBorderColorInput.value,
@@ -569,18 +608,43 @@ const settingsManager = (() => {
      * @param {string} currentPrimaryVoice - The currently selected primary voice.
      * @param {string} currentSecondaryVoice - The currently selected secondary voice.
      */
+    function ensureThemedTtsSelects() {
+        if (!window.VCPUI || document.documentElement.dataset.uiMode !== 'next') return;
+        try {
+            agentTtsPrimarySelectController = window.VCPUI.enhance(
+                'Select',
+                agentTtsVoicePrimarySelect,
+                { label: '主语言模型', size: 'md' }
+            );
+            agentTtsSecondarySelectController = window.VCPUI.enhance(
+                'Select',
+                agentTtsVoiceSecondarySelect,
+                { label: '副语言模型', size: 'md' }
+            );
+            agentTtsPrimarySelectController?.refresh?.();
+            agentTtsSecondarySelectController?.refresh?.();
+        } catch (error) {
+            console.warn('[SettingsManager] Failed to apply themed TTS Select proxy:', error);
+        }
+    }
+
     async function populateTtsModels(currentPrimaryVoice, currentSecondaryVoice) {
         if (!agentTtsVoicePrimarySelect || !agentTtsVoiceSecondarySelect) return;
 
+        ensureThemedTtsSelects();
         const globalSettings = getGlobalSettings();
         const isNetworkMode = globalSettings.voiceMode === 'network';
         const commitOptions = (select, options, selectedValue = '') => {
             const current = [...select.options];
-            const sameStructure = current.length === options.length
-                && options.every((option, index) => (
+            const nextFlatOptions = options.flatMap(node => (
+                node.tagName === 'OPTGROUP' ? [...node.querySelectorAll('option')] : [node]
+            ));
+            const sameStructure = current.length === nextFlatOptions.length
+                && nextFlatOptions.every((option, index) => (
                     current[index]?.value === option.value
                     && current[index]?.textContent === option.textContent
                     && current[index]?.disabled === option.disabled
+                    && current[index]?.parentElement?.label === option.parentElement?.label
                 ));
             if (!sameStructure) select.replaceChildren(...options);
             select.value = selectedValue || '';
@@ -589,37 +653,20 @@ const settingsManager = (() => {
         try {
             let optionList = [];
 
-            if (isNetworkMode && electronAPI.loadWebindexModels) {
-                const webindexPayload = await electronAPI.loadWebindexModels();
-
-                if (Array.isArray(webindexPayload?.mergedVoiceOptions) && webindexPayload.mergedVoiceOptions.length) {
-                    optionList = webindexPayload.mergedVoiceOptions;
-                } else if (Array.isArray(webindexPayload?.models) && webindexPayload.models.length) {
-                    const firstItem = webindexPayload.models[0];
-                    if (firstItem && Array.isArray(firstItem?.mergedVoiceOptions)) {
-                        optionList = webindexPayload.models.flatMap(model => Array.isArray(model?.mergedVoiceOptions) ? model.mergedVoiceOptions : []);
-                    } else {
-                        optionList = webindexPayload.models;
-                    }
-                } else {
-                    const defaults = Array.isArray(webindexPayload?.defaults) ? webindexPayload.defaults : [];
-                    const remoteVoices = Array.isArray(webindexPayload?.remoteVoices) ? webindexPayload.remoteVoices : [];
-                    optionList = [...defaults, ...remoteVoices];
-                }
+            // 本地与网络模式统一由当前 TTS 引擎返回音色。网络模式直接返回
+            // MiMo 固定预置音色，不再读取旧供应商遗留的 webindexmodel.json。
+            const models = await electronAPI.sovitsGetModels();
+            if (Array.isArray(models)) {
+                optionList = models;
             } else {
-                const localModels = await electronAPI.sovitsGetModels();
-                if (Array.isArray(localModels)) {
-                    optionList = localModels;
-                } else {
-                    optionList = localModels && typeof localModels === 'object'
-                        ? Object.keys(localModels).map(modelName => ({
-                            id: modelName,
-                            voice: modelName,
-                            displayName: modelName,
-                            type: 'local'
-                        }))
-                        : [];
-                }
+                optionList = models && typeof models === 'object'
+                    ? Object.keys(models).map(modelName => ({
+                        id: modelName,
+                        voice: modelName,
+                        displayName: modelName,
+                        type: isNetworkMode ? 'preset' : 'local'
+                    }))
+                    : [];
             }
 
             const seenVoices = new Set();
@@ -652,28 +699,52 @@ const settingsManager = (() => {
                 option.selected = selected;
                 return option;
             };
-            const primaryOptions = [createOption('', '不使用语音')];
-            const secondaryOptions = [createOption('', '不使用')];
-            if (optionList.length > 0) {
-                optionList.forEach(item => {
-                    const optionValue = item.voice || item.id;
-                    const optionLabel = item.displayName || item.voice || item.id;
-                    primaryOptions.push(createOption(optionValue, optionLabel, {
-                        selected: optionValue === currentPrimaryVoice
-                    }));
-                    secondaryOptions.push(createOption(optionValue, optionLabel, {
-                        selected: optionValue === currentSecondaryVoice
-                    }));
+            const createOptionGroups = (emptyLabel, selectedValue) => {
+                const nodes = [createOption('', emptyLabel)];
+                if (!isNetworkMode) {
+                    optionList.forEach(item => {
+                        const optionValue = item.voice || item.id;
+                        nodes.push(createOption(optionValue, item.displayName || optionValue, {
+                            selected: optionValue === selectedValue
+                        }));
+                    });
+                    return nodes;
+                }
+
+                const groupDefinitions = [
+                    ['preset', 'MiMo 预置音色'],
+                    ['voicedesign', 'MiMo 自然语言控制'],
+                    ['voiceclone', 'MiMo 克隆音色（AppData/mimotts）']
+                ];
+                groupDefinitions.forEach(([type, label]) => {
+                    const items = optionList.filter(item => item.type === type);
+                    if (!items.length) return;
+                    const group = document.createElement('optgroup');
+                    group.label = label;
+                    items.forEach(item => {
+                        const optionValue = item.voice || item.id;
+                        group.appendChild(createOption(
+                            optionValue,
+                            item.displayName || optionValue,
+                            { selected: optionValue === selectedValue }
+                        ));
+                    });
+                    nodes.push(group);
                 });
-            } else {
+                return nodes;
+            };
+            const primaryOptions = createOptionGroups('不使用语音', currentPrimaryVoice);
+            const secondaryOptions = createOptionGroups('不使用', currentSecondaryVoice);
+            if (optionList.length === 0) {
                 const emptyLabel = isNetworkMode
-                    ? '未找到网络音色，请先获取列表并刷新 webindexmodel.json'
+                    ? '未找到 MiMo 音色'
                     : '未找到模型,请启动Sovits';
                 primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
                 secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
             commitOptions(agentTtsVoicePrimarySelect, primaryOptions, currentPrimaryVoice);
             commitOptions(agentTtsVoiceSecondarySelect, secondaryOptions, currentSecondaryVoice);
+            ensureThemedTtsSelects();
         } catch (error) {
             console.error('Failed to get TTS models:', error);
             const errorLabel = isNetworkMode ? '获取网络音色失败' : '获取模型失败';
@@ -687,8 +758,98 @@ const settingsManager = (() => {
             secondaryErrorOption.textContent = errorLabel;
             commitOptions(agentTtsVoicePrimarySelect, [primaryErrorOption]);
             commitOptions(agentTtsVoiceSecondarySelect, [secondaryErrorOption]);
+            ensureThemedTtsSelects();
             uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
         }
+    }
+
+    function resizeTtsDirectorEditor(editor, expanded = editor === document.activeElement) {
+        if (!editor) return;
+        if (!expanded) {
+            editor.style.height = '';
+            editor.rows = 1;
+            return;
+        }
+        editor.rows = 4;
+        editor.style.height = 'auto';
+        editor.style.height = `${Math.min(Math.max(editor.scrollHeight, 132), 360)}px`;
+    }
+
+    function bindTtsDirectorEditor(editor, onInput) {
+        editor.addEventListener('focus', () => {
+            editor.closest('.tts-director-item, .tts-director-composer')?.classList.add('is-editing');
+            resizeTtsDirectorEditor(editor, true);
+            scheduleStickyButtonsRefresh();
+        });
+        editor.addEventListener('input', () => {
+            onInput?.(editor.value);
+            resizeTtsDirectorEditor(editor, true);
+            updateSectionSummary('tts');
+            scheduleStickyButtonsRefresh();
+        });
+        editor.addEventListener('blur', () => {
+            editor.closest('.tts-director-item, .tts-director-composer')?.classList.remove('is-editing');
+            resizeTtsDirectorEditor(editor, false);
+            scheduleStickyButtonsRefresh();
+        });
+    }
+
+    function renderTtsDirectorPrompts() {
+        if (!agentTtsDirectorPromptsContainer) return;
+        agentTtsDirectorPromptsContainer.replaceChildren();
+
+        currentAgentTtsDirectorPrompts.forEach((prompt, index) => {
+            const row = document.createElement('div');
+            row.className = 'tts-director-item';
+
+            const editor = document.createElement('textarea');
+            editor.className = 'tts-director-editor';
+            editor.rows = 1;
+            editor.value = prompt;
+            editor.setAttribute('aria-label', `导演提示词 ${index + 1}`);
+            bindTtsDirectorEditor(editor, value => {
+                currentAgentTtsDirectorPrompts[index] = value;
+            });
+            editor.addEventListener('blur', () => {
+                const value = editor.value.trim();
+                if (value) {
+                    currentAgentTtsDirectorPrompts[index] = value;
+                } else {
+                    currentAgentTtsDirectorPrompts.splice(index, 1);
+                    renderTtsDirectorPrompts();
+                }
+            });
+
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'small-button tts-director-action-button';
+            removeButton.textContent = '−';
+            removeButton.title = '删除该导演提示词';
+            removeButton.setAttribute('aria-label', `删除导演提示词 ${index + 1}`);
+            removeButton.addEventListener('mousedown', event => event.preventDefault());
+            removeButton.addEventListener('click', () => {
+                currentAgentTtsDirectorPrompts.splice(index, 1);
+                renderTtsDirectorPrompts();
+            });
+
+            row.append(editor, removeButton);
+            agentTtsDirectorPromptsContainer.appendChild(row);
+        });
+        updateSectionSummary('tts');
+        scheduleStickyButtonsRefresh();
+    }
+
+    function addTtsDirectorPrompt() {
+        const prompt = agentTtsDirectorPromptInput?.value?.trim() || '';
+        if (!prompt) {
+            uiHelper.showToastNotification('请先填写自然语言导演提示词。', 'warning');
+            agentTtsDirectorPromptInput?.focus();
+            return;
+        }
+        currentAgentTtsDirectorPrompts.push(prompt);
+        agentTtsDirectorPromptInput.value = '';
+        renderTtsDirectorPrompts();
+        agentTtsDirectorPromptInput.focus();
     }
 
     /**
@@ -808,6 +969,10 @@ const settingsManager = (() => {
             refreshTtsModelsBtn = document.getElementById('refreshTtsModelsBtn');
             agentTtsSpeedSlider = options.elements.agentTtsSpeedSlider;
             ttsSpeedValueSpan = options.elements.ttsSpeedValueSpan;
+            agentTtsDirectorPromptInput = document.getElementById('agentTtsDirectorPromptInput');
+            addAgentTtsDirectorPromptBtn = document.getElementById('addAgentTtsDirectorPromptBtn');
+            fillAgentTtsDirectorTemplateBtn = document.getElementById('fillAgentTtsDirectorTemplateBtn');
+            agentTtsDirectorPromptsContainer = document.getElementById('agentTtsDirectorPromptsContainer');
 
             // 🟢 监听模态框就绪事件，动态绑定延迟加载的元素
             document.addEventListener('modal-ready', (e) => {
@@ -975,21 +1140,50 @@ const settingsManager = (() => {
                 syncRangeProgress(agentTtsSpeedSlider);
             }
 
+            if (addAgentTtsDirectorPromptBtn) {
+                addAgentTtsDirectorPromptBtn.addEventListener('mousedown', event => event.preventDefault());
+                addAgentTtsDirectorPromptBtn.addEventListener('click', addTtsDirectorPrompt);
+            }
+            if (fillAgentTtsDirectorTemplateBtn) {
+                fillAgentTtsDirectorTemplateBtn.addEventListener('click', () => {
+                    const existing = agentTtsDirectorPromptInput.value.trim();
+                    agentTtsDirectorPromptInput.value = existing
+                        ? `${existing}\n\n${TTS_DIRECTOR_TEMPLATE}`
+                        : TTS_DIRECTOR_TEMPLATE;
+                    agentTtsDirectorPromptInput.focus();
+                    resizeTtsDirectorEditor(agentTtsDirectorPromptInput, true);
+                });
+            }
+            if (agentTtsDirectorPromptInput) {
+                bindTtsDirectorEditor(agentTtsDirectorPromptInput);
+                agentTtsDirectorPromptInput.addEventListener('keydown', event => {
+                    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+                    event.preventDefault();
+                    addTtsDirectorPrompt();
+                });
+            }
+
             if (refreshTtsModelsBtn) {
                 refreshTtsModelsBtn.addEventListener('click', async () => {
                     const isNetworkMode = getGlobalSettings().voiceMode === 'network';
-                    uiHelper.showToastNotification(isNetworkMode ? '正在刷新网络音色列表...' : '正在刷新语音模型...', 'info');
+                    uiHelper.showToastNotification(isNetworkMode ? '正在刷新 MiMo 预置音色并扫描 AppData/mimotts...' : '正在刷新语音模型...', 'info');
                     try {
                         if (electronAPI.sovitsGetModels) {
                             await electronAPI.sovitsGetModels(true);
                         }
                         await populateTtsModels(agentTtsVoicePrimarySelect.value, agentTtsVoiceSecondarySelect.value);
-                        uiHelper.showToastNotification(isNetworkMode ? '网络音色列表已刷新' : '语音模型列表已刷新', 'success');
+                        uiHelper.showToastNotification(isNetworkMode ? 'MiMo 模式与克隆音频列表已刷新' : '语音模型列表已刷新', 'success');
                     } catch (e) {
                         uiHelper.showToastNotification(isNetworkMode ? '刷新网络音色失败' : '刷新语音模型失败', 'error');
                     }
                 });
             }
+
+            // 将 TTS 原生 Select 升级为主题化 WebAwesome 代理。
+            // VCPUI API 就绪不等于 wa-select 已完成注册；组件包加载完成后
+            // 必须再尝试一次，才能从 native controller 升级为 WA proxy。
+            ensureThemedTtsSelects();
+            window.addEventListener('vcp-webawesome-loaded', ensureThemedTtsSelects, { once: true });
 
             // 创建正则设置UI
             createStripRegexUI();
@@ -1092,6 +1286,7 @@ const settingsManager = (() => {
                 ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
                 ttsVoiceSecondary: agentTtsVoiceSecondarySelect.value,
                 ttsRegexSecondary: agentTtsRegexSecondaryInput.value.trim(),
+                ttsDirectorPrompts: [...currentAgentTtsDirectorPrompts],
                 ttsSpeed: parseFloat(agentTtsSpeedSlider.value),
                 stripRegexes: currentAgentRegexes
             };
@@ -2007,12 +2202,14 @@ function setupParamsCollapsible() {
             || '不使用';
         const secondaryRegex = agentTtsRegexSecondaryInput?.value?.trim() || '无';
         const speed = agentTtsSpeedSlider?.value || '1.0';
+        const directorPromptCount = currentAgentTtsDirectorPrompts.filter(item => String(item || '').trim()).length;
 
         return [
             `主语言: ${primaryVoice}`,
             `主语言正则: ${primaryRegex}`,
             `副语言: ${secondaryVoice}`,
             `副语言正则: ${secondaryRegex}`,
+            `导演提示词: ${directorPromptCount} 条`,
             `语速: ${speed}`
         ].join('\n');
     }

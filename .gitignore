@@ -7,6 +7,8 @@ gitignore
 AppData/*
 !AppData/VCPChatTarven.official.json
 !AppData/VCPChatTarven.json.example
+!AppData/mimotts/
+!AppData/mimotts/**
 !AppData/LoomApps/
 AppData/LoomApps/*
 !AppData/LoomApps/example-mobile/

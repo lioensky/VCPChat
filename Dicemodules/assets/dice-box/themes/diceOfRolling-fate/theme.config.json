@@ -1,0 +1,18 @@
+{
+  "name": "Dice of Rolling Fate",
+  "systemName": "diceOfRolling-fate",
+  "extends": "diceOfRolling",
+  "author": "Frank Ali",
+  "version": 0.1,
+  "meshFile": "fate-die.json",
+  "material": {
+    "type": "standard",
+    "diffuseTexture": "diffuse.jpg",
+    "bumpTexture": "normal.png",
+    "specularTexture": "specularity.jpg",
+    "diffuseLevel": 1,
+    "bumpLevel": 1,
+    "specularPower": 1
+  },
+  "diceAvailable": ["fate"]
+}

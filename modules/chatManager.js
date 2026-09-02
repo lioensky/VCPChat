@@ -1,4 +1,9 @@
 // modules/chatManager.js
+import {
+    buildDefaultMessageContent,
+    createSingleChatRequestOrchestrator,
+    updateFirstTextPart,
+} from './chat/singleChatRequestOrchestrator.js';
 
 export const chatManager = (() => {
     // --- Private Variables ---
@@ -22,6 +27,7 @@ export const chatManager = (() => {
     let chatRepository;
     let historyMutationAuthority;
     let streamConsumerRegistry;
+    let singleChatRequestOrchestrator;
 
     function requireHistoryRepository() {
         if (!chatRepository) throw new Error('ChatRepository is required for chat history operations');
@@ -160,20 +166,6 @@ export const chatManager = (() => {
 
 
 
-    function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
-        if (!vcpMessage || !historyMessage || !historyMessage.id || typeof historyMessage.timestamp !== 'number') {
-            return vcpMessage;
-        }
-        return {
-            ...vcpMessage,
-            __vcpchatTimestampMeta: {
-                messageId: historyMessage.id,
-                role: historyMessage.role,
-                timestamp: historyMessage.timestamp
-            }
-        };
-    }
-
     function buildTurnDepthMap(history = []) {
         const turns = [];
         for (let i = history.length - 1; i >= 0; i--) {
@@ -304,58 +296,6 @@ export const chatManager = (() => {
     }
 
     /**
-     * 收集当前生效的 Tavern (VCPChatTarven) 规则
-     * @param {string} scope - 'agent' | 'group'
-     * @returns {Array} active rules
-     */
-    function getTavernRules(scope) {
-        const manager = window.TavernManager;
-        if (manager && typeof manager.getActiveRulesForScope === 'function') {
-            return manager.getActiveRulesForScope(scope) || [];
-        }
-        return [];
-    }
-
-    /**
-     * 把 user_suffix 规则的内容追加到给定文本尾部
-     * @param {string} text
-     * @param {Array} rules
-     * @returns {string}
-     */
-    function applyTavernUserSuffix(text, rules) {
-        const engine = window.TavernRulesEngine;
-        if (!engine || !Array.isArray(rules) || rules.length === 0) return text || '';
-        return engine.applyUserSuffix(text || '', rules, 'agent');
-    }
-
-    /**
-     * 把 system_suffix 规则的内容追加到系统提示词尾部
-     */
-    function applyTavernSystemSuffix(systemPromptContent, rules) {
-        const engine = window.TavernRulesEngine;
-        if (!engine || !Array.isArray(rules) || rules.length === 0) return systemPromptContent || '';
-        return engine.applySystemSuffix(systemPromptContent || '', rules, 'agent');
-    }
-
-    /**
-     * 把 context_inject 规则按 depth 插入到 VCP 消息数组中（不含 system）
-     * 用于单聊场景；message 的 content 使用 multimodal text 部分
-     */
-    function applyTavernContextInject(messagesForVCP, rules) {
-        const engine = window.TavernRulesEngine;
-        if (!engine || !Array.isArray(rules) || rules.length === 0) {
-            return messagesForVCP;
-        }
-        return engine.applyContextInject(messagesForVCP, rules, 'agent', {
-            makeMessage: (role, text) => ({
-                role,
-                content: [{ type: 'text', text }],
-                __tavernInjected: true
-            })
-        });
-    }
-
-    /**
      * Initializes the ChatManager module.
      * @param {object} config - The configuration object.
      */
@@ -369,6 +309,11 @@ export const chatManager = (() => {
         if (!chatRepository) throw new Error('ChatManager requires ChatRepository');
         chatDomRenderer = config.chatDomRenderer || null;
         electronAPI = config.electronAPI;
+        singleChatRequestOrchestrator = config.singleChatRequestOrchestrator
+            || createSingleChatRequestOrchestrator({
+                electronAPI,
+                tavernEngine: window.TavernRulesEngine,
+            });
         uiHelper = config.uiHelper;
         
         // Modules
@@ -1000,11 +945,46 @@ export const chatManager = (() => {
     
         await displayTopicTimestampBubble(itemId, itemType, topicId);
         if (abortIfStale()) return;
+
+        // 渐进历史渲染从“最新批次”开始，再把旧批次插到顶部。活动流如果等到
+        // 全部旧批次结束后才 reconcile，长历史加载期间会暂时没有呼吸框；若由
+        // 其他流式帧抢先补建 DOM，还可能与批次插入交错，视觉上像被排到旧楼层中。
+        // 在批处理开始前把 renderer-local 活动流快照合并到投影历史尾部，使它从
+        // 第一批起就拥有确定的最后楼层。这里只修改内存/DOM 投影，不写 durable history。
+        const activeStreamSnapshots = streamProjection?.snapshotConversation?.({
+            itemType,
+            itemId,
+            topicId,
+        }) || [];
+        const historyForProjection = Array.isArray(historyResult)
+            ? [...historyResult]
+            : historyResult;
+        if (Array.isArray(historyForProjection)) {
+            for (const snapshot of activeStreamSnapshots) {
+                if (!snapshot?.messageId || historyForProjection.some(message => message?.id === snapshot.messageId)) {
+                    continue;
+                }
+                const accumulatedText = typeof snapshot.accumulatedText === 'string'
+                    ? snapshot.accumulatedText
+                    : '';
+                historyForProjection.push({
+                    ...(snapshot.message || {}),
+                    ...(snapshot.context || {}),
+                    id: snapshot.messageId,
+                    role: snapshot.message?.role || 'assistant',
+                    content: accumulatedText || snapshot.message?.content || '',
+                    isThinking: accumulatedText.trim() === '',
+                    isPendingStream: true,
+                    timestamp: snapshot.message?.timestamp || Date.now(),
+                    streamOperationId: snapshot.streamOperationId || null,
+                });
+            }
+        }
     
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
-        } else if (historyResult && historyResult.length > 0) {
-            currentChatHistoryRef.set(historyResult);
+        } else if (Array.isArray(historyForProjection) && historyForProjection.length > 0) {
+            currentChatHistoryRef.set(historyForProjection);
             notifySendStateChanged();
             if (messageRenderer) {
                 // 使用优化的分批渲染策略
@@ -1014,8 +994,8 @@ export const chatManager = (() => {
                     batchDelay: 80      // 批次间延迟 80ms，平衡性能和用户体验
                 };
                 
-                console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
-                await (chatDomRenderer || messageRenderer).renderHistory(historyResult, renderOptions);
+                console.log(`[ChatManager] 开始加载话题历史，共 ${historyForProjection.length} 条消息`);
+                await (chatDomRenderer || messageRenderer).renderHistory(historyForProjection, renderOptions);
                 if (abortIfStale()) return;
                 console.log(`[ChatManager] 话题历史加载完成`);
             }
@@ -1402,35 +1382,17 @@ export const chatManager = (() => {
         }
         pendingSendContexts.add(sendSignature);
         try {
-        // The 'content' variable still holds the user's raw input, including the placeholder.
-        // We will resolve the placeholder later, only for the final message sent to VCP.
-        let combinedTextContent = content; // 用于发送给VCP的组合文本内容
- 
         const uiAttachments = [];
         if (attachedFiles.length > 0) {
             for (const af of attachedFiles) {
                 const fileManagerData = af._fileManagerData || {};
                 uiAttachments.push({
-                    type: fileManagerData.type,
+                    type: fileManagerData.type || af.file.type,
                     src: af.localPath,
                     name: af.originalName,
                     size: af.file.size,
                     _fileManagerData: fileManagerData
                 });
-
-                // 修正：将文件路径和提取的文本正确地附加到 combinedTextContent
-                const filePathForContext = af.localPath || af.originalName;
-
-                if (af.file.type.startsWith('image/')) {
-                    // 对于图片，我们只附加路径，因为内容将作为多模态部分发送
-                    combinedTextContent += `\n\n[附加图片: ${filePathForContext}]`;
-                } else if (fileManagerData.extractedText) {
-                    // 对于有提取文本的文件，同时附加路径和文本
-                    combinedTextContent += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
-                } else {
-                    // 对于其他文件（如音频、视频、无文本的PDF等），只附加路径
-                    combinedTextContent += `\n\n[附加文件: ${filePathForContext}]`;
-                }
             }
         }
 
@@ -1545,6 +1507,25 @@ export const chatManager = (() => {
             if (!isSendContextCurrent()) {
                 thinkingMessageItem?.remove?.();
                 thinkingMessageItem = null;
+            } else if (thinkingMessageItem && !request?.conversation) {
+                // 不再走通用 scrollToBottom 状态机：agent 气泡自身已经在同一轮
+                // renderMessage 中排过一次滚动，紧接着再调用会被 frameId 合并，
+                // 无法保证按这个新气泡完成布局后的 scrollHeight 再提交。
+                // 从气泡反查实际滚动容器，下一布局帧直接滚到它的真实底部。
+                const scrollContainer = thinkingMessageItem.closest('.chat-messages-container');
+                const ownerWindow = thinkingMessageItem.ownerDocument?.defaultView;
+                ownerWindow?.requestAnimationFrame?.(() => {
+                    if (
+                        thinkingMessageItem.isConnected
+                        && scrollContainer?.isConnected
+                        && isSendContextCurrent()
+                    ) {
+                        scrollContainer.scrollTop = Math.max(
+                            0,
+                            scrollContainer.scrollHeight - scrollContainer.clientHeight
+                        );
+                    }
+                });
             }
         }
         if (isSendContextCurrent()) {
@@ -1595,270 +1576,94 @@ export const chatManager = (() => {
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
             const historySnapshotForVCP = sendHistory.filter(msg => !msg.isThinking);
-
-            // VCPChatTarven (高级回复) - 收集生效的规则
-            const tavernRules = getTavernRules('agent');
             const contextRegexRules = Array.isArray(agentConfig?.stripRegexes)
                 ? agentConfig.stripRegexes
                 : [];
-            const hasContextRegexRules = contextRegexRules.some(rule => rule?.enabled !== false && rule.applyToContext);
+            const hasContextRegexRules = contextRegexRules.some(
+                rule => rule?.enabled !== false && rule.applyToContext
+            );
             const contextDepthMap = hasContextRegexRules
                 ? buildTurnDepthMap(historySnapshotForVCP)
                 : null;
+            const systemPromptPrefix = [];
 
-            const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
-                let vcpImageAttachmentsPayload = [];
-                let vcpAudioAttachmentsPayload = [];
-                let vcpVideoAttachmentsPayload = [];
-                let currentMessageTextContent = msg.content;
+            if (agentConfig.systemPrompt) {
+                if (agentConfig.agentDataPath && currentTopicId) {
+                    systemPromptPrefix.push(
+                        `当前聊天记录文件路径: ${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`
+                    );
+                }
+                const currentTopic = agentConfig.topics?.find(topic => topic.id === currentTopicId);
+                if (currentTopic?.createdAt) {
+                    const date = new Date(currentTopic.createdAt);
+                    const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                    systemPromptPrefix.push(`当前话题创建于 ${formattedDate}`);
+                }
+            }
 
-                // --- 应用正则规则（后端上下文）---
-                if (hasContextRegexRules && contextDepthMap) {
-                    const depth = contextDepthMap.get(msg.id);
-
-                    if (depth !== undefined) {
-                        // 应用规则到消息内容
-                        currentMessageTextContent = applyRegexRules(
-                            currentMessageTextContent,
-                            contextRegexRules,
-                            'context',  // 这里处理的是发送给AI的上下文
-                            msg.role,
-                            depth
+            const orchestrated = await singleChatRequestOrchestrator.buildRequest({
+                settings: globalSettings,
+                agentConfig,
+                history: historySnapshotForVCP,
+                messageId: thinkingMessage.id,
+                context: sendContext,
+                currentUserMessageId: userMessage.id,
+                systemPromptPrefix: systemPromptPrefix.join('\n'),
+                transformMessageText: ({ text, message }) => {
+                    // Preserve the established behavior: context regexes apply
+                    // to prior context, while the just-submitted user text is
+                    // sent verbatim before Tavern user_suffix injection.
+                    if (
+                        message.id === userMessage.id
+                        || !hasContextRegexRules
+                        || !contextDepthMap
+                    ) {
+                        return text;
+                    }
+                    const depth = contextDepthMap.get(message.id);
+                    return depth === undefined
+                        ? text
+                        : applyRegexRules(text, contextRegexRules, 'context', message.role, depth);
+                },
+                buildMessageContent: buildDefaultMessageContent,
+                postProcessMessageContent: async ({ content: parts, message }) => {
+                    if (
+                        message.id !== userMessage.id
+                        || !parts.some(part => part?.type === 'text' && part.text.includes(CANVAS_PLACEHOLDER))
+                    ) {
+                        return parts;
+                    }
+                    try {
+                        const canvasData = await electronAPI.getLatestCanvasContent();
+                        const replacement = canvasData && !canvasData.error
+                            ? `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`
+                            : '\n[Canvas content could not be loaded]\n';
+                        return updateFirstTextPart(
+                            parts,
+                            text => text.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), replacement)
+                        );
+                    } catch (error) {
+                        console.error('Error fetching canvas content:', error);
+                        return updateFirstTextPart(
+                            parts,
+                            text => text.replace(
+                                new RegExp(CANVAS_PLACEHOLDER, 'g'),
+                                '\n[Error loading canvas content]\n'
+                            )
                         );
                     }
-                    // --- 深度计算和应用结果 ---
-                }
-                // --- 正则规则应用结束 ---
-
-                if (msg.role === 'user' && msg.id === userMessage.id) {
-                    // 关键修复：使用已经包含附件内容的 combinedTextContent
-                    currentMessageTextContent = combinedTextContent;
-
-                    // VCPChatTarven: 在当前用户消息尾部追加 user_suffix 规则
-                    currentMessageTextContent = applyTavernUserSuffix(currentMessageTextContent, tavernRules);
-
-                    // IMPORTANT: We need to handle Canvas placeholder WITHOUT overwriting the combined content
-                    // First, check if we need to replace Canvas placeholder
-                    if (currentMessageTextContent.includes(CANVAS_PLACEHOLDER)) {
-                        try {
-                            const canvasData = await electronAPI.getLatestCanvasContent();
-                            if (canvasData && !canvasData.error) {
-                                const formattedCanvasContent = `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`;
-                                // Replace Canvas placeholder in the combined content
-                                currentMessageTextContent = currentMessageTextContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), formattedCanvasContent);
-                            } else {
-                                console.error("Failed to get latest canvas content:", canvasData?.error);
-                                currentMessageTextContent = currentMessageTextContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Canvas content could not be loaded]\n');
-                            }
-                        } catch (error) {
-                            console.error("Error fetching canvas content:", error);
-                            currentMessageTextContent = currentMessageTextContent.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), '\n[Error loading canvas content]\n');
-                        }
-                    }
-                } else if (msg.attachments && msg.attachments.length > 0) {
-                    let historicalAppendedText = "";
-                    for (const att of msg.attachments) {
-                        const fileManagerData = att._fileManagerData || {};
-                        // 优先使用 att.src，因为它代表前端的本地可访问路径
-                        // 后备为 internalPath（来自 fileManager 或 att 顶层），最后才是文件名
-                        // 兼容两种附件结构：通过正常发送的附件（数据在 _fileManagerData 中）
-                        // 和通过 addAttachmentsToMessage 添加的附件（数据直接在 att 顶层）
-                        const effectiveInternalPath = fileManagerData.internalPath || att.internalPath;
-                        const filePathForContext = att.src || (effectiveInternalPath ? effectiveInternalPath.replace('file://', '') : (att.name || '未知文件'));
-
-                        // 兼容读取：优先从 _fileManagerData 读取，回退到 att 顶层字段
-                        const effectiveImageFrames = fileManagerData.imageFrames || att.imageFrames;
-                        const effectiveExtractedText = fileManagerData.extractedText || att.extractedText;
-
-                        if (effectiveImageFrames && effectiveImageFrames.length > 0) {
-                             historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
-                        } else if (effectiveExtractedText) {
-                            historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
-                        } else {
-                            // 对于没有提取文本的文件（如音视频），只附加路径
-                            historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]`;
-                        }
-                    }
-                    currentMessageTextContent += historicalAppendedText;
-                }
-
-                if (msg.attachments && msg.attachments.length > 0) {
-                    // --- IMAGE PROCESSING ---
-                    const imageAttachmentsPromises = msg.attachments.map(async att => {
-                        const fileManagerData = att._fileManagerData || {};
-                        // 兼容读取：优先从 _fileManagerData 读取，回退到 att 顶层字段
-                        const effectiveImageFrames = fileManagerData.imageFrames || att.imageFrames;
-                        // Case 1: Scanned PDF converted to image frames
-                        if (effectiveImageFrames && effectiveImageFrames.length > 0) {
-                            return effectiveImageFrames.map(frameData => ({
-                                type: 'image_url',
-                                image_url: { url: `data:image/jpeg;base64,${frameData}` }
-                            }));
-                        }
-                        // Case 2: Regular image file (including GIFs that get framed)
-                        if (att.type && att.type.startsWith('image/')) {
-                            try {
-                                const result = await electronAPI.getFileAsBase64(att.src || att.internalPath);
-                                if (result && result.success) {
-                                    return result.base64Frames.map(frameData => ({
-                                        type: 'image_url',
-                                        image_url: { url: `data:image/jpeg;base64,${frameData}` }
-                                    }));
-                                } else {
-                                    const errorMsg = result ? result.error : '未知错误';
-                                    console.error(`Failed to get Base64 for ${att.name}: ${errorMsg}`);
-                                    uiHelper.showToastNotification(`处理图片 ${att.name} 失败: ${errorMsg}`, 'error');
-                                    return null;
-                                }
-                            } catch (processingError) {
-                                console.error(`Exception during getBase64 for ${att.name}:`, processingError);
-                                uiHelper.showToastNotification(`处理图片 ${att.name} 时发生异常: ${processingError.message}`, 'error');
-                                return null;
-                            }
-                        }
-                        return null; // Not an image or a convertible PDF
-                    });
-
-                    const nestedImageAttachments = await Promise.all(imageAttachmentsPromises);
-                    const flatImageAttachments = nestedImageAttachments.flat().filter(Boolean);
-                    vcpImageAttachmentsPayload.push(...flatImageAttachments);
-
-                    // --- AUDIO PROCESSING ---
-                    const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
-                    const audioAttachmentsPromises = msg.attachments
-                        .filter(att => att.type && supportedAudioTypes.includes(att.type))
-                        .map(async att => {
-                            try {
-                                const result = await electronAPI.getFileAsBase64(att.src || att.internalPath);
-                                if (result && result.success) {
-                                    return result.base64Frames.map(frameData => ({
-                                        type: 'image_url',
-                                        image_url: { url: `data:${att.type};base64,${frameData}` }
-                                    }));
-                                } else {
-                                    const errorMsg = result ? result.error : '未知错误';
-                                    console.error(`Failed to get Base64 for audio ${att.name}: ${errorMsg}`);
-                                    uiHelper.showToastNotification(`处理音频 ${att.name} 失败: ${errorMsg}`, 'error');
-                                    return null;
-                                }
-                            } catch (processingError) {
-                                console.error(`Exception during getBase64 for audio ${att.name}:`, processingError);
-                                uiHelper.showToastNotification(`处理音频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
-                                return null;
-                            }
-                        });
-                    const nestedAudioAttachments = await Promise.all(audioAttachmentsPromises);
-                    vcpAudioAttachmentsPayload.push(...nestedAudioAttachments.flat().filter(Boolean));
-
-                    // --- VIDEO PROCESSING ---
-                    const videoAttachmentsPromises = msg.attachments
-                        .filter(att => att.type && att.type.startsWith('video/'))
-                        .map(async att => {
-                            try {
-                                const result = await electronAPI.getFileAsBase64(att.src || att.internalPath);
-                                if (result && result.success) {
-                                    return result.base64Frames.map(frameData => ({
-                                        type: 'image_url',
-                                        image_url: { url: `data:${att.type};base64,${frameData}` }
-                                    }));
-                                } else {
-                                    const errorMsg = result ? result.error : '未知错误';
-                                    console.error(`Failed to get Base64 for video ${att.name}: ${errorMsg}`);
-                                    uiHelper.showToastNotification(`处理视频 ${att.name} 失败: ${errorMsg}`, 'error');
-                                    return null;
-                                }
-                            } catch (processingError) {
-                                console.error(`Exception during getBase64 for video ${att.name}:`, processingError);
-                                uiHelper.showToastNotification(`处理视频 ${att.name} 时发生异常: ${processingError.message}`, 'error');
-                                return null;
-                            }
-                        });
-                    const nestedVideoAttachments = await Promise.all(videoAttachmentsPromises);
-                    vcpVideoAttachmentsPayload.push(...nestedVideoAttachments.flat().filter(Boolean));
-                }
-
-                let finalContentPartsForVCP = [];
-                if (currentMessageTextContent && currentMessageTextContent.trim() !== '') {
-                    finalContentPartsForVCP.push({ type: 'text', text: currentMessageTextContent });
-                }
-                finalContentPartsForVCP.push(...vcpImageAttachmentsPayload);
-                finalContentPartsForVCP.push(...vcpAudioAttachmentsPayload);
-                finalContentPartsForVCP.push(...vcpVideoAttachmentsPayload);
-
-                if (finalContentPartsForVCP.length === 0 && msg.role === 'user') {
-                     finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
-                }
-                
-                return attachTimestampMetaToVcpMessage(
-                    { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content },
-                    msg
-                );
-            }));
-
-            if (agentConfig && agentConfig.systemPrompt) {
-                let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
-                const prependedContent = [];
-
-                // 任务2: 注入聊天记录文件路径
-                // 假设 agentConfig 对象中包含一个 agentDataPath 属性，该属性由主进程在加载代理配置时提供。
-                if (agentConfig.agentDataPath && currentTopicId) {
-                    // 修正：currentTopicId 本身就包含 "topic_" 前缀，无需重复添加
-                    const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`;
-                    prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
-                }
-
-                // 任务1: 注入话题创建时间
-                if (agentConfig.topics && currentTopicId) {
-                    const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicId);
-                    if (currentTopicObj && currentTopicObj.createdAt) {
-                        const date = new Date(currentTopicObj.createdAt);
-                        const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-                        prependedContent.push(`当前话题创建于 ${formattedDate}`);
-                    }
-                }
-
-                if (prependedContent.length > 0) {
-                    systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
-                }
-
-                // VCPChatTarven: 在系统提示词尾部追加 system_suffix 规则
-                systemPromptContent = applyTavernSystemSuffix(systemPromptContent, tavernRules);
-
-                messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
-            } else {
-                // 没有 systemPrompt，但仍可能存在 system_suffix 规则
-                const tavernSysOnly = applyTavernSystemSuffix('', tavernRules);
-                if (tavernSysOnly && tavernSysOnly.trim()) {
-                    messagesForVCP.unshift({ role: 'system', content: tavernSysOnly });
-                }
-            }
-
-            // VCPChatTarven: 应用 context_inject 规则（按深度插入消息）
-            // 注意：只对非 system 消息计算深度，因此先临时分离 system
-            if (Array.isArray(tavernRules) && tavernRules.some(r => r.type === 'context_inject' && r.enabled !== false)) {
-                const systemMsgs = messagesForVCP.filter(m => m.role === 'system');
-                const nonSystemMsgs = messagesForVCP.filter(m => m.role !== 'system');
-                const injected = applyTavernContextInject(nonSystemMsgs, tavernRules);
-                messagesForVCP.length = 0;
-                messagesForVCP.push(...systemMsgs, ...injected);
-            }
-
-            const useStreaming = (agentConfig && agentConfig.streamOutput !== undefined) ? (agentConfig.streamOutput === true || agentConfig.streamOutput === 'true') : true;
-            const modelConfigForVCP = {
-                model: (agentConfig && agentConfig.model) ? agentConfig.model : 'gemini-pro',
-                temperature: (agentConfig && agentConfig.temperature !== undefined) ? parseFloat(agentConfig.temperature) : 0.7,
-                ...(agentConfig && agentConfig.maxOutputTokens && { max_tokens: parseInt(agentConfig.maxOutputTokens) }),
-                ...(agentConfig && agentConfig.contextTokenLimit !== undefined && agentConfig.contextTokenLimit !== null && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit) }),
-                ...(agentConfig && agentConfig.top_p !== undefined && agentConfig.top_p !== null && { top_p: parseFloat(agentConfig.top_p) }),
-                ...(agentConfig && agentConfig.top_k !== undefined && agentConfig.top_k !== null && { top_k: parseInt(agentConfig.top_k) }),
-                stream: useStreaming
-            };
+                },
+            });
+            const useStreaming = orchestrated.modelConfig.stream === true;
 
             if (useStreaming) {
                 if (messageRenderer) {
+                    const startOwnedStreamProjection = message => (
+                        renderTarget.startStreaming || messageRenderer.startStreamingMessage
+                    ).call(renderTarget, message, thinkingMessageItem);
                     releaseStreamConsumerRoute = streamConsumerRegistry?.register?.(thinkingMessage.id, {
                         kind: request?.domRenderer ? 'independent-surface' : 'main-chat',
-                        start: message => (renderTarget.startStreaming || messageRenderer.startStreamingMessage).call(renderTarget, message, thinkingMessageItem),
+                        start: startOwnedStreamProjection,
                         ...(request?.domRenderer ? {
                             append: (messageId, chunk, streamContext) => request.domRenderer.appendStreaming(messageId, chunk, streamContext),
                             projectTerminal: (messageId, finishReason, streamContext, payload) => request.domRenderer.projectStreamTerminal(messageId, finishReason, streamContext, payload),
@@ -1881,19 +1686,27 @@ export const chatManager = (() => {
                             return releaseStreamConsumerRoute?.cancel?.(reason || 'surface-operation-cancelled');
                         },
                     }));
+
+                    // 在请求交给上游之前发布本地流所有权。过去这里一直等首个
+                    // agent_thinking/start IPC 才初始化 StreamProjection；在这段空窗内切换
+                    // 话题时，渐进历史渲染只能读到已落盘的 user 消息，尚未持久化的 assistant
+                    // 占位既不在活动流快照中，也无法由 reconcileConversation 恢复。
+                    // 提前初始化后，呼吸框、返回会话恢复和发送/中止按钮共享同一运行态真源。
+                    await startOwnedStreamProjection({
+                        ...thinkingMessage,
+                        ...orchestrated.context,
+                        context: orchestrated.context,
+                        content: '',
+                        isThinking: true,
+                    });
+                    notifySendState();
                 }
             }
 
-            const context = sendContext;
-
-            const vcpResponse = await electronAPI.sendToVCP(
-                globalSettings.vcpServerUrl,
-                globalSettings.vcpApiKey,
-                messagesForVCP,
-                modelConfigForVCP,
-                thinkingMessage.id,
-                false, // isGroupCall - legacy, will be ignored by new handler but kept for safety
-                context // The new context object
+            const context = orchestrated.context;
+            const vcpResponse = await singleChatRequestOrchestrator.sendPrepared(
+                orchestrated,
+                globalSettings
             );
 
             if (!useStreaming) {

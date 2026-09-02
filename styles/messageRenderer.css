@@ -1,5 +1,22 @@
 /* Enhanced Rendering Styles for Message Renderer */
 
+/*
+ * 墓碑冻结的同步 CSS 屏障。
+ * visibilityOptimizer 仍会暂停 Web Animations 实例并保存精确时间线；这里负责覆盖：
+ * 1. 应用自身的 @keyframes（例如工具气泡背景、边框、齿轮与工具名流光）；
+ * 2. 消息级 scoped CSS 创建的动画；
+ * 3. 无法作为 DOM 节点单独扫描的 ::before / ::after 动画；
+ * 4. 消息已冻结后才由 class/style 变化启动的动画。
+ */
+.message-item.vcp-paused,
+.message-item.vcp-paused *,
+.message-item.vcp-paused::before,
+.message-item.vcp-paused::after,
+.message-item.vcp-paused *::before,
+.message-item.vcp-paused *::after {
+    animation-play-state: paused !important;
+}
+
 /* Keyframes for animations */
 @keyframes vcp-bubble-background-flow-kf {
     0% {
@@ -1975,12 +1992,8 @@ body:not(.light-theme) .mermaid-error {
 }
 
 
-/* --- Stream Fade-in Animation --- */
-/*
- * 统一 AI 内容块流式渐入动画
- * 使用 translateX(20px) 实现你记忆中的横向滑入感
- */
-@keyframes vcp-stream-fade-in {
+/* --- Configurable Stream Element Animation --- */
+@keyframes vcp-stream-slide-left {
     from {
         opacity: 0;
         transform: translateX(20px);
@@ -1988,7 +2001,58 @@ body:not(.light-theme) .mermaid-error {
 
     to {
         opacity: 1;
-        transform: translateX(0);
+        transform: none;
+    }
+}
+
+@keyframes vcp-stream-fade {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes vcp-stream-rise {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes vcp-stream-scale {
+    from {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes vcp-stream-custom {
+    from {
+        opacity: var(--vcp-stream-custom-opacity, 0);
+        transform: var(--vcp-stream-custom-transform, translateY(12px) scale(0.98));
+        filter: var(--vcp-stream-custom-filter, none);
+        transform-origin: var(--vcp-stream-custom-transform-origin, center);
+        clip-path: var(--vcp-stream-custom-clip-path, none);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+        filter: none;
+        clip-path: none;
     }
 }
 
@@ -2007,12 +2071,48 @@ body:not(.light-theme) .mermaid-error {
 }
 
 .vcp-stream-element-fade-in {
-    animation: vcp-stream-fade-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
-    will-change: opacity, transform;
+    animation-duration: var(--vcp-stream-animation-duration, 500ms) !important;
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+    animation-fill-mode: forwards !important;
+    will-change: opacity, transform, filter;
+}
+
+:root:not([data-vcp-stream-animation]) .vcp-stream-element-fade-in,
+:root[data-vcp-stream-animation="slide-left"] .vcp-stream-element-fade-in {
+    animation-name: vcp-stream-slide-left !important;
+}
+
+:root[data-vcp-stream-animation="fade"] .vcp-stream-element-fade-in {
+    animation-name: vcp-stream-fade !important;
+}
+
+:root[data-vcp-stream-animation="rise"] .vcp-stream-element-fade-in {
+    animation-name: vcp-stream-rise !important;
+}
+
+:root[data-vcp-stream-animation="scale"] .vcp-stream-element-fade-in {
+    animation-name: vcp-stream-scale !important;
+}
+
+:root[data-vcp-stream-animation="custom"] .vcp-stream-element-fade-in {
+    animation-name: vcp-stream-custom !important;
+}
+
+:root[data-vcp-stream-animation="none"] .vcp-stream-element-fade-in {
+    animation: none !important;
+    will-change: auto;
 }
 
 .vcp-stream-content-pulse {
     animation: vcp-content-pulse 0.3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vcp-stream-element-fade-in,
+    .vcp-stream-content-pulse {
+        animation: none !important;
+        will-change: auto;
+    }
 }
 
 

@@ -271,6 +271,7 @@ function showContextMenu(event, messageItem, message) {
                                 speed: agentConfig.ttsSpeed || 1.0,
                                 msgId: message.id,
                                 ttsRegex: agentConfig.ttsRegexPrimary, // Legacy 'ttsRegex' is now primary
+                                directorPrompts: agentConfig.ttsDirectorPrompts,
                                 // New bilingual fields
                                 voiceSecondary: agentConfig.ttsVoiceSecondary,
                                 ttsRegexSecondary: agentConfig.ttsRegexSecondary
@@ -677,6 +678,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
     const globalSettingsVal = mainRefs.globalSettingsRef.get();
     let streamingRequested = false;
     let streamContext = null;
+    let regenerationThinkingItem = null;
 
     if (!currentSelectedItemVal.id || currentSelectedItemVal.type !== 'agent' || !currentTopicIdVal || !originalAssistantMessage || originalAssistantMessage.role !== 'assistant') {
         uiHelper.showToastNotification("只能为 Agent 的回复进行重新生成。", "warning");
@@ -718,10 +720,14 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
     };
 
-    contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
+    regenerationThinkingItem = await contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
     currentChatHistoryArray.push(regenerationThinkingMessage);
     mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-    ownerWindow.updateSendButtonState?.();
+
+    // 重新回复的思考占位已经同时进入 DOM 与 history，此时即可投影中止按钮。
+    // 旧路径调用 window.updateSendButtonState，但发送状态现由 MainChatSendOwner
+    // 通过显式 messageCommands 能力持有，不再暴露同名窗口全局函数。
+    mainRefs.messageCommands?.updateSendButtonState?.();
 
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id);
@@ -1015,6 +1021,20 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         };
         streamingRequested = modelConfigForVCP.stream;
         streamContext = context;
+
+        // 与正常单聊发送保持同一运行态契约：流式请求必须在交给上游前建立
+        // StreamProjection 所有权。它会给占位同时添加 streaming + thinking，
+        // 从而启用循环省略号和外层流光边框；首个 IPC start/thinking 事件再次
+        // 初始化时会由 StreamProjection 的幂等检查直接复用当前气泡。
+        if (streamingRequested && typeof contextMenuDependencies.startStreamingMessage === 'function') {
+            await contextMenuDependencies.startStreamingMessage({
+                ...regenerationThinkingMessage,
+                ...context,
+                context,
+                content: '',
+                isThinking: true
+            }, regenerationThinkingItem);
+        }
         
         const vcpResult = await electronAPI.sendToVCP(
             globalSettingsVal.vcpServerUrl,

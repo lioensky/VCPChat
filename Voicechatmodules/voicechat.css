@@ -44,6 +44,36 @@ body, html {
     flex-grow: 1;
 }
 
+.voice-input-shortcut-status {
+    max-width: 150px;
+    margin-right: 10px;
+    padding: 3px 7px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+    border-radius: 999px;
+    color: var(--secondary-text);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-app-region: no-drag;
+}
+
+.voice-input-shortcut-status.is-ready {
+    border-color: color-mix(in srgb, #35b96f 58%, var(--border-color));
+    color: #35b96f;
+}
+
+.voice-input-shortcut-status.is-active {
+    border-color: color-mix(in srgb, var(--button-bg) 68%, var(--border-color));
+    color: var(--button-bg);
+}
+
+.voice-input-shortcut-status.is-error {
+    border-color: color-mix(in srgb, var(--danger-color) 68%, var(--border-color));
+    color: var(--danger-color);
+}
+
 .header-controls {
     display: flex;
 }
@@ -68,6 +98,50 @@ body, html {
 
 .window-control-button:hover {
     background-color: var(--button-hover-bg);
+}
+
+@keyframes voicechat-speaking-pulse {
+    0%,
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--button-bg) 42%, transparent);
+    }
+
+    50% {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 7px color-mix(in srgb, var(--button-bg) 0%, transparent);
+    }
+}
+
+.message-item.speaking-active .chat-avatar,
+.message-item.speaking-active .message-avatar,
+.chat-avatar.speaking,
+.message-avatar.speaking {
+    cursor: pointer;
+    animation: voicechat-speaking-pulse 1.15s ease-in-out infinite;
+    transition: transform 0.18s ease, filter 0.18s ease;
+    filter: saturate(1.15) brightness(1.08);
+}
+
+.message-item.speaking-active .chat-avatar:hover,
+.message-item.speaking-active .message-avatar:hover {
+    filter: saturate(1.2) brightness(1.16);
+}
+
+.message-item.speaking-active .chat-avatar:active,
+.message-item.speaking-active .message-avatar:active {
+    transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-item.speaking-active .chat-avatar,
+    .message-item.speaking-active .message-avatar,
+    .chat-avatar.speaking,
+    .message-avatar.speaking {
+        animation: none;
+        outline: 3px solid color-mix(in srgb, var(--button-bg) 60%, transparent);
+        outline-offset: 3px;
+    }
 }
 
 .chat-messages-container {

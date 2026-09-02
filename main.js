@@ -648,6 +648,12 @@ async function performQuitCleanup() {
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
 
+        try {
+            await voiceHandlers.shutdownVoiceInputEngine();
+        } catch (error) {
+            console.warn('[Main] Failed to shut down native voice input engine:', error.message || error);
+        }
+
         if (distributedServer) {
             console.log('[Main] Stopping distributed server...');
             try {
@@ -1415,7 +1421,8 @@ if (!gotTheLock) {
             startSelectionListener: assistantHandlers.startSelectionListener,
             getMusicState: musicHandlers.getMusicState,
             fileWatcher, // 注入文件监控器
-            agentConfigManager
+            agentConfigManager,
+            settingsManager: appSettingsManager
         });
 
         // A renderer claims a lease before beginning asynchronous selection.

@@ -24,7 +24,7 @@
     "evidence:managed": "node scripts/vcpchat-release-evidence.mjs",
     "start:desktop": "electron . --desktop-only",
     "start:rag-observer": "electron . --rag-observer-only",
-    "build": "node rust_chat_data_service/build-runtime.js",
+    "build": "node rust_chat_data_service/build-runtime.js && node rust_voice_input_engine/build-runtime.js",
     "lint:ui-system": "stylelint \"styles/ui-system/**/*.css\" --config stylelint.ui-system.config.cjs",
     "guard:design-subtraction": "node scripts/check-design-system-boundary.mjs",
     "guard:classic-parity": "node scripts/check-classic-parity.mjs",
@@ -83,18 +83,19 @@
   "devDependencies": {
     "@awesome.me/webawesome": "3.11.0",
     "@electron/rebuild": "^4.0.3",
-    "electron": "^41.7.1",
+    "electron": "^44.0.0",
     "electron-builder": "^26.0.12",
+    "node-abi": "^4.35.0",
     "node-addon-api": "^8.3.1",
     "node-gyp": "^11.4.2"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
-    "@chenglou/pretext": "^0.0.7",
+    "@chenglou/pretext": "^0.0.8",
     "@xterm/headless": "^6.0.0",
     "animejs": "^4.0.2",
     "axios": "^1.10.0",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^13.0.3",
     "cheerio": "^1.1.2",
     "child_process": "^1.0.2",
     "chokidar": "^4.0.3",
@@ -128,7 +129,7 @@
     "pdf-parse": "^1.1.1",
     "pdf-poppler": "^0.2.1",
     "portfinder": "^1.0.37",
-    "puppeteer": "^24.15.0",
+    "puppeteer": "^25.9.0",
     "sharp": "^0.35.3",
     "stylelint": "^16.25.0",
     "superdoc": "^1.45.0",
@@ -142,7 +143,7 @@
     "xterm-addon-fit": "^0.8.0"
   },
   "optionalDependencies": {
-    "electron-edge-js": "^38.0.0"
+    "electron-edge-js": "^44.0.0"
   },
   "build": {
     "appId": "com.vcp.chatdesktop",
@@ -150,7 +151,8 @@
     "asarUnpack": [
       "modules/services/chatDataService/bin/**/*",
       "audio_engine/**/*",
-      "rust_assistant_engine/runtime/**/*"
+      "rust_assistant_engine/runtime/**/*",
+      "rust_voice_input_engine/runtime/**/*"
     ],
     "files": [
       "main.js",
@@ -179,6 +181,7 @@
       "Tavernmodules/**/*",
       "rust_assistant_engine/ui/**/*",
       "rust_assistant_engine/runtime/**/*",
+      "rust_voice_input_engine/runtime/**/*",
       "Notemodules/**/*",
       "Translatormodules/**/*",
       "vendor/**/*",

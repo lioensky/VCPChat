@@ -23,7 +23,7 @@
     } else {
         root.TavernRulesEngine = factory();
     }
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     'use strict';
 
     const INJECTION_HEADER = '[本信息由VCPChat客户端注入]';

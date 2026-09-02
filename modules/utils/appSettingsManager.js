@@ -40,6 +40,63 @@ class SettingsValidator {
             console.log('Fixed invalid chatPresentationMode');
         }
 
+        const allowedVoiceInputModes = new Set(['windows_voice_typing', 'right_alt_hold']);
+        if (!allowedVoiceInputModes.has(validated.voiceInputMode)) {
+            validated.voiceInputMode = 'windows_voice_typing';
+            hasIssues = true;
+            console.log('Fixed invalid voiceInputMode');
+        }
+
+        if (typeof validated.voiceInputShortcut !== 'string' || !validated.voiceInputShortcut.trim()) {
+            validated.voiceInputShortcut = 'F7';
+            hasIssues = true;
+            console.log('Fixed invalid voiceInputShortcut');
+        } else {
+            validated.voiceInputShortcut = validated.voiceInputShortcut.trim().toUpperCase();
+        }
+
+        if (
+            validated.lastAttachmentDirectory !== null
+            && typeof validated.lastAttachmentDirectory !== 'string'
+        ) {
+            validated.lastAttachmentDirectory = null;
+            hasIssues = true;
+            console.log('Fixed invalid lastAttachmentDirectory');
+        }
+
+        if ('speechRecognizerBrowserPath' in validated) {
+            delete validated.speechRecognizerBrowserPath;
+            hasIssues = true;
+        }
+        if ('speechRecognizerPagePath' in validated) {
+            delete validated.speechRecognizerPagePath;
+            hasIssues = true;
+        }
+
+        const allowedStreamAnimationPresets = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
+        if (!allowedStreamAnimationPresets.has(validated.streamAnimationPreset)) {
+            validated.streamAnimationPreset = 'slide-left';
+            hasIssues = true;
+            console.log('Fixed invalid streamAnimationPreset');
+        }
+
+        const streamAnimationDurationMs = Number(validated.streamAnimationDurationMs);
+        const normalizedStreamAnimationDurationMs = Number.isFinite(streamAnimationDurationMs)
+            ? Math.min(2000, Math.max(100, Math.round(streamAnimationDurationMs / 50) * 50))
+            : 500;
+        if (normalizedStreamAnimationDurationMs !== validated.streamAnimationDurationMs) {
+            validated.streamAnimationDurationMs = normalizedStreamAnimationDurationMs;
+            hasIssues = true;
+        }
+
+        if (typeof validated.streamAnimationCustomCss !== 'string') {
+            validated.streamAnimationCustomCss = '';
+            hasIssues = true;
+        } else if (validated.streamAnimationCustomCss.length > 4000) {
+            validated.streamAnimationCustomCss = validated.streamAnimationCustomCss.slice(0, 4000);
+            hasIssues = true;
+        }
+
         const appearanceDefaults = defaultSettings.appearanceProfile;
         const appearanceOptions = {
             density: new Set(['compact', 'comfortable', 'relaxed']),
@@ -149,6 +206,9 @@ class SettingsManager extends EventEmitter {
             toolAutoApprovalEnabled: false,
             toolAutoApprovalRules: [],
             enableSmoothStreaming: false,
+            streamAnimationPreset: 'slide-left',
+            streamAnimationDurationMs: 500,
+            streamAnimationCustomCss: '',
             uiMode: 'next',
             showHomeVisualBrand: true,
             showHomeVisualTagline: true,
@@ -198,8 +258,8 @@ class SettingsManager extends EventEmitter {
             smoothStreamIntervalMs: 25,
             assistantAgent: '',
             voiceMode: 'local',
-            speechRecognizerBrowserPath: '',
-            speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
+            voiceInputMode: 'windows_voice_typing',
+            voiceInputShortcut: 'F7',
             voiceLocalSettings: {
                 sovitsUrl: '',
                 sovitsKey: ''
@@ -230,6 +290,7 @@ class SettingsManager extends EventEmitter {
             lastOpenItemId: null,
             lastOpenItemType: null,
             lastOpenTopicId: null,
+            lastAttachmentDirectory: null,
             combinedItemOrder: [],
             agentOrder: []
         };

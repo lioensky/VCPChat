@@ -79,6 +79,11 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             );
             if (!projected) throw new Error(`Stream terminal projection failed: ${messageId}`);
 
+            // projectTerminal 已经同步撤销活动流所有权及 DOM 的 streaming/thinking
+            // 状态。发送按钮只依赖这份运行态，不应继续等待随后可能较慢的历史落盘、
+            // Flowlock 或话题摘要副作用；否则终稿已显示时按钮仍会偶发保持方形。
+            capabilities.onProjectionSettled?.({ terminal, projected, context, messageId });
+
             capabilities.setPersistenceState?.(messageId, 'saving');
             let finalized;
             try {

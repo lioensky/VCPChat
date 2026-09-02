@@ -32,7 +32,11 @@ function createStreamCapabilities(root, services) {
             }
         },
         dispatchTerminal: detail => services.dispatchTerminal?.(detail),
+        onProjectionSettled(value) {
+            services.notifySendStateChanged?.(value);
+        },
         onSettled(value) {
+            // 最终 outcome 发布后的幂等兜底，覆盖持久化失败等异常路径。
             services.notifySendStateChanged?.(value);
         },
         reportError,

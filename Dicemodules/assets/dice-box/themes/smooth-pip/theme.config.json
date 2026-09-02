@@ -1,0 +1,20 @@
+{
+  "name": "Smooth Pips",
+  "systemName": "smooth-pip",
+  "extends": "smooth",
+  "author": "Frank Ali",
+  "version": 0.2,
+  "meshFile": "smooth-pip.json",
+  "material": {
+    "type": "color",
+    "diffuseTexture": {
+      "light": "pips-light.png",
+      "dark": "pips-dark.png"
+    },
+    "diffuseLevel": 1,
+    "bumpTexture": "pips-normal.png",
+    "bumpLevel": 0.75
+  },
+  "diceAvailable": ["pip"],
+  "themeColor": "#FFFFFF"
+}

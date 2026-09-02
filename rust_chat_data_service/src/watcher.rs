@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType},
     ingest::{is_avatar_path, parse_history_path, Reconciler},
-    search::SearchIndex,
+    search::SearchRuntime,
 };
 
 #[derive(Debug, Default)]
@@ -58,7 +58,7 @@ pub struct WatcherRuntime {
 impl WatcherRuntime {
     pub fn start(
         reconciler: Reconciler,
-        search: Option<SearchIndex>,
+        search: Option<SearchRuntime>,
         cancellation: CancellationToken,
         reconcile_lock: Arc<AsyncMutex<()>>,
     ) -> Result<Self> {
@@ -69,12 +69,33 @@ impl WatcherRuntime {
 
         let callback_metrics = metrics.clone();
         let callback_reconcile = metrics.clone();
+        let callback_database = reconciler.database().clone();
+        let callback_agents_dir = config.agents_dir.clone();
+        let callback_groups_dir = config.groups_dir.clone();
+        let callback_user_data_dir = config.user_data_dir.clone();
         let mut watcher =
             notify::recommended_watcher(move |result: notify::Result<Event>| match result {
-                Ok(event) => {
+                Ok(mut event) => {
+                    event.paths.retain(|path| {
+                        is_relevant_path(
+                            path,
+                            &callback_agents_dir,
+                            &callback_groups_dir,
+                            &callback_user_data_dir,
+                        )
+                    });
+                    if event.paths.is_empty() {
+                        return;
+                    }
                     callback_metrics
                         .events_total
                         .fetch_add(1, Ordering::Relaxed);
+                    if let Err(error) = callback_database.mark_filesystem_dirty() {
+                        tracing::error!(error = ?error, "failed to persist filesystem dirty state");
+                        callback_reconcile
+                            .reconcile_required
+                            .store(true, Ordering::Release);
+                    }
                     if raw_tx.try_send(event).is_err() {
                         callback_metrics
                             .overflow_total
@@ -86,6 +107,7 @@ impl WatcherRuntime {
                 }
                 Err(error) => {
                     tracing::warn!(error = ?error, "filesystem watcher reported an error");
+                    let _ = callback_database.mark_filesystem_dirty();
                     callback_reconcile
                         .reconcile_required
                         .store(true, Ordering::Release);
@@ -221,7 +243,7 @@ async fn run_coalescer(
 async fn run_ingest_worker(
     mut path_rx: mpsc::Receiver<PathBuf>,
     reconciler: Reconciler,
-    search: Option<SearchIndex>,
+    search: Option<SearchRuntime>,
     metrics: Arc<WatcherMetrics>,
     cancellation: CancellationToken,
     reconcile_lock: Arc<AsyncMutex<()>>,
@@ -245,7 +267,7 @@ async fn run_ingest_worker(
 async fn process_ingest_batch(
     paths: &[PathBuf],
     reconciler: &Reconciler,
-    search: Option<&SearchIndex>,
+    search: Option<&SearchRuntime>,
     metrics: &WatcherMetrics,
 ) {
     let config = reconciler.config();
@@ -372,12 +394,12 @@ async fn process_ingest_batch(
     }
 
     if let Some(index) = search {
-        if let Err(error) = index.apply_ingest_commits(&commits) {
+        if let Err(error) = index.apply_ingest_commits_if_initialized(&commits) {
             tracing::error!(error = ?error, "watcher index batch update failed");
             metrics.reconcile_required.store(true, Ordering::Release);
         }
         if needs_revision_reconcile {
-            if let Err(error) = index.reconcile_revisions() {
+            if let Err(error) = index.reconcile_revisions_if_initialized() {
                 tracing::error!(error = ?error, "watcher owner revision reconcile failed");
                 metrics.reconcile_required.store(true, Ordering::Release);
             }
@@ -387,7 +409,7 @@ async fn process_ingest_batch(
 
 async fn run_overflow_recovery(
     reconciler: Reconciler,
-    search: Option<SearchIndex>,
+    search: Option<SearchRuntime>,
     metrics: Arc<WatcherMetrics>,
     cancellation: CancellationToken,
     reconcile_lock: Arc<AsyncMutex<()>>,
@@ -418,7 +440,7 @@ async fn run_overflow_recovery(
                     Ok(stats) => {
                         tracing::info!(?stats, "watcher recovery reconcile completed");
                         if let Some(index) = &search {
-                            if let Err(error) = index.reconcile_revisions() {
+                            if let Err(error) = index.reconcile_revisions_if_initialized() {
                                 tracing::error!(error = ?error, "revision recovery failed");
                                 false
                             } else {

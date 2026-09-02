@@ -23,6 +23,8 @@
     <header class="chat-header">
         <img id="agentAvatar" src="../assets/default_avatar.png" alt="Agent Avatar" class="avatar">
         <h3 id="currentChatAgentName">语音聊天</h3>
+        <span id="voiceInputShortcutStatus" class="voice-input-shortcut-status" role="status"
+            aria-live="polite">快捷键检查中</span>
         <div class="header-controls">
              <button id="close-btn-voicechat" class="window-control-button" title="关闭">
                 <svg viewBox="0 0 10 10"><polygon points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5"></polygon></svg>
@@ -35,8 +37,8 @@
         </div>
     </div>
     <footer class="chat-input-area">
-        <textarea id="messageInput" placeholder="输入消息或点击麦克风开始语音输入..." rows="1"></textarea>
-        <button id="toggleInputModeBtn" title="切换输入模式">
+        <textarea id="messageInput" placeholder="输入消息或使用全局语音快捷键..." rows="1"></textarea>
+        <button id="toggleInputModeBtn" title="开始系统语音输入" aria-pressed="false">
             <svg id="keyboard-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
                 <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zm-3-3h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
             </svg>

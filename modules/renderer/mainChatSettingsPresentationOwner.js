@@ -328,6 +328,152 @@ export function createMainChatSettingsPresentationOwner({
         monaspace: '"Monaspace Neon", "JetBrains Mono", "Cascadia Code", monospace'
     });
 
+    const STREAM_ANIMATION_PRESETS = new Set(['slide-left', 'fade', 'rise', 'scale', 'none', 'custom']);
+    const STREAM_ANIMATION_CUSTOM_PROPERTIES = Object.freeze([
+        'opacity',
+        'transform',
+        'filter',
+        'transform-origin',
+        'clip-path'
+    ]);
+    const STREAM_ANIMATION_CUSTOM_DEFAULT = `opacity: 0;
+transform: translateY(12px) scale(0.98);
+filter: blur(3px);
+transform-origin: center bottom;`;
+
+    function normalizeStreamAnimationPreset(value) {
+        return STREAM_ANIMATION_PRESETS.has(value) ? value : 'slide-left';
+    }
+
+    function normalizeStreamAnimationDuration(value) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed)
+            ? Math.min(2000, Math.max(100, Math.round(parsed / 50) * 50))
+            : 500;
+    }
+
+    function parseStreamAnimationCustomDeclarations(value) {
+        const source = typeof value === 'string' ? value.slice(0, 4000) : '';
+        const parser = document.createElement('span');
+        parser.style.cssText = source;
+        const declarations = {};
+        STREAM_ANIMATION_CUSTOM_PROPERTIES.forEach(property => {
+            const propertyValue = parser.style.getPropertyValue(property).trim();
+            if (propertyValue) declarations[property] = propertyValue;
+        });
+        return declarations;
+    }
+
+    function applyStreamAnimationSettings(settings = globalSettings) {
+        const root = document.documentElement;
+        const preset = normalizeStreamAnimationPreset(settings?.streamAnimationPreset);
+        const duration = normalizeStreamAnimationDuration(settings?.streamAnimationDurationMs);
+        const custom = parseStreamAnimationCustomDeclarations(settings?.streamAnimationCustomCss);
+
+        root.dataset.vcpStreamAnimation = preset;
+        root.style.setProperty('--vcp-stream-animation-duration', `${duration}ms`);
+        root.style.setProperty('--vcp-stream-custom-opacity', custom.opacity || '0');
+        root.style.setProperty('--vcp-stream-custom-transform', custom.transform || 'translateY(12px) scale(0.98)');
+        root.style.setProperty('--vcp-stream-custom-filter', custom.filter || 'none');
+        root.style.setProperty('--vcp-stream-custom-transform-origin', custom['transform-origin'] || 'center');
+        root.style.setProperty('--vcp-stream-custom-clip-path', custom['clip-path'] || 'none');
+    }
+
+    function getStreamAnimationFormSettings() {
+        return {
+            streamAnimationPreset: normalizeStreamAnimationPreset(
+                document.getElementById('streamAnimationPreset')?.value
+            ),
+            streamAnimationDurationMs: normalizeStreamAnimationDuration(
+                document.getElementById('streamAnimationDurationMs')?.value
+            ),
+            streamAnimationCustomCss: document.getElementById('streamAnimationCustomCss')?.value || ''
+        };
+    }
+
+    function syncStreamAnimationControls() {
+        const preset = normalizeStreamAnimationPreset(document.getElementById('streamAnimationPreset')?.value);
+        const duration = normalizeStreamAnimationDuration(document.getElementById('streamAnimationDurationMs')?.value);
+        const customPanel = document.getElementById('streamAnimationCustomPanel');
+        const durationOutput = document.getElementById('streamAnimationDurationValue');
+        if (customPanel) customPanel.hidden = preset !== 'custom';
+        if (durationOutput) durationOutput.value = `${duration}ms`;
+    }
+
+    function replayStreamAnimationPreview() {
+        syncStreamAnimationControls();
+        const preview = document.getElementById('streamAnimationPreviewElement');
+        if (!preview) return;
+
+        const settings = getStreamAnimationFormSettings();
+        const declarations = parseStreamAnimationCustomDeclarations(settings.streamAnimationCustomCss);
+        const presetFrames = {
+            'slide-left': { opacity: 0, transform: 'translateX(20px)', filter: 'none' },
+            fade: { opacity: 0, transform: 'none', filter: 'none' },
+            rise: { opacity: 0, transform: 'translateY(14px)', filter: 'none' },
+            scale: { opacity: 0, transform: 'scale(0.94)', filter: 'none' },
+            custom: {
+                opacity: declarations.opacity || 0,
+                transform: declarations.transform || 'translateY(12px) scale(0.98)',
+                filter: declarations.filter || 'none',
+                transformOrigin: declarations['transform-origin'] || 'center',
+                clipPath: declarations['clip-path'] || 'none'
+            }
+        };
+        preview.getAnimations?.().forEach(animation => animation.cancel());
+        if (settings.streamAnimationPreset === 'none' || typeof preview.animate !== 'function') return;
+
+        const initial = presetFrames[settings.streamAnimationPreset] || presetFrames['slide-left'];
+        preview.animate([
+            initial,
+            {
+                opacity: 1,
+                transform: 'none',
+                filter: 'none',
+                clipPath: 'none'
+            }
+        ], {
+            duration: settings.streamAnimationDurationMs,
+            easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+            fill: 'both'
+        });
+    }
+
+    function bindStreamAnimationControls() {
+        const preset = document.getElementById('streamAnimationPreset');
+        const duration = document.getElementById('streamAnimationDurationMs');
+        const customCss = document.getElementById('streamAnimationCustomCss');
+        const replay = document.getElementById('replayStreamAnimationPreview');
+        const fillExample = document.getElementById('fillStreamAnimationCssExample');
+
+        const bind = (element, type, handler, marker) => {
+            if (!element || element.dataset[marker]) return;
+            listenerOwner.add(element, type, handler);
+            element.dataset[marker] = 'true';
+        };
+        bind(preset, 'change', () => {
+            syncStreamAnimationControls();
+            replayStreamAnimationPreview();
+        }, 'streamAnimationPresetBound');
+        bind(duration, 'input', () => {
+            syncStreamAnimationControls();
+            replayStreamAnimationPreview();
+        }, 'streamAnimationDurationBound');
+        bind(customCss, 'input', () => {
+            if (preset?.value === 'custom') replayStreamAnimationPreview();
+        }, 'streamAnimationCustomBound');
+        bind(replay, 'click', replayStreamAnimationPreview, 'streamAnimationReplayBound');
+        bind(fillExample, 'click', () => {
+            if (!customCss) return;
+            customCss.value = STREAM_ANIMATION_CUSTOM_DEFAULT;
+            if (preset) preset.value = 'custom';
+            syncStreamAnimationControls();
+            replayStreamAnimationPreview();
+        }, 'streamAnimationExampleBound');
+
+        syncStreamAnimationControls();
+    }
+
     const TOOL_CARD_FONT_PRESETS = Object.freeze({
         ...CHAT_FONT_PRESETS,
         cascadia: CHAT_CODE_FONT_PRESETS.cascadia,
@@ -531,6 +677,7 @@ export function createMainChatSettingsPresentationOwner({
         rootStyle.setProperty('--font-family', chatFontFamily);
         rootStyle.setProperty('--font-family-sans-serif', chatFontFamily);
         rootStyle.setProperty('--font-family-monospace', chatCodeFontFamily);
+        applyStreamAnimationSettings(resolvedSettings);
 
         if (getPretextBridge() && typeof getPretextBridge().setChatFonts === 'function') {
             getPretextBridge().setChatFonts(chatFontFamily, chatCodeFontFamily);
@@ -604,8 +751,13 @@ export function createMainChatSettingsPresentationOwner({
         safeSet('flowlockContinueDelay', globalSettings.flowlockContinueDelay ?? 5);
         safeCheck('voiceModeLocal', (globalSettings.voiceMode || 'local') !== 'network');
         safeCheck('voiceModeNetwork', (globalSettings.voiceMode || 'local') === 'network');
-        safeSet('speechRecognizerBrowserPath', globalSettings.speechRecognizerBrowserPath || '');
-        safeSet('speechRecognizerPagePath', globalSettings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html');
+        safeSet(
+            'voiceInputMode',
+            ['windows_voice_typing', 'right_alt_hold'].includes(globalSettings.voiceInputMode)
+                ? globalSettings.voiceInputMode
+                : 'windows_voice_typing'
+        );
+        safeSet('voiceInputShortcut', globalSettings.voiceInputShortcut || 'F7');
         safeSet('voiceLocalSovitsUrl', globalSettings.voiceLocalSettings?.sovitsUrl || '');
         safeSet('voiceLocalSovitsKey', globalSettings.voiceLocalSettings?.sovitsKey || '');
         safeSet('voiceNetworkProviderUrl', globalSettings.voiceNetworkSettings?.providerUrl || '');
@@ -668,7 +820,11 @@ export function createMainChatSettingsPresentationOwner({
         );
         safeSet('minChunkBufferSize', globalSettings.minChunkBufferSize ?? 16);
         safeSet('smoothStreamIntervalMs', globalSettings.smoothStreamIntervalMs ?? 100);
+        safeSet('streamAnimationPreset', normalizeStreamAnimationPreset(globalSettings.streamAnimationPreset));
+        safeSet('streamAnimationDurationMs', normalizeStreamAnimationDuration(globalSettings.streamAnimationDurationMs));
+        safeSet('streamAnimationCustomCss', globalSettings.streamAnimationCustomCss || '');
         syncChatFontControls();
+        bindStreamAnimationControls();
         syncWideChatLayoutControls();
         syncUserChatBubbleControls();
         syncChatPresentationModeControls(presentationMode);

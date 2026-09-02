@@ -22,15 +22,35 @@ let localNotesWatcher = null;
 let localNotesWatchRefreshTimer = null;
 const LOCAL_NOTES_WATCH_DEBOUNCE_MS = 250;
 
+function getConfiguredNetworkPaths(settings = {}) {
+    const rawPaths = Array.isArray(settings.networkNotesPaths)
+        ? settings.networkNotesPaths
+        : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+
+    return rawPaths.filter(networkPath => (
+        typeof networkPath === 'string' && networkPath.trim().length > 0
+    ));
+}
+
+function ensureNetworkNotesCacheStore() {
+    if (!networkNotesCacheStore) {
+        networkNotesCacheStore = new NetworkNotesCacheStore({
+            dbPath: NETWORK_NOTES_CACHE_DB_FILE,
+            legacyJsonPath: NETWORK_NOTES_CACHE_FILE
+        });
+    }
+
+    networkNotesCacheStore.initialize();
+    return networkNotesCacheStore;
+}
+
 // Helper to check if a file path is on the network notes drive
 async function isNetworkNote(filePath) {
     try {
         if (await fs.pathExists(SETTINGS_FILE)) {
             const settings = await fs.readJson(SETTINGS_FILE);
             // Support both new array and legacy string format
-            const networkPaths = Array.isArray(settings.networkNotesPaths)
-                ? settings.networkNotesPaths
-                : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+            const networkPaths = getConfiguredNetworkPaths(settings);
 
             if (networkPaths.length > 0) {
                 for (const p of networkPaths) {
@@ -373,13 +393,10 @@ async function scanAndCacheNetworkNotes() {
         try {
             if (await fs.pathExists(SETTINGS_FILE)) {
                 const settings = await fs.readJson(SETTINGS_FILE);
-                const networkPaths = Array.isArray(settings.networkNotesPaths)
-                    ? settings.networkNotesPaths
-                    : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+                const networkPaths = getConfiguredNetworkPaths(settings);
 
                 if (networkPaths.length === 0) {
                     networkNotesTreeCache = [];
-                    await networkNotesCacheStore.clear();
                     if (notesWindow && !notesWindow.isDestroyed()) {
                         notesWindow.webContents.send('network-notes-scanned', []);
                     }
@@ -387,11 +404,12 @@ async function scanAndCacheNetworkNotes() {
                     return;
                 }
 
+                const cacheStore = ensureNetworkNotesCacheStore();
                 const allNetworkTrees = [];
                 for (const networkPath of networkPaths) {
                     if (networkPath && (await fs.pathExists(networkPath))) {
                         console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
-                        const cachedSnapshot = networkNotesCacheStore.getNodeSnapshotByPath(networkPath);
+                        const cachedSnapshot = cacheStore.getNodeSnapshotByPath(networkPath);
                         const networkNotes = await readDirectoryStructure(networkPath, { skipMusicDiaryDirs: true, cachedSnapshot });
                         const rootName = path.basename(networkPath) || networkPath;
                         const networkTree = {
@@ -411,7 +429,7 @@ async function scanAndCacheNetworkNotes() {
 
                 const sanitizedNetworkTrees = filterMusicDiaryNodes(allNetworkTrees);
                 networkNotesTreeCache = sanitizedNetworkTrees;
-                await networkNotesCacheStore.writeAllTrees(sanitizedNetworkTrees);
+                await cacheStore.writeAllTrees(sanitizedNetworkTrees);
 
                 if (notesWindow && !notesWindow.isDestroyed()) {
                     notesWindow.webContents.send('network-notes-scanned', sanitizedNetworkTrees);
@@ -549,11 +567,8 @@ function initialize(options) {
     SETTINGS_FILE = options.SETTINGS_FILE;
     NETWORK_NOTES_CACHE_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.json');
     NETWORK_NOTES_CACHE_DB_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.sqlite');
-    networkNotesCacheStore = new NetworkNotesCacheStore({
-        dbPath: NETWORK_NOTES_CACHE_DB_FILE,
-        legacyJsonPath: NETWORK_NOTES_CACHE_FILE
-    });
-    networkNotesCacheStore.initialize();
+    // SQLite cache is initialized lazily only after a non-empty network notes path is configured.
+    networkNotesCacheStore = null;
 
     fs.ensureDirSync(NOTES_DIR); // Ensure the Notes directory exists
 
@@ -577,7 +592,18 @@ function initialize(options) {
     // IPC handler to get the cached network notes tree for faster startup
     ipcMain.handle('get-cached-network-notes', async () => {
         try {
-            const cached = networkNotesCacheStore.readAllTrees();
+            if (!await fs.pathExists(SETTINGS_FILE)) {
+                networkNotesTreeCache = [];
+                return [];
+            }
+
+            const settings = await fs.readJson(SETTINGS_FILE);
+            if (getConfiguredNetworkPaths(settings).length === 0) {
+                networkNotesTreeCache = [];
+                return [];
+            }
+
+            const cached = ensureNetworkNotesCacheStore().readAllTrees();
             const sanitized = filterMusicDiaryNodes(cached);
             networkNotesTreeCache = sanitized;
             return sanitized;
@@ -1067,9 +1093,7 @@ function initialize(options) {
             try {
                 if (await fs.pathExists(SETTINGS_FILE)) {
                     const settings = await fs.readJson(SETTINGS_FILE);
-                    const networkPaths = Array.isArray(settings.networkNotesPaths)
-                        ? settings.networkNotesPaths
-                        : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
+                    const networkPaths = getConfiguredNetworkPaths(settings);
                     
                     for (const networkPath of networkPaths) {
                         if (networkPath && await fs.pathExists(networkPath)) {

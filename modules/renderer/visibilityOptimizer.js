@@ -167,6 +167,7 @@ function observeMessage(messageItem) {
             svgElements: [],         // SVG SMIL 动画
             gifImages: [],           // GIF/WebP 动图
             mutationObserver: null,  // 动态元素监听
+            animationStartHandler: null, // 捕获暂停后才启动的 CSS 动画（包括伪元素）
             pausedRAFCallbacks: [],  // 暂停期间被挂起的 rAF 回调，resume 时事件唤醒
             activePausableTimers: new Set(), // 由 animation.js 注入的可暂停 timeout/interval
             isPaused: false,
@@ -207,6 +208,29 @@ function observeMessage(messageItem) {
             }
         });
         state.mutationObserver.observe(messageItem, { childList: true, subtree: true });
+    }
+
+    // DOM 扫描只能发现新增节点，发现不了既有节点因 class/style 变化而新启动的
+    // CSS @keyframes。animationstart 会冒泡，且伪元素动画也会在所属元素上报告；
+    // 暂停态下重新抓取整棵消息子树的 Animation 实例，堵住动态 scoped CSS 的漏网动画。
+    if (!state.animationStartHandler) {
+        state.animationStartHandler = () => {
+            if (!state.isPaused || !messageItem.isConnected) return;
+            try {
+                const currentAnimations = messageItem.getAnimations({ subtree: true });
+                currentAnimations.forEach(animation => {
+                    if (!state.webAnimations.includes(animation)) {
+                        state.webAnimations.push(animation);
+                    }
+                    if (animation.playState === 'running') {
+                        animation.pause();
+                    }
+                });
+            } catch (error) {
+                // CSS 的 .vcp-paused 屏障仍会负责暂停；旧 Chromium 不支持 subtree 时忽略。
+            }
+        };
+        messageItem.addEventListener('animationstart', state.animationStartHandler, true);
     }
 
     visibilityObserver.observe(messageItem);
@@ -836,6 +860,11 @@ function unobserveMessage(messageItem) {
         if (state.mutationObserver) {
             state.mutationObserver.disconnect();
             state.mutationObserver = null;
+        }
+
+        if (state.animationStartHandler) {
+            messageItem.removeEventListener('animationstart', state.animationStartHandler, true);
+            state.animationStartHandler = null;
         }
 
         if (state.pausedRAFCallbacks) {

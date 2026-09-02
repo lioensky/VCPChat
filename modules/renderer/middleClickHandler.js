@@ -663,13 +663,9 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                 electronAPI.getAgentConfig(agentId).then(agentConfig => {
                     if (agentConfig && agentConfig.ttsVoicePrimary) {
                         const contentDiv = messageItem.querySelector('.md-content');
-                        let textToRead = '';
-                        if (contentDiv) {
-                            const contentClone = contentDiv.cloneNode(true);
-                            contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
-                            contentClone.querySelectorAll('.vcp-tool-result-bubble').forEach(el => el.remove());
-                            textToRead = contentClone.innerText || '';
-                        }
+                        const textToRead = callbacks.extractSpeakableTextFromContentElement
+                            ? callbacks.extractSpeakableTextFromContentElement(contentDiv)
+                            : '';
 
                         if (textToRead.trim()) {
                             electronAPI.sovitsSpeak({
@@ -678,6 +674,7 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                                 speed: agentConfig.ttsSpeed || 1.0,
                                 msgId: message.id,
                                 ttsRegex: agentConfig.ttsRegexPrimary,
+                                directorPrompts: agentConfig.ttsDirectorPrompts,
                                 voiceSecondary: agentConfig.ttsVoiceSecondary,
                                 ttsRegexSecondary: agentConfig.ttsRegexSecondary
                             });

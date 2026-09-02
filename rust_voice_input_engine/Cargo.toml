@@ -1,0 +1,27 @@
+[package]
+name = "vcp_voice_input_engine"
+version = "0.1.0"
+edition = "2021"
+description = "VCP cross-platform native voice input focus and shortcut sidecar"
+
+[[bin]]
+name = "vcp_voice_input_engine"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging"
+] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = "s"
+strip = true

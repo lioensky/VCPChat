@@ -1,0 +1,20 @@
+{
+  "name": "Default Extras",
+  "systemName": "default-extras",
+  "extends": "default",
+  "author": "Frank Ali",
+  "version": 0.1,
+  "meshFile": "default-extras.json",
+  "material": {
+    "type": "color",
+    "diffuseTexture": {
+      "light": "light.png",
+      "dark": "dark.png"
+    },
+    "diffuseLevel": 1,
+    "bumpTexture": "normal-extras.png",
+    "bumpLevel": 1
+  },
+  "diceAvailable": ["pip", "fate", "d2"],
+  "themeColor": "#FFFFFF"
+}
