@@ -819,7 +819,7 @@ async function teardown() {
     if (autosaveResult?.status === 'error' || autosaveResult?.status === 'conflict') {
         // Keep the surface and its retained draft alive so the user can retry
         // or reload after a failed/conflicting close flush.
-        return;
+        return autosaveResult;
     }
     const scope = takePresentationScope();
     // Retract enhanced controller identity only after durable settings work
@@ -922,14 +922,25 @@ window.VCPUISettingsBridge = Object.freeze({
     },
     destroy() {
         if (destroyPromise) return destroyPromise;
-        markPresentationDestroyed();
-        disposeTypedSettings();
         if (!bridgeScope) {
-            document.removeEventListener('modal-visibility-changed', handleModalVisibility);
-            document.removeEventListener('modal-ready', handleModalVisibility);
-            document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+            // Keep typed result/external listeners alive until the coordinator
+            // reaches quiescence. A failed/conflicting drain must leave the
+            // retained draft and retry actions usable.
         }
-        destroyPromise = teardown().then(() => bridgeScope?.dispose('settings-bridge-destroyed') || undefined);
+        destroyPromise = teardown().then(result => {
+            if (result?.status === 'error' || result?.status === 'conflict') {
+                destroyPromise = null;
+                return result;
+            }
+            markPresentationDestroyed();
+            disposeTypedSettings();
+            if (!bridgeScope) {
+                document.removeEventListener('modal-visibility-changed', handleModalVisibility);
+                document.removeEventListener('modal-ready', handleModalVisibility);
+                document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+            }
+            return bridgeScope?.dispose('settings-bridge-destroyed') || result;
+        });
         return destroyPromise;
     },
     get enhancedCount() {

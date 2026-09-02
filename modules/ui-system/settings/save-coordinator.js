@@ -285,8 +285,21 @@ function createCoordinator(form) {
             return snapshot();
         },
         retryDraft() {
-            form.ownerDocument?.defaultView?.dispatchEvent(new CustomEvent('settings-retry-draft'));
+            const view = form.ownerDocument?.defaultView;
+            view?.dispatchEvent(new (view.CustomEvent || CustomEvent)('settings-retry-draft'));
+            // The typed owner synchronously keeps the conflict marker for an
+            // overlapping edit and removes it when the local patch is safe to
+            // rebase. Only clear coordinator-level conflict after that owner
+            // decision; otherwise a retry click could silently dismiss an
+            // unresolved overlap.
+            if (form.dataset.vcpSettingsConflict !== 'true') coordinator.clearConflict();
             return coordinator.flush();
+        },
+        clearConflict() {
+            conflict = null;
+            if (retryableFailure?.status === 'conflict' || retryableFailure?.code === 'SETTINGS_CONFLICT') retryableFailure = null;
+            scheduleAggregate();
+            return snapshot();
         },
     };
     coordinators.set(form, coordinator);

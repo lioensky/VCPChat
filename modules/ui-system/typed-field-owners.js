@@ -28,6 +28,7 @@ let typedSettingsConflict = null;
 let typedSettingsExternalRelease = null;
 let typedSettingsSaveChain = Promise.resolve();
 let typedSettingsSaveGeneration = 0;
+let typedSettingsCancelEpoch = 0;
 let typedSettingsDisposed = false;
 let typedSettingsRevision = null;
 
@@ -140,10 +141,30 @@ function ensureTypedSettingsService() {
         if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
         const form = document.getElementById('globalSettingsForm');
         const isReload = event.detail?.source === 'settings-reload';
-        if (isReload) typedSettingsConflict = null;
+        if (isReload) {
+            typedSettingsConflict = null;
+            // Reload is an explicit discard of the local draft. Cancel queued
+            // field timers and invalidate any in-flight publication before
+            // projecting the external snapshot, otherwise the old patch can
+            // fire after the controls have visibly reloaded.
+            typedSettingsService?.cancelPendingSaves?.();
+            typedFieldStates.forEach(state => {
+                if (state.timer) clearTimeout(state.timer);
+                state.timer = null;
+                state.pendingPatch = null;
+            });
+            typedForumFieldStates.forEach(state => {
+                if (state.timer) clearTimeout(state.timer);
+                state.timer = null;
+                state.pending = false;
+            });
+            getSaveCoordinator(form)?.clearConflict?.();
+            if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
+        }
         if (!isReload && form?.dataset.vcpSettingsDirty === 'true') {
             typedSettingsConflict = { external: event.detail?.settings, revision: event.detail?.revision };
             form.dataset.vcpSettingsConflict = 'true';
+            getSaveCoordinator(form)?.recordCommit?.({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: event.detail?.revision }, {}, []);
             window.dispatchEvent(new CustomEvent('settings-conflict', { detail: typedSettingsConflict }));
             return;
         }
@@ -157,6 +178,7 @@ function ensureTypedSettingsService() {
         if (typedSettingsConflict?.revision !== undefined) typedSettingsRevision = typedSettingsConflict.revision;
         typedSettingsConflict = null;
         document.getElementById('globalSettingsForm')?.removeAttribute('data-vcp-settings-conflict');
+        getSaveCoordinator(document.getElementById('globalSettingsForm'))?.clearConflict?.();
         typedFieldStates.forEach(state => {
             if (!state.disposed && state.pendingPatch && !state.timer && !state.inFlight) state.schedule?.();
         });
@@ -167,7 +189,9 @@ function ensureTypedSettingsService() {
         if (revision !== undefined) typedSettingsRevision = revision;
         if (typedSettingsSaveGeneration > 0 && document.getElementById('globalSettingsForm')?.dataset.vcpSettingsDirty === 'true') {
             typedSettingsConflict = { external: settings, revision };
-            document.getElementById('globalSettingsForm')?.setAttribute('data-vcp-settings-conflict', 'true');
+            const form = document.getElementById('globalSettingsForm');
+            form?.setAttribute('data-vcp-settings-conflict', 'true');
+            getSaveCoordinator(form)?.recordCommit?.({ status: 'conflict', code: 'SETTINGS_CONFLICT', currentRevision: revision }, {}, []);
             window.dispatchEvent(new CustomEvent('settings-conflict', { detail: typedSettingsConflict }));
             return;
         }
@@ -188,6 +212,7 @@ function ensureTypedSettingsService() {
         get: () => typedSettingsState,
         save: (patch, metadata = {}) => {
             const generation = ++typedSettingsSaveGeneration;
+            const cancelEpoch = typedSettingsCancelEpoch;
             const operationId = metadata.operationId || `typed-${Date.now().toString(36)}-${generation}`;
             // Advance the in-memory draft at enqueue time. A later queued
             // patch must observe this edit even while an earlier IPC call is
@@ -210,6 +235,9 @@ function ensureTypedSettingsService() {
                         operationId,
                     });
                 const status = result?.status || (result?.success ? 'success' : 'failed');
+                if (status === 'success' && cancelEpoch !== typedSettingsCancelEpoch) {
+                    return { success: false, status: 'stale', operationId, currentRevision: result?.currentRevision };
+                }
                 if (status === 'success') {
                     // A typed save callback is serialized through
                     // `typedSettingsSaveChain`.  An edit that arrives while
@@ -236,6 +264,7 @@ function ensureTypedSettingsService() {
         },
         cancelPendingSaves: () => {
             typedSettingsSaveGeneration += 1;
+            typedSettingsCancelEpoch += 1;
             typedSettingsRevision = null;
             // Do not let a timed-out IPC hold retry behind an unbounded chain.
             // The old request may still settle in the main process, but it has

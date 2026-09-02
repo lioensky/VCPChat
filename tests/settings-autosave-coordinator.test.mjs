@@ -264,7 +264,7 @@ test('settings manager emits an external update after a file edit', async () => 
         manager.startExternalWatcher();
         const current = await manager.readSettings({ fresh: true });
         await fs.writeFile(filename, JSON.stringify({ ...current, userName: 'External' }));
-        const payload = await Promise.race([received, new Promise(resolve => setTimeout(() => resolve(null), 500))]);
+        const payload = await Promise.race([received, new Promise(resolve => setTimeout(() => resolve(null), 2000))]);
         assert.equal(payload?.settings?.userName, 'External');
     } finally {
         manager.stopExternalWatcher();

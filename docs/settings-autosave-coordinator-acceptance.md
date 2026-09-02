@@ -23,10 +23,10 @@
 | 旧 operation 迟到结果 | 不改变当前 draft/status | coordinator matching-terminal test 通过 |
 | cancelled/stale/conflict | 保持明确非 success 语义 | adapter 单测通过 |
 | flush | 等待真实 durable completion | coordinator barrier test 通过 |
-| dispose | drain 后再释放 owner/listener | coordinator + Electron-facing contract 通过 |
+| dispose | drain 后再释放 owner/listener | coordinator + Electron-facing contract 通过；SettingsBridge destroy 仅在成功 drain 后释放 typed owner |
 | lock/CAS/RMW | 双实例不互相覆盖，冲突不写盘 | 双实例测试通过 |
-| 外部文件修改 | dirty draft 保留并进入 conflict | manager watcher、renderer 标记与 dirty guard 已接入；JSDOM contract 通过 |
-| conflict UX | reload external / keep draft retry | API、操作条与 reload channel contract 通过 |
+| 外部文件修改 | dirty draft 保留并进入 conflict | manager watcher、renderer 标记与 coordinator aggregate conflict 已接入；JSDOM contract 通过 |
+| conflict UX | reload external / keep draft retry | API、操作条与 reload channel contract 通过；retry 仅在 owner 清除冲突标记后解除 coordinator conflict |
 | close/reopen/reload | 无白屏、无草稿丢失 | Electron smoke 未形成可采信退出证据 |
 
 ## 已知缺口
@@ -37,7 +37,7 @@
 
 - `node --check`：相关 JS 通过。
 - `git diff --check`：通过。
-- focused settings/UI tests：coordinator 12/12、整体设置/UI 55/55 通过；新增 typed A/B durable-revision 回归覆盖旧结果不丢提交。
+- focused settings/UI tests：coordinator 12/12、Electron-facing 4/4、整体设置/UI 58/58 通过；新增 typed A/B durable-revision、retry conflict 和 reload cancellation 回归。
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
 - `npm run check:uiux`：通过（别名指向 artifact gate）。
 - `npm run test:settings-wa-electron`：通过；包含 2 个 JSDOM lifecycle contracts，以及真实 Electron CDP gate 的 8 个场景（shell/nav/search、深浅主题截图、IPC 保存、reload 恢复）。
@@ -51,6 +51,6 @@
 
 与 DeepSeek Harness 的 `write-behind`/settings-file 原则逐项对照后，发现并修复一项真实缺陷：typed 串行写入中，较早请求的成功结果此前会因 generation 变旧而直接丢弃，导致后续 patch 使用旧 revision。现在 durable success 与调用方的 `stale` 语义分离：提交仍推进 base/revision、清理已提交 ops，只有当前调用方不再拥有发布权时才返回 `stale`；回归测试验证 A/B 两次编辑分别使用 `r1`、`r2` 且无 stranded pending。
 
-当前完成度：**约 90%（Global Settings 本地功能完成）**。剩余 10% 是交付证据而非已知实现缺陷：Windows 原生 runner、packaged Electron、GPU/DPI 几何矩阵、长时人工 soak，以及 native `fs.watch` 驱动的真实 Electron 外部冲突交互仍未形成可采信证据。不得把 macOS 解包 Electron 或短时诊断记录外推为这些平台/场景已通过。
+当前完成度：**约 92%（Global Settings 本地功能完成）**。剩余 8% 是交付证据而非已知实现缺陷：Windows 原生 runner、packaged Electron、GPU/DPI 几何矩阵、长时人工 soak，以及 native `fs.watch` 驱动的真实 Electron 外部冲突交互仍未形成可采信证据。不得把 macOS 解包 Electron 或短时诊断记录外推为这些平台/场景已通过。
 
 验收结论：Global Settings 自动保存协调器在本地源码、focused tests、锁/CAS/RMW、真实 macOS Electron CDP（保存、重载、布局、搜索、主题截图）和 UI artifact gate 上完成；目标保持 **active**，直到剩余交付证据补齐。

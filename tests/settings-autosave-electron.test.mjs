@@ -32,3 +32,37 @@ test('reloadExternal publishes the latest snapshot on the window event channel',
     assert.equal(received.revision, 'r2');
     await coordinator.dispose();
 });
+
+test('retryDraft clears coordinator conflict only after the owner rebases safely', async () => {
+    const dom = new JSDOM('<form id="globalSettingsForm"></form>', { url: 'http://localhost/' });
+    const form = dom.window.document.querySelector('form');
+    const coordinator = claimSaveCoordinator(form);
+    let flushed = 0;
+    coordinator.registerClient({ id: 'typed', flush: async () => { flushed += 1; } });
+    coordinator.reportState('conflict', { owner: 'typed' });
+    form.dataset.vcpSettingsConflict = 'true';
+    dom.window.addEventListener('settings-retry-draft', () => {
+        // Simulate the typed owner proving that its patch has no overlap.
+        delete form.dataset.vcpSettingsConflict;
+        coordinator.reportState('dirty', { owner: 'typed', dirty: true });
+    }, { once: true });
+    const snapshot = await coordinator.retryDraft();
+    assert.equal(flushed, 1);
+    assert.equal(snapshot.status, 'dirty');
+    await coordinator.dispose();
+});
+
+test('clearConflict keeps aggregate dirty state without allowing an owner to hide overlap', async () => {
+    const dom = new JSDOM('<form id="globalSettingsForm"></form>', { url: 'http://localhost/' });
+    const form = dom.window.document.querySelector('form');
+    const coordinator = claimSaveCoordinator(form);
+    coordinator.registerClient({ id: 'typed' });
+    coordinator.reportState('conflict', { owner: 'typed' });
+    assert.equal(coordinator.getSnapshot().status, 'conflict');
+    form.dataset.vcpSettingsDirty = 'true';
+    const cleared = coordinator.clearConflict();
+    assert.equal(cleared.status, 'conflict', 'owner status remains authoritative while it still reports conflict');
+    coordinator.reportState('dirty', { owner: 'typed', dirty: true });
+    assert.equal(coordinator.getSnapshot().status, 'dirty');
+    await coordinator.dispose();
+});

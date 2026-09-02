@@ -43,6 +43,9 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 - 已接入主进程 settings watcher、preload subscription、renderer conflict 标记，以及 reload/keep-draft 操作条。
 - Prompt Manager and other external callers still use the compatibility complete-snapshot API by design; they are outside this Global Settings migration. Packaged Electron/cross-platform evidence remains an environment gate.
 - 对抗性复核修复 typed 快速连续编辑竞态：串行队列中较早请求即使对调用方返回 `stale`，其 durable success 仍推进 base/revision 并从 coordinator 移除已提交 ops，后续请求不再因旧 revision 产生伪冲突。
+- 冲突恢复复核补齐 coordinator aggregate 状态：外部 dirty 事件同时进入 `conflict`，无重叠 retry 由 typed owner 明确解除；reload 会取消 typed/forum 待发 timer/patch，避免已丢弃草稿在外部快照投影后回写。
+- teardown 复核改为 drain-first：`SettingsBridge.destroy()` 只有在 coordinator 成功达到 quiescence 后才 dispose typed service/listeners；失败或冲突会返回结果、保留 owner，并允许后续重新调用 destroy。
+- reload/cancel 复核增加独立 cancellation epoch：明确取消的旧 IPC 结果不会重新写入刚加载的外部 base；普通 supersede 仍保留 durable success 并推进 revision。
 
 全量完成追踪（保持 active）：
 

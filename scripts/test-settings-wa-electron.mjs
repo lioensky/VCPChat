@@ -404,6 +404,10 @@ try {
     const uniquePrompt = `请继续-电子-${Date.now()}`;
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await new Promise(resolve => setTimeout(resolve, 150));
+    await page.waitForFunction(() => {
+        const state = document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState || '';
+        return !['saving', 'error', 'conflict'].includes(state);
+    }, { timeout: timeoutMs });
     await page.evaluate((value) => {
         const textarea = document.getElementById('continueWritingPrompt');
         textarea.value = value;
@@ -413,6 +417,10 @@ try {
     assert.equal(saveStateBefore, 'dirty', 'settings form reports dirty before saving');
     await page.evaluate(() => {
         window.__settingsSaveProjection = null;
+        window.__settingsSaveResult = null;
+        document.getElementById('globalSettingsForm')?.addEventListener('vcp-settings-save-result', event => {
+            window.__settingsSaveResult = event.detail;
+        });
         window.addEventListener('global-settings-updated', event => {
             if (event.detail?.source !== 'settings-save') return;
             window.__settingsSaveProjection = {
@@ -438,6 +446,7 @@ try {
         active: document.getElementById('globalSettingsModal')?.classList.contains('active') || false,
         saveState: document.getElementById('globalSettingsForm')?.dataset.vcpAutosaveState || '',
         toast: [...document.querySelectorAll('.vcp-ui-toast, .floating-toast-notification')].map(node => node.textContent).slice(0, 3),
+        result: window.__settingsSaveResult,
     }));
     assert.equal(afterSave.active, false, `modal closed after save; last poll ${JSON.stringify(saveDiagnostics)}, after ${JSON.stringify(afterSave)}`);
     const savedProjection = await page.evaluate(() => window.__settingsSaveProjection);
