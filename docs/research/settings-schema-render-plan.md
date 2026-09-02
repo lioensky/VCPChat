@@ -185,6 +185,14 @@ dsw 语义 CSS（单层级联）
 
 每个 pass 退役的固定流程：该类型行直出 → 断言该 pass 空转的单测 → 删 pass → 八分区探针 + 像素对比 0 + 重启往返。
 
+#### 13.3.1 施工记录：pass1 uiux-switches 退役（5f25a712 + b067060c）
+
+- **直出语义**：field-renderer 的 buildSwitchControl 对非 toggle 投影字段静态产出 mountToggle 的终态产品（span.vcp-uiux-toggle 包裹 input + slider.style.display='none'）；fieldProjection==='toggle'（showHomeVisualBrand/showHomeVisualTagline 两键）仍保持裸 checkbox，由运行时收编挂载。Toggle CSS 由真实原语挂载方在同一同步管线 tick 注入，无样式时序差。
+- **pass 退役**：settings-bridge 删除 uiux-switches 管线步；mountUiuxSwitches 保留于 bridge-shared（agent 设置面 agent-settings-bridge 仍是消费方），marker-registry 的 vcpUiuxToggleMounted owner 更新为 agent 路径。
+- **测试**：新增"开关行直出 Toggle 原语 holder"单测（wrap 结构 + slider 隐藏 + toggle 投影字段不包裹）；bridge-modules 测试同步管线步清单。
+- **验收**：全套 373 测试 371 过（2 例既有失败不回退）；八分区探针 45/45；重启往返等值；像素对比 7/8 分区 0 差，appearance-settings 出现 1333 字节摘要文本差。
+- **竞态修复（b067060c，非 pass1 引入）**：对照实验（m5b/m5c1 双构建 × 多次运行）证明该差异是两个构建都会随机踩中的既有竞态——开模态 rAF 绑定同步 vs 回填快照 applySettings 的时序，后者写值只派发不冒泡的 vcp-uiux-sync，绑定同步若先行则摘要滞留 base 默认文案且再无事件兜底。修复：bindSettingsSummary 增加捕获态 vcp-uiux-sync 监听（同一 matches 过滤），回填写值后摘要无条件重同步。修复后连续 3 次探针 45/45 且 appearance-settings 像素 0 差。
+
 ### 13.4 M5-d 收尾
 
 advanced-visibility/rust-visibility 薄包装并入渲染器统一的依赖求值（visibleIf 已声明，事件路径与投影路径最终同一求值器）；marker-registry 清单复核；§十三回填施工记录；评估 rebase 回 prb 的冲突面（预期集中在被删 pass 文件，"我们删了 vs 上游改了"，维持删除）。
