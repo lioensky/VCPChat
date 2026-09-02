@@ -20,12 +20,21 @@
 //   rowId/groupId— 行/容器业务 id（typed-field-owners 等按 id 直写的锚点）；
 //   rowStyle/rowClass/rowHidden/controlStyle/hintStyle/labelStyle/
 //   textareaStyle/selectStyle — 现行标记的显式样式覆盖；
-//   capture:false — 该控件不参与现值快照（file 输入、动态容器等）。
+//   capture:false — 该控件不参与现值快照（file 输入、动态容器等）；
+//   save          — 值语义声明（M5-a）：collectSettings/applySettings 据此
+//                    推导保存载荷与回填写值，选项清单见 value-semantics.js
+//                    头注；save:false 表示该控件走独立保存通道（划词/论坛/
+//                    头像），不进全量载荷，也不参与回填。
 
 export function section(key, title, fields, options = {}) {
     return Object.freeze({
         kind: 'section', key, title,
         fields: Object.freeze(fields),
+        // 分区级复合载荷收集钩子（M5-a）：collect(scope) 返回本分区无法用
+        // 单字段 save 声明表达的键（appearanceProfile、networkNotesPaths、
+        // chatPresentationMode 等复合/派生键），collectSettings 在字段遍历
+        // 之后合并其产出。
+        collect: options.collect,
         // 渲染替换时需要整体保留节点身份（而非仅迁移现值）的控件 id：
         // 动态选项的 select、动态追加子行的容器等。
     });
@@ -63,8 +72,14 @@ export function button(key, options) {
     return Object.freeze({ kind: 'field', key, type: 'button', ...options });
 }
 
-export function custom(key, build, captureKeys = []) {
-    return Object.freeze({ kind: 'field', key, type: 'custom', build, captureKeys: Object.freeze(captureKeys) });
+// custom 组件的内部控件若参与保存/回填，用 saveMap 按 captureKeys 逐键声明
+// 值语义（如字体预览区的 8 个字体控件、动画自定义 CSS 行）。
+export function custom(key, build, captureKeys = [], options = {}) {
+    return Object.freeze({
+        kind: 'field', key, type: 'custom', build,
+        captureKeys: Object.freeze(captureKeys),
+        saveMap: Object.freeze(options.saveMap || {}),
+    });
 }
 
 export function card(key, { title, description, cardKey, fields }) {

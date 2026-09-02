@@ -4,6 +4,8 @@
 import { section, switchField, inlineNumbers, select, range, textarea, custom } from './kernel.js';
 import { buildStreamAnimationCustomExample, buildStreamAnimationPreview } from '../render/widgets.js';
 
+const STREAM_ANIMATION_PRESETS = ['slide-left', 'fade', 'rise', 'scale', 'none', 'custom'];
+
 function buildStreamAnimationCustomRow(doc) {
     const row = doc.createElement('div');
     row.className = 'vcp-settings-row';
@@ -31,8 +33,8 @@ export const renderSettingsSection = section('render-settings', '消息渲染', 
         hintInsideWrapper: true,
     }),
     inlineNumbers('streamInlineNumbers', [
-        { key: 'minChunkBufferSize', label: '最小渲染 Chunk 字数（≥1）', min: 1, defaultValue: 16 },
-        { key: 'smoothStreamIntervalMs', label: '最小刷新间隔（ms，≥1）', min: 1, defaultValue: 100 },
+        { key: 'minChunkBufferSize', label: '最小渲染 Chunk 字数（≥1）', min: 1, defaultValue: 16, save: { parse: 'int', fallback: 16 } },
+        { key: 'smoothStreamIntervalMs', label: '最小刷新间隔（ms，≥1）', min: 1, defaultValue: 100, save: { parse: 'int', fallback: 100 } },
     ]),
     select('streamAnimationPreset', {
         rowId: 'streamAnimationSettingsRow',
@@ -46,6 +48,7 @@ export const renderSettingsSection = section('render-settings', '消息渲染', 
             { value: 'none', label: '关闭动画' },
             { value: 'custom', label: '自定义 CSS' },
         ],
+        save: { allowed: STREAM_ANIMATION_PRESETS, fallback: 'slide-left' },
     }),
     range('streamAnimationDurationMs', {
         rowId: 'streamAnimationDurationRow',
@@ -56,7 +59,10 @@ export const renderSettingsSection = section('render-settings', '消息渲染', 
         outputId: 'streamAnimationDurationValue',
         outputFor: 'streamAnimationDurationMs',
         outputText: '500ms',
+        save: { parse: 'float', nanFallback: 500, roundTo: 50, min: 100, max: 2000 },
     }),
-    custom('streamAnimationCustomRow', buildStreamAnimationCustomRow, ['streamAnimationCustomCss']),
+    custom('streamAnimationCustomRow', buildStreamAnimationCustomRow, ['streamAnimationCustomCss'], {
+        saveMap: { streamAnimationCustomCss: { falsy: '', slice: 4000 } },
+    }),
     custom('streamAnimationPreview', buildStreamAnimationPreview),
 ]);

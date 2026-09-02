@@ -14,6 +14,7 @@ export const quickActionsSection = section('quick-actions', '快捷操作', [
         stacked: true,
         textareaStyle: 38,
         defaultValue: '请继续',
+        save: { trim: true, falsy: '请继续' },
     }),
     number('flowlockContinueDelay', {
         label: '心流锁续写延迟 (秒):',
@@ -22,6 +23,7 @@ export const quickActionsSection = section('quick-actions', '快捷操作', [
         max: 300,
         step: 1,
         defaultValue: 5,
+        save: { parse: 'int', fallback: 5 },
     }),
     switchField('enableMiddleClickQuickAction', {
         label: '启用在聊天气泡中的中键快捷功能',
@@ -63,5 +65,6 @@ export const quickActionsSection = section('quick-actions', '快捷操作', [
         step: 100,
         defaultValue: 1000,
         when: ['enableMiddleClickQuickAction', 'enableMiddleClickAdvanced'],
+        save: { parse: 'int', fallback: 1000, min: 1000 },
     }),
 ]);
