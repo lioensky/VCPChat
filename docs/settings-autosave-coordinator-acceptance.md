@@ -45,7 +45,7 @@
 - `VCPCHAT_MANUAL_SOAK_MINUTES=0.001 VCPCHAT_MANUAL_SOAK_INTERVAL_SECONDS=0.001 node scripts/test-electron-manual-soak.mjs`：生成 23 个无错误 checkpoint；该工具仍明确要求人工 checklist，不能把短时观察升级为完整 soak 通过。
 - `node scripts/test-ui-system.mjs`：UI system contract assertions pass; the JSDOM process leaves existing requestSubmit/timer activity alive and does not produce a stable terminating exit here.
 - `npm run test:ui-system`：wrapper reaches the passing UI contract stage but cannot provide a stable final exit because of the same open-handle behavior.
-- `npm run test:electron-ui-apps`：启动后未在本机已有 Electron 实例环境中形成可采信的退出结果，不能替代 packaged Electron 验收。
+- `npm run test:electron-ui-apps`：单独重跑仍在 `scripts/test-electron-ui-apps-smoke.mjs:534` 等待 `VCPFrontendPlugins.get('vchat-dynamic-wallpaper')` 时 90 秒超时，审计摘要为 `0/0 passed`。当前仓库的该插件 manifest 仍是 `.block`，因此 smoke 期待与 fixture 状态不一致；这项门禁不能宣称通过，也不能替代 packaged Electron 验收。
 
 ## 对抗性复核结论（2026-09-02）
 
@@ -53,4 +53,4 @@
 
 随后又完成合并前阻塞修复：原子写入改用随机独占临时文件；手动提交会取消遗留 legacy debounce，自动保存通过瞬时提交标记保持窗口语义；Toast 生命周期测试增加调度裕量。当前 Global Settings 本地完成度约 **95%**。剩余证据缺口仍是 Windows 原生 runner、packaged Electron、GPU/DPI 几何矩阵、长时人工 soak，以及 native `fs.watch` 驱动的真实 Electron 外部冲突交互。不得把 macOS 解包 Electron或短时诊断记录外推为这些平台/场景已通过。
 
-验收结论：Global Settings 自动保存协调器已合并回 `exp/settings-schema`，在本地源码、focused tests、锁/CAS/RMW、真实 macOS Electron CDP（保存、重载、布局、搜索、主题截图）和 UI artifact gate 上完成；目标仍保持 **active**，直到剩余交付证据补齐。
+验收结论：Global Settings 自动保存协调器已合并回 `exp/settings-schema`，在本地源码、focused tests、锁/CAS/RMW、真实 macOS Electron CDP（保存、重载、布局、搜索、主题截图）和 UI artifact gate 上完成；目标仍保持 **active**。可以开 Draft PR，但在 chat/UI 全量门禁、插件 smoke 契约、packaged Electron、Windows、GPU/DPI 和人工 soak 证据补齐前，不应标记 Ready for merge。

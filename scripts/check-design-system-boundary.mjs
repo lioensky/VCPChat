@@ -79,6 +79,8 @@ const allowedSourceDifferences = new Set([
     // Machine-readable PR scope/evidence manifest is reviewed alongside the
     // design-system changes; it is not product design code.
     'docs/final-pr-scope-and-evidence.json',
+    'docs/settings-autosave-coordinator-acceptance.md',
+    'docs/settings-autosave-coordinator-development-plan.md',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',
     'Notemodules/notes.css',
@@ -225,6 +227,7 @@ const allowedSourceDifferences = new Set([
     'package-lock.json',
     'package.json',
     'preloads/chat.js',
+    'preloads/desktop.js',
     'preloads/shared/catalog.js',
     'preloads/shared/roles.js',
     'preloads/utility.js',

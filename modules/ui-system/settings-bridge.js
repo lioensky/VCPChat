@@ -824,7 +824,7 @@ async function teardown() {
     const scope = takePresentationScope();
     // Retract enhanced controller identity only after durable settings work
     // has quiesced; a failed close must leave the surface retryable.
-    releaseAllControllers();
+    await releaseAllControllers();
     if (scope) {
         try { await scope.dispose('settings-presentation-teardown'); }
         catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }

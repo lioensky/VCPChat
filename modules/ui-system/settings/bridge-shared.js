@@ -115,17 +115,19 @@ function enhancedControllerCount() {
     return controllers.size;
 }
 
-function releaseAllControllers() {
+async function releaseAllControllers() {
+    const releases = [];
     [...controllers].reverse().forEach(controller => {
         const release = controllerReleases.get(controller);
         if (release) {
-            void release().catch(error => {
+            releases.push(Promise.resolve().then(() => release()).catch(error => {
                 console.error('[VCPUI SettingsBridge] Failed to release controller:', error);
-            });
+            }));
         } else controller.destroy();
     });
     controllers.clear();
     controllerReleases.clear();
+    await Promise.all(releases);
 }
 
 export {

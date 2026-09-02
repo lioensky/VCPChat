@@ -2,7 +2,7 @@
 
 Status: implementation complete for Global Settings; external delivery evidence gates remain open
 
-Baseline: `exp/settings-schema` at `f8d73250`; integrated on `exp/settings-schema` at `05ac26a6` (merge `5627a9d9`).
+Baseline: `exp/settings-schema` at `a12d5a5b`; the current implementation and acceptance updates are on this branch.
 
 ## Current architecture
 

@@ -78,7 +78,18 @@ window.chatAPI = {
     themes: [],
     appliedColorThemes: [],
     async saveSettings(patch) {
-        this.saved.push(patch);
+        const materialized = {};
+        for (const operation of patch?.__vcpSettingsOps || []) {
+            if (operation.op !== 'set') continue;
+            let target = materialized;
+            const path = Array.isArray(operation.path) ? operation.path : [];
+            path.slice(0, -1).forEach(key => {
+                target[key] ||= {};
+                target = target[key];
+            });
+            if (path.length) target[path.at(-1)] = operation.value;
+        }
+        this.saved.push(Object.keys(materialized).length ? materialized : patch);
         return { success: true };
     },
     setTheme(theme) { this.themes.push(theme); },

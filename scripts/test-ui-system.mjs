@@ -529,6 +529,13 @@ globalModal.innerHTML = `
     </div>`;
 modalContainer.append(globalModal);
 scope.append(modalContainer);
+const globalSettingsForm = document.getElementById('globalSettingsForm');
+globalSettingsForm.requestSubmit = () => {
+    const operationId = globalSettingsForm.dataset.vcpSettingsOperationId;
+    globalSettingsForm.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+        detail: { success: true, status: 'success', operationId, owner: 'legacy-autosave', currentRevision: 'test-revision' },
+    }));
+};
 window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
 // Global settings: the typed Uiux primitives own the single-line input and

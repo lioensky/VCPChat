@@ -797,6 +797,18 @@ function mountTypedFieldOwner(root, form) {
         if (coordinator) coordinator.reportState(mode, { owner: 'typed-settings-field-owner', ...details });
         else form.dataset.vcpAutosaveState = mode;
     };
+    // A manual full-form submit is the authoritative boundary for the whole
+    // settings surface. Drop only queued typed work (the full collector will
+    // include the current control values); an already-running typed request
+    // remains owned by its operation and is handled by the concurrency guard.
+    const onManualSaveStart = () => {
+        if (state.inFlight) return;
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = null;
+        state.pendingPatch = null;
+        setStatus('idle', { dirty: false });
+    };
+    ownerScope.listen(form, 'vcp-settings-manual-save-start', onManualSaveStart, undefined, 'typed-settings-manual-save');
     const releaseClient = coordinator?.registerClient({ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields, hasWork: () => [...typedFieldStates].some(item => item === state && (item.pendingPatch || item.inFlight || item.timer)) });
     const publish = (success, error = '', status = success ? 'success' : 'failed', operationId = undefined) => {
         form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success, status, error: error || undefined, owner: 'typed-settings-field-owner', operationId } }));
