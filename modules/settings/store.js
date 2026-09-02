@@ -1,8 +1,11 @@
-// store — 全局设置表单的值访问门面（M1 面）。
+// store — 全局设置表单的值访问门面。
 // 职责：按控件语义读写表单值（开关/单选走 checked，其余走 value），
 // 并在 schema 面替换静态标记前后迁移分区现值。快照以控件 id 为键，
 // 与字段类型解耦：custom 组件通过 captureKeys 声明需要迁移的内部控件。
-// 保存链本身不动：handleSaveGlobalSettings 仍按 id 收集整个表单。
+// M5-a 起，保存/回填链也从这里出发：collectSettings/applySettings 按
+// 字段描述符的 save 声明推导全量载荷与回填写值（引擎见 value-semantics.js）。
+
+export { collectSettings, applySettings, collectKey, clampBubbleWidthPercent, SAVE_PASSTHROUGH_KEYS, SAVE_CHANNEL_MANIFEST } from './value-semantics.js';
 
 function isCheckable(control) {
     return control?.type === 'checkbox' || control?.type === 'radio';

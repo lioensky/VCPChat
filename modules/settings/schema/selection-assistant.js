@@ -18,15 +18,18 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         label: '调试模式（输出诊断）',
         rowStyle: 23,
         extra: doc => [buildRustDebugPanel(doc)],
+        save: false,
     }),
     switchField('rustUseAssistant', {
         label: '启用 Rust 划词助手',
         rowStyle: 23,
+        save: false,
     }),
     switchField('rustEnableCustomThresholds', {
         label: '启用自定义阈值',
         rowStyle: 23,
         when: ['rustUseAssistant'],
+        save: false,
     }),
     number('rustMinEventIntervalMs', {
         label: '最小事件间隔 (ms):',
@@ -35,6 +38,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         rowStyle: 26, controlStyle: 27, hintStyle: 28,
         grouped: true,
         when: ['rustUseAssistant', 'rustEnableCustomThresholds'],
+        save: false,
     }),
     number('rustMinDistance', {
         label: '最小位移距离 (px):',
@@ -43,6 +47,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         rowStyle: 26, controlStyle: 27, hintStyle: 28,
         grouped: true,
         when: ['rustUseAssistant', 'rustEnableCustomThresholds'],
+        save: false,
     }),
     number('rustScreenshotSuspendMs', {
         label: '截图暂停时长 (ms):',
@@ -51,6 +56,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         rowStyle: 26, controlStyle: 27, hintStyle: 28,
         grouped: true,
         when: ['rustUseAssistant', 'rustEnableCustomThresholds'],
+        save: false,
     }),
     number('rustClipboardConflictSuspendMs', {
         label: '剪贴板冲突暂停 (ms):',
@@ -59,6 +65,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         rowStyle: 26, controlStyle: 27, hintStyle: 28,
         grouped: true,
         when: ['rustUseAssistant', 'rustEnableCustomThresholds'],
+        save: false,
     }),
     number('rustClipboardCheckIntervalMs', {
         label: '剪贴板检查间隔 (ms):',
@@ -67,6 +74,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         rowStyle: 16, controlStyle: 27, hintStyle: 28,
         grouped: true,
         when: ['rustUseAssistant', 'rustEnableCustomThresholds'],
+        save: false,
     }),
     select('rustRuleMode', {
         rowId: 'rustRuleModeRow',
@@ -80,6 +88,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
             { value: 'whitelist', label: '白名单模式（只在匹配的应用中启用）' },
             { value: 'blacklist', label: '黑名单模式（在非匹配的应用中启用）' },
         ],
+        save: false,
     }),
     textarea('rustWhitelistKeywords', {
         grouped: true,
@@ -89,6 +98,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         placeholder: '例如：visual studio code\nchrome',
         textareaStyle: null,
         when: ['rustUseAssistant', 'rustRuleMode=whitelist'],
+        save: false,
     }),
     textarea('rustBlacklistKeywords', {
         grouped: true,
@@ -98,6 +108,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         placeholder: '例如：password\ncredential\nsecret',
         textareaStyle: null,
         when: ['rustUseAssistant', 'rustRuleMode=blacklist'],
+        save: false,
     }),
     textarea('rustScreenshotApps', {
         grouped: true,
@@ -107,6 +118,7 @@ export const selectionAssistantSection = section('selection-assistant', '划词�
         placeholder: '例如：snippingtool\nsnipaste\ncapturescreen',
         textareaStyle: null,
         when: ['rustUseAssistant'],
+        save: false,
     }),
 ], {
 });

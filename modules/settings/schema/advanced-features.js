@@ -80,6 +80,7 @@ export const advancedFeaturesSection = section('advanced-features', '高级功�
         controlStyle: 19,
         hintStyle: 4,
         when: ['enableContextSanitizer'],
+        save: { parse: 'int', fallback: 0 },
     }),
     switchField('agentMusicControl', {
         label: '启用Agent音乐控制',
@@ -90,5 +91,7 @@ export const advancedFeaturesSection = section('advanced-features', '高级功�
         separator.setAttribute('data-vcp-style', '36');
         return separator;
     }),
-    custom('topicSummaryModelContainer', buildTopicSummaryModelRow, ['topicSummaryModel']),
+    custom('topicSummaryModelContainer', buildTopicSummaryModelRow, ['topicSummaryModel'], {
+        saveMap: { topicSummaryModel: { trim: true } },
+    }),
 ]);
