@@ -37,7 +37,7 @@
 
 - `node --check`：相关 JS 通过。
 - `git diff --check`：通过。
-- focused settings/UI tests：47/47 通过；autosave coordinator subset 7/7 通过（临时复用现有 worktree 的依赖目录，未写入目标分支）。
+- focused settings/UI tests：48/48 通过；autosave coordinator subset 7/7 通过（临时复用现有 worktree 的依赖目录，未写入目标分支）。
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
 - `npm run check:uiux`：仓库无该脚本；可用脚本为 `check:uiux:artifacts`。
 - `npm run test:settings-wa-electron`：仓库无该脚本。
