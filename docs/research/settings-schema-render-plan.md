@@ -147,6 +147,13 @@ dsw 语义 CSS（单层级联）
 
 **验收**：金测等价 + 全套不回退 + 探针改值→autosave→settings.json 与旧链字节一致 + 重启往返等值。**回退**：单提交粒度，revert 即回旧链。
 
+**施工记录（已完成：三段提交）**：
+
+- **值链路合一（b63cbd36）**：新增 `modules/settings/value-semantics.js`——`collectSettings`（保存收集）/`applySettings`（对称回填，仅实际变化时派发 `vcp-uiux-sync`）/`collectKey`（12 步求值链：常量→读控件→absent/present→checkedValue 映射→trim→parse+roundTo/nanFallback→min/max 钳位→falsy→currentFallback→fallback→allowed→slice→upper→transform，逐条复刻旧链怪癖：`parseInt||fallback` 的 0→fallback、`checked !== false` 的 undefined→true、滑杆 NaN→92 钳当前值、`Number('')`→0→100 等）/`assignPayload`（dot-path 嵌套写入）。字段描述符补齐 `save` 声明（valuePath/value/collect:false/save:false），分区级 `collect(scope)` 钩子承接组合项（appearanceProfile 归一化、chatPresentationMode 读取、networkNotesPaths 容器收集、user-identity 三键）；自定义组件经 `saveMap` 按 captureKeys 挂接。旧保存链 130 行 payload 块逐字转录为金测冻结参照 `tests/settings-value-golden.test.mjs`：5 组随机种子全键 deepStrictEqual（含嵌套 voice/appearanceProfile、URL 补全、钳位、字体 currentFallback）+ 空表单等价 + 20 余条怪癖定点断言 + 划词/论坛/头像独立通道 `SAVE_CHANNEL_MANIFEST` 清单化。12 文件 +925/−69。
+- **切换保存链（bc03faaa）**：`handleSaveGlobalSettings` 改调 `collectSettings(schemaSurfaceSections(), …)`（−133/+14），提交锁/超时/retry 事件契约、parseMultilineKeywords 划词补丁、头像/论坛通道不动。
+- **回填链收敛（f46038a6）**：typed-field-owners 44 条手写投影表替换为 `applySettings` 驱动（−62/+7），写值仅在实际变化时派发 `vcp-uiux-sync`（收敛 M0 胶囊滞留怪癖）；显示默认、头像预览、可见性、划词/论坛/外观三个 typed 消费者保留。
+- **验收记录**：金测 5/5 绿；全套 372/370（2 条基线既有失败）；实机探针 10/10 载荷断言落盘正确（'  '→'请继续'、'0'→5/1000、' f9 '→'F9'、123→钳位 98、嵌套 sovitsUrl trim 等），重启回填 8/8 归一等值；像素对比 6/8 分区与 M4 末基线字节一致，其余 3 分区差异 ≤0.27% 且经逐带比对确认为跨会话文字反锯齿噪声。探针 run-1 状态对比的 4 条「差异」为基线伪差：run-1 在全量保存后即重采 DOM，读到的是应用有意保留的未归一草稿（保存期间投影被 dirty/saving 守卫跳过），重启值与落盘归一值一致；rustRuleMode 'whitelist'→'none' 为划词通道既有派生语义（规则模式不入盘，重启按白名单空数组推导 none），非 M5-a 回归。D6 复查 14 个变更文件干净，已推 fork（6ff41a96..f46038a6）。
+
 ### 13.2 M5-b 渲染器直出 canonical 行（试点：快捷操作分区）
 
 1. field-renderer 直接产出最终结构：`vcp-uiux-general-item/general-row` + row-copy 槽 + `data-setting-primitive` 挂点；旧包裹类（vcp-settings-row/form-group）不再输出。
