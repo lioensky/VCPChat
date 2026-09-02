@@ -37,3 +37,16 @@ export function mountVoiceShortcutInput(form, api, scope) {
     input.dataset.vcpTypedPrimitiveMounted = 'true';
     scope.own(() => { delete input.dataset.vcpTypedPrimitiveMounted; }, 'typed-voice-shortcut-input-marker', 'ui-primitive');
 }
+
+// M5-c pass5：分段（Choice）行为激活。行类/标签类/dataset.value 初值已由
+// field-renderer 的 radioGroup 直出，这里按结构通用扫描（不再维护 id 表），
+// 只绑定 change/vcp-uiux-sync 的 dataset.value 重推导并注入分段样式表。
+export function mountGlobalChoices(form, api, scope) {
+    if (!form || !scope || !api?.activateChoice) return;
+    form.querySelectorAll('.vcp-uiux-choice').forEach(row => {
+        if (row.dataset.vcpTypedPrimitiveMounted === 'true') return;
+        api.activateChoice(row, scope);
+        row.dataset.vcpTypedPrimitiveMounted = 'true';
+        scope.own(() => { delete row.dataset.vcpTypedPrimitiveMounted; }, `typed-${row.dataset.settingKey || 'choice'}-choice-marker`, 'ui-primitive');
+    });
+}

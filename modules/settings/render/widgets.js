@@ -2,8 +2,8 @@
 // 这些块（头像资料卡、折叠样式区、调试面板、动画示例/预览、外观工作台卡、
 // 字体场景预览、呈现模式选择器）是自包含组件而非普通字段：标记逐字对齐
 // main.html 静态版本，由既有增强（avatar-picker、identity-name 编辑器、
-// uiux-disclosures、identity-controls、动画预览监听、语言行激活、
-// choice-controls）按类名/id 接管。后续阶段组件化后从这里收编。
+// uiux-disclosures、identity-controls、动画预览监听、语言行/分段激活）
+// 按类名/id 接管。后续阶段组件化后从这里收编。
 import { el } from './shared.js';
 import { buildInputPrimitiveWrap, buildLanguageRowStructure } from './field-renderer.js';
 
@@ -447,8 +447,8 @@ export function buildFontScenarioPreviewRow(doc) {
     return row;
 }
 
-// 消息呈现模式选择器：三张 radio 卡（气泡/磨砂/沉浸），choice-controls
-// 与呈现管线按 name=chatPresentationMode 的 checked 值投影。
+// 消息呈现模式选择器：三张 radio 卡（气泡/磨砂/沉浸），呈现管线按
+// name=chatPresentationMode 的 checked 值投影。
 const CHAT_PRESENTATION_MODES = [
     { id: 'chatPresentationModeBubble', value: 'bubble', checked: true, icon: 'chat', title: '气泡模式', description: '保留当前左右气泡、头像及元信息布局。' },
     { id: 'chatPresentationModePanel', value: 'panel', icon: 'view_agenda', title: '统一磨砂模式', description: '消息共用一块全宽磨砂面板，以分割线区分。' },

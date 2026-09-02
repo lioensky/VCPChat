@@ -3,8 +3,9 @@
 // buildFontSizeRowStructure 与 widgets 的场景字体行），本模块只激活行为：
 // 胶囊菜单挂载、标签镜像（用户驱动的 change 与宿主驱动的 vcp-uiux-sync 快照
 // 回放都重新收敛激活标签）以及动态选项重建镜像（划词 Agent 列表运行时填充）。
-// 原生 select 仍是唯一业务节点；select-projection 依赖 vcpTypedPrimitiveMounted
-// 标记跳过已收编的 select，本模块在激活前统一打标。
+// 原生 select 仍是唯一业务节点；本模块在激活前统一打 vcpTypedPrimitiveMounted
+// 标记（M5-c pass5 起 select-projection 已在 schema 面退役，标记即"已收编"
+// 的唯一凭证；agent 设置面仍消费 select-projection，语义不变）。
 const collectOptions = select => [...select.options].map(option => ({ id: option.value, label: option.textContent.trim() }));
 
 export function mountGlobalLanguageRows(form, api, scope) {

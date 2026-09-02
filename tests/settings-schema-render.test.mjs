@@ -18,7 +18,9 @@ import { activateNumericStepperRow } from '../modules/uiux/generated/primitives/
 import { mountGlobalSteppers } from '../modules/ui-system/settings/global-input-upgrades.js';
 import { activateLanguageRow } from '../modules/uiux/generated/primitives/language-row.js';
 import { activateFontSizeRow } from '../modules/uiux/generated/primitives/font-size-row.js';
+import { activateChoice } from '../modules/uiux/generated/primitives/choice.js';
 import { mountGlobalLanguageRows } from '../modules/ui-system/settings/global-language-rows.js';
+import { mountGlobalChoices } from '../modules/ui-system/settings/global-input-upgrades.js';
 import { fieldProjection } from '../modules/ui-system/settings/field-registry.js';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://localhost/' });
@@ -743,6 +745,89 @@ test('直出完备性：退役的语言行/字号行 pass 对全部编译产物�
                 assert.equal(select.dataset.vcpTypedPrimitiveMounted, 'true',
                     `${sectionDescriptor.key}：#${select.id} 的直出行未激活`);
             }
+        }
+    }
+});
+
+test('分段（Choice）直出结构（M5-c pass5：choice-controls 退役）', () => {
+    // 语音工作模式：内层控制行在编译期获得 mountChoice 终态类与初值。
+    const voice = renderIntoForm(voiceSettingsSection);
+    const voiceRow = voice.form.querySelector('#voiceModeLocal').closest('.vcp-uiux-choice');
+    assert.ok(voiceRow, '语音单选组内层行直出 vcp-uiux-choice 类');
+    assert.equal(voiceRow.dataset.value, 'local', 'dataset.value 取编译期 checked 值');
+    const voiceOptions = [...voiceRow.querySelectorAll('label')].filter(label => label.querySelector('input[type="radio"]'));
+    assert.equal(voiceOptions.length, 2);
+    for (const label of voiceOptions) {
+        assert.equal(label.classList.contains('vcp-uiux-choice-option'), true, 'radio 标签直出分段选项类');
+    }
+    // 内容宽度单选组：同一构建器直出，初值 normal。
+    const appearance = renderIntoForm(appearanceSettingsSection);
+    const layoutRow = appearance.form.querySelector('#chatLayoutModeNormal').closest('.vcp-uiux-choice');
+    assert.ok(layoutRow, '内容宽度单选组内层行直出 vcp-uiux-choice 类');
+    assert.equal(layoutRow.dataset.value, 'normal');
+    assert.equal(layoutRow.querySelector('label.vcp-uiux-choice-option input')?.id, 'chatLayoutModeNormal');
+    // hint 次序与既有结构不变（分段类只在控制行上，行文案不受影响）。
+    assert.ok(layoutRow.nextElementSibling === null || !layoutRow.nextElementSibling.classList.contains('vcp-uiux-choice-option'));
+});
+
+test('分段激活行为绑定（M5-c pass5：运行期只剩 dataset.value 重推导）', () => {
+    const owned = [];
+    const scope = {
+        listen: (target, type, handler) => { target.addEventListener(type, handler); return () => target.removeEventListener(type, handler); },
+        own: dispose => { owned.push(dispose); return dispose; },
+        child: () => scope,
+        dispose: async () => {},
+        active: true,
+    };
+    const { form } = renderIntoForm(voiceSettingsSection);
+    mountGlobalChoices(form, { activateChoice }, scope);
+    const row = form.querySelector('#voiceModeLocal').closest('.vcp-uiux-choice');
+    assert.equal(row.dataset.vcpTypedPrimitiveMounted, 'true', '激活后打标');
+
+    // 用户驱动的 change：dataset.value 重推导。
+    const network = form.querySelector('#voiceModeNetwork');
+    network.checked = true;
+    network.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.equal(row.dataset.value, 'network');
+
+    // 宿主驱动的快照回放（vcp-uiux-sync）同样收敛。
+    const local = form.querySelector('#voiceModeLocal');
+    local.checked = true;
+    local.dispatchEvent(new dom.window.Event('vcp-uiux-sync', { bubbles: true }));
+    assert.equal(row.dataset.value, 'local');
+
+    // 重复激活幂等：标记在位即跳过，监听不翻倍。
+    const listenCount = owned.length;
+    mountGlobalChoices(form, { activateChoice }, scope);
+    assert.equal(owned.length, listenCount);
+    network.checked = true;
+    network.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert.equal(row.dataset.value, 'network');
+});
+
+test('直出完备性：select-projection 与 choice-controls 对全部编译产物空转（M5-c pass5 不变量）', () => {
+    const owned = [];
+    const scope = {
+        listen: (target, type, handler) => { target.addEventListener(type, handler); return () => target.removeEventListener(type, handler); },
+        own: dispose => { owned.push(dispose); return dispose; },
+        child: () => scope,
+        dispose: async () => {},
+        active: true,
+    };
+    const api = { activateLanguageRow, activateFontSizeRow, activateChoice };
+    for (const sectionDescriptor of schemaSurfaceSections()) {
+        const { form } = renderIntoForm(sectionDescriptor);
+        // 与管线同序：行为激活（global-pill-steppers/global-typed-primitives）
+        // 之后，select-projection 应无任何未打标 select 可投影。
+        mountGlobalLanguageRows(form, api, scope);
+        mountGlobalChoices(form, api, scope);
+        for (const select of form.querySelectorAll('select')) {
+            assert.equal(select.dataset.vcpTypedPrimitiveMounted, 'true',
+                `${sectionDescriptor.key}：#${select.id} 未被直出结构激活，select-projection 将有可投影对象`);
+        }
+        for (const row of form.querySelectorAll('.vcp-uiux-choice')) {
+            assert.equal(row.dataset.vcpTypedPrimitiveMounted, 'true',
+                `${sectionDescriptor.key}：分段行未激活，choice-controls 将有可挂载对象`);
         }
     }
 });

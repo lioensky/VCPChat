@@ -1,6 +1,6 @@
 // schema/voice-settings — "语音设置" 分区（M1）。
-// 语音工作模式是单选组（choice-controls 会把内层控制行收编为分段
-// 控件）；输入模式为胶囊 select；其余为 text/url/password 行。
+// 语音工作模式是单选组（M5-c pass5 起分段结构由渲染器直出，运行期只绑
+// 行为）；输入模式为语言行胶囊 select；其余为 text/url/password 行。
 import { section, radioGroup, radio, select, text } from './kernel.js';
 
 export const voiceSettingsSection = section('voice-settings', '语音设置', [

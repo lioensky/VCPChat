@@ -515,6 +515,15 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
             for (const radioField of field.fields) {
                 innerRow.append(renderSchemaField(doc, radioField, canonicalContext));
             }
+            // M5-c pass5：分段（Choice）直出——内层控制行与 radio 标签在编译期
+            // 就地获得 mountChoice 的终态类，dataset.value 取编译期 checked 值；
+            // 运行期只由 activateChoice 绑定 change/vcp-uiux-sync 重推导。
+            innerRow.classList.add('vcp-uiux-choice');
+            const checkedRadio = field.fields.find(radioField => radioField.checked);
+            if (checkedRadio) innerRow.dataset.value = checkedRadio.value;
+            innerRow.querySelectorAll('label').forEach(label => {
+                if (label.querySelector('input[type="radio"]')) label.classList.add('vcp-uiux-choice-option');
+            });
             row.append(innerRow);
             const hint = buildHint(doc, field, field.hintStyle ?? 4);
             if (hint) row.append(hint);
