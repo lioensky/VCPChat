@@ -1,5 +1,6 @@
 // modules/utils/settingsManager.js
 const fs = require('fs-extra');
+const nodeFs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
@@ -181,6 +182,8 @@ class SettingsManager extends EventEmitter {
         this.cache = null;
         this.cacheTimestamp = 0;
         this.lockFile = settingsPath + '.lock';
+        this.externalWatcher = null;
+        this.externalWatchTimer = null;
 
         // 默认设置模板
         this.defaultSettings = {
@@ -528,6 +531,33 @@ class SettingsManager extends EventEmitter {
                 }
             }
         }, 30000); // 每30秒检查一次
+    }
+
+    startExternalWatcher() {
+        if (this.externalWatcher || !nodeFs.watch) return;
+        try {
+            this.externalWatcher = nodeFs.watch(path.dirname(this.settingsPath), (_event, filename) => {
+                if (filename && String(filename) !== path.basename(this.settingsPath)) return;
+                clearTimeout(this.externalWatchTimer);
+                this.externalWatchTimer = setTimeout(async () => {
+                    try {
+                        const settings = await this.readSettings({ fresh: true });
+                        this.emit('settings-external-updated', { settings, revision: this.getRevision(settings) });
+                    } catch (error) {
+                        this.emit('settings-external-error', error);
+                    }
+                }, 80);
+            });
+        } catch (error) {
+            console.warn('Unable to watch settings file:', error?.message || error);
+        }
+    }
+
+    stopExternalWatcher() {
+        clearTimeout(this.externalWatchTimer);
+        this.externalWatchTimer = null;
+        this.externalWatcher?.close?.();
+        this.externalWatcher = null;
     }
 
     // 自动备份机制

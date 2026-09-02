@@ -40,7 +40,8 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 - 已完成 close 前 drain、结果通道保留、legacy/typed Promise flush 和失败 batch retention。
 - 已完成 typed `set/unset` path operation、锁内 fresh read、CAS 和 `load-settings` revision 返回。
 - 已补 coordinator path-operation 与 manager regression test。
-- 尚未完成 watcher 驱动的 renderer conflict reconciliation、reload/keep-draft UI、所有直接 `chatAPI.saveSettings()` 调用迁移及真实 Electron/跨平台证据。
+- 已接入主进程 settings watcher、preload subscription、renderer conflict 标记，以及 reload/keep-draft 操作条。
+- 尚未完成所有直接 `chatAPI.saveSettings()` 调用迁移、真实 DOM owner 时序覆盖及 packaged Electron/跨平台证据。
 
 Revision tokens are opaque content-derived values exposed only through the save protocol. This keeps the existing `settings.json` user field shape unchanged while still allowing CAS across renderer windows and process restarts.
 

@@ -17,16 +17,16 @@
 
 | 场景 | 期望 | 证据状态 |
 |---|---|---|
-| typed A/B 快速连续编辑 | A、B 均持久化 | focused test 待补跑 |
-| typed 与 legacy 并发 | 未触碰字段不被覆盖 | focused test 待补跑 |
-| in-flight 追加 patch 后首个失败 | 失败 batch retained，后续 flush 可重试 | 已补代码，待测试 |
+| typed A/B 快速连续编辑 | A、B 均持久化 | path operation 单测通过；真实 DOM owner 待补 |
+| typed 与 legacy 并发 | 未触碰字段不被覆盖 | manager 双实例 CAS 通过；legacy owner 待补 |
+| in-flight 追加 patch 后首个失败 | 失败 batch retained，后续 flush 可重试 | 已补代码，owner 时序待补 |
 | 旧 operation 迟到结果 | 不改变当前 draft/status | adapter 单测通过；coordinator 迟到事件待补 |
 | cancelled/stale/conflict | 保持明确非 success 语义 | adapter 单测通过 |
 | flush | 等待真实 durable completion | dispose/flush 时序测试待补 |
 | dispose | drain 后再释放 owner/listener | 代码已修，Electron 待验证 |
-| lock/CAS/RMW | 双实例不互相覆盖，冲突不写盘 | 单实例覆盖；双实例待补 |
-| 外部文件修改 | dirty draft 保留并进入 conflict | watcher/UI 尚未完成 |
-| conflict UX | reload external / keep draft retry | 尚未完成 |
+| lock/CAS/RMW | 双实例不互相覆盖，冲突不写盘 | 双实例测试通过 |
+| 外部文件修改 | dirty draft 保留并进入 conflict | manager watcher + renderer 标记已接入；Electron 待验证 |
+| conflict UX | reload external / keep draft retry | API 与按钮已接入；交互/Electron 待验证 |
 | close/reopen/reload | 无白屏、无草稿丢失 | Electron 证据缺失 |
 
 ## 已知缺口

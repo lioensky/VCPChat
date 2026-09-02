@@ -101,11 +101,22 @@ function ensureTypedSettingsService() {
         if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
         publishExternal(event.detail?.settings);
     };
+    const externalSubscription = window.chatAPI?.onSettingsExternalUpdated?.(payload => {
+        const settings = payload?.settings || payload;
+        const revision = payload?.revision;
+        if (revision !== undefined) typedSettingsRevision = revision;
+        if (typedSettingsSaveGeneration > 0 && document.getElementById('globalSettingsForm')?.dataset.vcpSettingsDirty === 'true') {
+            document.getElementById('globalSettingsForm')?.setAttribute('data-vcp-settings-conflict', 'true');
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings, revision, source: 'settings-external' } }));
+    });
     if (bridgeScope) bridgeScope.listen(window, 'global-settings-updated', onExternalSettings, undefined, 'typed-settings-external-update');
     else window.addEventListener('global-settings-updated', onExternalSettings);
     typedSettingsExternalRelease = () => {
         if (!bridgeScope) window.removeEventListener('global-settings-updated', onExternalSettings);
         externalListeners.clear();
+        externalSubscription?.();
         typedSettingsExternalRelease = null;
     };
     typedSettingsService = window.VCPUIUX.createSettingsUiService({

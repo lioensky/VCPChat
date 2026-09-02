@@ -104,6 +104,7 @@ function createCatalog(ops) {
         loadSettings: query(() => ops.invoke('load-settings')),
         loadWebindexModels: query(() => ops.invoke('load-webindex-models')),
         saveSettings: query((settings) => ops.invoke('save-settings', settings)),
+        onSettingsExternalUpdated: subscription(ops.subscribe('settings-external-updated', (_event, payload) => payload)),
         saveUserAvatar: query((avatarData) => ops.invoke('save-user-avatar', avatarData)),
         saveAvatarColor: query((data) => ops.invoke('save-avatar-color', data)),
         readImageFromClipboard: query(async () => {
@@ -468,6 +469,7 @@ const ALLOWED_KEYS = [
     "loadSettings",
     "loadWebindexModels",
     "saveSettings",
+    "onSettingsExternalUpdated",
     "saveUserAvatar",
     "saveAvatarColor",
     "readImageFromClipboard",

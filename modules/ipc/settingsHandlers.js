@@ -13,7 +13,13 @@ const themeHandlers = require('./themeHandlers');
  * @param {object} paths.settingsManager - The AppSettingsManager instance.
  */
 function initialize(paths) {
-    const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager } = paths;
+    const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager, mainWindow } = paths;
+    settingsManager?.startExternalWatcher?.();
+    settingsManager?.on?.('settings-external-updated', payload => {
+        if (!mainWindow?.isDestroyed?.() && !mainWindow?.webContents?.isDestroyed?.()) {
+            mainWindow.webContents.send('settings-external-updated', payload);
+        }
+    });
     const APP_DATA_DIR = path.dirname(SETTINGS_FILE);
     const LEGACY_USER_AVATAR_FILE = path.join(APP_DATA_DIR, 'user_avatar.png');
     const WEBINDEX_MODEL_FILE = path.join(APP_DATA_DIR, 'webindexmodel.json');

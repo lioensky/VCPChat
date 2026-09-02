@@ -1098,7 +1098,7 @@ if (!gotTheLock) {
         appSettingsManager.startAutoBackup(USER_DATA_DIR); // Start auto backup
         agentConfigManager.startCleanupTimer(); // Start agent config cleanup
 
-        settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+        settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager, mainWindow }); // Initialize settings handlers
         ragHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, SETTINGS_FILE });
 
         // RAG 独立模式：不创建主窗口，仅初始化 RAG 所需 IPC 并直接打开 RAG 窗口

@@ -10,3 +10,7 @@
 @import url('./settings-template.css');
 @import url('./settings-portal.css');
 @import url('./settings-stream-animation.css');
+.vcp-settings-conflict-actions[hidden]{display:none}
+.vcp-settings-conflict-actions{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--dsw-state-error-primary,#d92d20);background:var(--dsw-state-error-bg,rgba(217,45,32,.08));color:var(--dsw-state-error-primary,#d92d20);font-size:13px}
+.vcp-settings-conflict-actions span{flex:1;min-width:0}
+.vcp-settings-conflict-actions button{border:1px solid currentColor;background:transparent;color:inherit;padding:4px 8px;cursor:pointer}

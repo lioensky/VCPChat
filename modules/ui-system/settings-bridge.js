@@ -200,12 +200,36 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
 
 // Global settings modal: control enhancement, autosave status, and the
 // source-equivalent SettingsRoot shell.
+function mountSettingsConflictActions(root, form) {
+    if (!root || !form || root.querySelector('[data-vcp-settings-conflict-actions]')) return;
+    const bar = document.createElement('div');
+    bar.dataset.vcpSettingsConflictActions = 'true';
+    bar.hidden = true;
+    bar.setAttribute('role', 'alert');
+    bar.innerHTML = '<span>设置文件已被外部修改</span><button type="button" data-action="reload">重新加载外部设置</button><button type="button" data-action="retry">保留草稿并重试</button>';
+    const content = root.querySelector('.vcp-settings-source-content') || root;
+    content.prepend(bar);
+    const sync = () => { bar.hidden = form.dataset.vcpSettingsConflict !== 'true'; };
+    const onClick = event => {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const coordinator = getSaveCoordinator(form);
+        const work = action === 'reload' ? coordinator?.reloadExternal?.() : coordinator?.retryDraft?.();
+        Promise.resolve(work).then(() => { if (action === 'reload') delete form.dataset.vcpSettingsConflict; sync(); }).catch(() => sync());
+    };
+    form.addEventListener('vcp-settings-save-result', sync);
+    form.addEventListener('click', onClick);
+    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
+    sync();
+}
+
 function enhanceGlobalSettings(root, form) {
     // sticky 失败标记在位：classic 层接管，本生命周期内不再投影。
     if (root.dataset.vcpSurfaceProjectionFailed === 'true') return;
     // schema 渲染面（exp/settings-schema）：在整条投影管线之前把已迁移分区
     // 替换为 schema 编译产物，管线随后按原样投影；开关关闭时此调用为空操作。
     applySchemaSurface(form);
+    mountSettingsConflictActions(root, form);
     // The mount sequence is declared, not positional: every implicit "this
     // pass must own its nodes before X sees them" constraint is an explicit
     // `before` edge, and runSettingsPipeline resolves the same historical

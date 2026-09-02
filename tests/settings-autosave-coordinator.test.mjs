@@ -100,3 +100,42 @@ test('coordinator exposes explicit retry and external reload actions', async () 
     assert.equal(flushed, true);
     await coordinator.dispose();
 });
+
+test('two manager instances serialize writes and report a revision conflict', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-race-'));
+    const filename = path.join(dir, 'settings.json');
+    const first = new SettingsManager(filename);
+    const second = new SettingsManager(filename);
+    try {
+        const base = await first.readSettings();
+        const revision = first.getRevision(base);
+        const [a, b] = await Promise.all([
+            first.updateSettings({ userName: 'First' }, { expectedRevision: revision, operationId: 'first' }),
+            second.updateSettings({ userName: 'Second' }, { expectedRevision: revision, operationId: 'second' }),
+        ]);
+        assert.equal([a.status, b.status].filter(status => status === 'success').length, 1);
+        assert.equal([a.status, b.status].filter(status => status === 'conflict').length, 1);
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('settings manager emits an external update after a file edit', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-watch-'));
+    const filename = path.join(dir, 'settings.json');
+    const manager = new SettingsManager(filename);
+    try {
+        await manager.writeSettings(await manager.readSettings());
+        let resolveReceived;
+        const received = new Promise(resolve => { resolveReceived = resolve; });
+        manager.once('settings-external-updated', resolveReceived);
+        manager.startExternalWatcher();
+        const current = await manager.readSettings({ fresh: true });
+        await fs.writeFile(filename, JSON.stringify({ ...current, userName: 'External' }));
+        const payload = await Promise.race([received, new Promise(resolve => setTimeout(() => resolve(null), 500))]);
+        assert.equal(payload?.settings?.userName, 'External');
+    } finally {
+        manager.stopExternalWatcher();
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});

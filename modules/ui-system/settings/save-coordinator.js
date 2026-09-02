@@ -155,8 +155,12 @@ function createCoordinator(form) {
         async reloadExternal() {
             if (disposed) return snapshot();
             const settings = await form.ownerDocument?.defaultView?.chatAPI?.loadSettings?.();
-            if (settings && form.dataset.vcpSettingsDirty !== 'true') {
-                form.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings, source: 'settings-reload' } }));
+            if (settings) {
+                const revision = settings.__vcpSettingsRevision;
+                const externalSettings = { ...settings };
+                delete externalSettings.__vcpSettingsRevision;
+                delete form.dataset.vcpSettingsDirty;
+                form.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings: externalSettings, revision, source: 'settings-reload' } }));
                 reportState('saved', { dirty: false });
             }
             return snapshot();
