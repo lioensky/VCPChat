@@ -73,19 +73,27 @@ export function createSettingsUiService(input) {
             },
         },
         save: {
-            async execute(patch) {
+            async execute(patch, options = {}) {
                 if (disposed)
-                    return Object.freeze({ success: false, error: '设置服务已销毁' });
+                    return Object.freeze({ success: false, status: 'cancelled', error: '设置服务已销毁' });
                 const generation = ++saveGeneration;
-                const result = await input.save(Object.freeze({ ...patch }));
-                if (!result?.success)
-                    return Object.freeze({ success: false, error: result?.error || '设置保存失败' });
+                const result = await input.save(Object.freeze({ ...patch }), options);
+                const status = result?.status || (result?.success ? 'success' : 'failed');
+                if (!result?.success) {
+                    const failure = { success: false, error: result?.error || '设置保存失败' };
+                    if (status) failure.status = status;
+                    if (result?.code !== undefined) failure.code = result.code;
+                    if (result?.operationId !== undefined) failure.operationId = result.operationId;
+                    if (result?.currentRevision !== undefined) failure.currentRevision = result.currentRevision;
+                    if (result?.settings !== undefined) failure.settings = result.settings;
+                    return Object.freeze(failure);
+                }
                 // A newer save owns publication rights. The older IPC result
                 // may still settle, but must not roll the UI snapshot back.
                 if (disposed || generation !== saveGeneration)
-                    return Object.freeze({ success: true });
+                    return Object.freeze({ success: false, status: disposed ? 'cancelled' : 'stale', ...(result?.operationId === undefined ? {} : { operationId: result.operationId }), ...(result?.currentRevision === undefined ? {} : { currentRevision: result.currentRevision }) });
                 publish({ ...state, ...patch }, 'settings-save');
-                return Object.freeze({ success: true });
+                return Object.freeze({ success: true, status: 'success', ...(result?.operationId === undefined ? {} : { operationId: result.operationId }), ...(result?.currentRevision === undefined ? {} : { currentRevision: result.currentRevision }) });
             },
         },
     };

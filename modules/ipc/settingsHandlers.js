@@ -13,7 +13,13 @@ const themeHandlers = require('./themeHandlers');
  * @param {object} paths.settingsManager - The AppSettingsManager instance.
  */
 function initialize(paths) {
-    const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager } = paths;
+    const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager, mainWindow } = paths;
+    settingsManager?.startExternalWatcher?.();
+    settingsManager?.on?.('settings-external-updated', payload => {
+        if (!mainWindow?.isDestroyed?.() && !mainWindow?.webContents?.isDestroyed?.()) {
+            mainWindow.webContents.send('settings-external-updated', payload);
+        }
+    });
     const APP_DATA_DIR = path.dirname(SETTINGS_FILE);
     const LEGACY_USER_AVATAR_FILE = path.join(APP_DATA_DIR, 'user_avatar.png');
     const WEBINDEX_MODEL_FILE = path.join(APP_DATA_DIR, 'webindexmodel.json');
@@ -98,6 +104,10 @@ function initialize(paths) {
     ipcMain.handle('load-settings', async () => {
         try {
             const settings = await settingsManager.readSettings();
+            // Revision must describe only durable settings.json content. The
+            // avatar URL below is a transient file URL with a cache-busting
+            // timestamp and must never participate in CAS identity.
+            const durableRevision = settingsManager.getRevision(settings);
             
             // Check for user avatar
             const avatarFile = await fs.pathExists(USER_AVATAR_FILE)
@@ -109,6 +119,7 @@ function initialize(paths) {
                 settings.userAvatarUrl = null; // Or a default path
             }
             
+            settings.__vcpSettingsRevision = durableRevision;
             return settings;
         } catch (error) {
             console.error('加载设置失败:', error);
@@ -124,14 +135,15 @@ function initialize(paths) {
 
     ipcMain.handle('save-settings', async (event, settings) => {
         try {
+            const payload = settings || {};
+            const operationId = payload.operationId || payload.__vcpSettingsOperationId;
+            const expectedRevision = payload.expectedRevision;
+            const patch = payload.__vcpSettingsPatch;
+            const ops = payload.__vcpSettingsOps;
             // User avatar URL is handled by 'save-user-avatar', remove it from general settings to avoid saving a file path
             // Also protect order fields from being accidentally overwritten by stale renderer snapshots.
-            const {
-                userAvatarUrl,
-                combinedItemOrder,
-                agentOrder,
-                ...settingsToSave
-            } = settings;
+            const source = patch && typeof patch === 'object' ? patch : payload;
+            const { userAvatarUrl, combinedItemOrder, agentOrder, __vcpSettingsPatch, __vcpSettingsOps, __vcpSettingsOperationId, expectedRevision: ignoredRevision, operationId: ignoredOperationId, ...settingsToSave } = source;
 
             // 确保 flowlockContinueDelay 是一个有效的数字
             if ('flowlockContinueDelay' in settingsToSave
@@ -139,11 +151,11 @@ function initialize(paths) {
                 settingsToSave.flowlockContinueDelay = 5; // 如果无效，则设置为默认值
             }
 
-            const result = await settingsManager.updateSettings(settingsToSave);
+            const result = await settingsManager.updateSettings(ops ? { __vcpSettingsOps: ops } : settingsToSave, { expectedRevision, operationId });
             return result;
         } catch (error) {
             console.error('保存设置失败:', error);
-            return { success: false, error: error.message };
+            return { success: false, status: error?.code === 'SETTINGS_CONFLICT' ? 'conflict' : 'failed', code: error?.code, expectedRevision: error?.expectedRevision, currentRevision: error?.currentRevision, operationId: settings?.operationId || settings?.__vcpSettingsOperationId, error: error.message };
         }
     });
 

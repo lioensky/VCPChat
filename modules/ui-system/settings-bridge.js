@@ -21,7 +21,7 @@ import { mountAppearanceToggles } from './settings/appearance-toggles.js';
 import { mountHomeTaglineInput } from './settings/home-controls.js';
 import { mountIdentityColorPairs } from './settings/identity-controls.js';
 import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
-import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput } from './settings/global-input-upgrades.js';
+import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput, mountGlobalTextInputs } from './settings/global-input-upgrades.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
 import { enhanceForm, mountTypedTopicSummaryModelPicker, cleanupDisconnectedAgentModelPickers, releaseAllAgentModelPickers } from './agent-settings-bridge.js';
@@ -200,12 +200,38 @@ const GLOBAL_CATEGORY_ICONS = Object.freeze({
 
 // Global settings modal: control enhancement, autosave status, and the
 // source-equivalent SettingsRoot shell.
+function mountSettingsConflictActions(root, form) {
+    if (!root || !form || root.querySelector('[data-vcp-settings-conflict-actions]')) return;
+    const bar = document.createElement('div');
+    bar.dataset.vcpSettingsConflictActions = 'true';
+    bar.hidden = true;
+    bar.setAttribute('role', 'alert');
+    bar.innerHTML = '<span>设置文件已被外部修改</span><button type="button" data-action="reload">重新加载外部设置</button><button type="button" data-action="retry">保留草稿并重试</button>';
+    const content = root.querySelector('.vcp-settings-source-content') || root;
+    content.prepend(bar);
+    const sync = () => { bar.hidden = form.dataset.vcpSettingsConflict !== 'true'; };
+    const onClick = event => {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const coordinator = getSaveCoordinator(form);
+        const work = action === 'reload' ? coordinator?.reloadExternal?.() : coordinator?.retryDraft?.();
+        Promise.resolve(work).then(() => { if (action === 'reload') delete form.dataset.vcpSettingsConflict; sync(); }).catch(() => sync());
+    };
+    form.addEventListener('vcp-settings-save-result', sync);
+    root.ownerDocument.defaultView?.addEventListener('global-settings-updated', sync);
+    root.ownerDocument.defaultView?.addEventListener('settings-conflict', sync);
+    form.addEventListener('click', onClick);
+    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); root.ownerDocument.defaultView?.removeEventListener('global-settings-updated', sync); root.ownerDocument.defaultView?.removeEventListener('settings-conflict', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
+    sync();
+}
+
 function enhanceGlobalSettings(root, form) {
     // sticky 失败标记在位：classic 层接管，本生命周期内不再投影。
     if (root.dataset.vcpSurfaceProjectionFailed === 'true') return;
     // schema 渲染面（exp/settings-schema）：在整条投影管线之前把已迁移分区
     // 替换为 schema 编译产物，管线随后按原样投影；开关关闭时此调用为空操作。
     applySchemaSurface(form);
+    mountSettingsConflictActions(root, form);
     // The mount sequence is declared, not positional: every implicit "this
     // pass must own its nodes before X sees them" constraint is an explicit
     // `before` edge, and runSettingsPipeline resolves the same historical
@@ -235,7 +261,11 @@ function enhanceGlobalSettings(root, form) {
             name: 'global-typed-primitives',
             run: () => {
                 mountHomeTaglineInput(form, api(), scope());
+                mountGlobalTextInputs(form, api(), scope());
                 mountGlobalChoices(form, api(), scope());
+                // Compatibility projection for dynamically supplied selects;
+                // schema-emitted choice rows are skipped by the projection.
+                selectProjection.mount(form);
                 mountAppearanceRanges(form, api(), scope());
                 mountAppearanceToggles(form, api(), scope());
                 mountIdentityColorPairs(form, api(), scope(), (message, kind) => window.uiHelperFunctions?.showToastNotification?.(message, kind));
@@ -356,17 +386,20 @@ function flushSettingsAutosave() {
     // window where the pipeline has not claimed the form yet.
     const coordinator = getSaveCoordinator(document.getElementById('globalSettingsForm'));
     if (coordinator) {
-        coordinator.flush();
-        return;
+        return coordinator.flush();
     }
-    flushLegacyAutosave();
-    flushTypedOwners();
+    return Promise.all([flushLegacyAutosave(), flushTypedOwners()]);
 }
 
-function teardownSettingsAutosave() {
+async function teardownSettingsAutosave() {
+    const coordinator = getSaveCoordinator(document.getElementById('globalSettingsForm'));
+    if (coordinator) {
+        const snapshot = await coordinator.dispose();
+        if (snapshot?.status === 'error' || snapshot?.status === 'conflict') return snapshot;
+    }
     teardownLegacyAutosave();
     teardownTypedOwners();
-    getSaveCoordinator(document.getElementById('globalSettingsForm'))?.dispose();
+    return { status: 'idle' };
 }
 
 function teardownUiuxDisclosures() {
@@ -778,21 +811,25 @@ function scheduleRefresh() {
     queueMicrotask(refresh);
 }
 
-function teardown() {
+async function teardown() {
+    // Drain settings writes before disposing typed owners. Their cleanup
+    // intentionally clears timers/pending patches, so disposing the scope
+    // first would make the close path lose the last draft before flush.
+    const autosaveResult = await teardownSettingsAutosave();
+    if (autosaveResult?.status === 'error' || autosaveResult?.status === 'conflict') {
+        // Keep the surface and its retained draft alive so the user can retry
+        // or reload after a failed/conflicting close flush.
+        return autosaveResult;
+    }
     const scope = takePresentationScope();
-    // Retract enhanced controller identity synchronously before a rapid
-    // A rapid surface round-trip can schedule another refresh.  The Scope
-    // disposal below still owns error isolation and all non-controller
-    // resources, but must not leave stale VCPUI proxies visible to the next
-    // presentation generation.
+    // Retract enhanced controller identity only after durable settings work
+    // has quiesced; a failed close must leave the surface retryable.
     releaseAllControllers();
     if (scope) {
-        void scope.dispose('settings-presentation-teardown').catch(error => {
-            console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error);
-        });
+        try { await scope.dispose('settings-presentation-teardown'); }
+        catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }
     }
     releaseAllAgentModelPickers();
-    teardownSettingsAutosave();
     teardownUiuxDisclosures();
     selectProjection.teardown();
     [...shellRoots].forEach(root => {
@@ -854,6 +891,12 @@ scheduleRefresh();
 window.VCPUISettingsBridge = Object.freeze({
     refresh: scheduleRefresh,
     flush: flushSettingsAutosave,
+    reloadExternal() {
+        return getSaveCoordinator(document.getElementById('globalSettingsForm'))?.reloadExternal?.();
+    },
+    retryDraft() {
+        return getSaveCoordinator(document.getElementById('globalSettingsForm'))?.retryDraft?.();
+    },
     flushForum: flushTypedForumFields,
     addNetworkPathInput(path = '') {
         if (isPresentationDestroyed()) return false;
@@ -879,15 +922,25 @@ window.VCPUISettingsBridge = Object.freeze({
     },
     destroy() {
         if (destroyPromise) return destroyPromise;
-        markPresentationDestroyed();
-        disposeTypedSettings();
         if (!bridgeScope) {
-            document.removeEventListener('modal-visibility-changed', handleModalVisibility);
-            document.removeEventListener('modal-ready', handleModalVisibility);
-            document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+            // Keep typed result/external listeners alive until the coordinator
+            // reaches quiescence. A failed/conflicting drain must leave the
+            // retained draft and retry actions usable.
         }
-        teardown();
-        destroyPromise = bridgeScope?.dispose('settings-bridge-destroyed') || Promise.resolve();
+        destroyPromise = teardown().then(result => {
+            if (result?.status === 'error' || result?.status === 'conflict') {
+                destroyPromise = null;
+                return result;
+            }
+            markPresentationDestroyed();
+            disposeTypedSettings();
+            if (!bridgeScope) {
+                document.removeEventListener('modal-visibility-changed', handleModalVisibility);
+                document.removeEventListener('modal-ready', handleModalVisibility);
+                document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+            }
+            return bridgeScope?.dispose('settings-bridge-destroyed') || result;
+        });
         return destroyPromise;
     },
     get enhancedCount() {

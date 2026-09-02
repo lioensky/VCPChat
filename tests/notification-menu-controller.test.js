@@ -44,10 +44,10 @@ test('notification menu owns keyboard focus, commands and Escape cleanup', async
     assert.equal(controller.mount(), true);
     const trigger = dom.window.document.getElementById('nextUiNotificationMenuBtn');
     controller.open();
-    assert.equal(dom.window.document.activeElement.id, 'nextUiNotificationForum');
-    dom.window.document.getElementById('nextUiNotificationForum').click();
+    assert.equal(dom.window.document.activeElement.id, 'nextUiNotificationLog');
+    dom.window.document.getElementById('nextUiNotificationLog').click();
     await Promise.resolve();
-    assert.deepEqual(calls, ['forum']);
+    assert.deepEqual(calls, ['log']);
     assert.equal(trigger.getAttribute('aria-expanded'), 'false');
     trigger.click();
     const filter = dom.window.document.getElementById('nextUiNotificationFilterToggle');

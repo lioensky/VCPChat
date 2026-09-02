@@ -397,7 +397,11 @@ export const chatManager = (() => {
             };
             const operation = lastOpenSaveQueue
                 .catch(() => {})
-                .then(() => electronAPI.saveSettings(settingsToSave));
+                .then(() => electronAPI.saveSettings({ __vcpSettingsOps: [
+                    { op: 'set', path: ['lastOpenItemId'], value: currentSelectedItem.id },
+                    { op: 'set', path: ['lastOpenItemType'], value: currentSelectedItem.type },
+                    { op: 'set', path: ['lastOpenTopicId'], value: currentTopicId },
+                ] }));
             lastOpenSaveQueue = operation;
             return operation.catch(err => {
                 console.error('[ChatManager] Failed to save last open state:', err);

@@ -251,6 +251,11 @@
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
+    const toOps = (value, prefix = []) => Object.entries(value || {}).flatMap(([key, next]) => {
+        const path = [...prefix, key];
+        return next && typeof next === 'object' && !Array.isArray(next) ? toOps(next, path) : [{ op: 'set', path, value: next }];
+    });
+    const saveSettingsPatch = patch => api()?.saveSettings?.({ __vcpSettingsOps: toOps(patch) });
     function normalizeHomeTaglineText(value, fallback = DEFAULT_HOME_TAGLINE) {
         const normalized = typeof value === 'string' ? value.trim().slice(0, 120) : '';
         return normalized || fallback;
@@ -1127,7 +1132,7 @@
         } : null;
         let settingsPersisted = false;
         try {
-            const result = await api()?.saveSettings?.({
+            const result = await saveSettingsPatch({
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
@@ -1183,7 +1188,7 @@
         } catch (error) {
             if (settingsPersisted && persistedSnapshot) {
                 try {
-                    const rollbackResult = await api()?.saveSettings?.(persistedSnapshot);
+                    const rollbackResult = await saveSettingsPatch(persistedSnapshot);
                     if (!rollbackResult?.success) throw new Error(rollbackResult?.error || '设置回写失败');
                 } catch (rollbackError) {
                     console.error('[AppearanceStudio] Failed to restore persisted settings:', rollbackError);
