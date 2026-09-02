@@ -525,36 +525,12 @@
             }));
             return true;
         };
-        // Global Settings owns asynchronous durable work. Close is therefore a
-        // barrier, not a fire-and-forget class toggle: a failed/conflicting
-        // flush keeps the draft and leaves the modal actionable.
         if (modalId === 'globalSettingsModal' && modalElement.classList.contains('active')) {
-            const form = modalElement.querySelector('#globalSettingsForm');
             const coordinator = window.VCPUISettingsBridge?.flush;
-            const coordinatorSnapshot = window.VCPUISettingsBridge?.getSnapshot?.();
-            const dirty = form?.dataset.vcpSettingsDirty === 'true'
-                || form?.dataset.vcpAutosaveState === 'saving'
-                || ['dirty', 'saving', 'error', 'conflict'].includes(coordinatorSnapshot?.status)
-                || coordinatorSnapshot?.pendingOps?.length > 0;
-            if (coordinator && dirty) {
-                modalElement.dataset.vcpSettingsClosePending = 'true';
-                const closePromise = Promise.resolve().then(() => coordinator()).then(snapshot => {
-                    delete modalElement.dataset.vcpSettingsClosePending;
-                    if (snapshot?.status === 'error' || snapshot?.status === 'conflict') {
-                        modalElement.classList.add('active');
-                        return false;
-                    }
-                    return finishClose();
-                }, error => {
-                    delete modalElement.dataset.vcpSettingsClosePending;
-                    modalElement.classList.add('active');
+            if (typeof coordinator === 'function') {
+                Promise.resolve().then(() => coordinator()).catch(error => {
                     console.warn('[UI Helper] Settings close flush failed:', error);
-                    return false;
-                }).finally(() => {
-                    if (modalClosePromises.get(modalElement) === closePromise) modalClosePromises.delete(modalElement);
                 });
-                modalClosePromises.set(modalElement, closePromise);
-                return closePromise;
             }
         }
         return finishClose();
