@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 1,
+  "status": "manual_observation_required",
+  "startedAt": "2026-09-02T11:52:42.375Z",
+  "endedAt": "2026-09-02T11:53:18.429Z",
+  "requestedMinutes": 0.02,
+  "intervalSeconds": 0.01,
+  "stopReason": "duration_elapsed",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "hostname": "Mac.lan",
+    "node": "v26.7.0"
+  },
+  "checklist": [
+    {
+      "item": "main chat send/stream/cancel/retry",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "history and topic switching",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "attachments",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "theme",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "notifications and desktop push",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "VoiceChat",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "Rust Assistant",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "renderer reload/crash recovery",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "Classic child pages and plugin protocol",
+      "observed": null,
+      "notes": ""
+    },
+    {
+      "item": "observe detached roots/listeners/heap/errors throughout the session",
+      "observed": null,
+      "notes": ""
+    }
+  ],
+  "checkpoints": [
+    {
+      "label": "baseline",
+      "at": "2026-09-02T11:53:12.492Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12540408,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-1",
+      "at": "2026-09-02T11:53:12.563Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12578264,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-2",
+      "at": "2026-09-02T11:53:12.602Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12608220,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-3",
+      "at": "2026-09-02T11:53:12.623Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12661800,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-4",
+      "at": "2026-09-02T11:53:12.678Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12662812,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-5",
+      "at": "2026-09-02T11:53:12.715Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12707144,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-6",
+      "at": "2026-09-02T11:53:12.745Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12729816,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-7",
+      "at": "2026-09-02T11:53:12.765Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12752488,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-8",
+      "at": "2026-09-02T11:53:12.791Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12775220,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-9",
+      "at": "2026-09-02T11:53:12.822Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12776232,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-10",
+      "at": "2026-09-02T11:53:12.871Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12798936,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-11",
+      "at": "2026-09-02T11:53:12.897Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12821620,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-12",
+      "at": "2026-09-02T11:53:12.925Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12874224,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-13",
+      "at": "2026-09-02T11:53:13.038Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12875236,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-14",
+      "at": "2026-09-02T11:53:13.075Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12919552,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-15",
+      "at": "2026-09-02T11:53:13.113Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12941996,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-16",
+      "at": "2026-09-02T11:53:13.146Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12964880,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-17",
+      "at": "2026-09-02T11:53:13.181Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12987544,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-18",
+      "at": "2026-09-02T11:53:13.225Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 12988556,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-19",
+      "at": "2026-09-02T11:53:13.250Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13011220,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-20",
+      "at": "2026-09-02T11:53:13.277Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13055536,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-21",
+      "at": "2026-09-02T11:53:13.312Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13078200,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-22",
+      "at": "2026-09-02T11:53:13.347Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13100944,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-23",
+      "at": "2026-09-02T11:53:13.462Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13101956,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-24",
+      "at": "2026-09-02T11:53:13.493Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13146052,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-25",
+      "at": "2026-09-02T11:53:13.546Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13168936,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-26",
+      "at": "2026-09-02T11:53:13.576Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13170012,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-27",
+      "at": "2026-09-02T11:53:13.599Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13192812,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-28",
+      "at": "2026-09-02T11:53:13.626Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13236744,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-29",
+      "at": "2026-09-02T11:53:13.644Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13237976,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "sample-30",
+      "at": "2026-09-02T11:53:13.695Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13282292,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    },
+    {
+      "label": "final",
+      "at": "2026-09-02T11:53:13.716Z",
+      "state": {
+        "ready": "true",
+        "uiMode": "next",
+        "connectedElements": 1136,
+        "listeners": null,
+        "lifecycleActiveResources": 225,
+        "lifecycleActiveScopes": 16,
+        "detachedRoots": 0,
+        "bodyText": 240
+      },
+      "heapUsed": 13308848,
+      "heapTotal": 23740416,
+      "rendererProcesses": 2,
+      "errors": []
+    }
+  ],
+  "electronStderrTail": "\nDevTools listening on ws://127.0.0.1:60646/devtools/browser/a1147f89-7a82-4dee-967f-fdf0fb50ac5b\n[VCP-CDS] Shadow service failed to start; existing chat features remain active: ChatDataServiceError: VCP-CDS binary was not found at /Users/asahi/Documents/Codex/vcpchat-settings-autosave-coordinator/modules/services/chatDataService/bin/darwin-arm64/vcp_chat_data_service.\n    at ChatDataServiceLifecycle.start (/Users/asahi/Documents/Codex/vcpchat-settings-autosave-coordinator/modules/services/chatDataService/lifecycle.js:61:19)\n    at ChatDataServiceFacade.startShadowMode (/Users/asahi/Documents/Codex/vcpchat-settings-autosave-coordinator/modules/services/chatDataService/index.js:21:41)\n    at /Users/asahi/Documents/Codex/vcpchat-settings-autosave-coordinator/main.js:1090:38 {\n  code: 'BINARY_NOT_FOUND',\n  status: null,\n  retryable: false,\n  cause: undefined\n}\n[Main] Failed to fetch and cache models: [TypeError: fetch failed] {\n  [cause]: Error: bad port\n      at makeNetworkError (node:internal/deps/undici/undici:11806:35)\n      at mainFetch (node:internal/deps/undici/undici:13189:22)\n      at fetching (node:internal/deps/undici/undici:13176:7)\n      at fetch (node:internal/deps/undici/undici:13040:20)\n      at fetch (node:internal/deps/undici/undici:17708:10)\n      at fetch (node:internal/bootstrap/web/exposed-window-or-worker:83:12)\n      at fetchAndCacheModels (/Users/asahi/Documents/Codex/vcpchat-settings-autosave-coordinator/main.js:1141:40)\n}\n[Music] ========== INITIALIZE CALLED ==========\n[Music] About to call registerIpcHandlers...\n[Music] IPC handlers registered.\n[EmoticonFixer] Emoji library degraded: missing fileKey in settings.json\n[EmoticonFixer] Emoji library degraded: missing fileKey in settings.json\n[44304:0902/135313.872117:ERROR:base/process/process_mac.cc:53] task_policy_set TASK_CATEGORY_POLICY: (os/kern) invalid argument (4)\n[44304:0902/135313.872273:ERROR:base/process/process_mac.cc:98] task_policy_set TASK_SUPPRESSION_POLICY: (os/kern) invalid argument (4)\n",
+  "errors": [],
+  "operatorNote": "This artifact is an observation log, not a pass result. A human must review every checklist item and record pass/fail separately."
+}
