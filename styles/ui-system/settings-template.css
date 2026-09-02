@@ -701,21 +701,23 @@
 /* Homepage visual copy is a self-contained disclosure, matching the other
    settings groups while keeping its three canonical fields in the form. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure {
-    margin: 18px 0 0;
+    margin: 8px 0 16px;
+    padding: 4px 20px 8px;
     border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
-    border-radius: var(--vcp-ui-radius-md, 8px);
-    background: var(--vcp-ui-bg-0, #fff);
+    border-radius: 12px;
+    background: #fff;
     overflow: hidden;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-summary {
-    min-height: 54px;
+    min-height: 68px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 16px;
+    padding: 14px 0 10px;
     color: var(--vcp-ui-text-0);
-    background: var(--vcp-ui-bg-0, #fff);
+    background: #fff;
+    border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
     cursor: pointer;
     list-style: none;
 }
@@ -727,7 +729,7 @@
     gap: 3px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-copy strong { font-size: var(--vcp-ui-font-body, 14px); }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-copy small { color: var(--vcp-ui-text-3); font-size: var(--vcp-ui-font-micro, 11px); }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-copy small { color: var(--vcp-ui-text-3); font-size: var(--vcp-ui-font-caption, 12px); line-height: var(--vcp-ui-line-body, 20px); }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-chevron {
     flex: 0 0 auto;
     color: var(--vcp-ui-text-3);
@@ -736,8 +738,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure[open] .vcp-settings-disclosure-chevron { transform: rotate(180deg); }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-summary:focus-visible { outline: 2px solid var(--vcp-ui-focus-ring); outline-offset: -2px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-content {
-    padding: 0 16px 8px;
-    border-top: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    padding: 0 0 8px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-content > .vcp-uiux-appearance-row:first-child { border-top: 0; }
 
