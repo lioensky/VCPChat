@@ -17,7 +17,7 @@
 
 | 场景 | 期望 | 证据状态 |
 |---|---|---|
-| typed A/B 快速连续编辑 | A、B 均持久化 | path operation 与 serialized queue 通过；真实 DOM owner 仍需 Electron 证据 |
+| typed A/B 快速连续编辑 | A、B 均持久化 | typed owner 回归测试通过：旧调用返回 `stale` 但 durable commit 推进 revision，后续 patch 使用新 revision；真实 DOM owner 仍需 Electron 证据 |
 | typed 与 legacy 并发 | 未触碰字段不被覆盖 | 设置页 legacy、filter/chat/ui/event/middle-click/appearance 调用均转 path ops；外部插件保留兼容快照 |
 | in-flight 追加 patch 后首个失败 | 失败 batch retained，后续 flush 可重试 | retained batch 代码已补；owner 时序仍需 Electron 证据 |
 | 旧 operation 迟到结果 | 不改变当前 draft/status | coordinator matching-terminal test 通过 |
@@ -37,7 +37,7 @@
 
 - `node --check`：相关 JS 通过。
 - `git diff --check`：通过。
-- focused settings/UI tests：当前组合 15/15 + 33/33 通过；coordinator 新增 durable-state/release tests 通过。
+- focused settings/UI tests：coordinator 12/12、整体设置/UI 55/55 通过；新增 typed A/B durable-revision 回归覆盖旧结果不丢提交。
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
 - `npm run check:uiux`：通过（别名指向 artifact gate）。
 - `npm run test:settings-wa-electron`：通过；包含 2 个 JSDOM lifecycle contracts，以及真实 Electron CDP gate 的 8 个场景（shell/nav/search、深浅主题截图、IPC 保存、reload 恢复）。

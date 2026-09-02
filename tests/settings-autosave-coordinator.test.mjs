@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { JSDOM } from 'jsdom';
 
 const { claimSaveCoordinator } = await import('../modules/ui-system/settings/save-coordinator.js');
 const SettingsManager = (await import('../modules/utils/appSettingsManager.js')).default;
@@ -152,6 +153,53 @@ test('coordinator savePatch is the operation-aware typed transport', async () =>
     assert.equal(calls[0].expectedRevision, 'r1');
     assert.equal(coordinator.getSnapshot().status, 'idle');
     await coordinator.dispose();
+});
+
+test('typed rapid edits advance the durable revision before stale publication', async () => {
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const previousCustomEvent = globalThis.CustomEvent;
+    const dom = new JSDOM('<!doctype html><form id="globalSettingsForm"></form>', { url: 'http://localhost' });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.CustomEvent = dom.window.CustomEvent;
+    const adapter = await import('../modules/uiux/generated/adapters/settings.js');
+    const pending = [];
+    window.VCPUIUX = { createSettingsUiService: adapter.createSettingsUiService };
+    window.chatAPI = {
+        saveSettings(payload) {
+            const request = { payload, resolve: null };
+            pending.push(request);
+            return new Promise(resolve => { request.resolve = resolve; });
+        },
+        onSettingsExternalUpdated() { return () => {}; },
+    };
+    const form = document.getElementById('globalSettingsForm');
+    claimSaveCoordinator(form);
+    const owners = await import(`../modules/ui-system/typed-field-owners.js?rapid=${Date.now()}`);
+    const service = owners.ensureTypedSettingsService();
+    try {
+        const first = service.save.execute({ userName: 'A' });
+        const second = service.save.execute({ continueWritingPrompt: 'B' });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(pending.length, 1, 'first typed write starts before the second queued edit');
+        pending[0].resolve({ success: true, status: 'success', currentRevision: 'r1', settings: { userName: 'A' } });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(pending.length, 2, 'second typed write is scheduled after the first settles');
+        assert.equal(pending[1].payload.expectedRevision, 'r1', 'queued edit uses the first durable revision');
+        pending[1].resolve({ success: true, status: 'success', currentRevision: 'r2', settings: { userName: 'A', continueWritingPrompt: 'B' } });
+        assert.equal((await first).status, 'stale', 'superseded caller is stale but its durable commit is retained');
+        assert.equal((await second).status, 'success');
+        const snapshot = claimSaveCoordinator(form).getSnapshot();
+        assert.equal(snapshot.durableRevision, 'r2');
+        assert.equal(snapshot.pendingOps.length, 0, 'both durable operations leave no stranded pending patch');
+    } finally {
+        await service.dispose?.();
+        dom.window.close();
+        globalThis.window = previousWindow;
+        globalThis.document = previousDocument;
+        globalThis.CustomEvent = previousCustomEvent;
+    }
 });
 
 test('coordinator operation resolves only from its matching terminal result', async () => {

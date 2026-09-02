@@ -210,18 +210,23 @@ function ensureTypedSettingsService() {
                         operationId,
                     });
                 const status = result?.status || (result?.success ? 'success' : 'failed');
-                if (status === 'success' && generation === typedSettingsSaveGeneration) {
+                if (status === 'success') {
+                    // A typed save callback is serialized through
+                    // `typedSettingsSaveChain`.  An edit that arrives while
+                    // this request is in flight advances the generation, but
+                    // that does not make this durable commit stale: the next
+                    // queued request must observe its new revision.  Always
+                    // advance the committed base and coordinator bookkeeping;
+                    // only the caller-facing publication is stale when a
+                    // newer local generation already exists.
                     typedSettingsRevision = result?.currentRevision ?? typedSettingsRevision;
                     typedSettingsBase = Object.freeze({ ...(result?.settings || typedSettingsBase), ...(patch || {}) });
                     typedSettingsConflict = null;
-                    // Commit only the durable base. Keep any newer local draft
-                    // that arrived while this request was in flight; the
-                    // adapter already published the merged local state.
                     getSaveCoordinator(document.getElementById('globalSettingsForm'))?.recordCommit?.(result, patch, patchToPathOps(patch));
+                    if (generation !== typedSettingsSaveGeneration) {
+                        return { success: false, status: 'stale', operationId, currentRevision: typedSettingsRevision };
+                    }
                     return { success: true, status: 'success', operationId, currentRevision: typedSettingsRevision };
-                }
-                if (status === 'success' && generation !== typedSettingsSaveGeneration) {
-                    return { success: false, status: 'stale', operationId, currentRevision: result?.currentRevision };
                 }
                 return { success: false, status, operationId, code: result?.code, error: result?.error || '设置保存失败', currentRevision: result?.currentRevision };
             };

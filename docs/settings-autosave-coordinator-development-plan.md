@@ -42,6 +42,7 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 - 已补 coordinator path-operation 与 manager regression test。
 - 已接入主进程 settings watcher、preload subscription、renderer conflict 标记，以及 reload/keep-draft 操作条。
 - Prompt Manager and other external callers still use the compatibility complete-snapshot API by design; they are outside this Global Settings migration. Packaged Electron/cross-platform evidence remains an environment gate.
+- 对抗性复核修复 typed 快速连续编辑竞态：串行队列中较早请求即使对调用方返回 `stale`，其 durable success 仍推进 base/revision 并从 coordinator 移除已提交 ops，后续请求不再因旧 revision 产生伪冲突。
 
 全量完成追踪（保持 active）：
 
