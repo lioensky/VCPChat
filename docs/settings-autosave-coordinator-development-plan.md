@@ -1,6 +1,6 @@
 # Settings Autosave Coordinator Development Plan
 
-Status: implementation pass completed; acceptance remains open for external-conflict UX and Electron evidence
+Status: active full-completion goal; core implementation pass landed, delivery gates remain open
 
 Baseline: `exp/settings-schema` at `6d70bee6`; implementation branch: `feat/settings-autosave-coordinator`.
 
@@ -42,6 +42,14 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 - 已补 coordinator path-operation 与 manager regression test。
 - 已接入主进程 settings watcher、preload subscription、renderer conflict 标记，以及 reload/keep-draft 操作条。
 - 尚未完成所有直接 `chatAPI.saveSettings()` 调用迁移、真实 DOM owner 时序覆盖及 packaged Electron/跨平台证据。
+
+全量完成追踪（保持 active）：
+
+1. 将 `filterManager`、`chatManager`、`uiManager`、`event-listeners`、`appearance-studio` 等直接 `saveSettings` 调用迁移到统一 patch/revision capability，或明确证明其不触碰 Global Settings surface。
+2. 将 renderer typed service 拆分为 committed base、local draft、pending ops 三层，并在 dirty/conflict 时禁止外部快照覆盖控件。
+3. 增加 Electron close/reopen/reload/timeout/conflict 操作序列，覆盖真实 preload、IPC、main manager 和 modal teardown。
+4. 在 macOS 当前环境完成 packaged smoke；补充 Windows runner 证据、GPU/DPI 几何和人工 soak 记录。
+5. 修复或隔离 `test:ui-system` 的既有 global input primitive fixture 失败，确保 settings gate 可作为交付门禁。
 
 Revision tokens are opaque content-derived values exposed only through the save protocol. This keeps the existing `settings.json` user field shape unchanged while still allowing CAS across renderer windows and process restarts.
 
