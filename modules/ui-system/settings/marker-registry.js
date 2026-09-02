@@ -23,8 +23,10 @@ const MARKERS = Object.freeze({
     vcpSchemaRendered: { owner: 'settings/schema-surface.js', cleanup: 'persistent' },
 
     // uiux primitives — one re-entrancy marker per projection family
+    // （vcpUiuxToggleMounted 自 M5-c pass1 起只剩 agent 设置面挂载方使用：
+    // 全局设置 schema 面的开关行 holder 已由渲染器直出。）
     vcpUiuxInputPrimitive: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
-    vcpUiuxToggleMounted: { owner: 'settings/bridge-shared.js', cleanup: 'manual-retract' },
+    vcpUiuxToggleMounted: { owner: 'agent-settings-bridge.js via settings/bridge-shared.js', cleanup: 'manual-retract' },
     vcpUiuxClose: { owner: 'settings-bridge.js', cleanup: 'manual-retract' },
     settingPrimitive: { owner: 'settings-bridge.js + agent-settings-bridge.js + settings/canonical-rows.js', cleanup: 'manual-retract' },
     vcpSelectRebuilding: { owner: 'settings/select-projection.js', cleanup: 'scope-owned' },

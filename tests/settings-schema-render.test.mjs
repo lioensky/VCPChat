@@ -385,6 +385,24 @@ test('canonical 行直出结构完备，投影 pass 对已达标记空转（M5-b
     assert.equal(form.dataset.vcpCanonicalRowsMounted, 'true');
 });
 
+test('开关行直出 Toggle 原语 holder（M5-c pass1：uiux-switches 退役）', () => {
+    const { form } = renderIntoForm(quickActionsSection);
+    const input = form.querySelector('#enableMiddleClickQuickAction');
+    const wrap = input.closest('span.vcp-uiux-toggle');
+    assert.ok(wrap, '开关 input 应被 vcp-uiux-toggle holder 直出包裹');
+    assert.equal(wrap.parentElement.className, 'switch', 'holder 挂在 label.switch 下（mountToggle 产物同构）');
+    const slider = wrap.parentElement.querySelector('span.slider.round');
+    assert.ok(slider, '旧 slider 结构保留（结构映射契约）');
+    assert.equal(slider.style.display, 'none', '旧 slider 内联隐藏（mountToggle 产物同构）');
+    // typed toggle 收编字段（主页视觉双开关）保持原语就绪裸结构，
+    // 运行时由 appearance-toggles 经真实 mountToggle 收编并注入 Toggle 样式表。
+    const appearanceForm = renderIntoForm(appearanceSettingsSection).form;
+    const brandInput = appearanceForm.querySelector('#showHomeVisualBrand');
+    assert.ok(brandInput, '主页视觉开关存在');
+    assert.equal(brandInput.closest('span.vcp-uiux-toggle'), null, 'toggle 收编字段不静态包裹');
+    assert.equal(brandInput.parentElement.className, 'switch', '收编字段保持 label.switch 直接子级');
+});
+
 test('store 快照：多类型现值迁移不丢失', () => {
     const { form, host } = renderIntoForm(quickActionsSection);
     form.querySelector('#continueWritingPrompt').value = '自定义提示词';

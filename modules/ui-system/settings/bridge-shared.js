@@ -68,6 +68,8 @@ function enhance(name, element, options = {}) {
 // visual toggles keep their own mounts, and the legacy VCPUI native-kernel
 // switch stays as the degraded presentation when the primitive runtime or
 // the presentation scope is unavailable.
+// M5-c pass1 起，全局设置 schema 面的开关行 holder 由 field-renderer 直出，
+// 本挂载方只剩 agent 设置面（agent-settings-bridge）一个消费方。
 function mountUiuxSwitches(form) {
     if (!form) return;
     const api = window.VCPUIUX;

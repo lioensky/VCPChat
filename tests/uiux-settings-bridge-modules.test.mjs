@@ -98,7 +98,7 @@ test('single-concern modules import cleanly and expose their contract', async ()
         assert.ok(name in shared, `bridge-shared must export ${name}`);
     }
     assert.equal(typeof shared.ensurePresentationScope, 'function');
-    assert.equal(typeof shared.mountUiuxSwitches, 'function');
+    assert.equal(typeof shared.mountUiuxSwitches, 'function', 'agent 设置面仍经共享挂载方收编开关');
     const agent = await import(pathToFileURL(agentBridge).href);
     assert.deepEqual(Object.keys(agent).sort(), [
         'cleanupDisconnectedAgentModelPickers', 'enhanceForm',
@@ -645,7 +645,7 @@ test('enhanceGlobalSettings 声明挂载步骤并保留关键顺序约束', () =
         'the entry executes the shared declarative pipeline runner');
     for (const name of ['canonical-rows', 'uiux-inputs', 'appearance-rows',
         'global-pill-steppers', 'select-projection', 'global-typed-primitives', 'topic-summary-picker',
-        'forum-field-owner', 'legacy-range-pass', 'uiux-switches', 'uiux-disclosures',
+        'forum-field-owner', 'legacy-range-pass', 'uiux-disclosures',
         'agent-name-fields', 'settings-shell', 'save-coordinator', 'autosave', 'typed-field-owner', 'form-icons']) {
         assert.match(fn, new RegExp(`name: '${name}'`), `mount step ${name} must stay declared`);
     }
