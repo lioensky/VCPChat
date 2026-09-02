@@ -41,8 +41,10 @@
 - `npm run check:uiux:artifacts`：通过（4 个必需生成产物）。
 - `npm run check:uiux`：通过（别名指向 artifact gate）。
 - `npm run test:settings-wa-electron`：通过；包含 2 个 JSDOM lifecycle contracts，以及真实 Electron CDP gate 的 8 个场景（shell/nav/search、深浅主题截图、IPC 保存、reload 恢复）。
+- `node scripts/test-electron-windows-matrix.mjs`：在当前 macOS 主机生成 evidence，Windows 行明确 `skipped`（host-required），未伪造 Windows 通过。
+- `VCPCHAT_MANUAL_SOAK_MINUTES=0.001 VCPCHAT_MANUAL_SOAK_INTERVAL_SECONDS=0.001 node scripts/test-electron-manual-soak.mjs`：生成 23 个无错误 checkpoint；该工具仍明确要求人工 checklist，不能把短时观察升级为完整 soak 通过。
 - `node scripts/test-ui-system.mjs`：UI system contract assertions pass; the JSDOM process leaves existing requestSubmit/timer activity alive and does not produce a stable terminating exit here.
 - `npm run test:ui-system`：wrapper reaches the passing UI contract stage but cannot provide a stable final exit because of the same open-handle behavior.
 - `npm run test:electron-ui-apps`：启动后未在本机已有 Electron 实例环境中形成可采信的退出结果，不能替代 packaged Electron 验收。
 
-验收结论：Global Settings 自动保存协调器施工完成，核心 focused tests 与 Electron-facing contracts 通过，状态为 **Functionally complete locally**。PR 发布前仍需补 packaged Electron、跨平台、GPU/DPI 与人工 soak 证据；这些是环境验收缺口，不是本地实现已证明的行为。
+验收结论：Global Settings 自动保存协调器施工完成，核心 focused tests、真实 Electron CDP gate、lock/CAS/RMW 和 UI artifact gate 通过，状态为 **Functionally complete locally**。Windows host、packaged distribution、GPU/DPI 深度矩阵和人工长时 soak 仍需对应环境/操作员证据；当前记录明确区分了通过、跳过和未完成。

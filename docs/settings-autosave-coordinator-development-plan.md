@@ -47,8 +47,8 @@ The implementation follows the useful settings principles from DeepSeek Harness 
 
 1. `filterManager`、`chatManager`、`uiManager`、`event-listeners`、`middleClickHandler` 和 `appearance-studio` 的直接保存调用已迁移为 path ops；仍保留完整快照兼容入口供未迁移的外部插件使用。
 2. renderer typed service 与 coordinator 已分离 committed base、local draft、pending ops，并在 dirty/conflict 时禁止外部快照覆盖控件。
-3. Electron-facing close/reload/conflict contracts 已覆盖；真实 packaged Electron 操作序列仍待环境可用时补证。
-4. macOS packaged smoke、Windows runner、GPU/DPI 几何和人工 soak 仍是发布前证据项。
+3. Electron-facing close/reload contracts 与真实 macOS Electron CDP gate 已覆盖；当前 gate 包含 shell/nav/search、截图、IPC 保存和 reload 恢复。
+4. Windows runner 在当前主机明确 skipped；packaged distribution、GPU/DPI 几何和人工长时 soak 仍是发布前证据项（短时 manual-soak 仅生成无错误观察记录）。
 5. `test:ui-system` 的 UI contract assertions pass; the wrapper may remain alive under JSDOM because of existing open handles, which is recorded as environment evidence rather than hidden.
 
 Revision tokens are opaque content-derived values exposed only through the save protocol. This keeps the existing `settings.json` user field shape unchanged while still allowing CAS across renderer windows and process restarts.

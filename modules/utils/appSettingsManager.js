@@ -184,7 +184,7 @@ class SettingsManager extends EventEmitter {
         this.lockFile = settingsPath + '.lock';
         this.externalWatcher = null;
         this.externalWatchTimer = null;
-        this.lastInternalRevision = null;
+        this.internalRevisions = new Set();
 
         // 默认设置模板
         this.defaultSettings = {
@@ -396,7 +396,9 @@ class SettingsManager extends EventEmitter {
             const newTimestamp = Date.now();
             this.cache = { ...validated };
             this.cacheTimestamp = newTimestamp;
-            this.lastInternalRevision = this.getRevision(validated);
+            const internalRevision = this.getRevision(validated);
+            this.internalRevisions.add(internalRevision);
+            if (this.internalRevisions.size > 32) this.internalRevisions.delete(this.internalRevisions.values().next().value);
 
             // 触发更新事件
             this.emit('settings-updated', validated);
@@ -550,7 +552,10 @@ class SettingsManager extends EventEmitter {
                         // own write. Suppress that echo; otherwise a newer
                         // local draft in flight can be misclassified as an
                         // external conflict.
-                        if (revision === this.lastInternalRevision) return;
+                        if (this.internalRevisions.has(revision)) {
+                            this.internalRevisions.delete(revision);
+                            return;
+                        }
                         this.emit('settings-external-updated', { settings, revision });
                     } catch (error) {
                         this.emit('settings-external-error', error);

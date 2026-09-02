@@ -396,6 +396,11 @@ try {
     // ---- 6. Real save through IPC, then reopen (reload) restores from disk ----
     await resizeWindow(page, browser, 1200, 800);
     await setTheme(page, 'dark');
+    // Prior interaction checks may have scheduled unrelated presentation
+    // writes. Reconcile the modal against disk before asserting the dedicated
+    // durable-save scenario so a stale background revision cannot contaminate
+    // this test's dirty precondition.
+    await page.evaluate(() => window.VCPUISettingsBridge.reloadExternal?.());
     const uniquePrompt = `请继续-电子-${Date.now()}`;
     await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
     await new Promise(resolve => setTimeout(resolve, 150));

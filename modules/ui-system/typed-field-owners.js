@@ -140,6 +140,7 @@ function ensureTypedSettingsService() {
         if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
         const form = document.getElementById('globalSettingsForm');
         const isReload = event.detail?.source === 'settings-reload';
+        if (isReload) typedSettingsConflict = null;
         if (!isReload && form?.dataset.vcpSettingsDirty === 'true') {
             typedSettingsConflict = { external: event.detail?.settings, revision: event.detail?.revision };
             form.dataset.vcpSettingsConflict = 'true';

@@ -257,6 +257,10 @@ function createCoordinator(form) {
                 retryableFailure = null;
                 conflict = null;
                 delete form.dataset.vcpSettingsDirty;
+                for (const client of clients.values()) {
+                    client.status = 'saved';
+                    client.dirty = false;
+                }
                 const view = form.ownerDocument?.defaultView;
                 (view || form).dispatchEvent(new (view?.CustomEvent || CustomEvent)('global-settings-updated', { detail: { settings: externalSettings, revision, source: 'settings-reload' } }));
                 coordinator.reportState('saved', { dirty: false });
