@@ -1386,13 +1386,14 @@
     flex: 1;
     min-width: 0;
     height: 36px;
+    margin: 0;
     padding: 0;
     border: 0 !important;
     border-radius: 0 !important;
     background: transparent !important;
     color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
     font-family: inherit;
-    font-size: 13px !important;
+    font-size: 14px !important;
     line-height: 22px !important;
     box-shadow: none !important;
     outline: none !important;

@@ -712,7 +712,7 @@
        centering math and lifts the input ~7px out of the wrap — the same
        "placeholder/text sits high" defect already fixed for uiux wraps.
        Zero it at matching strength. */
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsForm :is(.vcp-uiux-input-wrap, .vcp-uiux-color-pair) > :is(input, textarea) {
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsForm :is(.vcp-uiux-input-wrap, .vcp-uiux-color-pair, .model-input-container) > :is(input, textarea) {
         margin: 0;
     }
 
