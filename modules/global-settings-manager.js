@@ -54,6 +54,29 @@ function awaitWithTimeout(value, timeoutMs) {
     ]).finally(() => clearTimeout(timer));
 }
 
+function buildSettingsPatch(before, after) {
+    if (before && after && typeof before === 'object' && typeof after === 'object'
+        && !Array.isArray(before) && !Array.isArray(after)) {
+        const patch = {};
+        for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+            if (!(key in after)) continue;
+            const child = buildSettingsPatch(before[key], after[key]);
+            if (child !== undefined) patch[key] = child;
+        }
+        return Object.keys(patch).length ? patch : undefined;
+    }
+    return Object.is(before, after) ? undefined : after;
+}
+
+function patchToOps(patch, prefix = []) {
+    return Object.entries(patch || {}).flatMap(([key, value]) => {
+        const path = [...prefix, key];
+        return value && typeof value === 'object' && !Array.isArray(value)
+            ? patchToOps(value, path)
+            : [{ op: 'set', path, value }];
+    });
+}
+
 async function saveGlobalSettings(deps, settingsForm) {
     const chatAPI = window.chatAPI || window.electronAPI;
     const reportSaveResult = (success, error = '', status = success ? 'success' : 'failed', extra = {}) => {
@@ -227,9 +250,10 @@ async function saveGlobalSettings(deps, settingsForm) {
     // already rejected and the form lock is released by the outer finally.
     const typedSettingsService = window.VCPUISettingsBridge?.getTypedService?.();
     const operationId = settingsForm?.dataset.vcpSettingsOperationId || `global-${Date.now().toString(36)}`;
+    const settingsPatch = buildSettingsPatch(currentSettings, newSettings) || {};
     const savePayload = typedSettingsService?.save?.execute
-        ? newSettings
-        : { ...newSettings, __vcpSettingsOperationId: operationId, expectedRevision: settingsForm?.dataset.vcpSettingsRevision || undefined, operationId };
+        ? settingsPatch
+        : { __vcpSettingsOps: patchToOps(settingsPatch), __vcpSettingsOperationId: operationId, expectedRevision: settingsForm?.dataset.vcpSettingsRevision || undefined, operationId };
     const saveOperation = typedSettingsService?.save?.execute
         ? typedSettingsService.save.execute(savePayload)
         : chatAPI.saveSettings(savePayload);
