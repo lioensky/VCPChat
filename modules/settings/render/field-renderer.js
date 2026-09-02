@@ -316,8 +316,10 @@ function buildSchemaFieldNode(doc, field, canonicalContext = null) {
             } else {
                 row.append(buildLabel(doc, field, field.labelStyle), buildInputPrimitiveWrap(doc, plainInput));
             }
-            const hint = buildHint(doc, field, field.hintStyle ?? 4);
-            if (hint) row.append(hint);
+            if (!isStepperField(field)) {
+                const hint = buildHint(doc, field, field.hintStyle ?? 4);
+                if (hint) row.append(hint);
+            }
             return row;
         }
         case 'text': {
