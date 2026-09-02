@@ -916,18 +916,108 @@
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status {
-        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 4px;
         border: 0;
         color: var(--vcp-ui-text-3);
         background: transparent;
         font-size: var(--vcp-ui-font-caption);
         line-height: 20px;
+        transition: color var(--vcp-ui-transition-normal, 180ms ease), opacity var(--vcp-ui-transition-normal, 180ms ease);
     }
 
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="saving"] { color: var(--vcp-ui-text-2); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="saved"] { color: var(--vcp-ui-success); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="error"] { color: var(--vcp-ui-danger); }
-    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="error"]:hover { text-decoration: underline; }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="saving"] {
+        color: var(--vcp-ui-text-2);
+        opacity: 0.85;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="saved"] {
+        color: var(--vcp-ui-success);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="error"] {
+        color: var(--vcp-ui-danger);
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status[data-state="conflict"] {
+        color: var(--vcp-ui-danger);
+        font-weight: 500;
+    }
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-autosave-status:is([data-state="error"], [data-state="conflict"]):hover {
+        text-decoration: underline;
+        cursor: pointer;
+    }
+
+    /* Conflict recovery action bar */
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-actions[hidden] {
+        display: none !important;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 0 var(--vcp-ui-space-3, 12px);
+        padding: 10px 14px;
+        border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #d92d20) 24%, var(--vcp-ui-border));
+        border-radius: var(--vcp-ui-radius-card, 12px);
+        background: color-mix(in srgb, var(--vcp-ui-danger, #d92d20) 8%, var(--vcp-ui-bg-1));
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-helper, 13px);
+        line-height: var(--vcp-ui-line-compact, 20px);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-message {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+        font-weight: 500;
+        color: var(--vcp-ui-text-0);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: none;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        padding: 0 12px;
+        border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
+        border-radius: 14px;
+        background: var(--vcp-ui-fill-0, var(--vcp-ui-bg-1));
+        color: var(--vcp-ui-text-0);
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-caption, 12px);
+        font-weight: 500;
+        line-height: 18px;
+        cursor: pointer;
+        transition: background-color var(--vcp-ui-transition-fast, 120ms), border-color var(--vcp-ui-transition-fast, 120ms);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-btn:hover {
+        background: var(--vcp-ui-fill-2);
+        border-color: var(--vcp-ui-control-focus, var(--vcp-ui-border-strong));
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-btn-primary {
+        border-color: transparent;
+        background: var(--vcp-ui-accent);
+        color: var(--vcp-ui-on-accent, #fff);
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-conflict-btn-primary:hover {
+        background: var(--vcp-ui-accent-hover);
+        border-color: transparent;
+    }
 
     /* SettingsRoot nav title: 16/24 medium, 12px inset, no duplicate content
        heading in the right column. */

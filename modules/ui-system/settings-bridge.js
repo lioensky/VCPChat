@@ -204,9 +204,10 @@ function mountSettingsConflictActions(root, form) {
     if (!root || !form || root.querySelector('[data-vcp-settings-conflict-actions]')) return;
     const bar = document.createElement('div');
     bar.dataset.vcpSettingsConflictActions = 'true';
+    bar.className = 'vcp-settings-conflict-actions';
     bar.hidden = true;
     bar.setAttribute('role', 'alert');
-    bar.innerHTML = '<span>设置文件已被外部修改</span><button type="button" data-action="reload">重新加载外部设置</button><button type="button" data-action="retry">保留草稿并重试</button>';
+    bar.innerHTML = '<div class="vcp-settings-conflict-message"><span>设置文件已被外部修改</span></div><div class="vcp-settings-conflict-buttons"><button type="button" class="vcp-settings-conflict-btn" data-action="reload">重新加载外部设置</button><button type="button" class="vcp-settings-conflict-btn vcp-settings-conflict-btn-primary" data-action="retry">保留草稿并重试</button></div>';
     const content = root.querySelector('.vcp-settings-source-content') || root;
     content.prepend(bar);
     const sync = () => { bar.hidden = form.dataset.vcpSettingsConflict !== 'true'; };
@@ -221,7 +222,15 @@ function mountSettingsConflictActions(root, form) {
     root.ownerDocument.defaultView?.addEventListener('global-settings-updated', sync);
     root.ownerDocument.defaultView?.addEventListener('settings-conflict', sync);
     form.addEventListener('click', onClick);
-    ensurePresentationScope()?.own(() => { form.removeEventListener('vcp-settings-save-result', sync); root.ownerDocument.defaultView?.removeEventListener('global-settings-updated', sync); root.ownerDocument.defaultView?.removeEventListener('settings-conflict', sync); form.removeEventListener('click', onClick); bar.remove(); }, 'settings-conflict-actions', 'ui-presentation');
+    bar.addEventListener('click', onClick);
+    ensurePresentationScope()?.own(() => {
+        form.removeEventListener('vcp-settings-save-result', sync);
+        root.ownerDocument.defaultView?.removeEventListener('global-settings-updated', sync);
+        root.ownerDocument.defaultView?.removeEventListener('settings-conflict', sync);
+        form.removeEventListener('click', onClick);
+        bar.removeEventListener('click', onClick);
+        bar.remove();
+    }, 'settings-conflict-actions', 'ui-presentation');
     sync();
 }
 

@@ -311,7 +311,13 @@
 /* Copy-wrapped titles (radio groups, composed rows) obey the same spec; the
    wrapper carries the ink too so stray children inherit it. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy,
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy > :is(label, span, strong, h4, h5) {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy > :is(label, span, strong, h4, h5),
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-home-visual-copy > strong,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-range-heading > span:first-child,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-geometry-control .appearance-range-heading > span:first-child,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-language-row-title,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-numeric-stepper-row-title,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-font-size-row-title {
     color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
     font-size: var(--vcp-ui-font-body) !important;
     font-weight: 400 !important;
@@ -565,6 +571,11 @@
     font-size: var(--vcp-ui-font-body);
     font-weight: 400;
     line-height: 22px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell:is(.is-active, [data-state="selected"]) .vcp-uiux-settings-nav-copy strong {
+    font-weight: 500;
+    color: var(--vcp-ui-text-0);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-content {
@@ -1477,8 +1488,8 @@
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-radius-language-host .vcp-uiux-language-row-title {
     font-size: var(--vcp-ui-font-body) !important;
-    font-weight: 600 !important;
-    line-height: var(--vcp-ui-line-body) !important;
+    font-weight: 400 !important;
+    line-height: 22px !important;
     color: var(--vcp-ui-text-0) !important;
 }
 
@@ -1649,6 +1660,7 @@
    globalization — this opt-out is NOT part of the retired model). */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-general-row :is(.vcp-uiux-language-row, .vcp-uiux-numeric-stepper-row, .vcp-uiux-font-size-row) {
     border-bottom: 0;
+    padding: 0 !important;
 }
 /* The switch is a fixed-size control: stretching is a no-op and the default
    left alignment parks it at the control column's left edge — visually the

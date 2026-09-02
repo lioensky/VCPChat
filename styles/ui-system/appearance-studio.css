@@ -1268,11 +1268,11 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control {
     display: flex;
     align-items: center;
-    gap: var(--vcp-ui-space-4);
+    gap: 24px;
     width: 100%;
     margin: 0;
     padding: 16px 0;
-    border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1));
+    border-bottom: 0;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control .appearance-range-heading {
     flex: 1;
@@ -1280,8 +1280,8 @@
     padding-right: 48px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope .appearance-geometry-control input[type="range"] {
-    flex: 0 1 220px;
-    width: 220px;
+    flex: 0 1 240px;
+    width: 240px;
     min-width: 0;
     padding: 0;
     border: 0;

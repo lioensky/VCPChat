@@ -32,6 +32,7 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
 const screenshotsDir = path.join(root, 'screenshots');
 const darkShot = path.join(screenshotsDir, 'settings-wa-dark-700x500.png');
 const lightShot = path.join(screenshotsDir, 'settings-wa-light-700x500.png');
+const conflictShot = path.join(screenshotsDir, 'settings-wa-conflict-700x500.png');
 
 async function freePort() {
     const server = net.createServer();
@@ -380,6 +381,32 @@ try {
     const darkModalBg = await page.evaluate(() => getComputedStyle(document.querySelector('#globalSettingsModal .vcp-uiux-settings-panel')).backgroundColor);
     console.log('  [PASS] 4. dark screenshot -> screenshots/settings-wa-dark-700x500.png');
 
+    // Assert typography harmonization (DSH 14px / 400 font-weight)
+    const typoCheck = await page.evaluate(() => {
+        const check = (text) => {
+            const el = [...document.querySelectorAll('#globalSettingsModal *')].find(e => e.textContent?.trim() === text && e.children.length === 0);
+            if (!el) return null;
+            return {
+                text,
+                fontWeight: getComputedStyle(el).fontWeight,
+                fontSize: getComputedStyle(el).fontSize,
+            };
+        };
+        return [
+            check('导航材质'),
+            check('列表项高度'),
+            check('列表项圆角'),
+            check('主页视觉文字'),
+        ];
+    });
+    for (const item of typoCheck) {
+        if (item) {
+            assert.equal(item.fontWeight, '400', `${item.text} must have 400 font-weight`);
+            assert.equal(item.fontSize, '14px', `${item.text} must have 14px font-size`);
+        }
+    }
+    console.log('  [PASS] typography harmonized (14px / 400 weight for row titles)');
+
     // ---- 5. Light screenshot (700×500) ----
     await setTheme(page, 'light');
     await page.evaluate(() => document.querySelector('#globalSettingsModal .chat-presentation-mode-selector')?.scrollIntoView({ block: 'center' }));
@@ -392,6 +419,27 @@ try {
     const lightHash = createHash('sha256').update(await fs.readFile(lightShot)).digest('hex');
     assert.notEqual(darkHash, lightHash, 'dark and light screenshots must differ');
     console.log(`  [PASS] 5. light screenshot -> screenshots/settings-wa-light-700x500.png (bg ${lightModalBg}; dark bg ${darkModalBg}; hashes differ)`);
+    // ---- 5b. Conflict bar screenshot (700×500) ----
+    await page.evaluate(() => {
+        const form = document.getElementById('globalSettingsForm');
+        if (form) {
+            form.dataset.vcpSettingsConflict = 'true';
+            form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { status: 'conflict' } }));
+        }
+        document.querySelector('.vcp-settings-conflict-actions')?.scrollIntoView({ block: 'nearest' });
+    });
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await page.screenshot({ path: conflictShot, clip: { x: 0, y: 0, width: 700, height: 500 } });
+    const conflictStat = await fs.stat(conflictShot);
+    assert.ok(conflictStat.size > 20_000, `conflict screenshot written (${conflictStat.size} bytes)`);
+    await page.evaluate(() => {
+        const form = document.getElementById('globalSettingsForm');
+        if (form) {
+            delete form.dataset.vcpSettingsConflict;
+            form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { status: 'idle' } }));
+        }
+    });
+    console.log('  [PASS] 5b. conflict screenshot -> screenshots/settings-wa-conflict-700x500.png');
 
     // ---- 6. Real save through IPC, then reopen (reload) restores from disk ----
     await resizeWindow(page, browser, 1200, 800);
