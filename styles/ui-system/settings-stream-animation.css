@@ -195,56 +195,53 @@
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview {
-        padding: var(--vcp-ui-space-3);
-        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 24%, var(--vcp-ui-border));
-        border-radius: var(--vcp-ui-radius-md);
-        background: color-mix(in srgb, var(--vcp-ui-fill-1) 88%, var(--vcp-ui-bg-0));
-        box-shadow:
-            inset 0 1px 0 color-mix(in srgb, var(--vcp-ui-text-0) 5%, transparent),
-            0 6px 20px color-mix(in srgb, var(--vcp-ui-bg-0) 35%, transparent);
-        overflow: hidden;
+        padding: 16px 0 8px;
+        border: 0;
+        border-top: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1));
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow: visible;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview {
         display: inline-flex;
         width: auto;
-        min-width: 104px;
-        min-height: 34px;
+        min-width: 0;
+        height: 28px;
         align-items: center;
         justify-content: center;
-        gap: var(--vcp-ui-space-1);
-        padding: 0 var(--vcp-ui-space-3);
-        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 42%, var(--vcp-ui-border));
-        border-radius: var(--vcp-ui-radius-sm);
-        color: var(--vcp-ui-accent);
-        background: color-mix(in srgb, var(--vcp-ui-accent) 9%, var(--vcp-ui-bg-0));
-        box-shadow: 0 2px 8px color-mix(in srgb, var(--vcp-ui-accent) 10%, transparent);
-        font-family: var(--vcp-ui-font-family);
-        font-size: var(--vcp-ui-font-helper);
-        font-weight: 600;
-        line-height: 1;
+        gap: 6px;
+        padding: 0 12px;
+        border: 1px solid var(--vcp-ui-control-border, var(--vcp-ui-border));
+        border-radius: 14px;
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-0, var(--vcp-ui-bg-1));
+        box-shadow: none;
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-caption, 12px);
+        font-weight: 500;
+        line-height: 18px;
         cursor: pointer;
         transition:
-            color var(--vcp-ui-transition-fast),
-            border-color var(--vcp-ui-transition-fast),
-            background-color var(--vcp-ui-transition-fast),
-            box-shadow var(--vcp-ui-transition-fast),
-            transform var(--vcp-ui-transition-fast);
+            color var(--vcp-ui-transition-fast, 120ms),
+            border-color var(--vcp-ui-transition-fast, 120ms),
+            background-color var(--vcp-ui-transition-fast, 120ms);
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview > span {
         display: inline-block;
         font-size: 1.15em;
         line-height: 1;
-        transition: transform var(--vcp-ui-transition-normal);
+        transition: transform var(--vcp-ui-transition-normal, 180ms);
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview:hover {
-        border-color: var(--vcp-ui-accent);
-        color: var(--vcp-ui-on-accent);
-        background: var(--vcp-ui-accent);
-        box-shadow: 0 5px 14px color-mix(in srgb, var(--vcp-ui-accent) 24%, transparent);
-        transform: translateY(-1px);
+        background: var(--vcp-ui-fill-2);
+        border-color: var(--vcp-ui-control-focus, var(--vcp-ui-border-strong));
+        color: var(--vcp-ui-accent);
+        box-shadow: none;
+        transform: none;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview:hover > span {
@@ -253,7 +250,7 @@
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #replayStreamAnimationPreview:active {
         box-shadow: none;
-        transform: translateY(0) scale(0.98);
+        transform: scale(0.98);
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar strong,
@@ -261,25 +258,32 @@
         display: block;
     }
 
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar strong {
+        color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0)) !important;
+        font-size: var(--vcp-ui-font-body) !important;
+        font-weight: 400 !important;
+        line-height: 22px !important;
+    }
+
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-toolbar small {
-        margin-top: var(--vcp-ui-space-1);
-        color: var(--vcp-ui-text-3);
-        font-size: var(--vcp-ui-font-caption);
+        margin-top: 2px;
+        color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3)) !important;
+        font-size: var(--vcp-ui-font-caption) !important;
+        font-weight: 400 !important;
+        line-height: 18px !important;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .stream-animation-preview-stage {
         display: grid;
         min-height: 112px;
-        margin-top: var(--vcp-ui-space-3);
+        margin-top: 12px;
         padding: var(--vcp-ui-space-3);
         place-items: center;
-        border: 1px solid color-mix(in srgb, var(--vcp-ui-border) 82%, var(--vcp-ui-accent));
-        border-radius: var(--vcp-ui-radius-sm);
-        background:
-            radial-gradient(circle at 16px 16px, color-mix(in srgb, var(--vcp-ui-accent) 14%, transparent) 1px, transparent 1px),
-            var(--vcp-ui-bg-0);
-        background-size: 16px 16px, auto;
-        box-shadow: inset 0 0 18px color-mix(in srgb, var(--vcp-ui-bg-0) 38%, transparent);
+        border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .08));
+        border-radius: var(--vcp-ui-radius-card, 10px);
+        background: var(--vcp-ui-fill-0, var(--vcp-ui-bg-0));
+        background-image: radial-gradient(circle at 16px 16px, color-mix(in srgb, var(--vcp-ui-text-0) 8%, transparent) 1px, transparent 1px);
+        background-size: 16px 16px;
         overflow: hidden;
     }
 
