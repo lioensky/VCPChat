@@ -708,8 +708,8 @@ test('保存协调器：唯一提交入口与显式订阅替代 owner 字符串�
     assert.match(autosaveSource, /from '\.\/save-coordinator\.js'/, 'autosave registers with the coordinator');
     // typed owners 注册为协调器客户端，各自 flush 自己的注册表。
     const typed = read(typedOwners);
-    assert.match(typed, /registerClient\(\{ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields \}\)/);
-    assert.match(typed, /registerClient\(\{ id: 'typed-forum-field-owner', flush: flushTypedForumFields \}\)/);
+    assert.match(typed, /registerClient\(\{ id: 'typed-settings-field-owner', flush: flushTypedSettingsFields,[\s\S]*?hasWork:/);
+    assert.match(typed, /registerClient\(\{ id: 'typed-forum-field-owner', flush: flushTypedForumFields,[\s\S]*?hasWork:/);
     // 桥入口：协调器先于 autosave 步挂载；flush/teardown 走协调器。
     const entry = read(bridgeEntry);
     assert.match(entry, /import \{ claimSaveCoordinator, getSaveCoordinator \} from '\.\/settings\/save-coordinator\.js';/);
