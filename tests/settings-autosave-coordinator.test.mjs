@@ -132,6 +132,23 @@ test('client registration release removes remounted owner without affecting othe
     await coordinator.dispose();
 });
 
+test('coordinator savePatch is the operation-aware typed transport', async () => {
+    const form = new FakeForm();
+    const coordinator = claimSaveCoordinator(form);
+    const calls = [];
+    const result = await coordinator.savePatch({ appearanceProfile: { density: 'compact' } }, {
+        owner: 'typed',
+        expectedRevision: 'r1',
+        transport: async payload => { calls.push(payload); return { success: true, currentRevision: 'r2' }; },
+    });
+    assert.equal(result.status, 'success');
+    assert.equal(result.operationId.startsWith('settings-'), true);
+    assert.deepEqual(calls[0].__vcpSettingsOps, [{ op: 'set', path: ['appearanceProfile', 'density'], value: 'compact' }]);
+    assert.equal(calls[0].expectedRevision, 'r1');
+    assert.equal(coordinator.getSnapshot().status, 'idle');
+    await coordinator.dispose();
+});
+
 test('coordinator operation resolves only from its matching terminal result', async () => {
     const form = new FakeForm();
     const coordinator = claimSaveCoordinator(form);

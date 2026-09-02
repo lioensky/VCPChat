@@ -185,20 +185,29 @@ function ensureTypedSettingsService() {
     };
     typedSettingsService = window.VCPUIUX.createSettingsUiService({
         get: () => typedSettingsState,
-        save: patch => {
+        save: (patch, metadata = {}) => {
             const generation = ++typedSettingsSaveGeneration;
-            const operationId = `typed-${Date.now().toString(36)}-${generation}`;
+            const operationId = metadata.operationId || `typed-${Date.now().toString(36)}-${generation}`;
             // Advance the in-memory draft at enqueue time. A later queued
             // patch must observe this edit even while an earlier IPC call is
             // still unresolved.
             typedSettingsDraft = Object.freeze({ ...typedSettingsDraft, ...(patch || {}) });
             typedSettingsState = typedSettingsDraft;
             const run = async () => {
-                const result = await window.chatAPI?.saveSettings?.({
-                    __vcpSettingsOps: Object.freeze(patchToPathOps(patch)),
-                    expectedRevision: typedSettingsRevision ?? undefined,
-                    operationId,
-                });
+                const form = document.getElementById('globalSettingsForm');
+                const coordinator = getSaveCoordinator(form);
+                const result = coordinator?.savePatch
+                    ? await coordinator.savePatch(patch, {
+                        owner: metadata.owner || 'typed-settings-field-owner',
+                        expectedRevision: typedSettingsRevision ?? undefined,
+                        operationId,
+                        transport: window.chatAPI?.saveSettings,
+                    })
+                    : await window.chatAPI?.saveSettings?.({
+                        __vcpSettingsOps: Object.freeze(patchToPathOps(patch)),
+                        expectedRevision: typedSettingsRevision ?? undefined,
+                        operationId,
+                    });
                 const status = result?.status || (result?.success ? 'success' : 'failed');
                 if (status === 'success' && generation === typedSettingsSaveGeneration) {
                     typedSettingsRevision = result?.currentRevision ?? typedSettingsRevision;
@@ -763,8 +772,8 @@ function mountTypedFieldOwner(root, form) {
         const patch = state.pendingPatch;
         state.pendingPatch = null;
         coordinator?.recordDraft?.(patch, patchToPathOps(patch));
-        state.inFlight = service.save.execute(patch);
         const operationId = coordinator?.createOperation('typed-settings-field-owner');
+        state.inFlight = service.save.execute(patch, { operationId, owner: 'typed-settings-field-owner' });
         setStatus('saving', { operationId });
         try {
             const result = await state.inFlight;

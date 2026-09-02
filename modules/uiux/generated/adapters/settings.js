@@ -73,11 +73,11 @@ export function createSettingsUiService(input) {
             },
         },
         save: {
-            async execute(patch) {
+            async execute(patch, options = {}) {
                 if (disposed)
                     return Object.freeze({ success: false, status: 'cancelled', error: '设置服务已销毁' });
                 const generation = ++saveGeneration;
-                const result = await input.save(Object.freeze({ ...patch }));
+                const result = await input.save(Object.freeze({ ...patch }), options);
                 const status = result?.status || (result?.success ? 'success' : 'failed');
                 if (!result?.success) {
                     const failure = { success: false, error: result?.error || '设置保存失败' };

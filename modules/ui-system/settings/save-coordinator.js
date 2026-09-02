@@ -8,6 +8,15 @@ function createOperationId() {
     return `settings-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function patchToOperations(patch, prefix = []) {
+    return Object.entries(patch || {}).flatMap(([key, value]) => {
+        const path = [...prefix, key];
+        return value && typeof value === 'object' && !Array.isArray(value)
+            ? patchToOperations(value, path)
+            : [{ op: 'set', path, value }];
+    });
+}
+
 function createCoordinator(form) {
     const clients = new Map();
     const operations = new Map();
@@ -82,6 +91,31 @@ function createCoordinator(form) {
                 scheduleAggregate();
             }
             return operationId;
+        },
+        async savePatch(patch, { owner = 'legacy-autosave', expectedRevision, operationId = null, transport } = {}) {
+            const id = operationId || coordinator.createOperation(owner);
+            const request = transport || form.ownerDocument?.defaultView?.chatAPI?.saveSettings;
+            if (typeof request !== 'function') {
+                const result = { success: false, status: 'failed', operationId: id, error: '设置保存接口不可用' };
+                form.dispatchEvent(new (form.ownerDocument?.defaultView?.CustomEvent || CustomEvent)('vcp-settings-save-result', { detail: { ...result, owner } }));
+                return result;
+            }
+            try {
+                const result = await request({
+                    ...(patch || {}),
+                    __vcpSettingsOps: Object.freeze(patchToOperations(patch)),
+                    expectedRevision,
+                    operationId: id,
+                });
+                const status = result?.status || (result?.success ? 'success' : 'failed');
+                const terminal = { ...(result || {}), success: status === 'success', status, operationId: result?.operationId || id };
+                form.dispatchEvent(new (form.ownerDocument?.defaultView?.CustomEvent || CustomEvent)('vcp-settings-save-result', { detail: { ...terminal, owner } }));
+                return terminal;
+            } catch (error) {
+                const terminal = { success: false, status: 'failed', operationId: id, error: error?.message || String(error) };
+                form.dispatchEvent(new (form.ownerDocument?.defaultView?.CustomEvent || CustomEvent)('vcp-settings-save-result', { detail: { ...terminal, owner } }));
+                return terminal;
+            }
         },
         registerClient({ id, onResult = null, flush = null, hasWork = null, isDefault = false }) {
             if (!id) throw new Error('save-coordinator client requires an id');
