@@ -47,4 +47,10 @@
 - `npm run test:ui-system`：wrapper reaches the passing UI contract stage but cannot provide a stable final exit because of the same open-handle behavior.
 - `npm run test:electron-ui-apps`：启动后未在本机已有 Electron 实例环境中形成可采信的退出结果，不能替代 packaged Electron 验收。
 
-验收结论：Global Settings 自动保存协调器施工完成，核心 focused tests、真实 Electron CDP gate、lock/CAS/RMW 和 UI artifact gate 通过，状态为 **Functionally complete locally**。Windows host、packaged distribution、GPU/DPI 深度矩阵和人工长时 soak 仍需对应环境/操作员证据；当前记录明确区分了通过、跳过和未完成。
+## 对抗性复核结论（2026-09-02）
+
+与 DeepSeek Harness 的 `write-behind`/settings-file 原则逐项对照后，发现并修复一项真实缺陷：typed 串行写入中，较早请求的成功结果此前会因 generation 变旧而直接丢弃，导致后续 patch 使用旧 revision。现在 durable success 与调用方的 `stale` 语义分离：提交仍推进 base/revision、清理已提交 ops，只有当前调用方不再拥有发布权时才返回 `stale`；回归测试验证 A/B 两次编辑分别使用 `r1`、`r2` 且无 stranded pending。
+
+当前完成度：**约 90%（Global Settings 本地功能完成）**。剩余 10% 是交付证据而非已知实现缺陷：Windows 原生 runner、packaged Electron、GPU/DPI 几何矩阵、长时人工 soak，以及 native `fs.watch` 驱动的真实 Electron 外部冲突交互仍未形成可采信证据。不得把 macOS 解包 Electron 或短时诊断记录外推为这些平台/场景已通过。
+
+验收结论：Global Settings 自动保存协调器在本地源码、focused tests、锁/CAS/RMW、真实 macOS Electron CDP（保存、重载、布局、搜索、主题截图）和 UI artifact gate 上完成；目标保持 **active**，直到剩余交付证据补齐。
