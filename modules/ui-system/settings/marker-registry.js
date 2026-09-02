@@ -84,6 +84,8 @@ const MARKERS = Object.freeze({
     vcpKeepOpenAfterSave: { owner: 'settings/autosave.js + global-settings-manager.js', cleanup: 'business-contract' },
     globalSettingsSaving: { owner: 'settings/autosave.js', cleanup: 'business-contract' },
     vcpAutosaveMounted: { owner: 'settings/autosave.js', cleanup: 'manual-retract' },
+    vcpSettingsConflictActions: { owner: 'settings-bridge.js conflict action bar', cleanup: 'scope-owned' },
+    vcpSettingsConflict: { owner: 'typed-field-owners.js external reconciliation', cleanup: 'business-contract' },
 
     // agent-settings-bridge.js — configured via the private Input owner's
     // `marker` option and deleted with the owning presentation scope

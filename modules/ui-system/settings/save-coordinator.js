@@ -137,6 +137,7 @@ function createCoordinator(form) {
         },
         async dispose() {
             if (disposed) return;
+            if (operations.size === 0) form.removeEventListener('vcp-settings-save-result', onResultEvent);
             // Keep the result channel alive while the barrier drains. Removing
             // it first strands operation promises that are completed by the
             // terminal result event.
