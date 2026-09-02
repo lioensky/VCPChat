@@ -201,6 +201,13 @@ dsw 语义 CSS（单层级联）
 - **测试**：render-settings 用例翻新为直出结构断言（编辑器/箭头/单位、业务 input 位置、output 退役）；新增"步进器行直出 + 激活"用例（激活同步呈现、箭头步进写穿业务 input 并派发 input/change、vcp-uiux-sync 镜像、越界归一化、重复激活幂等、分组行直出）；bridge-modules 管线步断言移除 legacy-range-pass 并加退役守卫。
 - **验收**：全套 374 测试 372 过（2 例既有失败不回退）；八分区探针 45/45 + 重启往返等值；像素 7/8 分区 0 差（appearance 基线为 pass1 竞态修复前的旧截图，对修复后末态复测 0 差后刷新基线），voice-settings 12 字节（0.001%）为两处圆角单通道 241→242 的反锯齿噪声（M5-a 同类已判定噪声）。
 
+#### 13.3.3 施工记录：pass3 uiux-inputs 退役 / agent-name-fields 只剩行为（04b7ff9a）
+
+- **直出语义**：field-renderer 新增 buildInputPrimitiveWrap（导出，widgets.js 共用）——单行文本/数字输入在编译期就地产出 uiux Input 原语（mountInput）的终态产品：span.vcp-uiux-input-wrap.wrap.vcp-uiux-input-fill 包裹 + input.input 类 + 八条内联守卫样式（box-sizing/height 22px/min-height/max-height/border/border-radius/padding 0 10px/line-height，全部 important，转录自原语挂载）。嫁接面：text 行（rowAsLabel 与普通行）、plain/grouped number 行、inlineNumbers 单元格、numberCells 单元格、widgets 的用户名行与四个场景字体自定义值行。投影规则按 field-registry 裁决：raw 投影（homeVisualTagline/adminUsername/adminPassword/两个颜色对文本）保持裸结构由 typed owners 运行时收编，stepper 投影仍走 pass2 的步进器直出——实机探针证实与旧 pass 的包裹集合逐字段一致（24 个直出包裹）。
+- **pass 退役**：settings-bridge 删除 uiux-inputs 管线步与 mountUiuxInputs（marker vcpUiuxInputPrimitive 随之注销，marker-registry 注释说明）；canonical-rows before 边收缩（uiux-inputs 移除）；field-registry projection 注释块更新为直出语义。Input 样式表仍由真实原语挂载方（forum/home typed mounts 等）在同一管线 tick 注入。agent-name-fields 步保留但降为纯行为绑定：Field 增强的挂载产物（vcp-ui-settings-field 类 + data-state="error" 初始校验态 + aria-invalid）由 render/widgets.js 直出（实机探针证实的稳态转录——空 required 输入在校验绑定时的挂载态），运行期只剩 invalid/input/change 的校验态重同步。
+- **测试**：新增三个用例——直出结构断言（wrap 类名/input 守卫样式/data-vcp-style 留在 input/raw 不包裹/步进器不包裹）、agent-name-wrapper 直出 Field 产物（类/初始态/aria/wrap 顶替 input 位置）、直出完备性不变量（按旧 pass 的选择器扫全部八分区，排除项后断言全部已包裹 = 退役 pass 空转）；bridge-modules 单一载体清单与管线步断言同步（uiux-inputs 退役守卫 + canonical-rows before 边更新），typed-primitives 扫描清单去掉失效的 entry 切片锚点、并入 global-input-upgrades.js。
+- **验收**：全套 377 测试 375 过（2 例既有失败不回退）；八分区探针 45/45（双构建各一轮，含重启往返等值）；像素 8/8 分区对 pass2 末基线（bd38cec9 独立 worktree 复现）全部字节一致——直出与运行期包裹逐像素等值。D6 复查干净。
+
 ### 13.4 M5-d 收尾
 
 advanced-visibility/rust-visibility 薄包装并入渲染器统一的依赖求值（visibleIf 已声明，事件路径与投影路径最终同一求值器）；marker-registry 清单复核；§十三回填施工记录；评估 rebase 回 prb 的冲突面（预期集中在被删 pass 文件，"我们删了 vs 上游改了"，维持删除）。
