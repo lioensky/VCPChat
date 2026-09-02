@@ -63,6 +63,7 @@
     "test:appearance-studio": "node scripts/test-appearance-studio.mjs",
     "test:vcp-ui-select-proxy": "node scripts/test-vcp-ui-select-proxy.mjs",
     "test:electron-ui-apps": "node scripts/test-electron-ui-apps-smoke.mjs",
+    "test:settings-wa-electron": "node --test tests/settings-autosave-electron.test.mjs",
     "test:electron-lifecycle-stress": "node scripts/test-electron-lifecycle-stress.mjs",
     "test:electron-main-chat-sequences": "node scripts/test-electron-main-chat-sequences.mjs",
     "test:windows-matrix": "node scripts/test-electron-windows-matrix.mjs",
