@@ -205,6 +205,9 @@ class SettingsManager extends EventEmitter {
             fileKey: '',
             vcpLogUrl: '',
             vcpLogKey: '',
+            // Keep the settings-page default aligned with both topic-summary
+            // request paths and the model picker placeholder.
+            topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
             networkNotesPaths: [],
             filterEnabled: false,
             filterRules: [],
@@ -336,6 +339,9 @@ class SettingsManager extends EventEmitter {
 
             const content = await fs.readFile(this.settingsPath, 'utf8');
             const settings = JSON.parse(content);
+            if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
+                settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;
+            }
 
             // 更新缓存
             this.cache = settings;

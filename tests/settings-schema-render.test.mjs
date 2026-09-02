@@ -292,8 +292,11 @@ test('advanced-features：依赖行、分隔线与模型复合控件', () => {
     const topicSummaryIcon = form.querySelector('#openTopicSummaryModelSelectBtn .vcp-ui-icon');
     assert.ok(topicSummaryIcon, '模型选择按钮应直出 vcp-ui-icon');
     assert.equal(topicSummaryIcon.textContent, 'chevron-down');
+    const topicSummaryInput = form.querySelector('#topicSummaryModel');
+    assert.equal(topicSummaryInput.value, 'gemini-2.5-flash-preview-05-20');
+    assert.equal(topicSummaryInput.placeholder, '默认: gemini-2.5-flash-preview-05-20');
     // 复合控件内部输入可快照迁移
-    form.querySelector('#topicSummaryModel').value = 'gpt-x';
+    topicSummaryInput.value = 'gpt-x';
     const snapshot = captureSectionValues(form, advancedFeaturesSection);
     assert.equal(snapshot.get('topicSummaryModel'), 'gpt-x');
     host.replaceChildren(...renderSchemaSection(advancedFeaturesSection, doc));

@@ -18,6 +18,7 @@ function buildTopicSummaryModelRow(doc) {
     input.type = 'text';
     input.id = 'topicSummaryModel';
     input.name = 'topicSummaryModel';
+    input.value = 'gemini-2.5-flash-preview-05-20';
     input.placeholder = '默认: gemini-2.5-flash-preview-05-20';
     const button = doc.createElement('button');
     button.type = 'button';
