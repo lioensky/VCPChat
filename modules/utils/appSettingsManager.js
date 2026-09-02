@@ -312,11 +312,11 @@ class SettingsManager extends EventEmitter {
         if (current === token) await fs.remove(this.lockFile).catch(() => {});
     }
 
-    async readSettings() {
+    async readSettings({ fresh = false } = {}) {
         try {
             // 使用缓存机制减少文件读取
             const stats = await fs.stat(this.settingsPath).catch(() => null);
-            if (stats && this.cache && stats.mtimeMs <= this.cacheTimestamp) {
+            if (!fresh && stats && this.cache && stats.mtimeMs <= this.cacheTimestamp) {
                 return { ...this.cache };
             }
 
@@ -426,7 +426,9 @@ class SettingsManager extends EventEmitter {
         try {
             lockToken = await this.acquireLock();
 
-            const currentSettings = await this.readSettings();
+            // CAS must compare against the bytes currently protected by this
+            // lock, never a renderer/process cache that may be stale.
+            const currentSettings = await this.readSettings({ fresh: true });
             const currentRevision = this.getRevision(currentSettings);
             if (options.expectedRevision !== undefined && options.expectedRevision !== currentRevision) {
                 const conflict = new Error(`Settings changed since it was read (expected ${options.expectedRevision}, current ${currentRevision})`);
@@ -439,6 +441,8 @@ class SettingsManager extends EventEmitter {
             let newSettings;
             if (typeof updater === 'function') {
                 newSettings = await updater(currentSettings);
+            } else if (updater && Array.isArray(updater.__vcpSettingsOps)) {
+                newSettings = this.applyPathOperations(currentSettings, updater.__vcpSettingsOps);
             } else {
                 newSettings = { ...this.defaultSettings, ...currentSettings, ...this.mergePatch(currentSettings, updater) };
             }
@@ -481,6 +485,29 @@ class SettingsManager extends EventEmitter {
             return output;
         };
         return merge(current, patch);
+    }
+
+    applyPathOperations(current, operations) {
+        const next = JSON.parse(JSON.stringify(current || {}));
+        for (const operation of operations || []) {
+            if (!operation || !Array.isArray(operation.path) || operation.path.some(part => typeof part !== 'string')) {
+                throw new TypeError('Invalid settings path operation');
+            }
+            let target = next;
+            const path = operation.path;
+            for (const part of path.slice(0, -1)) {
+                if (!target[part] || typeof target[part] !== 'object' || Array.isArray(target[part])) target[part] = {};
+                target = target[part];
+            }
+            const leaf = path[path.length - 1];
+            if (operation.op === 'unset') {
+                if (path.length) delete target[leaf];
+            } else if (operation.op === 'set') {
+                if (!path.length) throw new TypeError('Root settings path cannot be set');
+                target[leaf] = operation.value;
+            } else throw new TypeError(`Unknown settings path operation: ${operation.op}`);
+        }
+        return { ...this.defaultSettings, ...next };
     }
 
     // 定期清理过期的锁文件

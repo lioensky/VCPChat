@@ -27,6 +27,11 @@ function createCoordinator(form) {
         if (dirty) form.dataset.vcpSettingsDirty = 'true';
         else delete form.dataset.vcpSettingsDirty;
     };
+    const snapshot = () => Object.freeze({
+        status: aggregateStatus(),
+        dirty: form.dataset.vcpSettingsDirty === 'true',
+        clients: Object.freeze([...clients.values()].map(client => Object.freeze({ id: client.id, status: client.status, dirty: client.dirty }))),
+    });
     const scheduleAggregate = () => {
         if (aggregateTimer !== null) clearTimeout(aggregateTimer);
         aggregateTimer = setTimeout(publishAggregate, 0);
@@ -49,6 +54,9 @@ function createCoordinator(form) {
         createOperation(owner) {
             const operationId = createOperationId();
             form.dataset.vcpSettingsOperationId = operationId;
+            let resolveOperation;
+            const completion = new Promise(resolve => { resolveOperation = resolve; });
+            operations.set(operationId, { resolve: resolveOperation, owner, promise: completion });
             if (owner && clients.has(owner)) {
                 const client = clients.get(owner);
                 client.status = 'saving';
@@ -93,18 +101,18 @@ function createCoordinator(form) {
             if (!operationId || !promise || typeof promise.then !== 'function') return Promise.resolve(promise);
             let resolveOperation;
             const result = new Promise(resolve => { resolveOperation = resolve; });
-            const record = { resolve: resolveOperation, owner, promise: null };
-            operations.set(operationId, record);
+            const record = operations.get(operationId) || { resolve: resolveOperation, owner, promise: null };
+            if (!operations.has(operationId)) operations.set(operationId, record);
             const tracked = Promise.resolve(promise).then(value => {
                 if (operations.get(operationId) === record) {
                     operations.delete(operationId);
-                    resolveOperation(value);
+                    record.resolve(value);
                 }
                 return value;
             }, error => {
                 if (operations.get(operationId) === record) {
                     operations.delete(operationId);
-                    resolveOperation({ success: false, status: 'failed', operationId, error: error?.message || String(error) });
+                    record.resolve({ success: false, status: 'failed', operationId, error: error?.message || String(error) });
                 }
                 throw error;
             });
@@ -120,28 +128,41 @@ function createCoordinator(form) {
                     const pending = [...operations.values()].map(operation => operation.promise).filter(Boolean);
                     if (pending.length) await Promise.allSettled(pending);
                     const followUp = [...clients.values()].some(client => client.hasWork?.() === true);
+                    if (['error', 'conflict'].includes(aggregateStatus())) break;
                     if (!followUp && ![...operations.values()].some(operation => operation.promise)) break;
                 }
+                return snapshot();
             })().finally(() => { flushBarrier = null; });
             return flushBarrier;
         },
         async dispose() {
             if (disposed) return;
+            // Keep the result channel alive while the barrier drains. Removing
+            // it first strands operation promises that are completed by the
+            // terminal result event.
+            const snapshot = await coordinator.flush();
+            if (snapshot?.status === 'error' || snapshot?.status === 'conflict') return snapshot;
             disposed = true;
             form.removeEventListener('vcp-settings-save-result', onResultEvent);
-            await coordinator.flush();
             if (aggregateTimer !== null) clearTimeout(aggregateTimer);
             clients.clear();
             operations.clear();
             delete form.dataset.vcpSettingsOperationId;
             coordinators.delete(form);
+            return snapshot;
         },
-        getSnapshot() {
-            return Object.freeze({
-                status: aggregateStatus(),
-                dirty: form.dataset.vcpSettingsDirty === 'true',
-                clients: Object.freeze([...clients.values()].map(client => Object.freeze({ id: client.id, status: client.status, dirty: client.dirty }))),
-            });
+        getSnapshot: snapshot,
+        async reloadExternal() {
+            if (disposed) return snapshot();
+            const settings = await form.ownerDocument?.defaultView?.chatAPI?.loadSettings?.();
+            if (settings && form.dataset.vcpSettingsDirty !== 'true') {
+                form.dispatchEvent(new CustomEvent('global-settings-updated', { detail: { settings, source: 'settings-reload' } }));
+                reportState('saved', { dirty: false });
+            }
+            return snapshot();
+        },
+        retryDraft() {
+            return coordinator.flush();
         },
     };
     coordinators.set(form, coordinator);

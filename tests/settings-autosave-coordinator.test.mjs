@@ -68,3 +68,35 @@ test('settings manager uses content revisions, deep patches, and exclusive locks
         await fs.rm(dir, { recursive: true, force: true });
     }
 });
+
+test('settings manager applies path set and unset operations without replacing siblings', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-path-'));
+    const filename = path.join(dir, 'settings.json');
+    const manager = new SettingsManager(filename);
+    try {
+        const initial = await manager.readSettings();
+        const result = await manager.updateSettings({ __vcpSettingsOps: [
+            { op: 'set', path: ['appearanceProfile', 'density'], value: 'compact' },
+            { op: 'set', path: ['appearanceProfile', 'fontScale'], value: 'large' },
+            { op: 'unset', path: ['vcpApiKey'] },
+        ] }, { expectedRevision: manager.getRevision(initial), operationId: 'path-op' });
+        assert.equal(result.success, true);
+        const saved = await manager.readSettings({ fresh: true });
+        assert.equal(saved.appearanceProfile.density, 'compact');
+        assert.equal(saved.appearanceProfile.fontScale, 'large');
+        assert.equal(saved.appearanceProfile.radius, initial.appearanceProfile.radius);
+        assert.equal(saved.vcpApiKey, '');
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('coordinator exposes explicit retry and external reload actions', async () => {
+    const form = new FakeForm();
+    const coordinator = claimSaveCoordinator(form);
+    let flushed = false;
+    coordinator.registerClient({ id: 'owner', flush: async () => { flushed = true; } });
+    await coordinator.retryDraft();
+    assert.equal(flushed, true);
+    await coordinator.dispose();
+});

@@ -28,6 +28,16 @@ let typedSettingsSaveGeneration = 0;
 let typedSettingsDisposed = false;
 let typedSettingsRevision = null;
 
+function patchToPathOps(patch, prefix = []) {
+    const ops = [];
+    for (const [key, value] of Object.entries(patch || {})) {
+        const path = [...prefix, key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) ops.push(...patchToPathOps(value, path));
+        else ops.push({ op: 'set', path, value });
+    }
+    return ops;
+}
+
 function addTypedNetworkPathInput(root, path = '') {
     const container = root?.querySelector?.('#networkNotesPathsContainer');
     if (!container) return false;
@@ -87,7 +97,10 @@ function ensureTypedSettingsService() {
         typedSettingsState = Object.freeze({ ...typedSettingsState, ...(settings || {}) });
         externalListeners.forEach(listener => listener(typedSettingsState));
     };
-    const onExternalSettings = event => publishExternal(event.detail?.settings);
+    const onExternalSettings = event => {
+        if (event.detail?.revision !== undefined) typedSettingsRevision = event.detail.revision;
+        publishExternal(event.detail?.settings);
+    };
     if (bridgeScope) bridgeScope.listen(window, 'global-settings-updated', onExternalSettings, undefined, 'typed-settings-external-update');
     else window.addEventListener('global-settings-updated', onExternalSettings);
     typedSettingsExternalRelease = () => {
@@ -106,7 +119,7 @@ function ensureTypedSettingsService() {
             typedSettingsState = Object.freeze({ ...typedSettingsState, ...(patch || {}) });
             const run = async () => {
                 const result = await window.chatAPI?.saveSettings?.({
-                    __vcpSettingsPatch: Object.freeze({ ...(patch || {}) }),
+                    __vcpSettingsOps: Object.freeze(patchToPathOps(patch)),
                     expectedRevision: typedSettingsRevision ?? undefined,
                     operationId,
                 });
@@ -138,7 +151,11 @@ function ensureTypedSettingsService() {
             return () => externalListeners.delete(listener);
         },
     });
-    void window.chatAPI?.loadSettings?.().then(settings => publishExternal(settings)).catch(() => {});
+    void window.chatAPI?.loadSettings?.().then(settings => {
+        if (settings?.__vcpSettingsRevision !== undefined) typedSettingsRevision = settings.__vcpSettingsRevision;
+        const { __vcpSettingsRevision, ...snapshot } = settings || {};
+        publishExternal(snapshot);
+    }).catch(() => {});
     if (window.VCPUIUX?.createUiServiceRegistryFromScope && bridgeScope && window.VCPUIUX?.settingsUiDefinition) {
         typedSettingsRegistry = window.VCPUIUX.createUiServiceRegistryFromScope(bridgeScope);
         const definition = window.VCPUIUX.settingsUiDefinition;
@@ -415,7 +432,12 @@ function mountTypedForumFieldOwner(root, form) {
             const result = await state.inFlight;
             if (state.disposed) return;
             if (!result?.success) {
+                if (result?.status === 'stale' || result?.status === 'cancelled') {
+                    if (state.pending) schedule();
+                    return;
+                }
                 state.failed = true;
+                state.pending = true;
                 form.dataset.vcpSettingsDirty = 'true';
                 setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
                 form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, status: result?.status || 'failed', error: result?.error || '论坛配置保存失败', owner: 'typed-forum-field-owner', operationId } }));
@@ -427,6 +449,7 @@ function mountTypedForumFieldOwner(root, form) {
         } catch (error) {
             if (!state.disposed) {
                 state.failed = true;
+                state.pending = true;
                 form.dataset.vcpSettingsDirty = 'true';
                 setStatus('error', { operationId });
                 form.dispatchEvent(new CustomEvent('vcp-settings-save-result', { detail: { success: false, status: 'failed', error: error?.message || String(error), owner: 'typed-forum-field-owner', operationId } }));
@@ -660,16 +683,37 @@ function mountTypedFieldOwner(root, form) {
             const result = await state.inFlight;
             if (state.disposed) return;
             if (!result?.success) {
+                if (result?.status === 'stale' || result?.status === 'cancelled') {
+                    // Superseded/cancelled work is not a durable failure and
+                    // must not poison the aggregate error state.
+                    if (state.pendingPatch) schedule();
+                    return;
+                }
+                state.pendingPatch = {
+                    ...(patch || {}),
+                    ...(state.pendingPatch || {}),
+                    ...(patch?.appearanceProfile || state.pendingPatch?.appearanceProfile
+                        ? { appearanceProfile: { ...(patch?.appearanceProfile || {}), ...(state.pendingPatch?.appearanceProfile || {}) } }
+                        : {}),
+                };
                 form.dataset.vcpSettingsDirty = 'true';
                 setStatus(result?.status === 'conflict' ? 'conflict' : 'error', { operationId });
                 publish(false, result?.error || '设置保存失败', result?.status || 'failed', result?.operationId || operationId);
                 return;
             }
+            state.retryableFailure = null;
             setStatus('saved', { dirty: Boolean(state.pendingPatch), operationId });
             publish(true, '', 'success', result?.operationId || operationId);
             if (state.pendingPatch) schedule();
         } catch (error) {
             if (!state.disposed) {
+                state.pendingPatch = {
+                    ...(patch || {}),
+                    ...(state.pendingPatch || {}),
+                    ...(patch?.appearanceProfile || state.pendingPatch?.appearanceProfile
+                        ? { appearanceProfile: { ...(patch?.appearanceProfile || {}), ...(state.pendingPatch?.appearanceProfile || {}) } }
+                        : {}),
+                };
                 form.dataset.vcpSettingsDirty = 'true';
                 setStatus('error', { operationId });
                 publish(false, error?.message || String(error), 'failed', operationId);
@@ -819,13 +863,15 @@ function flushTypedSettingsFields() {
 // owners flush through their own commands (never form.requestSubmit()) and
 // retract their cleanups with the surface.
 function flushTypedOwners() {
-    flushTypedSettingsFields();
+    const waits = [flushTypedSettingsFields()];
     typedForumFieldStates.forEach(state => {
         if (state.disposed || !state.pending || state.inFlight) return;
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
-        void state.run?.();
+        const work = state.run?.();
+        if (work?.then) waits.push(work);
     });
+    return Promise.all(waits);
 }
 
 function teardownTypedOwners() {

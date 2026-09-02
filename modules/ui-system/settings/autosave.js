@@ -33,6 +33,7 @@ function armSaveFallback(state) {
         if (!state.saving) return;
         state.saving = false;
         state.inFlight = false;
+        state.pending = true;
         state.failureOwner = 'legacy-autosave';
         state.setStatus('error');
         state.completionResolve?.({ success: false, status: 'failed', error: '保存超时' });
@@ -159,6 +160,9 @@ export function mountSettingsAutosave(root, form, scope = null, options = {}) {
         } else {
             // Remember which owner failed so retry clicks can be routed.
             state.failureOwner = detail?.owner || 'legacy-autosave';
+            // Retain the failed snapshot for an explicit retry or a later
+            // close-time flush; a failed write must never silently disappear.
+            state.pending = true;
             setStatus(detail?.status === 'conflict' ? 'conflict' : 'error', { owner: 'legacy-autosave', operationId: detail.operationId });
             completion?.({ ...detail, status: detail?.status || 'failed' });
         }
@@ -235,7 +239,7 @@ function flushState(state) {
 }
 
 export function flushLegacyAutosave() {
-    autosaveStates.forEach(flushState);
+    return Promise.all([...autosaveStates].map(flushState));
 }
 
 export function teardownLegacyAutosave() {

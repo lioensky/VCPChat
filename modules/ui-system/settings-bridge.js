@@ -363,9 +363,13 @@ function flushSettingsAutosave() {
 
 async function teardownSettingsAutosave() {
     const coordinator = getSaveCoordinator(document.getElementById('globalSettingsForm'));
-    if (coordinator) await coordinator.dispose();
+    if (coordinator) {
+        const snapshot = await coordinator.dispose();
+        if (snapshot?.status === 'error' || snapshot?.status === 'conflict') return snapshot;
+    }
     teardownLegacyAutosave();
     teardownTypedOwners();
+    return { status: 'idle' };
 }
 
 function teardownUiuxDisclosures() {
@@ -778,19 +782,24 @@ function scheduleRefresh() {
 }
 
 async function teardown() {
+    // Drain settings writes before disposing typed owners. Their cleanup
+    // intentionally clears timers/pending patches, so disposing the scope
+    // first would make the close path lose the last draft before flush.
+    const autosaveResult = await teardownSettingsAutosave();
+    if (autosaveResult?.status === 'error' || autosaveResult?.status === 'conflict') {
+        // Keep the surface and its retained draft alive so the user can retry
+        // or reload after a failed/conflicting close flush.
+        return;
+    }
     const scope = takePresentationScope();
-    // Retract enhanced controller identity synchronously before a rapid
-    // A rapid surface round-trip can schedule another refresh.  The Scope
-    // disposal below still owns error isolation and all non-controller
-    // resources, but must not leave stale VCPUI proxies visible to the next
-    // presentation generation.
+    // Retract enhanced controller identity only after durable settings work
+    // has quiesced; a failed close must leave the surface retryable.
     releaseAllControllers();
     if (scope) {
         try { await scope.dispose('settings-presentation-teardown'); }
         catch (error) { console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error); }
     }
     releaseAllAgentModelPickers();
-    await teardownSettingsAutosave();
     teardownUiuxDisclosures();
     selectProjection.teardown();
     [...shellRoots].forEach(root => {
@@ -852,6 +861,12 @@ scheduleRefresh();
 window.VCPUISettingsBridge = Object.freeze({
     refresh: scheduleRefresh,
     flush: flushSettingsAutosave,
+    reloadExternal() {
+        return getSaveCoordinator(document.getElementById('globalSettingsForm'))?.reloadExternal?.();
+    },
+    retryDraft() {
+        return getSaveCoordinator(document.getElementById('globalSettingsForm'))?.retryDraft?.();
+    },
     flushForum: flushTypedForumFields,
     addNetworkPathInput(path = '') {
         if (isPresentationDestroyed()) return false;
