@@ -313,6 +313,7 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-row-copy > :is(label, span, strong, h4, h5),
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-home-visual-copy > strong,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-copy > strong,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-range-heading > span:first-child,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .appearance-geometry-control .appearance-range-heading > span:first-child,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-language-row-title,

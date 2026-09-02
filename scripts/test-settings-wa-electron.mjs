@@ -388,6 +388,8 @@ try {
             if (!el) return null;
             return {
                 text,
+                tag: el.tagName,
+                parentClass: el.parentElement.className,
                 fontWeight: getComputedStyle(el).fontWeight,
                 fontSize: getComputedStyle(el).fontSize,
             };
@@ -399,6 +401,7 @@ try {
             check('主页视觉文字'),
         ];
     });
+    console.log('[TYPO CHECK RESULTS]', typoCheck);
     for (const item of typoCheck) {
         if (item) {
             assert.equal(item.fontWeight, '400', `${item.text} must have 400 font-weight`);
