@@ -215,6 +215,7 @@
     "modules/renderer/visibilityOptimizer.js",
     "modules/renderer/windowStreamRuntime.js",
     "modules/searchManager.js",
+    "modules/services/attachmentDialogState.js",
     "modules/services/chatDataService/client.js",
     "modules/services/chatDataService/index.js",
     "modules/services/chatDataService/lifecycle.js",
@@ -687,7 +688,7 @@
       "producers": [
         {
           "file": "modules/ipc/canvasHandlers.js",
-          "line": 206,
+          "line": 286,
           "kind": "ipc-send"
         }
       ],
@@ -695,7 +696,7 @@
       "evidence": [
         {
           "file": "modules/ipc/canvasHandlers.js",
-          "line": 206,
+          "line": 286,
           "kind": "ipc-send",
           "match": "send('canvas-window-closed'"
         }
@@ -950,7 +951,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1887,
+          "line": 1888,
           "kind": "ipc-send"
         },
         {
@@ -977,20 +978,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1887,
+          "line": 1888,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1887,
+          "line": 1888,
           "kind": "custom-event-listener",
           "match": "on('connect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 1887,
+          "line": 1888,
           "kind": "ipc-send",
           "match": "on('connect-vcplog'"
         },
@@ -1252,22 +1253,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 415,
+          "line": 414,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 399,
+          "line": 398,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 311,
+          "line": 312,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 446,
+          "line": 447,
           "kind": "ipc-send"
         }
       ],
@@ -1275,25 +1276,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 415,
+          "line": 414,
           "kind": "ipc-send",
           "match": "invoke('desktop-capture-widget'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 399,
+          "line": 398,
           "kind": "ipc-send",
           "match": "invoke('desktop-capture-widget'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 311,
+          "line": 312,
           "kind": "ipc-send",
           "match": "invoke('desktop-capture-widget'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 446,
+          "line": 447,
           "kind": "ipc-send",
           "match": "invoke('desktop-capture-widget'"
         }
@@ -1304,22 +1305,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 410,
+          "line": 409,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 394,
+          "line": 393,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 306,
+          "line": 307,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 441,
+          "line": 442,
           "kind": "ipc-send"
         }
       ],
@@ -1327,25 +1328,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 410,
+          "line": 409,
           "kind": "ipc-send",
           "match": "invoke('desktop-delete-widget'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 394,
+          "line": 393,
           "kind": "ipc-send",
           "match": "invoke('desktop-delete-widget'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 306,
+          "line": 307,
           "kind": "ipc-send",
           "match": "invoke('desktop-delete-widget'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 441,
+          "line": 442,
           "kind": "ipc-send",
           "match": "invoke('desktop-delete-widget'"
         }
@@ -1356,22 +1357,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 416,
+          "line": 415,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 400,
+          "line": 399,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 312,
+          "line": 313,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 447,
+          "line": 448,
           "kind": "ipc-send"
         }
       ],
@@ -1379,25 +1380,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 416,
+          "line": 415,
           "kind": "ipc-send",
           "match": "invoke('desktop-get-credentials'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 400,
+          "line": 399,
           "kind": "ipc-send",
           "match": "invoke('desktop-get-credentials'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 312,
+          "line": 313,
           "kind": "ipc-send",
           "match": "invoke('desktop-get-credentials'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 447,
+          "line": 448,
           "kind": "ipc-send",
           "match": "invoke('desktop-get-credentials'"
         }
@@ -1408,22 +1409,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 427,
+          "line": 426,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 412,
+          "line": 411,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 323,
+          "line": 324,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 458,
+          "line": 459,
           "kind": "ipc-send"
         }
       ],
@@ -1431,25 +1432,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 427,
+          "line": 426,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-get-icon-data'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 412,
+          "line": 411,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-get-icon-data'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 323,
+          "line": 324,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-get-icon-data'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 458,
+          "line": 459,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-get-icon-data'"
         }
@@ -1460,22 +1461,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 426,
+          "line": 425,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 411,
+          "line": 410,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 322,
+          "line": 323,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 457,
+          "line": 458,
           "kind": "ipc-send"
         }
       ],
@@ -1483,25 +1484,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 426,
+          "line": 425,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-icons'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 411,
+          "line": 410,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-icons'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 322,
+          "line": 323,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-icons'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 457,
+          "line": 458,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-icons'"
         }
@@ -1512,22 +1513,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 425,
+          "line": 424,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 410,
+          "line": 409,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 321,
+          "line": 322,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 456,
+          "line": 457,
           "kind": "ipc-send"
         }
       ],
@@ -1535,25 +1536,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 425,
+          "line": 424,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-presets'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 410,
+          "line": 409,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-presets'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 321,
+          "line": 322,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-presets'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 456,
+          "line": 457,
           "kind": "ipc-send",
           "match": "invoke('desktop-iconset-list-presets'"
         }
@@ -1564,22 +1565,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 428,
+          "line": 427,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 413,
+          "line": 412,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 324,
+          "line": 325,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 459,
+          "line": 460,
           "kind": "ipc-send"
         }
       ],
@@ -1587,25 +1588,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 428,
+          "line": 427,
           "kind": "ipc-send",
           "match": "invoke('desktop-launch-vchat-app'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 413,
+          "line": 412,
           "kind": "ipc-send",
           "match": "invoke('desktop-launch-vchat-app'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 324,
+          "line": 325,
           "kind": "ipc-send",
           "match": "invoke('desktop-launch-vchat-app'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 459,
+          "line": 460,
           "kind": "ipc-send",
           "match": "invoke('desktop-launch-vchat-app'"
         }
@@ -1616,22 +1617,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 414,
+          "line": 413,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 398,
+          "line": 397,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 310,
+          "line": 311,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 445,
+          "line": 446,
           "kind": "ipc-send"
         }
       ],
@@ -1639,25 +1640,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 414,
+          "line": 413,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widget-files'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 398,
+          "line": 397,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widget-files'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 310,
+          "line": 311,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widget-files'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 445,
+          "line": 446,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widget-files'"
         }
@@ -1668,22 +1669,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 411,
+          "line": 410,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 395,
+          "line": 394,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 307,
+          "line": 308,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 442,
+          "line": 443,
           "kind": "ipc-send"
         }
       ],
@@ -1691,25 +1692,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 411,
+          "line": 410,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widgets'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 395,
+          "line": 394,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widgets'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 307,
+          "line": 308,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widgets'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 442,
+          "line": 443,
           "kind": "ipc-send",
           "match": "invoke('desktop-list-widgets'"
         }
@@ -1720,22 +1721,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 422,
+          "line": 421,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 406,
+          "line": 405,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 318,
+          "line": 319,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 453,
+          "line": 454,
           "kind": "ipc-send"
         }
       ],
@@ -1743,25 +1744,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 422,
+          "line": 421,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-dock'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 406,
+          "line": 405,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-dock'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 318,
+          "line": 319,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-dock'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 453,
+          "line": 454,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-dock'"
         }
@@ -1772,22 +1773,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 424,
+          "line": 423,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 409,
+          "line": 408,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 320,
+          "line": 321,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 455,
+          "line": 456,
           "kind": "ipc-send"
         }
       ],
@@ -1795,25 +1796,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 424,
+          "line": 423,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-layout'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 409,
+          "line": 408,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-layout'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 320,
+          "line": 321,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-layout'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 455,
+          "line": 456,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-layout'"
         }
@@ -1824,22 +1825,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 409,
+          "line": 408,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 393,
+          "line": 392,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 305,
+          "line": 306,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 440,
+          "line": 441,
           "kind": "ipc-send"
         }
       ],
@@ -1847,25 +1848,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 409,
+          "line": 408,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 393,
+          "line": 392,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 305,
+          "line": 306,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 440,
+          "line": 441,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget'"
         }
@@ -1876,22 +1877,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 413,
+          "line": 412,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 397,
+          "line": 396,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 309,
+          "line": 310,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 444,
+          "line": 445,
           "kind": "ipc-send"
         }
       ],
@@ -1899,25 +1900,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 413,
+          "line": 412,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget-file'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 397,
+          "line": 396,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget-file'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 309,
+          "line": 310,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget-file'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 444,
+          "line": 445,
           "kind": "ipc-send",
           "match": "invoke('desktop-load-widget-file'"
         }
@@ -1928,22 +1929,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 456,
+          "line": 455,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 422,
+          "line": 421,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 344,
+          "line": 345,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 464,
+          "line": 465,
           "kind": "ipc-send"
         }
       ],
@@ -1951,25 +1952,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 456,
+          "line": 455,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-capabilities'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 422,
+          "line": 421,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-capabilities'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 344,
+          "line": 345,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-capabilities'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 464,
+          "line": 465,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-capabilities'"
         }
@@ -1980,22 +1981,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 457,
+          "line": 456,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 423,
+          "line": 422,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 345,
+          "line": 346,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 465,
+          "line": 466,
           "kind": "ipc-send"
         }
       ],
@@ -2003,25 +2004,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 457,
+          "line": 456,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-detailed-processes'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 423,
+          "line": 422,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-detailed-processes'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 345,
+          "line": 346,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-detailed-processes'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 465,
+          "line": 466,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-detailed-processes'"
         }
@@ -2032,22 +2033,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 455,
+          "line": 454,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 421,
+          "line": 420,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 343,
+          "line": 344,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 463,
+          "line": 464,
           "kind": "ipc-send"
         }
       ],
@@ -2055,25 +2056,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 455,
+          "line": 454,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-snapshot'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 421,
+          "line": 420,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-snapshot'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 343,
+          "line": 344,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-snapshot'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 463,
+          "line": 464,
           "kind": "ipc-send",
           "match": "invoke('desktop-metrics-get-snapshot'"
         }
@@ -2084,22 +2085,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 458,
+          "line": 457,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 424,
+          "line": 423,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 346,
+          "line": 347,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 466,
+          "line": 467,
           "kind": "ipc-send"
         }
       ],
@@ -2107,25 +2108,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 458,
+          "line": 457,
           "kind": "ipc-send",
           "match": "invoke('desktop-open-system-tool'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 424,
+          "line": 423,
           "kind": "ipc-send",
           "match": "invoke('desktop-open-system-tool'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 346,
+          "line": 347,
           "kind": "ipc-send",
           "match": "invoke('desktop-open-system-tool'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 466,
+          "line": 467,
           "kind": "ipc-send",
           "match": "invoke('desktop-open-system-tool'"
         }
@@ -2136,12 +2137,12 @@
       "producers": [
         {
           "file": "preloads/desktop.js",
-          "line": 425,
+          "line": 424,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 467,
+          "line": 468,
           "kind": "ipc-send"
         }
       ],
@@ -2149,13 +2150,13 @@
       "evidence": [
         {
           "file": "preloads/desktop.js",
-          "line": 425,
+          "line": 424,
           "kind": "ipc-send",
           "match": "invoke('desktop-open-widget-in-canvas'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 467,
+          "line": 468,
           "kind": "ipc-send",
           "match": "invoke('desktop-open-widget-in-canvas'"
         }
@@ -2166,7 +2167,7 @@
       "producers": [
         {
           "file": "preloads/desktop.js",
-          "line": 408,
+          "line": 407,
           "kind": "ipc-send"
         }
       ],
@@ -2174,7 +2175,7 @@
       "evidence": [
         {
           "file": "preloads/desktop.js",
-          "line": 408,
+          "line": 407,
           "kind": "ipc-send",
           "match": "invoke('desktop-patch-layout'"
         }
@@ -2185,22 +2186,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 402,
+          "line": 401,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 386,
+          "line": 385,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 298,
+          "line": 299,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 433,
+          "line": 434,
           "kind": "ipc-send"
         },
         {
@@ -2219,25 +2220,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 402,
+          "line": 401,
           "kind": "ipc-send",
           "match": "send('desktop-push'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 386,
+          "line": 385,
           "kind": "ipc-send",
           "match": "send('desktop-push'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 298,
+          "line": 299,
           "kind": "ipc-send",
           "match": "send('desktop-push'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 433,
+          "line": 434,
           "kind": "ipc-send",
           "match": "send('desktop-push'"
         },
@@ -2290,22 +2291,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 453,
+          "line": 452,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 419,
+          "line": 418,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 341,
+          "line": 342,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 461,
+          "line": 462,
           "kind": "ipc-send"
         }
       ],
@@ -2313,25 +2314,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 453,
+          "line": 452,
           "kind": "ipc-send",
           "match": "invoke('desktop-read-wallpaper-thumbnail'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 419,
+          "line": 418,
           "kind": "ipc-send",
           "match": "invoke('desktop-read-wallpaper-thumbnail'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 341,
+          "line": 342,
           "kind": "ipc-send",
           "match": "invoke('desktop-read-wallpaper-thumbnail'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 461,
+          "line": 462,
           "kind": "ipc-send",
           "match": "invoke('desktop-read-wallpaper-thumbnail'"
         }
@@ -2342,7 +2343,7 @@
       "producers": [
         {
           "file": "modules/ipc/desktopRemoteHandlers.js",
-          "line": 342,
+          "line": 360,
           "kind": "ipc-send"
         }
       ],
@@ -2350,7 +2351,7 @@
       "evidence": [
         {
           "file": "modules/ipc/desktopRemoteHandlers.js",
-          "line": 342,
+          "line": 360,
           "kind": "ipc-send",
           "match": "send('desktop-remote-set-wallpaper'"
         }
@@ -2361,22 +2362,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 407,
+          "line": 406,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 391,
+          "line": 390,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 303,
+          "line": 304,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 438,
+          "line": 439,
           "kind": "ipc-send"
         }
       ],
@@ -2384,25 +2385,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 407,
+          "line": 406,
           "kind": "ipc-send",
           "match": "send('desktop-remote:response'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 391,
+          "line": 390,
           "kind": "ipc-send",
           "match": "send('desktop-remote:response'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 303,
+          "line": 304,
           "kind": "ipc-send",
           "match": "send('desktop-remote:response'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 438,
+          "line": 439,
           "kind": "ipc-send",
           "match": "send('desktop-remote:response'"
         }
@@ -2413,22 +2414,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 421,
+          "line": 420,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 405,
+          "line": 404,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 317,
+          "line": 318,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 452,
+          "line": 453,
           "kind": "ipc-send"
         }
       ],
@@ -2436,25 +2437,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 421,
+          "line": 420,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-dock'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 405,
+          "line": 404,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-dock'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 317,
+          "line": 318,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-dock'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 452,
+          "line": 453,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-dock'"
         }
@@ -2465,22 +2466,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 423,
+          "line": 422,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 407,
+          "line": 406,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 319,
+          "line": 320,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 454,
+          "line": 455,
           "kind": "ipc-send"
         }
       ],
@@ -2488,25 +2489,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 423,
+          "line": 422,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-layout'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 407,
+          "line": 406,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-layout'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 319,
+          "line": 320,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-layout'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 454,
+          "line": 455,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-layout'"
         }
@@ -2517,22 +2518,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 408,
+          "line": 407,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 392,
+          "line": 391,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 304,
+          "line": 305,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 439,
+          "line": 440,
           "kind": "ipc-send"
         }
       ],
@@ -2540,25 +2541,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 408,
+          "line": 407,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 392,
+          "line": 391,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 304,
+          "line": 305,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 439,
+          "line": 440,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget'"
         }
@@ -2569,22 +2570,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 412,
+          "line": 411,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 396,
+          "line": 395,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 308,
+          "line": 309,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 443,
+          "line": 444,
           "kind": "ipc-send"
         }
       ],
@@ -2592,25 +2593,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 412,
+          "line": 411,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget-file'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 396,
+          "line": 395,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget-file'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 308,
+          "line": 309,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget-file'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 443,
+          "line": 444,
           "kind": "ipc-send",
           "match": "invoke('desktop-save-widget-file'"
         }
@@ -2621,22 +2622,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 420,
+          "line": 419,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 404,
+          "line": 403,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 316,
+          "line": 317,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 451,
+          "line": 452,
           "kind": "ipc-send"
         }
       ],
@@ -2644,25 +2645,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 420,
+          "line": 419,
           "kind": "ipc-send",
           "match": "invoke('desktop-scan-shortcuts'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 404,
+          "line": 403,
           "kind": "ipc-send",
           "match": "invoke('desktop-scan-shortcuts'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 316,
+          "line": 317,
           "kind": "ipc-send",
           "match": "invoke('desktop-scan-shortcuts'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 451,
+          "line": 452,
           "kind": "ipc-send",
           "match": "invoke('desktop-scan-shortcuts'"
         }
@@ -2673,22 +2674,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 452,
+          "line": 451,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 418,
+          "line": 417,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 340,
+          "line": 341,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 460,
+          "line": 461,
           "kind": "ipc-send"
         }
       ],
@@ -2696,25 +2697,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 452,
+          "line": 451,
           "kind": "ipc-send",
           "match": "invoke('desktop-select-wallpaper'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 418,
+          "line": 417,
           "kind": "ipc-send",
           "match": "invoke('desktop-select-wallpaper'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 340,
+          "line": 341,
           "kind": "ipc-send",
           "match": "invoke('desktop-select-wallpaper'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 460,
+          "line": 461,
           "kind": "ipc-send",
           "match": "invoke('desktop-select-wallpaper'"
         }
@@ -2725,22 +2726,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 454,
+          "line": 453,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 420,
+          "line": 419,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 342,
+          "line": 343,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 462,
+          "line": 463,
           "kind": "ipc-send"
         }
       ],
@@ -2748,25 +2749,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 454,
+          "line": 453,
           "kind": "ipc-send",
           "match": "invoke('desktop-set-always-on-bottom'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 420,
+          "line": 419,
           "kind": "ipc-send",
           "match": "invoke('desktop-set-always-on-bottom'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 342,
+          "line": 343,
           "kind": "ipc-send",
           "match": "invoke('desktop-set-always-on-bottom'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 462,
+          "line": 463,
           "kind": "ipc-send",
           "match": "invoke('desktop-set-always-on-bottom'"
         }
@@ -2777,22 +2778,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 419,
+          "line": 418,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 403,
+          "line": 402,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 315,
+          "line": 316,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 450,
+          "line": 451,
           "kind": "ipc-send"
         }
       ],
@@ -2800,25 +2801,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 419,
+          "line": 418,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-launch'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 403,
+          "line": 402,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-launch'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 315,
+          "line": 316,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-launch'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 450,
+          "line": 451,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-launch'"
         }
@@ -2829,22 +2830,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 417,
+          "line": 416,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 401,
+          "line": 400,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 313,
+          "line": 314,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 448,
+          "line": 449,
           "kind": "ipc-send"
         }
       ],
@@ -2852,25 +2853,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 417,
+          "line": 416,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 401,
+          "line": 400,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 313,
+          "line": 314,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 448,
+          "line": 449,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse'"
         }
@@ -2881,22 +2882,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 418,
+          "line": 417,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 402,
+          "line": 401,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 314,
+          "line": 315,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 449,
+          "line": 450,
           "kind": "ipc-send"
         }
       ],
@@ -2904,25 +2905,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 418,
+          "line": 417,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse-batch'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 402,
+          "line": 401,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse-batch'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 314,
+          "line": 315,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse-batch'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 449,
+          "line": 450,
           "kind": "ipc-send",
           "match": "invoke('desktop-shortcut-parse-batch'"
         }
@@ -2974,7 +2975,7 @@
       "producers": [
         {
           "file": "modules/ipc/canvasHandlers.js",
-          "line": 83,
+          "line": 82,
           "kind": "ipc-send"
         }
       ],
@@ -2982,7 +2983,7 @@
       "evidence": [
         {
           "file": "modules/ipc/canvasHandlers.js",
-          "line": 83,
+          "line": 82,
           "kind": "ipc-send",
           "match": "send('desktop-widget-source-saved'"
         }
@@ -2993,7 +2994,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1898,
+          "line": 1899,
           "kind": "ipc-send"
         },
         {
@@ -3020,20 +3021,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1898,
+          "line": 1899,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1898,
+          "line": 1899,
           "kind": "custom-event-listener",
           "match": "on('disconnect-vcplog'"
         },
         {
           "file": "main.js",
-          "line": 1898,
+          "line": 1899,
           "kind": "ipc-send",
           "match": "on('disconnect-vcplog'"
         },
@@ -3106,7 +3107,7 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 437,
+          "line": 436,
           "kind": "ipc-send"
         }
       ],
@@ -3114,7 +3115,7 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 437,
+          "line": 436,
           "kind": "ipc-send",
           "match": "invoke('embedded-vchat-app:activate'"
         }
@@ -3125,12 +3126,12 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 448,
+          "line": 447,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 338,
+          "line": 339,
           "kind": "ipc-send"
         }
       ],
@@ -3138,13 +3139,13 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 448,
+          "line": 447,
           "kind": "ipc-send",
           "match": "invoke('embedded-vchat-app:cancel'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 338,
+          "line": 339,
           "kind": "ipc-send",
           "match": "invoke('embedded-vchat-app:cancel'"
         }
@@ -3155,7 +3156,7 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 450,
+          "line": 449,
           "kind": "ipc-send"
         }
       ],
@@ -3163,7 +3164,7 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 450,
+          "line": 449,
           "kind": "ipc-send",
           "match": "invoke('embedded-vchat-app:close-all'"
         }
@@ -3174,7 +3175,7 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 436,
+          "line": 435,
           "kind": "ipc-send"
         }
       ],
@@ -3182,7 +3183,7 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 436,
+          "line": 435,
           "kind": "ipc-send",
           "match": "invoke('embedded-vchat-app:list'"
         }
@@ -3193,27 +3194,27 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1592,
+          "line": 1593,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "main.js",
-          "line": 1592,
+          "line": 1593,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1592,
+          "line": 1593,
           "kind": "custom-event-listener",
           "match": "on('embedded-vchat-app:request-close'"
         },
         {
           "file": "main.js",
-          "line": 1592,
+          "line": 1593,
           "kind": "ipc-send",
           "match": "on('embedded-vchat-app:request-close'"
         }
@@ -3224,7 +3225,7 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 438,
+          "line": 437,
           "kind": "ipc-send"
         }
       ],
@@ -3232,7 +3233,7 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 438,
+          "line": 437,
           "kind": "ipc-send",
           "match": "invoke('embedded-vchat-app:set-bounds'"
         }
@@ -3295,7 +3296,7 @@
       "producers": [
         {
           "file": "modules/ipc/desktopRemoteHandlers.js",
-          "line": 203,
+          "line": 221,
           "kind": "ipc-send"
         }
       ],
@@ -3303,7 +3304,7 @@
       "evidence": [
         {
           "file": "modules/ipc/desktopRemoteHandlers.js",
-          "line": 203,
+          "line": 221,
           "kind": "ipc-send",
           "match": "send('flowlock-command'"
         }
@@ -4162,7 +4163,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1451,
+          "line": 1452,
           "kind": "ipc-send"
         }
       ],
@@ -4170,7 +4171,7 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1451,
+          "line": 1452,
           "kind": "ipc-send",
           "match": "send('history-file-updated'"
         }
@@ -4233,7 +4234,7 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 430,
+          "line": 429,
           "kind": "ipc-send"
         }
       ],
@@ -4241,7 +4242,7 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 430,
+          "line": 429,
           "kind": "ipc-send",
           "match": "invoke('list-enabled-frontend-plugins'"
         }
@@ -5472,22 +5473,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 359,
+          "line": 358,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 343,
+          "line": 342,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 255,
+          "line": 256,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 390,
+          "line": 391,
           "kind": "ipc-send"
         }
       ],
@@ -5495,25 +5496,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 359,
+          "line": 358,
           "kind": "ipc-send",
           "match": "invoke('music-cancel-preload'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 343,
+          "line": 342,
           "kind": "ipc-send",
           "match": "invoke('music-cancel-preload'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 255,
+          "line": 256,
           "kind": "ipc-send",
           "match": "invoke('music-cancel-preload'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 390,
+          "line": 391,
           "kind": "ipc-send",
           "match": "invoke('music-cancel-preload'"
         }
@@ -5524,22 +5525,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 379,
+          "line": 378,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 363,
+          "line": 362,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 275,
+          "line": 276,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 410,
+          "line": 411,
           "kind": "ipc-send"
         }
       ],
@@ -5547,25 +5548,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 379,
+          "line": 378,
           "kind": "ipc-send",
           "match": "invoke('music-get-settings'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 363,
+          "line": 362,
           "kind": "ipc-send",
           "match": "invoke('music-get-settings'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 275,
+          "line": 276,
           "kind": "ipc-send",
           "match": "invoke('music-get-settings'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 410,
+          "line": 411,
           "kind": "ipc-send",
           "match": "invoke('music-get-settings'"
         }
@@ -5576,22 +5577,22 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 380,
+          "line": 379,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 364,
+          "line": 363,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 276,
+          "line": 277,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 411,
+          "line": 412,
           "kind": "ipc-send"
         }
       ],
@@ -5599,25 +5600,25 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 380,
+          "line": 379,
           "kind": "ipc-send",
           "match": "invoke('music-save-settings'"
         },
         {
           "file": "preloads/desktop.js",
-          "line": 364,
+          "line": 363,
           "kind": "ipc-send",
           "match": "invoke('music-save-settings'"
         },
         {
           "file": "preloads/shared/catalog.js",
-          "line": 276,
+          "line": 277,
           "kind": "ipc-send",
           "match": "invoke('music-save-settings'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 411,
+          "line": 412,
           "kind": "ipc-send",
           "match": "invoke('music-save-settings'"
         }
@@ -7130,7 +7131,7 @@
       "producers": [
         {
           "file": "preloads/utility.js",
-          "line": 469,
+          "line": 470,
           "kind": "ipc-send"
         }
       ],
@@ -7138,7 +7139,7 @@
       "evidence": [
         {
           "file": "preloads/utility.js",
-          "line": 469,
+          "line": 470,
           "kind": "ipc-send",
           "match": "invoke('plugin-manager-list-plugins'"
         }
@@ -7149,7 +7150,7 @@
       "producers": [
         {
           "file": "preloads/utility.js",
-          "line": 473,
+          "line": 474,
           "kind": "ipc-send"
         }
       ],
@@ -7157,7 +7158,7 @@
       "evidence": [
         {
           "file": "preloads/utility.js",
-          "line": 473,
+          "line": 474,
           "kind": "ipc-send",
           "match": "invoke('plugin-manager-open-plugin-folder'"
         }
@@ -7168,7 +7169,7 @@
       "producers": [
         {
           "file": "preloads/utility.js",
-          "line": 471,
+          "line": 472,
           "kind": "ipc-send"
         }
       ],
@@ -7176,7 +7177,7 @@
       "evidence": [
         {
           "file": "preloads/utility.js",
-          "line": 471,
+          "line": 472,
           "kind": "ipc-send",
           "match": "invoke('plugin-manager-save-config-env'"
         }
@@ -7187,7 +7188,7 @@
       "producers": [
         {
           "file": "preloads/utility.js",
-          "line": 470,
+          "line": 471,
           "kind": "ipc-send"
         }
       ],
@@ -7195,7 +7196,7 @@
       "evidence": [
         {
           "file": "preloads/utility.js",
-          "line": 470,
+          "line": 471,
           "kind": "ipc-send",
           "match": "invoke('plugin-manager-save-manifest'"
         }
@@ -7206,7 +7207,7 @@
       "producers": [
         {
           "file": "preloads/utility.js",
-          "line": 472,
+          "line": 473,
           "kind": "ipc-send"
         }
       ],
@@ -7214,7 +7215,7 @@
       "evidence": [
         {
           "file": "preloads/utility.js",
-          "line": 472,
+          "line": 473,
           "kind": "ipc-send",
           "match": "invoke('plugin-manager-set-plugin-enabled'"
         }
@@ -7351,12 +7352,12 @@
       "producers": [
         {
           "file": "preloads/shared/catalog.js",
-          "line": 222,
+          "line": 223,
           "kind": "ipc-send"
         },
         {
           "file": "preloads/utility.js",
-          "line": 357,
+          "line": 358,
           "kind": "ipc-send"
         },
         {
@@ -7375,13 +7376,13 @@
       "evidence": [
         {
           "file": "preloads/shared/catalog.js",
-          "line": 222,
+          "line": 223,
           "kind": "ipc-send",
           "match": "send('rag-overlay-set-notification-category-enabled'"
         },
         {
           "file": "preloads/utility.js",
-          "line": 357,
+          "line": 358,
           "kind": "ipc-send",
           "match": "send('rag-overlay-set-notification-category-enabled'"
         },
@@ -8158,7 +8159,7 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1910,
+          "line": 1911,
           "kind": "ipc-send"
         },
         {
@@ -8185,20 +8186,20 @@
       "consumers": [
         {
           "file": "main.js",
-          "line": 1910,
+          "line": 1911,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1910,
+          "line": 1911,
           "kind": "custom-event-listener",
           "match": "on('send-vcplog-message'"
         },
         {
           "file": "main.js",
-          "line": 1910,
+          "line": 1911,
           "kind": "ipc-send",
           "match": "on('send-vcplog-message'"
         },
@@ -9210,7 +9211,7 @@
       "producers": [
         {
           "file": "preloads/chat.js",
-          "line": 431,
+          "line": 430,
           "kind": "ipc-send"
         }
       ],
@@ -9218,7 +9219,7 @@
       "evidence": [
         {
           "file": "preloads/chat.js",
-          "line": 431,
+          "line": 430,
           "kind": "ipc-send",
           "match": "invoke('vchat-wallpaper-select-directory'"
         }
@@ -9386,17 +9387,17 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1844,
+          "line": 1845,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1858,
+          "line": 1859,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1861,
+          "line": 1862,
           "kind": "ipc-send"
         },
         {
@@ -9409,19 +9410,19 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1844,
+          "line": 1845,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 1858,
+          "line": 1859,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
         {
           "file": "main.js",
-          "line": 1861,
+          "line": 1862,
           "kind": "ipc-send",
           "match": "send('vcp-log-message'"
         },
@@ -9438,32 +9439,32 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1821,
+          "line": 1822,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1834,
+          "line": 1835,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1842,
+          "line": 1843,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1867,
+          "line": 1868,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1880,
+          "line": 1881,
           "kind": "ipc-send"
         },
         {
           "file": "main.js",
-          "line": 1906,
+          "line": 1907,
           "kind": "ipc-send"
         }
       ],
@@ -9471,37 +9472,37 @@
       "evidence": [
         {
           "file": "main.js",
-          "line": 1821,
+          "line": 1822,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1834,
+          "line": 1835,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1842,
+          "line": 1843,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1867,
+          "line": 1868,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1880,
+          "line": 1881,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         },
         {
           "file": "main.js",
-          "line": 1906,
+          "line": 1907,
           "kind": "ipc-send",
           "match": "send('vcp-log-status'"
         }
@@ -10274,27 +10275,27 @@
       "producers": [
         {
           "file": "main.js",
-          "line": 1726,
+          "line": 1727,
           "kind": "ipc-send"
         }
       ],
       "consumers": [
         {
           "file": "main.js",
-          "line": 1726,
+          "line": 1727,
           "kind": "custom-event-listener"
         }
       ],
       "evidence": [
         {
           "file": "main.js",
-          "line": 1726,
+          "line": 1727,
           "kind": "custom-event-listener",
           "match": "on('window-all-closed'"
         },
         {
           "file": "main.js",
-          "line": 1726,
+          "line": 1727,
           "kind": "ipc-send",
           "match": "on('window-all-closed'"
         }

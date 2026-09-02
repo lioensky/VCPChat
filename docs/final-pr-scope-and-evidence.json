@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "branch": "exp/settings-schema",
   "upstream": "origin/main",
-  "mergeBase": "4c68ba6658bc11657cc2cd05e20b17e318cca473",
+  "mergeBase": "4b86d06338d2ac9f94aca7f7710f97b3879f79a0",
   "scope": [
     { "id": "settings-schema-m5", "paths": ["modules/settings/**", "modules/ui-system/settings/**", "modules/ui-system/agent-settings-bridge.js", "modules/ui-system/typed-field-owners.js"], "status": "in-scope" },
     { "id": "uiux-runtime", "paths": ["modules/uiux/**", "modules/ui-system/vcp-ui.js", "modules/ui-system/surface-controller.js", "styles/ui-system/**"], "status": "in-scope" },
@@ -15,15 +15,14 @@
   "evidence": [
     { "id": "ui-system", "command": "npm run check:ui-system", "status": "passed" },
     { "id": "uiux", "command": "npm run check:uiux", "status": "passed" },
+    { "id": "settings-ownership", "command": "npm run check:settings-ownership", "status": "passed" },
+    { "id": "build-uiux", "command": "npm run build:uiux", "status": "passed" },
     { "id": "settings-electron", "command": "npm run test:settings-wa-electron", "status": "passed" },
-    { "id": "ui-applications-electron", "command": "node scripts/test-electron-ui-apps-smoke.mjs", "status": "passed" },
+    { "id": "ui-applications-electron", "command": "node scripts/test-electron-ui-apps-smoke.mjs", "status": "not-run", "reason": "not re-run after rebase on this host" },
     { "id": "chat-kernel", "command": "npm run test:chat-kernel", "status": "passed" },
     { "id": "chat-contracts", "command": "npm run check:chat-contracts && npm run test:chat-contract-invariants", "status": "passed" },
     { "id": "webawesome-pack", "command": "npm run pack:check", "status": "passed" },
     { "id": "external-release-evidence", "command": "npm run check:chat-release-evidence", "status": "blocked", "reason": "Windows-version/GPU-DPI, packaged Electron, and 30-60 minute manual soak evidence are not available in this host" }
   ],
-  "untracked": [
-    { "path": "node_modules", "handling": "local dependency tree; never commit" },
-    { "path": "tmp-pixel.mjs", "handling": "local temporary diagnostic; never commit" }
-  ]
+  "untracked": []
 }

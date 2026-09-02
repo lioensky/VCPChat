@@ -96,7 +96,7 @@ test('streaming regeneration starts projection with the rendered thinking placeh
             renderedPlaceholder = item;
             return item;
         },
-        async startStreamingMessage(message, messageItem) {
+        async startStream(message, messageItem) {
             callOrder.push('projection');
             startedMessage = message;
             startedItem = messageItem;

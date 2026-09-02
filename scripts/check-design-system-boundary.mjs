@@ -76,6 +76,9 @@ const allowedSourceDifferences = new Set([
     'docs/vcpchat-bootstrap-completion-audit.md',
     'docs/vcpchat-launcher-user-guide.md',
     'docs/ui-system-qa-matrix.md',
+    // Machine-readable PR scope/evidence manifest is reviewed alongside the
+    // design-system changes; it is not product design code.
+    'docs/final-pr-scope-and-evidence.json',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',
     'Notemodules/notes.css',
@@ -182,6 +185,7 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/next-shell/next-shell-controller.js',
     'modules/ui-system/next-ui-apps.js',
     'scripts/check-theme-provenance.mjs',
+    'tests/message-regeneration-stream-animation.test.js',
     'scripts/check-ui-async-state-matrix.mjs',
     'scripts/check-ui-harness-evidence.mjs',
     'scripts/check-ui-interaction-inventory.mjs',

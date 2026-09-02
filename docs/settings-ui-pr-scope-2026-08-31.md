@@ -1,8 +1,8 @@
 # 设置界面 PR 范围审计
 
 核对日期：2026-08-31  
-基线：`origin/main`（`27330c2d`）  
-交付分支：`pr/global-settings-harness-uiux`
+基线：`origin/main`（`4b86d063`）
+交付分支：`exp/settings-schema`
 
 ## 保留范围
 

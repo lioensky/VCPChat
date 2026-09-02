@@ -75,6 +75,7 @@ export function createMainChatComposition({
     messageRenderer.setContextMenuDependencies({
         showForwardModal,
         acceptStreamEvent: event => adapter.acceptStreamEvent(event),
+        startStream: (message, messageItem) => adapter.startStream(message, messageItem),
         cancelStream: (messageId, reason) => adapter.cancelStream(messageId, reason),
     });
 

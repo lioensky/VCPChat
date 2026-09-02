@@ -2674,7 +2674,7 @@ function initializeMessageRenderer(refs) {
     if (features.contextMenu) contextMenu.initializeContextMenu(mainRendererReferences, {
         removeMessageById: removeMessageById,
         renderMessage: renderMessage,
-        startStreamingMessage: streamManager.startStreamingMessage,
+        startStream: mainRendererReferences.streamStartCapability,
         discardStreamingMessage: streamManager.discardStreamingMessage,
         setContentAndProcessImages: imageHandler.setContentAndProcessImages,
         processRenderedContent: wrappedProcessRenderedContent,

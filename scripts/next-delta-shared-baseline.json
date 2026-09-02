@@ -4,8 +4,8 @@
       "reason": "upstream chat core plus exact Surface stream routing, independent conversation capability, initiating-Surface cleanup, injected send-state capability, durable history authority, and no direct IPC fallback; deletion and topic-summary completion replace immutable selection snapshots through their authority; outgoing attachment draft identity changes on append so a file added during durable persistence is preserved; selection intent persists before watcher/history work and restore waits for topic projection before reporting completion; named ChatManager lifecycle retracts canvas subscriptions, observer, forward timers and selection authority before draining persistence queues; file-history sync now captures selection/topic generations and revalidates the active conversation after its read, protects stream ids captured before the read from terminal/delete races, and reconciles active StreamProjection snapshots after history/DOM replacement without taking over durable persistence"
   },
   "modules/messageRenderer.js": {
-      "sha256": "556404ac554b102ba2e57d09aac4ffe1adc60cf59f343272e3bf5d49447517ef",
-    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, owner-scoped context-menu and middle-click callbacks, copy-before-mutate history projection, and avatar-color completion guarded by live selection identity before authority replacement"
+      "sha256": "33b0fcc8b1e3c54899df3e01842bacde7d36568c39d21a6aca4a463081ee980b",
+    "reason": "upstream message semantics plus explicit Surface-owned renderer factory, root-aware renderer operations, per-Surface style namespace and owned style cleanup, Surface-scoped dynamic style/audio isolation, injected realm/services/capabilities, per-Surface StreamProjection attachment API, coordinator-owned stream-start/context-menu callbacks, owner-scoped middle-click callbacks, copy-before-mutate history projection, and avatar-color completion guarded by live selection identity before authority replacement"
   },
   "modules/renderer/streamManager.js": {
       "sha256": "5a33bd295be60afc1e1bfbe88fe9dceb530f1ca808324d6e1d56b10434a69518",
@@ -20,7 +20,7 @@
     "reason": "shared Agent/group catalog authority with stale-load commit protection"
   },
   "Groupmodules/grouprenderer.js": {
-    "sha256": "e7ac3a92057075c43578ade49b2be4b4650ed7c126ba10e9f20856edd91b5094",
+      "sha256": "b1e6353e21b0625e89d9f711e2aea3303b4bbcb77e7bacc57e6a05649fa6c58e",
     "reason": "upstream group business surface with retired toolbar binding removed"
   },
   "modules/settingsManager.js": {
