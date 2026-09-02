@@ -8,6 +8,11 @@
    selectors are the layering mechanism here, not accidents. */
 /* stylelint-disable declaration-no-important, no-duplicate-selectors */
 
+.vcp-settings-conflict-actions[hidden]{display:none}
+.vcp-settings-conflict-actions{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--dsw-state-error-primary,#d92d20);background:var(--dsw-state-error-bg,rgba(217,45,32,.08));color:var(--dsw-state-error-primary,#d92d20);font-size:13px}
+.vcp-settings-conflict-actions span{flex:1;min-width:0}
+.vcp-settings-conflict-actions button{border:1px solid currentColor;background:transparent;color:inherit;padding:4px 8px;cursor:pointer}
+
 /* Legacy global-settings CSS is intentionally unlayered. These narrow
    presentation overrides therefore live after the component layer so the
    Uiux disclosure and segmented contracts win without touching Classic. */
@@ -1845,7 +1850,3 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal [data-vcp-style="39"] { color: var(--highlight-text); }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal [data-vcp-style="40"] { color: var(--text-on-accent); margin-top: 5px; display: block; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope #globalSettingsModal [data-vcp-style="41"] { display: none; margin-bottom: 15px; }
-.vcp-settings-conflict-actions[hidden]{display:none}
-.vcp-settings-conflict-actions{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--dsw-state-error-primary,#d92d20);background:var(--dsw-state-error-bg,rgba(217,45,32,.08));color:var(--dsw-state-error-primary,#d92d20);font-size:13px}
-.vcp-settings-conflict-actions span{flex:1;min-width:0}
-.vcp-settings-conflict-actions button{border:1px solid currentColor;background:transparent;color:inherit;padding:4px 8px;cursor:pointer}
