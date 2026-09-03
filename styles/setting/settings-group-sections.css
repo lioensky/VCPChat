@@ -775,7 +775,7 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
     gap: 6px;
     position: sticky;
     bottom: 0;
-    background-color: #FAF7F2;
+    background-color: transparent;
     padding: 8px 0 10px;
     border-radius: 0;
     border: none !important;
@@ -790,13 +790,10 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions,
-body[data-vcp-theme="light"] #groupSettingsForm .form-actions {
-    background-color: #FAF7F2 !important;
-}
-
+body[data-vcp-theme="light"] #groupSettingsForm .form-actions,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions,
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
-    background-color: #1C1C1E !important;
+    background-color: transparent !important;
 }
 
 #agentSettingsForm .form-actions .delete-button-container,
@@ -839,16 +836,36 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     font-weight: 500;
     line-height: 1;
     border-radius: 14px !important;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+    border: 1px solid color-mix(
+        in srgb,
+        var(--vcp-ui-border-strong, var(--border-color)) var(--vcp-material-border, 36%),
+        transparent
+    );
     cursor: pointer;
     white-space: nowrap;
     box-sizing: border-box;
     flex: 0 0 auto;
     appearance: none;
     -webkit-appearance: none;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+    box-shadow:
+        inset 0 1px 0 color-mix(
+            in srgb,
+            var(--primary-text) var(--vcp-material-sheen, 14%),
+            transparent
+        ),
+        0 2px 8px color-mix(
+            in srgb,
+            #000000 var(--vcp-material-shadow-color, 8%),
+            transparent
+        ) !important;
+    backdrop-filter:
+        blur(var(--vcp-material-blur, 10px))
+        saturate(var(--vcp-material-saturation, 125%))
+        brightness(var(--vcp-material-brightness, 100%)) !important;
+    -webkit-backdrop-filter:
+        blur(var(--vcp-material-blur, 10px))
+        saturate(var(--vcp-material-saturation, 125%))
+        brightness(var(--vcp-material-brightness, 100%)) !important;
     transition:
         background var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
         border-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard),
@@ -870,12 +887,18 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submit"] {
-    background: #F3EBE7 !important;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+    background-color: color-mix(
+        in srgb,
+        var(--secondary-bg) var(--vcp-material-opacity, 68%),
+        transparent
+    ) !important;
+    background-image: var(--vcp-material-texture, linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.32),
+        rgba(255, 255, 255, 0.08)
+    )) !important;
+    border-color: color-mix(in srgb, var(--highlight-text) 24%, var(--border-color));
     color: var(--highlight-text);
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
     opacity: 1 !important;
 }
 
@@ -889,12 +912,18 @@ body[data-vcp-theme="light"] #groupSettingsForm .form-actions button[type="submi
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions button[type="submit"] {
-    background: #2C2C2E !important;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
-    color: #ffffff;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+    background-color: color-mix(
+        in srgb,
+        var(--secondary-bg) var(--vcp-material-opacity, 58%),
+        transparent
+    ) !important;
+    background-image: var(--vcp-material-texture, linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.09),
+        rgba(255, 255, 255, 0.025)
+    )) !important;
+    border-color: color-mix(in srgb, var(--highlight-text) 24%, var(--border-color));
+    color: var(--primary-text);
     opacity: 1 !important;
 }
 
@@ -917,12 +946,18 @@ body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions .danger-button,
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 body[data-vcp-theme="light"] #groupSettingsForm .form-actions #deleteGroupBtn {
-    background: #FFFFFF !important;
-    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, #e5e7eb);
+    background-color: color-mix(
+        in srgb,
+        var(--vcp-ui-danger, #ef4444) 9%,
+        color-mix(in srgb, var(--secondary-bg) var(--vcp-material-opacity, 64%), transparent)
+    ) !important;
+    background-image: var(--vcp-material-texture, linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.3),
+        rgba(255, 255, 255, 0.06)
+    )) !important;
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 34%, var(--border-color));
     color: var(--vcp-ui-danger, #ef4444);
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
     opacity: 1 !important;
 }
 
@@ -940,12 +975,18 @@ body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button,
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions #deleteAgentBtn:not(.vcp-uiux-button),
 body[data-vcp-theme="dark"] #groupSettingsForm .form-actions #deleteGroupBtn {
-    background: #251B1B !important;
-    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 35%, #3f2020);
+    background-color: color-mix(
+        in srgb,
+        var(--vcp-ui-danger, #ef4444) 14%,
+        color-mix(in srgb, var(--secondary-bg) var(--vcp-material-opacity, 52%), transparent)
+    ) !important;
+    background-image: var(--vcp-material-texture, linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.02)
+    )) !important;
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 38%, var(--border-color));
     color: var(--vcp-ui-danger, #ef4444);
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
     opacity: 1 !important;
 }
 

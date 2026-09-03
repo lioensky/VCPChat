@@ -29,8 +29,12 @@ const entries = [
 const dependencyPatterns = [
     /(?:from\s+|import\s*\()['"](\.\.?\/[^'"\n]+)['"]/g,
     /import\s*['"](\.\.?\/[^'"\n]+)['"]/g,
-    /@import\s+(?:url\()?\s*['"]?(\.\.?\/[^'"\s)]+)['"]?\s*\)?/g,
-    /url\(\s*['"]?(\.\.?\/[^'"\s)]+)['"]?\s*\)/g,
+    // CSS permits same-directory references without a leading "./"
+    // (for example palettes/default.css imports "base.css"). Treat every
+    // non-absolute CSS reference as part of the offline closure; the vendor
+    // root boundary check below still rejects escaping paths.
+    /@import\s+(?:url\()?\s*['"]?((?![a-z][a-z0-9+.-]*:|\/|#)[^'"\s)]+)['"]?\s*\)?/gi,
+    /url\(\s*['"]?((?![a-z][a-z0-9+.-]*:|\/|#)[^'"\s)]+)['"]?\s*\)/gi,
     /new\s+URL\(\s*['"](\.\.?\/[^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/g,
 ];
 

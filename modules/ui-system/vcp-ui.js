@@ -542,7 +542,7 @@ function settingsSectionFactory(options = {}) {
 }
 
 function fieldEnhancer(element, options = {}) {
-    if (!element?.matches?.('.group-settings-field-shell, .style-control-item, .agent-name-wrapper, .group-name-wrapper, .vcp-ui-settings-field, .vcp-ui-field')) {
+    if (!element?.matches?.('.group-settings-field-shell, .style-control-item, .agent-name-wrapper, .group-name-wrapper, .params-content > div:not(.form-group-inline), .vcp-ui-settings-field, .vcp-ui-field')) {
         throw new TypeError('VCPUI Field enhancement received an incompatible element.');
     }
     const control = options.control || element.querySelector('input:not([type="hidden"]), select, textarea');
@@ -741,8 +741,8 @@ function waControl(tag, attrs = {}) {
     return window.VCPWebAwesome.create(tag, attrs);
 }
 
-function waSize(wa, value, sizes = ['sm', 'md', 'lg'], map = { sm: 'small', md: 'medium', lg: 'large' }) {
-    wa.setAttribute('size', map[normalize(value, sizes, 'md', 'size')] || 'medium');
+function waSize(wa, value, sizes = ['sm', 'md', 'lg'], map = { sm: 's', md: 'm', lg: 'l' }) {
+    wa.setAttribute('size', map[normalize(value, sizes, 'md', 'size')] || 'm');
 }
 
 function waFocus(controller, wa) {
@@ -896,7 +896,7 @@ function buttonFactory(options = {}) {
             setCommon(wa, current, Object.keys(variants), ['sm', 'md', 'lg', 'xl']);
             wa.setAttribute('variant', variants[current.variant] || 'brand');
             wa.setAttribute('appearance', current.variant === 'ghost' || current.variant === 'link' ? 'plain' : current.variant === 'outline' ? 'outlined' : 'filled');
-            waSize(wa, current.size, ['sm', 'md', 'lg', 'xl'], { sm: 'small', md: 'medium', lg: 'large', xl: 'large' });
+            waSize(wa, current.size, ['sm', 'md', 'lg', 'xl'], { sm: 's', md: 'm', lg: 'l', xl: 'l' });
             wa.disabled = Boolean(current.disabled || current.loading);
             wa.loading = Boolean(current.loading);
             wa.setAttribute('type', current.type || 'button');
@@ -942,7 +942,7 @@ function iconButtonFactory(options = {}) {
             setCommon(wa, current, ['ghost', 'secondary', 'outline', 'danger'], ['sm', 'md']);
             wa.setAttribute('variant', variants[current.variant] || 'neutral');
             wa.setAttribute('appearance', appearances[current.variant] || 'plain');
-            waSize(wa, current.size, ['sm', 'md'], { sm: 'small', md: 'medium' });
+            waSize(wa, current.size, ['sm', 'md'], { sm: 's', md: 'm' });
             wa.disabled = Boolean(current.disabled);
             wa.loading = Boolean(current.loading);
             wa.setAttribute('aria-label', current.label || 'Icon button');
@@ -1165,7 +1165,7 @@ function switchFactory(options = {}) {
         wa.className = 'vcp-ui-switch vcp-ui-wa-switch';
         const state = { label: 'Switch', checked: false, size: 'md', ...options };
         const controller = makeController(wa, state, current => {
-            waSize(wa, current.size, ['sm', 'md'], { sm: 'small', md: 'medium' });
+            waSize(wa, current.size, ['sm', 'md'], { sm: 's', md: 'm' });
             wa.checked = Boolean(current.checked);
             wa.disabled = Boolean(current.disabled);
             wa.required = Boolean(current.required);

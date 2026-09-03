@@ -404,8 +404,36 @@
       "sha256": "575edefe6c51d5e5a652c9ff0689f21e8cacd62d84a3eca52066d77da17cd330"
     },
     {
+      "path": "dist-cdn/styles/color/palettes/base.css",
+      "sha256": "9a73558d332fd70771cf2ae5a9c046bed33fde5adc2c77fd46f16ec50403b011"
+    },
+    {
       "path": "dist-cdn/styles/color/palettes/default.css",
       "sha256": "7fd5825d4872d2085ecce86776d3d5383c606882d5667f6f3105f04b15ccd69e"
+    },
+    {
+      "path": "dist-cdn/styles/color/variants.css",
+      "sha256": "a764d494478174d55385a251776b23cb55efb699826e7f452b1e5581693d23c8"
+    },
+    {
+      "path": "dist-cdn/styles/color/variants/brand.css",
+      "sha256": "a2829831037fadd78d69a39307a3a0245a12e26b7919481e08cf2e0fee1a2d92"
+    },
+    {
+      "path": "dist-cdn/styles/color/variants/danger.css",
+      "sha256": "0cb3bf4318de4819bfd1cfe381ed8c708c7a38c34345dcb2bb4a32c596f43377"
+    },
+    {
+      "path": "dist-cdn/styles/color/variants/neutral.css",
+      "sha256": "c73db6e0ac8b017f001ff32388f9c88bf404c3096a491db208951dee5bfc20aa"
+    },
+    {
+      "path": "dist-cdn/styles/color/variants/success.css",
+      "sha256": "028d7e2f51c88154437ba21c01c6441be3dad3a5f25e7f5803adcce06a90e0a8"
+    },
+    {
+      "path": "dist-cdn/styles/color/variants/warning.css",
+      "sha256": "b10bd5c41c3ca783d4389685ac0946367e67a1c04b4ae2f995959504b179ec49"
     },
     {
       "path": "dist-cdn/styles/layers.css",

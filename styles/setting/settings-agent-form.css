@@ -122,7 +122,7 @@
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions {
-    background-color: #FAF7F2 !important;
+    background-color: transparent !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
@@ -160,7 +160,7 @@ body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions {
-    background-color: #1C1C1E !important;
+    background-color: transparent !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
