@@ -459,12 +459,19 @@
         position: static;
         z-index: auto;
         margin: var(--vcp-ui-space-2) 0 0;
-        padding: var(--vcp-ui-space-3) 0 0;
+        /* The settings viewport clips horizontal overflow. Keep a small paint
+           gutter so rounded material buttons and their shadow are not cut off. */
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-1) var(--vcp-ui-space-1);
         background: transparent;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(#agentSettingsForm, #groupSettingsForm) .form-actions button {
-        width: 100%;
+        /* Inset the control itself instead of relying only on action-bar
+           padding. Its material shadow is painted outside the border box and
+           #tabContentSettings intentionally clips horizontal overflow. */
+        width: calc(100% - (2 * var(--vcp-ui-space-1)));
+        margin-right: var(--vcp-ui-space-1);
+        margin-left: var(--vcp-ui-space-1);
         box-sizing: border-box;
     }
 

@@ -264,8 +264,11 @@
     gap: 14px;
     align-items: center;
     margin-top: 8px;
-    margin-left: -6px;
-    max-width: calc(100% + 6px);
+    margin-right: 6px;
+    margin-left: 6px;
+    width: auto;
+    max-width: none;
+    justify-self: stretch;
     box-sizing: border-box;
     padding: 8px 12px 8px 16px;
     border-radius: 18px;
@@ -712,7 +715,7 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 #agentSettingsContainer wa-select.vcp-ui-select-proxy wa-option[selected] {
     color: var(--vcp-ui-on-accent, white);
     background: var(--vcp-ui-accent, var(--highlight-text));
-
+}
 
 /* Narrow-sidebar fixes and flat Uiux-style controls. */
 #tabContentSettings.active,
@@ -824,10 +827,13 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 
 #agentSettingsContainer #identitySummary.summary-with-avatar {
     display: flex !important;
-    width: 100% !important;
-    max-width: 100% !important;
+    width: auto !important;
+    max-width: none !important;
     min-height: 46px !important;
     margin-top: 6px !important;
+    margin-right: 6px !important;
+    margin-left: 6px !important;
+    justify-self: stretch !important;
     box-sizing: border-box !important;
     background: var(--vcp-ui-bg-1, var(--input-bg)) !important;
     background-image: none !important;

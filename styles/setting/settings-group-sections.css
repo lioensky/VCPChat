@@ -5,7 +5,7 @@
 #groupSettingsContainer {
     width: 100%;
     box-sizing: border-box;
-    padding: 0 3px 0 12px;
+    padding: 0;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -738,9 +738,14 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions .danger-button {
 
 #agentSettingsContainer,
 #groupSettingsContainer {
-    width: 100%;
+    /* Preserve the original 12px/3px content alignment as external spacing.
+       Using margin instead of padding prevents the container from painting a
+       full-height inset strip over the controls. */
+    width: calc(100% - 15px);
+    margin-right: 3px;
+    margin-left: 12px;
     box-sizing: border-box;
-    padding: 0 3px 0 12px;
+    padding: 0;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -826,9 +831,10 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    align-self: stretch;
-    width: 100%;
-    margin-left: 0;
+    align-self: flex-start;
+    width: calc(100% - 8px);
+    margin-right: 0;
+    margin-left: 8px;
     height: 37px;
     min-height: 37px;
     padding: 0 12px;
@@ -875,6 +881,18 @@ body[data-vcp-theme="dark"] #groupSettingsForm .form-actions {
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button),
 #groupSettingsForm .form-actions button[type="submit"] {
     color: var(--highlight-text);
+}
+/* Final geometry authority for the two canonical action buttons. Do not gate
+   this by .vcp-uiux-button: runtime enhancement may add that class, causing
+   the legacy :not() selector above to stop matching. */
+#agentSettingsForm > .form-actions > button[type="submit"],
+#agentSettingsForm > .form-actions > .delete-button-container > #deleteAgentBtn,
+#groupSettingsForm > .form-actions > button[type="submit"],
+#groupSettingsForm > .form-actions > .delete-button-container > #deleteGroupBtn {
+    width: calc(100% - 12px) !important;
+    margin-right: 0 !important;
+    margin-left: 12px !important;
+    align-self: flex-start !important;
 }
 
 #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover,
@@ -1205,8 +1223,12 @@ body[data-vcp-theme="dark"] #groupSettingsContainer select:focus-visible {
 }
 
 #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
-    margin-left: -6px;
-    max-width: calc(100% + 6px);
+    /* This grid item used to be enlarged and pulled 6px outside the settings
+       viewport. The viewport clips overflow-x, which removed its left radius.
+       Use an inward inset and subtract it from the available width instead. */
+    width: calc(100% - 6px);
+    max-width: calc(100% - 6px);
+    margin-left: 6px;
     box-sizing: border-box;
     padding: 8px 12px 8px 16px;
     border-radius: 18px;
