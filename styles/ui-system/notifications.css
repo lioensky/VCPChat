@@ -77,6 +77,16 @@
         z-index: 1;
     }
 
+    /*
+     * The header becomes a stacking context in translucent presentation modes.
+     * Raise that context while its menu is open so the later status row cannot
+     * paint over the dropdown, regardless of DOM order.
+     */
+    html .vcp-ui-scope.notifications-sidebar > .notifications-header:has(#nextUiNotificationMenu:not([hidden])) {
+        z-index: var(--vcp-ui-z-dropdown);
+        overflow: visible;
+    }
+
     html body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope .notifications-header {
         background: var(--chat-presentation-surface);
         backdrop-filter: var(--chat-presentation-surface-filter);
