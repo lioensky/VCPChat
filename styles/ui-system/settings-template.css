@@ -213,7 +213,13 @@
 /* Card footer strip for row-level actions (e.g. the network-notes add
    button): right-aligned under a hairline, like the card action bars. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="network-notes"] .vcp-settings-card-body {
+    display: flex;
+    flex-direction: column;
     padding: 16px 0 !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="network-notes"] .vcp-settings-row:has(#networkNotesPathsContainer:empty) {
+    display: none !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #networkNotesPathsContainer:empty {
@@ -243,8 +249,8 @@
     cursor: pointer;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #networkNotesPathsContainer:not(:empty) + .vcp-settings-card-add-row {
-    margin-top: 12px !important;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="network-notes"] .vcp-settings-row:has(#networkNotesPathsContainer:not(:empty)) + .vcp-settings-card-add-row {
+    margin-top: 10px !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-add-row::before {
