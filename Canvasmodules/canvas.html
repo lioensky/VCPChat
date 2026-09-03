@@ -119,6 +119,31 @@
             </div>
             <div class="editor-wrapper">
                 <textarea id="editor" aria-label="代码编辑器"></textarea>
+                <div id="color-editor-popover" class="color-editor-popover" hidden role="dialog"
+                    aria-modal="false" aria-labelledby="color-editor-title">
+                    <div class="color-editor-heading">
+                        <div>
+                            <strong id="color-editor-title">颜色编辑</strong>
+                            <span id="color-editor-format">CSS Color</span>
+                        </div>
+                        <button id="color-editor-close" class="icon-button" type="button"
+                            title="关闭颜色编辑器" aria-label="关闭颜色编辑器">×</button>
+                    </div>
+                    <label class="color-picker-field" for="color-picker-input">
+                        <span>可视化取色</span>
+                        <input id="color-picker-input" type="color" value="#000000">
+                    </label>
+                    <label class="color-value-field" for="color-value-input">
+                        <span>颜色值</span>
+                        <input id="color-value-input" type="text" value="#000000"
+                            placeholder="#RRGGBB、rgb() 或 hsl()" spellcheck="false" autocomplete="off">
+                    </label>
+                    <div id="color-editor-error" class="color-editor-error" role="status"></div>
+                    <div class="color-editor-actions">
+                        <button id="color-editor-cancel" class="button" type="button">取消</button>
+                        <button id="color-editor-apply" class="button button-primary" type="button">应用颜色</button>
+                    </div>
+                </div>
             </div>
             <section id="output-panel" class="output-panel" hidden aria-label="运行输出">
                 <div class="output-header">

@@ -14,9 +14,9 @@ const dotenv = require('dotenv');
 const configEnvPath = path.join(__dirname, 'config.env');
 const dotEnvPath = path.join(__dirname, '.env');
 if (fsSync.existsSync(configEnvPath)) {
-  dotenv.config({ path: configEnvPath });
+  dotenv.config({ path: configEnvPath, quiet: true });
 } else if (fsSync.existsSync(dotEnvPath)) {
-  dotenv.config({ path: dotEnvPath });
+  dotenv.config({ path: dotEnvPath, quiet: true });
 }
 // If neither exists, all config falls back to code defaults below.
 

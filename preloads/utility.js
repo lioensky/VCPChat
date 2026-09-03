@@ -200,7 +200,7 @@ function createCatalog(ops) {
         openLogWindow: command(() => ops.send('open-log-window')),
         openMusicWindow: command(() => ops.send('open-music-window')),
         openDiceWindow: query(() => ops.invoke('open-dice-window')),
-        openCanvasWindow: query(() => ops.invoke('open-canvas-window')),
+        openCanvasWindow: query((request = null) => ops.invoke('open-canvas-window', request)),
         openDesktopWindow: query(() => ops.invoke('open-desktop-window')),
 
         // Chat/app shell APIs

@@ -1,3 +1,4 @@
+@charset "UTF-8";
 /* Enhanced Rendering Styles for Message Renderer */
 
 /*
@@ -281,7 +282,7 @@
 
 /* 左上角齿轮图标 - VCP ToolUse */
 .vcp-tool-use-bubble::before {
-    content: "⚙️";
+    content: "\2699\FE0F";
     position: absolute;
     top: 8px;
     left: 10px;
@@ -383,7 +384,7 @@
 }
 
 .diary-title::before {
-    content: "✒️";
+    content: "\2712\FE0F";
     display: inline-block;
     font-size: 1.15em;
     line-height: 1;
@@ -411,7 +412,7 @@
 }
 
 .valet-diary-bubble .diary-title::before {
-    content: "🖋️";
+    content: "\1F58B\FE0F";
 }
 
 .valet-diary-bubble .diary-date,
@@ -503,7 +504,7 @@
 }
 
 .diary-update-title::before {
-    content: "✏️";
+    content: "\270F\FE0F";
     font-size: 1.05em;
     opacity: 0.75;
 }
@@ -1303,7 +1304,7 @@ body[data-vcp-theme="light"] {
 }
 
 .vcp-tool-result-bubble::before {
-    content: "📊";
+    content: "\1F4CA";
     position: absolute;
     top: 12px;
     left: 15px;
@@ -1766,7 +1767,7 @@ body[data-vcp-theme="light"] .vcp-tool-result-truncated-notice:hover {
 }
 
 .user-clicked-button-bubble::before {
-    content: '▶️';
+    content: "\25B6\FE0F";
     margin-right: 6px;
     font-size: 0.8em;
     opacity: 0.8;

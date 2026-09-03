@@ -57,6 +57,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const copyOutputBtn = document.getElementById('copy-output-btn');
     const clearOutputBtn = document.getElementById('clear-output-btn');
     const closeOutputBtn = document.getElementById('close-output-btn');
+    const colorEditorPopover = document.getElementById('color-editor-popover');
+    const colorEditorFormat = document.getElementById('color-editor-format');
+    const colorPickerInput = document.getElementById('color-picker-input');
+    const colorValueInput = document.getElementById('color-value-input');
+    const colorEditorError = document.getElementById('color-editor-error');
+    const colorEditorClose = document.getElementById('color-editor-close');
+    const colorEditorCancel = document.getElementById('color-editor-cancel');
+    const colorEditorApply = document.getElementById('color-editor-apply');
 
     let editor;
     let pendingEditProposal = null;
@@ -71,6 +79,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let historyRenderGeneration = 0;
     let isApplyingExternalContent = false;
     let currentSession = { context: 'canvas', rootDir: '', metadata: {} };
+    let colorMarks = [];
+    let colorScanTimer = null;
+    let activeColorMark = null;
+
+    const CSS_COLOR_PATTERN = /#(?:[\da-fA-F]{8}|[\da-fA-F]{6}|[\da-fA-F]{4}|[\da-fA-F]{3})(?![\da-fA-F])|rgba?\(\s*[^()\r\n]+\)|hsla?\(\s*[^()\r\n]+\)/g;
 
     const languageLabels = {
         javascript: 'JavaScript',
@@ -145,23 +158,172 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSession = session || { context: 'canvas', rootDir: '', metadata: {} };
         const sidebarTitle = document.querySelector('.sidebar h3');
         const isWidgetSource = currentSession.context === 'desktop-widget';
+        const isThemeSource = currentSession.context === 'theme';
 
         if (sidebarTitle) {
-            sidebarTitle.textContent = isWidgetSource ? 'Widget源码' : 'Canvas目录';
+            sidebarTitle.textContent = isWidgetSource
+                ? 'Widget源码'
+                : (isThemeSource ? '主题样式' : 'Canvas目录');
         }
 
         if (newCanvasBtn) {
             const label = newCanvasBtn.querySelector('span:last-child');
             if (label) {
-                label.textContent = isWidgetSource ? '新建源码文件' : '新建 Canvas';
+                label.textContent = isWidgetSource
+                    ? '新建源码文件'
+                    : (isThemeSource ? '新建主题样式' : '新建 Canvas');
             }
         }
 
         if (errorInfoSpan) {
             errorInfoSpan.textContent = isWidgetSource
                 ? `Widget源码模式${currentSession.metadata?.savedId ? ` · ${currentSession.metadata.savedId}` : ''}`
-                : '无错误';
+                : (isThemeSource
+                    ? `主题编辑模式${currentSession.metadata?.themeName ? ` · ${currentSession.metadata.themeName}` : ''}`
+                    : '无错误');
         }
+    }
+
+    function isValidCssColor(value) {
+        return typeof value === 'string'
+            && value.trim() !== ''
+            && window.CSS?.supports?.('color', value.trim());
+    }
+
+    function cssColorToHex(value) {
+        if (!isValidCssColor(value)) return null;
+        const probe = document.createElement('span');
+        probe.style.color = value.trim();
+        probe.style.display = 'none';
+        document.body.appendChild(probe);
+        const computed = getComputedStyle(probe).color;
+        probe.remove();
+
+        const channels = computed.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+        if (!channels) return null;
+        return `#${channels.slice(1, 4).map(channel => {
+            return Math.max(0, Math.min(255, Math.round(Number(channel))))
+                .toString(16)
+                .padStart(2, '0');
+        }).join('')}`;
+    }
+
+    function getColorFormat(value) {
+        const normalized = value.trim().toLowerCase();
+        if (normalized.startsWith('#')) return `HEX · ${normalized.length - 1} 位`;
+        if (normalized.startsWith('hsl')) return normalized.startsWith('hsla') ? 'HSLA' : 'HSL';
+        return normalized.startsWith('rgba') ? 'RGBA' : 'RGB';
+    }
+
+    function findColorAtPosition(position) {
+        if (!editor || !position) return null;
+        const lineText = editor.getLine(position.line) || '';
+        CSS_COLOR_PATTERN.lastIndex = 0;
+        let match;
+        while ((match = CSS_COLOR_PATTERN.exec(lineText)) !== null) {
+            const from = match.index;
+            const to = from + match[0].length;
+            if (position.ch >= from && position.ch <= to && isValidCssColor(match[0])) {
+                return {
+                    value: match[0],
+                    from: { line: position.line, ch: from },
+                    to: { line: position.line, ch: to },
+                };
+            }
+        }
+        return null;
+    }
+
+    function closeColorEditor({ focusEditor = true } = {}) {
+        colorEditorPopover.hidden = true;
+        colorEditorError.textContent = '';
+        activeColorMark?.clear();
+        activeColorMark = null;
+        if (focusEditor) editor?.focus();
+    }
+
+    function openColorEditor(colorToken) {
+        if (!colorToken) return;
+        activeColorMark?.clear();
+        activeColorMark = editor.markText(colorToken.from, colorToken.to, {
+            clearWhenEmpty: false,
+        });
+        colorValueInput.value = colorToken.value;
+        colorEditorFormat.textContent = getColorFormat(colorToken.value);
+        colorEditorError.textContent = '';
+        const pickerHex = cssColorToHex(colorToken.value);
+        if (pickerHex) colorPickerInput.value = pickerHex;
+        colorEditorPopover.hidden = false;
+        requestAnimationFrame(() => {
+            colorValueInput.focus();
+            colorValueInput.select();
+        });
+    }
+
+    function renderColorMarks() {
+        if (!editor) return;
+        colorMarks.forEach(mark => mark.clear());
+        colorMarks = [];
+
+        editor.operation(() => {
+            editor.eachLine(lineHandle => {
+                const lineNumber = editor.getLineNumber(lineHandle);
+                const lineText = lineHandle.text;
+                CSS_COLOR_PATTERN.lastIndex = 0;
+                let match;
+                while ((match = CSS_COLOR_PATTERN.exec(lineText)) !== null) {
+                    const value = match[0];
+                    if (!isValidCssColor(value)) continue;
+                    const from = { line: lineNumber, ch: match.index };
+                    const to = { line: lineNumber, ch: match.index + value.length };
+                    const swatch = document.createElement('span');
+                    swatch.className = 'cm-color-swatch';
+                    swatch.style.setProperty('--cm-color-token-value', value);
+                    swatch.dataset.line = String(lineNumber);
+                    swatch.dataset.ch = String(match.index);
+                    swatch.title = `点击编辑颜色 ${value}`;
+                    swatch.setAttribute('aria-label', swatch.title);
+                    swatch.setAttribute('role', 'button');
+                    swatch.contentEditable = 'false';
+                    swatch.draggable = false;
+
+                    const bookmark = editor.setBookmark(from, {
+                        widget: swatch,
+                        insertLeft: true,
+                    });
+                    const mark = editor.markText(from, to, {
+                        className: 'cm-color-token',
+                        title: `点击编辑颜色 ${value}`,
+                    });
+                    colorMarks.push(bookmark, mark);
+                }
+            });
+        });
+    }
+
+    function scheduleColorMarks() {
+        clearTimeout(colorScanTimer);
+        colorScanTimer = setTimeout(renderColorMarks, 160);
+    }
+
+    function applyColorEdit() {
+        if (!editor || !activeColorMark) return;
+        const value = colorValueInput.value.trim();
+        if (!isValidCssColor(value)) {
+            colorEditorError.textContent = '请输入有效的 HEX、RGB(A) 或 HSL(A) 颜色值。';
+            colorValueInput.focus();
+            return;
+        }
+
+        const range = activeColorMark.find();
+        if (!range) {
+            colorEditorError.textContent = '原颜色位置已变化，请重新点击颜色值。';
+            return;
+        }
+
+        editor.replaceRange(value, range.from, range.to, '+color-picker');
+        closeColorEditor();
+        scheduleColorMarks();
     }
 
     // --- CodeMirror 5 Initialization ---
@@ -178,6 +340,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 editor.setOption('mode', mode);
                 updateTopBarButtons(initialData.current.path);
                 updateDocumentUi(initialData.current.path);
+                scheduleColorMarks();
+                closeColorEditor({ focusEditor: false });
                 setSaveState('saved');
             }
             if (initialData.history) {
@@ -200,6 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let debounceTimer;
         editor.on('change', () => {
             updateDocumentUi();
+            scheduleColorMarks();
             if (isApplyingExternalContent) return;
             clearTimeout(debounceTimer);
             const path = filePathSpan.textContent;
@@ -223,6 +388,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         editor.on('cursorActivity', updateCursorStatus);
+
+        editor.on('mousedown', (cm, event) => {
+            const swatch = event.target.closest?.('.cm-color-swatch');
+            const colorTokenElement = event.target.closest?.('.cm-color-token');
+            if (!swatch && !colorTokenElement) return;
+
+            const position = swatch
+                ? { line: Number(swatch.dataset.line), ch: Number(swatch.dataset.ch) }
+                : cm.coordsChar({ left: event.clientX, top: event.clientY }, 'window');
+            const colorToken = findColorAtPosition(position);
+            if (!colorToken) return;
+            event.preventDefault();
+            openColorEditor(colorToken);
+        });
 
         // Editor Context Menu
         editor.on('contextmenu', (cm, e) => {
@@ -277,6 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
             editor.setOption('mode', mode);
             updateTopBarButtons(path);
             updateDocumentUi(path);
+            scheduleColorMarks();
             setSaveState('saved');
         } else {
             isApplyingExternalContent = true;
@@ -344,6 +524,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             filePathSpan.textContent = path;
             updateDocumentUi(path);
+            scheduleColorMarks();
+            closeColorEditor({ focusEditor: false });
             setSaveState('saved');
             // Also ensure the list is updated even if content is the same
             // (e.g., switching back and forth between files)
@@ -467,6 +649,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
+            if (!colorEditorPopover.hidden) {
+                closeColorEditor();
+                return;
+            }
             closeContextMenus();
             if (diffModal.style.display !== 'none') {
                 diffModal.style.display = 'none';
@@ -483,6 +669,33 @@ document.addEventListener('DOMContentLoaded', () => {
             canvasSearchInput.select();
         }
     });
+
+    colorPickerInput.addEventListener('input', () => {
+        colorValueInput.value = colorPickerInput.value.toUpperCase();
+        colorEditorFormat.textContent = 'HEX · 6 位';
+        colorEditorError.textContent = '';
+    });
+
+    colorValueInput.addEventListener('input', () => {
+        const value = colorValueInput.value.trim();
+        const pickerHex = cssColorToHex(value);
+        colorEditorError.textContent = value && !pickerHex ? '当前颜色值尚未生效。' : '';
+        if (pickerHex) {
+            colorPickerInput.value = pickerHex;
+            colorEditorFormat.textContent = getColorFormat(value);
+        }
+    });
+
+    colorValueInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            applyColorEdit();
+        }
+    });
+
+    colorEditorApply.addEventListener('click', applyColorEdit);
+    colorEditorClose.addEventListener('click', () => closeColorEditor());
+    colorEditorCancel.addEventListener('click', () => closeColorEditor());
 
     // --- UI Event Listeners ---
     newCanvasBtn.addEventListener('click', () => {

@@ -1120,6 +1120,112 @@ body.left-sidebar-collapsed .sidebar-trigger {
     color: #fff;
 }
 
+.color-editor-popover {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 30;
+    width: 238px;
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid var(--canvas-accent-border);
+    border-radius: 10px;
+    background: var(--canvas-surface-strong);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+    color: var(--primary-text);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+.color-editor-popover[hidden] {
+    display: none;
+}
+
+.color-editor-heading,
+.color-editor-heading > div,
+.color-editor-actions {
+    display: flex;
+    align-items: center;
+}
+
+.color-editor-heading {
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.color-editor-heading > div {
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+#color-editor-title {
+    font-size: 12px;
+}
+
+#color-editor-format {
+    color: var(--secondary-text);
+    font-size: 10px;
+}
+
+.color-picker-field,
+.color-value-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 8px;
+    color: var(--secondary-text);
+    font-size: 10px;
+}
+
+#color-picker-input {
+    width: 100%;
+    height: 34px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--canvas-control-bg);
+    cursor: pointer;
+}
+
+#color-value-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    outline: none;
+    background: var(--canvas-control-bg);
+    color: var(--primary-text);
+    font-size: 11px;
+}
+
+#color-value-input:focus {
+    border-color: var(--canvas-accent);
+    box-shadow: 0 0 0 2px var(--canvas-accent-soft);
+}
+
+.color-editor-error {
+    min-height: 15px;
+    margin-top: 5px;
+    color: var(--danger-color);
+    font-size: 10px;
+}
+
+.color-editor-actions {
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.color-editor-actions .button {
+    min-height: 27px;
+    padding: 4px 8px;
+    font-size: 10px;
+}
+
 .CodeMirror {
     color: var(--primary-text);
     font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
@@ -1137,6 +1243,44 @@ body.left-sidebar-collapsed .sidebar-trigger {
 
 .CodeMirror-cursor {
     border-left-color: var(--canvas-accent) !important;
+}
+
+.cm-color-token {
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.cm-color-swatch {
+    display: inline-block;
+    width: 0.78em;
+    height: 0.78em;
+    box-sizing: border-box;
+    margin-right: 0.34em;
+    vertical-align: -0.06em;
+    border: 1px solid color-mix(in srgb, var(--primary-text) 42%, transparent);
+    border-radius: 2px;
+    background:
+        linear-gradient(var(--cm-color-token-value), var(--cm-color-token-value)),
+        conic-gradient(
+            rgba(128, 128, 128, 0.42) 25%,
+            rgba(255, 255, 255, 0.72) 0 50%,
+            rgba(128, 128, 128, 0.42) 0 75%,
+            rgba(255, 255, 255, 0.72) 0
+        );
+    background-size: 100% 100%, 6px 6px;
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.18),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+    cursor: pointer;
+}
+
+.cm-color-swatch:hover,
+.cm-color-token:hover {
+    outline: 1px solid var(--canvas-accent-border);
+}
+
+.cm-color-token:hover {
+    background: var(--canvas-accent-soft);
 }
 
 .output-panel {

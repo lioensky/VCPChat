@@ -3,7 +3,7 @@ const fsSync = require('fs');
 const path = require('path');
 
 // Load environment variables
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 // Configuration
 const AGENT_DIR = process.env.AGENT_DIR || path.join(__dirname, '..', '..', '..', 'AppData', 'Agents');

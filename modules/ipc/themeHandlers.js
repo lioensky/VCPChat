@@ -84,6 +84,7 @@ const handleGetThemes = async () => {
 
             return {
                 fileName: file,
+                filePath,
                 name: name,
                 isActive: activeThemeContent !== null && content === activeThemeContent,
                 variables: {
