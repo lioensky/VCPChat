@@ -21,7 +21,7 @@
     position: static;
     z-index: auto;
 }
-body[data-vcp-theme="light"] .chat-header {
+body.light-theme .chat-header {
     background-color: var(--panel-bg-light);
 }
 .chat-header h3 {
@@ -46,11 +46,11 @@ body[data-vcp-theme="light"] .chat-header {
     display: block;
 }
 
-body[data-vcp-theme="light"] #sun-icon {
+body.light-theme #sun-icon {
     display: block;
 }
 
-body[data-vcp-theme="light"] #moon-icon {
+body.light-theme #moon-icon {
     display: none;
 }
 
@@ -324,7 +324,7 @@ body.chat-wide-layout .main-content.notifications-sidebar-active .message-item .
     max-width: var(--chat-bubble-max-width-wide-notifications, 96%);
 }
 
-body[data-vcp-theme="light"] .message-item .md-content {
+body.light-theme .message-item .md-content {
     border: 1px solid color-mix(in srgb, var(--border-color) 34%, rgba(255, 255, 255, 0.58));
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14)),
@@ -347,7 +347,7 @@ body[data-vcp-theme="light"] .message-item .md-content {
     color: var(--user-text);
     border-bottom-right-radius: 5px;
 }
-body[data-vcp-theme="light"] .message-item.user .md-content {
+body.light-theme .message-item.user .md-content {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1)),
         linear-gradient(
@@ -383,7 +383,7 @@ body.chat-wide-layout .main-content.notifications-sidebar-active .message-item.u
     max-width: var(--chat-bubble-max-width-wide-notifications, 96%);
 }
 
-body[data-vcp-theme="light"] .message-item.user.user-bubble-ui-disabled .md-content {
+body.light-theme .message-item.user.user-bubble-ui-disabled .md-content {
     color: var(--agent-text);
     background:
         linear-gradient(
@@ -408,7 +408,7 @@ body[data-vcp-theme="light"] .message-item.user.user-bubble-ui-disabled .md-cont
     color: var(--agent-text);
     border-bottom-left-radius: 5px;
 }
-body[data-vcp-theme="light"] .message-item.assistant .md-content {
+body.light-theme .message-item.assistant .md-content {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.18)),
         linear-gradient(
@@ -460,7 +460,7 @@ body[data-vcp-theme="light"] .message-item.assistant .md-content {
     text-align: center;
 }
 
-body[data-vcp-theme="light"] .message-item.system.welcome-bubble {
+body.light-theme .message-item.system.welcome-bubble {
     background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.7);
     border: 1px solid rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.4);
     color: var(--primary-text-light);
@@ -834,7 +834,7 @@ body[data-vcp-theme="light"] .message-item.system.welcome-bubble {
 .message-edit-controls button:hover {
     background-color: var(--button-hover-bg);
 }
-body[data-vcp-theme="light"] .message-edit-controls button {
+body.light-theme .message-edit-controls button {
     color: #ffffff; 
 }
 
@@ -1032,7 +1032,7 @@ body[data-vcp-theme="light"] .message-edit-controls button {
     font-weight: 500;
 }
 
-body[data-vcp-theme="light"] .highlighted-tag {
+body.light-theme .highlighted-tag {
     color: var(--highlight-text-light);
     background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.3); /* 杞诲井鑳屾櫙锛屼寒鑹蹭富棰樺吋瀹?*/
 }
@@ -1063,7 +1063,7 @@ body[data-vcp-theme="light"] .highlighted-tag {
     text-overflow: ellipsis;
 }
 
-body[data-vcp-theme="light"] .suggestion-item {
+body.light-theme .suggestion-item {
     /* Light theme subtle separator */
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -1287,7 +1287,7 @@ body {
     );
 }
 
-body[data-vcp-theme="light"] {
+body.light-theme {
     --chat-presentation-surface:
         linear-gradient(
             180deg,
@@ -1574,8 +1574,8 @@ body.chat-presentation-immersive .chat-input-area {
     -webkit-backdrop-filter: blur(16px) saturate(112%);
 }
 
-body[data-vcp-theme="light"].chat-presentation-panel .chat-input-area,
-body[data-vcp-theme="light"].chat-presentation-immersive .chat-input-area {
+body.light-theme.chat-presentation-panel .chat-input-area,
+body.light-theme.chat-presentation-immersive .chat-input-area {
     background:
         linear-gradient(
             180deg,

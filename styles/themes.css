@@ -83,7 +83,7 @@ body {
    Light Theme · Editorial Ink
    暖白纸张 / 炭墨 / 朱砂 / 松石
    ========================================================= */
-body[data-vcp-theme="light"] {
+body.light-theme {
     color-scheme: light;
 
     /* --- Wallpaper Interface --- */
@@ -171,7 +171,9 @@ body[data-vcp-theme="light"] {
     border: 1px solid rgba(242, 169, 0, 0.24) !important;
     border-right: 3px solid rgba(242, 169, 0, 0.82) !important;
     border-radius: 14px 4px 14px 14px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    box-shadow:
+        0 7px 22px rgba(0, 0, 0, 0.20),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
 }
 
 /* Dark assistant bubble: graphite equipment plate with status edge. */
@@ -181,7 +183,9 @@ body[data-vcp-theme="light"] {
     border: 1px solid rgba(59, 68, 73, 0.76) !important;
     border-left: 3px solid rgba(118, 191, 174, 0.68) !important;
     border-radius: 4px 14px 14px 14px !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    box-shadow:
+        0 8px 26px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
 }
 
 /* Tool output behaves like a compact operational status plate. */
@@ -213,18 +217,18 @@ body[data-vcp-theme="light"] {
 /* =========================================================
    Light Material Translation · Editorial Cards
    ========================================================= */
-body[data-vcp-theme="light"] .sidebar {
+body.light-theme .sidebar {
     box-shadow: 10px 0 30px rgba(27, 33, 31, 0.055);
 }
 
-body[data-vcp-theme="light"] .notifications-sidebar {
+body.light-theme .notifications-sidebar {
     box-shadow: -10px 0 30px rgba(27, 33, 31, 0.055);
 }
 
 /* The Next shell also owns the light-mode chat-header divider. */
 
 /* Vermilion editorial annotation card. */
-body[data-vcp-theme="light"] .message-item.user .md-content {
+body.light-theme .message-item.user .md-content {
     background: linear-gradient(
         145deg,
         rgba(252, 250, 244, 0.90),
@@ -232,12 +236,14 @@ body[data-vcp-theme="light"] .message-item.user .md-content {
     ) !important;
     border: 1px solid rgba(185, 72, 50, 0.22) !important;
     border-right: 3px solid rgba(185, 72, 50, 0.82) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
+    box-shadow:
+        0 7px 22px rgba(27, 33, 31, 0.085),
+        inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
 }
 
 /* Warm paper assistant card with strong long-reading stability. */
-body[data-vcp-theme="light"] .message-item.agent .md-content,
-body[data-vcp-theme="light"] .message-item.assistant .md-content {
+body.light-theme .message-item.agent .md-content,
+body.light-theme .message-item.assistant .md-content {
     background: linear-gradient(
         180deg,
         rgba(252, 250, 244, 0.88) 0%,
@@ -245,20 +251,22 @@ body[data-vcp-theme="light"] .message-item.assistant .md-content {
     ) !important;
     border: 1px solid rgba(210, 203, 192, 0.88) !important;
     border-left: 3px solid rgba(33, 103, 92, 0.72) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
+    box-shadow:
+        0 8px 25px rgba(27, 33, 31, 0.09),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82) !important;
 }
 
-body[data-vcp-theme="light"] .tool-bubble {
+body.light-theme .tool-bubble {
     box-shadow: 0 6px 18px rgba(27, 33, 31, 0.075);
 }
 
-body[data-vcp-theme="light"] .header-button,
-body[data-vcp-theme="light"] .title-bar-button {
+body.light-theme .header-button,
+body.light-theme .title-bar-button {
     color: #4F5854 !important;
 }
 
-body[data-vcp-theme="light"] .header-button:hover,
-body[data-vcp-theme="light"] .title-bar-button:hover {
+body.light-theme .header-button:hover,
+body.light-theme .title-bar-button:hover {
     color: #B94832 !important;
     background-color: rgba(185, 72, 50, 0.075) !important;
     box-shadow: inset 0 -2px 0 rgba(185, 72, 50, 0.62);
@@ -270,11 +278,16 @@ body[data-vcp-theme="light"] .title-bar-button:hover {
 @keyframes vcpOperationalPulse {
     0%, 100% {
         border-left-color: rgba(118, 191, 174, 0.56);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+        box-shadow:
+            0 8px 26px rgba(0, 0, 0, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.035);
     }
     50% {
         border-left-color: rgba(118, 191, 174, 0.82);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+        box-shadow:
+            0 8px 28px rgba(0, 0, 0, 0.27),
+            -3px 0 14px rgba(118, 191, 174, 0.075),
+            inset 0 1px 0 rgba(255, 255, 255, 0.045);
     }
 }
 
@@ -292,8 +305,8 @@ body[data-vcp-theme="light"] .title-bar-button:hover {
     }
 }
 
-body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
-body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
+body.light-theme .message-item.streaming.agent .md-content,
+body.light-theme .message-item.streaming.assistant .md-content {
     animation: editorialProofPulse 3.2s ease-in-out infinite;
 }
 
@@ -326,8 +339,8 @@ body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
 @media (prefers-reduced-motion: reduce) {
     .message-item.streaming.agent .md-content,
     .message-item.streaming.assistant .md-content,
-    body[data-vcp-theme="light"] .message-item.streaming.agent .md-content,
-    body[data-vcp-theme="light"] .message-item.streaming.assistant .md-content {
+    body.light-theme .message-item.streaming.agent .md-content,
+    body.light-theme .message-item.streaming.assistant .md-content {
         animation: none !important;
     }
 
