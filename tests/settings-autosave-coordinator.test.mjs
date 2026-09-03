@@ -93,6 +93,44 @@ test('settings manager applies path set and unset operations without replacing s
     }
 });
 
+test('settings manager returns the persisted normalized revision for consecutive Next UI appearance saves', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-normalized-revision-'));
+    const filename = path.join(dir, 'settings.json');
+    const manager = new SettingsManager(filename);
+    try {
+        const initial = await manager.readSettings();
+        const first = await manager.updateSettings({
+            __vcpSettingsOps: [
+                { op: 'set', path: ['appearanceProfile', 'sidebarRowHeight'], value: 100 },
+            ],
+        }, {
+            expectedRevision: manager.getRevision(initial),
+            operationId: 'normalized-first',
+        });
+
+        assert.equal(first.success, true);
+        assert.equal(first.settings.appearanceProfile.sidebarRowHeight, 64);
+        const persisted = await manager.readSettings({ fresh: true });
+        assert.equal(persisted.appearanceProfile.sidebarRowHeight, 64);
+        assert.equal(first.currentRevision, manager.getRevision(persisted),
+            'save response revision must identify the normalized settings.json bytes');
+
+        const second = await manager.updateSettings({
+            __vcpSettingsOps: [
+                { op: 'set', path: ['appearanceProfile', 'density'], value: 'compact' },
+            ],
+        }, {
+            expectedRevision: first.currentRevision,
+            operationId: 'normalized-second',
+        });
+        assert.equal(second.success, true, 'the next appearance edit must not report a false CAS conflict');
+        assert.equal(second.settings.appearanceProfile.density, 'compact');
+        assert.equal(second.settings.appearanceProfile.sidebarRowHeight, 64);
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
 test('coordinator exposes explicit retry and external reload actions', async () => {
     const form = new FakeForm();
     const coordinator = claimSaveCoordinator(form);

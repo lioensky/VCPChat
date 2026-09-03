@@ -493,7 +493,20 @@ class SettingsManager extends EventEmitter {
 
             await this.writeSettings(newSettings);
 
-            resolve({ success: true, status: 'success', operationId: options.operationId, currentRevision: this.getRevision(newSettings), settings: newSettings });
+            // writeSettings validates, fills defaults, and may clamp submitted
+            // appearance values before replacing settings.json.  Return that
+            // exact persisted snapshot and its revision. Returning newSettings
+            // here gave the renderer a revision for bytes that never reached
+            // disk, so the next Next UI appearance edit always failed CAS and
+            // was incorrectly reported as an external-file conflict.
+            const persistedSettings = { ...(this.cache || newSettings) };
+            resolve({
+                success: true,
+                status: 'success',
+                operationId: options.operationId,
+                currentRevision: this.getRevision(persistedSettings),
+                settings: persistedSettings,
+            });
         } catch (error) {
             if (error?.code === 'SETTINGS_CONFLICT') {
                 resolve({ success: false, status: 'conflict', code: error.code, operationId: error.operationId, expectedRevision: error.expectedRevision, currentRevision: error.currentRevision, settings: currentSettings, error: error.message });
