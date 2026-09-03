@@ -14,9 +14,49 @@ function icon(path) { const svg = document.createElementNS('http://www.w3.org/20
 // 本函数只给直出结构绑事件（同步呈现 / 归一化 / 箭头步进），mount 与
 // activateNumericStepperRow 共用同一份行为实现。
 function bindStepperBehavior(input, editor, up, down, scope) {
-    const sync = () => { const n = Number(input.value); editor.value = input.value; up.disabled = Number.isFinite(n) && n >= Number(input.max); down.disabled = Number.isFinite(n) && n <= Number(input.min); };
-    const normalize = () => { const raw = Number(editor.value); const fallback = Number(input.min) || 0; const n = Number.isFinite(raw) ? raw : fallback; const clamped = Math.max(Number(input.min), Math.min(Number(input.max), n)); editor.value = String(clamped); if (input.value !== editor.value) { input.value = editor.value; input.dispatchEvent(new input.ownerDocument.defaultView.Event('input', { bubbles: true })); input.dispatchEvent(new input.ownerDocument.defaultView.Event('change', { bubbles: true })); } sync(); };
-    const change = (delta) => { const n = Number.isFinite(Number(editor.value)) ? Number(editor.value) : (Number(input.min) || 0); const next = Math.max(Number(input.min), Math.min(Number(input.max), n + delta * Number(input.step || 1))); editor.value = String(next); input.value = editor.value; input.dispatchEvent(new input.ownerDocument.defaultView.Event('input', { bubbles: true })); input.dispatchEvent(new input.ownerDocument.defaultView.Event('change', { bubbles: true })); sync(); };
+    const parseBounds = () => {
+        const hasMin = input.min !== '' && Number.isFinite(Number(input.min));
+        const hasMax = input.max !== '' && Number.isFinite(Number(input.max));
+        const min = hasMin ? Number(input.min) : -Infinity;
+        const max = hasMax ? Number(input.max) : Infinity;
+        const rawStep = Number(input.step);
+        const step = Number.isFinite(rawStep) && rawStep > 0 ? rawStep : 1;
+        return { min, max, step, hasMin, hasMax };
+    };
+    const sync = () => {
+        const { min, max, hasMin, hasMax } = parseBounds();
+        const n = Number(input.value);
+        editor.value = input.value;
+        up.disabled = hasMax && Number.isFinite(n) && n >= max;
+        down.disabled = hasMin && Number.isFinite(n) && n <= min;
+    };
+    const normalize = () => {
+        const { min, max, hasMin } = parseBounds();
+        const raw = Number(editor.value);
+        const fallback = hasMin ? min : 0;
+        const n = Number.isFinite(raw) ? raw : fallback;
+        const clamped = Math.max(min, Math.min(max, n));
+        editor.value = String(clamped);
+        if (input.value !== editor.value) {
+            input.value = editor.value;
+            input.dispatchEvent(new input.ownerDocument.defaultView.Event('input', { bubbles: true }));
+            input.dispatchEvent(new input.ownerDocument.defaultView.Event('change', { bubbles: true }));
+        }
+        sync();
+    };
+    const change = (delta) => {
+        const { min, max, step, hasMin } = parseBounds();
+        const raw = Number(editor.value);
+        const fallback = hasMin ? min : 0;
+        const n = Number.isFinite(raw) ? raw : fallback;
+        const precision = (String(step).split('.')[1] || '').length;
+        const next = Math.max(min, Math.min(max, Number((n + delta * step).toFixed(precision))));
+        editor.value = String(next);
+        input.value = editor.value;
+        input.dispatchEvent(new input.ownerDocument.defaultView.Event('input', { bubbles: true }));
+        input.dispatchEvent(new input.ownerDocument.defaultView.Event('change', { bubbles: true }));
+        sync();
+    };
     // vcp-uiux-sync mirrors host-driven programmatic value writes (snapshot
     // replay) into the stepper display, matching the Select primitive contract.
     scope.listen(input, 'input', sync);

@@ -1940,6 +1940,59 @@ test('Uiux NumericStepperRow external snapshot sync is presentation-only and own
     }
 });
 
+test('Uiux NumericStepperRow handles unbounded max (number input without max attribute)', async () => {
+    const dom = new JSDOM('<!doctype html><div id="row"><input id="chunk" type="number" min="1" step="1" value="1"></div>');
+    const previousDocument = globalThis.document;
+    const previousWindow = globalThis.window;
+    globalThis.document = dom.window.document;
+    globalThis.window = dom.window;
+    try {
+        const scope = createUiScope(new LifecycleScope('stepper-unbounded-max'));
+        const input = document.getElementById('chunk');
+        let changes = 0;
+        input.addEventListener('change', () => { changes += 1; });
+        mountNumericStepperRow(document.getElementById('row'), input, { title: '最小渲染 Chunk 字数' }, scope);
+        const editor = () => document.querySelector('.vcp-uiux-numeric-stepper-row-input');
+        const arrows = () => document.querySelectorAll('.vcp-uiux-numeric-stepper-row-arrow');
+        const [up, down] = arrows();
+
+        assert.equal(editor().value, '1');
+        assert.equal(up.disabled, false, 'up arrow must not be disabled when max is unbounded');
+        assert.equal(down.disabled, true, 'down arrow should be disabled at min=1');
+
+        // Up arrow click increments value
+        up.click();
+        assert.equal(editor().value, '2');
+        assert.equal(input.value, '2');
+        assert.equal(changes, 1);
+        assert.equal(down.disabled, false, 'down arrow enabled after incrementing above min');
+
+        // Typing a larger number commits and does NOT reset to 1
+        editor().value = '64';
+        editor().dispatchEvent(new dom.window.Event('change'));
+        assert.equal(input.value, '64');
+        assert.equal(editor().value, '64');
+        assert.equal(up.disabled, false, 'up arrow still enabled for large value when max is unbounded');
+
+        // Blur event also normalizes cleanly
+        editor().value = '128';
+        editor().dispatchEvent(new dom.window.Event('blur'));
+        assert.equal(input.value, '128');
+        assert.equal(editor().value, '128');
+
+        // Down arrow decrements from 128 to 127
+        down.click();
+        assert.equal(editor().value, '127');
+        assert.equal(input.value, '127');
+
+        await scope.dispose('test-complete');
+    } finally {
+        globalThis.document = previousDocument;
+        globalThis.window = previousWindow;
+        dom.window.close();
+    }
+});
+
 test('Uiux FontSizeRow external snapshot sync is presentation-only and owner-bound', async () => {
     const dom = new JSDOM('<!doctype html><div id="row"><select id="scale"><option value="small">小</option><option value="normal" selected>标准</option><option value="large">大</option></select></div>');
     const previousDocument = globalThis.document;
