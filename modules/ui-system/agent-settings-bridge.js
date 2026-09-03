@@ -247,6 +247,23 @@ function mountTypedModelPicker(form, {
         trigger.style.setProperty('z-index', '2', 'important');
         const triggerLabel = trigger.querySelector('.vcp-uiux-agent-model-picker-trigger-label');
         if (triggerLabel) triggerLabel.style.setProperty('display', 'none', 'important');
+        const triggerIcon = trigger.querySelector('.vcp-uiux-agent-model-picker-trigger-icon');
+        if (triggerIcon) {
+            triggerIcon.style.setProperty('display', 'inline-flex', 'important');
+            triggerIcon.style.setProperty('align-items', 'center', 'important');
+            triggerIcon.style.setProperty('justify-content', 'center', 'important');
+            triggerIcon.style.setProperty('height', '100%', 'important');
+            triggerIcon.style.setProperty('width', '100%', 'important');
+            triggerIcon.style.setProperty('line-height', '1', 'important');
+        }
+        const triggerSlot = trigger.querySelector('.vcp-uiux-icon-slot');
+        if (triggerSlot) {
+            triggerSlot.style.setProperty('display', 'inline-flex', 'important');
+            triggerSlot.style.setProperty('align-items', 'center', 'important');
+            triggerSlot.style.setProperty('justify-content', 'center', 'important');
+            triggerSlot.style.setProperty('height', '14px', 'important');
+            triggerSlot.style.setProperty('width', '14px', 'important');
+        }
         trigger.dataset[marker] = 'true';
         input.style.setProperty('padding-right', '32px', 'important');
 

@@ -407,6 +407,23 @@
         color: var(--primary-text, #111111);
     }
 
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .model-input-container .vcp-uiux-agent-model-picker-trigger-icon {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 100% !important;
+        width: 100% !important;
+        line-height: 1 !important;
+    }
+
+    :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .model-input-container .vcp-uiux-icon-slot {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 14px !important;
+        width: 14px !important;
+    }
+
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .params-content {
         display: grid;
         gap: var(--vcp-ui-space-3);

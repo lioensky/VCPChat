@@ -210,3 +210,22 @@ body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .strip-regex-container
   background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06)) !important;
   color: var(--primary-text, #111111);
 }
+
+[id="agentSettingsContainer"] .model-input-container .vcp-uiux-agent-model-picker-trigger-icon,
+#openModelSelectBtn .vcp-uiux-agent-model-picker-trigger-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+  width: 100% !important;
+  line-height: 1 !important;
+}
+
+[id="agentSettingsContainer"] .model-input-container .vcp-uiux-icon-slot,
+#openModelSelectBtn .vcp-uiux-icon-slot {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 14px !important;
+  width: 14px !important;
+}

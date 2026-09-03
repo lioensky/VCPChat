@@ -121,65 +121,77 @@
     color: var(--vcp-ui-danger, #ef4444);
 }
 
+body[data-vcp-theme="light"] #agentSettingsForm .form-actions {
+    background-color: #FAF7F2 !important;
+}
+
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
-    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 85%, rgba(255, 255, 255, 0.7));
+    background: #F3EBE7 !important;
     border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
     color: var(--highlight-text);
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: color-mix(in srgb, var(--user-bubble-bg, #f3ede2) 95%, rgba(0, 0, 0, 0.08));
+    background: #EAE0DB !important;
     border-color: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.22));
     color: var(--highlight-text);
     box-shadow: none !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    background: var(--dsw-alias-bg-layer-1, #ffffff);
-    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, transparent);
+    background: #FFFFFF !important;
+    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, #e5e7eb);
     color: var(--vcp-ui-danger, #ef4444);
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
 }
 
 body[data-vcp-theme="light"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
-    background: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 10%, #ffffff);
+    background: #FEF2F2 !important;
     border-color: var(--vcp-ui-danger, #ef4444);
     color: var(--vcp-ui-danger, #ef4444);
     box-shadow: none !important;
 }
 
+body[data-vcp-theme="dark"] #agentSettingsForm .form-actions {
+    background-color: #1C1C1E !important;
+}
+
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button) {
-    background: var(--dsw-alias-bg-layer-2, #262628);
+    background: #2C2C2E !important;
     border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
-    color: var(--highlight-text);
+    color: #ffffff;
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions button[type="submit"]:not(.vcp-uiux-button):hover {
-    background: var(--dsw-alias-interactive-bg-hover, #323235);
+    background: #38383A !important;
     border-color: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.24));
     color: #ffffff;
     box-shadow: none !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button) {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 35%, transparent);
+    background: #251B1B !important;
+    border: 1px solid color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 35%, #3f2020);
     color: var(--vcp-ui-danger, #ef4444);
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    opacity: 1 !important;
 }
 
 body[data-vcp-theme="dark"] #agentSettingsForm .form-actions .danger-button:not(.vcp-uiux-button):hover {
-    background: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 18%, #1e1e20);
+    background: #331E1E !important;
     border-color: var(--vcp-ui-danger, #ef4444);
     color: #ffffff;
     box-shadow: none !important;
