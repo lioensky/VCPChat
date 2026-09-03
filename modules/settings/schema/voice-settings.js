@@ -22,11 +22,14 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
     select('voiceInputMode', {
         rowId: 'voiceInputModeRow',
         groupRowClass: 'vcp-settings-row',
-        languageRow: { title: '语音输入模式', description: '选择系统听写适配方式' },
+        languageRow: {
+            title: '语音输入模式',
+            description: '两种模式均使用同一快捷键启停。右 Alt 模式会在听写期间由程序持续模拟按住右 Alt，无需手动长按快捷键。',
+        },
         hintStyle: null,
         options: [
             { value: 'windows_voice_typing', label: 'Windows 语音键入（Win+H）' },
-            { value: 'right_alt_hold', label: '输入法语音（按住右 Alt）' },
+            { value: 'right_alt_hold', label: '输入法语音（模拟长按右 Alt）' },
         ],
         save: { allowed: ['windows_voice_typing', 'right_alt_hold'], fallback: 'windows_voice_typing' },
     }),
@@ -35,7 +38,7 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
         label: '语音输入快捷键:',
         value: 'F7',
         placeholder: '当前支持 F1 - F24',
-        hint: '全局按住说话键。当前支持 F1 - F24 单键；按下开始听写，松开结束听写。',
+        hint: '当前支持 F1 - F24 单键。按一次开始听写，再按一次停止并发送；停止后会等待输入法完成文字上屏和静默防抖，请勿连续快速触发。',
         save: { trim: true, falsy: 'F7', upper: true },
     }),
     text('voiceNetworkProviderUrl', {
