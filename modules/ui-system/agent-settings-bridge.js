@@ -21,6 +21,7 @@ function enhanceForm(form) {
     mountTypedAgentColorPairs(form);
     mountTypedAgentButtons(form);
     mountTypedAgentModelPicker(form);
+    mountTypedGroupModelPicker(form);
     mountTypedAgentPromptModeButtons(form);
     const typedAgentSectionOwners = mountAgentSectionDisclosures(form, window.VCPUIUX, ensurePresentationScope(), window.settingsManager, agentSectionDisclosureStates);
     selectProjection.mount(form);
@@ -129,21 +130,24 @@ function mountTypedAgentButtons(form) {
         try {
             const size = key.includes('refresh') ? 'sm' : 'md';
             api.mountButton(button, { variant, size }, scope);
-            // Legacy action-bar rules still carry a 37px min-height. Once the
-            // typed Button owns this node, that minimum becomes a geometry
-            // override (md contract is 36px). Keep the correction owner-bound
-            // and restore the exact declaration during teardown.
-            const minHeight = key.includes('refresh') ? '32px' : (size === 'sm' ? '28px' : '36px');
+            // The TTS Select proxy uses a 38px control contract. Its adjacent
+            // refresh action must share that geometry rather than retaining the
+            // generic 32px small-button size.
+            const minHeight = key.includes('refresh') ? '38px' : (size === 'sm' ? '28px' : '36px');
             const originalMinHeight = [button.style.getPropertyValue('min-height'), button.style.getPropertyPriority('min-height')];
             button.style.setProperty('min-height', minHeight, 'important');
             if (key.includes('refresh')) {
-                button.style.setProperty('height', '32px', 'important');
+                button.style.setProperty('width', '38px', 'important');
+                button.style.setProperty('min-width', '38px', 'important');
+                button.style.setProperty('height', '38px', 'important');
                 button.style.setProperty('border-radius', '8px', 'important');
             }
             scope.own(() => {
                 if (originalMinHeight[0]) button.style.setProperty('min-height', originalMinHeight[0], originalMinHeight[1]);
                 else button.style.removeProperty('min-height');
                 if (key.includes('refresh')) {
+                    button.style.removeProperty('width');
+                    button.style.removeProperty('min-width');
                     button.style.removeProperty('height');
                     button.style.removeProperty('border-radius');
                 }
@@ -163,9 +167,9 @@ function mountTypedAgentButtons(form) {
 // model-selection candidate.  The native #agentModel input remains the sole
 // business/persistence node; this bridge only supplies model discovery and
 // writes the same input/change events that the retired modal callback used.
-// The Agent consumer now projects hot/favorite sections and injected directory
-// actions. The legacy modal remains for topicSummaryModel and until the
-// production parity evidence in the audit closes its separate retirement path.
+// Agent, Group, and topic-summary consumers project the same hot/favorite
+// sections and injected directory actions. The legacy modal remains only as a
+// compatibility surface for callers that have not yet adopted this bridge.
 function mountTypedModelPicker(form, {
     inputId = 'agentModel',
     triggerId = 'openModelSelectBtn',
@@ -182,16 +186,10 @@ function mountTypedModelPicker(form, {
     if (!api?.mountAgentModelPicker || !scope || !host || !input || !trigger
         || trigger.dataset[marker] === 'true') return;
 
-    // Agent Settings can retain the previous section bank in the connected
-    // DOM while replacing the active form. Treat the picker as a single
-    // surface owner so a connected-but-hidden trigger cannot retain a child
-    // scope across form generations.
-    for (const [previousTrigger, release] of agentModelPickerReleases) {
-        if (previousTrigger === trigger) continue;
-        void release().catch(error => {
-            console.error('[VCPUI SettingsBridge] Failed to release replaced Agent model picker:', error);
-        });
-    }
+    // Agent and Group forms remain connected at the same time, although only
+    // one is visible. Each canonical trigger therefore keeps its own picker
+    // owner; disconnected generations are retracted by the bridge cleanup
+    // sweep instead of incorrectly releasing the other form's live picker.
 
     // The directory is an injected, short-lived capability. The primitive
     // owns popup/focus lifecycle; this adapter owns only the chatAPI boundary.
@@ -207,7 +205,11 @@ function mountTypedModelPicker(form, {
     try {
         picker = api.mountAgentModelPicker(host, {
             trigger,
-            label: inputId === 'agentModel' ? '选择模型' : '选择话题总结模型',
+            label: inputId === 'agentModel'
+                ? '选择模型'
+                : inputId === 'groupUnifiedModelInput'
+                    ? '选择群组统一模型'
+                    : '选择话题总结模型',
             selectedId: input.value || undefined,
             options: modelDirectory.options,
             directory: modelDirectory,
@@ -295,6 +297,16 @@ function mountTypedModelPicker(form, {
 
 function mountTypedAgentModelPicker(form) {
     mountTypedModelPicker(form);
+}
+
+function mountTypedGroupModelPicker(form) {
+    mountTypedModelPicker(form, {
+        inputId: 'groupUnifiedModelInput',
+        triggerId: 'openGroupModelSelectBtn',
+        marker: 'vcpTypedGroupModelPicker',
+        scopeLabel: 'group-model-picker-production',
+        eventKind: 'group',
+    });
 }
 
 function mountTypedTopicSummaryModelPicker(form) {

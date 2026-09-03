@@ -103,6 +103,7 @@
 
 #agentSettingsContainer .system-prompt-container .blocks-container,
 #agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-container,
 #agentSettingsContainer .system-prompt-container .preview-text {
     background-color: transparent !important;
     background-image: none !important;
@@ -540,13 +541,12 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
 #agentSettingsContainer .tts-director-template-button:active {
     transform: translateY(1px);
 }
-
 #agentSettingsContainer .tts-director-composer,
 #agentSettingsContainer .tts-director-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 34px;
-    align-items: start;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 28px;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -604,17 +604,53 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
 #agentSettingsContainer .tts-director-item.is-editing {
     margin-bottom: 3px;
 }
-
 #agentSettingsContainer .tts-director-action-button {
     position: static !important;
-    width: 34px !important;
-    height: 38px !important;
-    min-width: 34px;
-    min-height: 38px;
+    align-self: center;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px;
+    max-height: 28px;
     padding: 0 !important;
-    border-radius: 8px !important;
-    font-size: 1.25em;
-    line-height: 1;
+    border: 1px solid color-mix(in srgb, var(--secondary-text) 24%, transparent) !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    background-image: none !important;
+    color: var(--secondary-text) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    font: 500 17px/1 system-ui, sans-serif;
+    opacity: 0.76;
+    transform: none;
+    transition:
+        color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        border-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        background-color var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard),
+        opacity var(--vcp-motion-duration-fast) var(--vcp-motion-ease-standard);
+}
+
+#agentSettingsContainer .tts-director-action-button:hover,
+#agentSettingsContainer .tts-director-action-button:focus-visible {
+    opacity: 1;
+    color: var(--highlight-text) !important;
+    border-color: color-mix(in srgb, var(--highlight-text) 48%, transparent) !important;
+    background: color-mix(in srgb, var(--highlight-text) 9%, transparent) !important;
+    outline: none;
+}
+
+#agentSettingsContainer .tts-director-item .tts-director-action-button {
+    color: var(--vcp-ui-danger, #ef4444) !important;
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 30%, transparent) !important;
+}
+
+#agentSettingsContainer .tts-director-item .tts-director-action-button:hover,
+#agentSettingsContainer .tts-director-item .tts-director-action-button:focus-visible {
+    color: var(--vcp-ui-danger, #ef4444) !important;
+    border-color: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 58%, transparent) !important;
+    background: color-mix(in srgb, var(--vcp-ui-danger, #ef4444) 9%, transparent) !important;
 }
 
 #agentSettingsContainer .tts-director-help {
@@ -635,6 +671,25 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 
 
 /* Theme-aware WebAwesome proxy for Agent TTS voice Selects. */
+#agentSettingsContainer #ttsContent .model-input-container {
+    align-items: center;
+}
+
+#agentSettingsContainer #ttsContent .model-input-container > select {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+}
+
+#agentSettingsContainer #ttsContent #refreshTtsModelsBtn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 !important;
+    align-self: center;
+}
+
 #agentSettingsContainer .model-input-container > wa-select.vcp-ui-select-proxy {
     width: 100%;
     min-width: 0;

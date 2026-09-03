@@ -146,8 +146,6 @@
     box-sizing: border-box;
     height: 36px;
     width: 36px;
-    position: relative;
-    top: -7.5px;
 }
 
 #refreshModelsBtn:hover {
@@ -175,13 +173,17 @@
 }
 
 .model-list li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) 24px;
+    align-items: center;
+    column-gap: 8px;
+    min-width: 0;
     padding: 10px 15px;
+    box-sizing: border-box;
     cursor: pointer;
     border-bottom: 1px solid var(--border-color);
     transition: background-color var(--vcp-motion-duration-normal) var(--vcp-motion-ease-standard);
-    display: flex;
-    align-items: center;
-    gap: 6px;
 }
 
 .model-list li:last-child {
@@ -220,16 +222,20 @@
 }
 
 .hot-model-badge {
+    grid-column: 1;
+    justify-self: center;
     font-size: 0.85em;
-    flex-shrink: 0;
+    line-height: 1;
     animation: flame-pulse 1.5s var(--vcp-motion-ease-standard) infinite;
 }
 
 .model-name-text {
-    flex-grow: 1;
+    grid-column: 2;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 20px;
 }
 
 @keyframes flame-pulse {
@@ -248,12 +254,15 @@
 
 /* --- Favorite Star Styles --- */
 .model-favorite-star {
+    grid-column: 3;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 4px;
-    margin-left: auto;
-    /* Push to the right edge */
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
     color: var(--secondary-text);
     cursor: pointer;
     border-radius: 4px;

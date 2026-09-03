@@ -527,62 +527,10 @@ window.GroupRenderer = (() => {
             updateGroupSectionSummary('model');
         };
 
-        // To prevent adding multiple listeners, we replace the button with a clone of itself, which removes all old listeners.
-        if (openGroupModelSelectBtn?.parentNode) {
-            const newBtn = openGroupModelSelectBtn.cloneNode(true);
-            openGroupModelSelectBtn.parentNode.replaceChild(newBtn, openGroupModelSelectBtn);
-            openGroupModelSelectBtn = newBtn; // Update our reference to the new button
-
-            openGroupModelSelectBtn.addEventListener('click', async () => {
-            try {
-                // Reuse SettingsManager's model selector pipeline so callback/list behavior stays consistent.
-                if (window.settingsManager && typeof window.settingsManager.openModelSelectForInput === 'function') {
-                    try {
-                        await window.settingsManager.openModelSelectForInput(groupUnifiedModelInput);
-                        updateGroupSectionSummary('model');
-                        return;
-                    } catch (settingsManagerError) {
-                        console.warn('[GroupRenderer] settingsManager model selector failed, falling back.', settingsManagerError);
-                    }
-                }
-
-                // Fallback path: basic list rendering + click-to-select.
-                console.warn('[GroupRenderer] settingsManager.openModelSelectForInput is not available, using fallback model selector.');
-                const models = await electronAPI.getCachedModels();
-                uiHelper.openModal('modelSelectModal');
-
-                const modelListElement = document.getElementById('modelList');
-                if (!modelListElement) {
-                    throw new Error('modelList element not found.');
-                }
-
-                modelListElement.innerHTML = '';
-                if (!Array.isArray(models) || models.length === 0) {
-                    modelListElement.innerHTML = '<li>没有可用的模型。请检查 VCP 服务或刷新模型列表。</li>';
-                    return;
-                }
-
-                models.forEach((modelItem) => {
-                    const modelId = typeof modelItem === 'string' ? modelItem : modelItem.id;
-                    if (!modelId) return;
-                    const li = document.createElement('li');
-                    li.textContent = modelId;
-                    li.dataset.modelId = modelId;
-                    li.addEventListener('click', () => {
-                        if (groupUnifiedModelInput) {
-                            groupUnifiedModelInput.value = modelId;
-                        }
-                        updateGroupSectionSummary('model');
-                        uiHelper.closeModal('modelSelectModal');
-                    });
-                    modelListElement.appendChild(li);
-                });
-            } catch (error) {
-                console.error('Error fetching cached models for group settings:', error);
-                uiHelper.showToastNotification('加载模型列表失败', 'error');
-            }
-            });
-        }
+        // The settings bridge owns the Group model trigger and mounts the same
+        // AgentModelPicker primitive used by Agent and topic-summary fields.
+        // groupUnifiedModelInput remains the canonical persisted value; its
+        // existing input/change summary bindings observe primitive selections.
 
         groupChatModeSelect.onchange = () => {
             toggleModeSettingsVisibility(groupChatModeSelect.value);
