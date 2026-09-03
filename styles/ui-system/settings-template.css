@@ -748,6 +748,16 @@
     display: block;
 }
 
+/* Unify top starting position across all setting tabs to the high baseline */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > :first-child,
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > .settings-section-title + * {
+    margin-top: 0 !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section > .vcp-uiux-general-row:first-of-type {
+    padding-top: 4px !important;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .settings-section-title {
     /* The active section is already named by the left rail. Keep the heading
        in the accessibility tree, but remove the duplicate visual title and
