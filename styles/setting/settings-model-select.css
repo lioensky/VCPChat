@@ -74,11 +74,11 @@
     /* Make space for the button */
 }
 
-#agentSettingsForm .model-input-container #openModelSelectBtn:not(.vcp-uiux-agent-model-picker-trigger),
+#agentSettingsForm .model-input-container #openModelSelectBtn,
 #globalSettingsForm .model-input-container #openTopicSummaryModelSelectBtn,
 #groupSettingsForm .model-input-container #openGroupModelSelectBtn {
     position: absolute;
-    right: 5px;
+    right: 4px;
     top: 50%;
     transform: translateY(-50%);
     width: 24px;
@@ -87,7 +87,7 @@
     border: none;
     background-color: transparent;
     cursor: pointer;
-    border-radius: 50%;
+    border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -98,13 +98,13 @@
     color: var(--secondary-text);
 }
 
-#openModelSelectBtn:not(.vcp-uiux-agent-model-picker-trigger):hover,
+#openModelSelectBtn:hover,
 #openTopicSummaryModelSelectBtn:hover,
 #openGroupModelSelectBtn:hover {
     background-color: var(--accent-bg);
 }
 
-#openModelSelectBtn:not(.vcp-uiux-agent-model-picker-trigger) svg,
+#openModelSelectBtn svg,
 #openTopicSummaryModelSelectBtn svg,
 #openGroupModelSelectBtn svg {
     stroke: var(--secondary-text);

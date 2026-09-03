@@ -161,5 +161,52 @@ body[data-vcp-theme="dark"] [id="agentSettingsContainer"] .strip-regex-container
 }
 
 [id="agentSettingsContainer"] .agent-settings-model-shell .model-input-container {
+  position: relative;
+  width: 100%;
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+[id="agentSettingsContainer"] .agent-settings-model-shell .model-input-container > :is(.vcp-uiux-input-wrap, .wrap, input) {
+  width: 100% !important;
+  flex: 1 1 100% !important;
+}
+
+[id="agentSettingsContainer"] .agent-settings-model-shell .model-input-container input#agentModel {
+  padding-right: 32px !important;
+}
+
+[id="agentSettingsContainer"] .model-input-container .vcp-uiux-agent-model-picker-trigger-label,
+#openModelSelectBtn .vcp-uiux-agent-model-picker-trigger-label {
+  display: none !important;
+}
+
+[id="agentSettingsContainer"] .model-input-container button#openModelSelectBtn {
+  position: absolute !important;
+  right: 4px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--secondary-text, #737780);
+  cursor: pointer;
+  z-index: 2;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 4px !important;
+}
+
+[id="agentSettingsContainer"] .model-input-container button#openModelSelectBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06)) !important;
+  color: var(--primary-text, #111111);
 }

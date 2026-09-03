@@ -221,27 +221,34 @@ function mountTypedModelPicker(form, {
         }, pickerScope);
 
         // The model-input container is positioned; keep the popup and trigger
-        // in the same anchored strip while the native input keeps its width.
+        // inside the anchored input box on the right.
         picker.root.style.setProperty('position', 'absolute', 'important');
-        picker.root.style.setProperty('right', '5px', 'important');
+        picker.root.style.setProperty('right', '4px', 'important');
         picker.root.style.setProperty('top', '50%', 'important');
         picker.root.style.setProperty('transform', 'translateY(-50%)', 'important');
         picker.root.style.setProperty('z-index', '2', 'important');
-        trigger.style.setProperty('position', 'static', 'important');
-        trigger.style.setProperty('right', 'auto', 'important');
-        trigger.style.setProperty('top', 'auto', 'important');
-        trigger.style.setProperty('transform', 'none', 'important');
-        trigger.style.setProperty('width', 'auto', 'important');
-        trigger.style.setProperty('min-width', '0', 'important');
-        trigger.style.setProperty('max-width', '220px', 'important');
-        trigger.style.setProperty('height', '28px', 'important');
-        trigger.style.setProperty('padding', '0 4px 0 8px', 'important');
-        trigger.style.setProperty('border-radius', '24px', 'important');
+        trigger.style.setProperty('position', 'absolute', 'important');
+        trigger.style.setProperty('right', '4px', 'important');
+        trigger.style.setProperty('top', '50%', 'important');
+        trigger.style.setProperty('transform', 'translateY(-50%)', 'important');
+        trigger.style.setProperty('width', '24px', 'important');
+        trigger.style.setProperty('min-width', '24px', 'important');
+        trigger.style.setProperty('max-width', '24px', 'important');
+        trigger.style.setProperty('height', '24px', 'important');
+        trigger.style.setProperty('min-height', '24px', 'important');
+        trigger.style.setProperty('max-height', '24px', 'important');
+        trigger.style.setProperty('padding', '0', 'important');
+        trigger.style.setProperty('border-radius', '4px', 'important');
         trigger.style.setProperty('border', '0', 'important');
         trigger.style.setProperty('background', 'transparent', 'important');
         trigger.style.setProperty('display', 'inline-flex', 'important');
+        trigger.style.setProperty('align-items', 'center', 'important');
         trigger.style.setProperty('justify-content', 'center', 'important');
+        trigger.style.setProperty('z-index', '2', 'important');
+        const triggerLabel = trigger.querySelector('.vcp-uiux-agent-model-picker-trigger-label');
+        if (triggerLabel) triggerLabel.style.setProperty('display', 'none', 'important');
         trigger.dataset[marker] = 'true';
+        input.style.setProperty('padding-right', '32px', 'important');
 
         pickerScope.listen(input, 'input', () => picker?.setSelected(input.value || undefined));
         pickerScope.listen(input, 'change', () => picker?.setSelected(input.value || undefined));
