@@ -93,23 +93,28 @@ class PresetPromptModule {
         const section = document.createElement('div');
         section.className = 'preset-path-section';
 
-        const label = document.createElement('label');
-        label.textContent = '预设文件夹路径:';
-        section.appendChild(label);
+        const header = document.createElement('div');
+        header.className = 'preset-path-header';
 
-        const pathContainer = document.createElement('div');
-        pathContainer.className = 'path-input-container';
+        const label = document.createElement('label');
+        label.className = 'preset-section-label';
+        label.textContent = '预设文件夹路径:';
+        header.appendChild(label);
+
+        const actions = document.createElement('div');
+        actions.className = 'preset-path-actions';
 
         const pathInput = document.createElement('input');
         pathInput.type = 'text';
         pathInput.className = 'preset-path-input';
         pathInput.value = this.presetPath || this.defaultPresetPath;
         pathInput.placeholder = '例如: ./AppData/systemPromptPresets';
-        pathContainer.appendChild(pathInput);
 
         const browseBtn = document.createElement('button');
+        browseBtn.type = 'button';
         browseBtn.className = 'preset-browse-btn';
-        browseBtn.textContent = '浏览...';
+        browseBtn.title = '浏览文件夹';
+        browseBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>浏览</span>';
         browseBtn.onclick = async () => {
             const result = await this.electronAPI.selectDirectory();
             if (result.success && result.path) {
@@ -120,21 +125,29 @@ class PresetPromptModule {
                 this.updatePresetSelector();
             }
         };
-        pathContainer.appendChild(browseBtn);
+        actions.appendChild(browseBtn);
 
         const refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
         refreshBtn.className = 'preset-refresh-btn';
-        refreshBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 3L3 3L3 13L13 13L13 3Z M8 11C6.34 11 5 9.66 5 8C5 6.34 6.34 5 8 5C9.66 5 11 6.34 11 8C11 9.66 9.66 11 8 11Z" fill="currentColor"/></svg>';
         refreshBtn.title = '刷新预设列表';
+        refreshBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>';
         refreshBtn.onclick = async () => {
             this.presetPath = pathInput.value;
             await this.savePresetPath();
             await this.loadPresets();
             this.updatePresetSelector();
         };
-        pathContainer.appendChild(refreshBtn);
+        actions.appendChild(refreshBtn);
 
+        header.appendChild(actions);
+        section.appendChild(header);
+
+        const pathContainer = document.createElement('div');
+        pathContainer.className = 'path-input-container';
+        pathContainer.appendChild(pathInput);
         section.appendChild(pathContainer);
+
         return section;
     }
 
@@ -185,7 +198,10 @@ class PresetPromptModule {
             }
         };
 
-        section.appendChild(this.presetSelect);
+        const selectWrap = document.createElement('div');
+        selectWrap.className = 'preset-select-wrapper';
+        selectWrap.appendChild(this.presetSelect);
+        section.appendChild(selectWrap);
         return section;
     }
 

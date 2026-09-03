@@ -28,6 +28,7 @@ class OriginalPromptModule {
    */
   render(container) {
     container.innerHTML = "";
+    container.classList.add("original-prompt-container");
 
     // 创建文本域
     this.textarea = document.createElement("textarea");

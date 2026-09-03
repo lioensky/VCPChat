@@ -160,35 +160,39 @@ class ModularPromptModule {
         const toolbar = document.createElement('div');
         toolbar.className = 'modular-toolbar';
 
+        const btnGroup = document.createElement('div');
+        btnGroup.className = 'toolbar-btn-group';
+
         // 添加积木块按钮
         const addBtn = document.createElement('button');
-        addBtn.className = 'toolbar-btn';
-        addBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> 添加积木块';
+        addBtn.type = 'button';
+        addBtn.className = 'toolbar-btn add-block-btn';
+        addBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>积木块</span>';
+        addBtn.title = '添加积木块';
         addBtn.onclick = () => this.addBlock('text');
-        toolbar.appendChild(addBtn);
+        btnGroup.appendChild(addBtn);
 
         // 添加换行块按钮
         const addNewlineBtn = document.createElement('button');
-        addNewlineBtn.className = 'toolbar-btn';
-        addNewlineBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3h10M3 8h10M3 13h10" stroke="currentColor" stroke-width="2"/></svg> 添加换行';
+        addNewlineBtn.type = 'button';
+        addNewlineBtn.className = 'toolbar-btn add-newline-btn';
+        addNewlineBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h12"/></svg><span>换行</span>';
+        addNewlineBtn.title = '添加换行';
         addNewlineBtn.onclick = () => this.addBlock('newline');
-        toolbar.appendChild(addNewlineBtn);
+        btnGroup.appendChild(addNewlineBtn);
 
-        // 创建右侧控制组
-        const controlsGroup = document.createElement('div');
-        controlsGroup.className = 'toolbar-controls-group';
+        toolbar.appendChild(btnGroup);
 
         // View 模式开关
         const viewModeToggle = document.createElement('label');
         viewModeToggle.className = 'toolbar-toggle';
+        viewModeToggle.title = '切换预览模式';
         viewModeToggle.innerHTML = `
             <input type="checkbox" ${this.viewMode ? 'checked' : ''} id="viewModeCheckbox">
-            <span>预览模式</span>
+            <span>预览</span>
         `;
         viewModeToggle.querySelector('input').onchange = (e) => this.toggleViewMode(e.target.checked);
-        controlsGroup.appendChild(viewModeToggle);
-
-        toolbar.appendChild(controlsGroup);
+        toolbar.appendChild(viewModeToggle);
 
         return toolbar;
     }
@@ -659,12 +663,13 @@ class ModularPromptModule {
 
         const header = document.createElement('div');
         header.className = 'warehouse-header';
-        header.innerHTML = '<h4>隐藏积木块小仓</h4>';
+        header.innerHTML = '<span class="warehouse-title">积木块小仓</span>';
         
         // 添加新建仓库按钮
         const addWarehouseBtn = document.createElement('button');
+        addWarehouseBtn.type = 'button';
         addWarehouseBtn.className = 'add-warehouse-btn';
-        addWarehouseBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>新建小仓</span>';
+        addWarehouseBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>新建小仓</span>';
         addWarehouseBtn.title = '新建仓库';
         addWarehouseBtn.onclick = () => this.createWarehouse();
         header.appendChild(addWarehouseBtn);
