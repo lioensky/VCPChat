@@ -569,7 +569,9 @@
     gap: 8px;
     padding: 9px 16px 9px 12px;
     border: 0;
-    border-radius: 12px;
+    /* Settings categories are sidebar list items too. Keep them on the same
+       appearance contract as assistants, topics, creation and account rows. */
+    border-radius: var(--vcp-ui-sidebar-item-radius, 10px);
     outline: 0;
     color: var(--vcp-ui-text-0);
     background: transparent;

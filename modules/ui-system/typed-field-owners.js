@@ -907,6 +907,24 @@ function mountTypedFieldOwner(root, form) {
         state.timer = setTimeout(run, 400);
     };
     state.run = run;
+    const applyAppearanceDraft = () => {
+        const appearancePatch = state.pendingPatch?.appearanceProfile;
+        const appearance = window.VCPAppearance;
+        if (!appearancePatch || typeof appearance?.apply !== 'function') return;
+        // Typed appearance fields bypass the legacy full-form submit path, so
+        // they must also drive the runtime appearance engine themselves.
+        // Merge with the currently applied profile to preserve material/detail
+        // keys that are not represented by the edited control. This is a live
+        // preview only; the typed save command remains the durable owner.
+        appearance.apply({
+            ...(appearance.getCurrent?.() || service.state.get()?.appearanceProfile || {}),
+            ...appearancePatch,
+        }, {
+            uiMode: document.documentElement.dataset.uiMode || 'next',
+            cache: false,
+            source: 'settings-draft',
+        });
+    };
     const markDirty = () => {
         form.dataset.vcpSettingsDirty = 'true';
         setStatus('dirty');
@@ -940,6 +958,7 @@ function mountTypedFieldOwner(root, form) {
         } else {
             state.pendingPatch = { ...(state.pendingPatch || {}), ...patch };
         }
+        applyAppearanceDraft();
         markDirty();
         schedule();
     };

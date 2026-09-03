@@ -50,7 +50,7 @@
     padding: 9px 16px 9px 12px;
     box-sizing: border-box;
     border: 0;
-    border-radius: 12px;
+    border-radius: var(--vcp-ui-sidebar-item-radius, 10px);
     background: transparent;
     color: var(--vcp-ui-text-1);
     font: 400 14px/22px var(--vcp-ui-font-family);

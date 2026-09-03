@@ -120,6 +120,8 @@ assert.equal(document.documentElement.dataset.vcpCardRadius, 'small');
 const appearanceCss = fs.readFileSync('styles/appearance.css', 'utf8');
 const tokensCss = fs.readFileSync('styles/ui-system/tokens.css', 'utf8');
 const sidebarCss = fs.readFileSync('styles/ui-system/sidebar.css', 'utf8');
+const settingsTemplateCss = fs.readFileSync('styles/ui-system/settings-template.css', 'utf8');
+const settingsPrimitivesCss = fs.readFileSync('styles/ui-system/settings-primitives.css', 'utf8');
 const fontsCss = fs.readFileSync('styles/ui-system/fonts.css', 'utf8');
 assert.match(appearanceCss, /\.vcp-material-optics\s*\{[^}]*position:\s*fixed/s);
 assert.match(appearanceCss, /html\[data-vcp-radius="square"\] \.vcp-ui-scope/);
@@ -136,4 +138,8 @@ assert.match(appearanceCss, /data-vcp-sidebar-radius="custom"[^}]*--vcp-ui-sideb
 assert.match(fontsCss, /--vcp-ui-font-family:\s*var\(--vcp-appearance-font-family/);
 assert.match(tokensCss, /--vcp-ui-sidebar-avatar-size:\s*var\(--vcp-appearance-sidebar-avatar-size/);
 assert.match(sidebarCss, /#nextUiAccountAvatar\s*\{[^}]*var\(--vcp-ui-sidebar-avatar-size\)/s);
+assert.match(settingsTemplateCss, /\.vcp-uiux-settings-nav-cell\s*\{[^}]*border-radius:\s*var\(--vcp-ui-sidebar-item-radius,\s*10px\)/s,
+    'the final SettingsRoot cascade must consume the global sidebar item radius');
+assert.match(settingsPrimitivesCss, /\.vcp-uiux-settings-nav-cell\s*\{[^}]*border-radius:\s*var\(--vcp-ui-sidebar-item-radius,\s*10px\)/s,
+    'the base SettingsRoot primitive must consume the global sidebar item radius');
 console.log('appearance engine checks passed.');
