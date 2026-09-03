@@ -834,14 +834,23 @@
     min-height: 176px;
     flex-direction: column;
     padding: 16px;
-    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 12px;
-    background: var(--vcp-ui-bg-1);
+    background: #FFFFFF !important;
     box-sizing: border-box;
 }
 
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-card {
+    background: #1E1F22 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-card:hover {
-    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border));
+    border-color: rgba(0, 0, 0, 0.16);
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-card:hover {
+    border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .scenario-preview-grid .scenario-preview-title {
@@ -1460,10 +1469,10 @@
     height: 32px;
     min-height: 32px;
     padding: 0 14px;
-    border: 1px solid var(--dsw-alias-border-l2, var(--vcp-ui-border-subtle, rgba(0, 0, 0, 0.12)));
+    border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 16px;
-    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
-    background: var(--dsw-alias-bg-module-platform, var(--vcp-ui-fill-1));
+    color: var(--vcp-ui-text-1, #666666);
+    background: #F4F4F6 !important;
     font-size: 13px;
     line-height: 20px;
     cursor: pointer;
@@ -1471,22 +1480,39 @@
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option:hover {
-    color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
-    background: var(--dsw-alias-interactive-bg-hover, var(--vcp-ui-fill-2));
+    background: #ECECEE !important;
+    color: var(--vcp-ui-text-0, #111111);
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option:has(input:checked) {
-    color: var(--dsw-alias-brand-primary, var(--vcp-ui-accent, #1677ff)) !important;
-    background: var(--vcp-ui-selection-bg, rgba(22, 119, 255, 0.12)) !important;
-    border-color: var(--dsw-alias-brand-primary, var(--vcp-ui-accent, #1677ff)) !important;
+    background: #FFFFFF !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+    color: var(--vcp-ui-text-0, #111111) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+    font-weight: 500 !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option:has(input:checked):hover {
-    background: var(--vcp-ui-selection-hover, rgba(22, 119, 255, 0.2)) !important;
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option {
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: #FFFFFF !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option:has(input:checked) {
+    background: rgba(255, 255, 255, 0.16) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+    font-weight: 500 !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-choice-option:focus-within {
-    outline: 2px solid color-mix(in srgb, var(--vcp-ui-accent) 34%, transparent);
+    outline: 2px solid rgba(0, 0, 0, 0.14);
     outline-offset: 2px;
 }
 
@@ -1912,25 +1938,46 @@
     justify-content: stretch;
     margin: 0;
     padding: 0;
-    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border, rgba(0, 0, 0, .12)));
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 16px;
     color: var(--vcp-ui-text-0);
-    background: var(--vcp-ui-bg-secondary, var(--vcp-ui-fill-0, #fff));
+    background: #FFFFFF !important;
     cursor: pointer;
     transition: border-color var(--vcp-ui-transition-fast, 120ms ease), background-color var(--vcp-ui-transition-fast, 120ms ease), box-shadow var(--vcp-ui-transition-fast, 120ms ease);
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover {
-    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border, rgba(0, 0, 0, .2)));
-    background: var(--vcp-ui-control-hover, var(--vcp-ui-fill-1, #f7f7f7));
+    border-color: rgba(0, 0, 0, 0.16);
+    background: #F9F9FB !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:focus-within {
-    outline: 2px solid color-mix(in srgb, var(--vcp-ui-accent, #4f7cff) 34%, transparent);
+    outline: 2px solid rgba(0, 0, 0, 0.18);
     outline-offset: 2px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) {
-    border-color: var(--vcp-ui-border-strong, var(--vcp-ui-border, rgba(0, 0, 0, .2)));
-    background: var(--vcp-ui-selection-bg, var(--vcp-ui-fill-1, #f5f6f7));
-    box-shadow: none;
+    border: 1.5px solid var(--vcp-ui-text-0, #111111) !important;
+    background: #FFFFFF !important;
+    box-shadow: none !important;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) .chat-presentation-mode-icon {
+    color: var(--vcp-ui-text-0, #111111) !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option {
+    background: #1E1F22 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: #FFFFFF !important;
+}
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover {
+    background: #252629 !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+}
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) {
+    background: #1E1F22 !important;
+    border: 1.5px solid #FFFFFF !important;
+    box-shadow: none !important;
+}
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) .chat-presentation-mode-icon {
+    color: #FFFFFF !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option > span {
     display: flex;
@@ -1955,9 +2002,6 @@
     color: var(--vcp-ui-text-2);
     font-size: 22px;
     line-height: 1;
-}
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) .chat-presentation-mode-icon {
-    color: var(--vcp-ui-text-accent, var(--vcp-ui-accent, currentColor));
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option strong {
     display: block;

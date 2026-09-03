@@ -1025,9 +1025,32 @@
         grid-template-columns: 104px minmax(0, 1fr) auto;
         align-items: center;
         gap: var(--vcp-ui-space-3);
-        border: 1px solid color-mix(in srgb, var(--vcp-ui-accent) 24%, var(--vcp-ui-border));
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 12px;
-        background: #fff;
+        background: #FFFFFF;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card {
+        background: #1E1F22 !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card strong {
+        color: #FFFFFF !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-card p {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-chips span {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+
+    :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope .appearance-workbench-preview {
+        background: #141517 !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
     :is(html, html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-preview {
         height: 68px;
