@@ -213,7 +213,11 @@
 /* Card footer strip for row-level actions (e.g. the network-notes add
    button): right-aligned under a hairline, like the card action bars. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="network-notes"] .vcp-settings-card-body {
-    padding-top: 12px;
+    padding: 16px 0 !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #networkNotesPathsContainer:empty {
+    display: none !important;
 }
 
 /* The add action is a full-width dashed affordance styled like one more
@@ -227,7 +231,7 @@
     width: 100%;
     min-height: var(--vcp-ui-control-md, 32px);
     padding: 0 12px;
-    margin: 8px 0 2px;
+    margin: 0 !important;
     border: 1px dashed var(--vcp-ui-border, var(--vcp-ui-border-subtle, rgba(0, 0, 0, 0.18)));
     /* Same radius as the path input wrap so the add row reads as one more
        row of the same family. */
@@ -237,6 +241,10 @@
     font-family: var(--vcp-ui-font-family, inherit);
     font-size: var(--vcp-ui-font-body, 14px);
     cursor: pointer;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #networkNotesPathsContainer:not(:empty) + .vcp-settings-card-add-row {
+    margin-top: 12px !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card-add-row::before {
