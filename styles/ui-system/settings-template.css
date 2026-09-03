@@ -786,10 +786,14 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure {
     margin: 8px 0 16px;
     padding: 4px 20px 8px;
-    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 12px;
-    background: var(--vcp-ui-bg-1);
+    background: #FFFFFF !important;
     overflow: hidden;
+}
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure {
+    background: #1E1F22 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-summary {
     min-height: 68px;
@@ -799,10 +803,15 @@
     gap: 12px;
     padding: 14px 0 10px;
     color: var(--vcp-ui-text-0);
-    background: var(--vcp-ui-bg-1);
-    border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    background: #FFFFFF !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     cursor: pointer;
     list-style: none;
+}
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure-summary {
+    background: #1E1F22 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    color: #FFFFFF;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-disclosure:not([open]) > .vcp-settings-disclosure-summary {
     border-bottom: 0;
@@ -1943,19 +1952,19 @@
     color: var(--vcp-ui-text-0);
     background: #FFFFFF !important;
     cursor: pointer;
-    transition: border-color var(--vcp-ui-transition-fast, 120ms ease), background-color var(--vcp-ui-transition-fast, 120ms ease), box-shadow var(--vcp-ui-transition-fast, 120ms ease);
+    transition: background-color 140ms ease, border-color 140ms ease;
 }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover {
-    border-color: rgba(0, 0, 0, 0.16);
-    background: #F9F9FB !important;
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover:not(:has(input:checked)) {
+    background: rgba(38, 49, 72, 0.04) !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:focus-within {
     outline: 2px solid rgba(0, 0, 0, 0.18);
     outline-offset: 2px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) {
-    border: 1.5px solid var(--vcp-ui-text-0, #111111) !important;
-    background: #FFFFFF !important;
+    background: #F5F6F7 !important;
+    border: 1px solid #ADB2B8 !important;
     box-shadow: none !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) .chat-presentation-mode-icon {
@@ -1967,13 +1976,13 @@
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     color: #FFFFFF !important;
 }
-:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover {
-    background: #252629 !important;
-    border-color: rgba(255, 255, 255, 0.16) !important;
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:hover:not(:has(input:checked)) {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
 }
 :is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) {
-    background: #1E1F22 !important;
-    border: 1.5px solid #FFFFFF !important;
+    background: #2C2D30 !important;
+    border: 1px solid rgba(255, 255, 255, 0.28) !important;
     box-shadow: none !important;
 }
 :is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .chat-presentation-mode-option:has(input:checked) .chat-presentation-mode-icon {
