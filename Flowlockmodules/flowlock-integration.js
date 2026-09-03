@@ -54,6 +54,25 @@ function normalizeFlowlockHeartbeatPrompt(prompt) {
     return `${FLOWLOCK_SYSTEM_PROMPT_PREFIX}${normalized ? ` ${normalized}` : ''}`;
 }
 
+function attachFlowlockTimestampMetadata(vcpMessage, historyMessage) {
+    if (
+        !historyMessage?.id
+        || typeof historyMessage.timestamp !== 'number'
+        || !Number.isFinite(historyMessage.timestamp)
+    ) {
+        return vcpMessage;
+    }
+
+    return {
+        ...vcpMessage,
+        __vcpchatTimestampMeta: {
+            messageId: historyMessage.id,
+            role: historyMessage.role,
+            timestamp: historyMessage.timestamp
+        }
+    };
+}
+
 /**
  * 按指定 Agent/Topic 执行后台续写
  * 不依赖当前 UI 状态，直接从文件系统读取历史记录
@@ -138,7 +157,10 @@ async function continueWritingForContext(params) {
                     .join('\n');
             }
         }
-        return { role: msg.role, content: currentMessageTextContent };
+        return attachFlowlockTimestampMetadata(
+            { role: msg.role, content: currentMessageTextContent },
+            msg
+        );
     }));
 
     // 心跳仍使用 user role 进入现有续写链路，但内容前缀使后端可可靠识别其系统来源。
