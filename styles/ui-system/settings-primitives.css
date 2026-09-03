@@ -11,7 +11,7 @@
     max-width: calc(100vw - 48px);
     overflow: hidden;
     border-radius: 24px;
-    background: var(--vcp-ui-bg-1);
+    background: #FFFFFF;
     box-shadow: var(--vcp-ui-shadow-md);
     align-items: stretch;
 }

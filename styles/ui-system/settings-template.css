@@ -140,15 +140,25 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card {
     margin: 8px 0 16px;
     padding: 0 20px;
-    border: 1px solid var(--dsw-alias-border-l2, var(--vcp-ui-border-subtle, rgba(0, 0, 0, 0.12)));
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 12px;
-    background: var(--dsw-alias-bg-layer-1, var(--vcp-ui-bg-1));
+    background: #FFFFFF !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-settings-card {
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #1E1F22 !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="stream-animation"],
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="smooth-streaming"] {
     border-radius: 12px;
-    background: var(--dsw-alias-bg-layer-1, var(--vcp-ui-bg-1));
+    background: #FFFFFF !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="stream-animation"],
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-settings-card[data-vcp-settings-card="smooth-streaming"] {
+    background: #1E1F22 !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-settings-card > .vcp-settings-card-body > .vcp-uiux-general-row:last-of-type {
@@ -461,12 +471,16 @@
         /* The legacy .modal-content rule uses !important for its background.
            Keep the SettingsRoot token authoritative while this surface still
            carries the compatibility class. */
-        background: var(--dsw-alias-bg-layer-2, var(--vcp-ui-bg-0)) !important;
+        background: #FFFFFF !important;
         box-shadow: var(--vcp-ui-shadow-lg);
         font-family: inherit;
         font-size: var(--vcp-ui-font-body);
         line-height: 22px;
     }
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-panel {
+    background: #1E1F22 !important;
+}
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav {
     flex: 0 0 188px;
@@ -479,9 +493,14 @@
     padding: 22px 12px 0;
     overflow-y: auto;
     border: 0;
-    border-right: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 0;
-    background: var(--dsw-alias-bg-layer-2, var(--vcp-ui-bg-0));
+    background: var(--vcp-ui-bg-0, #F2EFE7) !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav {
+    background: #18191B !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-disclosure-row {
@@ -555,13 +574,27 @@
    settings-bridge mountSettingsShell), not .active — sections use .active. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell.is-active,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell[data-state="selected"] {
-    background: var(--vcp-ui-fill-2);
+    background: #FFFFFF !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+    color: var(--vcp-ui-text-0) !important;
     font-weight: 500;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell.is-active,
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell[data-state="selected"] {
+    background: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: none !important;
+    color: #FFFFFF !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell.active:hover,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell[data-state="selected"]:hover {
-    background: var(--vcp-ui-fill-2);
+    background: #FFFFFF !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell.active:hover,
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell[data-state="selected"]:hover {
+    background: rgba(255, 255, 255, 0.16) !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-nav-cell:focus-visible {
@@ -610,9 +643,12 @@
     overflow: hidden;
     border: 0;
     border-radius: 0;
-    /* The settings content surface adapts to active theme via DSH layer-2 tokens */
-    background: var(--dsw-alias-bg-layer-2, var(--vcp-ui-bg-0));
+    background: #FFFFFF !important;
     color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-content {
+    background: #1E1F22 !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal.vcp-global-settings-surface .vcp-uiux-settings-header {
@@ -879,10 +915,16 @@
     gap: 0 8px;
     margin: 0 0 18px;
     padding: 10px 14px 14px;
-    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
-    border-bottom: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border)) !important;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
     border-radius: 14px;
-    background: var(--vcp-ui-bg-1);
+    background: #FFFFFF !important;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
+    background: #1E1F22 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-identity-main { display: grid; grid-column: 1 / 3; grid-row: 1; grid-template-columns: 52px minmax(0, 1fr); align-items: center; align-self: center; height: 56px; min-height: 56px; gap: 8px; min-width: 0; }
@@ -989,13 +1031,18 @@
     min-height: 36px;
     box-sizing: border-box;
     padding: 8px 12px 8px 14px;
-    border: 1px solid var(--vcp-ui-border-subtle, var(--vcp-ui-border));
+    border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 999px;
     white-space: nowrap;
     max-width: 180px;
     color: var(--vcp-ui-text-1);
-    background: var(--vcp-ui-control-bg, var(--vcp-ui-fill-0));
+    background: #FFFFFF !important;
     pointer-events: auto;
+}
+
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header {
+    background: #1E1F22 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .style-collapse-header:hover {
@@ -1007,8 +1054,8 @@
     grid-column: 1 / -1;
     grid-row: 2;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content;
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
     gap: 16px;
     padding: 10px 14px 0;
     pointer-events: auto;
@@ -1026,8 +1073,9 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-style-controls .style-control-item.full-width {
     grid-column: 3;
     grid-row: 1;
-    align-self: start;
-    padding-top: 24px;
+    align-self: end;
+    padding-top: 0;
+    margin-bottom: 0;
 }
 
 /* Single Color Pill Control (Image 5 style) */
@@ -1186,13 +1234,13 @@
     align-items: center;
     justify-content: center;
     gap: 0;
-    width: 32px;
-    max-width: 32px;
-    min-height: 32px;
-    height: 32px;
+    width: 38px;
+    max-width: 38px;
+    min-height: 38px;
+    height: 38px;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: 10px;
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
