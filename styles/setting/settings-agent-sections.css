@@ -561,6 +561,8 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     box-sizing: border-box;
     display: block;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 38px;
     min-height: 38px;
     max-height: 38px;
@@ -573,8 +575,10 @@ body[data-vcp-theme="light"] #agentSettingsContainer .agent-settings-toggle-btn:
     color: var(--primary-text);
     font: inherit;
     line-height: 20px;
-    white-space: pre;
-    text-overflow: ellipsis;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-overflow: clip;
     transition:
         min-height 0.2s ease,
         max-height 0.2s ease,
