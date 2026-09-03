@@ -939,16 +939,17 @@
    right-hand action instead of occupying a separate full-width row. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) max-content;
+    grid-template-columns: 36px minmax(0, 1fr) max-content;
     align-items: center;
-    gap: 0 8px;
+    gap: 0 12px;
     margin: 0 0 18px;
-    padding: 8px 16px !important;
+    padding: 10px 16px !important;
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
     border-radius: 14px;
     background: #FFFFFF !important;
     box-sizing: border-box;
+    min-height: 56px;
 }
 
 :is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card {
@@ -961,12 +962,12 @@
     display: grid;
     grid-column: 1 / 3;
     grid-row: 1;
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 36px minmax(0, 1fr);
     align-items: center;
     align-self: center;
-    height: 40px;
-    min-height: 40px;
-    gap: 8px;
+    height: 36px;
+    min-height: 36px;
+    gap: 12px;
     min-width: 0;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-wrapper {
@@ -977,29 +978,34 @@
     justify-content: center;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display {
-    width: 40px;
-    height: 40px;
+    width: 36px !important;
+    height: 36px !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    box-shadow: none !important;
+}
+:is(html, html.vcp-global-settings-host) body[data-vcp-theme="dark"] .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-avatar-display {
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper {
     grid-column: 2;
     grid-row: 1;
     display: grid;
-    grid-template-columns: max-content 24px 24px;
-    grid-template-rows: 24px;
+    grid-template-columns: max-content 18px 18px;
+    grid-template-rows: 22px;
     align-items: center;
     align-self: center;
     column-gap: 4px;
     width: fit-content;
     max-width: 100%;
     min-width: 0;
-    min-height: 24px;
+    min-height: 22px;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper label { margin: 0 0 4px; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper > label { display: none; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input {
     width: 100% !important;
-    min-height: 28px !important;
-    height: 28px !important;
+    min-height: 26px !important;
+    height: 26px !important;
     margin: 0;
     box-sizing: border-box;
 }
@@ -1019,35 +1025,36 @@
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper input[hidden] { display: none !important; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-display { display: contents; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 16px; font-weight: 600; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-identity-name-value { color: var(--vcp-ui-text-0); font-size: 14px; font-weight: 500; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-value { grid-column: 1; grid-row: 1; align-self: center; }
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel) { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; color: var(--vcp-ui-text-2); background: transparent; cursor: pointer; }
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel) { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 999px; color: var(--vcp-ui-text-2); background: transparent; cursor: pointer; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.vcp-uiux-identity-name-edit, .vcp-uiux-identity-name-cancel):hover { color: var(--vcp-ui-text-0); background: var(--vcp-ui-fill-1); }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit,
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel {
     grid-row: 1;
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
     align-self: center;
+}
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit svg {
+    width: 13px !important;
+    height: 13px !important;
+    stroke-width: 1.75 !important;
 }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-edit { grid-column: 2; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel { grid-column: 3; }
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .vcp-uiux-identity-name-cancel[hidden] { display: none !important; }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card .agent-name-wrapper.is-editing {
-    grid-template-columns: 150px 24px 24px;
+    grid-template-columns: 150px 18px 18px;
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container {
-    /* Keep both states in the same grid geometry.  If the collapsed state
-       falls back to block layout while its max-height transition is running,
-       the controls briefly reflow into the 180px action column and visibly
-       shrink from the right before disappearing. */
     grid-column: 1 / -1;
     grid-row: 1 / span 2;
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) 180px;
-    grid-template-rows: 40px auto;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    grid-template-rows: 36px auto;
     margin: 0;
     border: 0;
     background: transparent;
@@ -1056,11 +1063,9 @@
     pointer-events: none;
 }
 
-/* The capsule itself stays compact; the parent remains full-width so the
-   controls do not reflow into the action column during collapse. */
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-uiux-user-profile-card > .agent-style-collapsible-container.collapsed {
-    height: 40px;
-    min-height: 40px;
+    height: 36px;
+    min-height: 36px;
     width: auto;
     max-width: none;
 }
@@ -1076,19 +1081,21 @@
     grid-row: 1;
     align-self: center;
     margin-left: auto;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    width: 172px;
-    min-height: 32px;
-    height: 32px;
+    justify-content: center;
+    gap: 4px;
+    width: auto;
+    max-width: none;
+    min-height: 30px;
+    height: 30px;
     box-sizing: border-box;
-    padding: 4px 12px 4px 14px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 999px;
+    padding: 4px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
     white-space: nowrap;
-    max-width: 180px;
     font-size: 13px;
+    line-height: 18px;
     color: var(--vcp-ui-text-1);
     background: #FFFFFF !important;
     pointer-events: auto;
@@ -1354,6 +1361,7 @@
     height: 16px;
     align-items: center;
     justify-content: center;
+    order: 2;
     margin: 0;
     border: 0;
     border-radius: 0;
@@ -1371,8 +1379,8 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container .style-collapse-icon::before {
     position: static;
     display: block;
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-right: 1.5px solid currentColor;
     border-bottom: 1.5px solid currentColor;
     content: '';
@@ -1385,12 +1393,13 @@
 }
 
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .agent-style-collapsible-container .style-collapse-title {
-    flex: 1 1 auto;
-    min-width: 0;
+    order: 1;
+    flex: 0 0 auto;
+    text-align: center;
     color: var(--vcp-ui-text-1);
-    font-size: var(--vcp-ui-font-body);
+    font-size: 13px;
     font-weight: 400;
-    line-height: 24px;
+    line-height: 18px;
 }
 
 /* Content-width radios remain a frozen chat-surface presentation concern.
