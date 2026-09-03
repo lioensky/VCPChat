@@ -176,6 +176,10 @@
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(#agentSettingsContainer, #groupSettingsContainer) {
         min-width: 0;
         padding: 0;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope :is(#agentSettingsForm, #groupSettingsForm) {
@@ -183,13 +187,21 @@
         min-width: 0;
         flex-direction: column;
         gap: var(--vcp-ui-space-2);
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsForm > .agent-settings-section, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #groupSettingsForm > .group-settings-section {
         min-width: 0;
         margin: 0;
         padding: 0;
-        overflow: hidden;
+        flex-shrink: 0;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
     }
 
     :is(html, html.vcp-global-settings-host) .vcp-ui-scope #agentSettingsContainer .agent-settings-section-header, :is(html, html.vcp-global-settings-host) .vcp-ui-scope #groupSettingsContainer .group-settings-section-header {

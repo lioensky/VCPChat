@@ -1197,3 +1197,46 @@ body[data-vcp-theme="light"] #groupSettingsContainer .group-settings-model-shell
 body[data-vcp-theme="dark"] #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
     background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.05));
 }
+
+#tabContentSettings #groupSettingsContainer,
+#tabContentSettings #groupSettingsForm {
+    display: flex;
+    flex-direction: column;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-content: start;
+}
+
+#tabContentSettings #groupSettingsForm > .group-settings-section {
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+}
+
+#groupSettingsContainer .sequential-order-move-btn {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--secondary-bg);
+    color: var(--secondary-text);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    transition: all 0.16s ease;
+}
+
+#groupSettingsContainer .sequential-order-move-btn:hover {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+}
