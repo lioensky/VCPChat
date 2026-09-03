@@ -742,15 +742,62 @@ body:not(.light-theme) #agentSettingsContainer .tts-director-editor {
 #agentSettingsContainer wa-select.vcp-ui-select-proxy::part(expand-icon) {
     color: var(--vcp-ui-text-2, var(--secondary-text));
 }
+@keyframes agent-tts-select-listbox-enter {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
 #agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox) {
-    max-height: min(360px, 60vh);
+    width: 100%;
+    max-height: min(320px, calc(100vh - 24px));
     padding: 5px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     border: 1px solid var(--vcp-ui-border, var(--border-color));
     border-radius: var(--vcp-ui-radius-md, 10px);
     color: var(--vcp-ui-text-0, var(--primary-text));
     background: var(--vcp-ui-bg-1, var(--secondary-bg));
     box-shadow: var(--vcp-ui-shadow-lg, 0 14px 34px rgba(0, 0, 0, 0.28));
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy[open]::part(listbox) {
+    animation: agent-tts-select-listbox-enter 150ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #agentSettingsContainer wa-select.vcp-ui-select-proxy[open]::part(listbox) {
+        animation: none;
+    }
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar {
+    width: 8px;
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--secondary-text) 42%, transparent);
+    background-clip: padding-box;
+}
+
+#agentSettingsContainer wa-select.vcp-ui-select-proxy::part(listbox)::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--secondary-text) 66%, transparent);
+    background-clip: padding-box;
 }
 
 #agentSettingsContainer wa-select.vcp-ui-select-proxy wa-option {

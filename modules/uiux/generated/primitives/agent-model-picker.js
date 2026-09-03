@@ -196,7 +196,9 @@ export function mountAgentModelPicker(host, props, scope) {
         consume: () => true,
         focusComposer: () => trigger.focus(),
     });
-    let pane = 'root';
+    const hasEffortPane = Array.isArray(props.efforts) && props.efforts.length > 0;
+    const initialPane = hasEffortPane ? 'root' : 'model';
+    let pane = initialPane;
     let selectedEffort = props.selectedEffort;
     let paneCell = null;
     let cancelDeferredPlacement = () => { };
@@ -210,7 +212,10 @@ export function mountAgentModelPicker(host, props, scope) {
         grouped: props.uiuxEquivalent === true || props.grouped === true,
         optionRole: props.uiuxEquivalent === true ? 'menuitemradio' : 'option',
         onEscape: () => {
-            if (pane === 'root')
+            // Without an Effort pane there is no meaningful parent menu:
+            // Escape closes the picker instead of revealing a redundant
+            // "Model / Select model" intermediate screen.
+            if (pane === 'root' || !hasEffortPane)
                 return false;
             pane = 'root';
             syncPane();
@@ -228,7 +233,7 @@ export function mountAgentModelPicker(host, props, scope) {
                 return;
             void runDirectoryAction('favorite', signal => props.directory.toggleFavorite(selected.id, signal)).then(applied => {
                 if (applied && popup.getSnapshot().open)
-                    popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-favorite' } });
+                    popup.openWhenReady('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-favorite' } });
             });
         } : undefined,
     }, pickerScope);
@@ -271,7 +276,7 @@ export function mountAgentModelPicker(host, props, scope) {
             return;
         void runDirectoryAction('refresh', signal => props.directory.refresh(signal)).then(applied => {
             if (applied && popup.getSnapshot().open)
-                popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-refresh-directory' } });
+                popup.openWhenReady('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-refresh-directory' } });
         });
     });
     view.card.prepend(effortCell, effortList);
@@ -345,8 +350,8 @@ export function mountAgentModelPicker(host, props, scope) {
             element.style.display = visible ? '' : 'none';
         };
         paneCell.querySelector('.vcp-uiux-agent-model-picker-cell-value').textContent = triggerLabel.textContent || 'Select model';
-        setVisibility(paneCell, open && pane === 'root');
-        setVisibility(effortCell, open && pane === 'root' && Boolean(props.efforts?.length));
+        setVisibility(paneCell, open && pane === 'root' && hasEffortPane);
+        setVisibility(effortCell, open && pane === 'root' && hasEffortPane);
         effortCell.querySelector('.vcp-uiux-agent-model-picker-cell-value').textContent = selectedEffort ?? 'Provider default';
         setVisibility(effortList, open && pane === 'effort');
         setVisibility(view.search, pane === 'model' && props.searchEnabled !== false);
@@ -419,8 +424,9 @@ export function mountAgentModelPicker(host, props, scope) {
         }
         else {
             invalidateEffortSelection();
-            pane = 'root';
-            popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
+            pane = initialPane;
+            const openPicker = hasEffortPane ? popup.open : popup.openWhenReady;
+            openPicker('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
         }
     }, { capture: true });
     const syncTrigger = () => trigger.setAttribute('aria-expanded', String(popup.getSnapshot().open));
@@ -432,7 +438,7 @@ export function mountAgentModelPicker(host, props, scope) {
                 if (!pickerScope.active || !popup.getSnapshot().open)
                     return;
                 cancelDirectoryAction();
-                popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-models-updated' } });
+                popup.openWhenReady('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-models-updated' } });
             });
             if (release)
                 releaseDirectoryUpdates = pickerScope.own(release, 'agent-model-picker-directory-updates', 'subscription');
@@ -465,8 +471,10 @@ export function mountAgentModelPicker(host, props, scope) {
         cardResizeObserver.observe(view.card);
         pickerScope.own(() => cardResizeObserver.disconnect(), 'agent-model-picker-card-resize', 'observer');
     }
-    if (props.open === true && !trigger.disabled)
-        popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
+    if (props.open === true && !trigger.disabled) {
+        const openPicker = hasEffortPane ? popup.open : popup.openWhenReady;
+        openPicker('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
+    }
     pickerScope.own(async () => {
         unsubscribe();
         popup.dispose();
@@ -503,8 +511,9 @@ export function mountAgentModelPicker(host, props, scope) {
             if (trigger.disabled)
                 return;
             invalidateEffortSelection();
-            pane = 'root';
-            popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
+            pane = initialPane;
+            const openPicker = hasEffortPane ? popup.open : popup.openWhenReady;
+            openPicker('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker' } });
         },
         // Closing from the trigger/picker surface must return focus to the
         // trigger, matching the Uiux menu focus contract.
@@ -515,8 +524,9 @@ export function mountAgentModelPicker(host, props, scope) {
             invalidateEffortSelection();
             if (popup.getSnapshot().open)
                 popup.dismiss();
-            pane = 'root';
-            popup.open('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-refresh' } });
+            pane = initialPane;
+            const openPicker = hasEffortPane ? popup.open : popup.openWhenReady;
+            openPicker('agent-model', {}, { via: 'menu', span: { source: 'agent-model-picker-refresh' } });
         },
         setSelected: id => {
             selectedId = id;
