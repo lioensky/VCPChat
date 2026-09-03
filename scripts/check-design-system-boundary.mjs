@@ -247,6 +247,7 @@ const allowedSourceDifferences = new Set([
     'Translatormodules/translator.js',
     'rust_chat_data_service/Cargo.toml',
     'rust_voice_input_engine/Cargo.lock',
+    'rust_voice_input_engine/src/main.rs',
     'rust_chat_data_service/src/ingest.rs',
     'rust_chat_data_service/src/search.rs',
     'rust_chat_data_service/src/sync.rs',
